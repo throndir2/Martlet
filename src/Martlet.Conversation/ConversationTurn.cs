@@ -41,6 +41,11 @@ public sealed class ConversationTurn
     private MonotonicWindow? textWindow, speechWindow, playWindow;
     private readonly long startedAt;
     private TimeSpan? firstTextAfter, firstAudioAfter;
+    // What the providers reported this reply's requests read (every tool round, retry and fallback), and how much of it came
+    // from their prompt cache; null until a request reported it.
+    private long? inputTokens, cachedInputTokens;
+    private TimeSpan? textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
+        firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter;
     private bool synthesizing;
     private SpeechSegmenter? segmentation;
     private PlaybackRun? playback;
@@ -432,6 +437,8 @@ public sealed class ConversationTurn
         Check(window);
         // Clamp to remaining ORIGINAL stage/turn budgets after a potentially slow authorization callback.
         context = context with { Deadline = Deadline(window) };
+        var requestedAfter = Clock.GetElapsedTime(startedAt);
+        lock (Sync) textRequestAfter ??= requestedAfter;
         var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback);
         using var validator = new ProviderSequenceValidator(new()
         {
@@ -458,6 +465,7 @@ public sealed class ConversationTurn
                 Check(window);
                 bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
                 Check(window);
+                NoteTextTimings(stream, requestedAfter);
                 if (!moved) break;
                 var update = validator.Accept(enumeration.Current);
                 if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
@@ -483,13 +491,36 @@ public sealed class ConversationTurn
         }
         Check(window);
         var end = validator.EndOfInput().Snapshot;
-        lock (Sync) textWindow = null;
+        lock (Sync)
+        {
+            textWindow = null;
+            if (stream.Result?.Usage is { InputTokens: { } read } usage)
+            {
+                inputTokens = (inputTokens ?? 0) + read;
+                if (usage.CachedInputTokens is { } cached) cachedInputTokens = (cachedInputTokens ?? 0) + Math.Min(cached, read);
+            }
+        }
         return end.Result?.Outcome switch
         {
             TurnOutcome.Completed => new(RoundEnd.Completed, said.ToString(), stream.Result?.ToolCalls ?? []),
             TurnOutcome.Refused => new(RoundEnd.Refused, said.ToString(), [], Refusal: validator.RefusalText),
             _ => new(RoundEnd.Invalid, said.ToString(), [], stream.Result?.Failure?.Code, end.Issue)
         };
+    }
+
+    // The first request's response headers and first hidden reasoning, in the turn's own time (the stream counts from its
+    // creation, just after textRequestAfter).
+    private void NoteTextTimings(ITextGenerationStream stream, TimeSpan requestedAfter)
+    {
+        var response = stream.ResponseAfter;
+        var reasoning = stream.FirstReasoningAfter;
+        if (response is null && reasoning is null) return;
+        lock (Sync)
+        {
+            if (textRequestAfter != requestedAfter) return;
+            if (response is { } headers) textResponseAfter ??= requestedAfter + headers;
+            if (reasoning is { } thinking) firstReasoningAfter ??= requestedAfter + thinking;
+        }
     }
 
     // Tool calls run one at a time; each result is cut to its share of what is left of the reply's tool budget.
@@ -545,6 +576,7 @@ public sealed class ConversationTurn
                     // A piece with no words but character cues still goes in order, so the character acts after what came before.
                     if (!segments.Writer.TryWrite(iterator.Current))
                         throw new ConversationException(ConversationFailure.InvalidStream);
+                    firstSegmentAfter ??= Clock.GetElapsedTime(startedAt);
                     peakQueued = Math.Max(peakQueued, segments.Reader.Count);
                     if (iterator.Current.Text is not null) Emit(ConversationEventKind.SegmentQueued);
                 }
@@ -699,9 +731,12 @@ public sealed class ConversationTurn
             {
                 CheckActive();
                 speaking.Token.ThrowIfCancellationRequested();
+                speechRequestAfter ??= Clock.GetElapsedTime(startedAt);
                 speechProvenance = stream.Capabilities.Provenance;
                 if (playback is null) SetState(ConversationState.Synthesizing);
             }
+            var heardFirst = false;
+            var sampleRate = 0;
             await using (var enumeration = stream.GetAsyncEnumerator(speaking.Token))
             {
                 while (true)
@@ -712,6 +747,12 @@ public sealed class ConversationTurn
                     if (!moved) break;
                     if (!take.Frames.Writer.TryWrite(enumeration.Current))
                         throw new ConversationException(ConversationFailure.InvalidStream);
+                    if (!heardFirst)
+                    {
+                        heardFirst = true;
+                        sampleRate = enumeration.Current.Format.SampleRate;
+                        lock (Sync) firstSpeechAudioAfter ??= Clock.GetElapsedTime(startedAt);
+                    }
                 }
             }
             CheckSpeaking(window);
@@ -722,6 +763,12 @@ public sealed class ConversationTurn
                 return false;
             }
             take.FinalSamples = samples;
+            if (take.Number == 1 && sampleRate > 0)
+                lock (Sync)
+                {
+                    firstPieceSynthesizedAfter ??= Clock.GetElapsedTime(startedAt);
+                    firstPieceSpeech ??= TimeSpan.FromSeconds((double)samples / sampleRate);
+                }
             return true;
         }
         catch (Exception error)
@@ -816,6 +863,7 @@ public sealed class ConversationTurn
                         speaking.Token.ThrowIfCancellationRequested();
                         run = Owner.StartPlayback(this, take.Ids, voice.Output, Deadline(window), speaking.Token);
                         playback = run;
+                        playbackStartedAfter ??= Clock.GetElapsedTime(startedAt);
                         speechRequest = take.Ids.RequestId;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
                         // Captions show the words only; the voice still hears its own tags ([laugh]...).
@@ -1011,6 +1059,7 @@ public sealed class ConversationTurn
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
             speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
-            speechFailure);
+            speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
+                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter), inputTokens, cachedInputTokens);
     }
 }

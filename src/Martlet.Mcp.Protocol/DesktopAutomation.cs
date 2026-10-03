@@ -85,6 +85,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
+        // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
+        // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
+        // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
+        // CharacterLockPosition ("Lock position" / "Position locked: unlock in Martlet"). Clicking any of them saves
+        // character-placement.json, so it needs --allow-ui-effects.
+        "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
         // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
@@ -321,6 +327,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["selected"] = element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var item)
                         ? ((SelectionItemPattern)item).Current.IsSelected : null
                 };
+                // A control ui_move can move (the character overlay's MoveAvatar), and whether it can move now: false while the
+                // character's position is locked.
+                if (element.TryGetCurrentPattern(TransformPattern.Pattern, out var transform))
+                    entry["movable"] = ((TransformPattern)transform).Current.CanMove;
                 if (layout)
                 {
                     entry["bounds"] = Box(element.Current.BoundingRectangle);
@@ -468,6 +478,28 @@ internal sealed class DesktopAutomation(bool allowEffects)
             throw new InvalidOperationException($"Control '{id}' is not an enabled checkbox.");
         ((TogglePattern)pattern).Toggle();
         return new { toggled = id, state = ((TogglePattern)pattern).Current.ToggleState.ToString() };
+    }
+
+    internal const int MaximumMove = 10_000;
+
+    /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen
+    /// pixels through UI Automation's Transform pattern, then reports where it was and is. Refused while it can't move, as
+    /// when the character's position is locked in Martlet.</summary>
+    internal object Move(string id, int dx, int dy)
+    {
+        if (!allowEffects) throw new InvalidOperationException("Moving a control requires --allow-ui-effects.");
+        if (Math.Abs(dx) > MaximumMove || Math.Abs(dy) > MaximumMove)
+            throw new ArgumentException($"Move at most {MaximumMove} pixels each way.");
+        var element = Find(id);
+        if (!element.Current.IsEnabled || !element.TryGetCurrentPattern(TransformPattern.Pattern, out var pattern))
+            throw new InvalidOperationException($"Control '{id}' can't be moved.");
+        var transform = (TransformPattern)pattern;
+        if (!transform.Current.CanMove)
+            throw new InvalidOperationException($"Control '{id}' can't move now (the character's position is locked in Martlet).");
+        var before = element.Current.BoundingRectangle;
+        transform.Move(before.X + dx, before.Y + dy);
+        Thread.Sleep(200);
+        return new { moved = id, from = Box(before), to = Box(element.Current.BoundingRectangle) };
     }
 
     private AutomationElement Find(string id)

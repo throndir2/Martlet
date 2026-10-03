@@ -242,10 +242,14 @@ public sealed record ConversationSnapshot(
     Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
     TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false,
-    ConversationFailure SpeechFailure = ConversationFailure.None)
+    ConversationFailure SpeechFailure = ConversationFailure.None, ConversationTimings? Timings = null, long? InputTokens = null,
+    long? CachedInputTokens = null)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
+    /// <summary>The share of <see cref="InputTokens"/> (what the providers reported this reply's requests read) that came
+    /// from their prompt cache, 0-1; null when no request said how much was cached.</summary>
+    public double? CachedShare => InputTokens is > 0 and var read && CachedInputTokens is { } cached ? (double)cached / read : null;
     /// <summary>Whether the reply was asked of the Thinking fallback after the selected destination failed (FellBackAfter
     /// names how: a provider failure code, a stream issue or a conversation failure).</summary>
     public bool FellBack => FellBackAfter is not null;
@@ -255,6 +259,17 @@ public sealed record ConversationSnapshot(
 }
 
 public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issue);
+
+/// <summary>When each step of a reply first happened, measured from the turn's start like
+/// <see cref="ConversationSnapshot.FirstTextAfter"/> and <see cref="ConversationSnapshot.FirstAudioAfter"/> (null when it never
+/// happened): the Thinking request sent (after its authorization), the provider's response headers, its first hidden reasoning,
+/// the first speakable piece staged for the voice, the first voice request sent, the voice's first audio received, the first
+/// piece fully synthesized (and how much speech it holds) and the first audio handed to the speakers. Diagnostics only (the
+/// desktop log's reply latency line); nothing depends on them.</summary>
+public sealed record ConversationTimings(
+    TimeSpan? TextRequestAfter = null, TimeSpan? TextResponseAfter = null, TimeSpan? FirstReasoningAfter = null,
+    TimeSpan? FirstSegmentAfter = null, TimeSpan? SpeechRequestAfter = null, TimeSpan? FirstSpeechAudioAfter = null,
+    TimeSpan? FirstPieceSynthesizedAfter = null, TimeSpan? FirstPieceSpeech = null, TimeSpan? PlaybackStartedAfter = null);
 
 public sealed class ConversationContent(string text, string? refusal)
 {

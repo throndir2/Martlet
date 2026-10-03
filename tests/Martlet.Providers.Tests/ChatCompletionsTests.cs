@@ -38,7 +38,8 @@ public sealed class ChatCompletionsTests
             using var adapter = ChatCompletionsTextGenerationAdapter.Create(server.BaseUrl, keyed ? credentials : null);
             var stream = adapter.Stream(context, Model,
                 new("Current message", "Persona and explicitly selected memory",
-                    [new(TextHistoryRole.User, "History question"), new(TextHistoryRole.Assistant, "History answer")]),
+                    [new(TextHistoryRole.User, "History question"), new(TextHistoryRole.Assistant, "History answer")],
+                    notes: "Per-turn notes"),
                 limits, Authorize(context, limits, server.BaseUrl));
             var result = await TextFixtures.Collect(stream);
             Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
@@ -56,7 +57,7 @@ public sealed class ChatCompletionsTests
             var messages = root.GetProperty("messages").EnumerateArray().ToArray();
             Assert.Equal(new[] { "system", "user", "assistant", "user" }, messages.Select(m => m.GetProperty("role").GetString()));
             Assert.Equal("Persona and explicitly selected memory", messages[0].GetProperty("content").GetString());
-            Assert.Equal("Current message", messages[3].GetProperty("content").GetString());
+            Assert.Equal("Current message\n\nPer-turn notes", messages[3].GetProperty("content").GetString());
             Assert.Equal(keyed ? 1 : 0, credentials.Calls);
         }
     }
@@ -168,12 +169,16 @@ public sealed class ChatCompletionsTests
                 index = 0, delta = new { role = "assistant", content = "" },
                 finish_reason = "stop", native_finish_reason = "stop"
             } },
-            usage = new { prompt_tokens = 3, completion_tokens = 2, total_tokens = 5 }
+            usage = new
+            {
+                prompt_tokens = 3, completion_tokens = 2, total_tokens = 5,
+                prompt_tokens_details = new { cached_tokens = 1 }
+            }
         }) + "\n\n";
         var trace = Chunk("hello", "stop") + accounting + "data: [DONE]\n\n";
         var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.OpenRouterBaseUrl);
         Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
-        Assert.Equal(new TextGenerationUsage(3, 2, 5), result.Result.Usage);
+        Assert.Equal(new TextGenerationUsage(3, 2, 5, 1), result.Result.Usage);
         Assert.Equal(new[] { "hello" }, result.Events.Where(item => item.Kind == ProviderEventKind.TextDelta)
             .Select(item => item.Text));
     }

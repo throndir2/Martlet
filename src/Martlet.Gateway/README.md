@@ -335,11 +335,20 @@ valid pairing proof refused for capacity remains usable until its original
 window expires or is otherwise consumed/closed.
 
 Pairing and credential operations share a serialized observed-UTC high-water
-mark. Any observed backwards movement permanently closes their shared authority,
+mark. A step back of at most 30 seconds (`MaximumClockStepBack`; Windows' NTP
+sync routinely steps the clock back about a second and a WSL2/Docker VM follows
+its host) holds the mark: observed time pauses until the clock passes it again,
+so it never moves backwards and replay and expiry stay monotonic. A larger
+backwards movement permanently closes their shared authority,
 clears retained credential verifiers/nonces, and rejects every existing pairing
 card and subsequent approval with `auth.clock_invalid`. Correcting the clock
 does not reopen the same in-memory instance. With the durable owner, correct
-the clock and reopen the same protected store: pairing data was not erased.
+the clock and reopen the same protected store: pairing data was not erased. The
+store reopens when the clock is at most the same 30 seconds behind its saved
+mark and resumes from that mark; the Linux host's `serve` exits (code 4,
+`authority.closed`) once its authority closes so Docker or systemd restarts it
+and reopens the same state. Host certificates are valid from 30 seconds before
+they are made, so held time still accepts them.
 The standalone volatile constructor has no persistence guarantee.
 Clock sampling occurs inside the store lock, not before admission.
 

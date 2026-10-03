@@ -288,7 +288,12 @@ behavior is compiled but unqualified here; the native PTY target must be run
 in an authorized environment before claiming support for that environment.
 
 `serve` stays in the foreground; SIGTERM and Ctrl+C/SIGINT cancel through one
-owner. Daemon stdin closure does not grant/withdraw approval or stop service.
+owner. If its authority closes while serving (the clock stepped back more than
+30 seconds, or storage failed), every connection would be refused for good, so
+`serve` logs it, reports `authority.closed`, releases the owner and exits with
+code 4; Docker (`unless-stopped`) or systemd (`Restart=on-failure`) restarts it
+and it reopens the same state once the clock allows. Daemon stdin closure does
+not grant/withdraw approval or stop service.
 Interactive EOF does close. Cleanup uses a fresh, uncanceled path: stop
 admissions, drain, checkpoint, release. Existing 30-second listener-drain
 ownership and one final disposal attempt are retained; uncertain owners stay

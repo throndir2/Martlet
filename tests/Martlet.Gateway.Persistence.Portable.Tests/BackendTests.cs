@@ -269,6 +269,9 @@ public sealed class BackendTests
             Assert.Equal("auth.replay", Assert.Throws<GatewayProtocolException>(() => reopened.Credentials.Authenticate(request)).Failure.Code);
         }
         clock.Utc -= TimeSpan.FromSeconds(1);
+        using (var held = new Authority(fs, clock))
+            Assert.Single(held.Credentials.ListRegistrations());
+        clock.Utc -= GatewayCredentialStore.MaximumClockStepBack;
         Failure(GatewayPersistenceFailure.ClockUnavailable, () => new Authority(fs, clock));
         clock.Advance(TimeSpan.FromDays(3650));
         using var yearsLater = new Authority(fs, clock);

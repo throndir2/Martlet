@@ -29,7 +29,11 @@ public sealed class AdmissionHealthTests
         {
             case "stopping": host.Server.Credentials.StopAdmissions(); break;
             case "closed": host.Server.Credentials.Close(); break;
-            case "clock": host.Clock.Advance(TimeSpan.FromSeconds(-1)); break;
+            case "clock":
+                host.Clock.Advance(TimeSpan.FromSeconds(-1));
+                Assert.True(host.Server.Credentials.AdmissionsOpen);
+                host.Clock.Advance(-GatewayCredentialStore.MaximumClockStepBack);
+                break;
         }
         using (var request = new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + "/health/ready"))
         using (var response = await host.Client.SendAsync(request))

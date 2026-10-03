@@ -62,7 +62,8 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
         {
             Require(counts.ValueKind == JsonValueKind.Object);
             MadeProgress = true;
-            usage = new(Count(counts, "prompt_tokens"), Count(counts, "completion_tokens"), Count(counts, "total_tokens"));
+            usage = new(Count(counts, "prompt_tokens"), Count(counts, "completion_tokens"), Count(counts, "total_tokens"),
+                CachedPromptTokens(counts));
             if (budgetSent && usage.OutputTokens > limits.MaxOutputTokens)
                 throw new ResponseProtocolException(ProviderFailureCode.OutputTokenLimit);
         }
@@ -230,6 +231,20 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
         if (!parent.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
         Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var count) && count >= 0);
         return value.GetInt64();
+    }
+
+    // Prompt-cache hits: prompt_tokens_details.cached_tokens (OpenAI, OpenRouter, Ollama, vLLM...) or DeepSeek's
+    // prompt_cache_hit_tokens. Accounting only, so an odd shape is ignored rather than failing the reply.
+    private static long? CachedPromptTokens(JsonElement counts)
+    {
+        long? cached = null;
+        if (counts.TryGetProperty("prompt_tokens_details", out var details) && details.ValueKind == JsonValueKind.Object &&
+            details.TryGetProperty("cached_tokens", out var hits) && hits.ValueKind == JsonValueKind.Number && hits.TryGetInt64(out var n) && n >= 0)
+            cached = n;
+        else if (counts.TryGetProperty("prompt_cache_hit_tokens", out var deepSeek) && deepSeek.ValueKind == JsonValueKind.Number &&
+            deepSeek.TryGetInt64(out var m) && m >= 0)
+            cached = m;
+        return cached;
     }
 
     private static void Require(bool condition)

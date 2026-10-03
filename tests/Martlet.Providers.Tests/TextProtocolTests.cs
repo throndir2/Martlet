@@ -42,6 +42,7 @@ public sealed class TextProtocolTests
         Assert.Null(result.Events[^1].Text);
         Assert.Equal(new long[] { 0, 1, 2 }, result.Events.Select(x => x.Sequence));
         Assert.Equal(13, result.Result.Usage.InputTokens);
+        Assert.Equal(0, result.Result.Usage.CachedInputTokens);
         Assert.Null(result.Result.Usage.EstimatedCost);
     }
 

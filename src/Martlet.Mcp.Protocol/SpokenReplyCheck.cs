@@ -33,27 +33,32 @@ internal static class SpokenReplyCheck
     private static readonly TimeSpan WordGap = TimeSpan.FromMilliseconds(25);
 
     /// <summary>With <paramref name="reply"/>, that text is streamed a word at a time instead of the four canned sentences.
-    /// <paramref name="breaks"/> are the persona's speech breaks the reply is spoken with (<paramref name="persona"/> names
-    /// the saved persona they came from, if any).</summary>
-    internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, string? reply, SpeechBreaks breaks,
-        string? persona, CancellationToken cancellation)
+    /// <paramref name="breaks"/> are the persona's speech breaks the reply is spoken with, the defaults when null, as the desktop
+    /// always passes them (<paramref name="persona"/> names the saved persona they came from, if any).</summary>
+    internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, CancellationToken cancellation,
+        int? reasoningMs = null, int? voiceDelayMs = null, string? reply = null, SpeechBreaks? breaks = null, string? persona = null)
     {
         var failure = voiceFailure ?? "server";
         if (!Failures.Contains(failure)) throw new ArgumentException($"'voiceFailure' must be one of {string.Join(", ", Failures)}.");
         var at = failAt ?? 1;
         if (at is < 1 or > 4) throw new ArgumentException("'failAt' must be 1 through 4.");
+        var reasoning = TimeSpan.FromMilliseconds(reasoningMs ?? 0);
+        var voiceDelay = TimeSpan.FromMilliseconds(voiceDelayMs ?? 0);
+        if (reasoning < TimeSpan.Zero || reasoning > TimeSpan.FromSeconds(5)) throw new ArgumentException("'reasoningMs' must be 0 through 5000.");
+        if (voiceDelay < TimeSpan.Zero || voiceDelay > TimeSpan.FromSeconds(5)) throw new ArgumentException("'voiceDelayMs' must be 0 through 5000.");
         if (reply is not null && (string.IsNullOrWhiteSpace(reply) || reply.Length > 1024 || reply.Any(char.IsControl)))
             throw new ArgumentException("'reply' must be 1-1024 characters of one-line text.");
         string[] chunks = reply is null ? Sentences : [.. System.Text.RegularExpressions.Regex.Matches(reply, @"\s*\S+").Select(m => m.Value)];
         var gap = reply is null ? SentenceGap : WordGap;
+        breaks ??= SpeechBreaks.Default;
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, chunks, gap, stop.Token);
+        var serving = ServeAsync(listener, chunks, gap, reasoning, stop.Token);
         try
         {
-            var voice = new Voice(failure, at);
+            var voice = new Voice(failure, at, voiceDelay);
             var speakers = new Speakers();
             var preset = Guid.NewGuid();
             var target = new HostSpeechTarget("https://127.0.0.1:9443", "fixture-host", "sha256:" + new string('0', 64),
@@ -78,9 +83,28 @@ internal static class SpokenReplyCheck
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var reading = ReadCaptionsAsync(captions, shown, clock, voice, stop.Token);
             await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice, spokenText: captions);
+            // As the desktop counts a typed message: from sending it, through building the request, to the first audio.
+            var timeline = new ReplyTimeline(TimeProvider.System, ReplyTimeline.YouSent);
+            var startedAt = TimeProvider.System.GetTimestamp();
+            timeline.Mark("building the request", startedAt);
             var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
             var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
             await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+            var latencyLine = ReplyLatency.Describe(timeline, startedAt, TimeProvider.System, terminal,
+                $"Thinking {Model}, voice {VoiceModel}");
+            var latency = latencyLine is null ? null : LatencyReport.Parse(DateTimeOffset.Now, latencyLine);
+            string[] expectedSteps = failure == "none"
+                ? [ReplyLatency.ThinkingAuthorization, ReplyLatency.ThinkingConnection,
+                    reasoning > TimeSpan.Zero ? ReplyLatency.HiddenReasoning : ReplyLatency.ThinkingFirstWords, ReplyLatency.FirstSentence,
+                    ReplyLatency.VoiceAuthorization, ReplyLatency.VoiceSynthesis, ReplyLatency.PlaybackStart, ReplyLatency.Speakers]
+                : [];
+            var missingSteps = expectedSteps.Where(step => latency?.Steps.ContainsKey(step) != true).ToArray();
+            var stepsSum = latency?.Steps.Values.Sum() ?? 0;
+            // Each step is rounded to a millisecond on its own, so they add up to the total within a millisecond a step.
+            var latencyOk = failure != "none" || latency is { TotalMs: { } total } && missingSteps.Length == 0 &&
+                Math.Abs(stepsSum - total) <= latency.Steps.Count + 1 &&
+                (reasoning == TimeSpan.Zero || latency.Steps.GetValueOrDefault(ReplyLatency.HiddenReasoning) >= reasoning.TotalMilliseconds * 0.8) &&
+                latency.Steps.GetValueOrDefault(ReplyLatency.VoiceSynthesis) >= voiceDelay.TotalMilliseconds * 0.8;
             var text = turn.Content.Text;
             var served = string.Concat(chunks);
             var full = text == served;
@@ -106,10 +130,23 @@ internal static class SpokenReplyCheck
             lock (shown) lines = [.. shown];
             return new
             {
-                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete,
+                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk,
                 voiceFailure = failure,
                 failAt = failure == "none" ? (int?)null : at,
                 endpoint = baseUrl,
+                latency = new
+                {
+                    ok = latencyOk,
+                    line = latencyLine,
+                    totalMs = latency?.TotalMs,
+                    measured = latency?.Measured,
+                    steps = latency?.Steps,
+                    stepsSumMs = stepsSum,
+                    missingSteps,
+                    firstWordsMs = terminal.FirstTextAfter?.TotalMilliseconds,
+                    firstAudioMs = terminal.FirstAudioAfter?.TotalMilliseconds,
+                    timings = terminal.Timings
+                },
                 reply = new
                 {
                     state = terminal.State.ToString(),
@@ -174,9 +211,11 @@ internal static class SpokenReplyCheck
         catch (OperationCanceledException) { }
     }
 
-    // Streams the reply a chunk at a time (a sentence, or a word for a given reply) with a pause between, the way a cloud
-    // model streams it.
-    private static async Task ServeAsync(TcpListener listener, string[] chunks, TimeSpan gap, CancellationToken cancellation)
+    // Streams the reply a chunk at a time (a sentence, or a word for a given reply) with a pause between, the way a cloud model
+    // streams it; with reasoning, a hidden reasoning delta comes first and the words only after that long, like a reasoning
+    // model on OpenRouter.
+    private static async Task ServeAsync(TcpListener listener, string[] chunks, TimeSpan gap, TimeSpan reasoning,
+        CancellationToken cancellation)
     {
         while (!cancellation.IsCancellationRequested)
         {
@@ -186,10 +225,16 @@ internal static class SpokenReplyCheck
             await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
                 cancellation);
             const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
+            if (reasoning > TimeSpan.Zero)
+            {
+                await WriteAsync(stream, "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"Thinking it over.\"}," +
+                    "\"finish_reason\":null}]}\n\n", cancellation);
+                await Task.Delay(reasoning, cancellation);
+            }
             for (var i = 0; i < chunks.Length; i++)
             {
                 if (i > 0) await Task.Delay(gap, cancellation);
-                var role = i == 0 ? "\"role\":\"assistant\"," : "";
+                var role = i == 0 && reasoning == TimeSpan.Zero ? "\"role\":\"assistant\"," : "";
                 await WriteAsync(stream, "data: " + chunk + "\"delta\":{" + role + "\"content\":" + JsonSerializer.Serialize(chunks[i]) +
                     "},\"finish_reason\":null}]}\n\n", cancellation);
             }
@@ -203,7 +248,7 @@ internal static class SpokenReplyCheck
         await stream.FlushAsync(cancellation);
     }
 
-    private sealed class Voice(string failure, int failAt) : IHostSpeechClient
+    private sealed class Voice(string failure, int failAt, TimeSpan delay) : IHostSpeechClient
     {
         private int calls, spoken, started;
         private readonly List<string> pieces = [];
@@ -219,7 +264,7 @@ internal static class SpokenReplyCheck
         {
             var call = Interlocked.Increment(ref calls);
             lock (pieces) pieces.Add(input.Text);
-            await Task.Delay(50, cancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(50) + delay, cancellationToken);
             if (call == failAt)
             {
                 // What the desktop's host client throws for the gateway's worker.failed and worker.unavailable.
