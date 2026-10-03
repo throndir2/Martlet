@@ -429,7 +429,7 @@ refused with `request.invalid`):
 
 | Kind | Arguments | What the agent does |
 | --- | --- | --- |
-| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed when Martlet is idle with no installer window at all, then restarts by itself, minimized, and continues; each step is in that PC's log), then the host service to Martlet's version |
+| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed as soon as no reply or other work there would be cut short, with no installer window at all, then restarts by itself, minimized, with the character and listening as they were, and continues; each step is in that PC's log), then the host service to Martlet's version |
 | `host.status` | none | `martlet-host status` |
 | `host.describe-role` | `role` | `martlet-host describe <role>` (its terms, secrets and choices, for the sender's install dialog) |
 | `host.add-role` | `role`, `choice.<VAR>`; secrets `secret.<name>` | `martlet-host add <role>` with the answers on stdin |

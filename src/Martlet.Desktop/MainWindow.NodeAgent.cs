@@ -348,7 +348,7 @@ public partial class MainWindow
 
     /// <summary>Brings this PC to at least the asked version: first Martlet itself (from its GitHub Release, checked against
     /// GitHub's SHA-256 digest; Martlet restarts into it and then continues), then its host service. Returns null while it
-    /// continues later: while it waits until nothing needs Martlet here (you, a conversation, a setup task, another host
+    /// continues later: while it waits until nothing needs Martlet here (a reply, a setup task, another host
     /// update), telling the computer that asked what it waits for, or while Martlet restarts into the new version.</summary>
     private async Task<NodeCommandOutcome?> RunUpdateCommandAsync(Martlet.Core.Nodes.NodeCommand command, IProgress<string> output, CancellationToken token)
     {

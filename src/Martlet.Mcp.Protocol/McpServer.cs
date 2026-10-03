@@ -225,7 +225,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "one (from the notification area, whose installer fails), the helper waits for Martlet to exit, runs the installer with " +
             "no window at all (/VERYSILENT, no questions, no restart), records its exit code, logs every step in update.log and " +
             "starts Martlet again minimized (in the notification area when it was there); one you confirmed shows the installer's " +
-            "progress window (/SILENT). Installs nothing, starts no real Martlet and contacts nothing.", new { }),
+            "progress window (/SILENT). Also checks the note Martlet leaves itself so the restarted Martlet shows the character and " +
+            "listens again (read once, only what was on, ignored when stale). Installs nothing, starts no real Martlet and contacts " +
+            "nothing.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new

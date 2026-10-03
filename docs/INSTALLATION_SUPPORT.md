@@ -542,10 +542,12 @@ The Desktop supports ON-by-default automatic checks (at launch, then every
 public GitHub releases list. A newer versioned win-x64 installer from a normal
 (non-draft, non-prerelease) release is downloaded into the local `updates\`
 folder only after an exact GitHub asset size/SHA-256 check. *Install* (or *Update now*, or the
-opt-in automatic install, which waits until the character, conversations and
-Martlet windows are closed, or until exit) closes Martlet, runs the installer
+opt-in automatic install, which goes ahead as soon as the update is downloaded
+and waits only for a reply, speech being heard, an open question or work that
+exit would interrupt, or until exit) closes Martlet, runs the installer
 silently with no optional prerequisite tasks, records the exit code and
-restarts Martlet. An install you confirmed shows the installer's progress
+restarts Martlet, which shows the character and listens again when they were on.
+An install you confirmed shows the installer's progress
 window (`/SILENT`); an automatic one, or one another of your computers asked
 for, shows no window at all (`/VERYSILENT`) and Martlet restarts minimized. The
 helper logs each step to `updates\update.log` and the installer to

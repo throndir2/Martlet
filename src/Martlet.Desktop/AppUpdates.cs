@@ -14,7 +14,8 @@ internal sealed record UpdatePreferences
 
     /// <summary>Minutes between automatic checks while Martlet runs.</summary>
     public int IntervalMinutes { get; init; } = 60;
-    /// <summary>Download and install new releases without asking; installs only while Martlet is idle, or when it exits.</summary>
+    /// <summary>Download and install new releases without asking, as soon as one is downloaded (after a reply or work that
+    /// exiting would cut short), or when Martlet exits.</summary>
     public bool AutoInstall { get; init; }
     /// <summary>Bring paired hosts that run an older Martlet up to this PC's version in the background.</summary>
     public bool AutoUpdateHosts { get; init; }
@@ -170,5 +171,35 @@ internal static class AppUpdateInstaller
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+}
+
+/// <summary>FIXTURE for checking automatic installs through MCP: with <see cref="Variable"/> set to a version newer than this
+/// build (for example 9.9.9) before Martlet starts, update checks find that version without contacting GitHub and its
+/// "download" is a small text file, not a program. Installing it runs the real update helper, whose stand-in installer fails
+/// at once (Windows can't run it), so nothing is installed; the helper records that and starts Martlet again as after any
+/// update.</summary>
+internal static class SimulatedAppUpdate
+{
+    internal const string Variable = "MARTLET_SIMULATE_APP_UPDATE";
+
+    internal static GitHubUpdate? Update { get; } =
+        System.Version.TryParse(Environment.GetEnvironmentVariable(Variable), out var version) &&
+        version.Build >= 0 && version.Revision < 0 && version > typeof(App).Assembly.GetName().Version
+            ? new GitHubUpdate(version, $"v{version.ToString(3)}", $"Martlet-{version.ToString(3)}-win-x64.exe", 0,
+                Content.Length, Convert.ToHexString(SHA256.HashData(Content)),
+                new Uri($"https://github.com/throndir2/Martlet/releases/tag/v{version.ToString(3)}"))
+            : null;
+
+    private static byte[] Content => "FIXTURE: a simulated Martlet update (MARTLET_SIMULATE_APP_UPDATE). Not a program."u8.ToArray();
+
+    /// <summary>Writes the stand-in installer into the updates folder in place of a download.</summary>
+    internal static string Write(string dataDirectory, GitHubUpdate update)
+    {
+        var directory = AppUpdateInstaller.UpdatesDirectory(dataDirectory);
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, update.AssetName);
+        File.WriteAllBytes(path, Content);
+        return path;
     }
 }
