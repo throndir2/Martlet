@@ -136,6 +136,16 @@ stale lock is ever left behind. Read-only commands (`roles`, `describe`,
   stops it (a closed console window can leave its engine waiting for input).
 - `engine.log` records each wait (`busy, waiting`, `lock free after waiting`)
   and each stop (`busy, stopped without changing anything`).
+- In the Docker method, `setup` replaces the network holder (`martlet-host-net`)
+  when its image or address changes. Every engine session runs in the holder's
+  network namespace, so `setup` first **waits for the engine sessions running
+  in it** (for example a long `add`), with the same patience and the same
+  `MARTLET-BUSY` stop for background runs, before it touches the holder.
+  Replacing it under a running `add` used to strand that add on a dead loopback:
+  its role started and listened in the new namespace while the add waited for it
+  in the old one until `did not start`. An engine session that still finds
+  itself in a replaced holder's namespace (one started by an older launcher)
+  stops at once and says so; run the command again.
 
 MCP's `host_engine_check` runs this engine in a disposable `ubuntu:24.04`
 container and checks all of the above ([MCP](../../docs/MCP.md#local-mcp-control-windows)).

@@ -54,6 +54,7 @@ internal static class HostEngineCheck
         var steps = new List<object>();
         var passed = true;
         var automatic = new List<string>();
+        var holder = new List<string>();
         foreach (var line in output.Split('\n').Select(l => l.TrimEnd('\r')))
         {
             var parts = line.Split('\t', 4);
@@ -63,13 +64,18 @@ internal static class HostEngineCheck
                 passed &= ok == "1";
             }
             else if (parts is ["OUT", "automatic", var text]) automatic.Add(text);
+            else if (parts is ["OUT", "holder", var waiting]) holder.Add(waiting);
         }
         var read = HostEngineBusy.Read(HostEngineBusy.ExitCode, automatic);
         var readOk = read?.StartsWith("leaving the Martlet network (", StringComparison.Ordinal) == true &&
             HostEngineBusy.Read(1, automatic) is null && HostEngineBusy.Read(HostEngineBusy.ExitCode, ["Stopped: something else"]) is null;
         steps.Add(new { name = "desktop-reads-busy", ok = readOk, detail = $"HostEngineBusy.Read: {read ?? "(nothing)"}" });
         passed &= readOk;
-        const int expected = 10;
+        var holderRead = HostEngineBusy.Read(HostEngineBusy.ExitCode, holder);
+        var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
+        steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
+        passed &= holderOk;
+        const int expected = 15;
         if (steps.Count < expected)
         {
             passed = false;
@@ -193,5 +199,64 @@ internal static class HostEngineCheck
         has "$log" "busy, stopped without changing anything: leaving the Martlet network" && has "$log" "busy, waiting: leaving the Martlet network" &&
           has "$log" "lock free after waiting" && ok=1 || ok=0
         step journal-records-waits "$ok" "$(grep -c 'busy' "$log" 2>/dev/null || echo 0) busy lines in logs/engine.log"
+
+        # The Docker method against a fake docker CLI (its state in /tmp/fake; nothing real is touched): setup must not
+        # replace the network holder (martlet-host-net) while an engine session (an add) runs in its namespace, and an
+        # engine left in a replaced holder's namespace stops at once instead of probing a dead loopback.
+        mkdir -p /tmp/fakebin /tmp/fake /var/run
+        : > /var/run/docker.sock; : > /tmp/fake/calls; : > /tmp/fake/engine
+        printf 'holder-1' > /tmp/fake/holder; printf 'holder-1' > /tmp/fake/engine-net
+        cat > /tmp/fakebin/docker <<'FAKE'
+        #!/bin/bash
+        S=/tmp/fake
+        case "$1" in
+          info|volume) exit 0 ;;
+          ps) [[ -f $S/engine ]] && printf 'e1 martlet-host-add-20261003-021239-9052\n'; exit 0 ;;
+          rm|run) echo "$*" >> $S/calls; [[ "$1 $2" == "rm -f" ]] && printf 'holder-2' > $S/holder; exit 0 ;;
+          logs) echo "Network holder ready."; exit 0 ;;
+          container)
+            [[ "$2" == inspect ]] || exit 1
+            shift 2; fmt=""; [[ "$1" == -f ]] && fmt="$2"
+            case "$fmt" in
+              *PortBindings*) echo "192.168.1.20:9443 martlet-host:old" ;;
+              *Config.Image*) echo "martlet-host:new" ;;
+              *Config.Cmd*) echo "--yes add chatterbox" ;;
+              *MARTLET_ENGINE*) echo "container:$(cat $S/engine-net) inner" ;;
+              *NetworkMode*) echo "container:$(cat $S/engine-net)" ;;
+              *.Id*) cat $S/holder; echo ;;
+            esac
+            exit 0 ;;
+          *) exit 0 ;;
+        esac
+        FAKE
+        chmod 755 /tmp/fakebin/docker
+        D() { env PATH="/tmp/fakebin:$PATH" MARTLET_HOST_MODE=docker MARTLET_HOST_ADDRESS=192.168.1.20 MARTLET_HOST_ID=check-host "$@"; }
+
+        D timeout 15 "$E" setup </dev/null >/tmp/holder-auto.out 2>&1; rc=$?
+        [[ $rc == 75 ]] && grep -q '^MARTLET-BUSY installing chatterbox (martlet-host-add-' /tmp/holder-auto.out &&
+          ! grep -q '^rm ' /tmp/fake/calls && ok=1 || ok=0
+        step holder-kept-while-engine-runs "$ok" "automatic setup while an add runs in the holder: exit $rc, holder not replaced ($(grep -c '^rm ' /tmp/fake/calls) removals)"
+        capture holder /tmp/holder-auto.out
+
+        D MARTLET_LOCK_WAIT=60 timeout 40 "$E" --yes setup </dev/null >/tmp/holder-wait.out 2>&1 &
+        WAITER=$!
+        for _ in $(seq 1 60); do has /tmp/holder-wait.out "before replacing the network holder" && break; sleep 0.1; done
+        waiting=0; has /tmp/holder-wait.out "This host is busy: installing chatterbox" && ! grep -q '^rm ' /tmp/fake/calls && waiting=1
+        rm -f /tmp/fake/engine
+        wait "$WAITER"; rc=$?
+        order="$(awk '/^rm -f martlet-host-net/{print "remove-holder"} /^run -d --name martlet-host-net /{print "new-holder"}
+          /^run --rm .*--name martlet-host-setup-/{print "engine"}' /tmp/fake/calls | tr '\n' ' ')"
+        [[ $waiting == 1 && $rc == 0 && "$order" == "remove-holder new-holder engine " ]] &&
+          has /tmp/holder-wait.out "That finished. Continuing with setting up this host." && ok=1 || ok=0
+        step setup-waits-then-replaces-holder "$ok" "--yes setup waited for the add, then replaced the holder and ran its engine (exit $rc; $order)"
+
+        D MARTLET_ENGINE=inner MARTLET_ENGINE_NAME=martlet-host-remove-check timeout 15 "$E" --yes remove fixture-role </dev/null >/tmp/stranded.out 2>&1; rc=$?
+        [[ $rc == 1 ]] && has /tmp/stranded.out "was replaced while this ran" && has /tmp/stranded.out "Nothing was changed" && ok=1 || ok=0
+        step stranded-engine-stops "$ok" "engine in holder-1's namespace after holder-2 replaced it: exit $rc, $(grep -m1 -oE 'was replaced[^,]*' /tmp/stranded.out || echo 'no stranded message')"
+
+        printf 'holder-2' > /tmp/fake/engine-net
+        D MARTLET_ENGINE=inner MARTLET_ENGINE_NAME=martlet-host-remove-check timeout 15 "$E" --yes remove fixture-role </dev/null >/tmp/attached.out 2>&1; rc=$?
+        [[ $rc == 1 ]] && ! has /tmp/attached.out "was replaced" && has /tmp/attached.out "Run 'martlet-host setup' first." && ok=1 || ok=0
+        step attached-engine-continues "$ok" "engine in the current holder's namespace passed the check (exit $rc at the fixture's missing setup)"
         """;
 }

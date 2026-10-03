@@ -946,6 +946,61 @@ choose_address() {
 }
 
 # ------------------------------------------------------------------ commands
+# Docker method: the engine sessions (docker_launch's "martlet-host <command>" containers) running in the network
+# holder's namespace now, one per line: name, then what it does ("installing chatterbox").
+holder_engines() {
+  local holder id name mode inner cmd words
+  holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 0
+  while read -r id name; do
+    [[ -n "${id}" ]] || continue
+    read -r mode inner < <(docker container inspect -f \
+      '{{.HostConfig.NetworkMode}} {{range .Config.Env}}{{if eq . "MARTLET_ENGINE=inner"}}inner{{end}}{{end}}' "${id}" 2>/dev/null || true) || continue
+    [[ "${inner:-}" == inner && ( "${mode}" == "container:${holder}" || "${mode}" == "container:${NET}" ) ]] || continue
+    cmd="$(docker container inspect -f '{{join .Config.Cmd " "}}' "${id}" 2>/dev/null || true)"
+    read -r -a words <<< "${cmd#--yes }"
+    printf '%s\t%s\n' "${name}" "$(change_words "${words[@]}")"
+  done < <(docker ps --no-trunc --filter status=running --filter volume=martlet-host-config --format '{{.ID}} {{.Names}}' 2>/dev/null || true)
+}
+
+# Replacing the network holder while another engine session runs in its namespace strands that session on a loopback
+# nothing listens on any more: an add then starts its role in the new namespace and waits for it in the old one until it
+# times out ("did not start"). So setup waits for those sessions first, with the engine lock's patience (MARTLET_LOCK_WAIT;
+# a background run stops at once with MARTLET-BUSY).
+wait_for_holder_engines() {
+  local engines=() patience="${MARTLET_LOCK_WAIT:-}" waited=0 step=5 line what
+  if [[ ! "${patience}" =~ ^[0-9]{1,6}$ ]]; then if background; then patience=0; else patience=7200; fi; fi
+  while :; do
+    mapfile -t engines < <(holder_engines)
+    if [[ ${#engines[@]} -eq 0 ]]; then
+      (( waited == 0 )) || note "That finished. Continuing with setting up this host."
+      return 0
+    fi
+    what=""
+    for line in "${engines[@]}"; do what+="${what:+; }${line#*$'\t'} (${line%%$'\t'*})"; done
+    (( waited < patience )) || busy_stop "${what}"
+    if (( waited == 0 )); then
+      note "This host is busy: ${what}. Waiting for it to finish before replacing the network holder (setting up this host)..."
+    elif (( waited % 60 == 0 )); then
+      note "Still waiting: ${what}. Waited $(( waited / 60 )) min."
+    fi
+    sleep "${step}"; waited=$(( waited + step ))
+  done
+}
+
+# Docker method: whether this engine session runs outside the current network holder's namespace (a setup replaced the
+# holder while it ran or waited), so its loopback no longer reaches the gateway or the roles.
+engine_stranded() {
+  [[ "${MODE}" == docker && -n "${MARTLET_ENGINE_NAME:-}" ]] || return 1
+  local holder mode
+  holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 1
+  mode="$(docker container inspect -f '{{.HostConfig.NetworkMode}}' "${MARTLET_ENGINE_NAME}" 2>/dev/null)" || return 1
+  [[ "${mode}" == container:* && "${mode}" != "container:${holder}" && "${mode}" != "container:${NET}" ]]
+}
+
+stranded_text() {
+  printf "This host's network holder (%s) was replaced while this ran (a setup ran meanwhile), so this session can no longer reach the gateway or roles." "${NET}"
+}
+
 # Docker method launcher: runs with the Docker socket (docker run -u 0 -v /var/run/docker.sock:...).
 # "setup" first creates the network holder (martlet-host-net), which publishes the gateway port on the Docker
 # host's LAN address and owns the loopback shared by the gateway and every role container. Every command then
@@ -965,7 +1020,10 @@ docker_launch() {
       fail "Add -e MARTLET_HOST_ADDRESS=<the Docker host's private LAN IPv4> (and optionally -e MARTLET_HOST_PORT=9443)."
     current="$(docker container inspect -f '{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostIp}}:{{.HostPort}}{{end}}{{end}} {{.Config.Image}}' "${NET}" 2>/dev/null || true)"
     if [[ "${current}" != "${lan}:${port} ${IMAGE}" ]]; then
-      [[ -n "${current}" ]] && docker rm -f "${NET}" >/dev/null
+      if [[ -n "${current}" ]]; then
+        wait_for_holder_engines
+        docker rm -f "${NET}" >/dev/null
+      fi
       docker run -d --name "${NET}" --restart unless-stopped -p "${lan}:${port}:${port}" --user 1000:1000 \
         --group-add "${socket_group}" -v /var/run/docker.sock:/var/run/docker.sock "${IMAGE}" hold >/dev/null
       note "Gateway address ${lan}:${port} is published by ${NET}."
@@ -1469,6 +1527,7 @@ cmd_add() {
   local ready=0 attempt
   for attempt in $(seq 1 $(( ${minutes:-10} * 6 ))); do
     if (exec 3<>"/dev/tcp/${ready_address}/${port}") 2>/dev/null; then ready=1; break; fi
+    engine_stranded && fail "$(stranded_text) ${role} itself is starting; add it again to finish (martlet-host add ${role}; its image is already built)."
     sleep 10
   done
   [[ ${ready} == 1 ]] || fail "${role} did not start. Inspect: martlet-host status (or docker compose -p martlet-${role} logs)"
@@ -1621,7 +1680,8 @@ case "${1:-help}" in
     else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi
     journal "started: $*"
     trap 'journal "exit $?"' EXIT
-    hold_engine_lock "$@" ;;
+    hold_engine_lock "$@"
+    ! engine_stranded || fail "$(stranded_text) Nothing was changed; run the command again." ;;
 esac
 
 case "${1:-help}" in
