@@ -265,21 +265,6 @@ public partial class MainWindow
         }, $"Listen with Whisper {where}");
     }
 
-    /// <summary>F5 on this PC: hands speaking over when it already runs here, otherwise one run window that sets everything
-    /// up. The F5 card already shows what it installs and its licence, so the button itself is the go-ahead (installing
-    /// Docker Desktop still asks separately for its terms).</summary>
-    private async Task UseF5HereAsync()
-    {
-        if (store is null || setupService is null || closing) return;
-        var thisPc = ThisPcHost();
-        if (thisPc is not null && (await ThisPcOffersAsync(thisPc))?.ContainsKey(HostRoles.Speaking) == true)
-        {
-            await AssignJobAsync(HostJob.Speaking, "host:" + thisPc.HostId);
-            return;
-        }
-        await SetUpJobHereAsync(HostJob.Speaking, new Dictionary<string, string>(StringComparer.Ordinal), $"Speak with {SpeakingEngineChoice.Current.Name} on this PC");
-    }
-
     /// <summary>One run window for a job on this PC: sets up and pairs the host service when needed, installs the job's
     /// engine with <paramref name="answers"/> (the choices already made in Martlet, so the engine asks nothing) and hands
     /// the job to it. The job keeps working where it is until the new engine answers.</summary>

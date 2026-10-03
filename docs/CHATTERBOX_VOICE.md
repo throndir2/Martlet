@@ -81,8 +81,9 @@ the chat, is in [Conversation](CONVERSATION.md#voice-tags).
 
 `scripts\Invoke-MartletMcp.ps1` with `voice_tags` (engine `chatterbox`)
 shows the catalog, the Thinking prompt and what the segmenter sends; `f5_voices`
-lists the engine as the default; `-Desktop` reads `SpeakingEngine`,
-`SpeakingEngineTags` and `SetupF5About` on Companion > Voice.
+lists the engine as the default with its `features`; `-Desktop` reads
+`VoiceEngine-chatterbox`, `VoiceEngineFeatures-chatterbox` (its chips, including
+*Laughs & sighs* and *Emotions*) and `VoiceEngineUse-chatterbox` on Companion > Voice.
 `workers/chatterbox/tests` (stdlib unittest, fixture engine) and
 `ChatterboxRelayTests` cover the service and the relay; with
 `MARTLET_CHATTERBOX_LIVE_ENDPOINT` set to a running service the latter speaks a

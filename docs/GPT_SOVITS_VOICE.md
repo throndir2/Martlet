@@ -90,7 +90,8 @@ Run on a Windows dev machine without an NVIDIA GPU (Intel UHD 770), on CPU, on
   voice is refused before sending.
 - **Desktop through Martlet MCP.** `f5_voices` lists `gpt-sovits` (3,000-10,000 ms,
   MIT) and per voice the engines that can clone it; on Companion > Voice,
-  choosing GPT-SoVITS sets `SpeakingEngineStatus` and marks
+  choosing GPT-SoVITS sets `SpeakingEngineStatus` (the engine combo box the Voice
+  engine rows later replaced) and marks
   `F5VoiceRow-librivox-woollybee` "wrong length for this engine" with
   `F5VoiceUse-librivox-woollybee` disabled.
 - **Plumbing.** `python -m unittest discover -s tests` (FIXTURE - NOT AI engine)

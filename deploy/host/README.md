@@ -431,15 +431,17 @@ what* shows which computer handles each job:
   `listening-previous.json`. Push-to-talk and hands-free utterances then go only to
   that host over its pinned TLS gateway and are transcribed there in memory.
 - **Speaking** moves the same way between the Setup voice (OpenAI or Windows speech)
-  and any paired host that runs the chosen voice engine (`chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`, chosen on
-  Companion > Voice > Voice engine), saved as a gateway F5 route; the previous route
-  is kept in `speaking-previous.json`. A host runs one voice engine at a time: choosing
-  another engine there installs it with `exclusive=voice` (above), or, when it is already
-  installed, switches Speaking to it and then removes the engines it no longer uses
-  (`martlet-host remove`, downloads kept), so the old model frees the graphics card's
-  memory. The confirmation names them; Speaking on that host pauses while a new engine
-  installs. The Voice engine card's *Stop* button does the same for a host set up before
-  this rule that still runs several engines. Martlet uses the voice chosen on all your computers
+  and any paired host that runs a voice engine (`chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`,
+  each set up and used with one button on Companion > Voice > Voice engine), saved as a gateway
+  F5 route; the previous route is kept in `speaking-previous.json`. A host runs one voice engine
+  at a time: choosing another engine there installs it with `exclusive=voice` (above), or, when
+  it is already installed, switches Speaking to it and then removes the engines it no longer uses
+  (`martlet-host remove`, downloads kept), so the old model frees the graphics card's memory.
+  When Speaking leaves a host's engine for another computer, a Windows voice or a cloud voice,
+  Martlet removes that engine there the same way once Speaking has moved (unless failover keeps
+  the same engine on it as a backup). The confirmation names them; Speaking on that host pauses
+  while a new engine installs. The Voice engine card's *Stop* button removes leftovers on a host
+  set up before this rule that still runs several engines. Martlet uses the voice chosen on all your computers
   (or the first in your voice list): every voice, with its recording, is shared with your
   paired hosts (`speaking-voices.json` and `speaking-voice-<sha256>.wav` beside `host.json`;
   each desktop keeps its copy in `f5-voices`, Martlet.F5's reference preset store, see
