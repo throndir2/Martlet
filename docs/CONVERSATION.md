@@ -121,7 +121,11 @@ comment; it needs a Thinking model that can see images. See
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
    sends nothing (the glance messages can't be emptied). Martlet still parses
    the answers to Remembering and Learning names, so their line formats must
-   stay. Reload an open conversation to use saved prompts.
+   stay. Reload an open conversation to use saved prompts. Each prompt shows
+   its estimated tokens and the page shows all prompts together, by Martlet's
+   own request-size estimate (about a token per three UTF-8 bytes, the rule
+   that keeps requests within the model's limit), counted before placeholders
+   are filled in.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona

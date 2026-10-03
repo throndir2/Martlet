@@ -698,13 +698,21 @@ and `sharedRevision`.
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
 `total`, `edited` and `emptied` counts, and every internal prompt Martlet
 sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
-`state` `builtin`, `edited` or `empty`, and `characters`). With an
+`state` `builtin`, `edited` or `empty`, `characters` and `tokens`), plus
+`tokens`, the estimate for all prompts together. Token counts are Martlet's
+own request-size estimate (`BoundedTextInput.TextTokens`: about a token per
+three UTF-8 bytes, no message overhead; 0 for an emptied prompt), not a
+provider's count, and cover each prompt as written, before placeholders are
+filled in. With an
 `id` it also returns `prompt` with that prompt's effective `text` (the
 saved edit or the built-in text), exactly what Martlet fills in and sends.
-On the page, `PromptsNow` reads how many prompts are edited or emptied and
-`PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
-nothing is sent for this prompt.*, plus *Saving...* while an edit is still
-being saved); neither returns prompt text. `OpenPrompts` (Personality's *Edit
+On the page, `PromptsNow` reads how many prompts are edited or emptied,
+`PromptsTokens` the estimated tokens of all prompts together as typed
+(*All prompts together: about 3,456 tokens. ...*) and
+`PromptState-<id>` each prompt's state (*Built-in text. About 52 tokens.*,
+*Edited. About 52 tokens.*, *Empty: nothing is sent for this prompt.*, plus
+*Saving...* while an edit is still being saved); none returns prompt text.
+`OpenPrompts` (Personality's *Edit
 prompts*) only opens the page. There is no Save button: an edit saves a moment
 after typing stops (or at once when another page opens), into the newest saved
 settings, and `PromptsNow` then reads the new counts. The editors
@@ -1258,9 +1266,11 @@ then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
 the character's last stop did not finish cleanly (pressing Show or Hide
 character retries; details go to the `desktop` log). Exiting never waits on the
 character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
-even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
-size, its distance from the top of the screen, the camera zoom and where the
-top of the character's head sits relative to the overlay's top edge (it must
+even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the
+character frame's size (with, in parentheses, the overlay's full width: the
+frame plus the transparent room on each side the model can move into), its
+distance from the top of the screen, the camera zoom and where the
+top of the character's head sits relative to the frame's top edge (it must
 stay in view at every zoom). While the character shows, `SetupCharacterModel`
 describes what its model drives, for example *Model: 236 controls; 1 texture
 shown at 1/2 size to fit the graphics budget; blinks with ParamEyeLOpen,
@@ -1278,7 +1288,10 @@ records).
 The character overlay itself is drawn by Martlet's renderer child process
 (`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
 overlay is titled *Martlet character overlay*; another Martlet's renderer is
-never included). Its drag surface `MoveAvatar` supports UI Automation
+never included). With `layout`, its window bounds are twice the character
+frame's width, centered on the frame: the extra half-frame on each side is
+transparent room for the model's motion and may run past the screen's edge.
+Its drag surface `MoveAvatar` supports UI Automation
 expand/collapse, so `ui_click` on it opens (or closes again) the character's
 right-click menu with no flag; opened this way, the menu stays open until a
 choice or another `MoveAvatar` click. While it is open, snapshots list
@@ -1306,7 +1319,11 @@ needs `--allow-ui-effects`. With the character showing,
 to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
 whether the overlay took it and where it put it (to the left or right of the
 character's head, above it, or in its fixed place, with the bubble's screen
-position and size). The bubble itself is drawn by the separate
+position and size), and whether the text as laid out on screen lies inside the
+bubble (*holding all its text*, or *but its text doesn't fit inside it*).
+Every bubble is sized to its whole text, including the first one after the
+bubble was hidden; very long speech widens it (up to 640 pixels) so it stays
+within half the screen's height. The bubble itself is drawn by the separate
 renderer process, so its text is not in snapshots.
 
 The same card sets where the bubble goes. `SetupCharacterBubblePlacement`
