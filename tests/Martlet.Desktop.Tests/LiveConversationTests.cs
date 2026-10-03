@@ -95,6 +95,14 @@ public sealed class LiveConversationTests
         paired = SetupSettings.SetRouteEnabled(paired, SetupRole.Llm, true, true);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
         Assert.Null(configuration.Unavailable(false, false));
+        // Host Ollama's num_predict also pays for thinking: the Chat Completions budget, under a small saved context size.
+        Assert.Equal(GenerationSettings.ChatReplyTokens, configuration.TextLimits.MaxOutputTokens);
+        Assert.Equal(1_024, LiveConversationConfiguration.From(loaded with
+        {
+            Settings = paired with { Generation = new() { ContextTokens = 2_048 } }
+        })!.TextLimits.MaxOutputTokens);
+        Assert.Contains("Maximum length is 4096 tokens, including any hidden thinking",
+            MainWindow.DescribeGeneration(null, paired.Setup!.Routes.Single(r => r.Role == SetupRole.Llm)));
         Assert.Contains("your Martlet host fixture-host", configuration.Disclosure(false));
         var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _);
         Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);

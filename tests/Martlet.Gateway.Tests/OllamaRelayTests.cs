@@ -164,6 +164,28 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task Relay_accepts_the_desktops_reply_budget_and_context_bound()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"thinking\":\"Hmm.\",\"content\":\"\"},\"done\":false}",
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Hi!\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "qwen3-vl:8b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+
+        var text = new List<string>();
+        await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            null, [], "Hello", 0.7, Martlet.Core.Settings.GenerationSettings.ChatReplyTokens, 98_304 + 4_096))
+            text.Add(delta);
+
+        Assert.Equal(["Hi!"], text);
+        var options = Assert.Single(ollama.Requests).RootElement.GetProperty("options");
+        Assert.Equal(4_096, options.GetProperty("num_predict").GetInt32());
+        Assert.Equal(OllamaRelayWorker.MaximumContextTokens, options.GetProperty("num_ctx").GetInt32());
+    }
+
+    [Fact]
     public async Task Relay_reports_a_missing_model_or_stopped_ollama_as_unavailable()
     {
         await using var ollama = await FakeOllama.StartAsync(404, "{\"error\":\"model 'llama3.2:3b' not found\"}");
