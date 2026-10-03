@@ -266,6 +266,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
 
     internal bool IsRunning => operations.IsRunning;
+    /// <summary>A reply (or a comment on the screen) is running on the shared setup slot.</summary>
+    internal bool Replying { get { lock (gate) return active is { Worker.Completion.IsCompleted: false }; } }
     internal int ContextTurns { get { lock (gate) return context.Count; } }
     /// <summary>The exchanges kept in mind and their estimated tokens (<see cref="BoundedTextInput.TextReservation"/>).</summary>
     internal (int Turns, int Tokens) ContextUse
