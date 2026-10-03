@@ -21,8 +21,10 @@ internal sealed class LiveConversationConfiguration
     internal GenerationSettings? Generation { get; }
     /// <summary>The saved Thinking fallback (Companion › Thinking › If Thinking fails), or null.</summary>
     internal ThinkingFallbackSettings? Fallback { get; }
-    /// <summary>The LLM bounds of a conversation request, with the saved max reply length.</summary>
+    /// <summary>The LLM bounds of a conversation request, with the saved max reply length and context size.</summary>
     internal TextGenerationLimits TextLimits { get; }
+    /// <summary>How much a reply request may hold (Companion › Replies › Context size, within the model's known limit).</summary>
+    internal ContextBudget Context { get; }
     internal static TimeSpan ActionLifetime => TimeSpan.FromSeconds(150);
     internal static TimeSpan CaptureDuration => TimeSpan.FromSeconds(25);
     internal static TimeSpan CapturePermission => TimeSpan.FromSeconds(30);
@@ -31,12 +33,15 @@ internal sealed class LiveConversationConfiguration
         MaxAudioBytes = 800_044, MaxAudioDuration = CaptureDuration,
         MaxTextCharacters = 4096, MaxRequestTime = TimeSpan.FromSeconds(30)
     };
-    /// <summary>The input-token reservation for a reply's own text (persona, memory, context, message); tool descriptions,
-    /// calls and results have their own budget on top.</summary>
-    internal const int TextInputTokens = 16_640;
-    /// <summary>The LLM bounds with the default reply length; the input bounds are the same for every configuration. The
-    /// input/event room above the text budget is only used by tool descriptions and results (the Responses API echoes the
-    /// tool schemas in its events).</summary>
+    /// <summary>The estimated input tokens for a reply's own text (persona, lore, memory, the conversation so far and the
+    /// message): the context size less the reply's room. Tool descriptions, calls and results have their own room on top
+    /// (<see cref="ToolInputTokens"/>).</summary>
+    internal int TextInputTokens => Context.InputTokens;
+    /// <summary>The room for tool descriptions, calls and results above a reply's text (the Responses API echoes the tool
+    /// schemas in its events).</summary>
+    internal const int ToolInputTokens = 81_664;
+    /// <summary>The LLM bounds with the default reply length; the base each configuration sets its context size on, and the
+    /// bound of the small background requests (remembering, learning names).</summary>
     internal static TextGenerationLimits DefaultTextLimits { get; } = new()
     {
         MaxInputTokens = 98_304, MaxContextTokens = 98_304 + GenerationSettings.MaximumReplyTokens,
@@ -93,7 +98,7 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved reply length prompt, or null when the user emptied it.</summary>
     internal string? ReplyLength => PromptSettings.Fill(Prompts, PromptCatalog.ReplyLength);
 
-    private LiveConversationConfiguration(AppSettings settings, string revision)
+    private LiveConversationConfiguration(AppSettings settings, string revision, ModelLimits? limits)
     {
         Profile = settings.Profile.Id;
         Revision = revision;
@@ -105,22 +110,37 @@ internal sealed class LiveConversationConfiguration
         Prompts = settings.Prompts;
         Fallback = settings.ThinkingFallback is { } fallback &&
             !fallback.Same(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)) ? fallback : null;
-        LocalOllama = MainWindow.IsLocalOllama(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
-        var thinkingRoute = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)?.RouteType;
-        TextLimits = LocalOllama
+        var thinking = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        LocalOllama = MainWindow.IsLocalOllama(thinking);
+        var thinkingRoute = thinking?.RouteType;
+        var limited = LocalOllama
             ? LocalOllamaTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? LocalOllamaTextLimits.MaxOutputTokens }
             : GenerationSupport.BudgetIncludesThinking(thinkingRoute)
                 ? ChatTextLimits with { MaxOutputTokens = GenerationSupport.ReplyTokens(thinkingRoute, Generation) }
                 : DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
+        Context = ContextBudget.For(thinking, Generation, limits);
+        // A paired host's gateway takes at most 16 KiB and 16 earlier messages, and no tools; every other route takes the
+        // whole context size, with the tools' own room on top.
+        var host = thinkingRoute == SetupRouteType.GatewayOllama;
+        var input = Context.InputTokens + (host ? 0 : ToolInputTokens);
+        TextLimits = limited with
+        {
+            MaxInputBytes = host ? BoundedTextInput.HardMaxUtf8Bytes : BoundedTextInput.HardMaxInputUtf8Bytes,
+            MaxHistoryMessages = host ? TextGenerationLimits.DefaultMaxHistoryMessages : BoundedTextInput.HardMaxHistoryMessages,
+            MaxInputTokens = input,
+            MaxContextTokens = input + limited.MaxOutputTokens
+        };
     }
 
-    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded)
+    /// <summary>The conversation configuration of loaded settings; <paramref name="limits"/> are the context windows found on
+    /// this PC (model-limits.json), so the context size stays within the Thinking model's own.</summary>
+    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded, ModelLimits? limits = null)
     {
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
             loaded.Revision is null || loaded.Settings is not { Setup: not null } settings ||
         settings.Profile.Kind != ProfileKind.Api) return null;
         settings.Validate();
-        return new(settings, loaded.Revision);
+        return new(settings, loaded.Revision, limits);
     }
 
     // One shared instance, so reloading unchanged settings compares equal.
@@ -370,8 +390,8 @@ internal sealed class LiveConversationConfiguration
         if (voice) extraInstructions = Join(extraInstructions, VoiceTagInstructions());
         var facts = memory?.Facts ?? [];
         var hits = lore?.Included ?? [];
-        // Lorebook entries keep their budget like SillyTavern's World Info: recalled facts go first (least relevant first),
-        // then the oldest exchanges; only when nothing else is left do the lowest-priority lore entries go.
+        // Lorebook entries keep their budget like SillyTavern's World Info: the oldest exchanges go first, then recalled facts
+        // (least relevant first); only when nothing else is left do the lowest-priority lore entries go.
         for (var loreCount = hits.Count; loreCount >= 0; loreCount--)
         {
             var (before, after) = LorebookPromptContext.Blocks(hits.Take(loreCount).ToArray(), Prompts);
@@ -383,10 +403,14 @@ internal sealed class LiveConversationConfiguration
                 // Closing instructions come last, after recalled facts, where models weigh them most.
                 var candidateInstructions = Join(memoryCount == 0 ? instructions
                     : Join(instructions, MemoryPromptContext.Instructions(facts.Take(memoryCount).ToArray(), Prompts)), closingInstructions);
-                for (var start = 0; start <= history.Count; start += 2)
+                if (Prompt(input, candidateInstructions, [], image, tools, audio) is not { } bare ||
+                    BoundedTextInput.HistoryStart(bare, history, TextLimits.MaxInputBytes, TextInputTokens, TextLimits.MaxInputTokens,
+                        TextLimits.MaxHistoryMessages) is not { } first)
+                    continue;
+                // The estimate picks where the history starts in one pass; the exact request confirms it.
+                for (var start = first; start <= history.Count; start += 2)
                 {
-                    var combined = history.Skip(start).ToArray();
-                    if (combined.Length > BoundedTextInput.HardMaxHistoryMessages || Prompt(input, candidateInstructions, combined, image, tools, audio) is not { } prompted)
+                    if (Prompt(input, candidateInstructions, history.Skip(start).ToArray(), image, tools, audio) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
                     usedMemoryFacts = memoryCount;
@@ -396,12 +420,19 @@ internal sealed class LiveConversationConfiguration
                         voice ? new(SpeechSelection(),
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                        voice ? WindowsVoiceTarget() : null, Generation, tools, TextFallback(), imageOptional && image is not null);
+                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null);
                 }
             }
         }
         throw new LiveActionException("conversation.input_limit");
     }
+
+    /// <summary>The generation settings a reply sends. A paired host's Ollama loads at most
+    /// <see cref="GenerationSettings.MaximumHostContextTokens"/>, so a larger saved context size is sent capped.</summary>
+    internal GenerationSettings? ReplyGeneration =>
+        Generation is { ContextTokens: > GenerationSettings.MaximumHostContextTokens } &&
+        Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)?.RouteType == SetupRouteType.GatewayOllama
+            ? Generation with { ContextTokens = Context.Tokens } : Generation;
 
     private static string? Join(params string?[] parts) =>
         parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
@@ -432,7 +463,7 @@ internal sealed class LiveConversationConfiguration
         {
             return null;
         }
-        return prompted.Utf8Bytes > TextLimits.MaxInputBytes ||
+        return prompted.Utf8Bytes > TextLimits.MaxInputBytes || prompted.History.Count > TextLimits.MaxHistoryMessages ||
             prompted.InputTokenReservation - prompted.ToolTokenReservation > TextInputTokens ||
             prompted.InputTokenReservation > TextLimits.MaxInputTokens
             ? null : prompted;
@@ -443,7 +474,7 @@ internal sealed class LiveConversationConfiguration
     /// reload the model between the reply and this request.</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
         new(input, TextSelection(), TextLimits, Turn(false), null, ChatTarget(), HostTarget(),
-            generation: Generation?.ContextTokens is { } context ? new() { ContextTokens = context } : null, fallback: TextFallback());
+            generation: ReplyGeneration?.ContextTokens is { } context ? new() { ContextTokens = context } : null, fallback: TextFallback());
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
     /// spoken.</summary>

@@ -53,8 +53,9 @@ public partial class MainWindow
         new(GenerationSetting.PresencePenalty, "RepliesPresencePenalty", "P_resence penalty", "-2 to 2",
             "Positive values nudge replies toward new topics.", false),
         new(GenerationSetting.ContextTokens, "RepliesContextTokens", "_Context size",
-            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumContextTokens} tokens, blank = {GenerationSettings.DefaultHostContextTokens}",
-            "How much conversation the model can keep in mind. Larger sizes use more memory.", true)
+            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumContextTokens} tokens, blank = {GenerationSettings.DefaultContextTokens}",
+            "How much the model keeps in mind: persona, lore, memory, the conversation so far and the reply. Older exchanges are " +
+            "left out once a conversation outgrows it. Larger sizes send more with each reply, which costs more on paid providers.", true)
     ];
 
     private void RenderRepliesTab(Panel page)
@@ -84,7 +85,11 @@ public partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var boxes = new Dictionary<GenerationSetting, TextBox>();
         // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, generation => described.Text = DescribeGeneration(generation, route)));
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, generation =>
+        {
+            described.Text = DescribeGeneration(generation, route);
+            showContextStatus?.Invoke();
+        }));
         tabAutoSave = autoSave;
         foreach (var setting in ReplySettings)
         {
@@ -108,7 +113,11 @@ public partial class MainWindow
             about.Children.Add(Note(setting.Help, new Thickness(0, 2, 0, 0)));
             if (route is not null)
             {
-                var status = new TextBlock { Text = UseText(use, setting.Setting, route, place!), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+                var context = setting.Setting == GenerationSetting.ContextTokens;
+                var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
+                void ShowStatus() => status.Text = context ? ContextStatus(route, homeSettings?.Generation, SavedModelLimits(), place!)
+                    : UseText(use, setting.Setting, route, place!);
+                ShowStatus();
                 status.SetResourceReference(TextBlock.ForegroundProperty, use switch
                 {
                     GenerationSettingUse.Used => "SuccessBrush",
@@ -116,6 +125,15 @@ public partial class MainWindow
                     _ => "MutedBrush"
                 });
                 about.Children.Add(status);
+                if (context)
+                {
+                    AutomationProperties.SetAutomationId(status, "RepliesContextStatus");
+                    AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+                    showContextStatus = ShowStatus;
+                    if (CanCheckContext(route))
+                        about.Children.Add(Row(PageButton("Check model limit", () => CheckContextFromRepliesAsync().Forget(),
+                            link: true, id: "RepliesCheckContext")));
+                }
             }
 
             var row = grid.RowDefinitions.Count;
@@ -147,20 +165,27 @@ public partial class MainWindow
     {
         GenerationSettingUse.Used => $"Used by {place}.",
         GenerationSettingUse.ServerDependent => $"May not work with {place}. If replies fail, clear this field.",
-        _ when setting == GenerationSetting.ContextTokens && IsLocalOllama(route) =>
-            $"Not used by {place}. Change Ollama's context setting outside Martlet.",
-        _ when setting == GenerationSetting.ContextTokens => $"Not used by {place}. The provider sets the context size.",
         _ when IsLocalOllama(route) => $"Not used by {place}.",
         _ => $"Not supported by {place}."
     };
 
-    /// <summary>A setting's range; Ollama on this PC has no reply length limit unless one is set, and a Chat Completions route
-    /// leaves room for hidden reasoning.</summary>
-    private static string RangeText(ReplySetting setting, SetupRoute? route) =>
-        setting.Setting != GenerationSetting.MaxReplyTokens ? setting.Range
-        : IsLocalOllama(route) ? $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = no limit"
-        : $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = " +
-            GenerationSupport.DefaultReplyTokens(route?.RouteType);
+    /// <summary>A setting's range; Ollama on this PC has no reply length limit unless one is set, a Chat Completions route
+    /// leaves room for hidden reasoning, and the context size depends on where the model runs.</summary>
+    private static string RangeText(ReplySetting setting, SetupRoute? route) => setting.Setting switch
+    {
+        GenerationSetting.MaxReplyTokens when IsLocalOllama(route) =>
+            $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = no limit",
+        GenerationSetting.MaxReplyTokens =>
+            $"{GenerationSettings.MinimumReplyTokens}-{GenerationSettings.MaximumReplyTokens} tokens, blank = " +
+            GenerationSupport.DefaultReplyTokens(route?.RouteType),
+        GenerationSetting.ContextTokens when route?.RouteType == SetupRouteType.GatewayOllama =>
+            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumHostContextTokens} tokens on a host, blank = {GenerationSettings.DefaultHostContextTokens}",
+        GenerationSetting.ContextTokens when IsLocalOllama(route) =>
+            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumContextTokens} tokens, blank = Ollama's context length",
+        GenerationSetting.ContextTokens =>
+            $"{GenerationSettings.MinimumContextTokens}-{GenerationSettings.MaximumContextTokens} tokens, blank = {GenerationSettings.DefaultContextTokens} or the model's limit",
+        _ => setting.Range
+    };
 
     internal static string DescribeGeneration(GenerationSettings? settings, SetupRoute? route = null)
     {
@@ -189,8 +214,10 @@ public partial class MainWindow
         {
             var text = boxes[setting.Setting].Text.Trim();
             if (text.Length == 0) { values[setting.Setting] = null; continue; }
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out var value) &&
-                !double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ||
+            // Whole numbers may be typed with thousands separators ("100,000"), as the ranges show them.
+            var styles = setting.Whole ? NumberStyles.Float | NumberStyles.AllowThousands : NumberStyles.Float;
+            if (!double.TryParse(text, styles, CultureInfo.CurrentCulture, out var value) &&
+                !double.TryParse(text, styles, CultureInfo.InvariantCulture, out value) ||
                 setting.Whole && (value != Math.Floor(value) || Math.Abs(value) > int.MaxValue))
             {
                 ActionText.Text = $"Reply settings not saved yet: {setting.Name}: enter {(setting.Whole ? "a whole number" : "a number")} in the shown range, or leave it blank.";

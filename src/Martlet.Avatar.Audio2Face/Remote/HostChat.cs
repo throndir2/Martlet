@@ -58,7 +58,7 @@ public sealed partial class Audio2FaceHostConnection
             ["temperature"] = temperature,
             ["maximum_output_tokens"] = maximumOutputTokens,
             // The desktop's context bound covers tool schemas the host never gets; the gateway takes at most 32,768.
-            ["maximum_context_tokens"] = Math.Min(maximumContextTokens, GenerationSettings.MaximumContextTokens)
+            ["maximum_context_tokens"] = Math.Min(maximumContextTokens, GenerationSettings.MaximumHostContextTokens)
         };
         if (!string.IsNullOrEmpty(system)) payload["system"] = ChatText(system);
         if (history.Count > 0)
@@ -75,7 +75,9 @@ public sealed partial class Audio2FaceHostConnection
             if (sampling.RepeatPenalty is { } repeat) payload["repeat_penalty"] = repeat;
             if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
             if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
-            if (sampling.ContextTokens is { } context) payload["context_tokens"] = context;
+            // A saved context size above what the host's gateway loads is capped there.
+            if (sampling.ContextTokens is { } context)
+                payload["context_tokens"] = Math.Min(context, GenerationSettings.MaximumHostContextTokens);
         }
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {

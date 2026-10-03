@@ -518,10 +518,10 @@ Their rejection is not evidence that the wider upstream API cannot emit them.
 
 | Resource | Default / hard ceiling |
 | --- | --- |
-| Input | 16,384 UTF-8 content bytes; 16 history messages, one current message, optional personality |
-| Local input token admission | Content UTF-8 byte count plus 256 reserved units per message/personality; reservation <= `MaxInputTokens` (default/hard 24,576) |
+| Input | Default 16,384 UTF-8 content bytes and 16 history messages (`MaxInputBytes`, `MaxHistoryMessages`), hard 8 MiB and 4,096; 16,384 characters for the current message and each history message; optional personality |
+| Local input token admission | Estimated tokens: a token per three content UTF-8 bytes plus 8 per message/personality (`BoundedTextInput.TextReservation`); reservation <= `MaxInputTokens` (default 24,576, hard 4,194,304) |
 | Output | `max_output_tokens` default 256 / hard 4,096; no retry to finish an incomplete answer |
-| Local context budget | Input token reservation limit + output limit <= `MaxContextTokens` (default/hard 32,768); `truncation:disabled` |
+| Local context budget | Input token reservation limit + output limit <= `MaxContextTokens` (default 32,768, hard 4,194,304); `truncation:disabled`. `BoundedTextInput.HistoryStart` picks the newest history that fits in one pass |
 | One raw SSE record | Default 128 KiB / hard 256 KiB, including comments/field framing; strict JSON depth 16 |
 | Whole stream | Default 2 MiB / hard 4 MiB, plus at most one overflow-detection byte |
 | Data events | Default 1,024 / hard 4,094 (leaves room for normalized Started/terminal under Core's 4,096 ceiling) |

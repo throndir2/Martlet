@@ -192,14 +192,16 @@ selected model's input budget. This is not persistent memory or an audio archive
 Clear on session end, pause/lock or consent revocation; new routes require
 explicit authorization for any retained context they would receive.
 
-**Implemented explicit-turn foundation:** completed typed/PTT exchanges retain
-at most eight user/assistant pairs, 16 KiB UTF-8 and two minutes in memory.
-Each fresh action's displayed authorization covers this context; oldest pairs
-are omitted until current input, persona, style and context fit the existing
-LLM byte/token reservation. Failed, refused and policy-suppressed turns are not
-retained. Pause, lock, configuration load/change, Stop and closing the
-conversation clear the buffer. This does not enable automatic capture,
-unsolicited replies, persistent memory or an observation backlog.
+**Implemented explicit-turn foundation:** completed typed/PTT exchanges of the
+open talk window are retained in memory only (at most 2,048 user/assistant
+pairs and 8 MiB UTF-8). Each fresh action's displayed authorization covers
+this context; oldest pairs are omitted until current input, persona, style and
+context fit the context size (Companion › Replies; 100,000 estimated tokens by
+default for a cloud model, within the model's known limit). Failed, refused and
+policy-suppressed turns are not retained. Refresh context, pause, lock,
+configuration load/change and closing the conversation clear the buffer; Stop
+keeps it. This does not enable automatic capture, unsolicited replies,
+persistent memory or an observation backlog.
 
 An observation is not a pending reply. Several utterances can inform one later
 response, but expired intents cannot be replayed and old provider permission

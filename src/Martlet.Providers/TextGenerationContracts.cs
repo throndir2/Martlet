@@ -61,8 +61,15 @@ public sealed class BoundedImage
 
 public sealed class BoundedTextInput
 {
+    /// <summary>The bound of the user's message and of each earlier message (characters), and the whole input a paired host's
+    /// gateway takes (UTF-8 bytes).</summary>
     public const int HardMaxUtf8Bytes = 16_384;
-    public const int HardMaxHistoryMessages = 16;
+    /// <summary>The bound of a whole input (instructions, earlier messages and the message, UTF-8 bytes): about two million
+    /// tokens, the largest context size Martlet uses.</summary>
+    public const int HardMaxInputUtf8Bytes = 8_388_608;
+    public const int HardMaxHistoryMessages = 4_096;
+    /// <summary>Estimated tokens each message adds for its role and separators in a chat template.</summary>
+    public const int MessageTokens = 8;
     public const int HardMaxTools = 128;
     public const int HardMaxToolDefinitionBytes = 98_304;
     public const int HardMaxToolRounds = 8;
@@ -109,7 +116,7 @@ public sealed class BoundedTextInput
         int bytes = Count(userText);
         ContractRules.Require(!string.IsNullOrWhiteSpace(userText), "A nonempty user message is required.");
         if (personality is not null)
-            bytes = checked(bytes + Count(personality));
+            bytes = checked(bytes + Count(personality, HardMaxInputUtf8Bytes));
         if (history is not null)
             foreach (var message in history)
             {
@@ -117,10 +124,10 @@ public sealed class BoundedTextInput
                     "Text history exceeds its bound.");
                 ContractRules.Defined(message!.Role);
                 bytes = checked(bytes + Count(message.Text));
-                ContractRules.Require(bytes <= HardMaxUtf8Bytes, "Text input exceeds its byte bound.");
+                ContractRules.Require(bytes <= HardMaxInputUtf8Bytes, "Text input exceeds its byte bound.");
                 messages.Add(message);
             }
-        ContractRules.Require(bytes <= HardMaxUtf8Bytes, "Text input exceeds its byte bound.");
+        ContractRules.Require(bytes <= HardMaxInputUtf8Bytes, "Text input exceeds its byte bound.");
         var definitions = tools?.ToArray() ?? [];
         ContractRules.Require(definitions.Length <= HardMaxTools && definitions.All(t => t is not null) &&
             definitions.Select(t => t.Name).Distinct(StringComparer.Ordinal).Count() == definitions.Length,
@@ -138,9 +145,62 @@ public sealed class BoundedTextInput
         Utf8Bytes = bytes;
         ToolUtf8Bytes = toolBytes;
         ToolTokenReservation = ToolReservation(toolBytes, definitions.Length, 0);
-        InputTokenReservation = bytes + 256 * (messages.Count + (personality is null ? 1 : 2)) +
+        InputTokenReservation = TextReservation(bytes, messages.Count + (personality is null ? 1 : 2)) +
             (image is null ? 0 : BoundedImage.TokenReservation) + AudioReservation(audio) + ToolTokenReservation;
     }
+
+    /// <summary>The estimated tokens of <paramref name="utf8Bytes"/> of text in <paramref name="messages"/> chat messages: a
+    /// token per three bytes (English runs about four bytes a token; Chinese, Japanese and Korean about three), plus
+    /// <see cref="MessageTokens"/> for each message's role and separators. A local estimate, not a provider's count.</summary>
+    public static int TextReservation(long utf8Bytes, int messages) =>
+        checked((int)((utf8Bytes + 2) / 3) + MessageTokens * messages);
+
+    /// <summary>Where the earlier messages a request carries start: the first even index of <paramref name="history"/> from which
+    /// they fit beside <paramref name="prompt"/> (the same request without earlier messages) within <paramref name="maxBytes"/>,
+    /// <paramref name="maxTextTokens"/> (tools excluded), <paramref name="maxTokens"/> and <paramref name="maxMessages"/>, so the
+    /// oldest exchanges are left out first. A message that can't be sent ends the history before it. Null when even the request
+    /// without earlier messages doesn't fit. One pass over the history, so a long conversation fits as fast as a short one.</summary>
+    public static int? HistoryStart(BoundedTextInput prompt, IReadOnlyList<TextHistoryMessage> history, int maxBytes,
+        int maxTextTokens, int maxTokens, int maxMessages)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+        ArgumentNullException.ThrowIfNull(history);
+        ContractRules.Require(prompt.History.Count == 0 && prompt.ToolRounds.Count == 0, "Fit history to a request without any.");
+        var promptMessages = prompt.Personality is null ? 1 : 2;
+        // The image, recording and tool reservations stay the same whatever history is sent.
+        var others = prompt.InputTokenReservation - TextReservation(prompt.Utf8Bytes, promptMessages);
+        var count = history.Count;
+        var suffix = new long[count + 1];
+        var lowest = 0;
+        var strict = new UTF8Encoding(false, true);
+        for (var index = count - 1; index >= 0; index--)
+        {
+            var message = history[index];
+            var bytes = 0;
+            if (message is null || !Enum.IsDefined(message.Role) || !Sendable(message.Text))
+                lowest = Math.Max(lowest, index + 1);
+            else
+            {
+                try { bytes = strict.GetByteCount(message.Text); }
+                catch (EncoderFallbackException) { lowest = Math.Max(lowest, index + 1); }
+            }
+            suffix[index] = suffix[index + 1] + bytes;
+        }
+        for (var start = lowest + (lowest & 1); start <= count; start += 2)
+        {
+            var sent = count - start;
+            if (sent > maxMessages) continue;
+            var bytes = prompt.Utf8Bytes + suffix[start];
+            if (bytes > maxBytes || bytes > HardMaxInputUtf8Bytes) continue;
+            var tokens = (long)TextReservation(bytes, promptMessages + sent) + others;
+            if (tokens - prompt.ToolTokenReservation > maxTextTokens || tokens > maxTokens) continue;
+            return start;
+        }
+        return null;
+    }
+
+    private static bool Sendable(string? text) =>
+        text is { Length: <= HardMaxUtf8Bytes } && !text.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t');
 
     private BoundedTextInput(BoundedTextInput origin, IReadOnlyList<TextToolDefinition> tools, IReadOnlyList<TextToolRound> rounds,
         bool callsAllowed, bool keepAudio, bool keepImage = true)
@@ -195,9 +255,9 @@ public sealed class BoundedTextInput
     private static int ToolReservation(int bytes, int tools, int calls) =>
         bytes == 0 ? 0 : (bytes + 2) / 3 + 32 * tools + 64 * calls + 64;
 
-    private static int Count(string value)
+    private static int Count(string value, int maximum = HardMaxUtf8Bytes)
     {
-        ContractRules.Text(value, HardMaxUtf8Bytes);
+        ContractRules.Text(value, maximum);
         try { return new UTF8Encoding(false, true).GetByteCount(value); }
         catch (EncoderFallbackException) { throw new ContractException(ErrorCode.InvalidContract, "Text contains invalid Unicode."); }
     }
@@ -207,10 +267,17 @@ public sealed class BoundedTextInput
 
 public sealed record TextGenerationLimits : IContract
 {
+    /// <summary>The bound of a request's estimated input and context tokens: above the largest context size Martlet uses,
+    /// with room for tool descriptions and results.</summary>
+    public const int HardMaxContextTokens = 4_194_304;
+    /// <summary>The earlier messages a paired host's gateway takes (and the default bound).</summary>
+    public const int DefaultMaxHistoryMessages = 16;
+
     public int MaxInputBytes { get; init; } = BoundedTextInput.HardMaxUtf8Bytes;
     public int MaxInputTokens { get; init; } = 24_576;
     public int MaxOutputTokens { get; init; } = 256;
     public int MaxContextTokens { get; init; } = 32_768;
+    public int MaxHistoryMessages { get; init; } = DefaultMaxHistoryMessages;
     public int MaxEventBytes { get; init; } = 131_072;
     public int MaxStreamBytes { get; init; } = 2_097_152;
     public int MaxEvents { get; init; } = 1024;
@@ -221,9 +288,10 @@ public sealed record TextGenerationLimits : IContract
 
     public void Validate()
     {
-        ContractRules.Require(MaxInputBytes is > 0 and <= BoundedTextInput.HardMaxUtf8Bytes &&
-            MaxInputTokens is > 0 and <= 126_976 && MaxOutputTokens is >= 16 and <= 4096 &&
-            MaxContextTokens is > 0 and <= 131_072 && MaxInputTokens + MaxOutputTokens <= MaxContextTokens &&
+        ContractRules.Require(MaxInputBytes is > 0 and <= BoundedTextInput.HardMaxInputUtf8Bytes &&
+            MaxInputTokens is > 0 and <= HardMaxContextTokens && MaxOutputTokens is >= 16 and <= 4096 &&
+            MaxContextTokens is > 0 and <= HardMaxContextTokens && (long)MaxInputTokens + MaxOutputTokens <= MaxContextTokens &&
+            MaxHistoryMessages is >= 0 and <= BoundedTextInput.HardMaxHistoryMessages &&
             MaxEventBytes is >= 128 and <= ContractRules.MaxJsonBytes &&
             MaxStreamBytes >= MaxEventBytes && MaxStreamBytes <= 4_194_304 &&
             MaxEvents is >= 2 and <= 4094 &&

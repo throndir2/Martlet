@@ -246,7 +246,7 @@ internal static class GatewayInferenceJson
         var topP = Optional("top_p", 0, 1);
         GatewayRules.Require(topP is null or > 0, "request.invalid");
         var context = OptionalInteger("context_tokens", Martlet.Core.Settings.GenerationSettings.MinimumContextTokens,
-            Martlet.Core.Settings.GenerationSettings.MaximumContextTokens);
+            Martlet.Core.Settings.GenerationSettings.MaximumHostContextTokens);
         GatewayRules.Require(context is null || context > outputTokens && context <= maximumContextTokens, "request.invalid");
         return new(
             topP,

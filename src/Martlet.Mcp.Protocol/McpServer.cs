@@ -303,6 +303,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
+        }),
+        Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
+            "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
+            "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
+            "Then rehearses the production model-limit check (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like " +
+            "OpenRouter, vLLM, Groq, llama.cpp and Ollama (NOT the real services; a fixture key goes only to its own base URL and " +
+            "redirects aren't followed) and the production history fit of a 1,000-exchange synthetic conversation into a cloud " +
+            "model's default, a 1,000,000-token setting, a paired host and Ollama on this PC. Loopback only; reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" }
         })
     ];
 
@@ -412,6 +422,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
+                "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

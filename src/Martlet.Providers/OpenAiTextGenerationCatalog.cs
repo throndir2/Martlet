@@ -44,7 +44,7 @@ public static class OpenAiTextGenerationCatalog
             LlmTextDeltas = provenance == EvidenceProvenance.NotRun ? CapabilitySupport.Unknown : CapabilitySupport.Supported,
             TtsAudioTransport = CapabilitySupport.Unsupported, TtsIncrementalSynthesis = CapabilitySupport.Unsupported,
             Cancellation = provenance == EvidenceProvenance.NotRun ? CancellationCapability.Unknown : CancellationCapability.RequestAbort,
-            MaxInputBytes = BoundedTextInput.HardMaxUtf8Bytes
+            MaxInputBytes = BoundedTextInput.HardMaxInputUtf8Bytes
         };
         result.Validate();
         return result;
