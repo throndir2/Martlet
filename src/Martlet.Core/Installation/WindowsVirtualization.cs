@@ -6,10 +6,15 @@ namespace Martlet.Core.Installation;
 /// <summary>A Windows optional feature as Windows reports it to a standard user (Win32_OptionalFeature).</summary>
 public enum WindowsFeatureState { Unknown, Enabled, Disabled, Absent }
 
+public enum WindowsServiceState { Unknown, Running, Stopped, Disabled, Absent }
+
+/// <summary>What wsl.exe --status reports, not a test that starts a Linux VM. WSL can report unavailable WSL 2 with exit 0.</summary>
+public enum WslStatusState { Unknown, Available, Unavailable, RestartRequired, Failed }
+
 /// <summary>What Docker Desktop's WSL 2 engine needs from Windows, read without administrator rights
 /// (<see cref="ProbeAsync"/>): virtualization turned on in the firmware (UEFI/BIOS), the Virtual Machine Platform and
-/// Windows Subsystem for Linux features, the Windows hypervisor running and WSL <see cref="MinimumWsl"/> or later.
-/// Null and <see cref="WindowsFeatureState.Unknown"/> mean Windows did not say; they never count as a problem.</summary>
+/// Windows Subsystem for Linux features, their host services, the Windows hypervisor and WSL <see cref="MinimumWsl"/> or later.
+/// Unknown facts never count as a known blocker, but cannot establish readiness.</summary>
 public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, WindowsFeatureState MachinePlatform,
     WindowsFeatureState Subsystem, string? Wsl, bool VirtualMachine)
 {
@@ -22,6 +27,13 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
     public static WindowsVirtualization Unknown { get; } =
         new(null, null, WindowsFeatureState.Unknown, WindowsFeatureState.Unknown, null, false);
 
+    public WindowsServiceState ComputeService { get; init; }
+    public WindowsServiceState NetworkService { get; init; }
+    public WslStatusState WslStatus { get; init; }
+    public int? WslStatusExitCode { get; init; }
+    public bool? RestartPending { get; init; }
+    public IReadOnlyList<string> ProbeIssues { get; init; } = [];
+
     /// <summary>Virtualization is off in the firmware, or this processor has none: Windows can't turn it on.</summary>
     public bool FirmwareOff => Firmware == false && Hypervisor == false;
 
@@ -33,13 +45,41 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
     /// turning features on, or Windows' boot configuration keeps the hypervisor off.</summary>
     public bool HypervisorOff => Hypervisor == false && !FirmwareOff;
 
+    public bool RuntimeUnavailable => ServiceUnavailable(ComputeService) || ServiceUnavailable(NetworkService) ||
+        WslStatus is WslStatusState.Unavailable or WslStatusState.RestartRequired or WslStatusState.Failed;
+
+    /// <summary>CIM can say features are enabled before their services exist. A pending restart plus an unavailable
+    /// runtime is not a reason to reinstall them. An unrelated pending update alone does not block working WSL.</summary>
+    public bool RestartRequired => !FirmwareOff && (WslStatus == WslStatusState.RestartRequired ||
+        RestartPending == true && MachinePlatform == WindowsFeatureState.Enabled && Subsystem == WindowsFeatureState.Enabled &&
+        (HypervisorOff || WslMissing || RuntimeUnavailable));
+
     /// <summary>Something Windows itself can fix (with one administrator approval, and usually a restart).</summary>
-    public bool NeedsChanges => !FirmwareOff && (FeaturesOff || WslMissing || HypervisorOff);
+    public bool NeedsChanges => !FirmwareOff && !RestartRequired && (FeaturesOff || WslMissing || HypervisorOff);
+
+    public bool Blocked => FirmwareOff || NeedsChanges || RestartRequired || RuntimeUnavailable;
 
     public bool Ready => Hypervisor == true && MachinePlatform == WindowsFeatureState.Enabled &&
-        Subsystem == WindowsFeatureState.Enabled && Wsl is not null && !WslMissing;
+        Subsystem == WindowsFeatureState.Enabled && Wsl is not null && !WslMissing &&
+        ServiceAvailable(ComputeService) && ServiceAvailable(NetworkService) && WslStatus == WslStatusState.Available;
 
     private static bool IsOff(WindowsFeatureState state) => state is WindowsFeatureState.Disabled or WindowsFeatureState.Absent;
+    private static bool ServiceUnavailable(WindowsServiceState state) => state is WindowsServiceState.Disabled or WindowsServiceState.Absent;
+    private static bool ServiceAvailable(WindowsServiceState state) => state is WindowsServiceState.Running or WindowsServiceState.Stopped;
+
+    public string Recovery => FirmwareOff
+        ? VirtualMachine
+            ? "Ask the administrator of this virtual machine's host to enable nested virtualization, then check again."
+            : "Turn on Intel VT-x or AMD SVM in this PC's firmware settings (UEFI/BIOS), then check again."
+        : RestartRequired
+            ? "Restart Windows to finish setting up virtualization, then let Martlet continue setup. Restarting Docker Desktop alone cannot finish this Windows change."
+        : NeedsChanges
+            ? "Let Martlet set up the Windows features and WSL that Docker Desktop needs. Windows asks for administrator approval and may need a restart."
+        : RuntimeUnavailable
+            ? "Restart Windows, then check again. If WSL 2 or its Windows services are still unavailable, repair Virtual Machine Platform and WSL through Windows setup; do not reset Docker's data."
+        : Ready
+            ? "Windows prerequisites are available. Start Docker Desktop and wait for its engine to answer."
+            : "Some Windows checks are unavailable. Check Docker Desktop's own error before changing Windows or firmware settings.";
 
     /// <summary>What stops Docker Desktop, in plain words; empty when nothing known does.</summary>
     public IReadOnlyList<string> Problems()
@@ -47,13 +87,22 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         var problems = new List<string>();
         if (FirmwareOff)
         {
-            problems.Add("virtualization is turned off in this PC's firmware (UEFI/BIOS)");
+            problems.Add(VirtualMachine ? "hardware virtualization is not exposed to this virtual machine"
+                : "virtualization is turned off in this PC's firmware (UEFI/BIOS)");
             return problems;
         }
+        if (RestartRequired) problems.Add("Windows must restart to finish setting up virtualization");
         if (IsOff(MachinePlatform)) problems.Add("Virtual Machine Platform is off");
         if (IsOff(Subsystem)) problems.Add("Windows Subsystem for Linux is off");
         if (WslMissing) problems.Add(Wsl == NoWsl ? "WSL isn't installed" : $"WSL {Wsl} is older than {MinimumWsl}");
         if (HypervisorOff && !FeaturesOff) problems.Add("the Windows hypervisor isn't running yet");
+        if (ServiceUnavailable(ComputeService))
+            problems.Add($"Host Compute Service (vmcompute) is {(ComputeService == WindowsServiceState.Absent ? "not installed" : "disabled")}");
+        if (ServiceUnavailable(NetworkService))
+            problems.Add($"Host Network Service (hns) is {(NetworkService == WindowsServiceState.Absent ? "not installed" : "disabled")}");
+        if (WslStatus == WslStatusState.Unavailable) problems.Add("WSL reports that WSL 2 cannot start");
+        if (WslStatus == WslStatusState.Failed)
+            problems.Add($"WSL status failed{(WslStatusExitCode is { } exit ? $" (exit {exit})" : "")}");
         return problems;
     }
 
@@ -70,23 +119,65 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         var firmware = Hypervisor == true ? "available" : Firmware switch { true => "on in firmware", false => "off in firmware", null => "unknown" };
         var hypervisor = Hypervisor switch { true => "running", false => "not running", null => "unknown" };
         var wsl = Wsl switch { null => "unknown", NoWsl => "not installed", var version => version };
+        var status = WslStatus switch
+        {
+            WslStatusState.Available => "available",
+            WslStatusState.Unavailable => "cannot start",
+            WslStatusState.RestartRequired => "needs a Windows restart",
+            WslStatusState.Failed => "status failed",
+            _ => "status unknown"
+        };
+        var restart = RestartPending switch { true => "pending", false => "not pending", null => "unknown" };
         return $"virtualization {firmware}; Windows hypervisor {hypervisor}; Virtual Machine Platform {Feature(MachinePlatform)}; " +
-            $"Windows Subsystem for Linux {Feature(Subsystem)}; WSL {wsl}" + (VirtualMachine ? "; this PC is a virtual machine" : "");
+            $"Windows Subsystem for Linux {Feature(Subsystem)}; WSL {wsl}; WSL 2 {status}; " +
+            $"Host Compute Service {ComputeService.ToString().ToLowerInvariant()}; Host Network Service {NetworkService.ToString().ToLowerInvariant()}; " +
+            $"Windows restart {restart}" + (VirtualMachine ? "; this PC is a virtual machine" : "") +
+            (ProbeIssues.Count > 0 ? "; checks unavailable: " + string.Join(", ", ProbeIssues) : "");
     }
 
     /// <summary>Reads the facts as a standard user: Win32_OptionalFeature, Win32_ComputerSystem and Win32_Processor through
-    /// CIM, and <c>wsl --version</c>. Prints one line: <c>firmware=..|hypervisor=..|vmp=..|wsl=..|wslversion=..|vm=..</c>.</summary>
-    public const string ProbeScript =
-        "$ErrorActionPreference='SilentlyContinue';$ProgressPreference='SilentlyContinue';" +
-        "$f=@{};Get-CimInstance Win32_OptionalFeature -Filter \"Name='VirtualMachinePlatform' OR Name='Microsoft-Windows-Subsystem-Linux'\"|" +
-        "ForEach-Object{$f[$_.Name]=$_.InstallState};" +
-        "$c=Get-CimInstance Win32_ComputerSystem;$p=Get-CimInstance Win32_Processor|Select-Object -First 1;" +
-        "$w='none';$x=Join-Path $env:SystemRoot 'System32\\wsl.exe';" +
-        "if(Test-Path -LiteralPath $x){$env:WSL_UTF8='1';$o=(& $x --version 2>$null|Out-String) -replace \"`0\",'';" +
-        "if($LASTEXITCODE -eq 0 -and $o -match '(\\d+\\.\\d+\\.\\d+)'){$w=$Matches[1]}};" +
-        "$vm=[bool](\"$($c.Manufacturer) $($c.Model)\" -match 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|Parallels|Xen');" +
-        "\"firmware=$($p.VirtualizationFirmwareEnabled)|hypervisor=$($c.HypervisorPresent)|vmp=$($f['VirtualMachinePlatform'])|" +
-        "wsl=$($f['Microsoft-Windows-Subsystem-Linux'])|wslversion=$w|vm=$vm\"";
+    /// CIM, the host services, pending-restart registry markers, and <c>wsl --version</c> / <c>wsl --status</c>.
+    /// Only fixed status fields are printed; WSL output can contain the owner's distribution name and is not returned.</summary>
+    public const string ProbeScript = """
+        $ErrorActionPreference='Continue';$ProgressPreference='SilentlyContinue'
+        $issues=[System.Collections.Generic.List[string]]::new()
+        $f=@{};$c=$null;$p=$null;$services=@{};$restart=''
+        try {
+            Get-CimInstance Win32_OptionalFeature -Filter "Name='VirtualMachinePlatform' OR Name='Microsoft-Windows-Subsystem-Linux'" -ErrorAction Stop |
+                ForEach-Object {$f[$_.Name]=$_.InstallState}
+        } catch {$issues.Add('optional features')}
+        try {$c=Get-CimInstance Win32_ComputerSystem -ErrorAction Stop} catch {$issues.Add('hypervisor')}
+        try {$p=Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1} catch {$issues.Add('firmware')}
+        try {
+            $services['vmcompute']='Absent';$services['hns']='Absent'
+            Get-CimInstance Win32_Service -Filter "Name='vmcompute' OR Name='hns'" -ErrorAction Stop | ForEach-Object {
+                $services[$_.Name]=if ($_.StartMode -eq 'Disabled') {'Disabled'}
+                    elseif ($_.State -eq 'Running') {'Running'}
+                    elseif ($_.State -eq 'Stopped') {'Stopped'} else {'Unknown'}
+            }
+        } catch {$services=@{};$issues.Add('host services')}
+        try {
+            $restart=(Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -ErrorAction Stop) -or
+                (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction Stop)
+        } catch {$issues.Add('restart status')}
+        $w='none';$status='Unknown';$code=''
+        $x=Join-Path $env:SystemRoot 'System32\wsl.exe'
+        if (Test-Path -LiteralPath $x) {
+            $env:WSL_UTF8='1'
+            $o=(& $x --version 2>$null | Out-String) -replace "`0",''
+            if ($LASTEXITCODE -eq 0 -and $o -match '(\d+\.\d+\.\d+)') {$w=$Matches[1]}
+            $LASTEXITCODE=$null
+            $o=(& $x --status 2>&1 | ForEach-Object {"$_"} | Out-String) -replace "`0",''
+            $code=$LASTEXITCODE
+            if ($null -eq $code) {$issues.Add('WSL status')}
+            elseif ($code -in 3010,1641,-2147021886 -or $o -match 'until the system is rebooted') {$status='RestartRequired'}
+            elseif ($o -match '(?im)^\s*WSL\s*2\b.*(?:not supported|unable to start|not available|not enabled)|HCS_E_HYPERV_NOT_INSTALLED|0x80370102') {$status='Unavailable'}
+            elseif ($code -ne 0) {$status='Failed'}
+            else {$status='Available'}
+        }
+        $vm=[bool]("$($c.Manufacturer) $($c.Model)" -match 'Virtual Machine|VMware|VirtualBox|KVM|QEMU|Parallels|Xen')
+        "firmware=$($p.VirtualizationFirmwareEnabled)|hypervisor=$($c.HypervisorPresent)|vmp=$($f['VirtualMachinePlatform'])|wsl=$($f['Microsoft-Windows-Subsystem-Linux'])|wslversion=$w|vm=$vm|compute=$($services['vmcompute'])|network=$($services['hns'])|wslstatus=$status|wslexit=$code|restart=$restart|issues=$($issues -join ',')"
+        """;
 
     /// <summary>Reads <see cref="ProbeScript"/>'s line; anything missing or unreadable stays unknown.</summary>
     public static WindowsVirtualization Parse(string? output)
@@ -116,14 +207,26 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
             var version when Version.TryParse(version, out _) => version,
             _ => null
         };
-        return new(Flag("firmware"), Flag("hypervisor"), Feature("vmp"), Feature("wsl"), wsl, Flag("vm") == true);
+        WindowsServiceState Service(string key) =>
+            Enum.TryParse<WindowsServiceState>(values.GetValueOrDefault(key), out var state) && Enum.IsDefined(state)
+                ? state : WindowsServiceState.Unknown;
+        return new(Flag("firmware"), Flag("hypervisor"), Feature("vmp"), Feature("wsl"), wsl, Flag("vm") == true)
+        {
+            ComputeService = Service("compute"),
+            NetworkService = Service("network"),
+            WslStatus = Enum.TryParse<WslStatusState>(values.GetValueOrDefault("wslstatus"), out var status) && Enum.IsDefined(status)
+                ? status : WslStatusState.Unknown,
+            WslStatusExitCode = int.TryParse(values.GetValueOrDefault("wslexit"), out var exit) ? exit : null,
+            RestartPending = Flag("restart"),
+            ProbeIssues = (values.GetValueOrDefault("issues") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+        };
     }
 
     /// <summary>Runs <see cref="ProbeScript"/> in a hidden Windows PowerShell (no administrator rights, no network).
     /// Returns <see cref="Unknown"/> off Windows, when PowerShell can't start or after a minute without an answer.</summary>
     public static async Task<WindowsVirtualization> ProbeAsync(CancellationToken token)
     {
-        if (!OperatingSystem.IsWindows()) return Unknown;
+        if (!OperatingSystem.IsWindows()) return Unknown with { ProbeIssues = ["requires Windows"] };
         var start = new ProcessStartInfo(PowerShellPath)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
@@ -133,8 +236,8 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
             start.ArgumentList.Add(argument);
         Process? process;
         try { process = Process.Start(start); }
-        catch (System.ComponentModel.Win32Exception) { return Unknown; }
-        if (process is null) return Unknown;
+        catch (System.ComponentModel.Win32Exception) { return Unknown with { ProbeIssues = ["PowerShell could not start"] }; }
+        if (process is null) return Unknown with { ProbeIssues = ["PowerShell could not start"] };
         using (process)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -145,14 +248,16 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
                 var output = await process.StandardOutput.ReadToEndAsync(timeout.Token);
                 await process.WaitForExitAsync(timeout.Token);
                 await errors;
-                return Parse(output);
+                var state = Parse(output);
+                return ReferenceEquals(state, Unknown)
+                    ? Unknown with { ProbeIssues = ["Windows prerequisite probe returned no status"] } : state;
             }
             catch (OperationCanceledException)
             {
                 try { process.Kill(entireProcessTree: true); }
                 catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
                 if (token.IsCancellationRequested) throw;
-                return Unknown;
+                return Unknown with { ProbeIssues = ["Windows prerequisite probe timed out after one minute"] };
             }
         }
     }
@@ -183,7 +288,9 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         "$r=Enable-WindowsOptionalFeature -Online -FeatureName $n -All -NoRestart -ErrorAction Stop;" +
         "if($r.RestartNeeded){$restart=$true;Say \"$n turns on when Windows restarts.\"}else{Say \"$n is on.\"}};" +
         "$b=(& bcdedit.exe /enum '{current}' 2>$null|Out-String);" +
-        "if($b -match 'hypervisorlaunchtype\\s+Off'){& bcdedit.exe /set '{current}' hypervisorlaunchtype auto|Out-Null;$restart=$true;" +
+        "if($LASTEXITCODE -ne 0){throw 'The Windows boot configuration could not be read.'};" +
+        "if($b -match 'hypervisorlaunchtype\\s+Off'){& bcdedit.exe /set '{current}' hypervisorlaunchtype auto|Out-Null;" +
+        "if($LASTEXITCODE -ne 0){throw 'The Windows hypervisor boot setting could not be changed.'};$restart=$true;" +
         "Say 'The Windows hypervisor was set not to start; it now starts with Windows.'};" +
         "$x=Join-Path $env:SystemRoot 'System32\\wsl.exe';$env:WSL_UTF8='1';" +
         "function V{if(Test-Path -LiteralPath $x){$o=(& $x --version 2>$null|Out-String) -replace \"`0\",'';" +

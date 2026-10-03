@@ -237,11 +237,53 @@ contacts nothing.
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
 `on (default)` when `cluster-sync.txt` is missing, `on`, or `off` once the owner
-unticked **Keep who does what in sync**; `plan` is this PC's `cluster.json`
+unticked **Keep Martlet the same on all my computers**; `plan` is this PC's `cluster.json`
 (`state` `none`, `loaded` or `unreadable`; when loaded its revision, each job's
 `host` (null for this PC's own choice), `off`, `failover`, `movedFrom`,
 `updatedBy` and `updatedAt`, and each host's ID, roles and `removed`). It never
 returns host addresses or keys and contacts nothing.
+
+`settings_sync_status` reads [one Martlet on every computer](CLUSTER.md#one-martlet-on-every-computer)
+from a data directory (optional absolute `dataDirectory`, default the current
+user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
+the copy's `revision` and `count`, and for each shared setting its `key`
+(`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
+`replies`, `prompts`, `memory`, `lorebooks`, `character`, `talk`,
+`speech-display`, `appearance`, or a newer Martlet's), `updatedBy`, `updatedAt`,
+`revision`, `usesKey`, `characters`, `off` (the value is null) and `here`:
+`same` when this PC had exactly that value at its last sync, `different` while
+it can't follow it yet (or changed it since), `unknown` when it never had the
+setting. `value` is shown only for non-personal settings: each job's route
+(`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
+memory, how you talk and the theme. It never returns keys, key digests,
+personality, prompt or lorebook text, and contacts nothing.
+
+`settings_sync_selftest` (no arguments) rehearses shared settings end to end
+with the production code (`src\Martlet.NodeLinkCheck`, mode `settings`,
+`SettingsRehearsal.cs`, run as its own process like `node_link_check`; returns
+`{exitCode, report}`): two real gateways (`lab-settings-1`, `lab-settings-2`;
+Kestrel, pinned TLS, signed requests, an in-memory `shared-settings.json`) and
+three simulated desktops (`lab-desktop-a..c`) with real `settings.json`,
+`lorebooks.json` and `shared-settings.json` in a temporary folder, an in-memory
+stand-in for Windows Credential Manager (with write times), the desktop's paired
+client (`HostSettings.cs`) and the real sync engine and sections
+(`Martlet.Core.Sync`). Its steps follow the owner's case: B chose NVIDIA Build
+with its key on Sept 1, A chose OpenRouter with its key on Sept 20; after
+updating, B (now the companion) syncs first and shares NVIDIA Build stamped
+Sept 1, A (now the host PC) syncs and OpenRouter wins, and B takes OpenRouter,
+the model and A's key into its own credential store with the choice recorded
+and its NVIDIA key set aside, not deleted; the same in the other order on a
+third host; a model change (B reuses its key, no new credential); a new key;
+offline edits of different settings on both (both kept) and of the same
+setting (the later edit wins); a host that was down while a change was made,
+restarted with its saved copy and got the change on the next sync; a stale copy
+that can't undo newer changes; a newer Martlet's setting passed through; a
+Windows voice a new computer lacks (it waits, records nothing, then follows); a
+new computer taking everything without its defaults overriding anything; the
+Thinking fallback with its own key, turned off again (the key removed); lorebooks;
+no key in any desktop file while the hosts' private copy holds them and every
+copy ends the same; and an unsigned request refused (HTTP 401). Loopback only;
+the folder is deleted and the real vault is never touched.
 
 `network_status` reads the [Martlet network](NETWORK.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `state`
@@ -489,10 +531,16 @@ own loopback, so check it there or through a forward to this PC's loopback.
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
-`ready`, `firmwareOff`, `needsWindowsChanges`, `problems` (plain words),
+`ready`, `blocked`, `firmwareOff`, `needsWindowsChanges`, `problems` and
+`recovery` (plain words), `probeIssues` (which checks could not be read),
 `firmware`, `hypervisor`, `virtualMachinePlatform` and
 `windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
-`wsl` (version, `none` or null), `virtualMachine`, `summary`,
+`wsl` (version, `none` or null), `wslStatus` (`Available`, `Unavailable`,
+`RestartRequired`, `Failed` or `Unknown`), `wslStatusExitCode`,
+`hostComputeService` (`vmcompute`) and `hostNetworkService` (`hns`), each
+`Running`, `Stopped`, `Disabled`, `Absent` or `Unknown`, `restartPending`
+(Windows component servicing or Windows Update needs a restart, or null when
+unreadable), `restartRequired`, `virtualMachine`, `summary`,
 `dockerDesktop {installed, running, engine}` (`engine` is what
 `docker desktop status` reports, for example `running`, `starting` or
 `stopped`, or null when Docker Desktop doesn't answer within 15 seconds; a
@@ -501,9 +549,19 @@ run window restarts Docker Desktop once when it is open but its engine stays
 it) and `continueSetup {pending, kind, task,
 created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 (`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
-entry that starts Martlet at the next sign-in exists). It runs a CIM query and
-`wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
-changes nothing and returns no paths.
+entry that starts Martlet at the next sign-in exists). It reads CIM facts,
+Windows services and pending-restart registry markers and runs `wsl --version`
+and `wsl --status` in a hidden Windows PowerShell, plus `docker desktop status`. It changes
+nothing, starts no Linux VM and returns no paths or distribution names.
+`Available` means WSL's status command answered without a recognized WSL 2
+problem, not that a VM or GPU workload was tested. WSL 2 unavailability is
+recognized even when that command exits **0**; a WSL 1-only warning is not a
+WSL 2 blocker. A service that is merely stopped is not missing or disabled:
+Windows can start it on demand. An unrelated pending Windows update alone
+does not block otherwise-ready WSL. When features report enabled but their
+runtime is unavailable and Windows has a restart pending, `restartRequired`
+is true and `needsWindowsChanges` false: restart Windows rather than
+reinstalling features or repeatedly restarting Docker Desktop.
 
 `host_service_status` reads this PC's own Martlet host service on Docker
 Desktop (the one the host dashboard sets up) with the same production code as
@@ -776,7 +834,13 @@ and `LipSyncOwner`, device commands `NodeAction-<action>`
 (`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
-`ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
+`ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
+settings are shared, on how many hosts they are the same, when checked and
+what was last taken from another computer), `SettingsSyncWaiting` (text, shown
+only when this PC can't follow a setting yet: which, and why),
+`SettingsSyncClaim` (*Use this PC's settings on all my computers*; it changes
+every computer's settings, so it needs `--allow-ui-effects` and then
+`ConfirmationYes`) and `RoleSetup-<role>` for jobs nobody does.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
 (status text: member with how many computers and hosts, waiting to join with
 the check number, a host PC in no network that only watches, or in no network),
@@ -847,7 +911,8 @@ and stay inside the window. The host dashboard reads this PC's own host service
 by itself (the same read as `host_service_status`): when it opens, every 30
 seconds while the window shows and when it shows again, so steps tick without a
 button. `HostServiceStatus` (returned) is the status under its icon (*Checking...*,
-*Needs Docker Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
+*Needs Docker Desktop*, *Needs Windows restart*, *Windows isn't ready for Docker
+Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
 service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
 `HostStepsHeading` (returned) reads *This host is ready* once the required steps
 (Docker Desktop, host service, pairing) are done and `HostStepsSummary`
@@ -855,13 +920,16 @@ service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
 it last checked. `CheckHostService` (*Check again*) only repeats that read and
 says what it found in the status line, so it is a passive click. On the host
 dashboard,
-`StepDetail-docker` says whether Docker Desktop runs, that it is open but its
-engine isn't answering yet, or why Windows can't start
-it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
-Subsystem for Linux off, WSL missing, hypervisor not running), and
-`Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
-features* (administrator prompt and possibly a restart, so it needs
-`--allow-ui-effects` and is never part of verification). `StepDetail-service`
+`StepDetail-docker` says whether Docker Desktop's **engine** answers, or why
+Windows can't start it (firmware/nested virtualization, Windows features, WSL
+status, missing/disabled host services or a pending restart), with the same
+recovery guidance as `virtualization_status`. This is checked even while Docker
+Desktop's window is open, and refreshed by `CheckHostService`. `Step-docker-0`
+then reads *Restart Windows*, *Turn on virtualization*, *Turn on Windows features*
+or *Review Windows setup*. Setup and *Start Docker Desktop* use the same guarded
+run-window recovery. These actions can ask for administrator approval or a
+restart, so they need `--allow-ui-effects`; never execute an actual Windows
+change or restart during verification. `StepDetail-service`
 says the host service is not set up (`Step-service-0` *Set up host service*),
 set up but stopped (*Start host service*), set up for an address this PC no
 longer has or not answering (*Set up again*), or *Running and reachable on your

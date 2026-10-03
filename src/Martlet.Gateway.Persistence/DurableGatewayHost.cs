@@ -401,6 +401,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachHomeAssistantStorage(storage);
     }
 
+    /// <summary>Keeps the settings paired desktops share through this host (API keys included) in <paramref name="storage"/>.</summary>
+    public void AttachSettings(IGatewaySettingsStorage storage)
+    {
+        RequireOpen();
+        server!.AttachSettingsStorage(storage);
+    }
+
     /// <summary>Keeps the network's API keys paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachApiKeys(IGatewayApiKeyStorage storage)
     {
