@@ -151,8 +151,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "containers and volumes are never touched) against a fixture setup. A change holds the engine lock; read-only commands " +
             "still run; status names the holder; an automatic run (no terminal, no --yes) stops at once with exit 75 and " +
             "MARTLET-BUSY, changing nothing; an attended run waits and gives up after MARTLET_LOCK_WAIT; a waiting run continues when " +
-            "the holder is killed; no stale lock remains; the journal records it; the desktop's reader reads the busy line. Returns " +
-            "notRun when Docker or the image is missing.", new { }),
+            "the holder is killed; no stale lock remains; the journal records it; the desktop's reader reads the busy line. With a " +
+            "fake docker CLI it also checks the Docker method: setup does not replace the network holder while an engine session " +
+            "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), and an engine " +
+            "left in a replaced holder's namespace stops at once. Returns notRun when Docker or the image is missing.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new

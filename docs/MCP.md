@@ -380,9 +380,17 @@ terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
 gives up with 75; a waiting `--yes remove` continues once the holder is killed
 (SIGKILL); the next automatic run is not blocked (no stale lock);
 `logs/engine.log` records the waits; and the desktop's reader
-(`HostEngineBusy.Read`) reads the engine's real busy line. Without Docker or the
+(`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
+Docker method's launcher and engine against a fake `docker` CLI (state in
+`/tmp/fake`): an automatic `setup` while an `add` engine session runs in the
+network holder's namespace stops with exit 75 and `MARTLET-BUSY installing
+chatterbox (...)` without replacing `martlet-host-net`; a `--yes setup` waits
+for it, then removes and recreates the holder and runs its engine; an engine
+left in a replaced holder's namespace stops at once (`... was replaced while
+this ran ... Nothing was changed`) while one in the current namespace
+continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
-the Docker method's launcher or a real host.
+a real Docker daemon or a real host.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
