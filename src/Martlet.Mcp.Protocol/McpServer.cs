@@ -342,7 +342,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
             "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
             "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +
-            "continuous and the pause ended the first utterance. Reads no credentials and contacts nothing.", new
+            "continuous and the pause ended the first utterance, and yourVoice: the production matcher that leaves out your own voice " +
+            "when this PC plays it back, on fixed samples. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),

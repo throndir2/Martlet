@@ -39,6 +39,64 @@ public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimePro
     }
 }
 
+/// <summary>Your own voice played back on this PC (a voice changer's or headset app's "hear myself", Windows' "Listen to this
+/// device", a call that echoes you): what the PC played repeats what the microphone just heard you say. Such a line is left out
+/// of what the PC played, so Martlet never answers you twice.</summary>
+public static class PcEcho
+{
+    /// <summary>At least this share of what the PC played, in order, is words you just said.</summary>
+    public const double Share = 0.6;
+    // Bounds the comparison: what the PC played is at most a few hundred words, and only your newest words matter.
+    private const int MaximumWords = 600;
+
+    /// <summary>What the PC played (one transcribed line) mostly repeats, in order, the words of what you just said.</summary>
+    public static bool Repeats(string played, string spoken)
+    {
+        ArgumentNullException.ThrowIfNull(played);
+        ArgumentNullException.ThrowIfNull(spoken);
+        var pc = Words(played);
+        var you = Words(spoken);
+        if (pc.Count == 0 || you.Count == 0) return false;
+        if (pc.Count > MaximumWords) pc = pc.GetRange(pc.Count - MaximumWords, MaximumWords);
+        if (you.Count > MaximumWords) you = you.GetRange(you.Count - MaximumWords, MaximumWords);
+        return Common(pc, you) >= Math.Max(1, (int)Math.Ceiling(pc.Count * Share));
+    }
+
+    // Lowercase words of letters and digits; apostrophes are dropped ("what's" is "whats") and anything else separates words,
+    // so two transcriptions of the same speech compare equal despite punctuation and capitals.
+    private static List<string> Words(string text)
+    {
+        var words = new List<string>();
+        var word = new System.Text.StringBuilder();
+        foreach (var c in text)
+        {
+            if (char.IsLetterOrDigit(c)) word.Append(char.ToLowerInvariant(c));
+            else if (c is '\'' or '\u2019') continue;
+            else if (word.Length > 0)
+            {
+                words.Add(word.ToString());
+                word.Clear();
+            }
+        }
+        if (word.Length > 0) words.Add(word.ToString());
+        return words;
+    }
+
+    // How many words both say in the same order (longest common subsequence).
+    private static int Common(List<string> a, List<string> b)
+    {
+        var previous = new int[b.Count + 1];
+        var current = new int[b.Count + 1];
+        foreach (var word in a)
+        {
+            for (var j = 1; j <= b.Count; j++)
+                current[j] = string.Equals(word, b[j - 1], StringComparison.Ordinal) ? previous[j - 1] + 1 : Math.Max(previous[j], current[j - 1]);
+            (previous, current) = (current, previous);
+        }
+        return previous[b.Count];
+    }
+}
+
 /// <summary>One continuous stream of what the PC plays: real packets as they come, and silence for any stretch the loopback
 /// left empty once it is <see cref="Slack"/> overdue (a real packet never waits that long while something plays).</summary>
 internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock) : ICaptureDevice

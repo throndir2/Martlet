@@ -50,6 +50,8 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
 
     internal void Post(HeardSpeech speech) => results.Enqueue(speech);
     internal bool TryTake([NotNullWhen(true)] out HeardSpeech? speech) => results.TryDequeue(out speech);
+    /// <summary>Something heard waits to be taken (it is posted before <see cref="Transcribing"/> drops).</summary>
+    internal bool HasResults => !results.IsEmpty;
     internal void BeginTranscribing() => Interlocked.Increment(ref transcribing);
     internal void EndTranscribing() => Interlocked.Decrement(ref transcribing);
     public override string ToString() => nameof(LiveListener);

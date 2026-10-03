@@ -14,7 +14,8 @@ namespace Martlet.Mcp;
 /// MicrophoneCapture, the capture normalizer and Martlet's voice-activity detector) with a fixture loopback on a simulated
 /// clock: a synthesized video voice plays 0-3 s, the video is paused 3-6 s (the loopback delivers nothing at all, like a real
 /// one), plays again 6-9 s, then nothing plays. It reports whether the stream stayed continuous and whether the pause ended
-/// the first utterance, as it must for always listening to send it.</summary>
+/// the first utterance, as it must for always listening to send it, and runs the production matcher (PcEcho) that leaves out
+/// your own voice when this PC plays it back on fixed samples.</summary>
 internal static class PcAudioCheck
 {
     private const int Rate = 48_000;
@@ -40,7 +41,9 @@ internal static class PcAudioCheck
         var continuous = recordedSeconds is >= Seconds - 0.2 and <= Seconds + 0.05;
         var endedInPause = segments.Count > 0 && segments[0].EndedAt is >= 3.0 and <= 4.6;
         var resumed = segments.Count == 2 && segments[1].Start is >= 5.5 and <= 6.4;
-        var ok = continuous && endedInPause && resumed && pauseSpeechFrames == 0 && devices.WithoutMartlet == true;
+        var ownVoice = OwnVoice();
+        var ok = continuous && endedInPause && resumed && pauseSpeechFrames == 0 && devices.WithoutMartlet == true &&
+            ownVoice.All(sample => sample.LeftOut == sample.Expected);
         return new
         {
             ok,
@@ -69,9 +72,37 @@ internal static class PcAudioCheck
                 endedInPause,
                 resumed,
                 pauseSpeechFrames
+            },
+            yourVoice = new
+            {
+                rule = "a line the PC played that mostly repeats, in order, what the microphone heard you say just before (or " +
+                    "while it played) is your own voice played back on this PC and is left out, so Martlet never answers you twice",
+                share = PcEcho.Share,
+                samples = ownVoice.Select(sample => new
+                {
+                    scene = sample.Scene, spoken = sample.Spoken, played = sample.Played, expected = sample.Expected, leftOut = sample.LeftOut
+                }).ToArray()
             }
         };
     }
+
+    private sealed record OwnVoiceSample(string Scene, string Spoken, string Played, bool Expected, bool LeftOut);
+
+    // The production matcher (PcEcho) on what the talk window compares: your words and a line the PC played meanwhile.
+    private static OwnVoiceSample[] OwnVoice() =>
+    [
+        Sample("your voice played back, transcribed the same", "Do you like being called that?", "Do you like being called that?", true),
+        Sample("your voice played back, transcribed differently", "What's the weather like tomorrow?",
+            "what's the weather like, tomorrow", true),
+        Sample("part of what you said played back", "Okay, so I was thinking we could watch the next episode tonight. What do you think?",
+            "we could watch the next episode tonight", true),
+        Sample("a video while you talk", "Did you hear that?", "And now the weather for the weekend.", false),
+        Sample("a video you quote", "Ha, he said rain all week.",
+            "Expect rain all week across the region, with flooding in the north.", false)
+    ];
+
+    private static OwnVoiceSample Sample(string scene, string spoken, string played, bool expected) =>
+        new(scene, spoken, played, expected, PcEcho.Repeats(played, spoken));
 
     private sealed record Choices(bool HearPc, string Source, bool HandsFree, bool ReduceEcho);
 

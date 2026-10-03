@@ -360,9 +360,20 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   context, and on their own mostly to reply `[pass]`.
 - **When it goes to Thinking.** What the PC played goes with the next thing you
   say, in the order it was heard. On its own it is offered at most every 20
-  seconds (sooner once the PC has been quiet for 4 seconds), only while you
-  aren't talking, and it never interrupts or restarts a reply. At most the
-  newest 1,500 characters go with one message.
+  seconds after Martlet last answered (sooner once the PC has been quiet for 4
+  seconds, but never within 20 seconds of an answer, so it never makes a second
+  reply right after Martlet answered you), only while you aren't talking, and
+  it never interrupts or restarts a reply. At most the newest 1,500 characters
+  go with one message.
+- **Your own voice played back.** When this PC plays your microphone back (a
+  voice changer's or headset app's *hear myself*, Windows' *Listen to this
+  device*, a call that echoes you), the PC listener hears you too. A line the
+  PC played that mostly repeats, in order, what the microphone heard you say
+  (`PcEcho`: at least 60% of its words; heard while you talked or were being
+  transcribed, or up to 15 seconds after) is left out of the history and never
+  goes to Thinking, so Martlet doesn't answer you twice. The `LivePcAudio` line
+  then adds *This PC plays your voice back too; Martlet leaves it out.* and the
+  desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
   that is only what the PC played gets none of them, and earlier `[PC audio]`

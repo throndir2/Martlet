@@ -870,9 +870,14 @@ video paused 3-6 s with no packets at all (as a real loopback), the voice
 again 6-9 s, then nothing, 12 s in all. It returns `recordedSeconds` (12 when
 the gaps were filled), `segments` (`startS`, `endS`, `endedAtS`),
 `endedInPause` (the pause ended the first utterance, so always listening sends
-it), `resumed` and `pauseSpeechFrames`; `ok` is true when all hold and the
-fixture's Martlet-free source was used. It reads no credentials and contacts
-nothing.
+it), `resumed` and `pauseSpeechFrames`. `yourVoice` runs the production matcher
+(`PcEcho`) that leaves out your own voice when this PC plays it back: its
+`rule`, `share` (the share of the PC's words, in order, that must be yours) and
+`samples` (`scene`, `spoken`, `played`, `expected`, `leftOut`: your voice
+played back, transcribed the same or differently or in part, is left out; a
+video playing while you talk or one you quote is kept). `ok` is true when all
+hold, every sample came out as expected and the fixture's Martlet-free source
+was used. It reads no credentials and contacts nothing.
 
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
@@ -1604,7 +1609,9 @@ voice can't be left out); `pc_audio_check` reads the same choice. With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
 what this PC plays (not Martlet's own voice).*, *Hearing this PC play
-something…* or why it can't hear the PC; what the PC played shows in
+something…* or why it can't hear the PC, followed by *This PC plays your voice
+back too; Martlet leaves it out.* once a line the PC played repeated what you
+said; what the PC played shows in
 `LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
 verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words
