@@ -74,7 +74,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
-        "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
+        // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
+        // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
+        // --allow-ui-effects.
+        "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path).
