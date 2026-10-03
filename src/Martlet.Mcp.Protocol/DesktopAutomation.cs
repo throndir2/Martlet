@@ -98,7 +98,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ApiKeysStatus", "ApiKeyCreatedTitle", "ApiKeyHosts", "ApiKeyExample",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching).
-        "BackgroundStatus", "TrayStatus"
+        "BackgroundStatus", "TrayStatus",
+        // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
+        "DeviceRoleSummary", "DeviceRoleText"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// Smart home's found Home Assistants ("SmartHomeFound-0" reads "Home: http://192.168.1.20:8123 (Home Assistant 2026.9.4)"),

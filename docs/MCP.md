@@ -937,7 +937,9 @@ talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
 talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
-current choice) and `TrayExit`. `TrayOpen`, `TrayTalk` (like
+current choice) and `TrayExit`. On a Martlet host (Settings › *Use as a Martlet
+host*) the menu has no `TrayTalk`, `TrayStartListening` or `TrayCharacter`: a
+host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
 `OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
 (like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
 choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
@@ -952,7 +954,17 @@ directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
 desktop log records *Martlet started with the character and listening.*) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
-when Windows' own Startup apps switch turned it off). A second start with the
+when Windows' own Startup apps switch turned it off). On a Martlet host
+`StartCompanion` is disabled but keeps its saved state, `BackgroundStatus` says
+the character and listening don't start there, and the log records *Martlet
+started as a Martlet host: the character and listening stay off on this PC*
+instead (the character's *Show at startup* and Parakeet's warm-up are skipped
+too). Choosing `UseAsHost` (Settings › *What this PC is for*; it saves
+`device-role.txt`, so it needs `--allow-ui-effects`) ends a running
+conversation and hides the character, logging *This PC became a Martlet host,
+so Martlet ended the conversation...*; `UseAsCompanion` changes no saved
+companion choice, so they apply again from the next start. `DeviceRoleSummary`
+(*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text. A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only
 exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
