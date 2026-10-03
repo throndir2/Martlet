@@ -8,15 +8,19 @@ DIVA (RTX 4070, `diva-host` lip-sync), OpenRouter `x-ai/grok-4.3` for Thinking
 and Parakeet on this PC for speech-to-text. Numbers are this setup's, not
 qualification.
 
-**Short answer.** Today a spoken reply starts about **5.5-10 s** (sometimes
-24 s) after you stop. Most of it is two stages: the Thinking model's hidden
-reasoning before its first word (3-8 s) and synthesizing each whole sentence
-before any of it plays (1-3.5 s, plus about 7 s on the first reply after the
-voice service starts). Both can be cut a lot without giving up cloning or
-sighs. Under 800 ms needs every stage near its floor at once (see
-[the budget](#a-budget-under-800-ms)); 1.5-2.5 s is realistic soon with a cloud
-model, and under 1 s needs streaming speech, a smarter end-of-turn detector
-and a fast or local Thinking model.
+**Short answer.** Before these changes a spoken reply started about
+**5.5-10 s** (sometimes 24 s) after you stopped. Most of it was two stages:
+the Thinking model's hidden reasoning before its first word (3-8 s) and
+synthesizing each whole sentence before any of it played (1-3.5 s, plus about
+7 s on the first reply after the voice service started). Both are now cut
+without giving up cloning or sighs: Thinking steps *Off* skips the reasoning,
+and the voice streams its first audio about 0.35-0.4 s after it is asked,
+whatever the sentence's length. What's left is mostly the end-of-speech pause
+(0.5-0.8 s), speech-to-text and the Thinking model's own time to its first
+clause. Under 800 ms needs every stage near its floor at once (see
+[the budget](#a-budget-under-800-ms)); about 1.5-2 s is realistic now with a
+cloud model, and under 1 s needs a smarter end-of-turn detector and a fast or
+local Thinking model.
 
 ## Measure first: the reply latency line
 
@@ -105,15 +109,21 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
 - The desktop's own work before the request is small: 115 ms in a fresh
   profile (preparing 29, memory 45, building 17, authorization 24).
 
-## What this change does
+## What changed
 
 1. **Reply latency line** and MCP `latency_report`, above.
-2. **Faster Chatterbox service** (image `martlet-chatterbox:3`, see
+2. **Faster Chatterbox service** (image `martlet-chatterbox:4`, see
    [Chatterbox](CHATTERBOX_VOICE.md#how-it-runs)): voice conditionals computed
    once per reference recording; the first-call warm-up paid while loading;
    T3 decoded by replaying one captured CUDA graph per token over a static KV
    cache, with the library's own sampling and identical logits (checked
    against eager decoding). Same words, same voice, same watermark, same tags.
+3. **Streaming pieces**: each piece's audio is sent as it is made, the first
+   chunk after about 12 speech tokens, with crossfaded seams and the watermark
+   on every chunk (details and checks in
+   [Chatterbox](CHATTERBOX_VOICE.md#how-it-runs)).
+4. **Thinking steps** (Companion › Replies) turns a reasoning model's hidden
+   thinking off; a model that refuses Off is asked again with its default.
 
 Two measurements: one process on an idle GPU (graph against the library's own
 decoding), and the running service against this change's service on a side
@@ -131,6 +141,20 @@ port, interleaved through `/synthesize` while the character was showing
 T3 alone went from 17-25 ms to **6 ms a token**. With a busy, nearly full card
 (both services and the character) the gain was 1.5-3.5x. `torch.compile`
 isn't usable in the image (no C compiler), so the graph is captured by hand.
+
+With streaming, the same service A/B (character showing, five of each):
+
+| Piece | First audio before → after | Whole piece before → after |
+| --- | --- | --- |
+| "Oh, hey there." (1.4 s) | 1,215 → 401 ms | 1,219 → 779 ms |
+| A 4 s sentence | 2,430 → 368 ms | 2,432 → 1,542 ms |
+| "[sigh] Fine, I'll help you, but you owe me one." (3 s) | 2,066 → 359 ms | 2,069 → 1,314 ms |
+| A 7.7 s sentence | 4,180 → 358 ms | 4,185 → 2,707 ms |
+
+Streamed speech was checked against a whole-piece decode of the same tokens:
+the same length, less difference (log-mel 0.1-0.39) than between two whole
+decodes with different noise (0.46-0.82), no larger sample jumps at the seams
+than elsewhere, and the watermark detected on every streamed piece checked.
 
 ## How others get fast
 
@@ -171,15 +195,15 @@ Research summary (sources checked 2026-10-03; vendor claims marked):
 
 ## A budget under 800 ms
 
-| Stage | Today | Floor with this pipeline | How |
-| --- | --- | --- | --- |
-| End of speech | 800 ms | 200-300 ms | Smart Turn v3 with a shorter pause; 500 ms exists today |
-| Speech-to-text | logged now | 50-150 ms | Parakeet int8 on a short utterance; streaming STT overlaps it with speaking |
-| Desktop prep | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
-| Thinking to first clause | 3-8 s | 150-400 ms | Reasoning off; a fast provider or a small local model on the other PC's GPU; preemptive start |
-| Voice to first audio | 0.9-3.5 s | 250-350 ms | CUDA graph (done) plus streaming the first 10-15 tokens of each piece |
-| Playback | 30-50 ms | 30 ms | |
-| **Total** | **5.5-10 s** | **about 0.7-1.3 s** | |
+| Stage | Before | Now | Floor with this pipeline | How |
+| --- | --- | --- | --- | --- |
+| End of speech | 800 ms | 800 ms (500 ms setting) | 200-300 ms | Smart Turn v3 with a shorter pause |
+| Speech-to-text | not logged | logged | 50-150 ms | Parakeet int8 on a short utterance; streaming STT overlaps it with speaking |
+| Desktop prep | about 115 ms | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
+| Thinking to first clause | 3-8 s | provider's time to first words with Thinking steps Off | 150-400 ms | A fast provider or a small local model on the other PC's GPU; preemptive start |
+| Voice to first audio | 1.2-4.2 s | 0.35-0.4 s | 0.25-0.3 s | Done: CUDA graph and streaming; a GPU the character doesn't share |
+| Playback | 30-50 ms | 30-50 ms | 30 ms | |
+| **Total** | **5.5-10 s** | **about 1.5-2.5 s** (estimate) | **about 0.7-1.2 s** | |
 
 Under 800 ms is reachable only with every row at its floor, and with a cloud
 model the network and provider queue alone can use half of it. Speaking a
@@ -194,22 +218,19 @@ backchannel at once would make most of the rest feel instant.
    choice next to the model. A model that always thinks refuses Off; Martlet
    then asks again with the model's default, logs it and keeps the default for
    that model, so pick a model that can skip thinking.
-2. **Update hosts to this version** so `imouto-host` rebuilds Chatterbox with
-   the speed-ups (30-60% less synthesis time, no 7 s first reply).
-3. **Stream each piece.** Emit the first 10-15 T3 tokens through S3Gen as soon
-   as they exist (250-360 ms measured with the graph) and the rest in
-   overlapping chunks with a short crossfade; the protocol and the desktop
-   already play frames as they arrive.
-4. **Shorter, smarter end of turn.** Choose the 500 ms pause today; add a
+2. **Update hosts to this version** so `imouto-host` rebuilds Chatterbox
+   (image `:4`) with the speed-ups and streaming: the first audio of every
+   piece after about 0.35-0.4 s, and no 7 s first reply.
+3. **Shorter, smarter end of turn.** Choose the 500 ms pause today; add a
    turn-detection model (Smart Turn v3) so 200-300 ms doesn't cut you off.
    Martlet already restarts a reply when you keep talking.
-5. **Start Thinking early.** Send the transcript at a short pause and keep the
+4. **Start Thinking early.** Send the transcript at a short pause and keep the
    reply if nothing else is said (the restart already exists).
-6. **A faster Thinking route.** A non-reasoning or fast model, OpenRouter
+5. **A faster Thinking route.** A non-reasoning or fast model, OpenRouter
    provider sorting by latency, or a 7-8B model on DIVA's GPU (no internet
    round trip). Keep the voice on the GPU that isn't rendering the character.
-7. **Mask the rest** with a cached backchannel in the cloned voice.
-8. Small desktop wins: wake the talk window when a transcript arrives
+6. **Mask the rest** with a cached backchannel in the cloned voice.
+7. Small desktop wins: wake the talk window when a transcript arrives
    instead of on its 100 ms tick; keep provider connections warm (pooled
    connections idle out after a minute, so a pause costs a new TLS handshake,
    visible as *Thinking connection*).
@@ -224,8 +245,11 @@ backchannel at once would make most of the rest feel instant.
 - A disposable desktop (`-Desktop`) with Thinking on a loopback fixture logged
   the line for a typed message.
 - The Chatterbox numbers come from the container on IMOUTO, with the service
-  started from this change on a side port next to the running one.
+  started from this change on a side port next to the running one; streamed
+  speech was compared with whole-piece decodes by measurement.
 - **NOT RUN:** the always-listening steps with a real microphone (no audio
   capture in agent verification), hidden reasoning on OpenRouter with a real
-  key (paid), listening to the CUDA-graph voice (no one listened; logits were
-  identical to the library's), and GPUs other than the RTX 5080.
+  key (paid), listening to the CUDA-graph or streamed voice (no one listened;
+  logits were identical to the library's and streamed speech measured within
+  the model's own variation), streaming through a real paired gateway to the
+  speakers, and GPUs other than the RTX 5080.

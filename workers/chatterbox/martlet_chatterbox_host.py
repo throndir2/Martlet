@@ -699,17 +699,38 @@ class EngineHost:
                     else:
                         reference_path = _write_private_reference(job.request.reference.audio)
                     samples = 0
+                    first_audio: float | None = None
+                    streaming = fast is not None and fast.streams
                     for chunk in job.request.chunks:
                         if job.cancel_requested:
                             return
-                        pcm = _generate_with_memory_retry(engine, chunk.text, reference_path)
-                        samples += len(pcm) // 2
-                        if not job.emit_pcm(chunk.index, pcm) or not job.chunk_completed(chunk.index):
+                        spoken = False
+                        if streaming:
+                            # Spoken as it is made: the first audio leaves after about a dozen speech tokens.
+                            try:
+                                for pcm in fast.stream(chunk.text, cancelled=lambda: job.cancel_requested):
+                                    spoken = True
+                                    first_audio = first_audio if first_audio is not None else time.monotonic() - started
+                                    samples += len(pcm) // 2
+                                    if not job.emit_pcm(chunk.index, pcm):
+                                        return
+                            except CacheTooSmall:
+                                pass
+                            if job.cancel_requested:
+                                return
+                        if not spoken:
+                            pcm = _generate_with_memory_retry(engine, chunk.text, reference_path)
+                            first_audio = first_audio if first_audio is not None else time.monotonic() - started
+                            samples += len(pcm) // 2
+                            if not job.emit_pcm(chunk.index, pcm):
+                                return
+                        if not job.chunk_completed(chunk.index):
                             return
                     # Timing only, never the text: how long this reply's speech took to make.
-                    _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms "
-                         f"({'kept' if cached else 'new'} voice conditionals, "
-                         f"{'CUDA graph' if fast is not None and fast.graph_ready else 'eager'} decoding).")
+                    _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms, first audio after "
+                         f"{(first_audio or 0) * 1000:.0f} ms ({'kept' if cached else 'new'} voice conditionals, "
+                         f"{'CUDA graph' if fast is not None and fast.graph_ready else 'eager'} decoding"
+                         f"{', streamed' if streaming else ''}).")
                 job.completed()
             finally:
                 if reference_path is not None:
@@ -902,6 +923,71 @@ class FastTurbo:
     def graph_ready(self) -> bool:
         return self.graph is not None and self.graph.captured
 
+    @property
+    def streams(self) -> bool:
+        """Whether each piece is spoken as it is made (first audio after about a dozen speech tokens) rather than whole."""
+        return self.graph_ready and os.environ.get("MARTLET_CHATTERBOX_STREAM", "1") != "0"
+
+    def stream(self, text: str, cancelled: Any = None) -> Any:
+        """One piece of speech as 24 kHz mono PCM16 chunks, each watermarked, the first after about 12 speech tokens (half a
+        second of speech) and then 25, 50 and 100 more at a time. Each chunk decodes every token so far with the same noise
+        and holds back the last 3 tokens' frames until their lookahead is known; the vocoder carries its source and an 8-frame
+        mel overlap across chunks, and the 160 ms where chunks meet is crossfaded (CosyVoice 2's streaming scheme, which
+        S3Gen comes from). Measured against a whole-piece decode: the same length, less difference than two whole decodes
+        with different noise, no larger sample jumps at the seams, and the watermark still detected."""
+        import numpy as np  # type: ignore
+        import torch  # type: ignore
+        from chatterbox.models.s3gen.const import S3GEN_SIL  # type: ignore
+        from chatterbox.models.s3gen.s3gen import S3Token2Mel  # type: ignore
+        from chatterbox.tts_turbo import punc_norm  # type: ignore
+
+        model, s3 = self.model, self.model.s3gen
+        conds = model.conds
+        tokens_in = model.tokenizer(punc_norm(text), return_tensors="pt", padding=True, truncation=True).input_ids.to(model.device)
+        prompt = conds.gen["prompt_token"].shape[1]
+        overlap = 8 * 480
+        window = torch.from_numpy(np.hamming(2 * overlap)).float()
+        trim = s3.trim_fade.float().cpu()
+        with torch.inference_mode():
+            noise = torch.randn(1, 80, 2 * (prompt + 1100), device=model.device, dtype=s3.dtype)
+
+            def mel(tokens: Any, last: bool) -> Any:
+                # The library's finalize=False trims the encoder output but not its mask, so decode everything and hold back the
+                # last 3 tokens' frames until the next chunk brings their lookahead.
+                count = tokens.shape[1]
+                out = S3Token2Mel.forward(s3, tokens, ref_wav=None, ref_sr=None, ref_dict=conds.gen, n_cfm_timesteps=2,
+                                          finalize=True, noised_mels=noise[:, :, :2 * (prompt + count)])
+                return out if last else out[:, :, :2 * (count - 3)]
+
+            emitted, cache, first = 0, None, True
+            for tokens, last in self.graph.chunks(conds.t3, tokens_in, cancelled):
+                tokens = tokens[:, tokens[0] < 6561]
+                if last:
+                    tokens = torch.cat([tokens, torch.full((1, 3), S3GEN_SIL, device=tokens.device, dtype=tokens.dtype)], dim=1)
+                if not last and tokens.shape[1] <= 3:
+                    continue
+                spec = mel(tokens, last)
+                fresh = spec[:, :, emitted:]
+                emitted = spec.shape[2]
+                if cache is not None:
+                    fresh = torch.cat([cache["mel"], fresh], dim=2)
+                wav, source = s3.hift_inference(fresh.to(dtype=s3.dtype), cache["source"] if cache is not None else None)
+                wav = wav.float().cpu()
+                if cache is not None:
+                    wav[..., :overlap] = wav[..., :overlap] * window[:overlap] + cache["speech"][..., -overlap:] * window[overlap:]
+                if not last:
+                    cache = {"mel": fresh[:, :, -8:], "source": source[:, :, -overlap:], "speech": wav[:, -overlap:].clone()}
+                    wav = wav[:, :-overlap]
+                if first:
+                    wav[:, :len(trim)] *= trim
+                    first = False
+                samples = wav[0].numpy()
+                if samples.size:
+                    marked = model.watermarker.apply_watermark(samples, sample_rate=model.sr)
+                    yield (np.clip(np.asarray(marked, dtype=np.float32), -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+                if last or (cancelled is not None and cancelled()):
+                    return
+
     def use_reference(self, audio: bytes) -> bool:
         """Sets the model's voice conditionals for this reference; True when they were already kept."""
         key = hashlib.sha256(audio).hexdigest()
@@ -1074,6 +1160,54 @@ class _T3Graph:
             if tokens.size(1) > 0 and tokens[0, -1] == t3.hp.stop_speech_token:
                 tokens = tokens[:, :-1]
             return tokens
+
+
+    def chunks(self, t3_cond: Any, text_tokens: Any, cancelled: Any = None, first: int = 12, largest: int = 100) -> Any:
+        """The speech tokens so far, as (tokens, last) once there are first + 3 (the decoder's lookahead), then 25, 50 and
+        largest more at a time, and once more with all of them at the end; sampled exactly as generate() does."""
+        torch = self.torch
+        import torch.nn.functional as F  # type: ignore
+        from transformers.generation.logits_process import (  # type: ignore
+            LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper)
+
+        t3 = self.t3
+        processors = LogitsProcessorList([TemperatureLogitsWarper(0.8), TopKLogitsWarper(1000), TopPLogitsWarper(0.95),
+                                          RepetitionPenaltyLogitsProcessor(1.2)])
+        with torch.inference_mode():
+            start = t3.hp.start_speech_token * torch.ones_like(text_tokens[:, :1])
+            embeds, _ = t3.prepare_input_embeds(t3_cond=t3_cond, text_tokens=text_tokens, speech_tokens=start, cfg_weight=0.0)
+            length = embeds.shape[1]
+            budget = min(1000, self.MAX_TOKENS - length - 1)
+            if embeds.shape[0] != 1 or budget < 100:
+                raise CacheTooSmall()
+            if self.cuda_graph is None:
+                self._prefill(embeds)
+                self._capture(length)
+            logits = self._prefill(embeds)
+            next_token = torch.multinomial(F.softmax(processors(start, logits[:, -1, :]), dim=-1), num_samples=1)
+            generated = [next_token]
+            target, step = first + 3, 25
+            for i in range(budget):
+                self.x.copy_(t3.speech_emb(next_token))
+                self.position.fill_(length + i)
+                self.cuda_graph.replay()
+                processed = processors(torch.cat(generated, dim=1), self.out[:, -1, :])
+                if torch.all(processed == -float("inf")):
+                    break
+                next_token = torch.multinomial(F.softmax(processed, dim=-1), num_samples=1)
+                if torch.all(next_token == t3.hp.stop_speech_token):
+                    break
+                generated.append(next_token)
+                if len(generated) >= target:
+                    yield torch.cat(generated, dim=1), False
+                    if cancelled is not None and cancelled():
+                        return
+                    target, step = target + step, min(step * 2, largest)
+            yield torch.cat(generated, dim=1), True
+
+
+class CacheTooSmall(Exception):
+    """A piece too long for the CUDA graph's static KV cache; it is spoken whole with the library's own decoding."""
 
 
 WORKER = EngineHost()
