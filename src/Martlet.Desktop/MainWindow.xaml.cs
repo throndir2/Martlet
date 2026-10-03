@@ -118,6 +118,7 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeSettingsSync();
         InitializeNetwork();
         InitializeApiKeys();
         InitializeNearby();
@@ -184,6 +185,7 @@ public partial class MainWindow : ThemedWindow
         else ErrorLog.Info("Martlet started as a Martlet host: the character and listening stay off on this PC" +
             (background.StartCompanion ? " (When Martlet starts, show the character and start listening is kept for when it's your companion PC)." : "."));
         StartCluster();
+        StartSettingsSync();
         StartNetwork();
         StartApiKeys();
         StartVoiceSync();
@@ -669,6 +671,7 @@ public partial class MainWindow : ThemedWindow
         characterTimer.Stop();
         updateTimer.Stop();
         clusterTimer.Stop();
+        settingsTimer.Stop();
         networkTimer.Stop();
         apiKeysTimer.Stop();
         voiceSyncTimer.Stop();

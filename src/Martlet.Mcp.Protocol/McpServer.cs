@@ -200,6 +200,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "resuming an interrupted copy, passing characters on to a host the first desktop never reached, removal everywhere (host " +
             "pieces and desktop copies deleted), keeping the copy a computer shows, stale copies, a host restart, piece checks and the " +
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+        Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
+            "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
+            "companion, replies, prompts, memory, lorebooks, character, talk, speech-display, appearance) with which computer changed it " +
+            "and when, its revision, whether it uses an API key (never the key or its digest), the provider and model of each job's " +
+            "route, and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
+            "contacts nothing and reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
+            "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
+            "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
+            "desktop's paired client, sync engine and settings sections. Walks the owner's case (a PC on OpenRouter becomes a host, the " +
+            "other PC still on NVIDIA Build becomes the companion and takes OpenRouter, its model and key), model and key changes, offline " +
+            "edits on both sides (different and the same setting; the later edit wins), a host that missed a change, a stale copy, a " +
+            "newer Martlet's setting, a Windows voice a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
+            "no keys in desktop files and an unsigned request refused. Loopback only; the folder is deleted and the vault untouched.", new { }),
         Tool("audio2face_check", "Animate a short synthesized speech-like test signal (generated here; no microphone, nothing played) " +
             "with an Audio2Face service on a numeric loopback endpoint (default http://127.0.0.1:52000) through Martlet's production " +
             "Audio2Face client, the one the host gateway's lip-sync relay uses, so either Audio2Face engine (the local open-source SDK " +
@@ -372,6 +389,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
+                "settings_sync_status" => SettingsSyncStatus(arguments),
+                "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
@@ -926,6 +945,55 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+    }
+
+    /// <summary>The settings this PC shares with the owner's other computers (shared-settings.json, the name
+    /// Martlet.Core.Sync.SharedSettingsState uses). Personal text (personality, prompts, lorebooks) and keys are never returned:
+    /// only who changed each setting and when, its size, whether it uses a key, and for jobs the provider and model.</summary>
+    private static object SettingsSyncStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName))) return new { sync, state = "none" };
+        var (document, observed) = Martlet.Core.Sync.SharedSettingsState.Load(directory);
+        object? Route(Martlet.Core.Sync.SharedSetting setting)
+        {
+            try
+            {
+                if (setting.Key is "thinking" or "listening" or "speaking")
+                {
+                    var route = Martlet.Core.Sync.SharedRoute.Parse(setting.Value);
+                    return new { type = route.Type, origin = route.Origin, model = route.Model, voice = route.Voice };
+                }
+                if (setting.Key == "thinking-fallback" && setting.Value != "null")
+                {
+                    using var parsed = JsonDocument.Parse(setting.Value);
+                    return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
+                }
+                if (setting.Key is "memory" or "appearance" or "talk")
+                {
+                    using var parsed = JsonDocument.Parse(setting.Value);
+                    return parsed.RootElement.Clone();
+                }
+            }
+            catch (Exception error) when (error is JsonException or Martlet.Core.Contracts.ContractException or KeyNotFoundException or InvalidOperationException) { }
+            return null;
+        }
+        return new
+        {
+            sync, state = "loaded", revision = document.Revision, count = document.Settings.Count,
+            settings = document.Settings.Select(s => new
+            {
+                key = s.Key, updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision, usesKey = s.SecretSha256 is not null,
+                characters = s.Value.Length, off = s.Value == "null",
+                here = !observed.TryGetValue(s.Key, out var seen) ? "unknown"
+                    : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
+                value = Route(s)
+            }).ToArray()
+        };
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the

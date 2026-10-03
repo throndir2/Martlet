@@ -1178,7 +1178,11 @@ public partial class MainWindow
         else await avatar.UseHostAsync(after.RemoteHost, lifetime.Token);
     }
 
-    private void CheckHosts_Click(object sender, RoutedEventArgs e) => CheckHostsAsync(NetworkMap.Hosts(Inputs())).Forget();
+    private void CheckHosts_Click(object sender, RoutedEventArgs e)
+    {
+        CheckHostsAsync(NetworkMap.Hosts(Inputs())).Forget();
+        QueueSettingsSync();
+    }
 
     private async Task CheckHostsAsync(IReadOnlyList<PairedHost> hosts)
     {

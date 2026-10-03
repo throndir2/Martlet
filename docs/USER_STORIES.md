@@ -89,9 +89,10 @@ None of them finishes the job alone.
 ### 1.6 No network
 
 Every desktop pairs with every host on its own. A second PC cannot "join";
-it repeats setup, pairing and keys. The shared *cluster plan* syncs only
-routing and is on by default (Devices › *Keep who does what in sync on all
-my computers*).
+it repeats setup and pairing. The shared *cluster plan* (routing) and the
+[shared settings](CLUSTER.md#one-martlet-on-every-computer) (each job's
+provider, model and cloud key, the character, personality and replies) are on
+by default (Devices › *Keep Martlet the same on all my computers*).
 
 ---
 
@@ -424,8 +425,9 @@ don't redo everything, and tell the network what this PC can do.*
   [Martlet network](NETWORK.md) with no second Allow, so it also pairs with
   every host added later, on any member. Pairing with any one host of the
   network (a code or SSH) works too: it asks to join and a member allows it
-  under Devices › Your Martlet network. Not yet: combining setups, cloud keys
-  travelling with it; who-does-what sync is on by default.
+  under Devices › Your Martlet network. Its setup and cloud keys come from the
+  [shared settings](CLUSTER.md#one-martlet-on-every-computer) on its first
+  sync; who-does-what sync is on by default. Not yet: combining setups.
 
 #### B2. Approve a joining machine
 

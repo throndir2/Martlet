@@ -89,6 +89,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
         "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
+        // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
+        // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
+        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects.
+        "SettingsSyncStatus", "SettingsSyncWaiting",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",

@@ -73,11 +73,15 @@ public partial class MainWindow
         clusterProbes.Clear();
         clusterFollow.Clear();
         clusterCheckedAt = null;
+        settingsCheckedAt = null;
+        settingsCopies.Clear();
         if (on) StartCluster();
         else clusterTimer.Stop();
-        ActionText.Text = on ? "Device choices now stay in sync."
-            : "Sync is off. This PC keeps its own choices.";
+        QueueSettingsSync();
+        ActionText.Text = on ? "Martlet is now the same on all your computers: who does what and its settings stay in sync."
+            : "Sync is off. This PC keeps its own choices and settings.";
         ShowClusterStatus();
+        ShowSettingsStatus();
         if (DevicesPage.IsVisible) RenderMap();
         RefreshCoverage();
     }
@@ -349,8 +353,12 @@ public partial class MainWindow
     {
         if (desired.HostId is null)
         {
+            // The route the owner's computers share wins over the one this PC kept aside, which is used when this PC can't
+            // use the shared one yet (the settings sync keeps trying and says why).
+            var (shared, sharedProblem) = await HandBackToSharedRouteAsync(job);
+            if (shared && sharedProblem is null) return null;
             if (JobSavedRoute.Load(store!.DataDirectory, job.SavedFile) is not { } saved)
-                return $"choose a Setup option for {job.Job} on this PC.";
+                return sharedProblem ?? $"choose a Setup option for {job.Job} on this PC.";
             var loaded = await setupService!.LoadAsync(lifetime.Token);
             if (loaded.Settings is not { Setup: not null } settings) return "complete Setup first.";
             var next = HostHandoff.Back(settings, saved);

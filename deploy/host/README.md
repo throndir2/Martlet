@@ -189,10 +189,15 @@ such as `home-assistant`; probes add `ha-existing` (something else on port
 
 The gateway also keeps a copy of the shared **who does what** plan in
 `cluster.json` beside `host.json`, written by the gateway when a paired desktop
-syncs (Devices > Settings for all devices > *Keep who does what in sync*). It names which
+syncs (Devices > Settings for all devices > *Keep Martlet the same on all my computers*). It names which
 host does each job, which jobs fail over and which roles each host runs; it
 holds no keys and the host never acts on it. See
-[Shared who does what and failover](../../docs/CLUSTER.md). Beside them it keeps
+[Shared who does what and failover](../../docs/CLUSTER.md). Beside it,
+`shared-settings.json` holds the settings the owner's computers share
+(how Martlet thinks, listens and speaks with their cloud API keys, its
+character and personality; see
+[One Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),
+given only to paired devices. Beside them it keeps
 `commands.json` (commands paired computers sent, never their secrets) and
 `agent.token` (written fresh at each start; only Martlet on the host computer
 reads it, to take those commands). See
