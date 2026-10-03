@@ -52,10 +52,16 @@ computers paired with its host service under *Pair your main PC*.
 The Devices map draws the same computers on every one of them: this PC in the
 middle, every other member of the network (and every computer asking to join or
 using your hosts outside it) as its own device with where it was last active,
-your hosts, and the cloud services your jobs use. A PC that runs its own host
-service is one device: on the main PC, the host PC's host service shows under
-that PC's name (Martlet names a PC's host service after the PC, so *DIVA* runs
-`diva-host`). A host PC uses no jobs, so its map shows who does what from the
+your hosts, and the cloud services your jobs use. Each computer is one device:
+a PC that runs its own host service shows its device ID and its host service
+together (*IMOUTO, desktop-imouto · imouto-host*), named by what it is
+(*Martlet companion* or *Martlet host PC*). Each PC tells the others what it is
+through the [shared settings](CLUSTER.md#one-martlet-on-every-computer), under
+its own `pc.<device ID>` entry (its role and the host service Martlet runs on
+it), so a companion PC that also runs a host service still shows the jobs it
+does itself (Parakeet listening, say) and a host PC shows none. A computer on
+an older Martlet hasn't said, so it shows as *Martlet app* and its host service
+is matched by name (*DIVA* runs `diva-host`). A host PC uses no jobs, so its map shows who does what from the
 [shared plan](CLUSTER.md) (a job a host does on that host, a cloud job on its
 cloud service, a job that runs on each companion PC on those PCs) rather than
 the Setup choice it kept from before it became a host. Before this, a host PC's
@@ -175,11 +181,12 @@ disposable data folder
 from network** signed and saved; as a host PC that started the network, the sync
 running and logged; as a host PC in no network, watching only, with no key or
 `network.json` made). The Devices map was checked the same way on disposable
-host-PC and companion data folders with a signed roster and a shared plan: the
-other member computers shown as devices, a member PC that runs a host service
-shown as one device under its name, a host PC's jobs placed from the plan
-(its own host service speaking and doing lip-sync, the cloud model, listening on
-the companion PCs) and one host service row. The gateway and Linux gateway unit tests pass. **NOT RUN:**
+host-PC and companion data folders with a signed roster, a shared plan and the
+other computers' `pc.<device ID>` entries: the other member computers shown as
+devices, each computer that runs a host service shown as one device with both
+IDs (a companion with its own Parakeet listening, a host PC with none), a host
+PC's jobs placed from the plan (its own host service speaking and doing
+lip-sync, the cloud model) and one host service row. The gateway and Linux gateway unit tests pass. **NOT RUN:**
 a native or Docker Linux host keeping `network.json`, `martlet-host
 network-reset`, the SSH flow adding a real Linux host to a network, the desktop
 window listing computers reported by a live host, letting a computer in through

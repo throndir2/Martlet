@@ -967,8 +967,8 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. Each `Node-<id>` also returns the device's
 card as text: its name, subtitle, status and what it runs (for example
-`IMOUTO, desktop-imouto. Active now. Runs: Martlet app, Listening` or
-`DIVA, diva-host · 192.168.50.45. Connected. Runs: Speaking, Lip-sync, Martlet app`),
+`IMOUTO, desktop-imouto · imouto-host. Connected. Runs: Martlet companion, Martlet host, Listening`
+or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking, Lip-sync`),
 so one snapshot shows the whole map. `SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
@@ -987,9 +987,12 @@ Martlet updated it). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `member`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
-returns the row's text. Another Martlet computer's `member` row (*Martlet app*)
-says where it stands with your network and where it was last active, for
-example `In your Martlet network. Active now on diva-host.`. A paired host's `users` row (*Computers using it*) lists
+returns the row's text. Another Martlet computer's `member` row (*Martlet
+companion*, *Martlet host PC*, or *Martlet app* for one on an older Martlet)
+gives its device ID, what it is, where it stands with your network and where it
+was last active, for example `desktop-imouto. Conversations, its microphone and
+speakers; it runs a host service too (imouto-host). In your Martlet network.
+Active now on diva-host.`. A paired host's `users` row (*Computers using it*) lists
 the computers paired with it as the host reports them, for example
 `DeviceComponentDetail-users`: `IMOUTO (desktop-imouto), active now; This PC,
 active now.`; on this PC's own host service, `DeviceComponentDetail-host-service`

@@ -413,7 +413,9 @@ public partial class MainWindow
         {
             var seen = networkViews.Values.SelectMany(v => v.Devices ?? []).Where(d => d.DeviceId == id)
                 .OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).FirstOrDefault();
-            return new(id, name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through);
+            // What that computer says it is (companion or host PC, and its host service), shared by it with the settings.
+            var pc = settingsNode?.Document.Find(SharedPc.Key(id)) is { } entry ? SharedPc.Read(entry.Value) : null;
+            return new(id, name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through, pc?.DeviceRole, pc?.Host);
         }
         if (roster is not null)
             foreach (var member in roster.ActiveDesktops.Where(d => !IsThisDevice(d.Id)))
@@ -432,7 +434,8 @@ public partial class MainWindow
         var now = DateTimeOffset.UtcNow;
         return string.Join(";", networkViews.OrderBy(v => v.Key, StringComparer.Ordinal).Select(v => v.Key + ":" +
             string.Join(",", (v.Value.Devices ?? []).Select(d => d.DeviceId + (Active(d, now) ? "+" : "-"))))) + "|" +
-            string.Join(",", networkState.Roster?.ActiveDesktops.Select(d => d.Id) ?? []) + "|" +
+            string.Join(",", networkState.Roster?.ActiveDesktops.Select(d => d.Id + "=" +
+                (settingsNode?.Document.Find(SharedPc.Key(d.Id))?.Value ?? "")) ?? []) + "|" +
             string.Join(",", networkJoins.Select(j => j.DeviceId));
     }
 
