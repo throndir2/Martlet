@@ -14,11 +14,12 @@ public partial class MainWindow
     /// <summary>Home has no problem to fix first, so its main talk action shows as the primary button.</summary>
     private bool stageReady;
 
-    /// <summary>The running conversation, created (hidden) when there is none yet; null while Martlet can't talk right now.</summary>
+    /// <summary>The running conversation, created (hidden) when there is none yet; null while Martlet can't talk right now, and
+    /// always on a Martlet host.</summary>
     private LiveConversationWindow? ConversationSession()
     {
         if (openConversation is { } open) return open;
-        if (conversation is null || closing || saving || model?.IsRunning == true) return null;
+        if (conversation is null || closing || saving || model?.IsRunning == true || Role == DeviceRole.Host) return null;
         var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
             { Owner = this, Support = support };
@@ -60,6 +61,11 @@ public partial class MainWindow
     private void StartListening()
     {
         if (closing) return;
+        if (Role == DeviceRole.Host)
+        {
+            ActionText.Text = HostHasNoCompanionText;
+            return;
+        }
         if (ConversationSession() is not { } talk)
         {
             ActionText.Text = "Martlet can't listen right now. Try again in a moment.";
@@ -71,13 +77,39 @@ public partial class MainWindow
         UpdateTray();
     }
 
-    /// <summary>Settings › When Martlet starts, show the character and start listening.</summary>
+    /// <summary>Settings › When Martlet starts, show the character and start listening. Only a companion PC does this.</summary>
     private async Task StartCompanionAsync()
     {
+        if (Role != DeviceRole.Companion) return;
         await ShowSavedCharacterAsync(onlyIfAutoShow: false);
         if (closing) return;
         if (Talk.HandsFree) StartListening();
         ErrorLog.Info(Talk.HandsFree ? "Martlet started with the character and listening." : "Martlet started with the character; push-to-talk needs the talk window.");
+    }
+
+    private const string HostHasNoCompanionText =
+        "This PC is a Martlet host, so it doesn't talk, listen or show the character. Use your companion PC, or choose Use as my companion PC in Settings.";
+
+    /// <summary>This PC just became a Martlet host: it ends the conversation (listening and vision stop with it) and hides the
+    /// character. Their saved choices stay as they are, so they come back if this PC is your companion PC again.</summary>
+    private async Task StopCompanionForHostAsync()
+    {
+        var talking = openConversation is not null;
+        openConversation?.End();
+        var showing = avatar.IsShowing;
+        var hidden = !showing || await StopAvatarSafelyAsync();
+        UpdateCharacterButton();
+        RenderListening();
+        UpdateTray();
+        if (closing || !talking && !showing) return;
+        var stopped = (talking, showing) switch
+        {
+            (true, true) => "ended the conversation and hid the character",
+            (true, false) => "ended the conversation",
+            _ => "hid the character"
+        };
+        ErrorLog.Info($"This PC became a Martlet host, so Martlet {stopped} here.");
+        if (hidden) ActionText.Text = $"This PC is now a Martlet host, so Martlet {stopped}. Your companion choices are kept for when it's your companion PC again.";
     }
 
     private void StartCompanion_Changed(object sender, RoutedEventArgs e)

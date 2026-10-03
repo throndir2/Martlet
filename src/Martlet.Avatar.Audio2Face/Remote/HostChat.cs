@@ -57,7 +57,8 @@ public sealed partial class Audio2FaceHostConnection
             ["input"] = ChatText(input),
             ["temperature"] = temperature,
             ["maximum_output_tokens"] = maximumOutputTokens,
-            ["maximum_context_tokens"] = maximumContextTokens
+            // The desktop's context bound covers tool schemas the host never gets; the gateway takes at most 32,768.
+            ["maximum_context_tokens"] = Math.Min(maximumContextTokens, GenerationSettings.MaximumContextTokens)
         };
         if (!string.IsNullOrEmpty(system)) payload["system"] = ChatText(system);
         if (history.Count > 0)

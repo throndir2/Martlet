@@ -16,7 +16,11 @@ shows its history, and closing the window while Martlet listens or watches only
 hides it (**End the conversation** in the notification-area menu ends it). A
 Home Assistant or tool question shows the window. Settings › *Startup and
 closing* › *When Martlet starts, show the character and start listening* does
-both on every start, including Start with Windows in the notification area. Opening setup never resolves a key,
+both on every start, including Start with Windows in the notification area. A
+PC used as a Martlet host never talks, listens or shows the character: switching
+it to a host ends a running conversation and hides the character, and at start
+it skips this choice, the character's *Show at startup* and Parakeet's warm-up
+while keeping them saved for when it's your companion PC again. Opening setup never resolves a key,
 enumerates devices, records, plays, discovers a model or makes an API request.
 Ordinary Doctor/status remains read-only and is not a live connection test.
 
@@ -84,7 +88,9 @@ comment; it needs a Thinking model that can see images. See
    you explicitly ask for detail, steps or a list), and to finish its last
    sentence. The max reply length (Companion › Replies; 1,024 tokens by
    default, or 4,096 on a Chat Completions route such as OpenRouter or NVIDIA
-   Build, whose budget also covers a reasoning model's hidden thinking) is only
+   Build or on a paired host's Ollama, whose budget also covers a reasoning
+   model's hidden thinking; on a host it stays under half a saved context
+   size) is only
    a ceiling against a runaway answer. Chat Completions streams tolerate
    provider extras (other delta fields, repeated usage or finish chunks,
    changing ids) instead of ending the reply mid-sentence. When a spoken reply

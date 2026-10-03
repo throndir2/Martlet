@@ -134,7 +134,9 @@ public partial class MainWindow
         var talk = openConversation;
         // Another Martlet window waits for an answer (Companion, Setup...): then only opening Martlet and exiting make sense.
         var blocked = !IsWindowEnabled(WindowHandle);
-        var canTalk = !blocked && conversation is not null;
+        // A Martlet host doesn't talk, listen or show the character, so its menu only offers what's still running.
+        var companion = Role == DeviceRole.Companion;
+        var canTalk = companion && !blocked && conversation is not null;
         var menu = new ContextMenu { Placement = PlacementMode.AbsolutePoint, HorizontalOffset = at.X, VerticalOffset = at.Y };
         menu.SetResourceReference(BackgroundProperty, "SurfaceBrush");
         menu.SetResourceReference(BorderBrushProperty, "BorderBrush");
@@ -148,12 +150,13 @@ public partial class MainWindow
         menu.Items.Add(status);
         menu.Items.Add(new Separator());
         menu.Items.Add(TrayItem("TrayOpen", "_Open Martlet", ShowFromTray, bold: true));
-        menu.Items.Add(TrayItem("TrayTalk", talk is null ? "_Talk to Martlet" : "Show the _talk window", TrayTalk,
-            enabled: talk is not null || canTalk));
+        if (companion || talk is not null)
+            menu.Items.Add(TrayItem("TrayTalk", talk is null ? "_Talk to Martlet" : "Show the _talk window", TrayTalk,
+                enabled: talk is not null || canTalk));
         // Always listening starts only from Start listening, here or on Home; it runs without the talk window.
         if (talk is { HandsFree: true, ListeningStarted: true })
             menu.Items.Add(TrayItem("TrayStopListening", "Stop _listening", () => { talk.ToggleListening(); UpdateTray(); }));
-        else if (talk?.HandsFree ?? Talk.HandsFree)
+        else if (companion && (talk?.HandsFree ?? Talk.HandsFree))
             menu.Items.Add(TrayItem("TrayStartListening", "Start _listening", TrayStartListening, enabled: talk is not null || canTalk));
         if (talk is not null)
         {
@@ -162,8 +165,9 @@ public partial class MainWindow
                 : TrayItem("TrayPause", "_Pause Martlet", () => { talk.Pause(); UpdateTray(); }));
             menu.Items.Add(TrayItem("TrayEndTalk", "_End the conversation", talk.End));
         }
-        menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
-            () => Character_Click(this, new RoutedEventArgs()), enabled: !blocked && setupService is not null));
+        if (companion || avatar.IsShowing)
+            menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
+                () => Character_Click(this, new RoutedEventArgs()), enabled: !blocked && setupService is not null));
         menu.Items.Add(new Separator());
         menu.Items.Add(TrayCheck("TrayCloseToTray", "_Keep running when closed", background.CloseToTray, SetCloseToTray));
         menu.Items.Add(TrayCheck("TrayStartWithWindows", "Start with _Windows", ReadStartup().State == StartupState.On,
@@ -324,17 +328,22 @@ public partial class MainWindow
     private void RenderBackground(string? problem = null)
     {
         var (state, command) = ReadStartup();
+        // A Martlet host never shows the character or listens as it starts; the saved choice stays for a companion PC.
+        var host = Role == DeviceRole.Host;
         changingBackgroundChoice = true;
         CloseToTrayCheck.IsChecked = background.CloseToTray;
         StartWithWindowsCheck.IsChecked = state == StartupState.On;
         StartInTrayCheck.IsChecked = background.StartInTray;
         StartInTrayCheck.IsEnabled = state == StartupState.On;
         StartCompanionCheck.IsChecked = background.StartCompanion;
+        StartCompanionCheck.IsEnabled = !host;
         changingBackgroundChoice = false;
         var closeText = tray is { Added: false }
             ? "Martlet's notification-area icon isn't available, so closing the window exits Martlet."
             : background.CloseToTray
-                ? "Closing the window keeps Martlet running in the notification area by the clock. Right-click its icon to talk, pause or exit."
+                ? host
+                    ? "Closing the window keeps Martlet running in the notification area by the clock. Right-click its icon to open or exit Martlet."
+                    : "Closing the window keeps Martlet running in the notification area by the clock. Right-click its icon to talk, pause or exit."
                 : "Closing the window exits Martlet.";
         string? expected;
         try { expected = StartupCommand(background.StartInTray); }
@@ -350,9 +359,13 @@ public partial class MainWindow
                 " Martlet's startup is turned off in Windows (Settings › Apps › Startup); tick Start with Windows to turn it back on.",
             _ => ""
         };
-        BackgroundStatusText.Text = problem ?? closeText + startText + (background.StartCompanion
-            ? " When Martlet starts, it shows the character and starts listening."
-            : "");
+        BackgroundStatusText.Text = problem ?? closeText + startText + (host
+            ? " This PC is a Martlet host, so the character and listening don't start with Martlet here." + (background.StartCompanion
+                ? " Your choice to start them is kept for when it's your companion PC again."
+                : "")
+            : background.StartCompanion
+                ? " When Martlet starts, it shows the character and starts listening."
+                : "");
     }
 
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(nint window);
