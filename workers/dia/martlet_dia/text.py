@@ -78,10 +78,10 @@ _CUE = re.compile(r"\([a-z ]{2,20}\)")
 
 
 def allowance_seconds(piece: str) -> float:
-    """Generous speech length for a piece (slow speech plus time for each nonverbal cue). Dia stops by itself when it is
-    done; this only bounds a generation that runs on."""
+    """Generous speech length for a piece (unhurried speech plus time for each nonverbal cue). Dia stops by itself when
+    it is done; this only bounds a generation that runs on or pauses too long."""
     cues = len(_CUE.findall(piece))
-    return max(4.0, len(_CUE.sub("", piece)) / 6.0 + 2.0 * cues + 1.0)
+    return max(3.0, len(_CUE.sub("", piece)) / 9.0 + 1.5 * cues + 1.0)
 
 
 def max_tokens(reference_seconds: float, piece: str) -> int:

@@ -24,7 +24,7 @@ public static class VoiceTags
     public static string? Instructions(SpeechEngine? engine, PromptSettings? prompts) =>
         engine is { SupportsTags: true }
             ? PromptSettings.Fill(prompts, PromptCatalog.VoiceTags, ("engine", engine.Name),
-                ("tags", string.Join("\n", engine.Tags.Select(tag => $"{tag.Text} - {tag.Usage}"))))
+                ("tags", string.Join("\n", engine.Tags.Select(tag => $"{tag.Text} - {tag.Usage}"))), ("example", engine.Tags[0].Text))
             : null;
     /// <summary>Every registered engine's tags (what chat and captions never show).</summary>
     public static IReadOnlyList<VoiceTag> Known => SpeechEngines.All.SelectMany(engine => engine.Tags)

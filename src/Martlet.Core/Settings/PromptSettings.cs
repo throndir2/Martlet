@@ -128,12 +128,13 @@ public static class PromptCatalog
         new(Tools, ConversationGroup, "Tools", "Added when a reply is offered tools from MCP servers.", DefaultToolInstructions, []),
         new(VoiceTags, ConversationGroup, "Voice sounds and tones",
             "Added to spoken replies when the voice engine understands tags (Chatterbox Turbo: [laugh], [sigh]...). {engine} is the " +
-            "engine's name and {tags} lists exactly its tags in its own syntax, one per line with when to use it.",
+            "engine's name, {tags} lists exactly its tags in its own syntax, one per line with when to use it, and {example} is its " +
+            "first tag.",
             "Your replies are spoken aloud by {engine}, which turns these tags into real sounds and tones of voice:\n{tags}\n" +
-            "Write a tag exactly as shown, inline where the sound or tone belongs, for example \"That's hilarious [laugh] okay, so...\". " +
+            "Write a tag exactly as shown, inline where the sound or tone belongs, for example \"That's hilarious {example} okay, so...\". " +
             "Use them sparingly and only when they fit naturally: most replies need none, and never more than one or two in a reply. " +
             "Never write any other bracketed tags or stage directions. Tags are heard, never shown.",
-            ["engine", "tags"]),
+            ["engine", "tags", "example"]),
         new(Voices, ConversationGroup, "Who is talking",
             "Introduces the recognized voices block. {label} is the block's marker; the voices follow it.",
             "Several people may talk to you through the same microphone. Martlet recognizes voices on this PC; the block between the " +
