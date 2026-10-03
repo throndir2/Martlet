@@ -1,138 +1,119 @@
-using System.IO.Compression;
 using System.Security.Cryptography;
 
 namespace Martlet.Sherpa;
 
-/// <summary>What Martlet downloads to recognize voices and transcribe speech on this PC.</summary>
-public enum SherpaPart
-{
-    /// <summary>The sherpa-onnx 1.13.8 native library with ONNX Runtime (from the official NuGet runtime package).</summary>
-    Runtime,
-    /// <summary>The WeSpeaker ResNet34-LM speaker embedding model and the pyannote 3.0 speaker segmentation model.</summary>
-    Speakers,
-    /// <summary>NVIDIA Parakeet TDT 0.6B v3, int8 ONNX export for the processor.</summary>
-    Parakeet
-}
+/// <summary>Parakeet download progress: bytes received so far and the total.</summary>
+public readonly record struct SherpaProgress(long Received, long Total);
 
-/// <summary>Download progress: bytes of this part received so far and its total.</summary>
-public readonly record struct SherpaProgress(SherpaPart Part, long Received, long Total);
-
-/// <summary>One file Martlet installs, pinned by exact size and SHA-256. <see cref="Entry"/> names a file inside a
-/// downloaded zip (the NuGet package) instead of the download itself.</summary>
-internal sealed record SherpaFile(string Path, long Bytes, string Sha256, string? Entry = null);
+/// <summary>One file Martlet installs, pinned by exact size and SHA-256.</summary>
+internal sealed record SherpaFile(string Path, long Bytes, string Sha256);
 
 internal sealed record SherpaDownload(Uri Source, long Bytes, string Sha256, IReadOnlyList<SherpaFile> Files);
 
-/// <summary>The pinned downloads behind each part and where they go under Martlet's speech folder. Nothing is downloaded
-/// unless the owner asks; every file is checked for its exact size and SHA-256 before it is used, and a failed or changed
-/// download is deleted, never kept.</summary>
+/// <summary>Where Martlet's speech components are. Voice recognition is part of Martlet: the sherpa-onnx 1.13.8 runtime with
+/// ONNX Runtime (the NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64) and the WeSpeaker and pyannote voice models ship in
+/// Martlet's own folder (the build downloads the models at pinned SHA-256). Parakeet is the one part downloaded later, on the
+/// owner's request, into the data folder's speech directory; every file is checked for its exact size and SHA-256 before it
+/// is used, and a failed or changed download is deleted, never kept.</summary>
 public static class SherpaComponents
 {
     public const string Version = "1.13.8";
-    internal const string RuntimeFolder = "sherpa-onnx-" + Version;
+    /// <summary>The folder in Martlet's own folder with the bundled voice models.</summary>
+    public const string VoiceModelsFolder = "voice-recognition";
     internal const string SpeakerModel = "wespeaker_en_voxceleb_resnet34_LM.onnx";
     internal const string SegmentationFolder = "pyannote-segmentation-3-0";
     public const string ParakeetFolder = "parakeet-tdt-0.6b-v3-int8";
     public const string ParakeetModelId = "parakeet-tdt-0.6b-v3-int8";
     private const string ParakeetRevision = "2bda32ec70b097a55adaa07d9a7173915b43cc78";
-    private const string SegmentationRevision = "9403a6902bb58e3d5ae8c7e77c3422de279db2e0";
     private static readonly SemaphoreSlim installing = new(1, 1);
 
-    internal static IReadOnlyList<SherpaDownload> Downloads(SherpaPart part) => part switch
+    /// <summary>Martlet's own folder (where the running application is).</summary>
+    public static string AppDirectory => AppContext.BaseDirectory;
+
+    /// <summary>The folder with the bundled sherpa-onnx runtime: Martlet's folder in an installed build, or
+    /// runtimes\win-x64\native in a portable development build. Null when it is missing.</summary>
+    public static string? RuntimeDirectory(string? appDirectory = null)
     {
-        SherpaPart.Runtime =>
-        [
-            new(new("https://api.nuget.org/v3-flatcontainer/org.k2fsa.sherpa.onnx.runtime.win-x64/1.13.8/org.k2fsa.sherpa.onnx.runtime.win-x64.1.13.8.nupkg"),
-                8_535_869, "2257c06893d1d90792ea3157606de33a51122d935b6913bed5442d2ffb9e9bd7",
-            [
-                new($@"runtime\{RuntimeFolder}\sherpa-onnx-c-api.dll", 4_605_952, "2729a0da3fbd20fb4e14e157f7cc0e00af848b55f04121319d445c138aeba214",
-                    "runtimes/win-x64/native/sherpa-onnx-c-api.dll"),
-                new($@"runtime\{RuntimeFolder}\onnxruntime.dll", 17_799_168, "7f66f939a881baf4f46a2216496798edf4a1429878b646d12674aa62f27d8a25",
-                    "runtimes/win-x64/native/onnxruntime.dll")
-            ])
-        ],
-        SherpaPart.Speakers =>
-        [
-            new(new("https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx"),
-                26_530_550, "e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012",
-                [new($@"models\{SpeakerModel}", 26_530_550, "e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012")]),
-            Hugging("csukuangfj/sherpa-onnx-pyannote-segmentation-3-0", SegmentationRevision, "model.onnx", $@"models\{SegmentationFolder}\model.onnx",
-                5_992_913, "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079"),
-            Hugging("csukuangfj/sherpa-onnx-pyannote-segmentation-3-0", SegmentationRevision, "LICENSE", $@"models\{SegmentationFolder}\LICENSE",
-                1_061, "14d7016ad68e7394d6e6b78d96cc2ae431c905287b89674cfdf021e79e62b8ba")
-        ],
-        SherpaPart.Parakeet =>
-        [
-            Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "encoder.int8.onnx",
-                $@"models\{ParakeetFolder}\encoder.int8.onnx", 652_184_281, "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"),
-            Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "decoder.int8.onnx",
-                $@"models\{ParakeetFolder}\decoder.int8.onnx", 11_845_275, "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e"),
-            Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "joiner.int8.onnx",
-                $@"models\{ParakeetFolder}\joiner.int8.onnx", 6_355_277, "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3"),
-            Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "tokens.txt",
-                $@"models\{ParakeetFolder}\tokens.txt", 93_939, "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d")
-        ],
-        _ => throw new ArgumentOutOfRangeException(nameof(part))
-    };
+        var app = Path.GetFullPath(appDirectory ?? AppDirectory);
+        foreach (var candidate in new[] { app, Path.Combine(app, "runtimes", "win-x64", "native") })
+            if (File.Exists(Path.Combine(candidate, "sherpa-onnx-c-api.dll")) && File.Exists(Path.Combine(candidate, "onnxruntime.dll")))
+                return candidate;
+        return null;
+    }
+
+    /// <summary>The bundled WeSpeaker and pyannote voice models.</summary>
+    public static string VoiceModelsDirectory(string? appDirectory = null) =>
+        Path.Combine(Path.GetFullPath(appDirectory ?? AppDirectory), VoiceModelsFolder);
+
+    internal static string SpeakerModelPath(string models) => Path.Combine(models, SpeakerModel);
+    internal static string SegmentationModelPath(string models) => Path.Combine(models, SegmentationFolder, "model.onnx");
+
+    /// <summary>The runtime and both voice models are in Martlet's folder, so voices can be recognized.</summary>
+    public static bool VoiceRecognitionIncluded(string? appDirectory = null)
+    {
+        var models = VoiceModelsDirectory(appDirectory);
+        return RuntimeDirectory(appDirectory) is not null && File.Exists(SpeakerModelPath(models)) && File.Exists(SegmentationModelPath(models));
+    }
+
+    // ---------- Parakeet (downloaded on request) ----------
+
+    internal static IReadOnlyList<SherpaDownload> ParakeetDownloads { get; } =
+    [
+        Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "encoder.int8.onnx",
+            $@"models\{ParakeetFolder}\encoder.int8.onnx", 652_184_281, "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"),
+        Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "decoder.int8.onnx",
+            $@"models\{ParakeetFolder}\decoder.int8.onnx", 11_845_275, "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e"),
+        Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "joiner.int8.onnx",
+            $@"models\{ParakeetFolder}\joiner.int8.onnx", 6_355_277, "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3"),
+        Hugging("csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8", ParakeetRevision, "tokens.txt",
+            $@"models\{ParakeetFolder}\tokens.txt", 93_939, "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d")
+    ];
 
     private static SherpaDownload Hugging(string repository, string revision, string file, string path, long bytes, string sha256) =>
         new(new($"https://huggingface.co/{repository}/resolve/{revision}/{file}"), bytes, sha256, [new(path, bytes, sha256)]);
 
-    /// <summary>The bytes downloaded to install <paramref name="part"/> (not counting the runtime it needs).</summary>
-    public static long DownloadBytes(SherpaPart part) => Downloads(part).Sum(d => d.Bytes);
+    /// <summary>The bytes downloaded to install Parakeet.</summary>
+    public static long ParakeetDownloadBytes => ParakeetDownloads.Sum(d => d.Bytes);
 
     public static string Megabytes(long bytes) => $"{bytes / 1_000_000.0:N0} MB";
 
-    public static string RuntimeDirectory(string root) => Path.Combine(root, "runtime", RuntimeFolder);
-    internal static string SpeakerModelPath(string root) => Path.Combine(root, "models", SpeakerModel);
-    internal static string SegmentationModelPath(string root) => Path.Combine(root, "models", SegmentationFolder, "model.onnx");
     internal static string ParakeetDirectory(string root) => Path.Combine(root, "models", ParakeetFolder);
 
-    /// <summary>Every file of the part is present with its pinned size (hashes were checked when it was installed).</summary>
-    public static bool IsInstalled(string root, SherpaPart part) => Downloads(part).SelectMany(d => d.Files)
-        .All(file => new FileInfo(Path.Combine(root, file.Path)) is { Exists: true } info && info.Length == file.Bytes);
+    /// <summary>Every Parakeet file is in <paramref name="root"/> (the data folder's speech directory) with its pinned size
+    /// (hashes were checked when it was installed).</summary>
+    public static bool IsParakeetInstalled(string root) => ParakeetDownloads.SelectMany(d => d.Files).All(file => IsCurrent(root, file));
 
-    /// <summary>Downloads and verifies the missing files of <paramref name="part"/> under <paramref name="root"/>. Call only
-    /// after the owner agreed to the <see cref="Disclosure"/> and size.</summary>
-    public static async Task InstallAsync(string root, SherpaPart part, IProgress<SherpaProgress>? progress = null,
+    /// <summary>Downloads and verifies the missing Parakeet files under <paramref name="root"/>. Call only after the owner agreed
+    /// to the download and its size.</summary>
+    public static async Task InstallParakeetAsync(string root, IProgress<SherpaProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         root = Path.GetFullPath(root);
         await installing.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var total = DownloadBytes(part);
+            var total = ParakeetDownloadBytes;
             long done = 0;
             using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Martlet");
-            foreach (var download in Downloads(part))
+            foreach (var download in ParakeetDownloads)
             {
                 if (download.Files.All(file => IsCurrent(root, file)))
                 {
                     done += download.Bytes;
-                    progress?.Report(new(part, done, total));
+                    progress?.Report(new(done, total));
                     continue;
                 }
                 var start = done;
-                await DownloadAsync(client, root, download, received => progress?.Report(new(part, start + received, total)), cancellationToken)
+                await DownloadAsync(client, root, download, received => progress?.Report(new(start + received, total)), cancellationToken)
                     .ConfigureAwait(false);
                 done += download.Bytes;
             }
-            var notices = part == SherpaPart.Runtime ? RuntimeDirectory(root) : Path.Combine(root, "models");
+            var notices = Path.Combine(root, "models");
             Directory.CreateDirectory(notices);
-            await File.WriteAllTextAsync(Path.Combine(notices, part + "-NOTICE.txt"), Notice(part), cancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(notices, "Parakeet-NOTICE.txt"), ParakeetNotice, cancellationToken).ConfigureAwait(false);
         }
         finally { installing.Release(); }
-    }
-
-    /// <summary>Deletes a part's files (the voice list itself is kept elsewhere).</summary>
-    public static void Remove(string root, SherpaPart part)
-    {
-        foreach (var file in Downloads(part).SelectMany(d => d.Files))
-        {
-            var path = Path.Combine(root, file.Path);
-            if (File.Exists(path)) File.Delete(path);
-        }
     }
 
     private static bool IsCurrent(string root, SherpaFile file) =>
@@ -171,41 +152,15 @@ public static class SherpaComponents
                 if (count != download.Bytes) throw new InvalidDataException("The download was cut short.");
             }
             await VerifyAsync(partial, download.Bytes, download.Sha256, cancellationToken).ConfigureAwait(false);
-            if (download.Files is [{ Entry: null } single])
-            {
-                Place(partial, Path.Combine(root, single.Path));
-                return;
-            }
-            using var archive = ZipFile.OpenRead(partial);
-            foreach (var file in download.Files)
-            {
-                var entry = archive.GetEntry(file.Entry!) ?? throw new InvalidDataException("The download did not contain an expected file.");
-                if (entry.Length != file.Bytes) throw new InvalidDataException("The download contained an unexpected file.");
-                var staged = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".partial");
-                try
-                {
-                    await using (var source = entry.Open())
-                    await using (var target = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, true))
-                        await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
-                    await VerifyAsync(staged, file.Bytes, file.Sha256, cancellationToken).ConfigureAwait(false);
-                    Place(staged, Path.Combine(root, file.Path));
-                }
-                finally
-                {
-                    if (File.Exists(staged)) File.Delete(staged);
-                }
-            }
+            var file = download.Files.Single();
+            var destination = Path.Combine(root, file.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Move(partial, destination, overwrite: true);
         }
         finally
         {
             if (File.Exists(partial)) File.Delete(partial);
         }
-    }
-
-    private static void Place(string verified, string destination)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Move(verified, destination, overwrite: true);
     }
 
     private static async Task VerifyAsync(string path, long bytes, string sha256, CancellationToken cancellationToken)
@@ -216,24 +171,8 @@ public static class SherpaComponents
         if (hash != sha256) throw new InvalidDataException("A downloaded file didn't match what Martlet expected.");
     }
 
-    private static string Notice(SherpaPart part) => part switch
-    {
-        SherpaPart.Runtime =>
-            "sherpa-onnx 1.13.8 (https://github.com/k2-fsa/sherpa-onnx), Copyright Xiaomi Corporation and the Next-gen Kaldi team.\n" +
-            "License: Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0\n" +
-            "ONNX Runtime (https://github.com/microsoft/onnxruntime), Copyright Microsoft Corporation. License: MIT.\n" +
-            "Both come unmodified from the NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64 1.13.8.\n",
-        SherpaPart.Speakers =>
-            "WeSpeaker ResNet34-LM speaker embedding model (VoxCeleb), by the WeSpeaker authors, https://github.com/wenet-e2e/wespeaker\n" +
-            "License: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/\n" +
-            "ONNX conversion by the sherpa-onnx contributors: " + Downloads(SherpaPart.Speakers)[0].Source + "\n" +
-            "The model bytes are unmodified.\n\n" +
-            "pyannote segmentation 3.0 (https://huggingface.co/pyannote/segmentation-3.0), Copyright (c) 2023 CNRS, MIT License.\n" +
-            "ONNX export from https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0 (MIT, Copyright (c) 2022 CNRS; " +
-            "see pyannote-segmentation-3-0\\LICENSE).\n",
-        _ =>
-            "NVIDIA Parakeet TDT 0.6B v3, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3\n" +
-            "License: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/\n" +
-            "Converted to int8 ONNX by the sherpa-onnx project (Apache-2.0): https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8\n"
-    };
+    private const string ParakeetNotice =
+        "NVIDIA Parakeet TDT 0.6B v3, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3\n" +
+        "License: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/\n" +
+        "Converted to int8 ONNX by the sherpa-onnx project (Apache-2.0): https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8\n";
 }

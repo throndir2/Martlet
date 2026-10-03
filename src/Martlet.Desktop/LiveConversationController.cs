@@ -300,6 +300,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>Whether hearing what this PC plays leaves Martlet's own voice out (null until it first listened); without it,
     /// that listening holds off while Martlet speaks.</summary>
     internal bool? PcWithoutMartlet => pcAudio?.WithoutMartlet;
+    /// <summary>The one output hearing what this PC plays heard last time (another output was in use, or Windows can't leave
+    /// Martlet out), or null.</summary>
+    internal string? PcOutput => pcAudio?.Output;
 
     // Logs each change of state once (on the capture's worker thread), never the audio or device names.
     private void EchoReported(EchoReductionReport report)
@@ -1706,11 +1709,21 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     }
                 }
                 while (true);
-                // Always listening stops listening the moment Martlet starts speaking, unless you were already talking.
-                if (accepted < 0 && operation.Listen && Held(operation.Listening!))
+                // Always listening stops listening the moment Martlet starts speaking, unless you were already talking. Hearing the
+                // output you hear (Martlet's voice included) ends what it was hearing right there instead, so a video that
+                // was talking goes on without Martlet's own words.
+                if (operation.Listen && (accepted < 0 || operation.Listening!.Pc) && Held(operation.Listening!))
                 {
-                    operation.Publish(new("listen.held"));
-                    return null;
+                    if (accepted < 0)
+                    {
+                        operation.Publish(new("listen.held"));
+                        return null;
+                    }
+                    if (operation.Listening!.Pc)
+                    {
+                        await run.ReleaseAsync().ConfigureAwait(false);
+                        return Range(accepted, index) with { EndSampleExclusive = index * EnergyVoiceActivityDetector.FrameSamples };
+                    }
                 }
                 if (accepted < 0 && !detector.Speaking && clock.GetElapsedTime(started) >= ListeningOptions.IdleRestart)
                     return null;

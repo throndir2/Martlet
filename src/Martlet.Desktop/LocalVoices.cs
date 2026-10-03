@@ -21,9 +21,9 @@ internal sealed record HeardVoices(IReadOnlyList<HeardVoice> Voices, bool Overla
 }
 
 /// <summary>Recognizing the people Martlet hears. The voice list (voices.json) holds voiceprints and the names each voice goes
-/// by, never audio; the engine (sherpa-onnx with the WeSpeaker and pyannote models, AudioTranscriber's pipeline) is downloaded
-/// to the speech folder on request and runs on this PC. Whether it is on (voice-recognition.txt) and whether the list is
-/// shared with the owner's paired Martlet hosts (voice-sharing.txt) are this PC's choices.</summary>
+/// by, never audio; the engine (sherpa-onnx with the WeSpeaker and pyannote models, AudioTranscriber's pipeline) ships in
+/// Martlet's folder and runs on this PC. Whether it is on (voice-recognition.txt, on unless the owner turned it off) and whether
+/// the list is shared with the owner's paired Martlet hosts (voice-sharing.txt) are this PC's choices.</summary>
 internal sealed class LocalVoices : IDisposable
 {
     internal const string RosterFile = "voices.json";
@@ -31,20 +31,22 @@ internal sealed class LocalVoices : IDisposable
     internal const string SharingFile = "voice-sharing.txt";
     private readonly object gate = new();
     private readonly string? directory;
-    private readonly string? speechRoot;
+    private readonly string? appDirectory;
     private readonly string by;
     private readonly TimeProvider clock;
     private SpeakerEngine? engine;
     private VoiceRoster roster = VoiceRoster.Empty;
 
-    internal LocalVoices(string? directory, string? device = null, TimeProvider? clock = null, string? speechRoot = null)
+    /// <param name="appDirectory">Where the engine and voice models are; Martlet's own folder unless a test says otherwise.</param>
+    internal LocalVoices(string? directory, string? device = null, TimeProvider? clock = null, string? appDirectory = null)
     {
         this.directory = directory;
-        this.speechRoot = speechRoot ?? (directory is null ? null : SpeechRoot(directory));
+        this.appDirectory = appDirectory;
         by = device ?? HostSetupCommands.SuggestedDeviceId();
         this.clock = clock ?? TimeProvider.System;
+        Included = SpeakerEngine.Included(appDirectory);
         if (directory is null) return;
-        Enabled = ReadChoice(EnabledFile) ?? false;
+        Enabled = ReadChoice(EnabledFile) ?? true;
         Sharing = ReadChoice(SharingFile) ?? true;
         try
         {
@@ -57,15 +59,16 @@ internal sealed class LocalVoices : IDisposable
         }
     }
 
+    /// <summary>The data folder's speech directory, where Parakeet is downloaded.</summary>
     internal static string SpeechRoot(string directory) => Path.Combine(directory, "speech");
 
-    internal string? Root => speechRoot;
     internal bool Available => directory is not null;
-    internal bool Installed => Root is { } root && SpeakerEngine.Installed(root);
+    /// <summary>The engine and voice models are in Martlet's folder (always, in a complete installation).</summary>
+    internal bool Included { get; }
     internal bool Enabled { get; private set; }
     internal bool Sharing { get; private set; }
-    /// <summary>On and downloaded: each utterance is checked against the voice list.</summary>
-    internal bool Active => Enabled && Installed;
+    /// <summary>On and included: each utterance is checked against the voice list.</summary>
+    internal bool Active => Enabled && Included;
     internal string? LoadError { get; private set; }
     internal string Device => by;
     internal VoiceRoster Roster { get { lock (gate) return roster; } }
@@ -86,21 +89,13 @@ internal sealed class LocalVoices : IDisposable
         Changed?.Invoke();
     }
 
-    /// <summary>Downloads the engine and the two voice models (pinned sizes and SHA-256) into the speech folder.</summary>
-    internal async Task InstallAsync(IProgress<SherpaProgress>? progress, CancellationToken token)
-    {
-        var root = Root ?? throw new InvalidOperationException("Voice recognition needs Martlet's data folder.");
-        await SherpaComponents.InstallAsync(root, SherpaPart.Runtime, progress, token).ConfigureAwait(false);
-        await SherpaComponents.InstallAsync(root, SherpaPart.Speakers, progress, token).ConfigureAwait(false);
-    }
-
     /// <summary>Who spoke in one utterance (16 kHz mono samples). Confident matches teach the voice a little more; a clearly new
     /// voice with enough clean speech joins the list as "Voice N"; anything in between stays unattributed.</summary>
     internal HeardVoices Recognize(float[] samples)
     {
-        if (!Active || Root is not { } root) return HeardVoices.None;
+        if (!Active) return HeardVoices.None;
         SpeakerEngine current;
-        lock (gate) current = engine ??= new SpeakerEngine(root);
+        lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
         var analysis = current.Analyze(samples);
         var heard = new List<HeardVoice>();
         lock (gate)

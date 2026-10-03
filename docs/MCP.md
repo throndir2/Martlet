@@ -172,10 +172,26 @@ request or handles credentials.
 
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
-recognition and sharing choices, whether the sherpa-onnx runtime, voice models and
-Parakeet are downloaded, and counts from `voices.json` (voices, named, owner, with
+recognition choice (`on (default)` until it is turned off) and sharing choice,
+whether a Martlet folder (optional absolute `martletDirectory`, default the
+installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
+checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
+the voice models (`included`: `found`, `runtime`, `voiceModels`), whether
+Parakeet is downloaded, and counts from `voices.json` (voices, named, owner, with
 learned names, merged, tombstones). It never returns names, voiceprints or audio and
 runs no model.
+
+`voices_engine_check` runs the voice recognition engine that ships in a Martlet
+folder (same optional `martletDirectory`) the way the desktop does: it loads the
+bundled runtime and both models, takes a voiceprint of a generated test tone
+(`loaded`, `voiceprintDimensions`, `loadMs`) and, for optional `wavFiles`
+(absolute paths to at most 16 canonical 16 kHz mono PCM16 WAV files of at most a
+minute each), reports for each file how many voices were heard, each
+recognizable voice's clean seconds, overlap and speech seconds, plus a
+`similarity` matrix of the files' main voices (cosine; Martlet treats 0.70 as
+the same person). It returns counts and scores only, never audio or
+voiceprints, and uses no data directory, device or network. Without the files
+it returns `included: false`.
 
 `f5_voices` lists Martlet's [starter voices](F5_VOICE.md#desktop-voices-and-playback)
 as `starters` (key, name, `female`, `cute`, description, licence, transcript,
@@ -883,7 +899,13 @@ speakers wants echo reduction on). `windows` says whether this Windows can hear
 the PC without Martlet's own sound (`withoutMartlet`, with the process
 loopback's `format`, or `problem` and the `fallback`): a process loopback that
 leaves out the MCP server's own process is set up and closed again without
-starting, so `recorded` is always false. Its `rehearsal` runs the production
+starting, so `recorded` is always false. It also reads the outputs' sessions
+(never their sound): `output` (the output you hear, Windows' default),
+`elsewhere` (another output an app other than Martlet streams to right now,
+such as a voice changer's or microphone app's virtual cable, or null) and
+`hears` (every app's sound except Martlet's, or only what plays on `output`
+while listening to the PC holds off for Martlet's voice, which is what
+happens whenever `elsewhere` is set). Its `rehearsal` runs the production
 path (`PcAudioCaptureFactory`, `MicrophoneCapture`, the capture normalizer and
 the voice-activity detector with the defaults the PC listener uses) on a
 fixture loopback and a simulated clock: a synthesized video voice 0-3 s, the
@@ -974,13 +996,14 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 `--allow-ui-effects`; `TourCompanion` leads to `TourAdvisor`/`TourSetup`, and
 `TourHost` closes the tour on the host dashboard. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
-navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
+navigation too. People shows `PeopleStatus` (on, off, or that the installation
+lacks the voice recognition files), `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
 its field loses focus, on Enter or two seconds after typing stops, then syncs);
-like `PeopleInstall`, `PeopleRecognize`,
+like `PeopleRecognize` (ticked by default),
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
@@ -1637,11 +1660,15 @@ plays*, off by default; `checkedState` is the saved choice and `ui_toggle`
 needs `--allow-ui-effects` because it saves `talk-preferences.json`) and
 `TalkHearPcStatus` (returned: *Off. Martlet hears only your microphone.*, *On.
 While Martlet listens it also hears what this PC plays, without its own
-voice.*, or why it doesn't apply: push-to-talk, echo reduction off, or Martlet's
-voice can't be left out); `pc_audio_check` reads the same choice. With it on
+voice.*, *On. <another output> is in use too (a virtual cable there can carry
+your own voice), so Martlet hears only what plays on <your output> and stops
+hearing it while it speaks.*, or why it doesn't apply: push-to-talk, echo
+reduction off, or Martlet's voice can't be left out; the card reads which
+outputs are in use, never their sound); `pc_audio_check` reads the same choice. With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
-what this PC plays (not Martlet's own voice).*, *Hearing this PC play
+what this PC plays (not Martlet's own voice).*, *Also hearing what this PC
+plays on <your output> (paused while Martlet speaks).*, *Hearing this PC play
 something…* or why it can't hear the PC, followed by *This PC plays your voice
 back too; Martlet left out N line(s) of it.* once a line the PC played repeated
 what you said; what the PC played shows in
@@ -1780,6 +1807,8 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
+- `voices_status` and `voices_engine_check` calls without a `martletDirectory`
+  use this checkout's Desktop build when it is built.
 - Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.

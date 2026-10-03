@@ -8,7 +8,7 @@ default Martlet listens from when you press **Start listening** until **Stop
 listening** (once a microphone is tested), or push-to-talk; it streams the reply and speaks it with the chosen
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
-anything is uploaded. Optional **People** recognition tells everyone at the
+anything is uploaded. **People** recognition (part of Martlet, on by default) tells everyone at the
 microphone apart, learns the names they go by and shares that list with your
 other computers; **Parakeet** listens on this PC without Docker (see
 [VOICES](docs/VOICES.md)). Each message or utterance is its own bounded action; no

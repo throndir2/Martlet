@@ -362,13 +362,22 @@ runs, a second listener (`ListeningOptions.PcAudio`, its own slot beside the
 microphone) also hears the sound the PC plays, such as a video, a stream, a
 call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 
-- **What it hears.** A Windows process loopback of every app's sound except
-  Martlet's own process tree (`WasapiPcAudioSourceFactory`, 48 kHz stereo
-  PCM16), so Martlet never hears its own voice and keeps hearing the PC while it
-  speaks. Where Windows can't leave Martlet out (before Windows 10 version
-  2004, or when Windows refuses it), it falls back to the default output's
-  loopback with Martlet in it and holds off while Martlet speaks, as the
-  microphone does. A loopback delivers nothing while nothing plays, so
+- **What it hears.** Chosen each time it starts hearing an utterance. While
+  only the output you hear (Windows' default) has apps streaming to it, a
+  Windows process loopback of every app's sound except Martlet's own process
+  tree (`WasapiPcAudioSourceFactory`, 48 kHz stereo PCM16), so Martlet never
+  hears its own voice and keeps hearing the PC while it speaks. A process
+  loopback mixes every output, virtual ones included: a voice changer or
+  microphone app (Voicemod, NVIDIA Broadcast) streams your own voice into its
+  virtual cable all the time, never played aloud, and the PC listener heard it
+  as the PC. So while an app other than Martlet streams to another output
+  (`WasapiPcAudioSourceFactory.Outputs` reads the outputs' sessions, never
+  their sound), it hears only the output you hear, through that output's
+  loopback with Martlet in it, and holds off while Martlet speaks, as the
+  microphone does; if a PC line is under way when Martlet starts speaking, it
+  ends right there, so Martlet's voice never goes into it. The same happens
+  where Windows can't leave Martlet out (before Windows 10 version 2004, or
+  when Windows refuses it). A loopback delivers nothing while nothing plays, so
   `PcAudioCaptureFactory` fills those gaps with silence on the clock: the
   stream stays continuous and a paused or quiet video ends the utterance.
 - **How it is marked.** Each utterance is transcribed with the Listening
@@ -386,11 +395,12 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   reply right after Martlet answered you), only while you aren't talking, and
   it never interrupts or restarts a reply. At most the newest 1,500 characters
   go with one message.
-- **Your own voice played back.** When this PC plays your microphone back (a
-  voice changer's or headset app's *hear myself* such as Voicemod or NVIDIA
-  Broadcast, Windows' *Listen to this device*, a call that echoes you), the PC
-  listener hears you too, so the same words came twice: as *You (spoken)* and
-  as *Playing on this PC*, and Martlet answered both. A line the PC played that
+- **Your own voice played back.** Hearing only the output you hear (above)
+  keeps virtual cables out. Your voice can still reach the PC's sound when it
+  is actually played back (a voice changer's or headset app's *hear myself*,
+  Windows' *Listen to this device*, a call that echoes you), and then the same
+  words came twice: as *You (spoken)* and as *Playing on this PC*, and Martlet
+  answered both. As a safety net, a line the PC played that
   mostly repeats, in order, what the microphone heard you say (`PcEcho`: at
   least 60% of its words; heard while you talked or were being transcribed, or
   up to 15 seconds after) is your own voice: it is left out of the history and
@@ -412,12 +422,15 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   own voice played back, and leaving your words out would leave you
   unanswered.
 
-The talk window's `LivePcAudio` line says whether Martlet hears the PC now,
-whether its own voice is left out and how many lines of your own voice played
-back it left out, or why it can't. `pc_audio_check` in
+The talk window's `LivePcAudio` line says whether Martlet hears the PC now
+(without its own voice, or only on the output you hear while it pauses for
+Martlet's voice), how many lines of your own voice played back it left out, or
+why it can't. The Companion card's status names the other output in use.
+`pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
-left out without recording anything, rehearses the production path with a
-fixture loopback and runs the own-voice comparison on fixed samples.
+left out without recording anything, says which outputs are in use and what
+Martlet would hear, rehearses the production path with a fixture loopback and
+runs the own-voice comparison on fixed samples.
 
 ## Voice tags
 
@@ -521,8 +534,8 @@ the data folder.
   Same-person clean speech typically scores 0.80-0.95 and other people
   0.45-0.75; enrollment suggests a threshold from how consistent your phrases were.
 
-**Recognizing who is talking** (Companion › **People**, off until you download
-it) tells several people at the microphone apart with AudioTranscriber's
+**Recognizing who is talking** (Companion › **People**, part of Martlet and on
+by default) tells several people at the microphone apart with AudioTranscriber's
 sherpa-onnx speaker recognition, names the speaker to the Thinking model, labels
 earlier messages with who said them, and learns the names each voice goes by
 from the conversation. The list of voices can follow you to every computer

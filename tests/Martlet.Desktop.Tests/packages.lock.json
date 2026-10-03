@@ -194,7 +194,8 @@
           "Martlet.Sherpa": "[0.27.1, )",
           "Martlet.Support": "[0.27.1, )",
           "SSH.NET": "[2024.1.0, )",
-          "SoundFlow": "[1.4.0, )"
+          "SoundFlow": "[1.4.0, )",
+          "org.k2fsa.sherpa.onnx.runtime.win-x64": "[1.13.8, )"
         }
       },
       "martlet.diagnostics": {
@@ -309,6 +310,12 @@
         "requested": "[0.10.5, )",
         "resolved": "0.10.5",
         "contentHash": "o+IptCG4Avze39HrGeztC+xIp6fOOwGVAwkoa1J++4Ji1WmZ+KIKlFl5wsgxsXqBkmdpfs/vFSUproiLKYa2bw=="
+      },
+      "org.k2fsa.sherpa.onnx.runtime.win-x64": {
+        "type": "CentralTransitive",
+        "requested": "[1.13.8, )",
+        "resolved": "1.13.8",
+        "contentHash": "qQS9IQTRet05fl82IlM93XLNnuhW50lhepOBR2qzbjxWKjSXFTvx8SlALAoCLDGyURrQ5iOgl97JZFEeIG9A9g=="
       },
       "SoundFlow": {
         "type": "CentralTransitive",

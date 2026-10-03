@@ -1484,8 +1484,9 @@ public partial class LiveConversationWindow : ThemedWindow
             : preferences.HandsFree && micUsable ? "Type below, or press Start listening to talk." : "Type a message below.";
     }
 
-    /// <summary>The line under the status while Hear what this PC plays is on: whether Martlet hears the PC now (and whether its
-    /// own voice is left out, and yours when this PC plays it back), or why it can't. Empty while it is off.</summary>
+    /// <summary>The line under the status while Hear what this PC plays is on: whether Martlet hears the PC now (every app but
+    /// Martlet, or only the output you hear while it pauses for Martlet's voice), and whether it left your own voice out, or why
+    /// it can't. Empty while it is off.</summary>
     private string PcAudioLine()
     {
         if (!preferences.HearPc) return "";
@@ -1496,7 +1497,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var own = controller.PcWithoutMartlet switch
         {
             true => " (not Martlet's own voice)",
-            false => " (paused while Martlet speaks)",
+            false => controller.PcOutput is { } output ? $" on {output} (paused while Martlet speaks)" : " (paused while Martlet speaks)",
             null => ""
         };
         var line = pcListener.Hearing ? $"Hearing this PC play something{own}…" : $"Also hearing what this PC plays{own}.";

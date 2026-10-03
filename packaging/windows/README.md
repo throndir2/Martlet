@@ -526,6 +526,9 @@ system, models or remote services.
 Every shipped `.dll`/`.exe`, regardless of extension or directory-name case,
 must have verified archive or authored/generated application ownership. An
 unowned binary cannot fall through to the SBOM's document classification.
+Other published Desktop content must be authored, the pinned Live2D SDK files,
+or one of the bundled voice recognition models in `toolchain.json`
+`voiceModels`, whose exact bytes and SHA-256 the layout check requires.
 Framework download identity/version sets must match the actual NuGet-generated
 `build\obj\<project>\<project>.csproj.nuget.dgspec.json` for every project/TFM,
 in addition to preflight graph/lock checks. The actual restore specification
