@@ -32,7 +32,7 @@ public sealed class AvatarIntegrationTests
         internal TaskCompletionSource EnteredStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Guid activation = Guid.NewGuid();
         internal RendererParameter[] Parameters { get; init; } = [new("Jaw", -10, 10, 0, ["Mouth"])];
-        public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
+        public async Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, CancellationToken token)
         {
             EnteredStart.TrySetResult();
             if (StartRelease is { } held) await held.Task;

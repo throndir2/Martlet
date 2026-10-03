@@ -18,7 +18,7 @@ internal interface IAvatarRenderer : IAsyncDisposable
     /// <summary>A choice from the overlay's menu for Martlet to carry out (one of <see cref="RendererRequest.Actions"/>),
     /// raised off the UI thread.</summary>
     event Action<string>? Requested;
-    Task StartAsync(AvatarProfile profile, string revision, CancellationToken token);
+    Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, CancellationToken token);
     Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null);
 }
 
@@ -49,7 +49,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     public Task Exited { get; private set; } = Task.CompletedTask;
     public event Action<string>? Requested;
 
-    public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
+    public async Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         var executable = Path.Combine(AppContext.BaseDirectory, "AvatarRenderer", "Martlet.Avatar.RendererHost.exe");
@@ -86,7 +86,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         try
         {
             var response = await SendAsync("load", new RendererLoad(profile, revision,
-                Application.Current is App { SelectedTheme: PinkTheme.Dark }), token, TimeSpan.FromSeconds(45));
+                Application.Current is App { SelectedTheme: PinkTheme.Dark }, placement is { Locked: true, IsValid: true } ? placement : null),
+                token, TimeSpan.FromSeconds(45));
             if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");
             Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
         }
