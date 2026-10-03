@@ -822,16 +822,22 @@ launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
-whose value reads *<time> <level> <computer> · <part>: <first line>*;
+whose value reads *<time> <level> <computer> · <part>: <first line>*, where
+*<computer>* is *This PC* for this PC's desktop app and for its own host
+service's gateway (its host ID, paired here or read from Docker on a host PC);
 clicking one only selects it, and `LogDetail` then returns the whole line
-(time, level, computer, part, who passed it on and every following line).
+(time, level, computer with its ID, such as *This PC (diva-host) · Host
+gateway*, part, who passed it on and every following line).
 `LogSummary` says how many lines are shown of how many, from how many
-computers, the last 24 hours' errors and warnings and where remote lines came
+computers (this PC's app and host service count once), the last 24 hours'
+errors and warnings and where remote lines came
 from (the log host, each paired host's own log, or why not). The filters are
 pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
 `LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
 and `LogSource-<computer>` (`all`, this PC's device ID such as
-`LogSource-desktop-diva`, or a host ID); all are passive clicks, and snapshots
+`LogSource-desktop-diva`, which also covers this PC's host service, or another
+computer's ID); each returns its label as its value (*From: All computers*,
+*From: This PC (desktop-diva, diva-host)*, *From: gpu-pc*). All are passive clicks, and snapshots
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
 `--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
 it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
