@@ -41,27 +41,33 @@ public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimePro
     }
 }
 
-/// <summary>Whether a line the microphone heard is only the speakers playing what the PC played. Echo reduction leaves a trace
-/// of a loud video in the room's sound and speech-to-text can still make words of it, so with Hear what this PC plays on the
-/// same words would show twice: once as the PC's and once as the user's. It is an echo when most of its words
-/// (<see cref="Share"/>), in order, are among the words the PC listener heard at about the same time. Words only (case,
+/// <summary>Your own voice played back on this PC: a voice changer's or headset app's "hear myself" (Voicemod, NVIDIA
+/// Broadcast), Windows' "Listen to this device" or a call that echoes you puts what the microphone hears into what the PC plays,
+/// so with Hear what this PC plays on the same words would show twice, once as yours and once as the PC's, and Martlet would
+/// answer them twice. A line the PC played is your own voice when most of its words (<see cref="Share"/>), in order, are among
+/// the words the microphone heard you say at about the same time; it is left out and your own line is kept. Words only (case,
 /// punctuation and apostrophes ignored; each Chinese, Japanese or Korean character is a word); nothing is kept.</summary>
 public static class PcEcho
 {
+    /// <summary>At least this share of a line's words, in order, must be among what was said.</summary>
     public const double Share = 0.6;
-    private const int MaximumHeard = 200;
-    private const int MaximumPlayed = 1500;
+    // Bounds the comparison: a line is at most a few hundred words, and only the newest of what was said matters.
+    private const int MaximumLine = 600;
+    private const int MaximumSaid = 1500;
 
-    public static bool Of(string heard, IEnumerable<string> played)
+    /// <summary>The line (what the PC played) mostly repeats, in order, the words of what was said (what the microphone heard
+    /// you say lately).</summary>
+    public static bool Repeats(string line, IEnumerable<string> said)
     {
-        ArgumentNullException.ThrowIfNull(heard);
-        ArgumentNullException.ThrowIfNull(played);
-        var words = Words(heard);
-        if (words.Count == 0 || words.Count > MaximumHeard) return false;
+        ArgumentNullException.ThrowIfNull(line);
+        ArgumentNullException.ThrowIfNull(said);
+        var words = Words(line);
+        if (words.Count == 0) return false;
+        if (words.Count > MaximumLine) words.RemoveRange(0, words.Count - MaximumLine);
         var reference = new List<string>();
-        foreach (var line in played) reference.AddRange(Words(line));
+        foreach (var text in said) reference.AddRange(Words(text));
         if (reference.Count == 0) return false;
-        if (reference.Count > MaximumPlayed) reference.RemoveRange(0, reference.Count - MaximumPlayed);
+        if (reference.Count > MaximumSaid) reference.RemoveRange(0, reference.Count - MaximumSaid);
         return Common(words, reference) >= Math.Ceiling(words.Count * Share);
     }
 
@@ -90,19 +96,19 @@ public static class PcEcho
         }
     }
 
-    // The longest run of the heard words found in order (not necessarily together) among the played ones.
-    private static int Common(List<string> heard, List<string> played)
+    // How many of the line's words are found in order (not necessarily together) among the said ones.
+    private static int Common(List<string> line, List<string> said)
     {
-        var previous = new int[played.Count + 1];
-        var current = new int[played.Count + 1];
-        foreach (var word in heard)
+        var previous = new int[said.Count + 1];
+        var current = new int[said.Count + 1];
+        foreach (var word in line)
         {
-            for (var j = 1; j <= played.Count; j++)
-                current[j] = string.Equals(word, played[j - 1], StringComparison.Ordinal)
+            for (var j = 1; j <= said.Count; j++)
+                current[j] = string.Equals(word, said[j - 1], StringComparison.Ordinal)
                     ? previous[j - 1] + 1 : Math.Max(previous[j], current[j - 1]);
             (previous, current) = (current, previous);
         }
-        return previous[played.Count];
+        return previous[said.Count];
     }
 }
 

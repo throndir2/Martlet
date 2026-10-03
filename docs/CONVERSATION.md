@@ -381,9 +381,25 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   context, and on their own mostly to reply `[pass]`.
 - **When it goes to Thinking.** What the PC played goes with the next thing you
   say, in the order it was heard. On its own it is offered at most every 20
-  seconds (sooner once the PC has been quiet for 4 seconds), only while you
-  aren't talking, and it never interrupts or restarts a reply. At most the
-  newest 1,500 characters go with one message.
+  seconds after Martlet last answered (sooner once the PC has been quiet for 4
+  seconds, but never within 20 seconds of an answer, so it never makes a second
+  reply right after Martlet answered you), only while you aren't talking, and
+  it never interrupts or restarts a reply. At most the newest 1,500 characters
+  go with one message.
+- **Your own voice played back.** When this PC plays your microphone back (a
+  voice changer's or headset app's *hear myself* such as Voicemod or NVIDIA
+  Broadcast, Windows' *Listen to this device*, a call that echoes you), the PC
+  listener hears you too, so the same words came twice: as *You (spoken)* and
+  as *Playing on this PC*, and Martlet answered both. A line the PC played that
+  mostly repeats, in order, what the microphone heard you say (`PcEcho`: at
+  least 60% of its words; heard while you talked or were being transcribed, or
+  up to 15 seconds after) is your own voice: it is left out of the history and
+  never goes to Thinking, and your own line is always kept and answered. While
+  the microphone is still hearing or transcribing you, what the PC played
+  waits for your words (at most 8 seconds) so your voice played back never
+  shows; a line let go before your words came is still removed once they do.
+  The `LivePcAudio` line then adds *This PC plays your voice back too; Martlet
+  left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
   that is only what the PC played gets none of them, and earlier `[PC audio]`
@@ -391,22 +407,17 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.
-  Echo reduction can still leave enough of a loud video for speech-to-text, so
-  the talk window also compares words: a microphone line whose words are mostly
-  (60%, in order) what the PC listener heard in the last 10 seconds is left
-  out, never shown or answered as you (`PcEcho`). While the PC listener is
-  still transcribing, or hearing sound and its last stretch had words (or there
-  was none yet), the microphone's lines wait for it (at most 4 seconds), and a
-  PC line that arrives later still removes a matching line no reply has taken
-  yet. Music or game sound the PC listener found no words in never delays your
-  words.
+  Your microphone's lines are never dropped for matching what the PC played:
+  with both hearing the same words, the reports on this feature were all your
+  own voice played back, and leaving your words out would leave you
+  unanswered.
 
 The talk window's `LivePcAudio` line says whether Martlet hears the PC now,
-whether its own voice is left out and how many microphone lines it left out
-as echoes, or why it can't. `pc_audio_check` in
+whether its own voice is left out and how many lines of your own voice played
+back it left out, or why it can't. `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
 left out without recording anything, rehearses the production path with a
-fixture loopback and runs the echo comparison on fixture transcripts.
+fixture loopback and runs the own-voice comparison on fixed samples.
 
 ## Voice tags
 

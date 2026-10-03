@@ -1235,55 +1235,58 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
-    public Task WhatTheMicrophoneHeardFromTheSpeakersIsLeftOut() => DispatcherTest(async () =>
+    public void PcLinesAreMarkedInTheOrderTheyWereHeard() =>
+        Assert.Equal("[PC audio] And now the weather.\nWhat did he say? Was it rain?\n[PC audio] Rain all week.",
+            LiveConversationWindow.PcMessage([("And now the weather.", true), ("What did he say?", false), ("Was it rain?", false),
+                ("Rain all week.", true)]));
+
+    [Fact]
+    public Task YourOwnVoicePlayedBackOnThisPcIsAnsweredOnce() => DispatcherTest(async () =>
     {
         var pc = new PcSourceFixture();
         await using var fixture = await LiveFixture.Create(pcAudio: pc);
-        fixture.Answer("Ha, good one.");
-        // The video speaks, and the microphone hears the same words from the speakers at the same time.
-        pc.Enqueue(quiet: 5, speech: 25);
+        fixture.Answer("Heard you.");
+        // You talk while this PC plays your voice back (a voice changer's "hear myself"): both listeners hear the same words.
         EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        pc.Enqueue(quiet: 5, speech: 25);
         var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearPc: true));
         try
         {
             await Loaded(window);
             Click(window, "MicChip");
-            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
-                while (!window.Messages.Any(m => m.Role == ChatRole.Martlet))
-                {
-                    fixture.Clock.Advance(TimeSpan.FromMilliseconds(50));
-                    await Task.Delay(1, timeout.Token);
-                }
-            var heard = Assert.Single(window.Messages, m => m.IsPcAudio);
-            Assert.Equal("Synthetic fixture transcript.", heard.Text);
-            Assert.DoesNotContain(window.Messages, m => m.IsUser);
-            Assert.Equal(2, fixture.Stt.Calls);
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet) && fixture.Stt.Calls == 2);
+            // Well past when what the PC played would have gone to Martlet on its own.
+            for (var i = 0; i < 700; i++)
+            {
+                fixture.Clock.Advance(TimeSpan.FromMilliseconds(50));
+                await Task.Delay(1);
+            }
             Assert.Equal(1, fixture.Llm.Calls);
-            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
-            Assert.Contains("[PC audio] Synthetic fixture transcript.", body, StringComparison.Ordinal);
-            Assert.Single(System.Text.RegularExpressions.Regex.Matches(body, "Synthetic fixture transcript"));
-            await Heartbeat();
-            Assert.EndsWith("Left out 1 line your microphone heard from the speakers.", Control<TextBlock>(window, "PcAudioText").Text);
+            Assert.Single(window.Messages, m => m.IsUser);
+            Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.DoesNotContain(window.Messages, m => m.IsPcAudio);
+            Assert.DoesNotContain("[PC audio]", Encoding.UTF8.GetString(fixture.Llm.Body), StringComparison.Ordinal);
+            Assert.EndsWith("This PC plays your voice back too; Martlet left out 1 line of it.", Control<TextBlock>(window, "PcAudioText").Text);
         }
         finally { window.Close(); }
     });
 
     [Theory]
-    [InlineData("Why is that the way?", "Why is that the right?", true)]
+    // The first two are the reports on a PC whose voice changer played the user's voice back (the companion is called Jane).
     [InlineData("Hello Jane.", "Hello, Jane.", true)]
+    [InlineData("Why is that the way?", "Why is that the right?", true)]
+    [InlineData("Do you like being called that?", "Do you like being called that?", true)]
+    [InlineData("What's the weather like tomorrow?", "what's the weather like, tomorrow", true)]
     [InlineData("that's it", "That’s it!", true)]
-    [InlineData("Haha, what is she doing?", "Why is that the right?", false)]
-    [InlineData("Oh wow, look at that. Why is that the right?", "Why is that the right?", false)]
     [InlineData("你好吗", "你好吗？", true)]
-    [InlineData("", "Anything.", false)]
-    public void MicrophoneLinesThatRepeatThePcAreEchoes(string microphone, string pc, bool echo) =>
-        Assert.Equal(echo, PcEcho.Of(microphone, [pc]));
-
-    [Fact]
-    public void PcLinesAreMarkedInTheOrderTheyWereHeard() =>
-        Assert.Equal("[PC audio] And now the weather.\nWhat did he say? Was it rain?\n[PC audio] Rain all week.",
-            LiveConversationWindow.PcMessage([("And now the weather.", true), ("What did he say?", false), ("Was it rain?", false),
-                ("Rain all week.", true)]));
+    [InlineData("Okay, so we could watch the next episode tonight. What do you think?", "we could watch the next episode tonight", true)]
+    [InlineData("Did you hear that?", "And now the weather for the weekend.", false)]
+    [InlineData("Haha, what is she doing?", "Why is that the right?", false)]
+    [InlineData("Why is that the right?", "Oh wow, look at that. Why is that the right?", false)]
+    [InlineData("Ha, he said rain all week.", "Expect rain all week across the region, with flooding in the north.", false)]
+    [InlineData("Anything.", "", false)]
+    public void APcLineThatRepeatsYouIsYourOwnVoice(string spoken, string played, bool repeats) =>
+        Assert.Equal(repeats, PcEcho.Repeats(played, [spoken]));
 
     private sealed class PcSourceFixture : IPcAudioSourceFactory, IPcAudioSource
     {
