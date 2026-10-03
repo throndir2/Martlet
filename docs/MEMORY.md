@@ -35,9 +35,12 @@ first with where each came from. The default scope is the app-owned `memory`
 child of the selected Martlet local-data directory. A user may instead enter or
 browse to a custom absolute local directory. The shared foundation rejects
 roots, UNC/network/unknown-volume, alternate-stream and reparse/link scopes.
-The enable checkbox plus **Save memory configuration** turns memory on or off;
-configuration validation reads path metadata but creates no directory, lock or
-store document.
+The enable checkbox turns memory on or off and saves at once (there is no Save
+button; a typed custom folder saves when you leave the field or press Enter,
+and settings from before memory existed record the default when the window
+opens). Each save goes into the newest saved settings, so other changes made
+meanwhile are kept. Configuration validation reads path metadata but creates
+no directory, lock or store document.
 
 Strict memory settings own `enabled`, the app-local/custom policy, optional
 normalized custom path and a fresh configuration revision. Settings v6 marks
@@ -50,7 +53,7 @@ for review: v4+ sources retain their storage policy; older sources preserve the
 current policy. No restore action opens, copies or validates a fact store.
 Changing configuration invalidates an in-flight app retrieval.
 
-Facts come from two places: the dedicated editor (**Save new fact**, with an
+Facts come from two places: the dedicated editor (**Add fact**, with an
 explicit `until_deleted` or 30/90/365-day expiry and fresh `user_entry`
 provenance) and automatic remembering from conversations (`conversation`
 provenance, kept until deleted). Inspect shows fact/store revisions, creation

@@ -79,7 +79,12 @@ desktops push theirs again. The shared voice list lives beside it in
 most 1 MiB, through `speaking-voices.staging`) with each live voice's recording
 in `speaking-voice-<sha256>.wav` (at most 4 MiB each, through
 `speaking-voice.staging`; a removed voice's recording is deleted; see
-[shared speaking voices](../../docs/CLUSTER.md#the-shared-speaking-voices)); the shared Home Assistant connection, including its access token,
+[shared speaking voices](../../docs/CLUSTER.md#the-shared-speaking-voices)); the character models
+the owner added are kept in `character-models.json` (at most 2 MiB, through
+`character-models.staging`) with each piece of a live model in
+`character-model-chunk-<sha256>.bin` (at most 3 MiB each, through
+`character-model-chunk.staging`; pieces no live model uses are deleted; see
+[shared character models](../../docs/CLUSTER.md#the-shared-character-models)); the shared Home Assistant connection, including its access token,
 lives in `home-assistant.json` (at most 16 KiB, through
 `home-assistant.staging`). All are 0600 service-owner files and none is part
 of approval. Its log (own activity plus, as the owner's

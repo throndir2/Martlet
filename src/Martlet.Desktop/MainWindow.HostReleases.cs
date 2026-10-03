@@ -45,12 +45,7 @@ public partial class MainWindow
             if (change.Updated) updated.Add(id);
             if (!change.Current) continue;
             // Whatever this PC said it was doing to bring this host up to date is over: it already runs this PC's release.
-            hostsWaiting.Remove(id);
-            if (hostUpdateNotes.TryGetValue(id, out var note) && !note.StartsWith(HostUpdatedNote, StringComparison.Ordinal))
-            {
-                hostUpdateNotes[id] = $"{HostUpdatedNote}{now} (seen at {DateTime.Now:t}).";
-                shown = true;
-            }
+            if (hostUpdates.Current(id, now, DateTime.Now, seen: true)) shown = true;
         }
         if (closing) return;
         if (updated.Count > 0)

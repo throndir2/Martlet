@@ -33,24 +33,14 @@ public sealed class MemoryWindowTests
         window.Show();
         try
         {
-            await Until(() => Text(window, "ConfigurationStatus").Contains(
-                "Older memory settings loaded", StringComparison.Ordinal));
-            Assert.False(Directory.Exists(scope.Memory));
-            Assert.True(Check(window, "MemoryEnable").IsChecked);
-            Assert.Equal("MemoryReload", AutomationProperties.GetAutomationId(
-                Control<Button>(window, "ReloadButton")));
-
-            Click(window, "MemoryRefreshFacts");
-            Assert.Contains("Save or reload", Text(window, "FactStatus"));
-            Assert.False(Directory.Exists(scope.Memory));
-
-            Assert.True(Control<Button>(window, "SaveConfigurationButton").IsEnabled,
-                $"runner={runner.IsRunning}; enable={Check(window, "MemoryEnable").IsChecked}");
-            Click(window, "MemorySaveConfiguration");
+            // Settings from before memory existed get the default recorded on open: there is no Save step.
             await Until(() => !runner.IsRunning && Text(window, "ConfigurationStatus").Contains(
                 "Memory is on", StringComparison.Ordinal) && Text(window, "FactStatus").Contains(
                 "0 facts remembered", StringComparison.Ordinal),
                 () => $"runner={runner.IsRunning}; status={Text(window, "ConfigurationStatus")}; settings={File.ReadAllText(store.FilePath)}");
+            Assert.True(Check(window, "MemoryEnable").IsChecked);
+            Assert.Equal("MemoryReload", AutomationProperties.GetAutomationId(
+                Control<Button>(window, "ReloadButton")));
             var configured = await store.LoadAsync();
             Assert.True(configured.Settings!.Memory!.Enabled);
             Assert.Equal(MemoryStoragePolicy.AppLocalData, configured.Settings.Memory.StoragePolicy);
@@ -170,7 +160,7 @@ public sealed class MemoryWindowTests
                 preview.Authorize(MemoryConsentDecision.Allow)))
             {
                 Click(window, "MemoryRefreshFacts");
-                Assert.Contains("Save or reload", Text(window, "FactStatus"));
+                Assert.Contains("aren't saved yet", Text(window, "FactStatus"));
             }
             Assert.Single((await memory.InspectAsync(
                 configured.Settings.Memory.ConfigurationRevision)).Facts);

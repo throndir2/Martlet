@@ -3,7 +3,6 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Threading;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
@@ -11,6 +10,10 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
+/// <summary>Personality: the personas Martlet can be and their response styles. There is no Save button: every change saves on
+/// its own (shortly after typing or moving a slider stops, at once when a persona is chosen, added, duplicated, deleted or
+/// imported) into the newest saved settings, so nothing synced in from your other computers in the meantime is overwritten.
+/// The footer says whether everything is saved, or why the latest change isn't.</summary>
 public partial class CompanionWindow : ThemedWindow
 {
     private readonly ICompanionSettingsService service;
@@ -22,13 +25,22 @@ public partial class CompanionWindow : ThemedWindow
     private readonly LorebookStore? lorebooks;
     // Keyword lorebooks from imported character cards, by persona; saved to the lorebook library together with the personas.
     private readonly Dictionary<Guid, Lorebook> pendingLore = [];
-    private readonly DispatcherTimer operationTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
-    private AppSettings? draft;
-    private string? revision;
-    private bool busy;
+    private readonly AutoSave autoSave;
+    /// <summary>The personas as edited (the editor's fields are applied by <see cref="ApplyEditor"/>).</summary>
+    private CompanionSettings? companion;
+    /// <summary>The personas as last saved (or loaded); the same instance as <see cref="companion"/> when nothing changed.</summary>
+    private CompanionSettings? saved;
+    /// <summary>The persona shown in the editor; always the one Martlet uses.</summary>
+    private Guid? editingId;
+    /// <summary>Why the latest change can't be saved (for example an empty name), or why the latest save failed.</summary>
+    private string? problem;
+    private string? saveError;
+    private bool working;
+    private bool saving;
     private bool closed;
+    private bool closeConfirmed;
+    private bool finishing;
     private bool rendering;
-    private bool editorDirty;
 
     /// <summary>The least persona text room worth importing a card into.</summary>
     private const int MinimumCardCharacters = 500;
@@ -44,101 +56,128 @@ public partial class CompanionWindow : ThemedWindow
         this.chooseCard = chooseCard ?? SelectCard;
         this.importCardOnOpen = importCardOnOpen;
         this.lorebooks = lorebooks;
+        autoSave = new AutoSave(SaveChangesAsync);
+        autoSave.Settled += () => { if (!closed) RenderState(); };
         InitializeComponent();
-        operationTimer.Tick += (_, _) => RenderOperationState();
-        operationTimer.Start();
-        RenderOperationState();
+        // The persona list shows each persona's name; give each entry that name for screen readers and UI Automation too.
+        var entry = new Style(typeof(ComboBoxItem), TryFindResource(typeof(ComboBoxItem)) as Style);
+        entry.Setters.Add(new Setter(System.Windows.Automation.AutomationProperties.NameProperty,
+            new System.Windows.Data.Binding(nameof(PersonaProfile.Name))));
+        PersonaChoice.ItemContainerStyle = entry;
+        RenderState();
     }
+
+    /// <summary>Whether every change is saved (nothing waiting, nothing failed).</summary>
+    internal bool AllSaved => !autoSave.Pending && problem is null && saveError is null &&
+        ReferenceEquals(companion, saved) && pendingLore.Count == 0;
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         await LoadAsync();
-        if (importCardOnOpen && !closed && draft?.Companion is not null)
+        if (importCardOnOpen && !closed && companion is not null)
             await ImportCardAsync(update: false);
     }
 
     private async Task LoadAsync()
     {
-        if (!MayStart()) return;
         var backend = service;
-        await ObserveAsync(operations.TryStart(async token => new(SetupWorkOutcome.Completed,
-            Loaded: await backend.LoadAsync(token).ConfigureAwait(false))), result =>
+        var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
+            Loaded: await backend.LoadAsync(token).ConfigureAwait(false)));
+        if (closed) return;
+        if (result?.Loaded is not { } loaded)
         {
-            var loaded = result.Loaded!;
-            revision = loaded.Revision;
-            pendingLore.Clear();
-            draft = loaded.Error is null ? CompanionSettings.Begin(loaded.Settings) : null;
-            ResultText.Text = loaded.Error?.Summary ?? loaded.Settings?.SchemaVersion switch
-            {
-                1 or 2 => "Older companion settings loaded. Save to update them.",
-                _ => "Companion settings loaded."
-            };
-            RenderPersonas();
-        });
+            ResultText.Text = "Your personas couldn't be read. Close Personality and open it again.";
+            RenderState();
+            return;
+        }
+        pendingLore.Clear();
+        companion = saved = loaded.Error is null ? CompanionSettings.Begin(loaded.Settings).Companion : null;
+        ResultText.Text = loaded.Error?.Summary ?? "";
+        RenderPersonas();
     }
 
-    private bool MayStart()
+    /// <summary>Runs a short blocking action (loading, reading a file) on the shared settings worker, waiting a moment if another
+    /// Martlet action (such as a save) holds it. The editor is disabled meanwhile.</summary>
+    private async Task<SetupWorkResult?> ObserveAsync(Func<CancellationToken, Task<SetupWorkResult>> work)
     {
-        if (closed) return false;
-        if (!busy && !operations.IsRunning) return true;
-        ResultText.Text = "Another Martlet action is still finishing. Wait a moment and try again.";
-        return false;
-    }
-
-    private async Task<bool> ObserveAsync(SetupOperation? operation, Action<SetupWorkResult> apply)
-    {
-        if (operation is null) { MayStart(); return false; }
-        busy = true;
-        RenderOperationState();
+        if (closed || working) return null;
+        working = true;
+        RenderState();
         try
         {
-            var result = await operation.Completion;
-            if (closed) return false;
-            if (result.Outcome != SetupWorkOutcome.Completed)
+            SetupOperation? operation = null;
+            for (var waited = 0; operation is null && !closed; waited++)
             {
-                ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled
-                    ? "Companion action canceled. Reload before editing."
-                    : "Companion action failed. Reload before editing.";
-                draft = null;
-                return false;
+                operation = operations.TryStart(work);
+                if (operation is not null) break;
+                if (waited == 100)
+                {
+                    ResultText.Text = "Another Martlet action is still finishing. Try again in a moment.";
+                    return null;
+                }
+                await Task.Delay(100);
             }
-            apply(result);
-            return true;
+            if (operation is null) return null;
+            var result = await operation.Completion;
+            if (closed) return null;
+            if (result.Outcome == SetupWorkOutcome.Completed) return result;
+            ResultText.Text = result.Outcome == SetupWorkOutcome.Canceled ? "Canceled." : "That didn't work. Try again.";
+            return null;
         }
         finally
         {
-            busy = false;
-            if (!closed) RenderOperationState();
+            working = false;
+            if (!closed) RenderState();
         }
     }
 
-    private void RenderOperationState()
+    private void RenderState()
     {
         if (closed) return;
-        var active = busy || operations.IsRunning;
-        EditorPanel.IsEnabled = !active && draft?.Companion is not null;
-        ReloadButton.IsEnabled = !active;
-        ActivityText.Text = active
-            ? "Working on companion settings..."
-            : "Idle. Apply and save changes before using them.";
+        EditorPanel.IsEnabled = !working && companion is not null;
+        var unsaved = problem ?? saveError;
+        SaveStateText.Text = companion is null ? working ? "Loading your personas..." : "Your personas couldn't be loaded."
+            : problem is not null ? "Not saved yet: " + problem
+            : saveError is not null ? "Not saved: " + saveError + " Martlet tries again with your next change."
+            : saving || autoSave.Pending ? "Saving..."
+            : "All changes saved.";
+        SaveStateText.SetResourceReference(TextBlock.ForegroundProperty, unsaved is null ? "MutedBrush" : "WarningBrush");
     }
 
     private void RenderPersonas(Guid? selected = null)
     {
         rendering = true;
-        var companion = draft?.Companion;
-        var id = selected ?? companion?.ActivePersonaId;
-        PersonaChoice.ItemsSource = companion?.Personas;
-        PersonaChoice.SelectedItem = companion?.Personas.SingleOrDefault(persona => persona.Id == id);
-        RenderEditor();
-        rendering = false;
-        RenderOperationState();
+        try
+        {
+            var id = selected ?? companion?.ActivePersonaId;
+            PersonaChoice.ItemsSource = companion?.Personas;
+            PersonaChoice.SelectedItem = companion?.Personas.SingleOrDefault(persona => persona.Id == id);
+            RenderEditor();
+        }
+        finally { rendering = false; }
+        RenderState();
+    }
+
+    /// <summary>Refreshes the persona list's names after a save without touching the editor, so typing continues undisturbed.</summary>
+    private void RenderChoices()
+    {
+        if (companion is null || PersonaChoice.ItemsSource is IReadOnlyList<PersonaProfile> shown &&
+            shown.Select(persona => (persona.Id, persona.Name)).SequenceEqual(companion.Personas.Select(persona => (persona.Id, persona.Name))))
+            return;
+        rendering = true;
+        try
+        {
+            PersonaChoice.ItemsSource = companion.Personas;
+            PersonaChoice.SelectedItem = companion.Personas.SingleOrDefault(persona => persona.Id == editingId);
+        }
+        finally { rendering = false; }
     }
 
     private void RenderEditor()
     {
         var persona = PersonaChoice.SelectedItem as PersonaProfile;
         rendering = true;
+        editingId = persona?.Id;
         PersonaName.Text = persona?.Name ?? "";
         PersonaText.Text = persona?.Text ?? "";
         HelpfulWeight.Value = persona?.Styles.Helpful ?? 0;
@@ -146,31 +185,53 @@ public partial class CompanionWindow : ThemedWindow
         SillyWeight.Value = persona?.Styles.Silly ?? 0;
         DistractedWeight.Value = persona?.Styles.Distracted ?? 0;
         TeasingWeight.Value = persona?.Styles.PlayfulTeasing ?? 0;
-        editorDirty = false;
         RenderWeightValues();
         rendering = false;
     }
 
+    /// <summary>Choosing a persona makes it the one Martlet uses, saved at once. The persona being left keeps its edits; one
+    /// that can't be saved yet (an empty or duplicate name, no style above zero) must be fixed first.</summary>
     private void Persona_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (rendering || draft?.Companion is not { } companion ||
-            PersonaChoice.SelectedItem is not PersonaProfile persona) return;
-        if (editorDirty)
-            ResultText.Text = "Unapplied edits were discarded. Apply edits before switching personas.";
-        draft = draft with { Companion = companion.Select(persona.Id) };
-        RenderEditor();
+        if (rendering || companion is null || PersonaChoice.SelectedItem is not PersonaProfile persona) return;
+        if (!ApplyEditor())
+        {
+            rendering = true;
+            try { PersonaChoice.SelectedItem = e.RemovedItems.OfType<PersonaProfile>().FirstOrDefault(); }
+            finally { rendering = false; }
+            ResultText.Text = "Fix this persona before switching: " + problem;
+            RenderState();
+            return;
+        }
+        companion = companion.Select(persona.Id);
+        RenderPersonas(persona.Id);
+        ResultText.Text = $"Martlet now uses {persona.Name}.";
+        SaveNow();
     }
 
     private void Editor_Changed(object sender, TextChangedEventArgs e)
     {
-        if (!rendering) editorDirty = true;
+        if (!rendering) Changed();
     }
 
     private void Weight_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (HelpfulValue is null) return;
         RenderWeightValues();
-        if (!rendering) editorDirty = true;
+        if (!rendering) Changed();
+    }
+
+    private void Changed()
+    {
+        problem = null;
+        autoSave.Changed();
+        RenderState();
+    }
+
+    private void SaveNow()
+    {
+        autoSave.SaveNowAsync().Forget();
+        RenderState();
     }
 
     private void RenderWeightValues()
@@ -191,129 +252,131 @@ public partial class CompanionWindow : ThemedWindow
         PlayfulTeasing = (int)TeasingWeight.Value
     };
 
-    private bool ApplyDraft()
+    /// <summary>Takes the editor's fields into the personas (a name's surrounding spaces are dropped), or records why they can't
+    /// be saved in <see cref="problem"/>.</summary>
+    private bool ApplyEditor()
     {
-        if (draft?.Companion is not { } companion || PersonaChoice.SelectedItem is not PersonaProfile selected)
-            return false;
+        if (companion is null) return false;
+        if (editingId is not { } id) return true;
         try
         {
-            draft = draft with { Companion = companion.Update(selected.Id, PersonaName.Text, PersonaText.Text, Styles()) };
-            editorDirty = false;
-            ResultText.Text = "Persona edits applied. Save to keep them.";
-            RenderPersonas(selected.Id);
+            companion = companion.Update(id, PersonaName.Text.Trim(), PersonaText.Text, Styles());
+            problem = null;
             return true;
         }
         catch (ContractException error)
         {
-            ResultText.Text = error.Message;
+            problem = error.Message;
             return false;
         }
     }
 
-    private void Apply_Click(object sender, RoutedEventArgs e) => ApplyDraft();
+    /// <summary>Applies the editor before a persona is added, duplicated, deleted or replaced; says why when it can't.</summary>
+    private bool ReadyForChange()
+    {
+        if (companion is null || working) return false;
+        if (ApplyEditor()) return true;
+        ResultText.Text = "Fix this persona first: " + problem;
+        RenderState();
+        return false;
+    }
 
     private void New_Click(object sender, RoutedEventArgs e)
     {
-        if (draft?.Companion is not { } companion) return;
-        if (editorDirty && !ApplyDraft()) return;
-        companion = draft!.Companion!;
+        if (!ReadyForChange()) return;
         try
         {
-            var updated = companion.Add(UniqueName(companion, "New persona"));
-            draft = draft with { Companion = updated };
-            ResultText.Text = "New persona added. Save to keep it.";
+            var updated = companion!.Add(UniqueName(companion, "New persona"));
+            companion = updated;
             RenderPersonas(updated.ActivePersonaId);
+            ResultText.Text = "New persona added, and Martlet uses it now. Give it a name and describe it.";
+            SaveNow();
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
     }
 
     private void Duplicate_Click(object sender, RoutedEventArgs e)
     {
-        if (draft?.Companion is not { } companion || PersonaChoice.SelectedItem is not PersonaProfile selected) return;
-        if (editorDirty && !ApplyDraft()) return;
-        companion = draft!.Companion!;
-        selected = companion.Personas.Single(persona => persona.Id == selected.Id);
+        if (!ReadyForChange() || editingId is not { } id) return;
+        var selected = companion!.Personas.Single(persona => persona.Id == id);
         try
         {
             var updated = companion.Add(UniqueName(companion, selected.Name + " copy"), selected);
-            draft = draft with { Companion = updated };
-            ResultText.Text = "Persona duplicated. Save to keep it.";
+            companion = updated;
             RenderPersonas(updated.ActivePersonaId);
+            ResultText.Text = $"Duplicated {selected.Name}. Martlet uses the copy now.";
+            SaveNow();
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
     }
 
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
-        if (draft?.Companion is not { } companion || PersonaChoice.SelectedItem is not PersonaProfile selected) return;
+        if (companion is null || working || editingId is not { } id) return;
+        var selected = companion.Personas.Single(persona => persona.Id == id);
+        if (companion.Personas.Count > 1 && !ConfirmationDialog.Confirm(this,
+                $"Delete the persona \"{selected.Name}\"? This can't be undone.", "Delete persona"))
+            return;
         try
         {
-            var updated = companion.Remove(selected.Id);
-            pendingLore.Remove(selected.Id);
-            draft = draft with { Companion = updated };
-            ResultText.Text = "Persona removed. Save to make it permanent.";
+            var updated = companion.Remove(id);
+            pendingLore.Remove(id);
+            problem = null;
+            companion = updated;
             RenderPersonas(updated.ActivePersonaId);
+            ResultText.Text = $"Deleted {selected.Name}. Martlet uses {updated.ActivePersona.Name} now.";
+            SaveNow();
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
     }
 
     private async void Import_Click(object sender, RoutedEventArgs e)
     {
-        if (!MayStart()) return;
+        if (companion is null || working) return;
         var path = chooseImport();
-        if (path is null) { ResultText.Text = "Import canceled. The draft is unchanged."; return; }
+        if (path is null) { ResultText.Text = "Import canceled. Nothing changed."; return; }
         var backend = service;
-        await ObserveAsync(operations.TryStart(async token => new(SetupWorkOutcome.Completed,
-            PersonaFile: await backend.ImportTextAsync(path, token).ConfigureAwait(false))), result =>
-        {
-            var imported = result.PersonaFile!;
-            ResultText.Text = imported.Summary;
-            if (imported.Succeeded)
-            {
-                PersonaText.Text = imported.Text!;
-                editorDirty = true;
-            }
-        });
+        var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
+            PersonaFile: await backend.ImportTextAsync(path, token).ConfigureAwait(false)));
+        if (result?.PersonaFile is not { } imported) return;
+        ResultText.Text = imported.Summary;
+        if (imported.Succeeded) PersonaText.Text = imported.Text!;
     }
 
     private async void Export_Click(object sender, RoutedEventArgs e)
     {
-        if (!MayStart() || !ApplyDraft()) return;
+        if (!ReadyForChange() || editingId is not { } id) return;
         var path = chooseExport();
         if (path is null) { ResultText.Text = "Export canceled. No file was created."; return; }
-        var text = ((PersonaProfile)PersonaChoice.SelectedItem).Text;
+        var text = companion!.Personas.Single(persona => persona.Id == id).Text;
         var backend = service;
-        await ObserveAsync(operations.TryStart(async token => new(SetupWorkOutcome.Completed,
-            PersonaFile: await backend.ExportTextAsync(path, text, token).ConfigureAwait(false))),
-            result => ResultText.Text = result.PersonaFile!.Summary);
+        var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
+            PersonaFile: await backend.ExportTextAsync(path, text, token).ConfigureAwait(false)));
+        if (result?.PersonaFile is { } exported) ResultText.Text = exported.Summary;
     }
 
     private async void CardNew_Click(object sender, RoutedEventArgs e) => await ImportCardAsync(update: false);
     private async void CardUpdate_Click(object sender, RoutedEventArgs e) => await ImportCardAsync(update: true);
 
-    /// <summary>Reads a character card and either adds it as a new persona (selected in the draft) or loads it into the
-    /// editor for the selected persona, which keeps its identity and response-style weights. Both stay drafts until Save.</summary>
+    /// <summary>Reads a character card and either adds it as a new persona (which Martlet then uses) or puts it into the shown
+    /// persona, which keeps its identity and response-style weights. Either is saved at once.</summary>
     private async Task ImportCardAsync(bool update, string? path = null)
     {
-        if (!MayStart() || draft?.Companion is null) return;
-        if (update && PersonaChoice.SelectedItem is not PersonaProfile) return;
-        if (!update && editorDirty && !ApplyDraft()) return;
+        if (!ReadyForChange()) return;
         path ??= chooseCard();
-        if (path is null) { ResultText.Text = "Character card import canceled. The draft is unchanged."; return; }
+        if (path is null) { ResultText.Text = "Character card import canceled. Nothing changed."; return; }
         var backend = service;
-        await ObserveAsync(operations.TryStart(async token => new(SetupWorkOutcome.Completed,
-            CardFile: await backend.ImportCardAsync(path, token).ConfigureAwait(false))), result =>
-        {
-            var file = result.CardFile!;
-            ResultText.Text = !file.Succeeded ? file.Summary
-                : update ? UpdateFromCard(file.Card!, path)
-                : AddFromCard(file.Card!, path);
-        });
+        var result = await ObserveAsync(async token => new(SetupWorkOutcome.Completed,
+            CardFile: await backend.ImportCardAsync(path, token).ConfigureAwait(false)));
+        if (result?.CardFile is not { } file) return;
+        ResultText.Text = !file.Succeeded ? file.Summary
+            : update ? UpdateFromCard(file.Card!, path)
+            : AddFromCard(file.Card!, path);
     }
 
     private string AddFromCard(CharacterCard card, string path)
     {
-        if (draft?.Companion is not { } companion) return "Reload before importing a character card.";
+        if (companion is null) return "Close Personality and open it again before importing a character card.";
         if (companion.Personas.Count >= CompanionSettings.MaximumPersonas)
             return $"At most {CompanionSettings.MaximumPersonas} personas are supported. Delete one, or update an existing persona.";
         var (characters, bytes) = CardRoom(companion, except: null);
@@ -324,28 +387,30 @@ public partial class CompanionWindow : ThemedWindow
             var name = UniqueName(companion, persona.Name);
             var added = companion.Add(name);
             var updated = added.Update(added.ActivePersonaId, name, persona.Text, ResponseStyleWeights.HelpfulOnly());
-            draft = draft with { Companion = updated };
+            companion = updated;
+            var lore = KeepCardLore(card, updated.ActivePersonaId);
             RenderPersonas(updated.ActivePersonaId);
-            return $"Added \"{name}\" from the character card. Review it, then save." +
-                Fitting(card, persona, KeepCardLore(card, updated.ActivePersonaId));
+            SaveNow();
+            return $"Added \"{name}\" from the character card, and Martlet uses it now." + Fitting(card, persona, lore);
         }
         catch (ContractException error) { return error.Message; }
     }
 
     private string UpdateFromCard(CharacterCard card, string path)
     {
-        if (draft?.Companion is not { } companion || PersonaChoice.SelectedItem is not PersonaProfile selected)
-            return "Select the persona to update, then import the character card again.";
-        var (characters, bytes) = CardRoom(companion, except: selected.Id);
+        if (companion is null || editingId is not { } id)
+            return "Choose the persona to update, then import the character card again.";
+        var selected = companion.Personas.Single(persona => persona.Id == id);
+        var (characters, bytes) = CardRoom(companion, except: id);
         if (characters < MinimumCardCharacters) return NoRoom;
         var persona = card.ToPersona(Path.GetFileNameWithoutExtension(path), characters, bytes);
         try
         {
-            PersonaName.Text = UniqueName(companion, persona.Name, except: selected.Id);
+            PersonaName.Text = UniqueName(companion, persona.Name, except: id);
             PersonaText.Text = persona.Text;
-            editorDirty = true;
-            return $"Loaded the card into \"{selected.Name}\". Response styles are unchanged. Review, apply and save." +
-                Fitting(card, persona, KeepCardLore(card, selected.Id));
+            var lore = KeepCardLore(card, id);
+            SaveNow();
+            return $"Loaded the card into \"{selected.Name}\". Its response styles are unchanged." + Fitting(card, persona, lore);
         }
         catch (ContractException error) { return error.Message; }
     }
@@ -370,16 +435,16 @@ public partial class CompanionWindow : ThemedWindow
         if (persona.Shortened.Count > 0) notes.Add("Some card text was shortened to fit: " + string.Join(", ", persona.Shortened) + ".");
         if (persona.LeftOut.Count > 0) notes.Add("Some card text was left out: " + string.Join(", ", persona.LeftOut) + ".");
         if (lore is not null)
-            notes.Add($"{lore.Entries.Count} lorebook " + (lore.Entries.Count == 1 ? "entry will" : "entries will") +
-                " be saved for this persona.");
+            notes.Add($"{lore.Entries.Count} lorebook " + (lore.Entries.Count == 1 ? "entry is" : "entries are") +
+                " saved for this persona.");
         else if (card.KeywordLoreEntries > 0)
             notes.Add($"{card.KeywordLoreEntries} lorebook " +
                 (card.KeywordLoreEntries == 1 ? "entry wasn't" : "entries weren't") + " imported here.");
         return notes.Count == 0 ? "" : " " + string.Join(" ", notes);
     }
 
-    /// <summary>Keeps the card's keyword-triggered lorebook entries, attached to <paramref name="persona"/>, until Save. Always-on
-    /// entries are already in the persona text.</summary>
+    /// <summary>Keeps the card's keyword-triggered lorebook entries, attached to <paramref name="persona"/>, for the next save.
+    /// Always-on entries are already in the persona text.</summary>
     private Lorebook? KeepCardLore(CharacterCard card, Guid persona)
     {
         pendingLore.Remove(persona);
@@ -405,7 +470,7 @@ public partial class CompanionWindow : ThemedWindow
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         e.Handled = true;
-        if (!EditorPanel.IsEnabled) { MayStart(); return; }
+        if (!EditorPanel.IsEnabled) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files)
         {
             ResultText.Text = "Drop one character card at a time (PNG, JSON or CHARX).";
@@ -414,44 +479,75 @@ public partial class CompanionWindow : ThemedWindow
         await ImportCardAsync(update: false, files[0]);
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e)
+    /// <summary>The auto-save: writes the personas (and any card lorebooks) when they differ from what is saved. Returns false
+    /// to be tried again shortly while another Martlet action holds the settings.</summary>
+    private async Task<bool> SaveChangesAsync()
     {
-        if (!MayStart() || !ApplyDraft()) return;
-        var snapshot = draft!;
-        var expected = revision;
+        if (companion is null) return true;
+        if (working) return false;
+        if (!ApplyEditor())
+        {
+            RenderState();
+            return true;
+        }
+        var lore = pendingLore.Values.ToArray();
+        if (ReferenceEquals(companion, saved) && lore.Length == 0)
+        {
+            saveError = null;
+            RenderState();
+            return true;
+        }
+        var snapshot = companion;
         var backend = service;
         var store = lorebooks;
-        var lore = pendingLore.Values.ToArray();
         LorebookSaveResult? loreSaved = null;
-        await ObserveAsync(operations.TryStart(async token =>
+        var operation = operations.TryStart(async token =>
         {
-            var saved = await backend.SaveAsync(snapshot, expected, token).ConfigureAwait(false);
-            if (saved.Save.Saved && lore.Length > 0 && store is not null)
-                loreSaved = await store.UpdateAsync(library => AttachCardLore(library, lore, saved.Settings), token).ConfigureAwait(false);
-            return new(SetupWorkOutcome.Completed, Saved: saved);
-        }), result =>
-        {
-            var saved = result.Saved!;
-            ResultText.Text = saved.Save.Saved
-                ? saved.Save.MigratedFromSchemaVersion is { } previous
-                    ? "Companion settings saved. Older settings were updated."
-                    : "Companion settings saved."
-                : saved.Save.Error!.Summary;
-            if (saved.Save.Saved)
+            var result = await backend.SaveCompanionAsync(snapshot, token).ConfigureAwait(false);
+            if (result.Save.Saved && lore.Length > 0 && store is not null)
             {
-                if (loreSaved is { Saved: true })
-                {
-                    ResultText.Text += " " + string.Join(" ", lore.Select(book =>
-                        $"Lorebook \"{book.Name}\" saved for this persona."));
-                    pendingLore.Clear();
-                }
-                else if (loreSaved is { } failed)
-                    ResultText.Text += " The card's lorebook wasn't saved: " + failed.Error + " Save again to retry.";
-                draft = saved.Settings;
-                revision = saved.Save.Revision;
-                RenderPersonas();
+                try { loreSaved = await store.UpdateAsync(library => AttachCardLore(library, lore, result.Settings), token).ConfigureAwait(false); }
+                catch (ContractException error) { loreSaved = new(false, LorebookLibrary.Create(), null, error.Message); }
             }
+            return new(SetupWorkOutcome.Completed, Saved: result);
         });
+        if (operation is null) return false;
+        saving = true;
+        RenderState();
+        try
+        {
+            var outcome = await operation.Completion;
+            if (outcome.Outcome != SetupWorkOutcome.Completed || outcome.Saved is not { } result)
+            {
+                saveError = "Martlet couldn't write your settings.";
+                return true;
+            }
+            if (!result.Save.Saved)
+            {
+                saveError = result.Save.Error?.Summary ?? "Martlet couldn't write your settings.";
+                return true;
+            }
+            saveError = null;
+            saved = snapshot;
+            if (result.Save.MigratedFromSchemaVersion is not null)
+                ResultText.Text = "Your older settings were updated for this version of Martlet.";
+            if (loreSaved is not null)
+            {
+                foreach (var book in lore)
+                    if (pendingLore.FirstOrDefault(pair => ReferenceEquals(pair.Value, book)) is { Value: not null } pair)
+                        pendingLore.Remove(pair.Key);
+                ResultText.Text = loreSaved.Saved
+                    ? string.Join(" ", lore.Select(book => $"Lorebook \"{book.Name}\" saved for this persona."))
+                    : "The card's lorebook wasn't saved: " + loreSaved.Error;
+            }
+            if (!closed) RenderChoices();
+            return true;
+        }
+        finally
+        {
+            saving = false;
+            RenderState();
+        }
     }
 
     /// <summary>Adds each card's keyword lorebook for its persona, replacing an earlier copy from the same card (same name, same
@@ -481,13 +577,40 @@ public partial class CompanionWindow : ThemedWindow
         return library;
     }
 
-    private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    /// <summary>Closing saves what is still waiting first. Only a change that can't be saved asks before it is dropped.</summary>
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        closed = true;
-        operationTimer.Stop();
+        if (closeConfirmed || companion is null || !working && ApplyEditor() && AllSaved)
+        {
+            autoSave.Cancel();
+            closed = true;
+            return;
+        }
+        e.Cancel = true;
+        if (finishing) return;
+        finishing = true;
+        try
+        {
+            for (var tries = 0; tries < 50 && (working || autoSave.Pending || !ReferenceEquals(companion, saved) || pendingLore.Count > 0); tries++)
+            {
+                if (problem is not null || saveError is not null) break;
+                if (working) await Task.Delay(100);
+                else
+                {
+                    await autoSave.SaveNowAsync();
+                    if (autoSave.Pending) await Task.Delay(100);
+                }
+            }
+            var unsaved = problem ?? saveError ?? (AllSaved ? null : "Another Martlet action is still finishing.");
+            if (unsaved is not null && !ConfirmationDialog.Confirm(this,
+                    $"Your latest change isn't saved: {unsaved}\n\nClose anyway and lose it?", "Unsaved change"))
+                return;
+            closeConfirmed = true;
+            await Dispatcher.InvokeAsync(Close);
+        }
+        finally { finishing = false; }
     }
 
     private static string UniqueName(CompanionSettings settings, string basis, Guid? except = null)

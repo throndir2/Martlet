@@ -10,7 +10,7 @@ namespace Martlet.Desktop.Tests;
 public sealed class CompanionWindowTests
 {
     [Fact]
-    public Task RealWindowImportsAppliesSavesMigratesAndExportsWithoutRuntimeEffects() => OnDispatcher(async () =>
+    public Task RealWindowImportsAutoSavesMigratesAndExportsWithoutRuntimeEffects() => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         var store = new SettingsStore(scope.Data);
@@ -31,21 +31,22 @@ public sealed class CompanionWindowTests
             await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
             Assert.Equal("Martlet", Field<TextBox>(window, "PersonaName").Text);
             Assert.Equal(100, Field<Slider>(window, "HelpfulWeight").Value);
+            Assert.Equal(original, await File.ReadAllBytesAsync(store.FilePath));
 
             Click(window, "CompanionImport");
             await Until(() => Field<TextBox>(window, "PersonaText").Text == "Listen first.\nBe concise.");
-            Field<TextBox>(window, "PersonaName").Text = "Game friend";
+            Field<TextBox>(window, "PersonaName").Text = "Game friend ";
             Field<Slider>(window, "HelpfulWeight").Value = 50;
             Field<Slider>(window, "SarcasticWeight").Value = 20;
             Field<Slider>(window, "SillyWeight").Value = 15;
             Field<Slider>(window, "DistractedWeight").Value = 5;
             Field<Slider>(window, "TeasingWeight").Value = 10;
-            Click(window, "CompanionApply");
-            Assert.Contains("applied", Field<TextBox>(window, "ResultText").Text, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Saving...", Field<TextBlock>(window, "SaveStateText").Text);
 
-            Click(window, "CompanionSave");
-            await Until(() => !runner.IsRunning &&
-                Field<TextBox>(window, "ResultText").Text.Contains("migrated", StringComparison.OrdinalIgnoreCase));
+            // No Save button: the changes are written a moment after the last one.
+            await Until(() => window.AllSaved && !runner.IsRunning);
+            Assert.Equal("All changes saved.", Field<TextBlock>(window, "SaveStateText").Text);
+            Assert.Contains("older settings were updated", Field<TextBox>(window, "ResultText").Text, StringComparison.OrdinalIgnoreCase);
             var loaded = await store.LoadAsync();
             Assert.Equal(AppSettings.CurrentSchemaVersion, loaded.Settings!.SchemaVersion);
             var persona = loaded.Settings.Companion!.ActivePersona;
@@ -73,7 +74,7 @@ public sealed class CompanionWindowTests
     });
 
     [Fact]
-    public Task AllZeroWeightsStayAnUnsavedDraft() => OnDispatcher(async () =>
+    public Task AllZeroWeightsAreNotSavedAndSayWhy() => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         var store = new SettingsStore(scope.Data);
@@ -92,22 +93,26 @@ public sealed class CompanionWindowTests
             await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
             foreach (var name in new[] { "HelpfulWeight", "SarcasticWeight", "SillyWeight", "DistractedWeight", "TeasingWeight" })
                 Field<Slider>(window, name).Value = 0;
-            Click(window, "CompanionSave");
-            Assert.Contains("greater than zero", Field<TextBox>(window, "ResultText").Text);
+            await Until(() => Field<TextBlock>(window, "SaveStateText").Text.Contains("greater than zero", StringComparison.Ordinal));
+            Assert.StartsWith("Not saved yet", Field<TextBlock>(window, "SaveStateText").Text);
             Assert.False(runner.IsRunning);
             Assert.Equal(original, await File.ReadAllBytesAsync(store.FilePath));
         }
-        finally { window.Close(); }
+        finally
+        {
+            // Put a style back so closing has nothing unsaved to ask about.
+            Field<Slider>(window, "HelpfulWeight").Value = 100;
+            await Until(() => window.AllSaved && !runner.IsRunning);
+            window.Close();
+        }
     });
 
     [Fact]
-    public Task NewAppliesDirtyEditorAndFailedSaveRetainsDraft() => OnDispatcher(async () =>
+    public Task AutoSaveKeepsOtherSettingsChangedMeanwhile() => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         var store = new SettingsStore(scope.Data);
-        var settings = CompanionSettings.Begin(null);
-        var initial = await store.SaveAsync(settings, null);
-        Assert.True(initial.Saved);
+        Assert.True((await store.SaveAsync(CompanionSettings.Begin(null), null)).Saved);
         var runner = new SetupOperationRunner();
         var window = new CompanionWindow(new CompanionSettingsService(store), runner)
         {
@@ -118,27 +123,27 @@ public sealed class CompanionWindowTests
         try
         {
             await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
-            Field<TextBox>(window, "PersonaText").Text = "Keep this unsaved draft.";
+            Field<TextBox>(window, "PersonaText").Text = "Keep this.";
             Click(window, "CompanionNew");
             Assert.Equal("New persona", Field<TextBox>(window, "PersonaName").Text);
+            await Until(() => window.AllSaved && !runner.IsRunning);
 
-            var external = (await store.LoadAsync()).Settings!;
-            var externalPersona = external.Companion!.ActivePersona;
-            external = external with
+            // Something else (another page, or sync from another computer) saves the same settings in the meantime.
+            var external = await store.LoadAsync();
+            var prompt = PromptCatalog.All[0].Id;
+            Assert.True((await store.SaveAsync(external.Settings! with
             {
-                Companion = external.Companion.Update(externalPersona.Id, externalPersona.Name,
-                    "External change.", externalPersona.Styles)
-            };
-            Assert.True((await store.SaveAsync(external, initial.Revision)).Saved);
+                Prompts = PromptSettings.Normalize(new Dictionary<string, string> { [prompt] = "External prompt." })
+            }, external.Revision)).Saved);
 
-            Click(window, "CompanionSave");
-            await Until(() => !runner.IsRunning &&
-                Field<TextBox>(window, "ResultText").Text.Contains("changed since", StringComparison.OrdinalIgnoreCase));
-            Assert.True(Field<StackPanel>(window, "EditorPanel").IsEnabled);
-            Assert.Equal("New persona", Field<TextBox>(window, "PersonaName").Text);
+            Field<TextBox>(window, "PersonaName").Text = "Second";
+            await Until(() => window.AllSaved && !runner.IsRunning);
 
             var persisted = (await store.LoadAsync()).Settings!;
-            Assert.Equal("External change.", persisted.Companion!.ActivePersona.Text);
+            Assert.Equal(["Martlet", "Second"], persisted.Companion!.Personas.Select(persona => persona.Name));
+            Assert.Equal("Second", persisted.Companion.ActivePersona.Name);
+            Assert.Equal("Keep this.", persisted.Companion.Personas[0].Text);
+            Assert.Equal("External prompt.", PromptSettings.Text(persisted.Prompts, prompt));
         }
         finally { window.Close(); }
     });
@@ -174,9 +179,7 @@ public sealed class CompanionWindowTests
             Click(window, "CompanionCardUpdate");
             await Until(() => !runner.IsRunning && Field<TextBox>(window, "PersonaName").Text == "Bob");
             Assert.Equal("Gruff.", Field<TextBox>(window, "PersonaText").Text);
-            Click(window, "CompanionSave");
-            await Until(() => !runner.IsRunning &&
-                Field<TextBox>(window, "ResultText").Text.Contains("saved", StringComparison.OrdinalIgnoreCase));
+            await Until(() => window.AllSaved && !runner.IsRunning);
 
             var personas = (await store.LoadAsync()).Settings!.Companion!.Personas;
             Assert.Equal(["Martlet", "Bob"], personas.Select(persona => persona.Name));
@@ -190,7 +193,7 @@ public sealed class CompanionWindowTests
     });
 
     [Fact]
-    public Task CharacterCardKeywordLoreBecomesAPersonaLorebookOnSave() => OnDispatcher(async () =>
+    public Task CharacterCardKeywordLoreBecomesAPersonaLorebook() => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         var store = new SettingsStore(scope.Data);
@@ -215,9 +218,8 @@ public sealed class CompanionWindowTests
             await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
             Click(window, "CompanionCardNew");
             await Until(() => !runner.IsRunning && Field<TextBox>(window, "PersonaName").Text == "Aria");
-            Assert.Contains("Aria lore", Field<TextBox>(window, "ResultText").Text);
-            Click(window, "CompanionSave");
-            await Until(() => !runner.IsRunning && Field<TextBox>(window, "ResultText").Text.Contains("saved for this persona"));
+            await Until(() => window.AllSaved && !runner.IsRunning);
+            Assert.Contains("Lorebook \"Aria lore\" saved for this persona", Field<TextBox>(window, "ResultText").Text);
 
             var aria = (await store.LoadAsync()).Settings!.Companion!.Personas.Single(persona => persona.Name == "Aria");
             var book = Assert.Single((await lore.LoadAsync()).Library.Books);
@@ -233,7 +235,7 @@ public sealed class CompanionWindowTests
     });
 
     [Fact]
-    public Task LorebookWindowImportsTestsEditsAndSaves() => OnDispatcher(async () =>
+    public Task LorebookWindowImportsTestsEditsAndAutoSaves() => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         Directory.CreateDirectory(scope.Root);
@@ -255,6 +257,8 @@ public sealed class CompanionWindowTests
             await Until(() => Field<StackPanel>(window, "EditorRoot").IsEnabled);
             Click(window, "LorebookImport");
             await Until(() => Field<TextBox>(window, "ResultText").Text.StartsWith("Imported \"world\"", StringComparison.Ordinal));
+            await Until(() => Field<TextBlock>(window, "SaveStateText").Text == "All changes saved.");
+            Assert.Equal("The castle belongs to Queen Mab.", Assert.Single((await lore.LoadAsync()).Library.Books).Entries[0].Content);
 
             Field<TextBox>(window, "TestInput").Text = "Can we visit the castle?";
             Click(window, "LorebookTest");
@@ -264,8 +268,8 @@ public sealed class CompanionWindowTests
 
             Assert.Equal("Castle", Field<TextBox>(window, "EntryTitle").Text);
             Field<TextBox>(window, "EntryContent").Text = "The castle is empty now.";
-            Click(window, "LorebookSave");
-            await Until(() => Field<TextBox>(window, "ResultText").Text.StartsWith("Lorebooks saved", StringComparison.Ordinal));
+            Assert.Equal("Saving...", Field<TextBlock>(window, "SaveStateText").Text);
+            await Until(() => Field<TextBlock>(window, "SaveStateText").Text == "All changes saved.");
             var saved = Assert.Single((await lore.LoadAsync()).Library.Books);
             Assert.Equal(("world", "The castle is empty now."), (saved.Name, saved.Entries[0].Content));
         }
@@ -274,7 +278,6 @@ public sealed class CompanionWindowTests
             window.Close();
         }
     });
-
     private static T Field<T>(Window window, string name) where T : FrameworkElement =>
         Assert.IsType<T>(window.FindName(name));
 

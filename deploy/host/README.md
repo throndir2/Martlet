@@ -104,7 +104,13 @@ key, sudo or an approval fails that run without changing anything and keeps
 *Update host*. A host busy with another change (below) is not interrupted: the
 background `update` stops at once without changing anything, its Devices card
 says what the host is busy with, and Martlet tries it again every three minutes
-until it is free.
+until it is free. *Update hosts now* runs the same `update` but waits its turn:
+it sets `MARTLET_LOCK_WAIT` (30 minutes) so it queues behind that change and then
+updates. Martlet never races itself: a host it is already updating by another
+route (an *Update host* run window, a command from another computer, keeping
+this PC's own host service current) is left to that run, so its own update is
+never reported as "busy", and once a host is found up to date an earlier
+"waiting to update" note on its card says it is updated.
 
 ### One change at a time
 
@@ -128,9 +134,11 @@ stale lock is ever left behind. Read-only commands (`roles`, `describe`,
 - A **background** run that nobody confirmed and nobody watches (no terminal
   and no `--yes`, as Martlet's automatic host updates run) does not queue
   behind a long install: it stops at once, changes nothing and exits **75**
-  with one line `MARTLET-BUSY <what is running>`. An attended run that waited
-  `MARTLET_LOCK_WAIT` seconds ends the same way. Martlet reads that line and
-  tries again later instead of reporting a failure.
+  with one line `MARTLET-BUSY <what is running>`, unless it sets
+  `MARTLET_LOCK_WAIT` (as *Update hosts now* does): then it waits like an
+  attended run. A run that waited `MARTLET_LOCK_WAIT` seconds ends the same
+  way. Martlet reads that line and tries again later instead of reporting a
+  failure.
 - `status` shows `Busy now: ...` while a change runs. When the holder is a
   console session open 10+ minutes, the waiting lines name the command that
   stops it (a closed console window can leave its engine waiting for input).
@@ -450,6 +458,10 @@ what* shows which computer handles each job:
   holds by SHA-256 (the recording itself only when the host lacks it); its 24 kHz mono
   PCM16 plays like any other voice. The original recording may be moved or deleted after
   adding it.
+- Hosts also keep a copy of the character models you add (`character-models.json` and
+  `character-model-chunk-<sha256>.bin` beside `host.json`), only so each of your Martlet
+  desktops can copy them; a host shows no character. See
+  [shared character models](../../docs/CLUSTER.md#the-shared-character-models).
 - Handing a job to a host detaches the replaced cloud key (it is listed for removal
   in Setup, never silently deleted); handing the job back reattaches it. Jobs on the
   same host share that host's one pairing.

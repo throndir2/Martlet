@@ -72,6 +72,8 @@ public partial class MainWindow
     private CompanionTab? openTab;
     private bool tabEdited;
     private bool savingTab;
+    /// <summary>The open page's auto-save (Prompts, Replies), saved at once when another page opens.</summary>
+    private AutoSave? tabAutoSave;
     private IReadOnlyList<string>? ollamaModels;
     private LocalModelTestOutcome? localModelTest;
     private Action? showLocalTest;
@@ -224,14 +226,6 @@ public partial class MainWindow
         return NetworkMap.ProviderName(route);
     }
 
-    private string CharacterModelName()
-    {
-        if (homeAvatar is null) return "Built-in character";
-        return BundledLive2D.IsBuiltIn(homeAvatar.ModelPath)
-            ? homeAvatar.ModelPath[BundledLive2D.Prefix.Length..] + " (built-in)"
-            : Path.GetFileNameWithoutExtension(homeAvatar.ModelPath);
-    }
-
     private string LipSyncOwnerName() => NetworkMap.LipSync(homeAvatar) switch
     {
         LipSyncHandler.Loudness => "voice loudness",
@@ -300,6 +294,8 @@ public partial class MainWindow
     private void RenderTab()
     {
         if (openTab is not { } section) return;
+        if (tabAutoSave is { Pending: true } pending) pending.SaveNowAsync().Forget();
+        tabAutoSave = null;
         tabEdited = false;
         BuildCompanionNav();
         selectingNav = true;
@@ -1086,8 +1082,12 @@ public partial class MainWindow
         key.PasswordChanged += (_, _) => { tabEdited = true; RefreshKeyMark(); };
         baseUrl.TextChanged += (_, _) => { keySaved = SameAsSaved(Selected()) && cloudRoute!.CredentialId is not null; RefreshKeyMark(); };
 
-        var save = PageButton("Save", () => SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
+        // A cloud provider is a commitment (a key, data sent elsewhere, possible costs), so it stays an explicit action named for
+        // what it does rather than an automatic save.
+        string UseLabel() => Selected() == CustomCloud ? "Use this server" : $"Use {Selected().Name}";
+        var save = PageButton(UseLabel(), () => SaveCloudAsync(job, Selected(), baseUrl.Text.Trim(), Selected().Chat ? modelText.Text.Trim() : model.SelectedItem as string ?? "",
             role == SetupRole.Tts ? voice.SelectedItem as string : null, key, consent.IsChecked == true).Forget(), primary: true, id: "SetupCloudSave-" + section);
+        provider.SelectionChanged += (_, _) => save.Content = UseLabel();
 
         var stack = new List<UIElement> { Heading("Cloud provider") };
         // A drop-down with a single entry chooses nothing; name the provider instead.
@@ -1123,7 +1123,7 @@ public partial class MainWindow
     {
         if (!consent)
         {
-            ActionText.Text = $"Tick the box to confirm {provider.Name} for {job.Job}, then save.";
+            ActionText.Text = $"Tick the box to confirm {provider.Name} for {job.Job}, then press Use.";
             return;
         }
         var role = job.Role;
@@ -1271,11 +1271,12 @@ public partial class MainWindow
             (showing ? ", on your desktop." : ", hidden."), null, "SetupCharacterNow", characterCleanupProblem));
 
         page.Children.Add(Card(Heading("Character model"),
-            Note("Choose a character model, then adjust its size, position and motion.", new Thickness(0, 0, 0, 8)),
+            Note("Choose a character model, then adjust its size, position and motion. Choices save on their own and a showing character switches right away.", new Thickness(0, 0, 0, 8)),
             Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+        page.Children.Add(CharacterModelsCard());
         page.Children.Add(SpeechDisplayCard());
         characterViewText = null;
         if (!showing) return;
@@ -1463,7 +1464,7 @@ public partial class MainWindow
             : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}. Style: {StyleMix(persona.Styles)}.", null));
 
         page.Children.Add(Card(Heading("Personas"),
-            Note("Create, edit or switch personas. The next message uses the selected persona.", new Thickness(0, 0, 0, 8)),
+            Note("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.", new Thickness(0, 0, 0, 8)),
             Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), primary: true, id: "OpenCompanion"))));
 
         page.Children.Add(Card(Heading("Character cards"),
