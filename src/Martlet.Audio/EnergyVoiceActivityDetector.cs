@@ -61,6 +61,9 @@ public sealed class EnergyVoiceActivityDetector
     public int SpeechEndFrame { get; private set; } = -1;
     public double NoiseFloorDb { get; private set; } = -90;
     public double LastLevelDb { get; private set; } = -100;
+    /// <summary>The last frame was as loud as a voice must be to start speech (the onset threshold), whether or not speech
+    /// is under way: what talking over Martlet counts.</summary>
+    public bool LastFrameLoud { get; private set; }
 
     public VoiceActivityTransition Process(ReadOnlySpan<byte> frame)
     {
@@ -81,9 +84,10 @@ public sealed class EnergyVoiceActivityDetector
         }
 
         var transition = VoiceActivityTransition.None;
+        var loud = LastFrameLoud = level >= Math.Max(NoiseFloorDb + margin, absoluteFloor);
         if (!Speaking)
         {
-            if (level >= Math.Max(NoiseFloorDb + margin, absoluteFloor))
+            if (loud)
             {
                 if (candidateStart < 0) candidateStart = index;
                 candidateFrames++;

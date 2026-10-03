@@ -15,7 +15,8 @@ namespace Martlet.Mcp;
 /// ("Martlet", from the fixture speakers' loopback, through a simulated room: delay, reflections, gain) plus the user's own
 /// synthesized voice and faint noise, on a simulated clock with device timestamps. Scene: 0-4 s only Martlet speaks, 4.5-6 s
 /// only the user, 6-8 s both at once (barge-in), then quiet. It reports how much quieter Martlet's echo got, whether the
-/// user's voice was kept, and what Martlet's own voice-activity detector heard in each part.</summary>
+/// user's voice was kept, what Martlet's own voice-activity detector heard in each part, and what the barge-in gate
+/// (TalkOverDetector with the capture's echo timeline) made of each part: Martlet's echo and a short sound never talk over it.</summary>
 internal static class EchoCheck
 {
     private const int Rate = 48_000;
@@ -39,11 +40,12 @@ internal static class EchoCheck
         var watch = Stopwatch.StartNew();
         var clock = new SimulatedClock();
         var reducer = new EchoReducer(new FixtureMicrophones(scene, clock), new FixtureSpeakers(scene, clock), WebRtcEchoCanceller.Create, clock);
+        var timeline = new EchoTimeline(TimeSpan.FromSeconds(Seconds + 1));
         byte[] with, without;
         EchoReductionReport report;
         try
         {
-            with = await RecordAsync(reducer.For(null), cancellation);
+            with = await RecordAsync(reducer.For(null, timeline), cancellation);
             report = reducer.Report;
         }
         finally { reducer.Dispose(); }
@@ -62,8 +64,16 @@ internal static class EchoCheck
         var echoHeardWithout = Count(speechWithout, 1.0, 4.0);
         var userHeardWith = Count(speechWith, 4.5, 6.0);
         var bargeInHeardWith = Count(speechWith, 6.0, 8.0);
+        // Talking over Martlet, as always listening judges it: the production detector on the cleaned microphone, with the
+        // capture's own record of which frames were the speakers' sound.
+        var martletOver = TalkOver(with, timeline, 0.0, 4.0);
+        var userOver = TalkOver(with, timeline, 4.5, 6.0);
+        var shortOver = TalkOver(with, timeline, 4.5, 5.3);
+        var bothOver = TalkOver(with, timeline, 6.0, 8.0);
+        var talkOverOk = !martletOver.TalkedOver && !shortOver.TalkedOver && bothOver.TalkedOver &&
+            bothOver.AfterMs >= TalkOverDetector.Required.TotalMilliseconds;
         var ok = report.State == EchoReductionState.Active && echoOnly.ReducedDb >= 20 && nearEnd.ReducedDb <= 3 &&
-            echoHeardWith == 0 && echoHeardWithout > 0 && userHeardWith > 0 && bargeInHeardWith > 0;
+            echoHeardWith == 0 && echoHeardWithout > 0 && userHeardWith > 0 && bargeInHeardWith > 0 && talkOverOk;
         return new
         {
             ok,
@@ -87,7 +97,18 @@ internal static class EchoCheck
                     speechFramesWithout = echoHeardWithout, speechFramesWith = echoHeardWith
                 },
                 userOnly = new { withoutDb = nearEnd.WithoutDb, withDb = nearEnd.WithDb, keptDb = -nearEnd.ReducedDb, speechFramesWith = userHeardWith },
-                bothTalking = new { withoutDb = bothWithout, withDb = bothWith, userAloneDb = nearAlone, speechFramesWith = bargeInHeardWith }
+                bothTalking = new { withoutDb = bothWithout, withDb = bothWith, userAloneDb = nearAlone, speechFramesWith = bargeInHeardWith },
+                talkOver = new
+                {
+                    ok = talkOverOk,
+                    requiredMs = (int)TalkOverDetector.Required.TotalMilliseconds,
+                    gapMs = (int)TalkOverDetector.Gap.TotalMilliseconds,
+                    speakersRemovedDb = EchoTimeline.SpeakersRemovedDb,
+                    martletOnly = martletOver.Report(),
+                    userOnly = userOver.Report(),
+                    shortSound = shortOver.Report(),
+                    bothTalking = bothOver.Report()
+                }
             }
         };
     }
@@ -167,6 +188,48 @@ internal static class EchoCheck
         var count = 0;
         for (var i = (int)(from * 50); i < Math.Min((int)(to * 50), frames.Length); i++) if (frames[i]) count++;
         return count;
+    }
+
+    /// <summary>What talking over Martlet heard in one part of the scene: loud 20 ms frames that were a voice the speakers don't
+    /// explain (<c>userFrames</c>) or the speakers' own sound (<c>speakerFrames</c>), the 10 ms frames the echo timeline gave
+    /// each source, and whether (and how long after the part began) the user talked over Martlet.</summary>
+    private sealed record TalkOverPart(int UserFrames, int SpeakerFrames, int RoomTimeline, int UserTimeline, int SpeakersTimeline,
+        bool TalkedOver, int? AfterMs)
+    {
+        public object Report() => new
+        {
+            userFrames = UserFrames, speakerFrames = SpeakerFrames,
+            timeline = new { room = RoomTimeline, user = UserTimeline, speakers = SpeakersTimeline },
+            talkedOver = TalkedOver, afterMs = AfterMs
+        };
+    }
+
+    private static TalkOverPart TalkOver(byte[] pcm, EchoTimeline timeline, double from, double to)
+    {
+        // Voice activity runs from the start of the recording (its noise floor learns the room, as always listening's does);
+        // the talk-over count starts with the part.
+        var detector = new EnergyVoiceActivityDetector(new VoiceActivitySettings());
+        var over = new TalkOverDetector();
+        int first = (int)(from * 50), last = Math.Min((int)(to * 50), pcm.Length / EnergyVoiceActivityDetector.FrameBytes);
+        int? after = null;
+        for (var i = 0; i < last; i++)
+        {
+            detector.Process(pcm.AsSpan(i * EnergyVoiceActivityDetector.FrameBytes, EnergyVoiceActivityDetector.FrameBytes));
+            if (i < first) continue;
+            var speakers = timeline.Speakers((long)i * EnergyVoiceActivityDetector.FrameSamples, EnergyVoiceActivityDetector.FrameSamples);
+            if (over.Process(detector.LastFrameLoud, speakers) && after is null) after = (i + 1 - first) * 20;
+        }
+        int room = 0, user = 0, speakerTimeline = 0;
+        for (var frame = (int)(from * 100); frame < Math.Min((int)(to * 100), timeline.Frames); frame++)
+        {
+            switch (timeline[frame])
+            {
+                case HeardSource.Room: room++; break;
+                case HeardSource.User: user++; break;
+                case HeardSource.Speakers: speakerTimeline++; break;
+            }
+        }
+        return new(over.UserFrames, over.SpeakerFrames, room, user, speakerTimeline, over.Sustained, after);
     }
 
     /// <summary>The synthesized scene at 48 kHz: what the speakers play (Martlet's voice while it "speaks"), what the microphone

@@ -117,6 +117,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
+        // Companion › Listening › How you talk: what talking over Martlet takes (a sustained voice on the microphone; never a
+        // short sound or what this PC plays). Fixed text.
+        "TalkBargeInAbout",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
