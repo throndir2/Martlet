@@ -46,7 +46,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeFind", "SmartHomeSetupCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
-        "ApiKeyCreateCancel", "ApiKeyCreatedDone"
+        "ApiKeyCreateCancel", "ApiKeyCreatedDone",
+        // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
+        // --allow-ui-effects.
+        "ProblemClose"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -71,7 +74,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
-        "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
+        // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
+        // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
+        // --allow-ui-effects.
+        "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
@@ -122,7 +128,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
         // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked).
-        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary"
+        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
+        // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
+        // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
+        "ConfirmationCopy", "HostInputCopy", "ProblemHeading"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -150,11 +159,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
-    /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text).</summary>
+    /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text); and the Copy button
+    /// on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a click; never the
+    /// text it copies).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-"];
+        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
@@ -170,8 +181,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("The process is not Martlet.Desktop.");
         var windows = Windows(pid);
-        // A Martlet in the notification area (closed to it, or started with Windows) has no visible window but its icon's window.
-        if (!windows.Any(window => window.Current.AutomationId == "MartletMainWindow") && TrayWindow(pid) == 0)
+        // A Martlet in the notification area (closed to it, or started with Windows) has no visible window but its icon's window;
+        // one that couldn't start shows only its problem dialog.
+        if (!MainWindowVisible(windows) && !ProblemShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet desktop window is not visible in this interactive session.");
         processId = pid;
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows) };
@@ -351,13 +363,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The attached Martlet process exited.");
         var windows = Windows(pid);
-        if (!MainWindowVisible(windows) && TrayWindow(pid) == 0)
+        if (!MainWindowVisible(windows) && !ProblemShown(windows) && TrayWindow(pid) == 0)
             throw new InvalidOperationException("The Martlet window is no longer visible.");
         return windows;
     }
 
     private static bool MainWindowVisible(AutomationElement[] windows) =>
         windows.Any(window => window.Current.AutomationId == "MartletMainWindow");
+
+    /// <summary>Martlet's problem dialog ("Martlet couldn't start" or an unexpected error) is open.</summary>
+    private static bool ProblemShown(AutomationElement[] windows) =>
+        windows.Any(window => window.Current.AutomationId == "ProblemDialog");
 
     // ---------- the notification-area icon (Martlet.Desktop's TrayIcon) ----------
 

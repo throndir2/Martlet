@@ -1,4 +1,5 @@
 using System.Windows;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -16,4 +17,6 @@ public partial class ConfirmationDialog : ThemedWindow
 
     private void Yes_Click(object sender, RoutedEventArgs e) => DialogResult = true;
     private void No_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void Copy_Click(object sender, RoutedEventArgs e) =>
+        CopyText.From(CopyButton, $"{CopyText.Product}: {Title}{Environment.NewLine}{Environment.NewLine}{QuestionText.Text}");
 }

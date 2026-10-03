@@ -70,8 +70,8 @@ normally does not.
 Hosts follow the desktop's Martlet version. The gateway reports the release it
 was built from (`martlet_version` on `GET /martlet/v1/machine`), and the
 desktop's Devices map shows *Update available* when a host is older than the
-desktop. **Update host** runs `update` through the same route as every other
-command:
+desktop. Clicking it, or **Update host**, runs `update` through the same route
+as every other command:
 
 - **Docker**: builds `martlet-host:<desktop version>` from the `v<version>` tag
   (falling back to `main`) when it is not there yet, then runs `update` from it.

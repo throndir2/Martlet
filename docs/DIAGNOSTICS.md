@@ -14,7 +14,8 @@ A PC writes under two IDs: its desktop app's device ID (`desktop-<name>`) and,
 when it runs Martlet's host service, that gateway's host ID (such as
 `diva-host`). Both are shown as *This PC* and the *This PC* filter covers both;
 other computers show their ID. Selecting a line shows it in full (with the ID
-it came from, stack traces and output lines included).
+it came from, stack traces and output lines included), and that box's *Copy*
+button copies the whole line.
 Home's *unexpected errors* and *closed unexpectedly* items open this page.
 *Copy shown* copies the shown lines; *Open logs folder* opens this PC's folder.
 The page refreshes every 15 seconds while open; *Refresh* reads again and sends

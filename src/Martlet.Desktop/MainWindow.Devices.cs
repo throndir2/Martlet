@@ -104,9 +104,30 @@ public partial class MainWindow
             var health = new TextBlock { Text = node.HealthText, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.NoWrap };
             AutomationProperties.SetAutomationId(health, "SelectedDeviceHealth");
             pill.Children.Add(health);
-            var chip = new Border { Child = pill, Padding = new Thickness(12, 5, 14, 5), Margin = new Thickness(0), VerticalAlignment = VerticalAlignment.Center };
-            chip.SetResourceReference(StyleProperty, "Chip");
-            right.Children.Add(chip);
+            if (node.HealthCommand is { } fix)
+            {
+                // A status one click fixes ("Update available") is a button that runs the fix.
+                var arrow = Glyph("\uE76C", 11, new Thickness(8, 1, 0, 0));
+                arrow.VerticalAlignment = VerticalAlignment.Center;
+                pill.Children.Add(arrow);
+                var button = new Button
+                {
+                    Content = pill, Padding = new Thickness(12, 5, 12, 5), MinHeight = 0, VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = System.Windows.Input.Cursors.Hand, ToolTip = fix.Label
+                };
+                AutomationProperties.SetAutomationId(button, "SelectedDeviceHealthAction");
+                AutomationProperties.SetName(button, $"{node.HealthText}: {fix.Label}");
+                var action = fix.Action;
+                var argument = fix.Argument;
+                button.Click += (_, _) => RunNodeAction(action, argument);
+                right.Children.Add(button);
+            }
+            else
+            {
+                var chip = new Border { Child = pill, Padding = new Thickness(12, 5, 14, 5), Margin = new Thickness(0), VerticalAlignment = VerticalAlignment.Center };
+                chip.SetResourceReference(StyleProperty, "Chip");
+                right.Children.Add(chip);
+            }
         }
         // A remote device's connection check sits next to its status; this PC's host service checks from its own row.
         if (node.Kind != NodeKind.ThisPc && node.Commands.FirstOrDefault(c => c.Action == NodeAction.CheckHost) is { } check)

@@ -56,9 +56,11 @@ internal static class DeviceComponent
 internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null,
     string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null);
 
+/// <summary>A device on the map. <paramref name="HealthCommand"/> is what clicking its status runs, when the status names
+/// something one click fixes ("Update available" updates the host).</summary>
 internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, string Subtitle, string Glyph, NodeHealth Health,
     string HealthText, IReadOnlyList<HostedRole> Roles, IReadOnlyList<NodeFact> Facts, IReadOnlyList<NodeCommand> Commands,
-    IReadOnlyList<string> Notes, string? PairedHostId = null);
+    IReadOnlyList<string> Notes, string? PairedHostId = null, NodeCommand? HealthCommand = null);
 
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
@@ -93,15 +95,19 @@ internal static class NetworkMap
         internal List<NodeCommand> Commands { get; } = [];
         internal List<string> Notes { get; } = [];
         internal string? PairedHostId { get; set; }
+        internal NodeCommand? HealthCommand { get; set; }
 
-        internal void Worsen(NodeHealth health, string text)
+        /// <summary>Shows a worse status; returns whether <paramref name="text"/> is now the status shown.</summary>
+        internal bool Worsen(NodeHealth health, string text)
         {
-            if (health <= Health) return;
+            if (health <= Health) return false;
             Health = health;
             HealthText = text;
+            return true;
         }
 
-        internal NetworkNode Build() => new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes, PairedHostId);
+        internal NetworkNode Build() =>
+            new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes, PairedHostId, HealthCommand);
     }
 
     internal static LipSyncHandler LipSync(AvatarProfile? avatar) =>
@@ -366,7 +372,7 @@ internal static class NetworkMap
                 : outdated ? $"Needs update from {reported} to {app}."
                 : reported == app ? $"{reported}, up to date" : $"{reported}, newer than this PC ({app}). Update this PC to {reported}.",
                 "SelectedDeviceRelease"));
-            if (outdated && !local) target.Worsen(NodeHealth.Attention, "Update available");
+            var updateShown = outdated && !local && target.Worsen(NodeHealth.Attention, "Update available");
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;
             var offersThinking = check?.Offers?.ContainsKey(HostRoles.Ollama) == true;
@@ -382,8 +388,13 @@ internal static class NetworkMap
             var hostService = local ? DeviceComponent.HostService : null;
             target.Commands.Insert(0, new(NodeAction.CheckHost, "Check connection", !local && check?.Reachable != true, id, hostService));
             if (managed)
-                target.Commands.Add(new(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update to Martlet {app}" : "Update host",
-                    outdated && check?.Reachable == true, id, hostService));
+            {
+                var updateHost = new NodeCommand(NodeAction.UpdateHost, local ? "Update this PC's host service" : outdated ? $"Update to Martlet {app}" : "Update host",
+                    outdated && check?.Reachable == true, id, hostService);
+                target.Commands.Add(updateHost);
+                // Clicking "Update available" runs the same update.
+                if (updateShown) target.HealthCommand = updateHost;
+            }
             // Handing a job to a role it already runs configures that role's row; otherwise it gives the device a new job.
             string? Ready(string kind) => check?.Offers?.ContainsKey(kind) == true ? DeviceComponent.Standby(kind) : null;
             if (companion && !inCharge && Can(HostRoles.Audio2Face))

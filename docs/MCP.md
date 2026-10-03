@@ -591,6 +591,24 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
+Every read-only text box has a Copy button `Copy-<box ID>` (the box's
+automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
+`Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
+`Copy-FoundationStatus`), shown only while the box has text. Snapshots return
+its label (*Copy*, or *Copied*/*Couldn't copy* for about three seconds after a
+click), never the copied text. A run window's and *Prepare this computer*'s Copy
+starts with *Martlet <version>: <title>* (and *SSH target: ...* for Prepare)
+and *Status: <status line>*, then a blank line and the output.
+`ConfirmationCopy` (confirmation dialogs: version, title and question) and
+`HostInputCopy` (install and prerequisites dialogs: version, title, heading,
+message and the terms shown; never what was typed) work the same way. Copy
+buttons write the clipboard, so they need `--allow-ui-effects`; check the
+outcome with `ui_snapshot` and, on the dev machine, `Get-Clipboard`. The
+problem dialog (`ProblemDialog`: an unexpected error, or *Martlet couldn't
+start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
+paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
+passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
+`ui_connect` also attaches to a Martlet that shows only its problem dialog.
 Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
@@ -616,10 +634,14 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
-return the selected device's name and status. For a paired host,
-`SelectedDeviceRelease` (in *Details*) returns its Martlet release as this PC
-knows it, kept current by the release every host announces on each network
-sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
+return the selected device's name and status. When a paired host is older
+than this PC, its status *Update available* is a button,
+`SelectedDeviceHealthAction` (returned: its status and what it does, for
+example *Update available: Update to Martlet 0.40.0*); clicking it runs the
+same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
+paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
+as this PC knows it, kept current by the release every host announces on each
+network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
 `SelectedDeviceUpdate` the note on what this PC last did to update it (for
 example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, then *Updated to
 Martlet 0.22.0 (seen at 9:41 PM).* once the host announces it). Each row title
