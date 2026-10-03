@@ -57,7 +57,7 @@
         "type": "Project",
         "dependencies": {
           "Concentus": "[2.2.2, )",
-          "Martlet.Core": "[0.24.0, )",
+          "Martlet.Core": "[0.25.0, )",
           "NAudio.Wasapi": "[3.1.0, )",
           "NVorbis": "[0.10.5, )"
         }
@@ -67,28 +67,28 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.24.0, )",
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Avatars": "[0.25.0, )",
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.24.0, )"
+          "Martlet.Avatars": "[0.25.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.24.0, )",
-          "Martlet.Core": "[0.24.0, )",
-          "Martlet.Providers": "[0.24.0, )"
+          "Martlet.Audio": "[0.25.0, )",
+          "Martlet.Core": "[0.25.0, )",
+          "Martlet.Providers": "[0.25.0, )"
         }
       },
       "martlet.core": {
@@ -97,32 +97,32 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.echocancellation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.24.0, )",
+          "Martlet.Audio": "[0.25.0, )",
           "SoundFlow.Extensions.WebRtc.Apm": "[1.4.0, )"
         }
       },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.home": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.mcp.client": {
@@ -137,7 +137,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.24.0, )"
+          "Martlet.Core": "[0.25.0, )"
         }
       },
       "martlet.sherpa": {
@@ -146,7 +146,7 @@
       "martlet.support": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Diagnostics": "[0.24.0, )"
+          "Martlet.Diagnostics": "[0.25.0, )"
         }
       },
       "Concentus": {
