@@ -177,7 +177,7 @@ internal static class GatewayInferenceJson
             element,
             ["input", "temperature", "maximum_output_tokens", "maximum_context_tokens"],
             ["system", "history", "images", "top_p", "top_k", "min_p", "repeat_penalty", "frequency_penalty",
-                "presence_penalty", "context_tokens"]);
+                "presence_penalty", "context_tokens", "think"]);
         var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true);
         string? system = fields.TryGetValue("system", out var systemElement)
             ? Text(systemElement, BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true)
@@ -248,6 +248,12 @@ internal static class GatewayInferenceJson
         var context = OptionalInteger("context_tokens", Martlet.Core.Settings.GenerationSettings.MinimumContextTokens,
             Martlet.Core.Settings.GenerationSettings.MaximumHostContextTokens);
         GatewayRules.Require(context is null || context > outputTokens && context <= maximumContextTokens, "request.invalid");
+        bool? think = null;
+        if (fields.TryGetValue("think", out var thinkElement))
+        {
+            GatewayRules.Require(thinkElement.ValueKind is JsonValueKind.True or JsonValueKind.False, "request.invalid");
+            think = thinkElement.GetBoolean();
+        }
         return new(
             topP,
             OptionalInteger("top_k", 1, Martlet.Core.Settings.GenerationSettings.MaximumTopK),
@@ -255,7 +261,8 @@ internal static class GatewayInferenceJson
             Optional("repeat_penalty", 0, 2),
             Optional("frequency_penalty", -2, 2),
             Optional("presence_penalty", -2, 2),
-            context);
+            context,
+            think);
     }
 
     // The recording travels with the request, or (without reference_audio_base64) is the one this host keeps for a voice of

@@ -160,6 +160,8 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             writer.WriteBoolean("stream", true);
             // Keep the model loaded: the host is lent to the bot, and a cold load would stall the first reply.
             writer.WriteNumber("keep_alive", -1);
+            // Thinking steps: false answers without thinking first; unset keeps the model's default.
+            if (payload.Sampling.Think is { } think) writer.WriteBoolean("think", think);
             writer.WriteStartObject("options");
             writer.WriteNumber("temperature", payload.Temperature);
             writer.WriteNumber("num_predict", payload.MaximumOutputTokens);

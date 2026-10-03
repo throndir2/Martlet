@@ -601,7 +601,7 @@ public partial class MainWindow
                 try
                 {
                     result = await LocalOllama.TestAsync(model, replyTokens, LiveConversationConfiguration.LocalOllamaTextLimits.FirstDeltaTimeout,
-                        run.Status, run.Output, run.Token);
+                        run.Status, run.Output, run.Token, homeSettings?.Generation?.Reasoning);
                     return result.Summary;
                 }
                 catch (InvalidOperationException error)

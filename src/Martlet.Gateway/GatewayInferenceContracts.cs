@@ -618,16 +618,18 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
 }
 
 /// <summary>Optional Ollama sampling options a client may send with a chat request; null keeps Ollama's own default.
-/// <see cref="ContextTokens"/> replaces the relay's default context window (num_ctx).</summary>
+/// <see cref="ContextTokens"/> replaces the relay's default context window (num_ctx). <see cref="Think"/> is Ollama's own
+/// <c>think</c>: false answers without thinking first (Companion › Replies › Thinking steps); a host older than it refuses the
+/// field as <c>request.invalid</c>.</summary>
 public sealed record GatewayOllamaSampling(
     double? TopP = null, int? TopK = null, double? MinP = null, double? RepeatPenalty = null,
-    double? FrequencyPenalty = null, double? PresencePenalty = null, int? ContextTokens = null)
+    double? FrequencyPenalty = null, double? PresencePenalty = null, int? ContextTokens = null, bool? Think = null)
 {
     public static GatewayOllamaSampling None { get; } = new();
 
     public static GatewayOllamaSampling From(Martlet.Core.Settings.GenerationSettings? settings) => settings is null ? None : new(
         settings.TopP, settings.TopK, settings.MinP, settings.RepeatPenalty, settings.FrequencyPenalty, settings.PresencePenalty,
-        settings.ContextTokens);
+        settings.ContextTokens, settings.Reasoning);
 }
 
 public sealed record GatewayF5TextChunk(int Index, string ChunkId, string Text)
