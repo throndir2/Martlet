@@ -38,8 +38,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
-        // The host dashboard's Check again only reads this PC's own host service (Docker, the gateway's role records and network
-        // roster, its published port); it starts, sets up and pairs nothing.
+        // The host dashboard's Check again reads this PC's host service and, while the engine is unavailable, Windows' WSL
+        // status, virtualization services and pending restart. It starts, sets up and pairs nothing.
         "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
@@ -145,7 +145,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "BackgroundStatus", "TrayStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
-        // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
+        // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked).
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",

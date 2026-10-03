@@ -488,10 +488,16 @@ own loopback, so check it there or through a forward to this PC's loopback.
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
-`ready`, `firmwareOff`, `needsWindowsChanges`, `problems` (plain words),
+`ready`, `blocked`, `firmwareOff`, `needsWindowsChanges`, `problems` and
+`recovery` (plain words), `probeIssues` (which checks could not be read),
 `firmware`, `hypervisor`, `virtualMachinePlatform` and
 `windowsSubsystemForLinux` (`Enabled`, `Disabled`, `Absent` or `Unknown`),
-`wsl` (version, `none` or null), `virtualMachine`, `summary`,
+`wsl` (version, `none` or null), `wslStatus` (`Available`, `Unavailable`,
+`RestartRequired`, `Failed` or `Unknown`), `wslStatusExitCode`,
+`hostComputeService` (`vmcompute`) and `hostNetworkService` (`hns`), each
+`Running`, `Stopped`, `Disabled`, `Absent` or `Unknown`, `restartPending`
+(Windows component servicing or Windows Update needs a restart, or null when
+unreadable), `restartRequired`, `virtualMachine`, `summary`,
 `dockerDesktop {installed, running, engine}` (`engine` is what
 `docker desktop status` reports, for example `running`, `starting` or
 `stopped`, or null when Docker Desktop doesn't answer within 15 seconds; a
@@ -500,9 +506,19 @@ run window restarts Docker Desktop once when it is open but its engine stays
 it) and `continueSetup {pending, kind, task,
 created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 (`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
-entry that starts Martlet at the next sign-in exists). It runs a CIM query and
-`wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
-changes nothing and returns no paths.
+entry that starts Martlet at the next sign-in exists). It reads CIM facts,
+Windows services and pending-restart registry markers and runs `wsl --version`
+and `wsl --status` in a hidden Windows PowerShell, plus `docker desktop status`. It changes
+nothing, starts no Linux VM and returns no paths or distribution names.
+`Available` means WSL's status command answered without a recognized WSL 2
+problem, not that a VM or GPU workload was tested. WSL 2 unavailability is
+recognized even when that command exits **0**; a WSL 1-only warning is not a
+WSL 2 blocker. A service that is merely stopped is not missing or disabled:
+Windows can start it on demand. An unrelated pending Windows update alone
+does not block otherwise-ready WSL. When features report enabled but their
+runtime is unavailable and Windows has a restart pending, `restartRequired`
+is true and `needsWindowsChanges` false: restart Windows rather than
+reinstalling features or repeatedly restarting Docker Desktop.
 
 `host_service_status` reads this PC's own Martlet host service on Docker
 Desktop (the one the host dashboard sets up) with the same production code as
@@ -846,7 +862,8 @@ and stay inside the window. The host dashboard reads this PC's own host service
 by itself (the same read as `host_service_status`): when it opens, every 30
 seconds while the window shows and when it shows again, so steps tick without a
 button. `HostServiceStatus` (returned) is the status under its icon (*Checking...*,
-*Needs Docker Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
+*Needs Docker Desktop*, *Needs Windows restart*, *Windows isn't ready for Docker
+Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
 service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
 `HostStepsHeading` (returned) reads *This host is ready* once the required steps
 (Docker Desktop, host service, pairing) are done and `HostStepsSummary`
@@ -854,13 +871,16 @@ service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
 it last checked. `CheckHostService` (*Check again*) only repeats that read and
 says what it found in the status line, so it is a passive click. On the host
 dashboard,
-`StepDetail-docker` says whether Docker Desktop runs, that it is open but its
-engine isn't answering yet, or why Windows can't start
-it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
-Subsystem for Linux off, WSL missing, hypervisor not running), and
-`Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
-features* (administrator prompt and possibly a restart, so it needs
-`--allow-ui-effects` and is never part of verification). `StepDetail-service`
+`StepDetail-docker` says whether Docker Desktop's **engine** answers, or why
+Windows can't start it (firmware/nested virtualization, Windows features, WSL
+status, missing/disabled host services or a pending restart), with the same
+recovery guidance as `virtualization_status`. This is checked even while Docker
+Desktop's window is open, and refreshed by `CheckHostService`. `Step-docker-0`
+then reads *Restart Windows*, *Turn on virtualization*, *Turn on Windows features*
+or *Review Windows setup*. Setup and *Start Docker Desktop* use the same guarded
+run-window recovery. These actions can ask for administrator approval or a
+restart, so they need `--allow-ui-effects`; never execute an actual Windows
+change or restart during verification. `StepDetail-service`
 says the host service is not set up (`Step-service-0` *Set up host service*),
 set up but stopped (*Start host service*), set up for an address this PC no
 longer has or not answering (*Set up again*), or *Running and reachable on your

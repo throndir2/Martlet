@@ -47,6 +47,14 @@ package's own license terms); administrator approval only for Windows features
 (speech capabilities, WSL), each in its own UAC prompt; Martlet itself stays a
 per-user app; no large model download without typing `y` or a model tag.
 
+For Docker Desktop, both the desktop and prerequisites tool check WSL's status
+and Windows' host compute/network services, not just whether Docker and WSL are
+installed. If Windows reports the features as enabled but their runtime is
+unavailable and a restart is pending, they say **restart Windows** before
+trying another install. `wsl --status` can report this failure with exit code 0.
+The desktop asks before restarting and resumes setup after sign-in; the
+standalone tool asks you to restart and run the item again.
+
 ## 1. The Windows PC you talk to
 
 | Prerequisite | Needed for | Delivery | Details |

@@ -11,10 +11,10 @@ namespace Martlet.Desktop;
 internal sealed class PausedForRestartException(string message) : InvalidOperationException(message);
 
 /// <summary>Gets Windows ready for Docker Desktop's WSL 2 engine inside a run window: checks virtualization, Virtual
-/// Machine Platform, Windows Subsystem for Linux, the Windows hypervisor and WSL (<see cref="WindowsVirtualization"/>),
+/// Machine Platform, Windows Subsystem for Linux, their services and WSL (<see cref="WindowsVirtualization"/>),
 /// turns on what is off with one administrator prompt, and when Windows must restart asks the owner, restarts it and
-/// continues the setup after the next sign-in. Virtualization turned off in the firmware can't be changed from Windows:
-/// Martlet offers to restart straight into the firmware settings instead.</summary>
+/// continues the setup after the next sign-in. A restart already pending is handled before another install or Docker retry.
+/// Virtualization turned off in the firmware can't be changed from Windows.</summary>
 internal static class WindowsVirtualizationSetup
 {
     private const string FirmwareHow = "turn on Intel VT-x or AMD SVM, then save and exit";
@@ -28,8 +28,14 @@ internal static class WindowsVirtualizationSetup
         run.Status("Checking Windows virtualization...");
         var state = await WindowsVirtualization.ProbeAsync(run.Token);
         run.Output.Report("Windows: " + state.Describe() + ".");
-        if (state.FirmwareOff) await FirmwareAsync(run, resume);
-        if (!state.NeedsChanges) return false;
+        await CheckRestartAsync(state, run, resume);
+        if (!state.NeedsChanges)
+        {
+            if (state.RuntimeUnavailable)
+                throw new InvalidOperationException($"Docker Desktop can't start: {string.Join(", ", state.Problems())}. {state.Recovery}");
+            if (!state.Ready) run.Output.Report("Windows readiness could not be confirmed. " + state.Recovery);
+            return false;
+        }
         var problems = string.Join(", ", state.Problems());
         run.Output.Report($"Windows needs changes before Docker Desktop can start: {problems}.");
         run.Status("Turning on Windows features for Docker Desktop. Windows asks for administrator approval. This can take a few minutes...");
@@ -49,14 +55,27 @@ internal static class WindowsVirtualizationSetup
         }
         var after = await WindowsVirtualization.ProbeAsync(run.Token);
         run.Output.Report("Windows: " + after.Describe() + ".");
-        if (after.FirmwareOff) await FirmwareAsync(run, resume);
-        if (after.NeedsChanges)
-            throw new InvalidOperationException($"Docker Desktop still can't start: {string.Join(", ", after.Problems())}. " +
-                (after.HypervisorOff && !after.FeaturesOff
-                    ? "Restart Windows. If that doesn't help, turn on virtualization in the firmware settings."
-                    : "Check the output for details."));
-        run.Output.Report("Windows is ready for Docker Desktop.");
+        await CheckRestartAsync(after, run, resume);
+        if (after.Blocked)
+            throw new InvalidOperationException($"Docker Desktop still can't start: {string.Join(", ", after.Problems())}. {after.Recovery}");
+        run.Output.Report(after.Ready ? "Windows is ready for Docker Desktop."
+            : "Windows changes finished, but readiness could not be confirmed. " + after.Recovery);
         return true;
+    }
+
+    private static async Task CheckRestartAsync(WindowsVirtualization state, HostRunWindow run, ContinueSetupKind resume)
+    {
+        if (state.FirmwareOff)
+        {
+            if (state.VirtualMachine) throw new InvalidOperationException(state.Recovery);
+            await FirmwareAsync(run, resume);
+        }
+        if (state.RestartRequired)
+        {
+            run.Output.Report(state.Recovery);
+            run.Status("Windows needs a restart before Docker Desktop can start.");
+            await RestartAsync(run, resume);
+        }
     }
 
     private static async Task FirmwareAsync(HostRunWindow run, ContinueSetupKind resume)
