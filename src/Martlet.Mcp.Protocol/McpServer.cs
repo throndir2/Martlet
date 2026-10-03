@@ -151,10 +151,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "containers and volumes are never touched) against a fixture setup. A change holds the engine lock; read-only commands " +
             "still run; status names the holder; an automatic run (no terminal, no --yes) stops at once with exit 75 and " +
             "MARTLET-BUSY, changing nothing; an attended run waits and gives up after MARTLET_LOCK_WAIT; a waiting run continues when " +
-            "the holder is killed; no stale lock remains; the journal records it; the desktop's reader reads the busy line. With a " +
+            "the holder is killed, and so does a run without a terminal or --yes told to wait (Update hosts now); no stale lock " +
+            "remains; the journal records it; the desktop's reader reads the busy line. With a " +
             "fake docker CLI it also checks the Docker method: setup does not replace the network holder while an engine session " +
             "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), and an engine " +
             "left in a replaced holder's namespace stops at once. Returns notRun when Docker or the image is missing.", new { }),
+        Tool("host_update_check", "Rehearse how Martlet coordinates its own host service updates, with the desktop's production " +
+            "update tracker and busy reader: an Update host run window claims its host so the automatic pass leaves it to that run " +
+            "(no second engine run that finds the host locked by Martlet's own update and reports it busy, for its pairing or as this " +
+            "PC's own host service); overlapping routes end separately; an update started elsewhere is named as another update; a " +
+            "host found current stops waiting and its stale note says it is updated; Update hosts now waits for another change. Pure logic: contacts " +
+            "nothing and touches no Docker, host or data directory.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new
@@ -350,6 +357,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
+                "host_update_check" => HostUpdateCheck.Run(),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),

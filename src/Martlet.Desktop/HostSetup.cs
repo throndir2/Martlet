@@ -78,14 +78,14 @@ internal static partial class HostSetupCommands
     internal static string DockerShell(HostSetupTarget target, HostAction action, bool attended = true) =>
         DockerShell(target, Engine(action), action == HostAction.Setup, attended ? ShellMode.Console : ShellMode.Batch, false);
 
-    private static string DockerShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes)
+    private static string DockerShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes, int lockWaitSeconds = 0)
     {
         var image = Image(target);
         var build = $"$D build -t {image} -f deploy/host/Dockerfile {Repository}#";
         var run = mode switch { ShellMode.Console => " -it", ShellMode.Runner => " -i --log-driver none", _ => "" };
         return $"D=docker; docker info >/dev/null 2>&1 || D='{(mode == ShellMode.Batch ? "sudo -n docker" : "sudo docker")}'; " +
             $"($D image inspect {image} >/dev/null 2>&1 || {build}v{target.Version} || {build}main) && " +
-            $"$D run --rm{run} -u 0 -v {DockerSocket}{Environment(target, setup)} {image} {(assumeYes ? "--yes " : "")}{engine}";
+            $"$D run --rm{run} -u 0 -v {DockerSocket}{Environment(target, setup)}{LockWait(lockWaitSeconds)} {image} {(assumeYes ? "--yes " : "")}{engine}";
     }
 
     /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine. An update
@@ -93,9 +93,10 @@ internal static partial class HostSetupCommands
     internal static string NativeShell(HostSetupTarget target, HostAction action) =>
         NativeShell(target, Engine(action), action == HostAction.Setup, ShellMode.Console, false);
 
-    private static string NativeShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes)
+    private static string NativeShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes, int lockWaitSeconds = 0)
     {
-        var prefix = setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "";
+        var prefix = (setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "") +
+            (lockWaitSeconds > 0 ? $"MARTLET_LOCK_WAIT={lockWaitSeconds} " : "");
         // The runner keeps stdin for martlet-host's answers, so nothing before it may read it.
         var quiet = mode == ShellMode.Runner ? " </dev/null" : "";
         var refresh = engine == "update"
@@ -113,14 +114,15 @@ internal static partial class HostSetupCommands
 
     /// <summary>The POSIX shell Martlet's SSH runner (<see cref="HostShell"/>) executes for one martlet-host command
     /// (for example "status", "add audio2face" or "pair --device-id ... --name ..."): unattended (--yes, no terminal),
-    /// with answers read from stdin. The owner's click in Martlet is the confirmation.</summary>
-    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup, bool assumeYes = true)
+    /// with answers read from stdin. The owner's click in Martlet is the confirmation. <paramref name="lockWaitSeconds"/>
+    /// above 0 lets a run without --yes wait that long for another change on the host (MARTLET_LOCK_WAIT).</summary>
+    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup, bool assumeYes = true, int lockWaitSeconds = 0)
     {
         Validate(target, setup ? HostAction.Setup : HostAction.Status);
         return target.Method switch
         {
-            HostSetupMethod.SshDocker => DockerShell(target, engine, setup, ShellMode.Runner, assumeYes),
-            HostSetupMethod.SshNative => NativeShell(target, engine, setup, ShellMode.Runner, assumeYes),
+            HostSetupMethod.SshDocker => DockerShell(target, engine, setup, ShellMode.Runner, assumeYes, lockWaitSeconds),
+            HostSetupMethod.SshNative => NativeShell(target, engine, setup, ShellMode.Runner, assumeYes, lockWaitSeconds),
             _ => throw new InvalidOperationException("Only SSH hosts run through Martlet's SSH runner.")
         };
     }
@@ -131,6 +133,10 @@ internal static partial class HostSetupCommands
         var text = $" -e MARTLET_HOST_ADDRESS={target.Address}";
         return target.HostId is { } id ? text + $" -e MARTLET_HOST_ID={id}" : text;
     }
+
+    /// <summary>docker run's option that lets the engine wait <paramref name="seconds"/> for another change on the host (empty: the
+    /// engine's default, which for a run without a terminal or --yes is to stop at once).</summary>
+    private static string LockWait(int seconds) => seconds > 0 ? $" -e MARTLET_LOCK_WAIT={seconds}" : "";
 
     /// <summary>The Windows command script equivalent of a this-PC action (Docker Desktop), shown as the command preview and
     /// for running by hand. Martlet itself runs these actions without any console (<see cref="HostLocal"/>).</summary>
@@ -183,7 +189,7 @@ internal static partial class HostSetupCommands
 
     /// <summary>The console-less script automatic host updates run: SSH keys only (BatchMode), no TTY and no sudo password.
     /// Anything that would need an answer fails instead, and the owner finishes with Update host in Martlet.</summary>
-    internal static string UnattendedScript(HostSetupTarget target, HostAction action)
+    internal static string UnattendedScript(HostSetupTarget target, HostAction action, int lockWaitSeconds = 0)
     {
         Validate(target, action);
         var lines = new StringBuilder("@echo off\r\n");
@@ -194,13 +200,13 @@ internal static partial class HostSetupCommands
                 var build = $"docker build -t {image} -f deploy/host/Dockerfile {Repository}#";
                 lines.Append("docker info >NUL 2>&1 || (echo Docker Desktop is not running. & exit /b 3)\r\n");
                 lines.Append($"docker image inspect {image} >NUL 2>&1 || {build}v{target.Version} || {build}main || exit /b 4\r\n");
-                lines.Append($"docker run --rm -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)} {image} {Engine(action)}\r\n");
+                lines.Append($"docker run --rm -u 0 -v {DockerSocket}{Environment(target, action == HostAction.Setup)}{LockWait(lockWaitSeconds)} {image} {Engine(action)}\r\n");
                 break;
             case HostSetupMethod.SshDocker:
-                lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{DockerShell(target, action, attended: false)}\"\r\n");
+                lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{DockerShell(target, Engine(action), action == HostAction.Setup, ShellMode.Batch, false, lockWaitSeconds)}\"\r\n");
                 break;
             case HostSetupMethod.SshNative:
-                lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{NativeShell(target, action)}\"\r\n");
+                lines.Append($"ssh {SshUnattended} {target.SshTarget} \"{NativeShell(target, Engine(action), action == HostAction.Setup, ShellMode.Console, false, lockWaitSeconds)}\"\r\n");
                 break;
             default:
                 throw new InvalidOperationException("Commands for this host go through Martlet on that computer, not a script.");
@@ -212,9 +218,10 @@ internal static partial class HostSetupCommands
     /// <summary>Runs an action without a window or any question and returns its exit code and the log it wrote. SSH hosts
     /// go through Martlet's SSH runner when <paramref name="dataDirectory"/> is given (Martlet's key, the pinned host key
     /// and a sudo password the owner chose to remember; anything else fails instead of asking); otherwise
-    /// <see cref="UnattendedScript"/> runs.</summary>
+    /// <see cref="UnattendedScript"/> runs. Another change running on the host stops it at once (exit 75, MARTLET-BUSY)
+    /// unless <paramref name="lockWaitSeconds"/> lets it wait that long for that change first.</summary>
     internal static async Task<(int ExitCode, string Log)> RunUnattendedAsync(HostSetupTarget target, HostAction action,
-        CancellationToken token, string? dataDirectory = null, string? pinnedHostKey = null)
+        CancellationToken token, string? dataDirectory = null, string? pinnedHostKey = null, int lockWaitSeconds = 0)
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet");
         Directory.CreateDirectory(directory);
@@ -222,8 +229,8 @@ internal static partial class HostSetupCommands
         var script = Path.Combine(directory, name + ".cmd");
         var log = Path.Combine(directory, name + ".log");
         if (dataDirectory is not null && target.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative)
-            return (await RunQuietlyOverSshAsync(target, action, dataDirectory, pinnedHostKey, log, token), log);
-        File.WriteAllText(script, UnattendedScript(target, action), Encoding.ASCII);
+            return (await RunQuietlyOverSshAsync(target, action, dataDirectory, pinnedHostKey, log, lockWaitSeconds, token), log);
+        File.WriteAllText(script, UnattendedScript(target, action, lockWaitSeconds), Encoding.ASCII);
         using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/d /s /c \"\"{script}\" > \"{log}\" 2>&1\"")
             { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("Couldn't start the host update.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -240,7 +247,7 @@ internal static partial class HostSetupCommands
     }
 
     private static async Task<int> RunQuietlyOverSshAsync(HostSetupTarget target, HostAction action, string dataDirectory,
-        string? pinnedHostKey, string log, CancellationToken token)
+        string? pinnedHostKey, string log, int lockWaitSeconds, CancellationToken token)
     {
         using var writer = new StreamWriter(log, append: false, Encoding.UTF8) { AutoFlush = true };
         var sink = new LineSink(line => { lock (writer) writer.WriteLine(line); });
@@ -251,7 +258,7 @@ internal static partial class HostSetupCommands
             var result = await new HostShell(dataDirectory, NoHostShellPrompts.Instance).RunAsync(HostShellTarget.Parse(target.SshTarget),
                 new()
                 {
-                    Command = RemoteShell(target, Engine(action), action == HostAction.Setup, assumeYes: false), Input = "end\n",
+                    Command = RemoteShell(target, Engine(action), action == HostAction.Setup, assumeYes: false, lockWaitSeconds), Input = "end\n",
                     Sudo = true, PinnedHostKey = pinnedHostKey
                 }, sink, limit.Token);
             return result.ExitCode;

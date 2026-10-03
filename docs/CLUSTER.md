@@ -350,6 +350,18 @@ Nothing is interrupted and nothing is lost:
   Martlet tries it again every three minutes until it is free (this PC's own
   host service likewise). A host whose gateway doesn't answer while it
   restarts for another computer's update is asked again the same way.
+  *Update hosts now* waits its turn instead (up to 30 minutes) and then updates.
+- **Martlet never races itself.** Every route that updates a host from one
+  Martlet (an *Update host* run window, a command from another computer,
+  keeping this PC's own host service current, the automatic pass) claims that
+  host first. The automatic pass leaves a claimed host to that run instead of
+  starting a second `update` that would find the host locked by Martlet's own
+  update and call it busy, and this PC's own host service is updated once per
+  pass, not once as its pairing and again as "this PC". When a host is updated
+  by any route, or a pass or check finds it current (*Check connection*, the
+  release it announces, or this PC reading its own host service), its retry
+  goes and an earlier "waiting to update" note on its Devices card becomes
+  *Updated to Martlet ...*.
 - **One command at a time per host PC.** Its Martlet takes the next command
   only after the current one ends. An update that waits (until nothing needs
   Martlet there, or while Martlet restarts into it) stays first, so a command
@@ -375,7 +387,8 @@ Checked locally: `node_link_check` (MCP) runs the protocol end to end on
 loopback with the real gateway, desktop client and agent loop, including a
 command queued behind a running one and an update that waits and holds the
 queue; `host_engine_check` (MCP) runs the real `martlet-host` engine's lock in a
-disposable container. The same client and agent ran against a real Linux
+disposable container; `host_update_check` (MCP) rehearses how one Martlet keeps
+its own host updates from colliding with its production update tracker. The same client and agent ran against a real Linux
 gateway container built from this source (token read with `docker exec`,
 `commands.json` without secrets, a new token after restart). The desktop's own
 runner on a real host PC (installing an update, `martlet-host` runs), the

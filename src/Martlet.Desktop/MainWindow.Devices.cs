@@ -34,7 +34,7 @@ public partial class MainWindow
         DetailContent.Children.Clear();
         AutomationProperties.SetName(DetailContent, $"{node.Title}, {node.Subtitle}");
         DetailContent.Children.Add(DetailHeader(node));
-        if (node.PairedHostId is { } updating && hostUpdateNotes.GetValueOrDefault(updating) is { } update)
+        if (node.PairedHostId is { } updating && hostUpdates.Notes.GetValueOrDefault(updating) is { } update)
             DetailContent.Children.Add(Callout(update, "SelectedDeviceUpdate"));
 
         var rows = node.Roles.Where(r => r.Component != DeviceComponent.App).OrderBy(r => ComponentRank(r.Component)).ToList();
@@ -70,7 +70,7 @@ public partial class MainWindow
         }
 
         var notes = node.Notes.Distinct(StringComparer.Ordinal)
-            .Where(n => node.PairedHostId is null || n != hostUpdateNotes.GetValueOrDefault(node.PairedHostId)).ToList();
+            .Where(n => node.PairedHostId is null || n != hostUpdates.Notes.GetValueOrDefault(node.PairedHostId)).ToList();
         if (node.Facts.Count == 0)
         {
             if (notes.Count > 0) DetailContent.Children.Add(Notes(notes, new Thickness(0, 16, 0, 0)));
