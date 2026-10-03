@@ -17,9 +17,10 @@ public sealed record HostPairedDevice(string HostId, string DeviceId, string Dis
 /// <summary>A host's place in the owner's Martlet network: <see cref="State"/> is "unbound", "bound" or "removed", with
 /// the roster it accepted (null when unbound) and, for a member desktop, pending join requests. <see cref="Supported"/>
 /// is false for hosts older than the network; <see cref="Devices"/> (the computers paired with it) is null for hosts older
-/// than that list.</summary>
+/// than that list. <see cref="MartletVersion"/> is the Martlet release the host announces it runs (null for hosts older
+/// than that announcement), so every computer that syncs the network learns of an update there (<see cref="HostRelease"/>).</summary>
 public sealed record HostNetworkView(string HostId, string State, NetworkRoster? Roster, IReadOnlyList<HostJoinRequest> Joins, bool Supported = true,
-    IReadOnlyList<HostPairedDevice>? Devices = null)
+    IReadOnlyList<HostPairedDevice>? Devices = null, string? MartletVersion = null)
 {
     public static HostNetworkView Unsupported(string hostId) => new(hostId, "unsupported", null, [], false);
     public bool Bound => State == "bound" && Roster is not null;
@@ -123,7 +124,9 @@ public sealed partial class Audio2FaceHostConnection
                     }
                     catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or Audio2FaceHostException) { }
             }
-            return new(pairing.HostId, state, roster, joins, Devices: devices);
+            var release = root.TryGetProperty("martlet_version", out var announced) && announced.ValueKind == JsonValueKind.String
+                ? HostRelease.Normalize(announced.GetString()) : null;
+            return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release);
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ContractException)
         {

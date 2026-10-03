@@ -122,6 +122,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeSpeakingVoicesAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
+            if (IsCharacterModelsTarget(rawTarget!))
+            {
+                await InvokeCharacterModelsAsync(context, rawTarget!).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == HomeAssistantPath)
             {
                 await InvokeHomeAssistantAsync(context).ConfigureAwait(false);
@@ -369,9 +374,10 @@ internal sealed partial class GatewayHttpApplication
         }).ConfigureAwait(false);
     }
 
-    private static async ValueTask WriteJsonAsync<T>(HttpContext context, int status, T value, int maximumBytes = GatewayRules.MaximumResponseBytes)
+    private static async ValueTask WriteJsonAsync<T>(HttpContext context, int status, T value, int maximumBytes = GatewayRules.MaximumResponseBytes,
+        JsonSerializerOptions? options = null)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Json);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, options ?? Json);
         GatewayRules.Require(bytes.Length <= maximumBytes, "gateway.internal");
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/json; charset=utf-8";

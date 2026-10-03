@@ -179,6 +179,70 @@ two simulated desktops with real voice stores on loopback. The desktop's
 sync window with real paired hosts, the Linux files and two real computers are
 **NOT RUN**.
 
+## The shared character models
+
+The character models the owner adds (Companion › Character › *Your characters*,
+or a model file shown or saved in the character settings window) are copied to
+every Martlet computer that can be the companion: each Martlet desktop, whether
+it is a companion or a host PC right now (a host PC can become the companion in
+one click and then already has them). Desktops reach each other only through
+paired hosts, so each host keeps a copy too, only to pass it on; a host never
+shows a character. Which character a computer shows stays its own choice. The
+built-in character is part of Martlet and never in the list.
+
+- **The list** (`Martlet.Core.Characters.CharacterModelLibrary`): one
+  last-writer-wins entry per model, keyed by its ID (SHA-256 of its renderer,
+  model file and every file's path, SHA-256 and length, so the same model is the
+  same entry everywhere), with its name, renderer (`live2d` or `vrm`), model
+  file, files, the computer it was added on and when. Each file lists the
+  SHA-256 of every 3 MiB piece: a file travels piece by piece, each piece in
+  one signed request within the gateway's request limit, and an interrupted copy
+  continues where it stopped. Same hybrid revisions and merge rules as the plan;
+  removed models leave tombstones. JSON, snake case, schema 1, at most 2 MiB,
+  16 models (512 MB together; older ones leave the list when newer ones need
+  the room) and 64 tombstones. Each model follows the renderer's rules: a VRM is
+  one `.vrm` of at most 32 MB; a Live2D model is its `.model3.json` folder of
+  `.json`, `.moc3`, `.png` and `.wav` files only (128 files, 128 folders,
+  16 MB per file, 1 MB per JSON, 64 MB in all), never scripts.
+- **Each host** keeps `character-models.json` and one
+  `character-model-chunk-<sha256>.bin` per piece of a live model beside
+  `host.json` (0600, gateway service owner; not part of the approved
+  configuration). Pieces live on disk, not in memory; a piece no live model uses
+  is deleted.
+- **Each desktop** keeps `character-models.json` in its data folder and each
+  model's files in `character-models\<first 16 hex digits of its ID>`, laid out
+  like the original folder, so the renderer shows the copy exactly like the
+  original (the original can be moved or deleted afterwards). Pieces arriving
+  from another computer wait in `character-models-incoming` until the model is
+  complete and every file's SHA-256 checks; then it moves into place in one step.
+
+| Endpoint (paired devices only, over the pinned, signed connection; API keys may not) | What |
+| --- | --- |
+| `GET /martlet/v1/character-models` | The host's list and the SHA-256 of each piece it holds (`present`) |
+| `POST /martlet/v1/character-models` | Merge a desktop's list in; returns the merged list and `present` |
+| `GET /martlet/v1/character-models/chunks/<sha256>` | One piece (`chunk.missing` when the host has none) |
+| `POST /martlet/v1/character-models/chunks/<sha256>` | Send `{"data_base64": ...}` for a live model; refused (`request.invalid`) for a wrong SHA-256 or a piece no live model has |
+
+Every 30 seconds while any host is paired (and two seconds after you add, use or
+remove a character) the desktop reads every paired host's list, merges them into
+its own, copies the pieces of each model it lacks from hosts that have them,
+assembles and checks the model, deletes removed models' copies (not the one it
+shows, until another character is chosen there), gives every host whose list
+differs the merged list and sends each host every piece it lacks. A model file
+this PC showed before characters were shared joins the list on the first sync,
+and the PC then shows Martlet's copy (the same files). Companion › Character's
+`CharacterModelsShared` says with how many computers the characters are shared.
+Nothing is written while no host is paired. A host older than shared characters
+refuses with `request.invalid`; the status asks you to update it.
+
+Checked locally with `character_models_selftest` (MCP): two real gateways and
+three simulated desktops on loopback with generated Live2D and VRM fixtures, and
+the desktop UI (adding, showing, switching and removing a real Live2D model's
+copy on a disposable data folder). The Linux host's file custody was checked on
+the fake Linux file system. The desktop's sync with real paired hosts, a real
+Linux host's files, rendering a copy on another computer and two real computers
+are **NOT RUN**.
+
 ## The shared Home Assistant connection
 
 The Home Assistant address and long-lived access token can travel through the
@@ -286,6 +350,18 @@ Nothing is interrupted and nothing is lost:
   Martlet tries it again every three minutes until it is free (this PC's own
   host service likewise). A host whose gateway doesn't answer while it
   restarts for another computer's update is asked again the same way.
+  *Update hosts now* waits its turn instead (up to 30 minutes) and then updates.
+- **Martlet never races itself.** Every route that updates a host from one
+  Martlet (an *Update host* run window, a command from another computer,
+  keeping this PC's own host service current, the automatic pass) claims that
+  host first. The automatic pass leaves a claimed host to that run instead of
+  starting a second `update` that would find the host locked by Martlet's own
+  update and call it busy, and this PC's own host service is updated once per
+  pass, not once as its pairing and again as "this PC". When a host is updated
+  by any route, or a pass or check finds it current (*Check connection*, the
+  release it announces, or this PC reading its own host service), its retry
+  goes and an earlier "waiting to update" note on its Devices card becomes
+  *Updated to Martlet ...*.
 - **One command at a time per host PC.** Its Martlet takes the next command
   only after the current one ends. An update that waits (until nothing needs
   Martlet there, or while Martlet restarts into it) stays first, so a command
@@ -301,12 +377,18 @@ Nothing is interrupted and nothing is lost:
   same. An update that computer asked for joins an update check or download
   already under way instead of failing. While Martlet exits to install, it
   takes no new command; commands sent meanwhile wait in the mailbox.
+- **Every computer hears of an update.** A host announces the Martlet release
+  it runs on every network sync ([NETWORK](NETWORK.md#when-a-computer-is-updated)),
+  so once Martlet on a host PC has updated itself and its host service (or any
+  computer updated a host), all your other computers show the new release
+  within 20 seconds and stop offering or retrying an update it no longer needs.
 
 Checked locally: `node_link_check` (MCP) runs the protocol end to end on
 loopback with the real gateway, desktop client and agent loop, including a
 command queued behind a running one and an update that waits and holds the
 queue; `host_engine_check` (MCP) runs the real `martlet-host` engine's lock in a
-disposable container. The same client and agent ran against a real Linux
+disposable container; `host_update_check` (MCP) rehearses how one Martlet keeps
+its own host updates from colliding with its production update tracker. The same client and agent ran against a real Linux
 gateway container built from this source (token read with `docker exec`,
 `commands.json` without secrets, a new token after restart). The desktop's own
 runner on a real host PC (installing an update, `martlet-host` runs), the

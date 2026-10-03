@@ -667,6 +667,8 @@ public partial class MainWindow
                 (state.Problem is { } problem ? $": {problem}" : "."));
         }
         if (before != thisPcHostVersion) UpdateNearby();
+        // An update that finished by any route (or one that reported busy against Martlet's own run) leaves no stale note.
+        HostFoundCurrent(ThisPcHostId, thisPcHostVersion);
         RenderHost();
     }
 
@@ -694,6 +696,8 @@ public partial class MainWindow
         if (closing || store is null) return;
         if (hostBusy) { ActionText.Text = "Another host setup step is still running."; return; }
         hostBusy = true;
+        // Martlet's automatic host update leaves this PC's host service to this run rather than colliding with it.
+        using var updating = action.Verb == HostVerb.Update ? hostUpdates.Begin(ThisPcHostId) : null;
         try
         {
             ActionText.Text = "Running host setup. The progress window shows details.";
@@ -701,6 +705,7 @@ public partial class MainWindow
                 ? await HostActions.PairOtherDesktopAsync(this, ThisPcTarget())
                 : await HostActions.RunAsync(this, store.DataDirectory, ThisPcTarget(), null, action);
             if (closing) return;
+            if (done is not null && action.Verb == HostVerb.Update) HostUpdateSettled(ThisPcHostId);
             ActionText.Text = done ?? "Stopped. See the progress window for details.";
             if (done is not null && action.Verb == HostVerb.Pair) hostPairedAt = DateTime.UtcNow;
         }
@@ -841,7 +846,7 @@ public partial class MainWindow
     private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
-        HardwareStore?.Load() ?? [], homeHosts, hostUpdateNotes, HostUsers());
+        HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers());
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -1189,6 +1194,8 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
         if (closing) return;
+        foreach (var host in hosts)
+            if (hostChecks.GetValueOrDefault(host.HostId) is { Reachable: true } found) HostFoundCurrent(UpdateKey(host), found.MartletVersion);
         ActionText.Text = results.Length == 1 ? $"{results[0].Id}: {results[0].Check.Text}"
             : $"Checked {results.Length} hosts: {results.Count(r => r.Check.Reachable == true)} reachable, " +
               string.Join(", ", HostRoles.All.Select(role =>
@@ -1219,6 +1226,8 @@ public partial class MainWindow
                 return null;
             }
             var local = host.Method == HostSetupMethod.ThisPcDocker;
+            // Martlet's automatic host update leaves this host to this run rather than colliding with it (and reporting it busy).
+            using var updating = action.Verb == HostVerb.Update ? hostUpdates.Begin(UpdateKey(host)) : null;
             ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC" : host.HostId)}" +
                 (host.Method == HostSetupMethod.Agent ? " through Martlet there" : "") + ". The progress window shows details.";
             // Adding a role on this PC preselects what suits it (for example whisper on the processor when the graphics card is full).
@@ -1226,6 +1235,7 @@ public partial class MainWindow
                 ? (await ListeningAdviceAsync()).Answers() : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
                 host.Pairing, confirmed);
+            if (done is not null && action.Verb == HostVerb.Update) HostUpdateSettled(UpdateKey(host));
             if (closing) return done;
             ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped. See the progress window for details." : $"{host.HostId}: {done}";
             if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();
@@ -1302,6 +1312,7 @@ public partial class MainWindow
         }
         await Pairings().ForgetAsync(host.HostId, token);
         hostChecks.Remove(host.HostId);
+        hostReleases.Remove(host.HostId);
         ForgetClusterHost(host.HostId);
         if (inCharge)
         {
@@ -1361,7 +1372,7 @@ public partial class MainWindow
             case NodeAction.UpdateHost:
                 if (FindHost(argument) is { } outdated)
                 {
-                    hostUpdateNotes.Remove(outdated.HostId);
+                    hostUpdates.ClearNote(outdated.HostId);
                     LaunchOnHost(outdated, HostAction.Update);
                 }
                 break;

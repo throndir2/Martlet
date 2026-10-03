@@ -257,7 +257,11 @@ founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
 number; the host tells B (not yet a member) who is paired with it, A and B,
 each with when it last made a signed request; A allows B, and B pairs with the
-other host by itself; a host PC C outside the network pairs with the first host
+other host by itself; every host announces the Martlet release it runs to A, B
+and B reading only (the gateway's own release), and a desktop that last saw a
+host on 0.0.1 (simulated) takes the announced release as an update that needs
+nothing more, while a host still older than the desktop keeps needing one
+(`HostRelease`); a host PC C outside the network pairs with the first host
 and only watches (`NetworkSyncEngine.ReadOnlyAsync`): it sees A, B and itself
 and starts, joins and asks nothing; A sets up a third
 host and B is paired with it on its next sync; a key outside the network
@@ -331,6 +335,44 @@ answers none. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
+`character_models_selftest` (no arguments) rehearses the
+[shared character models](CLUSTER.md#the-shared-character-models) end to end
+with the production code: two real gateways on 127.0.0.1 (pinned TLS, in-memory
+`character-models.json` and pieces) and three simulated desktops that keep their
+character copies in a temporary folder and use the desktop's paired client and
+Martlet.Avatar.Hosting's import and reconcile engine. The fixtures are generated
+bytes in the Live2D folder and VRM file shapes (NOT real models; nothing is
+rendered). It runs `src\Martlet.NodeLinkCheck` (mode `characters`,
+`CharacterRehearsal.cs`) and returns `{exitCode, report}` like
+`network_selftest`. Its steps: adding a Live2D folder (a 7 MiB file in three
+pieces, a texture and a motion in subfolders) and a VRM keeps copies the
+renderer's own file reader reads exactly like the originals; the list and every
+3 MiB piece reach a host, each piece in one signed request; a new, empty desktop
+copies both characters byte for byte; a copy interrupted after three pieces
+continues with only the rest; a desktop passes the characters on to a host the
+first desktop never reached; removing a character deletes its pieces on both
+hosts and the other desktops' copies; a stale copy can't bring it back; a
+computer keeps the copy it shows until another is chosen; a host restart keeps
+the list and pieces; a wrong SHA-256, a piece no character has and a removed
+character's piece are refused; reading a missing piece answers none; a 17th
+character and a Live2D folder with a script are refused. Nothing leaves
+loopback, the temporary folder is deleted and Windows Credential Manager is not
+touched; it does not cover the desktop window and its 30-second sync, the Linux
+host's files, rendering a copied model or a real LAN.
+
+`character_models` reads the shared character models from a data directory
+(optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `loaded` or `unreadable` for `character-models.json`), `live`,
+`tombstones`, `totalBytes`, `revision`, and per live character its `key` (the
+first 16 hex digits of its ID, as in `CharacterModelState-<key>`), `renderer`
+(`live2d` or `vrm`), `files`, `pieces`, `bytes`, `addedBy`, `addedAt`,
+`updatedBy`, `ready` (this PC's copy is complete) and `shown` (`avatar.json`
+shows it); `copies` (folders in `character-models`), `incoming` (copies still
+arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
+`unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
+`model-file-outside-list`). Character names and file paths are never returned.
+Read-only; it contacts nothing.
+
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
 absolute `dataDirectory`, default the current user's): `share` is
@@ -378,7 +420,9 @@ left open) holds `engine.lock` (0600) and records itself in `engine.holder`;
 terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
 `--yes update` with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and
 gives up with 75; a waiting `--yes remove` continues once the holder is killed
-(SIGKILL); the next automatic run is not blocked (no stale lock);
+(SIGKILL), and so does an `update` without a terminal or `--yes` that sets
+`MARTLET_LOCK_WAIT=60` (*Update hosts now*): it waits instead of stopping and
+then runs; the next automatic run is not blocked (no stale lock);
 `logs/engine.log` records the waits; and the desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
@@ -391,6 +435,28 @@ this ran ... Nothing was changed`) while one in the current namespace
 continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
+
+`host_update_check` (no arguments) rehearses how one Martlet keeps its own host
+service updates from colliding, with the desktop's production
+`HostUpdateTracker` and `HostEngineBusy` reader, and returns `{exitCode, report:
+{passed, total, steps: [{name, ok, detail}]}}`. The timeline is the one seen on
+a host PC right after Martlet updated itself: *Update this PC's host service*
+(a run window) claims this PC's host service (`keys`,
+`run-window-claims-host`); the automatic pass then leaves that host to the run,
+both as its local pairing and as this PC's own host service, with no second
+engine run and no "busy" note, while another host still updates
+(`automatic-pass-leaves-host-to-run-window`); overlapping routes (a run window
+and a command from another computer) end separately
+(`overlapping-routes-end-separately`); the engine's real busy line for another
+update is named as *Another update of that host was already running ...* while
+an install keeps *Waiting to update ... busy* (`busy-note-names-another-update`);
+a host found current stops waiting and its stale note becomes *Updated to
+Martlet 0.22.0 (seen at ...)* (once), while other hosts keep theirs
+(`current-host-replaces-stale-note`, `retry-takes-waiting`); and *Update
+hosts now* waits up to 30 minutes for another change, inside an unattended
+run's 45-minute limit (`asked-update-waits`). It contacts nothing and touches no
+Docker, host or data directory; the engine side of waiting is
+`host_engine_check`'s `asked-update-waits-then-runs`.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -634,8 +700,16 @@ return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
 example *Update available: Update to Martlet 0.40.0*); clicking it runs the
-same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. Each
-row title
+same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
+paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
+as this PC knows it, kept current by the release every host announces on each
+network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
+`SelectedDeviceUpdate` the note on what this PC last did to update it (for
+example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, *Waiting to update
+to Martlet 0.22.0: that host is busy (...)* or *Another update of that host was
+already running (...)*, then *Updated to Martlet 0.22.0 (seen at 9:41 PM).* once
+the host announces it, a check finds it current or another route of this
+Martlet updated it). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
@@ -936,6 +1010,32 @@ measured from the top-left of the character's screen). `ui_select` and
 `BubbleOffsetX`, `BubbleOffsetY`), so they need `--allow-ui-effects`;
 `SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
 isn't a number from -4000 to 4000.
+
+Companion › Character's *Your characters* card lists the built-in character and
+every [shared character](CLUSTER.md#the-shared-character-models) in the order
+they joined. `CharacterModelsStatus` reads how many characters of the owner's
+own there are and what this PC shows ("1 character of your own. This PC shows
+one of your characters." or "... the built-in character.", never a name).
+`CharacterModelsShared` reads whether they are shared with the paired Martlet
+computers ("Characters shared with 2 of 2 computers at 7:15 PM.", characters
+still copying to this PC, hosts to update, or "No other Martlet computers are
+paired yet, so your characters stay on this PC."). Each row's detail line
+`CharacterModelState-<key>` (`builtin`, or the first 16 hex digits of the
+character's ID) returns its renderer, size, where and when it was added,
+"Copying to this PC..." while pieces are missing and "Shown on this PC." for the
+one shown, never its name. Its controls are `CharacterModelUse-<key>` (disabled
+while it is shown or still copying) and, unless shown, `CharacterModelRemove-<key>`
+(asks with `ConfirmationYes`/`ConfirmationNo` and removes it on every computer).
+`CharacterModelAdd` opens *Add a character* (`CharacterModelAddDialog`):
+`CharacterModelAddPath` (the `.model3.json` or `.vrm` full path),
+`CharacterModelAddName`, `CharacterModelAddOk` (adds, shares and shows it on this
+PC) and `CharacterModelAddCancel` (passive); `CharacterModelAddProblem` returns
+why it couldn't (never the typed name or path). Use, Remove and adding need
+`--allow-ui-effects`. In the character settings window (`OpenAvatar`), a model
+typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
+file") joins the shared list when it is shown or saved (`SaveAvatar`), and the
+saved profile then shows Martlet's copy. `character_models` reads the same list
+and copies headlessly.
 
 For voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). There are no built-in voices and no groups:
@@ -1257,7 +1357,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check` and `echo_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check`, `echo_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

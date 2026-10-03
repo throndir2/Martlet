@@ -37,6 +37,12 @@
           "Martlet.Core": "[0.22.0, )"
         }
       },
+      "martlet.avatar.hosting": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Avatars": "[0.22.0, )"
+        }
+      },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {

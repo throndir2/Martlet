@@ -34,8 +34,8 @@ public partial class MainWindow
         DetailContent.Children.Clear();
         AutomationProperties.SetName(DetailContent, $"{node.Title}, {node.Subtitle}");
         DetailContent.Children.Add(DetailHeader(node));
-        if (node.PairedHostId is { } updating && hostUpdateNotes.GetValueOrDefault(updating) is { } update)
-            DetailContent.Children.Add(Callout(update));
+        if (node.PairedHostId is { } updating && hostUpdates.Notes.GetValueOrDefault(updating) is { } update)
+            DetailContent.Children.Add(Callout(update, "SelectedDeviceUpdate"));
 
         var rows = node.Roles.Where(r => r.Component != DeviceComponent.App).OrderBy(r => ComponentRank(r.Component)).ToList();
         var components = rows.Select(r => r.Component).OfType<string>().ToHashSet(StringComparer.Ordinal);
@@ -70,7 +70,7 @@ public partial class MainWindow
         }
 
         var notes = node.Notes.Distinct(StringComparer.Ordinal)
-            .Where(n => node.PairedHostId is null || n != hostUpdateNotes.GetValueOrDefault(node.PairedHostId)).ToList();
+            .Where(n => node.PairedHostId is null || n != hostUpdates.Notes.GetValueOrDefault(node.PairedHostId)).ToList();
         if (node.Facts.Count == 0)
         {
             if (notes.Count > 0) DetailContent.Children.Add(Notes(notes, new Thickness(0, 16, 0, 0)));
@@ -359,6 +359,7 @@ public partial class MainWindow
             var label = new TextBlock { Text = facts[i].Label, Margin = new Thickness(0, 0, 12, 6) };
             label.SetResourceReference(StyleProperty, "Muted");
             var value = new TextBlock { Text = facts[i].Value, Margin = new Thickness(0, 0, 0, 6) };
+            if (facts[i].AutomationId is { } id) AutomationProperties.SetAutomationId(value, id);
             Grid.SetRow(label, i);
             Grid.SetRow(value, i);
             Grid.SetColumn(value, 1);
@@ -380,9 +381,10 @@ public partial class MainWindow
         return panel;
     }
 
-    private static Border Callout(string text)
+    private static Border Callout(string text, string? automationId = null)
     {
         var block = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
+        if (automationId is not null) AutomationProperties.SetAutomationId(block, automationId);
         var callout = new Border { Child = block, CornerRadius = new CornerRadius(12), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 16, 0, 0), BorderThickness = new Thickness(1.5) };
         callout.SetResourceReference(Border.BorderBrushProperty, "WarningBrush");
         callout.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
