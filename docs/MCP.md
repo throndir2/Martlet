@@ -398,8 +398,9 @@ Martlet.Avatar.Hosting's import and reconcile engine. The fixtures are generated
 bytes in the Live2D folder and VRM file shapes (NOT real models; nothing is
 rendered). It runs `src\Martlet.NodeLinkCheck` (mode `characters`,
 `CharacterRehearsal.cs`) and returns `{exitCode, report}` like
-`network_selftest`. Its steps: adding a Live2D folder (a 7 MiB file in three
-pieces, a texture and a motion in subfolders) and a VRM keeps copies the
+`network_selftest`. Its steps: adding a Live2D model (its model3.json declares a
+7 MiB file in three pieces, a texture and a motion in subfolders; a readme beside
+it stays behind) and a VRM keeps copies the
 renderer's own file reader reads exactly like the originals; the list and every
 3 MiB piece reach a host, each piece in one signed request; a new, empty desktop
 copies both characters byte for byte; a copy interrupted after three pieces
@@ -409,7 +410,7 @@ hosts and the other desktops' copies; a stale copy can't bring it back; a
 computer keeps the copy it shows until another is chosen; a host restart keeps
 the list and pieces; a wrong SHA-256, a piece no character has and a removed
 character's piece are refused; reading a missing piece answers none; a 17th
-character and a Live2D folder with a script are refused. Nothing leaves
+character and a Live2D model that refers to a script are refused. Nothing leaves
 loopback, the temporary folder is deleted and Windows Credential Manager is not
 touched; it does not cover the desktop window and its 30-second sync, the Linux
 host's files, rendering a copied model or a real LAN.
@@ -1086,7 +1087,19 @@ character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
 even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
 size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
-stay in view at every zoom).
+stay in view at every zoom). While the character shows, `SetupCharacterModel`
+describes what its model drives, for example *Model: 236 controls; 1 texture
+shown at 1/2 size to fit the graphics budget; blinks with ParamEyeLOpen,
+ParamEyeROpen; mouth moves ParamMouthOpenY; no idle motions; 0 expressions;
+physics on.* (parameter IDs only, never paths); the desktop log records the same
+as *Character model loaded: ...*.
+
+In the character window (`OpenAvatar`, see above), `AvatarModelInfo` gives the
+same *Model: ...* description while the character shows, or *Model not loaded:*
+and why the chosen model couldn't be shared or shown (for example *The model
+refers to x.png, which isn't in its folder.* or, when the renderer rejects it,
+*This model can't be shown: ...*, which `logs_tail` `avatar-renderer` also
+records).
 
 The character overlay itself is drawn by Martlet's renderer child process
 (`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the

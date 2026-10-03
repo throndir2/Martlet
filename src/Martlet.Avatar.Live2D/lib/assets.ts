@@ -2,10 +2,14 @@ import { boundedInteger, Diagnostic, Live2DError, requireCondition } from "./dia
 
 export const LIMITS = Object.freeze({
   files: 128,
-  totalBytes: 64 * 1024 * 1024,
-  fileBytes: 16 * 1024 * 1024,
+  totalBytes: 128 * 1024 * 1024,
+  fileBytes: 64 * 1024 * 1024,
   jsonBytes: 1024 * 1024,
   textures: 16,
+  /** Largest PNG accepted from the model folder, per side and in total. */
+  sourceTextureDimension: 8192,
+  sourceTexturePixels: 256 * 1024 * 1024,
+  /** GPU upload budget; larger source textures are halved until they fit. */
   textureDimension: 4096,
   texturePixels: 32 * 1024 * 1024,
   parameters: 1024,
@@ -25,6 +29,8 @@ export interface ModelDescription {
   readonly modelFile: string;
   readonly moc: string;
   readonly textures: readonly string[];
+  /** Every texture is uploaded at 1/textureDivisor of its PNG size (1, 2 or 4); UVs are normalized, so art is unchanged. */
+  readonly textureDivisor: number;
   readonly groups: Readonly<{ lipSync: readonly string[]; eyeBlink: readonly string[] }>;
   readonly motions: Readonly<Record<string, readonly MotionReference[]>>;
   readonly expressions: readonly { readonly name: string; readonly file: string }[];
@@ -33,13 +39,22 @@ export interface ModelDescription {
   readonly diagnostics: readonly Diagnostic[];
 }
 
+// Letters and digits of any script plus a few punctuation marks; never separators, escapes, URL syntax or traversal.
+// Mirrors LocalAvatarFiles.IsSafeModelName in Martlet.Avatar.Hosting.
+const SEGMENT = /^[\p{L}\p{N}_(\[][\p{L}\p{N}\p{M}_. ()\[\]+&',!~@=-]*$/u;
+
 export function localPath(value: unknown): string {
   requireCondition(typeof value === "string" && value.length > 0 && value.length <= 240,
     "UNSAFE_PATH", "A bounded relative bundle path is required.");
   requireCondition(value.split("/").every(part =>
-    /^[A-Za-z0-9_][A-Za-z0-9_. -]*$/.test(part) && !part.endsWith(".") && !part.endsWith(" ")),
+    SEGMENT.test(part) && !part.endsWith(".") && !part.endsWith(" ")),
   "UNSAFE_PATH", `Unsafe bundle path: ${value}. No URLs, traversal, escapes or absolute paths.`);
   return value;
+}
+
+/** Upload size of a texture at the bundle's divisor. */
+export function scaledSize(size: { width: number; height: number }, divisor: number): { width: number; height: number } {
+  return { width: Math.max(1, Math.round(size.width / divisor)), height: Math.max(1, Math.round(size.height / divisor)) };
 }
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -74,8 +89,9 @@ export function pngDimensions(bytes: Uint8Array): { width: number; height: numbe
   requireCondition(view.getUint32(8) === 13, "INVALID_TEXTURE", "Invalid PNG IHDR length.");
   const width = view.getUint32(16);
   const height = view.getUint32(20);
-  requireCondition(width > 0 && height > 0 && width <= LIMITS.textureDimension &&
-    height <= LIMITS.textureDimension, "RESOURCE_LIMIT", "PNG dimensions exceed the texture budget.");
+  requireCondition(width > 0 && height > 0 && width <= LIMITS.sourceTextureDimension &&
+    height <= LIMITS.sourceTextureDimension, "RESOURCE_LIMIT",
+  `PNG textures can be at most ${LIMITS.sourceTextureDimension} pixels per side.`);
   return { width, height };
 }
 
@@ -129,12 +145,23 @@ export class LocalModelBundle {
     requireCondition(textures.length > 0 && new Set(textures).size === textures.length,
       "INVALID_TEXTURE", "At least one unique PNG texture is required; duplicate slots are unsupported.");
     let pixels = 0;
-    for (const name of textures) {
-      const size = pngDimensions(this.read(name));
+    const sizes = textures.map(name => {
+      const size = pngDimensions(this.#files.get(name)!);
       pixels += size.width * size.height;
-      boundedInteger(pixels, LIMITS.texturePixels, "total texture pixels");
-    }
+      boundedInteger(pixels, LIMITS.sourceTexturePixels, "total texture pixels");
+      return size;
+    });
+    // Halving keeps power-of-two atlases power-of-two (mipmapped) and shows the same art with fewer GPU pixels.
+    let textureDivisor = 1;
+    const fits = (divisor: number) => {
+      const scaled = sizes.map(size => scaledSize(size, divisor));
+      return scaled.every(size => size.width <= LIMITS.textureDimension && size.height <= LIMITS.textureDimension) &&
+        scaled.reduce((sum, size) => sum + size.width * size.height, 0) <= LIMITS.texturePixels;
+    };
+    while (!fits(textureDivisor)) textureDivisor *= 2;
     const diagnostics: Diagnostic[] = [];
+    if (textureDivisor > 1) diagnostics.push({ code: "TEXTURES_DOWNSCALED",
+      message: `Textures are shown at 1/${textureDivisor} size to fit the ${LIMITS.textureDimension}-pixel GPU budget.` });
     const optional: Record<string, string> = {};
     for (const field of ["Physics", "Pose", "UserData", "DisplayInfo"]) {
       if (refs[field] !== undefined) {
@@ -212,7 +239,7 @@ export class LocalModelBundle {
       diagnostics.push({ code: "INACTIVE_HIT_AREAS", message: "No hit-test actions or scripts are executed." });
     }
     this.description = Object.freeze({
-      modelFile, moc, textures: Object.freeze(textures),
+      modelFile, moc, textures: Object.freeze(textures), textureDivisor,
       groups: Object.freeze({ lipSync: Object.freeze(groups.lipSync), eyeBlink: Object.freeze(groups.eyeBlink) }),
       motions: Object.freeze(motionGroups),
       expressions: Object.freeze(expressions.map(e => Object.freeze(e))),

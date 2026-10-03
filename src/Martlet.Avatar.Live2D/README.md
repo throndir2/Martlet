@@ -23,10 +23,14 @@ the SDK is committed. The renderer host build then produces:
 Framework's `CubismMotionManager`, `CubismEyeBlink`, `CubismBreath`,
 `CubismPhysics`, `CubismPose` and `CubismExpressionMotionManager` to the loaded
 model, following the official sample's update order. Idle-group motions play at
-random; `EyeBlink` group IDs blink; breathing adds to the standard angle/breath
-parameters that exist; cursor look-at adds to `ParamAngleX/Y/Z`,
-`ParamBodyAngleX` and `ParamEyeBallX/Y`; the loudness level is added to the
-`LipSync` group (or `ParamMouthOpenY` when the model declares no group).
+random; `EyeBlink` group IDs blink (or `ParamEyeLOpen`/`ParamEyeROpen` when the
+model declares no group, as VTube Studio models usually don't); breathing adds to
+the standard angle/breath parameters that exist; cursor look-at adds to
+`ParamAngleX/Y/Z`, `ParamBodyAngleX` and `ParamEyeBallX/Y`; the loudness level is
+added to the `LipSync` group (or `ParamMouthOpenY` when the model declares no
+group). `Live2DAdapter.modelSummary` reports the resulting blink/mouth IDs,
+textures and any downscale, motion groups, expressions and physics; the desktop
+logs it and shows it in Character settings.
 
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,
@@ -135,7 +139,9 @@ The pinned Framework owns its Core version lookup using the required
 single-buffer overload. Version rejection releases the created MOC and Framework.
 `LipSync`/`EyeBlink` groups are reported as authored metadata, not inferred names.
 It never uses `getParameterIndex` for absent IDs (the SDK can synthesize virtual
-entries there), assumes `ParamMouthOpenY`, or invents a default `0..1` output range.
+entries there), assumes `ParamMouthOpenY` for a mapping, or invents a default
+`0..1` output range. (Only the idle animator's blink and loudness lip-sync fall
+back to the standard eye/mouth IDs, as described above.)
 
 The standalone mapping path uses `configure(ChannelMapping[])` followed by
 `resetEpoch(identity)` and `applyFrame({identity, sequence, configurationId, channels})`.
@@ -180,15 +186,23 @@ without stretching.
 
 - No model URLs, filesystem resolver, CDN, archive import, script plugins or
   dynamic asset code. Relative references reject absolute/remote paths, traversal,
-  backslashes, percent escapes, query/fragment strings and case collisions.
+  backslashes, percent escapes, query/fragment strings and case collisions. Names
+  may use letters and digits of any script (for example `简.moc3`) plus spaces
+  and `. _ - ( ) [ ] + & ' , ! ~ @ =`.
 - Only bounded JSON, MOC3, PNG and inert WAV entries are accepted. Every declared
   optional reference must exist even if inactive. Unknown metadata fields fail
-  explicitly instead of silently activating extensions.
-- Limits: 128 files; 16 MiB/file; 1 MiB/JSON; 64 MiB total; 16 PNG textures;
-  4096 pixels/side; 32 million total texture pixels; 2048 canvas pixels/side;
-  1024 parameters; 2048 drawables; 250,000 vertices; 750,000 indices.
-- PNG headers are checked before decoding, decoded dimensions rechecked before
-  upload, and decode is limited to 10 seconds. Late results after cancellation
+  explicitly instead of silently activating extensions. The desktop host reads
+  only the files `model3.json` declares, so VTube Studio settings, readmes and
+  icons beside a model are never opened.
+- Limits: 128 files; 64 MiB/file; 1 MiB/JSON; 128 MiB total; 16 PNG textures of
+  at most 8192 pixels/side and 256 million pixels in total. On the GPU, textures
+  are halved (all by the same power of two) until each fits 4096 pixels/side and
+  together 32 million pixels, keeping power-of-two atlases mipmapped; UVs are
+  normalized, so the art is unchanged (`TEXTURES_DOWNSCALED` diagnostic). Also
+  2048 canvas pixels/side; 1024 parameters; 2048 drawables; 250,000 vertices;
+  750,000 indices.
+- PNG headers are checked before decoding, decoded (and resized) dimensions
+  rechecked before upload, and decode is limited to 20 seconds. Late results after cancellation
   are closed, not installed. Geometry limits are checked after Core creation.
   These are application resource budgets, **not a sandbox or hard limit on
   native/WASM allocation or synchronous parser execution time**. Do not feed

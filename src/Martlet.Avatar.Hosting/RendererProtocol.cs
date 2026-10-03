@@ -7,7 +7,15 @@ namespace Martlet.Avatar.Hosting;
 
 public sealed record RendererMessage(string Kind, Guid Activation, JsonElement Data);
 public sealed record RendererParameter(string Id, double Minimum, double Maximum, double Neutral, string[] Aspects);
-public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters);
+/// <summary>
+/// What a loaded Live2D model drives after Martlet's fallbacks: its texture count and the divisor its textures are shown
+/// at (1, 2 or 4; larger PNGs are halved to fit the GPU budget), the parameters that blink and open the mouth (its
+/// EyeBlink/LipSync groups, or the standard ParamEyeLOpen/ParamEyeROpen and ParamMouthOpenY when they are empty), its
+/// authored motion groups, expression count and whether physics and the Framework animator run.
+/// </summary>
+public sealed record RendererModelSummary(int Textures, int TextureDivisor, string[] EyeBlink, string[] LipSync,
+    string[] MotionGroups, int Expressions, bool Physics, bool Animated);
+public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters, RendererModelSummary? Model = null);
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme);
 public sealed record RendererTheme(bool Dark);
 /// <summary>

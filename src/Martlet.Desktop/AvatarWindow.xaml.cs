@@ -83,6 +83,32 @@ public partial class AvatarWindow : ThemedWindow
         var showing = controller.IsShowing;
         ShowButton.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
         HideButton.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
+        // What the showing model drives (parameter IDs, never paths), or why the chosen one couldn't load.
+        ModelInfoText.Text = showing && controller.Capabilities is { } loaded ? "Model: " + AvatarRendererProcess.Describe(loaded)
+            : modelProblem is { } why ? "Model not loaded: " + why : "";
+    }
+
+    private string? modelProblem;
+
+    /// <summary>Shares (for an own model) and shows <paramref name="selected"/>, keeping why it couldn't load for
+    /// <see cref="RenderShowing"/>.</summary>
+    private async Task<string?> ShowModelAsync(AvatarProfile selected, bool share)
+    {
+        modelProblem = null;
+        try
+        {
+            string? note = null;
+            if (share) (selected, note) = await ShareAsync(selected);
+            if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
+            await controller.ShowAsync(selected, lifetime.Token);
+            return note;
+        }
+        catch (Exception error) when (error is ContractException or InvalidOperationException)
+        {
+            modelProblem = error.Message;
+            throw;
+        }
+        finally { RenderShowing(); }
     }
 
     private void RenderSaveState()
@@ -354,7 +380,7 @@ public partial class AvatarWindow : ThemedWindow
             {
                 ResultText.Text = "Switching the character...";
                 RenderSaveState();
-                await controller.ShowAsync(next with { ResourceRevision = null }, lifetime.Token);
+                await ShowModelAsync(next with { ResourceRevision = null }, share: false);
                 ResultText.Text = controller.Status;
             }
         }
@@ -427,10 +453,8 @@ public partial class AvatarWindow : ThemedWindow
         await ActionAsync(async () =>
         {
             if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
-            var (selected, note) = await ShareAsync(Selected() with { ResourceRevision = null });
-            if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
             ResultText.Text = "Opening the character...";
-            await controller.ShowAsync(selected, lifetime.Token);
+            var note = await ShowModelAsync(Selected() with { ResourceRevision = null }, share: true);
             ResultText.Text = controller.Status + (note is null ? "" : "\n" + note);
             RenderShowing();
             if (controller.Capabilities is { } capabilities)

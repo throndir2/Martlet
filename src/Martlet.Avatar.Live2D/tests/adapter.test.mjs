@@ -58,6 +58,10 @@ test("production PNG decoder abort closes a late bitmap and preserves premultipl
   await Promise.resolve();
   assert.equal(closed, true);
   assert.equal(options.premultiplyAlpha, "premultiply");
+  assert.equal(options.resizeWidth, undefined);
+  browserServices.decodeTexture(new Uint8Array(33), new AbortController().signal, { width: 4096, height: 2048 }).catch(() => {});
+  assert.deepEqual([options.resizeWidth, options.resizeHeight, options.resizeQuality], [4096, 2048, "high"]);
+  resolve({ close() {} });
 });
 
 test("production PNG decoder deadline rejects instead of installing a late image", async t => {
@@ -73,7 +77,7 @@ test("production PNG decoder deadline rejects instead of installing a late image
   let deadline;
   let resolve;
   globalThis.setTimeout = (callback, milliseconds) => {
-    assert.equal(milliseconds, 10_000);
+    assert.equal(milliseconds, 20_000);
     deadline = callback;
     return 1;
   };

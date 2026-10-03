@@ -64,11 +64,11 @@ public sealed record CharacterModelLibrary
     public const int MaximumDirectories = 128;
     public const int MaximumPathLength = 240;
     /// <summary>A model's size limit, the same as the character renderer's.</summary>
-    public const long MaximumModelBytes = 64L * 1024 * 1024;
+    public const long MaximumModelBytes = 128L * 1024 * 1024;
     /// <summary>A VRM file's size limit, the same as the character renderer's.</summary>
     public const int MaximumVrmBytes = 32 * 1024 * 1024;
     /// <summary>A Live2D file's size limit (JSON files: <see cref="MaximumLive2DJsonBytes"/>), the same as the renderer's.</summary>
-    public const int MaximumLive2DFileBytes = 16 * 1024 * 1024;
+    public const int MaximumLive2DFileBytes = 64 * 1024 * 1024;
     public const int MaximumLive2DJsonBytes = 1024 * 1024;
     /// <summary>The combined size of every listed model; older models leave the list when newer ones need the room.</summary>
     public const long MaximumTotalBytes = 512L * 1024 * 1024;
@@ -240,7 +240,7 @@ public sealed record CharacterModelLibrary
         foreach (var file in files)
             ContractRules.Require(IsPath(file.Path) && IsSha256(file.Sha256) && file.Bytes > 0 && file.Chunks is not null &&
                 file.Chunks.Count == ChunkCount(file.Bytes) && file.Chunks.All(IsSha256), "A character's file is invalid.");
-        ContractRules.Require(model.Bytes <= MaximumModelBytes, "A character is larger than 64 MB.");
+        ContractRules.Require(model.Bytes <= MaximumModelBytes, "A character is larger than 128 MB.");
         if (model.Renderer == Vrm)
         {
             ContractRules.Require(files.Count == 1 && files[0].Path == model.Entry && !model.Entry!.Contains('/') &&

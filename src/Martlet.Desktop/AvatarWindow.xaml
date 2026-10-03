@@ -73,6 +73,8 @@
             </Expander>
             <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="AvatarResult"/>
+            <TextBlock x:Name="ModelInfoText" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource MutedBrush}"
+                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AvatarModelInfo"/>
             <TextBlock x:Name="CreditText" TextWrapping="Wrap" Margin="0,10" Foreground="{DynamicResource MutedBrush}"
                 Text="Built-in character: This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion."/>
 

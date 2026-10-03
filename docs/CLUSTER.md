@@ -330,9 +330,10 @@ complete). The built-in character is part of Martlet and never in the list.
   removed models leave tombstones. JSON, snake case, schema 1, at most 2 MiB,
   16 models (512 MB together; older ones leave the list when newer ones need
   the room) and 64 tombstones. Each model follows the renderer's rules: a VRM is
-  one `.vrm` of at most 32 MB; a Live2D model is its `.model3.json` folder of
-  `.json`, `.moc3`, `.png` and `.wav` files only (128 files, 128 folders,
-  16 MB per file, 1 MB per JSON, 64 MB in all), never scripts.
+  one `.vrm` of at most 32 MB; a Live2D model is its `.model3.json` and the
+  files it declares, `.json`, `.moc3`, `.png` and `.wav` only (128 files,
+  128 folders, 64 MB per file, 1 MB per JSON, 128 MB in all), never scripts;
+  other files beside it (VTube Studio settings, readmes) are not copied.
 - **Each host** keeps `character-models.json` and one
   `character-model-chunk-<sha256>.bin` per piece of a live model beside
   `host.json` (0600, gateway service owner; not part of the approved

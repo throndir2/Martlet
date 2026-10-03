@@ -18,8 +18,17 @@ choice simply is not saved.
 The character idles with her authored motions, blinks, breathes, sways with
 physics, turns her head/eyes toward the mouse cursor and moves her mouth while
 Martlet speaks. **Show the character automatically when Martlet starts** saves
-`AutoShow` in `avatar.json`. Custom Live2D `.model3.json` folders and VRM1 `.vrm`
-models get the same idle behavior (VRM: relaxed arms, breathing, blink).
+`AutoShow` in `avatar.json`. Custom Live2D `.model3.json` models and VRM1 `.vrm`
+models get the same idle behavior (VRM: relaxed arms, breathing, blink). For
+Live2D, Martlet reads only the files the `model3.json` declares, so a model
+folder downloaded with VTube Studio files, readmes or icons beside it works;
+file names may use any script (for example `简.model3.json`). Textures up to
+8192 pixels per side are shown halved to fit the GPU budget, and models whose
+`EyeBlink`/`LipSync` groups are empty (typical for face-tracking models) blink
+with `ParamEyeLOpen`/`ParamEyeROpen` and talk with `ParamMouthOpenY`. When a
+model is shown, the desktop log records *Character model loaded: ...* and
+Character settings and Companion › Character describe what it drives; when the
+renderer rejects one, the message says why (*This model can't be shown: ...*).
 
 Lip-sync modes (`AvatarLipSync`):
 
@@ -76,8 +85,8 @@ minutes. Martlet picks it up at the next sentence; set another loopback port in
 ## Audio2Face-only (advanced) setup
 
 1. Create/load an ordinary Martlet profile. Select the bundled character, a
-   lawful local VRM1 `.vrm` or a Live2D `.model3.json` folder containing only
-   supported inert assets. An optional SDK override folder containing `core.js`
+   lawful local VRM1 `.vrm` or a Live2D `.model3.json` whose declared files are
+   supported inert assets (JSON, MOC3, PNG, WAV). An optional SDK override folder containing `core.js`
    and `sdk.js` replaces the bundled runtime.
 2. Check **local GPU model inspection** and click **Inspect model**. This launches
    a private WPF/WebView2 process with the installed WebView2 runtime

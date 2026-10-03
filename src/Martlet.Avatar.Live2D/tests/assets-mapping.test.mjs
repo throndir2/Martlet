@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LIMITS, LocalModelBundle, MappingPlan, inspectParameters, localPath, pngDimensions } from "../dist/index.js";
+import { LIMITS, LocalModelBundle, MappingPlan, inspectParameters, localPath, pngDimensions, scaledSize } from "../dist/index.js";
 import { bundle, environment, files, mouthMapping, png } from "./fixtures.mjs";
 
 const code = expected => error => error.code === expected;
 
 test("strict local paths reject traversal, remote references, escapes, scripts and archives", () => {
   for (const path of ["../a.png", "/a.png", "C:\\a.png", "\\\\host\\a.png", "https://x/a.png",
-    "//x/a.png", "a/../b.png", "./a.png", "%2e%2e/a.png", "a.png?x", "a.png#x", "a\\b.png", "a//b.png"]) {
+    "//x/a.png", "a/../b.png", "./a.png", "%2e%2e/a.png", "a.png?x", "a.png#x", "a\\b.png", "a//b.png", ".hidden.png",
+    "a.png.", "a:b.png", "a\u0000.png"]) {
     assert.throws(() => localPath(path), code("UNSAFE_PATH"), path);
+  }
+  // Names from any script and common download suffixes are plain local names.
+  for (const path of ["简/简.moc3", "简.8192/texture_00.png", "星星眼.exp3.json", "Model (1)/texture [2k].png", "Ñandú-é.png"]) {
+    assert.equal(localPath(path), path);
   }
   for (const path of ["plugin.js", "avatar.zip"]) {
     const input = files();
@@ -61,7 +66,7 @@ test("strict metadata rejects unknown/plugin fields and malformed groups", () =>
 });
 
 test("encoded bytes, JSON, file count and decoded texture budgets are enforced", () => {
-  assert.throws(() => pngDimensions(png(4097, 1)), code("RESOURCE_LIMIT"));
+  assert.throws(() => pngDimensions(png(8193, 1)), code("RESOURCE_LIMIT"));
   assert.throws(() => pngDimensions(png(0, 1)), code("RESOURCE_LIMIT"));
   assert.throws(() => pngDimensions(new Uint8Array(33)), code("INVALID_TEXTURE"));
   const oversized = files();
@@ -74,11 +79,27 @@ test("encoded bytes, JSON, file count and decoded texture budgets are enforced",
   for (let i = 0; i < 128; i++) many.set(`${i}.png`, png());
   assert.throws(() => new LocalModelBundle(many, "avatar.model3.json"), code("RESOURCE_LIMIT"));
   const total = files();
-  for (let i = 0; i < 4; i++) total.set(`${i}.moc3`, new Uint8Array(LIMITS.fileBytes));
+  for (let i = 0; i < 3; i++) total.set(`${i}.moc3`, new Uint8Array(LIMITS.fileBytes));
   assert.throws(() => new LocalModelBundle(total, "avatar.model3.json"), code("RESOURCE_LIMIT"));
-  const textureBudget = files({ FileReferences: { Moc: "avatar.moc3", Textures: ["texture.png", "2.png", "3.png"] } });
-  for (const name of ["texture.png", "2.png", "3.png"]) textureBudget.set(name, png(4096, 4096));
-  assert.throws(() => new LocalModelBundle(textureBudget, "avatar.model3.json"), code("RESOURCE_LIMIT"));
+  const names = ["texture.png", "2.png", "3.png", "4.png", "5.png"];
+  const sourceBudget = files({ FileReferences: { Moc: "avatar.moc3", Textures: names } });
+  for (const name of names) sourceBudget.set(name, png(8192, 8192));
+  assert.throws(() => new LocalModelBundle(sourceBudget, "avatar.model3.json"), code("RESOURCE_LIMIT"));
+});
+
+test("textures above the GPU budget are halved, keeping power-of-two atlases mipmappable", () => {
+  const single = files();
+  single.set("texture.png", png(8192, 8192));
+  const one = new LocalModelBundle(single, "avatar.model3.json").description;
+  assert.equal(one.textureDivisor, 2);
+  assert.deepEqual(scaledSize({ width: 8192, height: 8192 }, one.textureDivisor), { width: 4096, height: 4096 });
+  assert.ok(one.diagnostics.some(d => d.code === "TEXTURES_DOWNSCALED"));
+  const names = ["texture.png", "2.png", "3.png"];
+  const three = files({ FileReferences: { Moc: "avatar.moc3", Textures: names } });
+  for (const name of names) three.set(name, png(4096, 4096));
+  assert.equal(new LocalModelBundle(three, "avatar.model3.json").description.textureDivisor, 2);
+  assert.equal(bundle().description.textureDivisor, 1);
+  assert.ok(!bundle().description.diagnostics.some(d => d.code === "TEXTURES_DOWNSCALED"));
 });
 
 test("mapping inspects real reported custom bounds and never invents a conventional mouth", () => {
