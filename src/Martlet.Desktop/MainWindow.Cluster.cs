@@ -95,14 +95,15 @@ public partial class MainWindow
         QueueClusterSync();
     }
 
-    /// <summary>Notices jobs that changed outside the Devices page (for example in Setup) and records them.</summary>
+    /// <summary>Notices jobs that changed outside the Devices page (for example in Setup) and records them. A host PC uses no
+    /// jobs, so it records none.</summary>
     private void ObserveLocalJobs()
     {
         if (store is null || homeSettings?.Setup is null) return;
         foreach (var job in ClusterJobs.All)
         {
             var local = ClusterSync.Local(job, homeSettings, homeAvatar);
-            if (clusterObserved.TryGetValue(job, out var seen) && seen != local) RecordClusterJob(job, local);
+            if (Role == DeviceRole.Companion && clusterObserved.TryGetValue(job, out var seen) && seen != local) RecordClusterJob(job, local);
             clusterObserved[job] = local;
         }
     }
@@ -166,42 +167,56 @@ public partial class MainWindow
 
     private async Task SyncClusterAsync()
     {
-        if (!clusterEnabled || clusterBusy || closing || store is null || setupService is null || Role != DeviceRole.Companion) return;
+        if (!clusterEnabled || clusterBusy || closing || store is null || setupService is null) return;
         clusterBusy = true;
         var events = new List<string>();
         var followed = false;
+        // A host PC uses no jobs: it receives the plan (so it knows the log host and shows who does what) and passes on its own
+        // changes (the log host choice), but never records, fails over or follows a job.
+        var host = Role == DeviceRole.Host;
         try
         {
-            ObserveLocalJobs();
+            if (!host) ObserveLocalJobs();
             var hosts = NetworkMap.Hosts(Inputs());
             var probes = await Task.WhenAll(hosts.Select(h => ClusterSync.ProbeAsync(h.Pairing, lifetime.Token)));
             if (closing || !clusterEnabled) return;
             clusterCheckedAt = DateTimeOffset.UtcNow;
             clusterProbes.Clear();
             foreach (var probe in probes) RecordProbe(probe);
-            ObserveLocalJobs();
+            if (!host) ObserveLocalJobs();
 
             var now = DateTimeOffset.UtcNow;
             var before = clusterPlan.Digest();
+            var logHost = LogHostId;
             var plan = clusterPlan;
             foreach (var probe in probes)
                 if (probe.Plan is { } copy) plan = ClusterPlan.Merge(plan, copy);
-            if (homeSettings?.Setup is not null)
+            if (!host && homeSettings?.Setup is not null)
                 foreach (var job in ClusterJobs.All.Where(job => plan.For(job) is null))
                 {
                     var local = ClusterSync.Local(job, homeSettings, homeAvatar);
                     plan = plan.Assign(job, local.HostId, local.Off, false, null, ClusterDevice, now);
                 }
-            foreach (var probe in probes.Where(p => p.Reachable))
-            {
-                var origin = hosts.First(h => h.HostId == probe.HostId).Pairing.Origin;
-                var roles = ClusterSync.Roles(probe.Routes ?? []);
-                if (plan.Node(probe.HostId) is not { Removed: false } node || node.Origin != origin || !node.Roles.SequenceEqual(roles))
-                    plan = plan.Observe(probe.HostId, origin, roles, false, ClusterDevice, now);
-            }
-            clusterPlan = Failover(plan, probes, now, events);
+            if (!host)
+                foreach (var probe in probes.Where(p => p.Reachable))
+                {
+                    var origin = hosts.First(h => h.HostId == probe.HostId).Pairing.Origin;
+                    var roles = ClusterSync.Roles(probe.Routes ?? []);
+                    if (plan.Node(probe.HostId) is not { Removed: false } node || node.Origin != origin || !node.Roles.SequenceEqual(roles))
+                        plan = plan.Observe(probe.HostId, origin, roles, false, ClusterDevice, now);
+                }
+            clusterPlan = host ? plan : Failover(plan, probes, now, events);
             if (clusterPlan.Digest() != before) SaveClusterPlan();
-            if (!assigningRole && !setupOperations.IsRunning && homeSettings?.Setup is not null) followed = await FollowClusterAsync(events);
+            if (LogHostId != logHost)
+            {
+                var by = clusterPlan.For(ClusterJobs.Logs)?.UpdatedBy;
+                ErrorLog.Info(LogHostId is { } collector
+                    ? $"Log host is now {collector}{(by is null || by == ClusterDevice ? "" : $", as chosen on {by}")}: this PC sends it its logs and shows what it collected."
+                    : $"Nobody collects logs now{(by is null || by == ClusterDevice ? "" : $" (cleared on {by})")}: each computer keeps its own.");
+                logMarks = null;
+                ShipLogsAsync().Forget();
+            }
+            if (!host && !assigningRole && !setupOperations.IsRunning && homeSettings?.Setup is not null) followed = await FollowClusterAsync(events);
             await PushClusterAsync(probes);
         }
         catch (OperationCanceledException) { }
@@ -217,7 +232,11 @@ public partial class MainWindow
                 if (events.Count > 0) ActionText.Text = string.Join(" ", events);
                 if (followed) RenderHome();
                 ShowClusterStatus();
-                if (DiagnosticsPage.IsVisible) RenderLogHostChoice();
+                if (DiagnosticsPage.IsVisible)
+                {
+                    RenderLogHostChoice();
+                    ShowLogHostStatus();
+                }
                 var signature = ClusterSignature();
                 if (followed || signature != clusterSignature)
                 {

@@ -70,6 +70,14 @@ later keeps whichever change is actually newest. The same holds for computers
 updated from a version where sync was off by default: on their first check
 they adopt the newest change from any computer.
 
+A PC set up as a host (*Use as a Martlet host*) uses no jobs, so it only takes
+steps 2, 3 and 7: it receives the plan (so it knows the
+[log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) and shows who does
+what) and passes on its own changes, such as choosing the log host on its
+Diagnostics page. It never records, fails over or follows a job. Before this, a
+host PC skipped the sync entirely and never learned the log host chosen
+elsewhere.
+
 ## Failover
 
 With failover on for a job, when its host misses two consecutive checks

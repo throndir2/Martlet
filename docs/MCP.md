@@ -240,14 +240,18 @@ never returns keys, signatures or host addresses and contacts nothing.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
-volatile credentials, a throwaway certificate) on `127.0.0.1` and two simulated
+volatile credentials, a throwaway certificate) on `127.0.0.1`, two simulated
 desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
-(`NetworkSync.cs`). Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
+(`NetworkSync.cs`), and a simulated host PC. Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
 (mode `network`, `NetworkRehearsal.cs`) as its own process, because the gateway
 needs the ASP.NET Core runtime, and returns `{exitCode, report}`. Its steps: desktop A pairs with a host by a typed code and
 founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
-number, allows B, and B pairs with the other host by itself; A sets up a third
+number; the host tells B (not yet a member) who is paired with it, A and B,
+each with when it last made a signed request; A allows B, and B pairs with the
+other host by itself; a host PC C outside the network pairs with the first host
+and only watches (`NetworkSyncEngine.ReadOnlyAsync`): it sees A, B and itself
+and starts, joins and asks nothing; A sets up a third
 host and B is paired with it on its next sync; a key outside the network
 (`network.denied`), a member's ID with the wrong key (`pairing.invalid`) and a
 roster entry not signed by a member are refused; A removes a host (it stops
@@ -500,10 +504,16 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
-return the selected device's name and status, and each row title
+return the selected device's name and status, each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
-`character`, `audio`, `host-service`, `host`, `role-<role>`, `offer`) returns the
-job's name. Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
+`character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
+returns the job's name, and its detail line `DeviceComponentDetail-<part>`
+returns the row's text. A paired host's `users` row (*Computers using it*) lists
+the computers paired with it as the host reports them, for example
+`DeviceComponentDetail-users`: `IMOUTO (desktop-imouto), active now; This PC,
+active now.`; on this PC's own host service, `DeviceComponentDetail-host-service`
+reads `Paired as diva-host. Used by IMOUTO (desktop-imouto), active now.` (or *No
+other computer uses it yet.*). Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
 and `LipSyncOwner`, device commands `NodeAction-<action>`
 (`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
@@ -511,16 +521,23 @@ default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text) and `RoleSetup-<role>` for jobs nobody does.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
 (status text: member with how many computers and hosts, waiting to join with
-the check number, or in no network), `NetworkCheck` (syncs now; it contacts the
-paired hosts, so it is not a passive click), each computer's row title
-`NetworkMember-<desktop|host>-<ID>` (status text, for example
-`lab-gpu. Host, not paired with this PC yet; added on desktop-diva.`) with
-`NetworkRemove-<desktop|host>-<ID>`, and each request to join
+the check number, a host PC in no network that only watches, or in no network),
+`NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
+click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
+text, for example `lab-gpu. Host, not paired with this PC yet; added on
+desktop-diva.`, and for another computer where it was last active, *Active now
+on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>`, each computer that uses
+one of this PC's hosts without being a member `NetworkPaired-<device ID>` (status
+text: which hosts it uses and when it was last active), and each request to join
 `NetworkJoin-<device ID>` (status text with the check number) with
 `NetworkAllow-<device ID>` and `NetworkDeny-<device ID>`. Remove, Allow and
 Turn down change the network and need `--allow-ui-effects` (then
 `ConfirmationYes`); Allow also hands that computer access to every host, so
-keep it to disposable lab networks.
+keep it to disposable lab networks. The card works on a host PC too: one that
+is in a network keeps syncing (so it can let others in), and one in no network
+only watches and makes no key or `network.json` (`network_status` then reads
+`state: none`, `key: false`); each change in what the PC sees is logged as a
+`Martlet network: ...` line (`logs_tail` with `contains: "network"`).
 
 The **Apps and API keys** card ([API](API.md)) holds `ApiKeysStatus` (status
 text: how many keys, and on how many hosts they are or why not), each key's
@@ -596,7 +613,13 @@ never returned) in the run window's `HostRunPairing` panel; the host-runs log
 masks codes. `StepDetail-pair` also tells the owner to find this PC from the
 main PC (*Martlet on your network*), and when Windows Firewall keeps other
 computers out it says so and `Step-pair-1` (*Let my other computers find this
-PC*, an administrator prompt) appears.
+PC*, an administrator prompt) appears. Once another computer is paired with this
+PC's host service the step is done and `StepDetail-pair` names them (*Paired with
+diva-host: IMOUTO (desktop-imouto), active now. ...*). While a computer asks to
+join the network this host PC is in, a step `join-<device ID>` (*Let IMOUTO into
+your Martlet network*) follows it: `StepDetail-join-<device ID>` gives the check
+number, `Step-join-<device ID>-0` is **Allow** and `Step-join-<device ID>-1`
+**Turn down** (both change the network, so they need `--allow-ui-effects`).
 
 *Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
 is the first card of the wizard's *Where it runs* step. Opening the wizard on

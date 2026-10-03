@@ -52,9 +52,14 @@ Logs hold activity, errors and status only: never keys, pairing secrets or
 conversation content. They can include local paths, host names and provider
 error text, and they travel only over the pinned, signed pairing to the
 owner's own host. Hosts older than shared logs refuse `/martlet/v1/logs`; the
-page says to update them. Host-mode PCs (a Windows PC running only the host
-service) contribute their gateway log through the companions, not their
-desktop app log.
+page says to update them. A PC set up as a host learns the log host through the
+shared plan like any other computer, sends its own desktop app log (commands it
+ran for your other computers, its network and its host service) and shows
+everything the log host collected on its own Diagnostics page; a log host chosen
+elsewhere is recorded in its log (`Log host is now ...`). The desktop log also
+records the [Martlet network](NETWORK.md) as each PC sees it whenever it changes
+(membership, requests to join, who each host is paired with) and which role the
+PC runs as at start and on each change.
 
 **Qualification.** Parsing, filters and the page were exercised on this
 Windows machine through Martlet MCP (`logs_timeline` and the desktop's

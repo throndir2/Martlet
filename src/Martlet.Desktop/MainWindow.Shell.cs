@@ -57,6 +57,7 @@ public partial class MainWindow
         actionTextDescriptor = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         actionTextDescriptor.AddValueChanged(ActionText, ActionTextChanged);
         deviceRole = store is null ? DeviceRole.Companion : DeviceRolePreference.Load(store.DataDirectory);
+        ErrorLog.Info($"This PC runs as a {(Role == DeviceRole.Host ? "host" : "companion")} PC{(deviceRole is null ? " (not chosen yet)" : "")}.");
         InitializeHealth();
         ApplyRole();
         RenderHome();
@@ -148,6 +149,7 @@ public partial class MainWindow
 
     private void SetRole(DeviceRole role)
     {
+        var previous = deviceRole;
         deviceRole = role;
         if (store is not null)
         {
@@ -157,11 +159,18 @@ public partial class MainWindow
                 ActionText.Text = "Couldn't save this choice. Check access to Martlet's data folder.";
             }
         }
+        if (previous != role)
+            ErrorLog.Info(role == DeviceRole.Host
+                ? "This PC is now a host PC: it doesn't talk or listen, keeps the Martlet network it is in (letting your other computers in), " +
+                  "and receives who does what without choosing jobs."
+                : "This PC is now a companion PC.");
         ApplyRole();
         RenderBackground();
         if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        QueueNetworkSync();
+        QueueClusterSync();
     }
 
     private void ApplyRole()
@@ -438,14 +447,7 @@ public partial class MainWindow
                 hostServiceReachable == true ? "Ready on your network."
                     : "Sets up the host service. Windows may ask to allow private-network access.",
                 hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
-            new("pair", "Pair your main PC",
-                "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
-                "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a " +
-                "pairing code)." + (NearbyBlocked
-                    ? " Windows Firewall doesn't let your other computers find this PC yet; Let my other computers find this PC fixes " +
-                      "that (administrator approval once)."
-                    : ""),
-                false, false, NearbyBlocked
+            new("pair", "Pair your main PC", PairStepDetail(), PairedComputers().Count > 0, false, NearbyBlocked
                     ? [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true),
                        new("Let my other computers find this PC", () => NearbyFirewall_Click(this, new RoutedEventArgs()))]
                     : [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
@@ -465,7 +467,36 @@ public partial class MainWindow
                 thisPcHostVersion is not null && !AppVersions.IsOlder(thisPcHostVersion, Version), true,
                 [new("Update host service", () => LaunchHost(HostAction.Update))])
         };
+        // Your other computers asking to join the network show right under pairing: this PC may be the only one that can
+        // let them in (it started the network).
+        var joinAt = steps.FindIndex(s => s.Id == "pair") + 1;
+        foreach (var join in networkJoins.Reverse())
+            steps.Insert(joinAt, new($"join-{join.DeviceId}", $"Let {join.DisplayName} into your Martlet network",
+                $"{join.DisplayName} ({join.DeviceId}) is paired with {join.HostId} and asks to join, so it can use all your hosts. Allow " +
+                $"it only if that computer shows check number {join.CheckNumber}.",
+                false, false, [new("Allow", () => AllowJoin(join), true), new("Turn down", () => DenyJoinAsync(join).Forget())]));
         RenderSteps(HostStepsPanel, steps, numbered: true);
+    }
+
+    /// <summary>The other computers paired with this PC's host service, as it said on the last network sync (empty when this PC
+    /// isn't paired with its own host service, or before the first sync).</summary>
+    private IReadOnlyList<HostPairedDevice> PairedComputers() =>
+        ThisPcHost() is { } own && PairedWith(own.HostId) is { } devices ? devices.Where(d => !IsThisDevice(d.DeviceId)).ToArray() : [];
+
+    private string PairStepDetail()
+    {
+        var paired = PairedComputers();
+        var how = "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
+            "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a pairing code).";
+        var firewall = NearbyBlocked
+            ? " Windows Firewall doesn't let your other computers find this PC yet; Let my other computers find this PC fixes that " +
+              "(administrator approval once)."
+            : "";
+        if (paired.Count == 0) return how + firewall;
+        var now = DateTimeOffset.UtcNow;
+        return $"Paired with {ThisPcHost()!.HostId}: " + string.Join("; ", paired.Select(d =>
+                (d.DisplayName == d.DeviceId ? d.DeviceId : $"{d.DisplayName} ({d.DeviceId})") + ", " + Seen(d.LastSeen, now))) +
+            ". To add another computer, choose Add a computer there, or show a pairing code." + firewall;
     }
 
     /// <summary>Runs a host-dashboard step on this PC's host service in a run window (never a console). Pairing shows the
@@ -638,7 +669,7 @@ public partial class MainWindow
     private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
-        HardwareStore?.Load() ?? [], homeHosts, hostUpdateNotes);
+        HardwareStore?.Load() ?? [], homeHosts, hostUpdateNotes, HostUsers());
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -667,6 +698,7 @@ public partial class MainWindow
 
     private void RenderMap()
     {
+        networkDevicesShown = NetworkDevicesSignature();
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
         RenderNetwork();

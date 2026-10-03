@@ -71,6 +71,10 @@ public sealed record GatewayDeviceRegistration
     public string? RotatedToCredentialId { get; init; }
 }
 
+/// <summary>A computer paired with this host: its name and newest live pairing, and when it last made a signed request
+/// (null when it has not since the gateway started; this is kept in memory only).</summary>
+public sealed record GatewayPairedDevice(string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen);
+
 public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewayAdmissionStatus, IGatewayPrincipalAuthority
 {
     public static readonly TimeSpan MaximumRotationOverlap = TimeSpan.FromMinutes(10);
@@ -80,6 +84,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
 
     private readonly object gate = new();
     private readonly Dictionary<string, CredentialRecord> credentials = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> lastSeen = new(StringComparer.Ordinal);
     private readonly GatewayHostIdentity identity;
     private readonly TimeProvider clock;
     private readonly IGatewayCrypto crypto;
@@ -276,6 +281,27 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         }
     }
 
+    /// <summary>The computers with a live pairing here, one entry per device (its newest credential), with when each last
+    /// made a signed request since the gateway started. Nonsecret.</summary>
+    public IReadOnlyList<GatewayPairedDevice> PairedDevices()
+    {
+        lock (gate)
+        {
+            SweepInactiveLocked(ObserveTimeLocked(clock));
+            foreach (var gone in lastSeen.Keys.Where(id => credentials.Values.All(c => c.DeviceId != id)).ToArray()) lastSeen.Remove(gone);
+            return credentials.Values
+                .GroupBy(value => value.DeviceId, StringComparer.Ordinal)
+                .Select(group =>
+                {
+                    var newest = group.OrderByDescending(value => value.IssuedAt).First();
+                    return new GatewayPairedDevice(group.Key, newest.DisplayName, newest.IssuedAt,
+                        lastSeen.TryGetValue(group.Key, out var seen) ? seen : null);
+                })
+                .OrderBy(device => device.DeviceId, StringComparer.Ordinal)
+                .ToArray();
+        }
+    }
+
     GatewayPrincipal IGatewayRequestCredentials.Authenticate(GatewaySignedRequest request) =>
         Authenticate(request);
 
@@ -322,6 +348,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                     throw new GatewayProtocolException("auth.clock");
             }
             request.CancellationToken.ThrowIfCancellationRequested();
+            lastSeen[credential.DeviceId] = now;
 
             return new()
             {

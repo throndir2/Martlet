@@ -36,6 +36,8 @@ internal static class DeviceComponent
     internal const string HostService = "host-service";
     internal const string Host = "host";
     internal const string Offer = "offer";
+    /// <summary>The computers that use a host (paired with it), as the host reports them.</summary>
+    internal const string Users = "users";
 
     /// <summary>A conversation job (thinking, listening or speaking), wherever it runs.</summary>
     internal static string Job(SetupRole role) => "job:" + role;
@@ -59,7 +61,12 @@ internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, strin
 
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
-    IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null);
+    IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
+    IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null);
+
+/// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
+/// this PC itself.</summary>
+internal sealed record HostUser(string Text, bool ThisPc);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -320,13 +327,21 @@ internal static class NetworkMap
                     target.Roles.Add(new(role.Chip, role.Name, $"Ready. Assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }
-            if (local) thisPc.Roles.Add(new("Host", "Martlet host service", $"Paired as {paired.HostId}",
-                DeviceComponent.HostService));
+            var users = inputs.HostUsers?.GetValueOrDefault(paired.HostId);
+            if (local)
+            {
+                var others = users?.Where(u => !u.ThisPc).Select(u => u.Text).ToArray();
+                thisPc.Roles.Add(new("Host", "Martlet host service", $"Paired as {paired.HostId}" + (others is null ? "."
+                        : others.Length == 0 ? ". No other computer uses it yet." : ". Used by " + string.Join("; ", others) + "."),
+                    DeviceComponent.HostService));
+            }
             else
             {
                 if (target.Roles.Count == before)
                     target.Roles.Add(new("Host", "Martlet host", check?.Text ?? "Paired. Check connection to see what it can do.",
                         DeviceComponent.Host));
+                if (users is { Count: > 0 })
+                    target.Roles.Add(new("Users", "Computers using it", string.Join("; ", users.Select(u => u.Text)) + ".", DeviceComponent.Users));
                 if (target.Facts.All(f => f.Label != "Address"))
                 {
                     target.Facts.Insert(0, new("Address", paired.Pairing.Origin));
