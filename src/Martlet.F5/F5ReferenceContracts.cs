@@ -28,6 +28,10 @@ public sealed record F5ReferenceAudioFormat
     public required int DataBytes { get; init; }
     public required int DurationMilliseconds { get; init; }
 
+    /// <summary>The format of a reference WAV, checked against the rules the reference store applies to every recording
+    /// (throws <see cref="F5Exception"/>).</summary>
+    public static F5ReferenceAudioFormat Parse(ReadOnlySpan<byte> wave) => F5ReferenceAudio.Parse(wave);
+
     internal void Validate()
     {
         var computedDuration = SampleRate > 0 && SampleCount > 0

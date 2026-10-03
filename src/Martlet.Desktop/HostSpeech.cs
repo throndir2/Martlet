@@ -23,6 +23,8 @@ internal static class F5Voices
     internal const string DirectoryName = "f5-voices";
     internal const string LibraryFile = "speaking-voices.json";
     private const string StagingDirectoryName = "speaking-voices-incoming";
+    // A recording the owner adds is staged here, already converted to the WAV Martlet keeps, while the voice store copies it.
+    private const string AddingDirectoryName = "speaking-voices-adding";
     // Earlier versions staged bundled voices' clips and the retired F5-TTS example clip here.
     private static readonly string[] RetiredDirectoryNames = ["f5-bundled-voices", "f5-sample-voice"];
 
@@ -153,6 +155,32 @@ internal static class F5Voices
             snapshot.AudioFormat.DurationMilliseconds, F5SharedVoices.Rights(snapshot.Rights.Basis), HostSetupCommands.SuggestedDeviceId(),
             DateTimeOffset.UtcNow, clips: joined?.Clips, sampleRate: joined?.SampleRate));
 
+    /// <summary>Copies a prepared recording (the exact WAV <see cref="Martlet.Audio.Windows.VoiceRecordingImport"/> made from the
+    /// owner's file) into this PC's voice store. The WAV is staged in the data directory only while the store copies it.</summary>
+    internal static async Task<F5ReferenceSnapshot> SnapshotAsync(string dataDirectory, string name, byte[] wave, string transcript,
+        F5VoiceRightsAcknowledgement rights, CancellationToken token)
+    {
+        var staging = Path.Combine(dataDirectory, AddingDirectoryName);
+        System.IO.Directory.CreateDirectory(staging);
+        var staged = Path.Combine(staging, Guid.NewGuid().ToString("N") + ".wav");
+        try
+        {
+            await File.WriteAllBytesAsync(staged, wave, token);
+            using var store = Open(dataDirectory);
+            return await store.SnapshotAsync(new() { PresetName = name, AbsoluteSourcePath = staged, Transcript = transcript, Rights = rights },
+                token);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(staged);
+                if (!System.IO.Directory.EnumerateFileSystemEntries(staging).Any()) System.IO.Directory.Delete(staging);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
     /// <summary>Makes a voice the one Martlet speaks with on all of the owner's computers.</summary>
     internal static SpeakingVoiceLibrary Choose(string dataDirectory, string voiceId) =>
         Commit(dataDirectory, View(dataDirectory).Choose(voiceId, HostSetupCommands.SuggestedDeviceId(), DateTimeOffset.UtcNow));
@@ -192,7 +220,7 @@ internal static class F5Voices
     {
         F5Failure.SourceMissing => "That recording is no longer where you chose it. Choose it again.",
         F5Failure.SourceChanged => "That recording changed while Martlet was reading it. Try again.",
-        F5Failure.InvalidAudio => "Use a mono 16-bit PCM WAV from 1 to 30 seconds, up to 4 MB.",
+        F5Failure.InvalidAudio => "That recording can't be used. Choose a clear recording of 1 to 30 seconds.",
         F5Failure.RightsRequired => "Confirm that you may use this voice.",
         F5Failure.Busy => "Martlet is busy with your voices. Try again in a moment.",
         F5Failure.LimitExceeded => "The voice list is full. Remove one you no longer use first.",

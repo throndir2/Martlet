@@ -99,6 +99,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("voice_recording_check", "What Companion > Voice > Add a voice does with an audio or video file (path, read on this PC): " +
+            "whether it is readable, the kind of file, its channels and sample rate, and the mono 16-bit WAV Martlet would keep (sample " +
+            "rate, length, bytes, SHA-256, kept as is or converted), with the line Add a voice shows, or why it can't be used. Uses " +
+            "the production converter; saves, plays and contacts nothing and never returns the path or the audio.", new
+        {
+            path = new { type = "string" }
+        }, ["path"]),
         Tool("voice_tags", "Show how a reply's voice tags are handled for a self-hosted voice engine (engine key, default the " +
             "default engine Chatterbox Turbo; \"none\" for a voice without tags such as OpenAI or Windows): the engine's tag catalog in " +
             "its own syntax, the Thinking prompt it adds (Companion > Prompts > Voice sounds and tones, from dataDirectory's settings " +
@@ -375,6 +382,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
+                "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
@@ -779,6 +787,36 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 : shownKey is not null ? "unlisted-copy:" + shownKey
                 : "model-file-outside-list"
         };
+    }
+
+    /// <summary>voice_recording_check: Add a voice's conversion of one file, through the production
+    /// <see cref="Martlet.Audio.Windows.VoiceRecordingImport"/>, then F5's own reference rules on the WAV it would keep.</summary>
+    private static async Task<object> VoiceRecordingCheckAsync(string path, CancellationToken cancellation)
+    {
+        try
+        {
+            var ready = await Task.Run(() => Martlet.Audio.Windows.VoiceRecordingImport.Prepare(path, cancellation), cancellation);
+            // F5's reference rules decide whether the recording can be a voice by itself (one of several may be shorter).
+            string? aloneProblem = null;
+            try { Martlet.F5.F5ReferenceAudioFormat.Parse(ready.Wave); }
+            catch (Martlet.F5.F5Exception failure) { aloneProblem = failure.Failure.ToString(); }
+            return new
+            {
+                usable = true, sourceFormat = ready.SourceFormat, sourceChannels = ready.SourceChannels, sourceSampleRate = ready.SourceSampleRate,
+                converted = ready.Converted, sampleRate = ready.SampleRate, channels = BitConverter.ToInt16(ready.Wave, 22),
+                bitsPerSample = BitConverter.ToInt16(ready.Wave, 34), durationMs = ready.DurationMilliseconds, bytes = ready.Wave.Length,
+                sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(ready.Wave)),
+                voiceAlone = aloneProblem is null, voiceAloneProblem = aloneProblem,
+                engines = Martlet.Core.Settings.SpeechEngines.All
+                    .Where(engine => Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, ready.DurationMilliseconds) is null)
+                    .Select(engine => engine.Key).ToArray(),
+                shown = ready.Describe()
+            };
+        }
+        catch (Martlet.Audio.Windows.VoiceRecordingException failure)
+        {
+            return new { usable = false, problem = failure.Message };
+        }
     }
 
     private static object F5Voices(JsonElement arguments)

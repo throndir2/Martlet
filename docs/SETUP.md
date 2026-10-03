@@ -537,10 +537,20 @@ male). All are free to use and share: the cute voices and LJ Speech are public
 domain (CC0 or public domain) and CMU ARCTIC is free for any use. Their sources
 and notices are in `notices\F5-Voices-NOTICES.txt`. Remove any you don't want;
 they don't come back. **Add a voice...**
-takes a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 12 seconds of clear speech
-works best) at 16/22.05/24/44.1/48 kHz, at most 4 MiB, its exact transcript,
-whose voice it is and your rights confirmation. The new voice is used right
-away. Up to 32 voices are kept.
+takes a recording of 1 to 30 seconds (5 to 12 seconds of clear speech works
+best) in almost any audio format, such as MP3, M4A/AAC, WAV, FLAC, WMA, AIFF,
+OGG/Opus or the sound of an MP4, MOV or MKV video, plus its exact transcript,
+whose voice it is and your rights confirmation. Windows decodes the file on this
+PC (Ogg and Opus may need Windows' free Web Media Extensions), and the line under
+the file says what Martlet found. Martlet keeps a mono 16-bit PCM WAV: a WAV
+already in that form (16/22.05/24/44.1/48 kHz) is kept exactly; anything else is
+mixed to mono and, at another sample rate, resampled to the next of those rates
+(at most 48 kHz). **Play** plays that WAV. A longer recording is refused rather
+than cut, since the transcript must match it. **Add another recording** adds
+more recordings of the same voice (up to 10, 30 seconds in all), each converted
+the same way and then joined. Only the WAV is stored and shared
+with your other computers. The new voice is used right away. Up to 32 voices
+are kept.
 
 Earlier versions included F5-TTS's English example clip. It is no longer
 included because where its recording comes from couldn't be confirmed, and it

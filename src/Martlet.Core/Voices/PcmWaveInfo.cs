@@ -7,7 +7,8 @@ public sealed record PcmWaveInfo(int SampleRate, long SampleCount)
 {
     public int DurationMilliseconds => checked((int)Math.Ceiling(SampleCount * 1000d / SampleRate));
 
-    // A narrow import format, not a decoder. Do not execute codecs on arbitrary uploads.
+    // A narrow import format, not a decoder. Do not execute codecs on arbitrary uploads: Desktop's Add a voice converts the
+    // owner's own files on their PC (Martlet.Audio's VoiceRecordingImport) before anything reaches this check.
     public static PcmWaveInfo Inspect(ReadOnlySpan<byte> bytes, int maximumBytes) => Parse(bytes, maximumBytes).Info;
 
     /// <summary>The recording's mono PCM16 samples, after the same checks as <see cref="Inspect"/>.</summary>
