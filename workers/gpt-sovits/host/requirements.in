@@ -1,0 +1,39 @@
+# GPT-SoVITS 20250606v2pro inference dependencies (its requirements.txt without training/ASR/UI-only packages), for
+# CPython 3.11 on linux x86_64 with PyTorch 2.6.0 CUDA 12.4. host/requirements.lock is this set resolved and hash-locked:
+#   uv pip compile host/requirements.in --python-version 3.11 --python-platform x86_64-manylinux_2_28 --generate-hashes \
+#     --index-url https://pypi.org/simple --extra-index-url https://download.pytorch.org/whl/cu124 \
+#     --index-strategy unsafe-best-match --emit-index-url -o host/requirements.lock
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+numpy<2.0
+scipy
+librosa==0.10.2
+numba
+pytorch-lightning>=2.4
+matplotlib
+gradio<5
+ffmpeg-python
+tqdm
+cn2an
+pypinyin
+pyopenjtalk>=0.4.1
+g2p_en
+transformers>=4.43,<=4.50
+peft
+sentencepiece
+chardet
+PyYAML
+psutil
+jieba_fast
+jieba
+split-lang
+fast_langdetect>=0.3.1
+wordsegment
+rotary_embedding_torch
+ToJyutping
+opencc
+x_transformers
+torchmetrics<=1.5
+pydantic<=2.10.6
+huggingface_hub>=0.13
+tokenizers>=0.13,<1
