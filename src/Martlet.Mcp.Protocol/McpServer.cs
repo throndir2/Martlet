@@ -92,7 +92,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
             "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds and tag catalog; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "length bounds, tag catalog, summary, languages and the feature chips Companion > Voice > Voice engine shows; each starter " +
+            "voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -862,9 +863,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var engines = Martlet.Core.Settings.SpeechEngines.All.Select(engine => new
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
-            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
+            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, nonCommercial = engine.NonCommercial,
+            minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
             minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
-            summary = engine.Summary, @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
+            summary = engine.Summary, languages = engine.Languages, streams = engine.StreamsWhileGenerating, features = engine.Features,
+            @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
             supportsTags = engine.SupportsTags,
             tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
