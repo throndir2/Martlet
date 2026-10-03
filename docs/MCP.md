@@ -1264,9 +1264,11 @@ then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
 the character's last stop did not finish cleanly (pressing Show or Hide
 character retries; details go to the `desktop` log). Exiting never waits on the
 character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
-even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
-size, its distance from the top of the screen, the camera zoom and where the
-top of the character's head sits relative to the overlay's top edge (it must
+even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the
+character frame's size (with, in parentheses, the overlay's full width: the
+frame plus the transparent room on each side the model can move into), its
+distance from the top of the screen, the camera zoom and where the
+top of the character's head sits relative to the frame's top edge (it must
 stay in view at every zoom). While the character shows, `SetupCharacterModel`
 describes what its model drives, for example *Model: 236 controls; 1 texture
 shown at 1/2 size to fit the graphics budget; blinks with ParamEyeLOpen,
@@ -1284,7 +1286,10 @@ records).
 The character overlay itself is drawn by Martlet's renderer child process
 (`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
 overlay is titled *Martlet character overlay*; another Martlet's renderer is
-never included). Its drag surface `MoveAvatar` supports UI Automation
+never included). With `layout`, its window bounds are twice the character
+frame's width, centered on the frame: the extra half-frame on each side is
+transparent room for the model's motion and may run past the screen's edge.
+Its drag surface `MoveAvatar` supports UI Automation
 expand/collapse, so `ui_click` on it opens (or closes again) the character's
 right-click menu with no flag; opened this way, the menu stays open until a
 choice or another `MoveAvatar` click. While it is open, snapshots list

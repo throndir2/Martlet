@@ -7,7 +7,7 @@ export class VrmAvatarAdapter extends VrmRuntime {
   private renderer: THREE.WebGLRenderer;
   private world = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
-  private view = { zoom: 1, x: 0, y: 0 };
+  private view = { zoom: 1, x: 0, y: 0, frame: 1 };
   private top: number | undefined;
   private closed = false;
 
@@ -56,11 +56,16 @@ export class VrmAvatarAdapter extends VrmRuntime {
     this.updateProjection();
   }
 
-  /** Camera zoom applied after fitting: screen = fitted * zoom + (x, y), in clip space. */
-  setView(zoom: number, x: number, y: number): void {
+  /**
+   * Camera zoom applied after fitting: screen = fitted * zoom + (x, y), in the frame's clip space. The model is centered
+   * in a frame spanning `frame` of the canvas width (0.1 to 1); the canvas beyond it on each side is room the model can
+   * move into without being cut off.
+   */
+  setView(zoom: number, x: number, y: number, frame = 1): void {
     requireValid(!this.closed, "Renderer is disposed.");
     finite(zoom, 1, 32, "view zoom"); finite(x, -1000, 1000, "view x"); finite(y, -1000, 1000, "view y");
-    this.view = { zoom, x, y };
+    finite(frame, 0.1, 1, "view frame");
+    this.view = { zoom, x, y, frame };
     this.updateProjection();
   }
 
@@ -69,8 +74,8 @@ export class VrmAvatarAdapter extends VrmRuntime {
 
   private updateProjection(): void {
     this.camera.updateProjectionMatrix();
-    const { zoom, x, y } = this.view;
-    this.camera.projectionMatrix.premultiply(new THREE.Matrix4().set(zoom, 0, 0, x, 0, zoom, 0, y, 0, 0, 1, 0, 0, 0, 0, 1));
+    const { zoom, x, y, frame } = this.view;
+    this.camera.projectionMatrix.premultiply(new THREE.Matrix4().set(zoom, 0, 0, x * frame, 0, zoom, 0, y, 0, 0, 1, 0, 0, 0, 0, 1));
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
   }
 
