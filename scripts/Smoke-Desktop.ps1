@@ -285,14 +285,15 @@ try {
     if ($CompanionOnly) {
         $beforeCompanion = [IO.File]::ReadAllBytes($settings)
         Invoke-Control 'OpenCompanion'
-        $null = Wait-Setup '*Companion settings loaded*' 'CompanionResult'
+        $null = Wait-Setup '*All changes saved*' 'CompanionSaveState'
         if ([Convert]::ToHexString([IO.File]::ReadAllBytes($settings)) -cne [Convert]::ToHexString($beforeCompanion)) {
             throw 'Opening the companion editor modified saved settings.'
         }
         (Find-Control 'CompanionName').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('Smoke persona')
         (Find-Control 'CompanionText').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue('Offline smoke persona; no provider action.')
-        Invoke-Control 'CompanionSave'
-        $null = Wait-Setup '*Companion settings saved*' 'CompanionResult'
+        # Personality has no Save button: edits save on their own.
+        Start-Sleep -Milliseconds 100
+        $null = Wait-Setup '*All changes saved*' 'CompanionSaveState'
         Invoke-Control 'CompanionClose'
         $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
         $beforeMemory = [IO.File]::ReadAllBytes($settings)
@@ -336,7 +337,7 @@ try {
         Start-Desktop
         $null = Wait-Status '*Setup checkpoint: Destinations*consent missing or invalidated*'
         Invoke-Control 'OpenCompanion'
-        $null = Wait-Setup '*Companion settings loaded*' 'CompanionResult'
+        $null = Wait-Setup '*All changes saved*' 'CompanionSaveState'
         if ((Read-Value (Find-Control 'CompanionName')) -cne 'Smoke persona' -or
             (Read-Value (Find-Control 'CompanionText')) -cne 'Offline smoke persona; no provider action.') {
             throw 'Restart did not load the saved persona through the actual editor.'

@@ -23,7 +23,10 @@ recorded or uploaded for them by itself.
 - **Voices Martlet knows.** Every voice it has heard, the owner's first, then
   named ones, then the most recently heard. For each voice you can:
   - type its **Name** (always wins) and **Also called** (other names,
-    comma-separated; removing one here drops it), then **Save names**;
+    comma-separated; removing one here drops it). There is no Save button:
+    names save when you leave the field or press Enter (or two seconds after
+    you stop typing), then sync to your other computers, so a half-typed name
+    isn't shared;
   - tick **This is my voice**;
   - **Merge** it into another entry that is the same person (the names,
     voiceprints and counts combine; it can't be split again);

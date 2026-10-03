@@ -26,6 +26,23 @@ obvious next step at every stage, and a living map of the user's computers.
 6. **Nothing changes by surprise.** Consent, per-action authorization and
    *no network on launch* still apply. The redesign changes layout and wording,
    not permissions.
+7. **Settings save themselves.** A setting is saved as soon as it changes:
+   picks and toggles at once, typing a moment after it stops (a name or path
+   that is shared or used elsewhere when you leave the field or press Enter),
+   and anything still waiting when its window closes. There is no *Save* or
+   *Apply* button for a setting. Editors with many fields (Personality,
+   Character, Lorebooks) keep one footer line saying *All changes saved.*,
+   *Saving...* or *Not saved yet:* with the reason (an empty name, a model file
+   that doesn't exist); a change that can't be saved never blocks typing, and
+   closing asks only then. Every save goes into the newest saved copy of its
+   file and replaces only its own part, so a change synced in from your other
+   computers (who does what, the lip-sync host, voices) is never overwritten by
+   an open editor, and a saved change to a shared list syncs out on its own.
+   Only commitments stay explicit buttons, named for what they do: choosing a
+   paid provider with its key and consent (*Use OpenRouter*, *Use as
+   fallback*), connecting with a token (*Connect with token*, *Reconnect*),
+   starting programs (*Save and start* for MCP servers), adding or updating a
+   remembered fact (*Add fact*), and the legacy Setup window's checkpoints.
 
 ## Stages and surfaces
 
@@ -362,9 +379,13 @@ window ends it.
     5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
     6. *Character*: what it looks like now, then the character model (show,
-       hide, choose and customize, reset).
+       hide, choose and customize, reset). The character window has one
+       *Show character*/*Hide character (Esc)* button at the top and saves
+       each choice on its own; a showing character switches at once.
     7. *Personality*: the active persona and its style mix, *Edit
-       personality*, and *Import a character card*.
+       personality*, and *Import a character card*. The Personality window
+       makes the persona chosen in its list the one Martlet uses and saves
+       every edit on its own (no *Apply*, *Save* or *Reload*).
     8. *Lorebook*: how many lorebooks are on for the active persona, each
        lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
        (see [Lorebooks](LOREBOOKS.md)).

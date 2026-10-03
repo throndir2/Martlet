@@ -24,9 +24,18 @@ public partial class MainWindow
             Note("Martlet builds each request from these prompts plus your persona, matching lore, remembered facts and the recent " +
                 "conversation. Words in braces, such as {name}, are filled in by Martlet when the prompt is sent; keep them where you " +
                 "want that text. Empty a prompt to send nothing for it. Martlet reads the answers to Remembering and Learning names, so " +
-                "keep their line formats. Save, then reload an open conversation to use your changes.", new Thickness(0, 0, 0, 0))));
+                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0))));
 
         var boxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
+        var states = new List<Action>();
+        // There is no Save button: edits save a moment after typing stops, into the newest saved settings.
+        var autoSave = new AutoSave(() => SavePromptsFromAsync(boxes, prompts =>
+        {
+            saved = prompts;
+            now.Text = DescribePrompts(prompts);
+            foreach (var show in states) show();
+        }));
+        tabAutoSave = autoSave;
         foreach (var group in PromptCatalog.All.GroupBy(p => p.Group))
         {
             var children = new List<UIElement> { Heading(group.Key) };
@@ -48,7 +57,8 @@ public partial class MainWindow
                 AutomationProperties.SetHelpText(box, help);
                 void ShowState() => state.Text = PromptState(prompt, box.Text, saved);
                 ShowState();
-                box.TextChanged += (_, _) => { tabEdited = true; ShowState(); };
+                states.Add(ShowState);
+                box.TextChanged += (_, _) => { tabEdited = true; ShowState(); autoSave.Changed(); };
                 boxes[prompt.Id] = box;
                 var reset = PageButton("Use built-in text", () => box.Text = prompt.Default, link: true, id: "PromptReset-" + prompt.Id);
                 children.Add(title);
@@ -60,24 +70,24 @@ public partial class MainWindow
             page.Children.Add(Card([.. children]));
         }
 
-        var save = PageButton("Save", () => SavePromptsFrom(boxes), primary: true, id: "PromptsSave");
         var defaults = PageButton("Use all built-in prompts", () =>
         {
             foreach (var (id, box) in boxes) box.Text = PromptCatalog.Default(id);
-            ActionText.Text = "Every prompt shows its built-in text. Save to use them.";
+            autoSave.SaveNowAsync().Forget();
         }, id: "PromptsDefaults");
-        page.Children.Add(Card(Heading("Save prompts"),
-            Note("Saved prompts apply to every new reply, glance and memory check. Reload an open conversation to use them.",
+        page.Children.Add(Card(Heading("Built-in prompts"),
+            Note("Your edits save on their own and apply to every new reply, glance and memory check. Reload an open conversation to use them.",
                 new Thickness(0, 0, 0, 4)),
-            Row(save, defaults)));
+            Row(defaults)));
     }
 
-    /// <summary>A prompt's state in words, against what is saved: built in, edited, empty (sent as nothing), and whether it is unsaved.</summary>
+    /// <summary>A prompt's state in words, against what is saved: built in, edited, empty (sent as nothing), and whether it is
+    /// still saving.</summary>
     private static string PromptState(PromptDefinition prompt, string text, PromptSettings? saved)
     {
         var state = string.IsNullOrWhiteSpace(text) ? "Empty: nothing is sent for this prompt."
             : text == prompt.Default ? "Built-in text." : "Edited.";
-        return text == PromptSettings.Text(saved, prompt.Id) ? state : state + " Not saved yet.";
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal) == PromptSettings.Text(saved, prompt.Id) ? state : state + " Saving...";
     }
 
     internal static string DescribePrompts(PromptSettings? prompts)
@@ -92,7 +102,9 @@ public partial class MainWindow
         return string.Join(", ", parts) + ". The rest use Martlet's built-in text.";
     }
 
-    private void SavePromptsFrom(IReadOnlyDictionary<string, TextBox> boxes)
+    /// <summary>The Prompts page's auto-save: validates the edits and writes them into the newest saved settings. Returns false
+    /// to be tried again shortly while another change holds the settings; a prompt that can't be saved says why.</summary>
+    private async Task<bool> SavePromptsFromAsync(IReadOnlyDictionary<string, TextBox> boxes, Action<PromptSettings?> saved)
     {
         PromptSettings? prompts;
         try
@@ -103,20 +115,11 @@ public partial class MainWindow
         }
         catch (ContractException error)
         {
-            ActionText.Text = error.Message;
-            return;
+            ActionText.Text = "Prompts not saved yet: " + error.Message;
+            return true;
         }
-        SavePromptsAsync(prompts).Forget();
-    }
-
-    private async Task SavePromptsAsync(PromptSettings? prompts)
-    {
-        if (store is null || setupService is null || closing) return;
-        if (savingTab || assigningRole || setupOperations.IsRunning)
-        {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
-        }
+        if (store is null || setupService is null || closing) return true;
+        if (savingTab || assigningRole || setupOperations.IsRunning) return false;
         savingTab = true;
         var token = lifetime.Token;
         try
@@ -125,25 +128,27 @@ public partial class MainWindow
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
             var updated = SetupSettings.Begin(loaded.Settings) with { Prompts = prompts };
             updated.Validate();
-            var saved = await setupService.SaveAsync(updated, loaded.Revision, token);
-            if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
+            var result = await setupService.SaveAsync(updated, loaded.Revision, token);
+            if (!result.Save.Saved)
+            {
+                if (result.Save.Error?.Code == ErrorCode.SettingsConflict) return false;
+                throw new InvalidOperationException(result.Summary);
+            }
             homeSettings = updated;
+            saved(prompts);
             ActionText.Text = "Prompts saved. Reload an open conversation to use them.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
         {
-            ActionText.Text = error.Message;
+            ActionText.Text = "Prompts not saved: " + error.Message;
         }
         finally
         {
             savingTab = false;
-            if (!closing)
-            {
-                tabEdited = false;
-                RenderHome();
-                if (openTab == CompanionTab.Prompts) RenderTab();
-            }
+            // The page stays as typed (tabEdited); only Home and the other summaries refresh.
+            if (!closing) RenderHome();
         }
+        return true;
     }
 }

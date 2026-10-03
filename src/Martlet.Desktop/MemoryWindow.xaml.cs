@@ -35,6 +35,7 @@ public partial class MemoryWindow : ThemedWindow
     private Guid configurationRevision;
     private SetupOperation? active;
     private MemoryExportPreview? exportPreview;
+    private readonly AutoSave autoSave;
     private bool closed;
     private bool rendering;
 
@@ -50,6 +51,7 @@ public partial class MemoryWindow : ThemedWindow
         this.chooseDirectory = chooseDirectory ?? PickDirectory;
         this.chooseExport = chooseExport ?? PickExport;
         this.confirm = confirm ?? Confirm;
+        autoSave = new AutoSave(SaveConfigurationAsync);
         InitializeComponent();
         RetentionChoice.ItemsSource = NewRetentionOptions;
         RenderActions();
@@ -103,42 +105,60 @@ public partial class MemoryWindow : ThemedWindow
         FactDetails.Clear();
         RetentionChoice.SelectedIndex = -1;
         ConfigurationStatus.Text = memory is null
-            ? "Older memory settings loaded. Save to update them and turn memory on."
+            ? "Updating older memory settings..."
             : $"Memory is {(memory.Enabled ? "on" : "off")}.";
         RenderResolvedDirectory();
         RenderActions();
+        // Settings from before memory existed have no memory choice yet; record the default (on, in Martlet's folder) as any
+        // other saved change would, so facts can be used without a Save step.
+        if (memory is null && !closed)
+        {
+            await autoSave.SaveNowAsync();
+            return;
+        }
         if (memory is { Enabled: true } && !closed)
             await RefreshFactsAsync();
     }
 
-    private async void SaveConfiguration_Click(object sender, RoutedEventArgs e)
+    /// <summary>Saves the storage and on/off choices as soon as they change (there is no Save button), into the newest saved
+    /// settings. Returns false to be tried again shortly while another Martlet action runs.</summary>
+    private async Task<bool> SaveConfigurationAsync()
     {
-        if (loadedSettings is null)
-            return;
-        MemoryConfigurationSaveResult? result = null;
-        ConfigurationStatus.Text = "Checking memory settings...";
+        if (closed || loadedSettings is null || ConfigurationMatchesPersisted()) return true;
+        if (operations.IsRunning) return false;
         var policy = CustomChoice.IsChecked == true
             ? MemoryStoragePolicy.CustomLocalDirectory
             : MemoryStoragePolicy.AppLocalData;
         var enabled = EnableChoice.IsChecked == true;
         var customDirectory = CustomDirectory.Text;
+        if (policy == MemoryStoragePolicy.CustomLocalDirectory && string.IsNullOrWhiteSpace(customDirectory))
+        {
+            ConfigurationStatus.Text = "Choose a folder for memory (Browse), or use the Martlet folder.";
+            return true;
+        }
+        MemoryConfigurationSaveResult? result = null;
+        ConfigurationStatus.Text = "Saving memory settings...";
+        var basis = loadedSettings;
+        var basisRevision = loadedRevision;
         await RunAsync(async token =>
         {
+            // Save into the newest settings, so a change made elsewhere meanwhile (or synced in) isn't overwritten.
+            var fresh = await service.LoadAsync(token).ConfigureAwait(false);
             result = await service.SaveConfigurationAsync(
-                loadedSettings,
-                loadedRevision,
+                fresh.Settings ?? basis,
+                fresh.Settings is null ? basisRevision : fresh.Revision,
                 enabled,
                 policy,
                 customDirectory,
                 token).ConfigureAwait(false);
         }, "Couldn't save memory settings. Existing settings and facts were preserved.");
         if (closed || result is null)
-            return;
+            return true;
         if (!result.Save.Save.Saved)
         {
             ConfigurationStatus.Text = result.Save.Save.Error?.Summary ??
                 "Couldn't save memory settings. Reload and try again.";
-            return;
+            return true;
         }
         loadedSettings = result.Settings;
         loadedRevision = result.Save.Save.Revision;
@@ -146,12 +166,13 @@ public partial class MemoryWindow : ThemedWindow
         DisposeExportPreview();
         FactsList.ItemsSource = null;
         ConfigurationStatus.Text = result.Settings.Memory.Enabled
-            ? "Memory is on. Martlet will remember and recall lasting facts."
-            : "Memory is off. Saved facts stay on this PC; turn memory on to review or delete them.";
+            ? "Saved. Memory is on: Martlet will remember and recall lasting facts."
+            : "Saved. Memory is off: saved facts stay on this PC; turn memory on to review or delete them.";
         RenderResolvedDirectory();
         RenderActions();
         if (result.Settings.Memory.Enabled && !closed)
             await RefreshFactsAsync();
+        return true;
     }
 
     private async void RefreshFacts_Click(object sender, RoutedEventArgs e) => await RefreshFactsAsync();
@@ -180,20 +201,20 @@ public partial class MemoryWindow : ThemedWindow
         var content = FactContent.Text;
         if (retention is null)
         {
-            FactStatus.Text = "Choose retention before saving.";
+            FactStatus.Text = "Choose how long to keep it first.";
             return;
         }
         await RunAsync(async token =>
             receipt = await service.SaveFactAsync(
                 configurationRevision, content, retention, token).ConfigureAwait(false),
-            "Couldn't save the fact.");
+            "Couldn't add the fact.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         FactContent.Clear();
         RetentionChoice.SelectedIndex = -1;
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact saved.";
+        FactStatus.Text = "Fact added.";
     }
 
     private async void EditFact_Click(object sender, RoutedEventArgs e)
@@ -207,7 +228,7 @@ public partial class MemoryWindow : ThemedWindow
         var content = FactContent.Text;
         if (retention is null)
         {
-            FactStatus.Text = "Choose retention before saving changes.";
+            FactStatus.Text = "Choose how long to keep it first.";
             return;
         }
         await RunAsync(async token =>
@@ -346,6 +367,11 @@ public partial class MemoryWindow : ThemedWindow
         InvalidateDraftPresentation();
         RenderResolvedDirectory();
         RenderActions();
+        // Turning memory on or off, or choosing where it is stored, saves at once.
+        if (CustomChoice.IsChecked != true || !string.IsNullOrWhiteSpace(CustomDirectory.Text))
+            autoSave.SaveNowAsync().Forget();
+        else
+            ConfigurationStatus.Text = "Choose a folder for memory (Browse), or use the Martlet folder.";
     }
 
     private void ConfigurationText_Changed(object sender, TextChangedEventArgs e)
@@ -355,6 +381,17 @@ public partial class MemoryWindow : ThemedWindow
         InvalidateDraftPresentation();
         RenderResolvedDirectory();
         RenderActions();
+    }
+
+    // A typed folder saves when you leave the field or press Enter, not while it is half typed.
+    private void CustomDirectory_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        if (!rendering && !ConfigurationMatchesPersisted()) autoSave.SaveNowAsync().Forget();
+    }
+
+    private void CustomDirectory_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter && !ConfigurationMatchesPersisted()) autoSave.SaveNowAsync().Forget();
     }
 
     private void RenderResolvedDirectory()
@@ -371,8 +408,10 @@ public partial class MemoryWindow : ThemedWindow
     private void BrowseDirectory_Click(object sender, RoutedEventArgs e)
     {
         var selected = chooseDirectory();
-        if (!string.IsNullOrWhiteSpace(selected))
-            CustomDirectory.Text = selected;
+        if (string.IsNullOrWhiteSpace(selected))
+            return;
+        CustomDirectory.Text = selected;
+        autoSave.SaveNowAsync().Forget();
     }
 
     private void BrowseExport_Click(object sender, RoutedEventArgs e)
@@ -457,7 +496,7 @@ public partial class MemoryWindow : ThemedWindow
 
     private void RenderActions()
     {
-        if (SaveConfigurationButton is null)
+        if (RetryCleanupButton is null)
             return;
         var busy = operations.IsRunning;
         RetryCleanupButton.IsEnabled = service.HasPendingCleanup;
@@ -467,7 +506,6 @@ public partial class MemoryWindow : ThemedWindow
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision;
         ReloadButton.IsEnabled = !busy;
-        SaveConfigurationButton.IsEnabled = !busy && loadedSettings is not null;
         RefreshFactsButton.IsEnabled = PurgeExpiredButton.IsEnabled =
             CreateExportPreviewButton.IsEnabled = enabled && !busy;
         SaveFactButton.IsEnabled = enabled && !busy;
@@ -510,7 +548,9 @@ public partial class MemoryWindow : ThemedWindow
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision)
             return true;
-        status.Text = "Save or reload memory settings before changing facts.";
+        status.Text = loadedSettings?.Memory is { Enabled: false } && ConfigurationMatchesPersisted()
+            ? "Turn memory on to add or change facts."
+            : "Your memory settings aren't saved yet. Finish the folder (press Enter) or wait a moment, then try again.";
         return false;
     }
 
@@ -524,7 +564,7 @@ public partial class MemoryWindow : ThemedWindow
         RetentionChoice.ItemsSource = NewRetentionOptions;
         RetentionChoice.SelectedIndex = -1;
         DisposeExportPreview();
-        FactStatus.Text = "Memory settings changed. Save or reload before changing facts.";
+        FactStatus.Text = "Memory settings changed. Facts show again once they are saved.";
     }
 
     private void DisposeExportPreview()
@@ -588,9 +628,22 @@ public partial class MemoryWindow : ThemedWindow
         return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    private bool closeConfirmed;
+
+    /// <summary>A typed custom folder that wasn't committed yet is saved before the window closes.</summary>
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (!closeConfirmed && loadedSettings is not null && !ConfigurationMatchesPersisted() && !operations.IsRunning &&
+            (CustomChoice.IsChecked != true || !string.IsNullOrWhiteSpace(CustomDirectory.Text)))
+        {
+            e.Cancel = true;
+            closeConfirmed = true;
+            await autoSave.SaveNowAsync();
+            await Dispatcher.InvokeAsync(Close);
+            return;
+        }
         closed = true;
+        autoSave.Cancel();
         active?.RequestCancellation();
         DisposeExportPreview();
     }

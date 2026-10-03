@@ -589,11 +589,49 @@ sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
 saved edit or the built-in text), exactly what Martlet fills in and sends.
 On the page, `PromptsNow` reads how many prompts are edited or emptied and
 `PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
-nothing is sent for this prompt.*, plus *Not saved yet.* for unsaved edits);
-neither returns prompt text. `OpenPrompts` (Personality's *Edit prompts*)
-only opens the page. The editors `Prompt-<id>`, their `PromptReset-<id>`
-buttons, `PromptsDefaults` and `PromptsSave` (which writes settings) need
-`--allow-ui-effects`; `ui_set_text` with an empty `text` empties a prompt.
+nothing is sent for this prompt.*, plus *Saving...* while an edit is still
+being saved); neither returns prompt text. `OpenPrompts` (Personality's *Edit
+prompts*) only opens the page. There is no Save button: an edit saves a moment
+after typing stops (or at once when another page opens), into the newest saved
+settings, and `PromptsNow` then reads the new counts. The editors
+`Prompt-<id>`, their `PromptReset-<id>` buttons and `PromptsDefaults` write
+settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
+`text` empties a prompt.
+
+`character_status` reads Companion › Personality and Character as saved in a
+data directory (optional absolute `dataDirectory`, default the current
+user's): `personality` (`state` `none`, `loaded` or `unreadable` with
+`problem`; `active`, the persona Martlet uses; and each persona's `name`,
+`active`, `instructionCharacters` and `styles` weights, never its
+instructions), `character` (from `avatar.json`: `model` `built-in` with
+`builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
+`.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
+`lipSyncHost`, the paired host's ID) and `lorebooks` (`books`, `on` and
+`entries` counts). Those editors have no Save button; each change saves on its
+own into the newest saved file, keeping what was saved elsewhere meanwhile
+(another page, or sync from your other computers, such as the lip-sync host).
+`OpenCompanion` (Personality's *Edit personality*), `OpenAvatar` (Character's
+*Choose and customize*), `OpenLorebooks` and `OpenMemory` open their windows
+(the character itself doesn't show), and their `CompanionClose`,
+`AvatarClose`, `LorebookClose` and `MemoryClose` close them; these are passive
+clicks, as are the character window's `AvatarAdvanced` and
+`RemoteHostSection` expanders. Each editor's footer line, `CompanionSaveState`,
+`AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
+*Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
+response styles at zero, or *Choose your model file: an existing .vrm or
+.model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
+character's state (*Character is showing. ...*, *Character hidden.*). Their
+fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
+`CompanionPersona`, which also makes the chosen persona the one Martlet uses,
+`CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
+`AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
+`MemoryEnable`) save, and `ShowCharacter`/`StopAvatar` show or hide the
+character, so they need `--allow-ui-effects`. Typing a persona name or text and
+closing at once still saves it; closing with a change that can't be saved asks
+with `ConfirmationYes` (close and drop it) or `ConfirmationNo` (stay). With the
+character showing, choosing another model or lip-sync mode switches it right
+away (`AvatarStatus` changes, and `logs_tail` `desktop` records *Avatar renderer
+stopped by Martlet.* for the old one).
 
 `hearing_check` shows whether the Thinking model can hear the user's
 recording (Companion › Listening › **Let Thinking hear my voice**; optional
@@ -687,7 +725,7 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -703,8 +741,10 @@ for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
-`PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
-`PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
+`PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
+`PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
+its field loses focus, on Enter or two seconds after typing stops, then syncs);
+like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
@@ -778,8 +818,10 @@ never returned, and `ApiKeyCopy` writes the clipboard; `ApiKeyCreatedDone`
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
 (paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
-PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects`),
-`HostReachHint` (status text), `HostReachSsh` and `HostReachSave`. Host
+PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects` and saves at
+once), `HostReachHint` (status text) and `HostReachSsh` (saved when it loses
+focus, on Enter or 1.5 seconds after typing stops; there is no Save button).
+Host
 actions (`NodeAction-UpdateHost`, `NodeAction-HostStatus`, roles) on a host
 reached through Martlet there open a run window (`HostRunStatus`) that sends
 the command through its gateway; on a disposable data directory without a
@@ -1053,7 +1095,7 @@ PC) and `CharacterModelAddCancel` (passive); `CharacterModelAddProblem` returns
 why it couldn't (never the typed name or path). Use, Remove and adding need
 `--allow-ui-effects`. In the character settings window (`OpenAvatar`), a model
 typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
-file") joins the shared list when it is shown or saved (`SaveAvatar`), and the
+file") joins the shared list as soon as it is saved (once it names an existing model file; there is no Save button) or shown (`ShowCharacter`), and the
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
 
@@ -1087,20 +1129,34 @@ path are never returned). Use, Remove and adding change the voice list and need
 Passive navigation writes nothing: the list is shown as it would start until a
 voice is first used, added or removed. `f5_voices` reads the same list headlessly.
 
-Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
-chosen engine ("Chatterbox Turbo (recommended): Clones the voice and can laugh
-...", the default; options `SpeakingEngine-chatterbox`, `SpeakingEngine-f5`,
-`SpeakingEngine-xtts`, `SpeakingEngine-gpt-sovits` and `SpeakingEngine-dia`), `SpeakingEngineStatus`
-says where it speaks and its model licence and `SpeakingEngineTags` lists the
-engine's sound and tone tags (or says it reads words only). Choosing
-another engine with `ui_select` needs `--allow-ui-effects`: when a computer
-speaks it hands Speaking to that engine there (installing its role after a
-confirmation) and stops the engine it replaces on that computer, since a host
-runs one voice engine at a time. `SpeakingEngineOthers` (shown only then) names
-voice engines the speaking computer still runs besides the one that speaks,
-for example a host set up before that rule; `SpeakingEngineRelease` stops them
-after a confirmation (`martlet-host remove`, downloads kept) and needs
-`--allow-ui-effects`. `f5_voices` returns the same choice as `chosenEngine`.
+Above the voices, the Voice engine card lists every way Martlet can speak on the
+shown computer as one row each, keyed by engine (`chatterbox`, `f5`, `xtts`,
+`gpt-sovits`, `dia`, and `windows` for a Windows voice under This PC):
+`VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
+"Windows voice · in use"), `VoiceEngineFeatures-<key>` its chips ("NVIDIA GPU,
+6 GB+, Docker, Voice cloning, 5 s+ samples, Laughs & sighs, Emotions, English";
+the same list as `features` in `f5_voices`), `VoiceEngineState-<key>` (shown only
+when the button doesn't already say it) where it stands ("Speaking on this PC.",
+"Ready on gpu-pc.", "Setting up on gpu-pc...", or why it can't run there), and
+`VoiceEngineUse-<key>` its one button ("Set up and use Dia", "Use XTTS-v2", "In
+use Windows voice"; disabled with the reason as help text when the computer can't
+run it). Under *Another of your computers*, the computer pills
+`SpeakingHost-<host ID>` ("gpu-pc · speaking", "laptop · not reachable") only
+choose which computer the rows set up, so clicking one is passive;
+`SpeakingHostStatus` says when the shown one isn't reachable and
+`HostChoices-speaking` when no other computer is paired. Clicking a
+`VoiceEngineUse-<key>` button needs `--allow-ui-effects`: it asks one
+confirmation, sets the engine up on that computer when needed (a run window) and
+switches Speaking to it. Switching cleans up: a host runs one voice engine at a
+time (adding one stops the others there; using one already installed stops the
+leftovers), and the engine Speaking leaves on another computer, or when it moves
+to a Windows or cloud voice, stops there once Speaking has moved (named in the
+confirmation; kept when failover keeps the same engine there as a backup).
+`SpeakingEngineOthers` (shown only then) names voice engines the speaking
+computer still runs besides the one that speaks, for example a host set up before
+that rule; `SpeakingEngineRelease` stops them after a confirmation
+(`martlet-host remove`, downloads kept) and needs `--allow-ui-effects`.
+`f5_voices` returns the chosen engine as `chosenEngine`.
 
 On Companion › Tools (`CompanionTab-Tools`), each server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
@@ -1172,16 +1228,18 @@ reports it as `role.stops`).
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
 `Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
-passive; the card's own buttons commit. Under *Another of your computers*, each
-paired computer that can run the job (every one except this PC's own host
-service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
-address is another computer counts as that other computer) is listed with
-`HostChoice-<job>-<host ID>` (for example `HostChoice-speaking-diva-host`),
-which reads the host ID and what it does or could do. `HostChoices-<job>` says
-why none are listed (none paired, only this PC's own host service, or none can
-run it) and `HostChoicesUnable-<job>` names paired computers whose platform or
-hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
-over and needs `--allow-ui-effects`.
+passive; the card's own buttons commit. Under *Another of your computers* on
+Thinking, Listening and Lip-sync, each paired computer that can run the job
+(every one except this PC's own host service on Listening and Lip-sync; a host
+saved as *This PC* whose address is another computer counts as that other
+computer) is listed with `HostChoice-<job>-<host ID>` (for example
+`HostChoice-listening-diva-host`), which reads the host ID and what it does or
+could do. `HostChoices-<job>` says why none are listed (none paired, only this
+PC's own host service, or none can run it) and `HostChoicesUnable-<job>` names
+paired computers whose platform or hardware can't run it, with why.
+`SetupUseHost-<job>-<host ID>` hands the job over and needs `--allow-ui-effects`.
+Voice lists its engines per computer instead (`SpeakingHost-<host ID>` and
+`VoiceEngineUse-<key>`, above).
 
 Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (the Start listening / Stop listening button; its value starts with
@@ -1361,7 +1419,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check`, `echo_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -92,7 +92,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
             "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds and tag catalog; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "length bounds, tag catalog, summary, languages and the feature chips Companion > Voice > Voice engine shows; each starter " +
+            "voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -244,6 +245,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
         }),
+        Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
+            "with no Save button): the personas (name, whether Martlet uses it, response-style weights, instruction length; never the " +
+            "instructions), the character model (built-in character name or the own model's file type, never its path; renderer, " +
+            "lip-sync mode, show at startup, the lip-sync host's ID) and the lorebooks (counts only). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
             "directory, or modelId): the model's and the route's hearing support and whether Companion > Listening > Let Thinking hear " +
             "my voice is on. Then rehearses the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned " +
@@ -372,6 +380,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
+                "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
@@ -864,9 +873,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var engines = Martlet.Core.Settings.SpeechEngines.All.Select(engine => new
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
-            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
+            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, nonCommercial = engine.NonCommercial,
+            minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
             minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
-            summary = engine.Summary, @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
+            summary = engine.Summary, languages = engine.Languages, streams = engine.StreamsWhileGenerating, features = engine.Features,
+            @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
             supportsTags = engine.SupportsTags,
             tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
@@ -1047,6 +1058,78 @@ internal sealed class McpServer(DesktopAutomation desktop)
             edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"), prompts = list,
             prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
         };
+    }
+
+    /// <summary>Companion › Personality and Character as saved in a data directory: settings.json's personas, avatar.json (read as
+    /// JSON; the field names match Martlet.Avatar.Hosting's AvatarProfile) and lorebooks.json. Persona instructions, model paths
+    /// and lorebook text are personal and never returned.</summary>
+    private static async Task<object> CharacterStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var loaded = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync(cancellation);
+        var companion = loaded.Settings?.Companion;
+        object personality = new
+        {
+            state = loaded.State switch
+            {
+                Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
+                Martlet.Core.Settings.SettingsLoadState.FirstRun => "none",
+                _ => "unreadable"
+            },
+            problem = loaded.Error?.Summary,
+            active = companion?.Personas.FirstOrDefault(p => p.Id == companion.ActivePersonaId)?.Name,
+            personas = companion?.Personas.Select(p => new
+            {
+                name = p.Name, active = p.Id == companion.ActivePersonaId, instructionCharacters = p.Text.Length,
+                styles = new
+                {
+                    helpful = p.Styles.Helpful, sarcastic = p.Styles.Sarcastic, silly = p.Styles.Silly,
+                    distracted = p.Styles.Distracted, playfulTeasing = p.Styles.PlayfulTeasing
+                }
+            }).ToArray() ?? []
+        };
+
+        object character;
+        var avatar = Path.Combine(directory, "avatar.json");
+        if (!File.Exists(avatar)) character = new { state = "none" };
+        else
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(avatar, cancellation));
+                var root = document.RootElement;
+                string? Text(JsonElement parent, string name) =>
+                    parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                var model = Text(root, "model_path") ?? "";
+                const string builtIn = "builtin:";
+                character = new
+                {
+                    state = "loaded",
+                    model = model.StartsWith(builtIn, StringComparison.Ordinal) ? "built-in" : "own model",
+                    builtInCharacter = model.StartsWith(builtIn, StringComparison.Ordinal) ? model[builtIn.Length..] : null,
+                    ownModelType = model.StartsWith(builtIn, StringComparison.Ordinal) ? null
+                        : model.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase) ? ".model3.json" : Path.GetExtension(model).ToLowerInvariant(),
+                    renderer = Text(root, "renderer"),
+                    lipSync = Text(root, "lip_sync") ?? "auto",
+                    autoShow = root.TryGetProperty("auto_show", out var show) && show.ValueKind == JsonValueKind.True,
+                    lipSyncHost = root.TryGetProperty("remote_host", out var host) && host.ValueKind == JsonValueKind.Object ? Text(host, "host_id") : null
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            {
+                character = new { state = "unreadable", problem = error.GetType().Name };
+            }
+        }
+
+        var lore = await new Martlet.Core.Lorebooks.LorebookStore(directory).LoadAsync(cancellation);
+        object lorebooks = new
+        {
+            state = lore.Loaded ? File.Exists(Path.Combine(directory, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            books = lore.Library.Books.Count,
+            on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
+            entries = lore.Library.Books.Sum(book => book.Entries.Count)
+        };
+        return new { personality, character, lorebooks };
     }
 
     /// <summary>smart-home.json in a data directory (the file name and fields match Martlet.Desktop's HomePreferences). The
