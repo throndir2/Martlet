@@ -90,7 +90,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.6.0, )"
+          "Martlet.Core": "[0.22.0, )"
         }
       },
       "martlet.core": {
@@ -199,7 +199,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.6.0, )",
+          "Martlet.Core": "[0.22.0, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },

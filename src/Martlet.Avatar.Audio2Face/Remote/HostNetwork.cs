@@ -10,10 +10,16 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 /// <summary>A desktop that paired with a host and asks to join the host's Martlet network, as that host reports it to members.</summary>
 public sealed record HostJoinRequest(string HostId, string DeviceId, string DisplayName, string Key, string CheckNumber, DateTimeOffset RequestedAt);
 
+/// <summary>A computer paired with a host, as that host reports it: when its current pairing was made and when it last made
+/// a signed request (null when it hasn't since the host's gateway started).</summary>
+public sealed record HostPairedDevice(string HostId, string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen);
+
 /// <summary>A host's place in the owner's Martlet network: <see cref="State"/> is "unbound", "bound" or "removed", with
 /// the roster it accepted (null when unbound) and, for a member desktop, pending join requests. <see cref="Supported"/>
-/// is false for hosts older than the network.</summary>
-public sealed record HostNetworkView(string HostId, string State, NetworkRoster? Roster, IReadOnlyList<HostJoinRequest> Joins, bool Supported = true)
+/// is false for hosts older than the network; <see cref="Devices"/> (the computers paired with it) is null for hosts older
+/// than that list.</summary>
+public sealed record HostNetworkView(string HostId, string State, NetworkRoster? Roster, IReadOnlyList<HostJoinRequest> Joins, bool Supported = true,
+    IReadOnlyList<HostPairedDevice>? Devices = null)
 {
     public static HostNetworkView Unsupported(string hostId) => new(hostId, "unsupported", null, [], false);
     public bool Bound => State == "bound" && Roster is not null;
@@ -101,7 +107,23 @@ public sealed partial class Audio2FaceHostConnection
                     joins.Add(new(pairing.HostId, device, NetworkRoster.CleanName(join.GetProperty("display_name").GetString(), device), key,
                         join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()));
                 }
-            return new(pairing.HostId, state, roster, joins);
+            List<HostPairedDevice>? devices = null;
+            if (root.TryGetProperty("devices", out var paired) && paired.ValueKind == JsonValueKind.Array)
+            {
+                devices = [];
+                // The list only informs; an entry this PC can't read is left out rather than failing the network sync.
+                foreach (var item in paired.EnumerateArray().Take(32))
+                    try
+                    {
+                        var device = item.GetProperty("device_id").GetString()!;
+                        Audio2FaceHostClient.RequireIdentifier(device, "device ID");
+                        devices.Add(new(pairing.HostId, device, NetworkRoster.CleanName(item.GetProperty("display_name").GetString(), device),
+                            item.GetProperty("paired_at").GetDateTimeOffset(),
+                            item.TryGetProperty("last_seen", out var seen) && seen.ValueKind == JsonValueKind.String ? seen.GetDateTimeOffset() : null));
+                    }
+                    catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or Audio2FaceHostException) { }
+            }
+            return new(pairing.HostId, state, roster, joins, Devices: devices);
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ContractException)
         {

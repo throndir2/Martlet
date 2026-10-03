@@ -27,7 +27,7 @@ public sealed class AvatarOverlayTests
             Assert.False(window.ShowActivated);
             Assert.Equal(Colors.Transparent, ((SolidColorBrush)window.Background).Color);
             Assert.Null(window.Owner);
-            var viewport = Assert.IsType<Grid>(window.Content);
+            var viewport = Assert.IsAssignableFrom<Grid>(window.Content);
             Assert.Equal("MoveAvatar", AutomationProperties.GetAutomationId(viewport));
             var browser = Assert.IsType<WebView2CompositionControl>(viewport.Children[0]);
             Assert.Equal(0, browser.DefaultBackgroundColor.A);

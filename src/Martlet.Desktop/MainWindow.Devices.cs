@@ -201,6 +201,7 @@ public partial class MainWindow
                 ? OwnLipSyncState() : role.Detail,
             Margin = new Thickness(0, 2, 0, 0)
         };
+        AutomationProperties.SetAutomationId(detail, "DeviceComponentDetail-" + (role.Component ?? role.Chip).Replace(':', '-'));
         detail.SetResourceReference(StyleProperty, "Muted");
         text.Children.Add(detail);
         if (clusterJob is not null && coverage.FirstOrDefault(c => c.Job == clusterJob && c.IsProblem) is { } problem)

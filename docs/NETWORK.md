@@ -22,6 +22,33 @@ a change on the card), next to the [who does what](CLUSTER.md) sync. A host
 that runs an older Martlet still works for the PCs paired with it, but can't
 join the network until it is updated (**Update host**).
 
+## Who is connected
+
+Every computer shows which computers use each of its hosts, whether or not they
+are in the network yet. Each host reports the computers paired with it and when
+each last used it (*active now* within two minutes, otherwise the time; a host
+that restarted knows only from the next request). The Devices page shows them on
+each host (*Computers using it*, or *Used by* on this PC's own host service),
+and **Your Martlet network** lists members with where they were last active and
+computers that use a host but are not members. A host PC's Home lists the
+computers paired with its host service under *Pair your main PC*.
+
+## A PC set up as a host
+
+A PC set up as a host (*Use as a Martlet host*) takes part in the network too:
+
+- If it is already in a network (for example it started the network while it was
+  a companion PC), it keeps syncing like any member, so it can still let your
+  other computers in. Their requests to join show on its Home, right under *Pair
+  your main PC*, with **Allow** and **Turn down**, as well as on the Devices card.
+- If it is in no network, it only watches: it never starts or asks to join one
+  by itself (and makes no network key), so the network of the main PC that pairs
+  with its host service takes that host. It still lists who uses its hosts.
+
+Before this, a host PC skipped the network sync entirely. A network started on a
+PC that later became a host could then let nobody in: the other PCs' requests
+waited for an Allow that no screen showed.
+
 Linux hosts are managed from Windows (SSH setup, roles, updates, Prepare this
 computer, see [the host guide](../deploy/host/README.md)); they have no web UI
 of their own. Every PC in the network can use a host; the PC that reaches it
@@ -82,9 +109,10 @@ Limits, by design for a home network:
 | Piece | Location |
 | --- | --- |
 | Roster format and rules | `Martlet.Core.Network` (`NetworkRoster`, `NetworkKey`, `NetworkPairing`) |
-| Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network`, `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
-| Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`) and `Remote/HostNetwork.cs` (client calls, pairing by itself) |
-| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkIdentity.cs` for the key and `network.json` |
+| Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network` (roster, join requests, the computers paired with the host), `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
+| Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches) and `Remote/HostNetwork.cs` (client calls, pairing by itself) |
+| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
+| Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`); card IDs in [MCP](MCP.md) |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
@@ -95,11 +123,17 @@ does what plan, and grants nothing in the network itself.
 ## Qualification
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`
-(three real gateways on 127.0.0.1 with two simulated desktops: founding,
-binding, joining with a check number, pairing by itself, refusing forged keys
-and rosters, removing a host and pairing it back, removing a desktop) and the
-desktop's Devices card on a disposable data folder (members listed, a pairing
-attempt to an unreachable host reported, **Remove from network** signed and
-saved). The gateway and Linux gateway unit tests pass. **NOT RUN:** a native or
-Docker Linux host keeping `network.json`, `martlet-host network-reset`, the SSH
-flow adding a real Linux host to a network, and two physical PCs on a real LAN.
+(three real gateways on 127.0.0.1 with two simulated desktops and a simulated
+host PC: founding, binding, joining with a check number, a host telling a paired
+computer outside the network who uses it and when each was last active, a host
+PC outside the network watching without starting or joining one, pairing by
+itself, refusing forged keys and rosters, removing a host and pairing it back,
+removing a desktop) and the desktop's Devices card on a disposable data folder
+(members listed, a pairing attempt to an unreachable host reported, **Remove
+from network** signed and saved; as a host PC that started the network, the sync
+running and logged; as a host PC in no network, watching only, with no key or
+`network.json` made). The gateway and Linux gateway unit tests pass. **NOT RUN:**
+a native or Docker Linux host keeping `network.json`, `martlet-host
+network-reset`, the SSH flow adding a real Linux host to a network, the desktop
+window listing computers reported by a live host (it needs a pairing secret in
+Windows Credential Manager) and two physical PCs on a real LAN.

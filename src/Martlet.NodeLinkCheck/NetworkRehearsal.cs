@@ -70,6 +70,15 @@ internal static class NetworkRehearsal
             join = result.Joins.FirstOrDefault(j => j.DeviceId == keyB.DeviceId);
             return (join is not null && join.CheckNumber == checkB, $"A sees {join?.DeviceId} with check {join?.CheckNumber}");
         });
+        await Run("lab-host-1 tells a paired computer outside the network (B) who uses it (A and B) and when each was last active", async () =>
+        {
+            var result = await b.SyncAsync(token);
+            var devices = result.Views.GetValueOrDefault(h1.HostId)?.Devices ?? [];
+            var seenA = devices.FirstOrDefault(d => d.DeviceId == keyA.DeviceId);
+            var seenB = devices.FirstOrDefault(d => d.DeviceId == keyB.DeviceId);
+            return (seenA is { DisplayName: "LAB-A", LastSeen: not null } && seenB is { DisplayName: "LAB-B", LastSeen: not null },
+                "lab-host-1 is paired with " + string.Join(", ", devices.Select(d => $"{d.DeviceId} ({d.DisplayName}, last seen {d.LastSeen:O})")));
+        });
         await Run("A allows B; B becomes a member and pairs with lab-host-2 by itself (no code)", async () =>
         {
             a.Approve(join ?? throw new InvalidOperationException("No join request to allow."));
@@ -78,6 +87,19 @@ internal static class NetworkRehearsal
             var works = await b.CanUseAsync(h2.HostId, token);
             return (b.State.Roster?.Trusts(keyB.DeviceId, keyB.PublicKey) == true && b.Has(h2.HostId) && works,
                 $"B member: {b.State.Roster is not null}; paired: {string.Join(", ", b.HostIds)}; signed request to lab-host-2: {(works ? "accepted" : "refused")}. {string.Join(" ", result.Events)}");
+        });
+        await Run("A host PC outside the network (C) only watches: it sees who uses lab-host-1 but starts, joins and asks nothing", async () =>
+        {
+            using var keyC = NetworkKey.Create("lab-host-pc-c");
+            var c = new LabDesktop(keyC, "LAB-C");
+            await c.PairByCodeAsync(h1, token);
+            var watched = await c.WatchAsync(token);
+            var seen = watched.Views.GetValueOrDefault(h1.HostId)?.Devices?.Select(d => d.DeviceId).ToArray() ?? [];
+            var joins = (await a.SyncAsync(token)).Joins;
+            return (c.State.Roster is null && c.State.Waiting is null && watched.Events.Count == 0 && joins.All(j => j.DeviceId != keyC.DeviceId) &&
+                    new[] { keyA.DeviceId, keyB.DeviceId, keyC.DeviceId }.All(seen.Contains),
+                $"C in a network: {c.State.Roster is not null}; asked to join: {c.State.Waiting is not null || joins.Any(j => j.DeviceId == keyC.DeviceId)}; " +
+                $"C sees lab-host-1 used by {string.Join(", ", seen)}");
         });
         await Run("A sets up a new Linux host (lab-host-3); B is paired with it on its next sync", async () =>
         {
@@ -151,9 +173,9 @@ internal static class NetworkRehearsal
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "Three real gateways on 127.0.0.1 (Kestrel, pinned TLS, volatile credentials) and two simulated desktops " +
-                "using the desktop's network client and sync engine. Not covered: the desktop window, Windows Credential Manager, " +
-                "network.json on a Linux host, martlet-host, SSH and a real LAN.",
+            scope = "Three real gateways on 127.0.0.1 (Kestrel, pinned TLS, volatile credentials), two simulated desktops " +
+                "using the desktop's network client and sync engine, and a simulated host PC that only watches. Not covered: the " +
+                "desktop window, Windows Credential Manager, network.json on a Linux host, martlet-host, SSH and a real LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -194,6 +216,11 @@ internal static class NetworkRehearsal
             State = NetworkLocalState.Parse(result.State.Write());
             return result;
         }
+
+        /// <summary>As a host PC outside a network syncs: it only reads its hosts.</summary>
+        internal Task<NetworkSyncResult> WatchAsync(CancellationToken token) =>
+            NetworkSyncEngine.ReadOnlyAsync(State, pairings.Values.Select(p => p.Pairing).ToArray(),
+                pairing => new Audio2FaceHostConnection(pairing, pairings[pairing.HostId].Secret), token);
 
         internal void Approve(HostJoinRequest join) => State = engine.Approve(State, join);
         internal void Remove(string kind, string id) => State = engine.Remove(State, kind, id);

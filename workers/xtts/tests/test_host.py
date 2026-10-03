@@ -127,5 +127,42 @@ class FixtureServiceTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 400)
 
 
+class LoadFailureTests(unittest.TestCase):
+    """A model that failed to load (for example while another voice engine still held the graphics card's memory) loads
+    again for the next reply once the cause is gone, instead of staying failed until the container restarts."""
+
+    def test_reloads_a_model_that_failed_to_load_for_the_next_reply(self) -> None:
+        root = tempfile.mkdtemp()
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        env = {**os.environ, "MARTLET_XTTS_ROOT": root, "MARTLET_XTTS_PORT": str(port)}
+        subprocess.run([sys.executable, str(HOST), "provision", "--fixture"], env=env, check=True, capture_output=True)
+        config = Path(root) / "models" / "worker-config.json"
+        working = config.read_text(encoding="utf-8")
+        # FIXTURE: an engine this test environment cannot load stands in for a load that ran out of GPU memory.
+        config.write_text(working.replace('"engine": "fake"', '"engine": "unloadable"'), encoding="utf-8")
+        self.assertIn('"unloadable"', config.read_text(encoding="utf-8"))
+        service = subprocess.Popen([sys.executable, str(HOST), "serve"], env=env, stdout=subprocess.DEVNULL)
+        try:
+            for _ in range(100):
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=1).close()
+                    break
+                except OSError:
+                    time.sleep(0.1)
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                post(port, "/synthesize", request(["While the memory is taken."]))
+            self.assertEqual(error.exception.code, 503)
+            status = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/status").read())
+            self.assertEqual(status["state"], "failed")
+            config.write_text(working, encoding="utf-8")
+            events = post(port, "/synthesize", request(["Once the memory is free."]))
+            self.assertEqual(events[-1]["kind"], "completed")
+        finally:
+            service.kill()
+            service.wait()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -80,6 +80,13 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
         }
     }
 
+    /// <summary>The computers paired with this host (any of the owner's paired devices may see them), most recently seen
+    /// first, at most <see cref="MaximumDevices"/>.</summary>
+    internal IReadOnlyList<GatewayPairedDevice> Devices() => credentials.PairedDevices()
+        .OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).ThenByDescending(d => d.PairedAt).Take(MaximumDevices).ToArray();
+
+    internal const int MaximumDevices = 16;
+
     /// <summary>Merges a paired desktop's copy of the roster. An unbound host (or one removed from its last network) is
     /// bound only by a roster in which the caller is an active member desktop and this host is listed with its own key.</summary>
     internal NetworkRoster Merge(NetworkRoster incoming, string callerDeviceId, CancellationToken cancellationToken)
@@ -248,7 +255,8 @@ internal sealed partial class GatewayHttpApplication
     internal const string NetworkPath = "/martlet/v1/network";
     internal const string NetworkJoinPath = "/martlet/v1/network/join";
     internal const string NetworkDenyPath = "/martlet/v1/network/deny";
-    private const int MaximumNetworkResponseBytes = NetworkRoster.MaximumBytes + 8_192;
+    // Desktops read at most the roster plus 16 KiB; joins (8) and devices (16) stay well inside that.
+    private const int MaximumNetworkResponseBytes = NetworkRoster.MaximumBytes + 16_384;
     private const int MaximumNetworkRequestBytes = 4_096;
 
     internal GatewayNetworkStore Network { get; }
@@ -256,9 +264,10 @@ internal sealed partial class GatewayHttpApplication
     private static bool IsNetworkTarget(string rawTarget) => rawTarget is NetworkPath or NetworkJoinPath or NetworkDenyPath;
 
     /// <summary>
-    /// GET network: this host's roster (and, for a member desktop, pending join requests). POST network: merge a desktop's
-    /// copy (binding an unbound host). POST network/join: a paired desktop asks to join. POST network/deny: a member turns
-    /// a request down. All over the caller's signed, pinned connection; the roster holds no secrets.
+    /// GET network: this host's roster, the computers paired with it (with when each was last seen) and, for a member
+    /// desktop, pending join requests. POST network: merge a desktop's copy (binding an unbound host). POST network/join: a
+    /// paired desktop asks to join. POST network/deny: a member turns a request down. All over the caller's signed, pinned
+    /// connection; none of it is secret.
     /// </summary>
     private async ValueTask InvokeNetworkAsync(HttpContext context, string rawTarget)
     {
@@ -320,6 +329,10 @@ internal sealed partial class GatewayHttpApplication
             Joins = joins.Select(j => new JoinRequestDocument
             {
                 DeviceId = j.DeviceId, DisplayName = j.DisplayName, Key = j.Key, CheckNumber = j.CheckNumber, RequestedAt = j.RequestedAt
+            }).ToArray(),
+            Devices = Network.Devices().Select(d => new PairedDeviceDocument
+            {
+                DeviceId = d.DeviceId, DisplayName = d.DisplayName, PairedAt = d.PairedAt, LastSeen = d.LastSeen
             }).ToArray()
         }, MaximumNetworkResponseBytes);
     }
@@ -363,6 +376,16 @@ internal sealed partial class GatewayHttpApplication
         public required string State { get; init; }
         public JsonElement? Roster { get; init; }
         public required JoinRequestDocument[] Joins { get; init; }
+        /// <summary>The computers paired with this host. Desktops older than this list ignore it.</summary>
+        public required PairedDeviceDocument[] Devices { get; init; }
+    }
+
+    private sealed record PairedDeviceDocument
+    {
+        public required string DeviceId { get; init; }
+        public required string DisplayName { get; init; }
+        public required DateTimeOffset PairedAt { get; init; }
+        public DateTimeOffset? LastSeen { get; init; }
     }
 
     private sealed record JoinRequestDocument

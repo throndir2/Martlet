@@ -25,8 +25,10 @@ public partial class MainWindow
 
     /// <summary>Which self-hosted engine speaks: Chatterbox Turbo (default), F5-TTS, XTTS-v2, GPT-SoVITS or Dia (<see cref="SpeechEngines"/>). All use the voices below.
     /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
-    /// role there first, after showing what it needs and its licence); otherwise the choice is used the next time Speaking
-    /// goes to a computer. Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>.</summary>
+    /// role there first, after showing what it needs and its licence) and stops the engine it replaces there, so their models
+    /// never share the graphics card's memory; otherwise the choice is used the next time Speaking goes to a computer.
+    /// Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>; <c>SpeakingEngineOthers</c> names engines the
+    /// speaking computer still runs besides it (<c>SpeakingEngineRelease</c> stops them).</summary>
     private Border SpeakingEngineCard(SetupRoute? route)
     {
         var current = SpeakingEngineChoice.Current;
@@ -63,13 +65,54 @@ public partial class MainWindow
                 : $"{current.Name} reads words only; sound tags such as [laugh] are removed before it speaks.",
             new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(tags, "SpeakingEngineTags");
-        return Card(Heading("Voice engine"),
+        var children = new List<UIElement>
+        {
+            Heading("Voice engine"),
             Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. Chatterbox Turbo (MIT licence) " +
                 "can laugh, sigh and change tone and needs recordings longer than 5 seconds; XTTS-v2 starts speaking sooner; F5-TTS " +
                 "often sounds closest to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording; Dia can laugh, sigh and " +
                 "cough (English only). " +
-                "The F5-TTS and XTTS-v2 models are for non-commercial use only; Chatterbox's and GPT-SoVITS's are MIT and Dia's Apache-2.0.", new Thickness(0, 0, 0, 8)),
-            choice, status, tags);
+                "The F5-TTS and XTTS-v2 models are for non-commercial use only; Chatterbox's and GPT-SoVITS's are MIT and Dia's Apache-2.0. " +
+                "A computer runs one engine at a time: choosing another stops the one there, freeing its graphics card's memory.", new Thickness(0, 0, 0, 8)),
+            choice, status, tags
+        };
+        // A host set up before one engine per computer can still run engines Speaking no longer uses, each holding its model in
+        // the graphics card's memory (the engine that speaks may then fail to load). Readable as SpeakingEngineOthers.
+        var speaking = SpeechEngines.ForRoute(route?.GatewaySnapshot?.RouteId) ?? current;
+        if (host is not null && HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(host)?.Offers, speaking.HostRoleKind) is { Count: > 0 } others)
+        {
+            var names = HostRoles.Names(others.Select(o => o.Kind));
+            var idle = Note($"{host} also runs {names}, which {(others.Count == 1 ? "keeps its" : "keep their")} model in the graphics card's memory " +
+                $"that {speaking.Name} needs.", new Thickness(0, 6, 0, 0));
+            AutomationProperties.SetAutomationId(idle, "SpeakingEngineOthers");
+            children.Add(idle);
+            children.Add(Row(PageButton($"Stop {names}", () => StopIdleVoiceEnginesAsync(host, speaking).Forget(), id: "SpeakingEngineRelease")));
+        }
+        return Card([.. children]);
+    }
+
+    /// <summary>Stops the voice engines <paramref name="hostId"/> runs besides the one that speaks there, after saying what
+    /// that does, so their models leave its graphics card's memory.</summary>
+    private async Task StopIdleVoiceEnginesAsync(string hostId, SpeechEngine speaking)
+    {
+        if (store is null || closing) return;
+        if (assigningRole) { ActionText.Text = "Another change is still finishing."; return; }
+        if (FindHost(hostId) is not { } host) return;
+        var others = HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(hostId)?.Offers, speaking.HostRoleKind);
+        if (others.Count == 0) return;
+        var names = HostRoles.Names(others.Select(o => o.Kind));
+        if (!ConfirmationDialog.Confirm(this,
+                $"Stop {names} on {hostId}? That frees graphics card memory there for {speaking.Name}, which keeps speaking. Downloads are kept, so " +
+                "switching back is quick. Any other computer that still speaks with them there stops speaking until it chooses another engine.",
+                "Stop them"))
+            return;
+        assigningRole = true;
+        try { ActionText.Text = (await ReleaseVoiceEnginesAsync(host, others)).TrimStart(); }
+        finally
+        {
+            assigningRole = false;
+            if (!closing) RenderHome();
+        }
     }
 
     private async Task SelectSpeakingEngineAsync(SpeechEngine engine, string? host)
