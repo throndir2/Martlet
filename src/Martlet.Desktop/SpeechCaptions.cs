@@ -54,7 +54,8 @@ internal sealed record SpeechDisplayPreferences(bool SpeechBubbles = true, bool 
     }
 }
 
-// Shows each sentence Martlet speaks as a speech bubble beside the character and/or a subtitle on the active screen.
+// Shows each sentence Martlet speaks as a speech bubble beside the character and/or a subtitle on the active screen. After the
+// voice fails, the conversation still feeds it each sentence that wasn't said, timed for reading.
 // Create on the UI thread: the feed is read there, so the overlay and preferences are only touched by the dispatcher.
 internal sealed class SpeechCaptions : IDisposable
 {

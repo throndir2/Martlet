@@ -261,6 +261,23 @@ internal static class VoiceRehearsal
                 catch (ContractException error) { words = error.Message; }
                 return (beyond is not null && words is not null, $"past the recording's end: {beyond ?? "accepted"}; other transcript: {words ?? "accepted"}");
             });
+            await Run("A voice service that fails a reply says why in the host's own log (read by the desktop): out of graphics memory, a model that failed to load, a service that stopped mid-reply", async () =>
+            {
+                var before = (await a.OwnLogAsync(h1, token)).Count;
+                h1.Voice.FailNext = "out-of-memory";
+                var memory = await Code(() => a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords));
+                h1.Voice.FailNext = "loading";
+                var loading = await Code(() => a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords));
+                h1.Voice.FailNext = "stopped";
+                var stopped = await Code(() => a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords));
+                var lines = (await a.OwnLogAsync(h1, token)).Skip(before).ToArray();
+                bool Has(params string[] words) => lines.Any(line => words.All(word => line.Contains(word, StringComparison.Ordinal)));
+                var said = Has("gpu_out_of_memory at synthesis", "OutOfMemoryError: CUDA out of memory") &&
+                    Has("HTTP 503", "worker.unavailable, state failed", "could not load: CUDA error: out of memory") &&
+                    Has("ended the reply stream without finishing");
+                return (memory == "worker.failed" && loading == "worker.unavailable" && stopped == "worker.failed" && said,
+                    $"desktop got {memory}, {loading}, {stopped}; lab-voice-1's log: {string.Join(" | ", lines)}");
+            });
         }
         finally
         {
@@ -348,6 +365,14 @@ internal static class VoiceRehearsal
         {
             using var connection = Connect(host);
             return await connection.ReadSpeakingVoicesAsync(token);
+        }
+
+        /// <summary>The host's own log lines, oldest first, as the desktop's Diagnostics page reads them.</summary>
+        internal async Task<IReadOnlyList<string>> OwnLogAsync(VoiceHost host, CancellationToken token)
+        {
+            using var connection = Connect(host);
+            var page = await connection.ReadOwnLogsAsync(0, 1_000, token);
+            return page.Entries.Select(entry => entry.Message).ToArray();
         }
 
         internal async Task<HostSpeakingVoices> MergeAsync(VoiceHost host, CancellationToken token, SpeakingVoiceLibrary? library = null)
@@ -474,6 +499,9 @@ internal static class VoiceRehearsal
                 Martlet.Core.Settings.SpeechEngines.Xtts, F5RelayWorker.DefaultDestinationId, "xtts-relay", FixtureModel, FixtureRevision,
                 FixtureSha256), handler: Xtts);
             Server = new GatewayServer(Identity, origin, [], this, inferenceWorkers: [worker, xttsWorker]);
+            // As the Linux host does: a voice service's reason for failing a reply goes into this host's own log.
+            worker.Report = Server.RecordActivity;
+            xttsWorker.Report = Server.RecordActivity;
             Server.AttachSpeakingVoiceStorage(this);
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
@@ -542,6 +570,9 @@ internal static class VoiceRehearsal
         internal List<string> Received => received;
         /// <summary>How many recordings each request handed over separately (0: the recording as one).</summary>
         internal List<int> Clips => clips;
+        /// <summary>How the next request fails, as a real voice worker does: <c>out-of-memory</c> (a failed event), <c>loading</c>
+        /// (503 while its model failed to load) or <c>stopped</c> (the stream ends unfinished, as when the service dies).</summary>
+        internal string? FailNext { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -553,6 +584,14 @@ internal static class VoiceRehearsal
             var sha256 = reference.GetProperty("audio_sha256").GetString();
             if (Convert.ToHexStringLower(SHA256.HashData(audio)) != sha256)
                 return new HttpResponseMessage(HttpStatusCode.BadRequest);
+            var failure = FailNext;
+            FailNext = null;
+            if (failure == "loading")
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                {
+                    Content = new StringContent("{\"detail\":\"The Chatterbox worker could not load: CUDA error: out of memory\"," +
+                        "\"error\":\"worker.unavailable\",\"state\":\"failed\"}", Encoding.UTF8, "application/json")
+                };
             var separate = 0;
             if (reference.TryGetProperty("clips", out var list))
             {
@@ -570,15 +609,19 @@ internal static class VoiceRehearsal
             }
             lock (Received)
             {
-                Received.Add(sha256!);
-                Clips.Add(separate);
+                // A failing request never reached the engine.
+                if (failure is null)
+                {
+                    Received.Add(sha256!);
+                    Clips.Add(separate);
+                }
             }
             var pcm = new byte[2_400 * 2];
             for (var i = 0; i < pcm.Length; i++) pcm[i] = (byte)(i * 7);
-            string Event(string kind, long sequence, object? frame = null, int? chunk = null, long? final = null) =>
+            string Event(string kind, long sequence, object? frame = null, int? chunk = null, long? final = null, object? error = null) =>
                 JsonSerializer.Serialize(new Dictionary<string, object?>
                 {
-                    ["cancellation"] = null, ["chunk_index"] = chunk, ["contract_id"] = "martlet.f5.worker", ["error"] = null,
+                    ["cancellation"] = null, ["chunk_index"] = chunk, ["contract_id"] = "martlet.f5.worker", ["error"] = error,
                     ["final_sample_count"] = final, ["frame"] = frame,
                     ["ids"] = JsonSerializer.Deserialize<Dictionary<string, object?>>(root.GetProperty("ids").GetRawText()),
                     ["kind"] = kind, ["protocol_version"] = new { major = 1, minor = 0 },
@@ -589,11 +632,21 @@ internal static class VoiceRehearsal
                         artifacts = new[] { new { artifact_id = FixtureModel, revision = FixtureRevision, role = "model_weights", sha256 = FixtureSha256 } }
                     }
                 });
-            var lines = string.Join("\n",
-                Event("started", 0),
-                Event("audio_frame", 1, new { chunk_index = 0, data_base64 = Convert.ToBase64String(pcm), sample_count = pcm.Length / 2, sample_offset = 0, sequence = 0 }),
-                Event("chunk_completed", 2, chunk: 0, final: pcm.Length / 2),
-                Event("completed", 3, final: pcm.Length / 2)) + "\n";
+            var lines = failure switch
+            {
+                "out-of-memory" => string.Join("\n", Event("started", 0), Event("failed", 1, error: new
+                {
+                    action_id = "chatterbox.free-gpu-memory", code = "gpu_out_of_memory", retryable = true, stage = "synthesis",
+                    summary = "The graphics card ran out of memory while speaking; close other programs using it or move a job to " +
+                        "another host (OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB)."
+                })) + "\n",
+                "stopped" => Event("started", 0) + "\n",
+                _ => string.Join("\n",
+                    Event("started", 0),
+                    Event("audio_frame", 1, new { chunk_index = 0, data_base64 = Convert.ToBase64String(pcm), sample_count = pcm.Length / 2, sample_offset = 0, sequence = 0 }),
+                    Event("chunk_completed", 2, chunk: 0, final: pcm.Length / 2),
+                    Event("completed", 3, final: pcm.Length / 2)) + "\n"
+            };
             var content = new ByteArrayContent(Encoding.UTF8.GetBytes(lines));
             content.Headers.ContentType = new("application/x-ndjson");
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };

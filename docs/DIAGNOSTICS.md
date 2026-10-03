@@ -25,7 +25,12 @@ nothing.
 (rotated at 2 MiB, never uploaded by themselves). Each Martlet host's gateway
 now also keeps a bounded log of its own activity (start and stop, devices
 paired, each finished model request with route, device and duration, each
-refused or failed request with its stable code, HTTP status and trace ID) in
+refused or failed request with its stable code, HTTP status and trace ID, and,
+for a voice engine (Chatterbox, F5-TTS, XTTS-v2, GPT-SoVITS, Dia), why its
+service failed or refused the reply: its error code, stage and summary (for
+example `gpu_out_of_memory` with the CUDA error), the state of its model and why
+it isn't ready, or that its reply stream ended unfinished because the service
+stopped) in
 `logs.json` beside `host.json`. Without a log host, the page shows this PC's
 logs plus each paired host's own log, read over its pinned pairing.
 

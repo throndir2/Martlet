@@ -293,8 +293,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
             "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
-            "device and plays nothing. Returns the reply's state and whether its whole text arrived, and how far the voice got and " +
-            "why it stopped. ok means the text completed and only the voice stopped. Loopback only; reads no credentials.", new
+            "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
+            "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
+            "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
+            "only the voice stopped and the captions showed the whole reply. Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 }

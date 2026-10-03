@@ -102,6 +102,10 @@ comment; it needs a Thinking model that can see images. See
    from the Thinking model and is shown in full, with a *The voice failed, so
    this wasn't spoken* or *The voice stopped partway* note and the voice's own
    remedy below the history. Nothing else is asked to speak it instead. The
+   speech bubble beside the character (and the subtitles, when on) still shows
+   what the voice couldn't say: the sentence that failed and each one after it,
+   one after another for about as long as reading it takes (2-20 s), until the
+   next reply or *Stop*. The
    desktop log records it as `Spoken reply failed (...)` against the Speaking
    route, not as a Thinking failure.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the

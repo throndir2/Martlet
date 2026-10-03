@@ -4,6 +4,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Martlet.Core.Logs;
 
 namespace Martlet.Gateway.F5;
 
@@ -83,6 +84,24 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
     }
 
     public GatewayInferenceRoute Route { get; }
+
+    /// <summary>Where the relay says why its voice service failed or refused a request (level, message): the host's own log,
+    /// which every paired desktop's Diagnostics page shows. Only codes, states and the service's own error text; never the
+    /// words to be said or the recording.</summary>
+    public Action<string, string>? Report { get; set; }
+
+    private void Tell(string level, string what)
+    {
+        try { Report?.Invoke(level, $"{Route.RouteId}: {what}"); }
+        catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException or IOException) { }
+    }
+
+    // The voice service's own words, bounded to one short line.
+    private static string Bounded(string? text, int limit = 300)
+    {
+        var line = string.Join(' ', (text ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return line.Length > limit ? line[..limit] + "…" : line;
+    }
 
     public ValueTask<GatewayInferencePermissionLease> AcquirePermissionAsync(
         GatewayInferenceRequest request, GatewayPrincipal principal, CancellationToken cancellationToken)
@@ -200,9 +219,11 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
         {
             response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException error)
         {
             token.ThrowIfCancellationRequested();
+            Tell(LogLevels.Warn, $"its voice service on {synthesize.Authority} didn't answer ({Bounded(error.Message)}); " +
+                "it may be stopped or restarting.");
             return (null, "worker.unavailable");
         }
         if (response.StatusCode == HttpStatusCode.OK &&
@@ -210,23 +231,54 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
             return (response, null);
         // 503: the model is still loading, not provisioned, or busy with another reply.
         var failure = response.StatusCode == HttpStatusCode.ServiceUnavailable ? "worker.unavailable" : "worker.failed";
+        Tell(LogLevels.Warn, $"its voice service refused the reply (HTTP {(int)response.StatusCode}{await RefusalAsync(response, token).ConfigureAwait(false)}).");
         response.Dispose();
         return (null, failure);
     }
 
-    // One worker event line -> the gateway event it maps to (null for the worker's own "started"), or a failure code.
+    // What a refusing service said: its error, the state of its model (loading_model, failed, busy...) and why.
+    private static async Task<string> RefusalAsync(HttpResponseMessage response, CancellationToken token)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
+            if (body.Length is 0 or > 16_384) return "";
+            using var document = JsonDocument.Parse(body, new JsonDocumentOptions { MaxDepth = 8 });
+            var root = document.RootElement;
+            string? Field(string name) => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            var said = new[] { Field("error"), Field("state") is { } state ? "state " + state : null, Field("detail") }
+                .Where(part => !string.IsNullOrWhiteSpace(part));
+            return string.Join(", ", said.Select(part => Bounded(part))) is { Length: > 0 } text ? ": " + text : "";
+        }
+        catch (Exception error) when (error is JsonException or IOException or HttpRequestException or InvalidOperationException)
+        {
+            return "";
+        }
+    }
+
+    // One worker event line -> the gateway event it maps to (null for the worker's own "started"), or a failure code. Each
+    // failure is also reported (Report) with what went wrong, so the host's log says why a reply wasn't spoken.
     private async Task<(GatewayInferenceEvent? Item, string? Error)> NextAsync(LineReader reader, GatewayInferenceRequest request,
         GatewayF5SynthesisPayload payload, bool identified, long sequence, CancellationToken token)
     {
+        (GatewayInferenceEvent?, string?) Failed(string why, string code = "worker.failed", string level = LogLevels.Error)
+        {
+            Tell(level, why);
+            return (null, code);
+        }
         byte[]? line;
         try { line = await reader.ReadLineAsync(token).ConfigureAwait(false); }
         catch (Exception error) when (error is IOException or HttpRequestException or InvalidDataException)
         {
             // After Stop the gateway expects cancellation, not a late failure event.
             token.ThrowIfCancellationRequested();
-            return (null, "worker.failed");
+            return Failed($"its voice service's reply stream broke ({error.GetType().Name}: {Bounded(error.Message)}); " +
+                "the service may have stopped or restarted.");
         }
-        if (line is null || line.Length == 0) return (null, "worker.failed");
+        if (line is null || line.Length == 0)
+            return Failed("its voice service ended the reply stream without finishing; the service may have stopped or restarted " +
+                "(for example out of memory).");
         try
         {
             using var document = JsonDocument.Parse(line, new JsonDocumentOptions { MaxDepth = 32 });
@@ -234,9 +286,9 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
             if (root.GetProperty("type").GetString() != "event" ||
                 root.GetProperty("ids").GetProperty("request_id").GetString() != request.RequestId.ToString("D") ||
                 root.GetProperty("reference_revision").GetString() != payload.ReferenceRevision)
-                return (null, "worker.failed");
+                return Failed("its voice service answered for another reply or recording.");
             if (!identified && !ModelMatches(root.GetProperty("worker")))
-                return (null, "worker.failed");
+                return Failed("its voice service reports other model files than this host's role pins; add the role again.");
             long? Long(string name) => root.GetProperty(name).ValueKind == JsonValueKind.Number ? root.GetProperty(name).GetInt64() : null;
             switch (root.GetProperty("kind").GetString())
             {
@@ -246,7 +298,7 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
                     var frame = root.GetProperty("frame");
                     var pcm = Convert.FromBase64String(frame.GetProperty("data_base64").GetString()!);
                     var samples = frame.GetProperty("sample_count").GetInt32();
-                    if (pcm.Length != samples * 2) return (null, "worker.failed");
+                    if (pcm.Length != samples * 2) return Failed("its voice service sent an audio frame of the wrong length.");
                     return (Event(request, GatewayInferenceEventKind.AudioFrame, sequence, pcm,
                         frameSequence: frame.GetProperty("sequence").GetInt64(), chunkIndex: frame.GetProperty("chunk_index").GetInt32(),
                         sampleOffset: frame.GetProperty("sample_offset").GetInt64(), sampleCount: samples), null);
@@ -258,20 +310,27 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
                 case "canceled":
                     return (Event(request, GatewayInferenceEventKind.Canceled, sequence, finalSampleCount: Long("final_sample_count")), null);
                 case "failed":
-                    var code = root.GetProperty("error").GetProperty("code").GetString();
-                    return (null, code switch
+                    var error = root.GetProperty("error");
+                    var code = error.GetProperty("code").GetString();
+                    string? Text(string name) => error.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                        ? value.GetString() : null;
+                    var mapped = code switch
                     {
                         "deadline_exceeded" => "job.deadline",
                         "model_not_ready" or "busy" => "worker.unavailable",
                         _ => "worker.failed"
-                    });
+                    };
+                    return Failed($"its voice service failed the reply: {Bounded(code, 64)}" +
+                        (Text("stage") is { Length: > 0 } stage ? $" at {Bounded(stage, 64)}" : "") +
+                        (Text("summary") is { Length: > 0 } summary ? $": {Bounded(summary)}" : "."), mapped,
+                        mapped == "worker.failed" ? LogLevels.Error : LogLevels.Warn);
                 default:
-                    return (null, "worker.failed");
+                    return Failed("its voice service sent an event Martlet doesn't know.");
             }
         }
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
-            return (null, "worker.failed");
+            return Failed($"its voice service sent an unreadable event ({error.GetType().Name}).");
         }
     }
 
