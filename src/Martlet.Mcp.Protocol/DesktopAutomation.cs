@@ -76,6 +76,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path).
         "F5VoicesShared", "F5AddVoiceProblem",
+        // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
+        // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
+        "TalkReduceEchoStatus",
         // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS or Dia) and where it speaks with its
         // model licence, and the engines the speaking computer still runs besides it (SpeakingEngineOthers). Choosing another engine
         // (ui_select SpeakingEngine) may install a host role and stops the one it replaces, and SpeakingEngineRelease stops the others,

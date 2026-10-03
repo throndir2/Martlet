@@ -354,12 +354,35 @@ refused, only the agent's local token takes and reports commands, output and
 outcomes reach the sender, secrets never appear in lists, commands or the saved
 copy, the shared Home Assistant connection (including token sharing, revision
 wins, tombstones, invalid bodies, restart storage and no token in gateway logs),
-cancel works (waiting and running), commands survive a restart with a new token
+cancel works (waiting and running), a command sent while another runs waits
+behind it and the sender's `HostCommandList.WaitingText` names what it waits
+for, an update that continues later (FIXTURE: "Martlet is in use here") stays
+first and holds the queue until it finishes and the waiting command runs right
+after it, commands survive a restart with a new token
 and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
 `Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
 runtime; it takes no arguments and contacts nothing outside loopback. The same
 program's `live <pairing-code> <container>` mode checks a disposable Linux
 gateway container built from this checkout (not the real host service).
+
+`host_engine_check` (no arguments) checks that a host makes
+[one change at a time](../deploy/host/README.md#one-change-at-a-time) with this
+checkout's real `deploy\host\martlet-host`: it starts one disposable
+`ubuntu:24.04` container (`--network none`, `--pull never`, removed afterwards,
+the engine in native mode against a fixture setup under `/tmp`; Martlet's own
+host containers and volumes are never touched) and returns `{exitCode, report:
+{passed, total, image, engine, steps: [{name, ok, detail}]}}`. Steps: `flock`
+is present; a change (a `network-reset` waiting for a typed yes, like a console
+left open) holds `engine.lock` (0600) and records itself in `engine.holder`;
+`roles` still runs; `status` says `Busy now: ...`; an automatic `update` (no
+terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
+`--yes update` with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and
+gives up with 75; a waiting `--yes remove` continues once the holder is killed
+(SIGKILL); the next automatic run is not blocked (no stale lock);
+`logs/engine.log` records the waits; and the desktop's reader
+(`HostEngineBusy.Read`) reads the engine's real busy line. Without Docker or the
+image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
+the Docker method's launcher or a real host.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -505,6 +528,32 @@ change; the `TalkHearVoice` check box saves the choice, so it needs
 `--allow-ui-effects`. A real reply with a recording needs a microphone and a
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
+
+`echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
+(Companion › Listening › **Reduce echo from my speakers**; optional absolute
+`dataDirectory`, default the current user's, and optional `delayMs` 0-300,
+default 60): `reduceEcho` (the saved choice, on by default) with
+`reduceEchoSource` (`saved` or `default`), and `canceller` (`WebRTC AEC3` once
+the native canceller loads, otherwise null with `cancellerProblem` and `ok`
+false). Its `rehearsal` runs the production microphone path
+(`MicrophoneCapture`, `EchoReducer`, the WebRTC canceller, the capture
+normalizer) twice on one synthesized scene, with and without echo reduction,
+using a fixture microphone and fixture speaker loopback (48 kHz stereo float
+with device-style timestamps and a pause in playback) on a simulated clock: no
+microphone or speaker is opened and nothing plays. A synthesized Martlet voice
+reaches the microphone through a simulated room (`delayMs`, reflections, about
+6 dB down) beside the user's own synthesized voice: 0-4 s only Martlet speaks
+(`martletOnly`), 4.5-6 s only the user (`userOnly`), 6-8 s both (`bothTalking`,
+barge-in). It returns `state` (the reducer's report, `Active`), `frames`,
+`speakerFrames`, `deviceReducedDb` (the device's own measure over every frame
+while the speakers played, the user's voice included), and per part the levels
+`withoutDb`/`withDb` (dBFS), `martletOnly.reducedDb` and
+`firstSecondsReducedDb` (0-1.5 s, while the canceller learns the room),
+`userOnly.keptDb` and `bothTalking.userAloneDb`, plus `speechFrames*`: the
+20 ms frames Martlet's own voice-activity detector counted as speech. `ok` is
+true when the reducer was active, Martlet's echo got at least 20 dB quieter, the
+detector heard it without reduction but not with it, and it still heard the user
+alone (kept within 3 dB) and over Martlet. It contacts nothing.
 
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
@@ -1045,7 +1094,13 @@ applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, on by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`). Each spoken reply writes a *Reply latency: first words
+`talk-preferences.json`). Below it, the *Speakers and echo* card has
+`TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
+`checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
+and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
+from the microphone whenever it listens.*, how the last listen went, why echo
+reduction couldn't run, or *Off. ...*); `echo_check` reads the same saved
+choice. Each spoken reply writes a *Reply latency: first words
 after … ms, first audio after … ms* line to the desktop log, which `logs_tail`
 returns.
 
@@ -1149,7 +1204,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status` and `hearing_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check` and `echo_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

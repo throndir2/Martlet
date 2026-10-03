@@ -87,6 +87,13 @@
           "Martlet.Diagnostics": "[0.22.0, )"
         }
       },
+      "martlet.echocancellation": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Audio": "[0.22.0, )",
+          "SoundFlow.Extensions.WebRtc.Apm": "[1.4.0, )"
+        }
+      },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
@@ -108,6 +115,7 @@
           "Martlet.Avatar.Audio2Face": "[0.22.0, )",
           "Martlet.Conversation": "[0.22.0, )",
           "Martlet.Doctor": "[0.22.0, )",
+          "Martlet.EchoCancellation": "[0.22.0, )",
           "Martlet.F5": "[0.22.0, )",
           "Martlet.Home": "[0.22.0, )",
           "Martlet.Mcp.Client": "[0.22.0, )",
@@ -147,6 +155,21 @@
         "contentHash": "iTG+oBJaiID344yz84PrTiVF98av5SsuOUu7ICskcUd6f5ShHDMskG9sE4XUM05Vdlwy88bMQDDC3e+85Mv8yw==",
         "dependencies": {
           "NAudio.Core": "3.1.0"
+        }
+      },
+      "SoundFlow": {
+        "type": "CentralTransitive",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "PVc8NEpwmx16qJdOGRvc7Kpvs/3hNZBuldErmnMQSh9IClAA2UWrafcUIQUxki2GrWB2g71hPSDIUKEo3nRgeA=="
+      },
+      "SoundFlow.Extensions.WebRtc.Apm": {
+        "type": "CentralTransitive",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "vsILVFDGVN32a3jmiYO+EhgmeVo+i4i+99/7KlCv2rbivNxPTmeIWVcgubJfXQW/clU5LydMskEu5tkpEVDxvw==",
+        "dependencies": {
+          "SoundFlow": "1.4.0"
         }
       }
     }

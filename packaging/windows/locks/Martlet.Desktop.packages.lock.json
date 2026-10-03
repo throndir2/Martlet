@@ -2,6 +2,12 @@
   "version": 2,
   "dependencies": {
     "net10.0-windows7.0": {
+      "SoundFlow": {
+        "type": "Direct",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "PVc8NEpwmx16qJdOGRvc7Kpvs/3hNZBuldErmnMQSh9IClAA2UWrafcUIQUxki2GrWB2g71hPSDIUKEo3nRgeA=="
+      },
       "SSH.NET": {
         "type": "Direct",
         "requested": "[2024.1.0, )",
@@ -50,7 +56,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )",
+          "Martlet.Core": "[0.21.0, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
@@ -59,28 +65,28 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.12.0, )",
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Avatars": "[0.21.0, )",
+          "Martlet.Core": "[0.21.0, )"
         }
       },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.12.0, )"
+          "Martlet.Avatars": "[0.21.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.21.0, )"
         }
       },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.12.0, )",
-          "Martlet.Core": "[0.12.0, )",
-          "Martlet.Providers": "[0.12.0, )"
+          "Martlet.Audio": "[0.21.0, )",
+          "Martlet.Core": "[0.21.0, )",
+          "Martlet.Providers": "[0.21.0, )"
         }
       },
       "martlet.core": {
@@ -89,25 +95,32 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.21.0, )"
         }
       },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.21.0, )"
+        }
+      },
+      "martlet.echocancellation": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Audio": "[0.21.0, )",
+          "SoundFlow.Extensions.WebRtc.Apm": "[1.4.0, )"
         }
       },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.21.0, )"
         }
       },
       "martlet.home": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.21.0, )"
         }
       },
       "martlet.mcp.client": {
@@ -122,7 +135,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.12.0, )"
+          "Martlet.Core": "[0.21.0, )"
         }
       },
       "martlet.sherpa": {
@@ -131,7 +144,7 @@
       "martlet.support": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Diagnostics": "[0.12.0, )"
+          "Martlet.Diagnostics": "[0.21.0, )"
         }
       },
       "Google.Protobuf": {
@@ -158,8 +171,33 @@
         "dependencies": {
           "NAudio.Core": "3.1.0"
         }
+      },
+      "SoundFlow.Extensions.WebRtc.Apm": {
+        "type": "CentralTransitive",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "vsILVFDGVN32a3jmiYO+EhgmeVo+i4i+99/7KlCv2rbivNxPTmeIWVcgubJfXQW/clU5LydMskEu5tkpEVDxvw==",
+        "dependencies": {
+          "SoundFlow": "1.4.0"
+        }
       }
     },
-    "net10.0-windows7.0/win-x64": {}
+    "net10.0-windows7.0/win-x64": {
+      "SoundFlow": {
+        "type": "Direct",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "PVc8NEpwmx16qJdOGRvc7Kpvs/3hNZBuldErmnMQSh9IClAA2UWrafcUIQUxki2GrWB2g71hPSDIUKEo3nRgeA=="
+      },
+      "SoundFlow.Extensions.WebRtc.Apm": {
+        "type": "CentralTransitive",
+        "requested": "[1.4.0, )",
+        "resolved": "1.4.0",
+        "contentHash": "vsILVFDGVN32a3jmiYO+EhgmeVo+i4i+99/7KlCv2rbivNxPTmeIWVcgubJfXQW/clU5LydMskEu5tkpEVDxvw==",
+        "dependencies": {
+          "SoundFlow": "1.4.0"
+        }
+      }
+    }
   }
 }

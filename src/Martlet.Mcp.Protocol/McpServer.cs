@@ -143,8 +143,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
             "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
-            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works and commands survive a " +
-            "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { }),
+            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works, an update that waits " +
+            "holds the queue and the sender sees what its command waits behind, and commands survive a restart. Contacts nothing " +
+            "outside loopback and touches no real credentials, Docker or installs.", new { }),
+        Tool("host_engine_check", "Check that a Martlet host makes one change at a time: runs this checkout's real martlet-host " +
+            "engine in one disposable ubuntu:24.04 container (no network, never pulled, removed afterwards; Martlet's own host " +
+            "containers and volumes are never touched) against a fixture setup. A change holds the engine lock; read-only commands " +
+            "still run; status names the holder; an automatic run (no terminal, no --yes) stops at once with exit 75 and " +
+            "MARTLET-BUSY, changing nothing; an attended run waits and gives up after MARTLET_LOCK_WAIT; a waiting run continues when " +
+            "the holder is killed; no stale lock remains; the journal records it; the desktop's reader reads the busy line. Returns " +
+            "notRun when Docker or the image is missing.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new
@@ -224,6 +232,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default) and whether the " +
+            "WebRTC echo canceller loads, then a rehearsal of the production microphone path (MicrophoneCapture, EchoReducer, the " +
+            "canceller) with fixture devices on a simulated clock: no microphone or speaker is opened and nothing plays. A synthesized " +
+            "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
+            "default 60), with the user's synthesized voice alone and over it. Returns how much quieter Martlet's echo got, how much " +
+            "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction.", new
+        {
+            dataDirectory = new { type = "string" },
+            delayMs = new { type = "integer", minimum = 0, maximum = 300 }
         })
     ];
 
@@ -312,6 +330,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
+                "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
@@ -324,6 +343,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "smart_home_status" => SmartHomeStatus(arguments),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

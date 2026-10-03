@@ -19,6 +19,10 @@
     <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
     <ProjectReference Include="..\Martlet.Support\Martlet.Support.csproj" />
     <ProjectReference Include="..\Martlet.Audio\Martlet.Audio.csproj" />
+    <!-- Reduce echo from my speakers: WebRTC's echo canceller (EchoReducer in Martlet.Audio drives it). Only its managed binding
+         and webrtc-apm.dll ship; SoundFlow's own audio engine (miniaudio) is never used, so its native libraries are left out. -->
+    <ProjectReference Include="..\Martlet.EchoCancellation\Martlet.EchoCancellation.csproj" />
+    <PackageReference Include="SoundFlow" ExcludeAssets="native;contentFiles;build;buildTransitive;analyzers" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
     <ProjectReference Include="..\Martlet.F5\Martlet.F5.csproj" />

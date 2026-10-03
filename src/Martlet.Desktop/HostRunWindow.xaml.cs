@@ -196,7 +196,10 @@ internal static class HostActions
             run.Status(role is null ? $"Working on {ssh}..." :
                 add ? $"{role} is installing on {ssh}. This can take a while..."
                     : $"Removing {role} from {ssh}...");
-            var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, run.Output, run.Token);
+            var output = new EngineOutput(run.Output);
+            var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, output, run.Token);
+            if (output.Busy(result.ExitCode) is { } busy)
+                throw new InvalidOperationException($"{ssh} stayed busy with another change ({busy}), so nothing was changed. Try again when it finishes.");
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"The host action did not finish on {ssh} (exit {result.ExitCode}). Check the output for details.");
             return role is null ? $"Finished on {ssh}."
@@ -242,7 +245,10 @@ internal static class HostActions
                 HostVerb.Update => "Updating this PC's host. Pairings and roles stay...",
                 _ => "Working on this PC..."
             });
-            var exit = await HostLocal.EngineAsync(target, engine.Split(' '), run.Output, run.Token, answers: input);
+            var output = new EngineOutput(run.Output);
+            var exit = await HostLocal.EngineAsync(target, engine.Split(' '), output, run.Token, answers: input);
+            if (output.Busy(exit) is { } busy)
+                throw new InvalidOperationException($"This PC's host stayed busy with another change ({busy}), so nothing was changed. Try again when it finishes.");
             if (exit != 0) throw new InvalidOperationException($"The host action did not finish on this PC (exit {exit}). Check the output for details.");
             return action.Verb switch
             {

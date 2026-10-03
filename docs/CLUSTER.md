@@ -267,9 +267,47 @@ manages it from here. With *Keep my Martlet hosts on this PC's version* on, the
 main PC sends `martlet.update` to such hosts in the background; it runs as soon
 as Martlet runs there.
 
+### When updates and other work meet
+
+Updates arrive from several directions (Martlet installing its own update,
+another computer's `martlet.update`, automatic host updates from any desktop)
+while a host may be busy installing a role, pairing or serving its console.
+Nothing is interrupted and nothing is lost:
+
+- **On the host, one change at a time.** Every route ends in the same
+  `martlet-host` engine, which holds a kernel lock while it changes the host
+  ([One change at a time](../deploy/host/README.md#one-change-at-a-time)). A
+  change asked for by someone (a run window, a command from another computer)
+  waits for the one already running and its output says what it waits for. An
+  automatic background update doesn't queue: it stops at once without changing
+  anything (exit 75, `MARTLET-BUSY ...`).
+- **Automatic host updates try again.** A host found busy keeps its update
+  pending, not failed: its Devices card says what the host is busy with, and
+  Martlet tries it again every three minutes until it is free (this PC's own
+  host service likewise). A host whose gateway doesn't answer while it
+  restarts for another computer's update is asked again the same way.
+- **One command at a time per host PC.** Its Martlet takes the next command
+  only after the current one ends. An update that waits (until nothing needs
+  Martlet there, or while Martlet restarts into it) stays first, so a command
+  sent meanwhile runs right after it. The computer that sent it sees why it
+  waits: *Martlet on gpu-pc is updating first: Update to Martlet 0.22.0 (from
+  desktop-a). This runs right after it.* Sending (and the first look at the
+  host) keeps trying for up to five minutes while that host's gateway restarts.
+- **Martlet installs its own update only when nothing needs it.** Besides you,
+  the character and a conversation, that means no setup task, no host service
+  update, no command from another computer running and no update check or
+  download under way. Settings › App updates says what the downloaded update
+  waits for; a `martlet.update` from another computer tells that computer the
+  same. An update that computer asked for joins an update check or download
+  already under way instead of failing. While Martlet exits to install, it
+  takes no new command; commands sent meanwhile wait in the mailbox.
+
 Checked locally: `node_link_check` (MCP) runs the protocol end to end on
-loopback with the real gateway, desktop client and agent loop; the same client
-and agent ran against a real Linux gateway container built from this source
-(token read with `docker exec`, `commands.json` without secrets, a new token
-after restart). The desktop's own runner on a real host PC (installing an
-update, `martlet-host` runs) and two real computers are **NOT RUN**.
+loopback with the real gateway, desktop client and agent loop, including a
+command queued behind a running one and an update that waits and holds the
+queue; `host_engine_check` (MCP) runs the real `martlet-host` engine's lock in a
+disposable container. The same client and agent ran against a real Linux
+gateway container built from this source (token read with `docker exec`,
+`commands.json` without secrets, a new token after restart). The desktop's own
+runner on a real host PC (installing an update, `martlet-host` runs), the
+engine lock on a real Docker-method host and two real computers are **NOT RUN**.

@@ -257,11 +257,41 @@ async Task RunAsync()
     var running = agent.RunOnceAsync(agentConnection, CancellationToken.None);
     var deadline = DateTime.UtcNow.AddSeconds(15);
     while ((await asker.ReadCommandAsync(slow.Id)).State != NodeCommandState.Running && DateTime.UtcNow < deadline) await Task.Delay(200);
+    var behindSlow = await asker.SendCommandAsync(NodeCommandKinds.Status, new Dictionary<string, string>());
+    var queueWhileRunning = await asker.ReadCommandsAsync();
+    var ahead = queueWhileRunning.Ahead(behindSlow);
+    Step("queued-behind-running", behindSlow.State == NodeCommandState.Queued && ahead?.Id == slow.Id &&
+        queueWhileRunning.WaitingText(behindSlow, "check-host")?.Contains("busy with: Read what slow-role needs", StringComparison.Ordinal) == true,
+        queueWhileRunning.WaitingText(behindSlow, "check-host") ?? "nothing ahead");
     var stopping = await asker.CancelCommandAsync(slow.Id);
     var finished = await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(20))) == running;
     var stopped = await asker.ReadCommandAsync(slow.Id);
     Step("cancel-running", stopping.CancelRequested && finished && stopped.State == NodeCommandState.Canceled && runner.Canceled,
         $"cancel requested {stopping.CancelRequested}; ended {stopped.State}");
+    pass = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
+    Step("queued-runs-next", pass.Kind == NodeAgentPassKind.Ran && pass.Command?.Id == behindSlow.Id,
+        $"after the running command ended the agent ran {(pass.Command is { } next ? NodeCommandAgent.Describe(next) : pass.Kind.ToString())}");
+
+    // An update the host's Martlet can't install yet (someone is using it there) stays first and holds the queue; a command
+    // sent meanwhile says it waits behind the update and runs once the update is done.
+    var waitingUpdate = await asker.SendCommandAsync(NodeCommandKinds.Update, new Dictionary<string, string> { ["version"] = FixtureRunner.BusyVersion });
+    var first = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
+    var afterUpdate = await asker.SendCommandAsync(NodeCommandKinds.RemoveRole, new Dictionary<string, string> { ["role"] = "after-update-role" });
+    var held = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
+    var queueDuringUpdate = await asker.ReadCommandsAsync();
+    var behindUpdate = queueDuringUpdate.WaitingText(afterUpdate, "check-host");
+    var heldOk = first.Kind == NodeAgentPassKind.Pending && held.Kind == NodeAgentPassKind.Pending && held.Command?.Id == waitingUpdate.Id &&
+        queueDuringUpdate.Commands.First(c => c.Id == afterUpdate.Id).State == NodeCommandState.Queued &&
+        queueDuringUpdate.Ahead(afterUpdate)?.Id == waitingUpdate.Id && behindUpdate?.Contains("is updating first", StringComparison.Ordinal) == true;
+    Step("update-waits-and-holds-queue", heldOk, $"{first.Kind}, then {held.Kind}; {behindUpdate ?? "nothing ahead"}");
+    runner.UpdateMayInstall = true;
+    var updated = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
+    var then = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
+    var updateDone = await asker.ReadCommandAsync(waitingUpdate.Id);
+    Step("update-then-queued-command", updated.Kind == NodeAgentPassKind.Ran && updated.Command?.Id == waitingUpdate.Id &&
+        updateDone.State == NodeCommandState.Succeeded && updateDone.Output.Contains(FixtureRunner.BusyLine) &&
+        then.Kind == NodeAgentPassKind.Ran && then.Command?.Id == afterUpdate.Id,
+        $"update {updateDone.State} ({updateDone.OutputTotal} lines), then {(then.Command is { } c ? NodeCommandAgent.Describe(c) : then.Kind.ToString())}");
 
     await asker.SendCommandAsync(NodeCommandKinds.AddRole, new Dictionary<string, string> { ["role"] = "later-role" },
         new Dictionary<string, string> { ["secret.api-key"] = secret });
@@ -327,13 +357,17 @@ sealed class NoAudit : IGatewayAuditSink
 }
 
 /// <summary>Stands in for Martlet's command runner: prints fixed lines, records the secrets and choices it was handed and
-/// waits to be canceled for describe-role.</summary>
+/// waits to be canceled for describe-role. An update to <see cref="BusyVersion"/> continues later (as Martlet's does while
+/// someone uses Martlet on the host) until <see cref="UpdateMayInstall"/>.</summary>
 sealed class FixtureRunner : INodeCommandRunner
 {
     internal static readonly string[] UpdateLines = ["Checking the fixture release...", "Updating the fixture host service...", "Fixture host updated."];
+    internal const string BusyVersion = "9.9.8";
+    internal const string BusyLine = "FIXTURE: Martlet is in use here, so the update waits until it is idle.";
     internal List<string> SecretsSeen { get; } = [];
     internal string? LastChoice { get; private set; }
     internal bool Canceled { get; private set; }
+    internal bool UpdateMayInstall { get; set; }
     public IReadOnlyList<string> Kinds => NodeCommandKinds.All;
 
     public async Task<NodeCommandOutcome?> RunAsync(NodeCommand command, IReadOnlyDictionary<string, string> secrets, bool resumed,
@@ -341,6 +375,14 @@ sealed class FixtureRunner : INodeCommandRunner
     {
         switch (command.Kind)
         {
+            case NodeCommandKinds.Update when command.Arguments.GetValueOrDefault("version") == BusyVersion:
+                if (!UpdateMayInstall)
+                {
+                    if (!resumed) output.Report(BusyLine);
+                    return null;
+                }
+                output.Report("FIXTURE: idle now; installing nothing.");
+                return new(true, "FIXTURE - updated nothing.", 0);
             case NodeCommandKinds.Update:
                 foreach (var line in UpdateLines) output.Report(line);
                 return new(true, "FIXTURE - updated nothing.", 0);

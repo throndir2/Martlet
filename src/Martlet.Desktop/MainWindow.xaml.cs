@@ -88,10 +88,12 @@ public partial class MainWindow : ThemedWindow
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         if (setupService is not null)
         {
-            conversation = new(setupOperations, setupService, vault, new WasapiCaptureDeviceFactory(), new WasapiDeviceFactory(),
+            var microphones = new WasapiCaptureDeviceFactory();
+            conversation = new(setupOperations, setupService, vault, microphones, new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
-                tools: mcpTools, voices: localVoices, localListener: parakeet);
+                tools: mcpTools, voices: localVoices, localListener: parakeet,
+                echoReducer: new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create));
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         audioSessionEvents.LockedChanged += AvatarSessionLocked;

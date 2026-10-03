@@ -236,3 +236,19 @@ internal sealed class LineSink(Action<string> action) : IProgress<string>
 {
     public void Report(string value) => action(value);
 }
+
+/// <summary>Passes martlet-host output on and keeps the line the engine prints when the host was busy with another change
+/// (<see cref="Martlet.Core.Nodes.HostEngineBusy"/>), so a caller can tell "busy, nothing changed" from a failure.</summary>
+internal sealed class EngineOutput(IProgress<string> output) : IProgress<string>
+{
+    private volatile string? busyLine;
+
+    public void Report(string value)
+    {
+        if ((value ?? "").TrimStart().StartsWith(Martlet.Core.Nodes.HostEngineBusy.Marker, StringComparison.Ordinal)) busyLine = value;
+        output.Report(value!);
+    }
+
+    /// <summary>What the host was busy with when the run ended with <paramref name="exitCode"/>, or null when it wasn't.</summary>
+    internal string? Busy(int exitCode) => Martlet.Core.Nodes.HostEngineBusy.Read(exitCode, busyLine is { } line ? [line] : []);
+}

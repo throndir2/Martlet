@@ -47,6 +47,27 @@ complete MIT license from the package's declared source commit
 a5531521952b2814ef5ee11361e078ea3d92eb08. Its two NuGet advisories (GHSA-q939-rpr3-3284,
 GHSA-mggc-4xg6-vcxf) affect only ScpClient, which Martlet never uses.
 
+Desktop also includes Martlet.EchoCancellation (authored) and, for Companion >
+Listening > Reduce echo from my speakers, WebRTC's acoustic echo canceller:
+SoundFlow.Extensions.WebRtc.Apm 1.4.0 (its managed binding
+SoundFlow.Extensions.WebRtc.Apm.dll, lib/net8.0, and the unmodified native
+runtimes/win-x64/native/webrtc-apm.dll) and its dependency SoundFlow 1.4.0
+(SoundFlow.dll, lib/net8.0; MIT, Copyright (c) 2025 LSXPrime). Both archives
+and both managed DLLs are pinned in toolchain.json; webrtc-apm.dll is the
+archive's own file, checked as x64. SoundFlow's own audio engine is never used:
+Desktop excludes its miniaudio native libraries, so none is redistributed.
+notices\SoundFlow-LICENSE.txt and SoundFlow-THIRD-PARTY-NOTICES.txt are the
+complete files from the SoundFlow archive (identical in both archives; the
+latter also names libraries Martlet doesn't ship). webrtc-apm.dll is built from
+PulseAudio's webrtc-audio-processing 2.1 and statically contains WebRTC
+(BSD-3-Clause, with Google's patent grant), Abseil (Apache-2.0), PFFFT
+(FFTPACK license), RNNoise (BSD-3-Clause), Ooura FFT and spl_sqrt_floor
+(public domain); notices\WebRTC-APM-NOTICES.txt carries each complete license
+and where it came from. It imports only KERNEL32, ucrtbase and WINMM from
+Windows. While the microphone listens it reads what the output plays (WASAPI
+loopback, authored code in Martlet.Audio) only to subtract it, in memory; that
+audio is never kept, logged or sent.
+
 Desktop also includes Martlet.Credentials.Windows, authored BCL/PInvoke code
 for explicitly scoped Windows Credential Manager actions. No additional NuGet
 package or native binary is redistributed; advapi32 remains a Windows OS API.
