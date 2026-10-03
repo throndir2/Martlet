@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -81,7 +82,12 @@ internal sealed class HostInputDialog : ThemedWindow
         };
         buttons.Children.Add(cancel);
         buttons.Children.Add(ok);
-        root.Children.Add(buttons);
+        // Copy takes the dialog's text (never what was typed into it), for example a role's terms to ask about.
+        var copy = CopyText.DialogButton("HostInputCopy", () => string.Join(Environment.NewLine + Environment.NewLine,
+            new[] { $"{CopyText.Product}: {title}", heading, message }
+                .Concat(followers.Select(f => f.Text).Append(error).Where(t => t.IsVisible && t.Text.Length > 0).Select(t => t.Text))));
+        copy.HorizontalAlignment = HorizontalAlignment.Left;
+        root.Children.Add(new Grid { Children = { buttons, copy } });
         Content = root;
         Loaded += (_, _) => (fields.Children.OfType<Control>().FirstOrDefault(c => c is PasswordBox or ComboBox))?.Focus();
     }
