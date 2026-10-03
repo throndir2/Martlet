@@ -166,7 +166,7 @@ public partial class MainWindow
                     {
                         installAfterNodeCommand = false;
                         ErrorLog.Info("Installing a Martlet update another computer asked for: " + pass.Text);
-                        InstallNow(quiet: true);
+                        InstallNow(unattended: true);
                     }
                     break;
                 case NodeAgentPassKind.HostTooOld or NodeAgentPassKind.NoToken:
@@ -380,6 +380,8 @@ public partial class MainWindow
                         $"({(availableUpdate is { } other ? "newest: " + other.Version.ToString(3) : "nothing newer than " + Version)}).");
                 if (failedInstall == offered.Version.ToString(3))
                     return new(false, $"Installing Martlet {failedInstall} on {here} failed before: {failedInstallMessage ?? "see Settings > App updates there"}");
+                // This command installs it, so the periodic check doesn't also ask here whether to install it.
+                announcedUpdate = offered.Tag;
                 output.Report($"Downloading Martlet {offered.Version.ToString(3)} ({Mib(offered)}) and checking it against GitHub's SHA-256 digest...");
                 for (var attempt = 0; attempt < 3 && readyUpdate?.Update.Version != offered.Version && !closing; attempt++)
                 {
@@ -391,10 +393,13 @@ public partial class MainWindow
                 output.Report($"Martlet {offered.Version.ToString(3)} is downloaded and matches GitHub's SHA-256 digest. " +
                     "(The installer is not code-signed; the digest detects a damaged download, not who published it.)");
             }
-            var version = readyUpdate!.Value.Update.Version.ToString(3);
+            var installing = readyUpdate!.Value.Update;
+            var version = installing.Version.ToString(3);
+            announcedUpdate = installing.Tag;
             if (InstallBlocker(asked: true) is { } blocker)
                 return Wait(blocker, $"Martlet {version} installs on {here} as soon as nothing needs Martlet there. Waiting: {blocker}.");
-            output.Report($"Installing Martlet {version} on {here}. Martlet restarts into it and then brings its host service up to date.");
+            output.Report($"Installing Martlet {version} on {here} in the background, with no installer window. Martlet restarts " +
+                "into it by itself and then brings its host service up to date.");
             nodeUpdateBlocker = null;
             installAfterNodeCommand = true;
             return null;

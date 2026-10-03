@@ -1,8 +1,7 @@
-using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
+using Martlet.Core.Installation;
 
 namespace Martlet.Desktop;
 
@@ -74,8 +73,6 @@ internal static class AppVersions
 /// unsigned; its bytes are checked against GitHub's SHA-256 asset digest, which detects corruption, not the publisher.</summary>
 internal static class AppUpdateInstaller
 {
-    private const string ResultFile = "last-install.txt";
-
     internal static string UpdatesDirectory(string dataDirectory) => Path.Combine(dataDirectory, "updates");
 
     /// <summary>Returns the verified installer, reusing an earlier complete download of the same asset.</summary>
@@ -102,53 +99,61 @@ internal static class AppUpdateInstaller
         return Convert.ToHexString(digest).Equals(update.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Starts a windowless helper that waits for this Martlet process to exit, runs the installer with its progress
-    /// window (/SILENT, no optional prerequisite tasks), records the result and, when asked, starts Martlet again (in the
-    /// notification area when <paramref name="inTray"/>).</summary>
-    internal static void Launch(string installer, Version version, string dataDirectory, bool relaunch, bool quietRelaunch,
+    /// <summary>Starts the windowless helper (<see cref="AppUpdateHelper"/>) that waits for this Martlet process to exit, runs
+    /// the installer, records the result and, when asked, starts Martlet again (in the notification area when
+    /// <paramref name="inTray"/>). <paramref name="unattended"/> (an automatic install, or one another computer asked for):
+    /// no installer window at all (/VERYSILENT) and Martlet restarts minimized; otherwise the installer shows its progress
+    /// window (/SILENT). Neither asks anything or runs optional prerequisite tasks.</summary>
+    internal static void Launch(string installer, Version version, string dataDirectory, bool relaunch, bool unattended,
         string? dataDirectoryArgument, bool inTray = false)
     {
         var directory = UpdatesDirectory(dataDirectory);
-        Directory.CreateDirectory(directory);
-        var log = Path.Combine(directory, "install.log");
-        var result = Path.Combine(directory, ResultFile);
-        var script = Path.Combine(directory, "install-update.cmd");
-        var pid = Environment.ProcessId;
-        var arguments = (dataDirectoryArgument is null ? "" : $" --data-directory \"{Cmd(dataDirectoryArgument)}\"") +
-            (quietRelaunch ? " --after-update" : "") + (inTray ? " " + WindowsStartup.TrayArgument : "");
-        var text = new StringBuilder("@echo off\r\nset n=0\r\n:wait\r\n")
-            .Append($"tasklist /FI \"PID eq {pid}\" /NH 2>NUL | find \" {pid} \" >NUL || goto install\r\n")
-            .Append($"set /a n+=1\r\nif %n% gtr 180 (>\"{Cmd(result)}\" echo wait {version.ToString(3)}& exit /b 1)\r\n")
-            .Append("ping -n 2 127.0.0.1 >NUL\r\ngoto wait\r\n:install\r\n")
-            .Append("ping -n 3 127.0.0.1 >NUL\r\n")
-            .Append($"\"{Cmd(installer)}\" /SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /TASKS=\"\" /LOG=\"{Cmd(log)}\"\r\n")
-            .Append($">\"{Cmd(result)}\" echo %errorlevel% {version.ToString(3)}\r\n");
-        if (relaunch) text.Append($"start \"\" \"{Cmd(Environment.ProcessPath!)}\"{arguments}\r\n");
-        var content = text.ToString();
-        // cmd.exe reads scripts in the OEM code page; switch to UTF-8 only when a path needs it.
-        if (content.Any(c => c > 127)) content = content.Replace("@echo off\r\n", "@echo off\r\nchcp 65001 >NUL\r\n", StringComparison.Ordinal);
-        File.WriteAllText(script, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/d /c \"{script}\"") { UseShellExecute = false, CreateNoWindow = true })?.Dispose();
+        var flags = new List<string>();
+        if (unattended) flags.Add(AppUpdateHelper.AfterUpdateArgument);
+        if (inTray) flags.Add(WindowsStartup.TrayArgument);
+        var script = AppUpdateHelper.Script(directory, installer, version.ToString(3), Environment.ProcessId, unattended,
+            relaunch ? Environment.ProcessPath! : null, AppUpdateHelper.RelaunchArguments(dataDirectoryArgument, [.. flags]));
+        AppUpdateHelper.Start(directory, script)?.Dispose();
     }
 
     /// <summary>Reports the outcome of the last installer run once, then forgets it. Null when there is nothing to report;
     /// <c>Failed</c> names the version that did not install, so it is not installed automatically again this session.</summary>
     internal static (string Message, string? Failed)? TakeLastResult(string dataDirectory, string running)
     {
-        var directory = UpdatesDirectory(dataDirectory);
-        var path = Path.Combine(directory, ResultFile);
         try
         {
-            if (!File.Exists(path)) return null;
-            var parts = File.ReadAllText(path).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            File.Delete(path);
-            if (parts.Length != 2) return null;
-            if (parts[0] == "0" && !AppVersions.IsOlder(running, parts[1])) return ($"Martlet updated to {running}.", null);
-            if (parts[0] == "wait")
-                return ($"The update to {parts[1]} couldn't start. Press Install to try again.", parts[1]);
-            return ($"The update to {parts[1]} didn't finish. Press Install to try again.", parts[1]);
+            if (AppUpdateHelper.TakeResult(UpdatesDirectory(dataDirectory)) is not var (code, version)) return null;
+            if (code == "0" && !AppVersions.IsOlder(running, version)) return ($"Martlet updated to {running}.", null);
+            if (code == "wait")
+                return ($"The update to {version} couldn't start. Press Install to try again.", version);
+            return ($"The update to {version} didn't finish. Press Install to try again.", version);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>Copies what the last helper run did into Martlet's log (once), and for a failed install the installer log's
+    /// last lines, so the Diagnostics page and the log host show how an update went, even an unattended one.</summary>
+    internal static void LogLastRun(string dataDirectory, (string Message, string? Failed)? result)
+    {
+        var directory = UpdatesDirectory(dataDirectory);
+        try
+        {
+            foreach (var line in AppUpdateHelper.TakeLog(directory)) ErrorLog.Info("Update helper: " + line);
+            if (result is not { } outcome) return;
+            if (outcome.Failed is null)
+            {
+                ErrorLog.Info(outcome.Message);
+                return;
+            }
+            var tail = AppUpdateHelper.InstallerLogTail(directory, 15);
+            ErrorLog.Warn(outcome.Message + (tail.Count == 0
+                ? " The installer wrote no log."
+                : $" Last lines of the installer's log ({AppUpdateHelper.InstallerLogFile} in the updates folder):\n" + string.Join("\n", tail)));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn("Could not read the last update's log", error);
+        }
     }
 
     /// <summary>Deletes downloaded installers for this version or older once they are no longer needed.</summary>
@@ -166,6 +171,4 @@ internal static class AppUpdateInstaller
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
-
-    private static string Cmd(string value) => value.Replace("%", "%%", StringComparison.Ordinal);
 }
