@@ -27,7 +27,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.21.0, )",
+          "Martlet.Core": "[0.23.0, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
