@@ -160,7 +160,14 @@ the result. With *Download and install updates automatically* this happens by
 itself, but only while the character is hidden, no conversation or
 Martlet window is open and Martlet is not the active window (it restarts
 minimized, or in the notification area when it was there); otherwise the
-downloaded update installs when you exit Martlet.
+downloaded update installs when you exit Martlet. An automatic install, and one
+another of your computers asks for (`martlet.update`, see
+[CLUSTER](docs/CLUSTER.md#commands-between-your-computers)), shows no installer
+window at all (`/VERYSILENT`): Martlet downloads, closes, installs and restarts
+by itself. Every step still goes to the log: the helper's steps
+(`updates\update.log`) and, after a failed install, the end of the installer's
+own `updates\install.log` are copied into Martlet's log (the **Diagnostics**
+page) when it starts again.
 Choices live in `update-checks.txt` and `updates.json`, separately from profile
 settings and configuration backup; a choice saved while checks were opt-in
 resets to on, and unreadable preferences fall back to checks ON (installs and

@@ -261,6 +261,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
             // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
             // Its frame shows whether it can be resized, minimized and maximized; with layout, where it is and the work area
             // (screen minus taskbar) of its monitor, both in screen pixels, so a window can be checked to open wholly on screen.
+            // Whether it is minimized and has the focus show, for example, that Martlet restarted by an unattended update came
+            // back minimized without taking the focus.
             windowStates = windows.Select(window =>
             {
                 var handle = (nint)window.Current.NativeWindowHandle;
@@ -272,7 +274,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["enabled"] = IsWindowEnabled(handle),
                     ["resizable"] = (style & ThickFrame) != 0,
                     ["minimizable"] = (style & MinimizeBox) != 0,
-                    ["maximizable"] = (style & MaximizeBox) != 0
+                    ["maximizable"] = (style & MaximizeBox) != 0,
+                    ["minimized"] = IsIconic(handle),
+                    ["foreground"] = GetForegroundWindow() == handle
                 };
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
@@ -683,6 +687,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowEnabled(nint window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(nint window);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
 
     private static IEnumerable<AutomationElement> Elements(AutomationElement window) =>
         window.FindAll(TreeScope.Descendants,

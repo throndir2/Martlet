@@ -195,6 +195,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "PC's own host service); overlapping routes end separately; an update started elsewhere is named as another update; a " +
             "host found current stops waiting and its stale note says it is updated; Update hosts now waits for another change. Pure logic: contacts " +
             "nothing and touches no Docker, host or data directory.", new { }),
+        Tool("app_update_check", "Rehearse how Martlet installs its own update end to end with the desktop's production update " +
+            "helper (the same script and hidden start) in a disposable folder: a stand-in for Martlet that exits, and a FIXTURE " +
+            "standing in for the installer and the restarted Martlet. For an install another computer asked for and an automatic " +
+            "one (from the notification area, whose installer fails), the helper waits for Martlet to exit, runs the installer with " +
+            "no window at all (/VERYSILENT, no questions, no restart), records its exit code, logs every step in update.log and " +
+            "starts Martlet again minimized (in the notification area when it was there); one you confirmed shows the installer's " +
+            "progress window (/SILENT). Installs nothing, starts no real Martlet and contacts nothing.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new
@@ -464,6 +471,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
                 "host_update_check" => HostUpdateCheck.Run(),
+                "app_update_check" => await AppUpdateCheck.RunAsync(NodeLinkCheckProgram(), cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
@@ -668,7 +676,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
     private static Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments) =>
         NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, arguments);
 
-    private static async Task<object> NodeLinkCheckAsync(TimeSpan timeLimit, CancellationToken cancellation, string[] arguments)
+    /// <summary>Martlet.NodeLinkCheck's executable in this source checkout's build (the same configuration as this server).</summary>
+    private static string NodeLinkCheckProgram()
     {
         var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         var configuration = output.Parent?.Name ?? "Release";
@@ -677,6 +686,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var program = Path.Combine(source, "Martlet.NodeLinkCheck", "bin", configuration, "net10.0", "Martlet.NodeLinkCheck.exe");
         if (!File.Exists(program))
             throw new InvalidOperationException($"Build src\\Martlet.NodeLinkCheck ({configuration}) first; building Martlet.Mcp builds it too.");
+        return program;
+    }
+
+    private static async Task<object> NodeLinkCheckAsync(TimeSpan timeLimit, CancellationToken cancellation, string[] arguments)
+    {
+        var program = NodeLinkCheckProgram();
         var start = new System.Diagnostics.ProcessStartInfo(program)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true

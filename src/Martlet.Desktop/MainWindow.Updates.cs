@@ -17,7 +17,7 @@ public partial class MainWindow
     private UpdatePreferences updatePreferences = new();
     private DateTimeOffset? lastUpdateCycle;
     private (string Path, GitHubUpdate Update)? readyUpdate;
-    private (string Installer, Version Version, bool Relaunch, bool Quiet)? installOnExit;
+    private (string Installer, Version Version, bool Relaunch, bool Unattended)? installOnExit;
     private string? announcedUpdate;
     /// <summary>A version whose install just failed; it is not installed automatically again until you press Install.</summary>
     private string? failedInstall;
@@ -139,15 +139,18 @@ public partial class MainWindow
         return text;
     }
 
-    /// <summary>Runs after launch: reports the last install, removes finished installers and starts the periodic timer.</summary>
+    /// <summary>Runs after launch: reports the last install (and copies what its helper did into Martlet's log), removes
+    /// finished installers and starts the periodic timer.</summary>
     private async Task StartUpdatesAsync()
     {
         if (store is null) return;
-        if (AppUpdateInstaller.TakeLastResult(store.DataDirectory, Version) is { } result)
+        var result = AppUpdateInstaller.TakeLastResult(store.DataDirectory, Version);
+        AppUpdateInstaller.LogLastRun(store.DataDirectory, result);
+        if (result is { } last)
         {
-            UpdateStatusText.Text = ActionText.Text = result.Message;
-            failedInstall = result.Failed;
-            if (result.Failed is not null) failedInstallMessage = result.Message;
+            UpdateStatusText.Text = ActionText.Text = last.Message;
+            failedInstall = last.Failed;
+            if (last.Failed is not null) failedInstallMessage = last.Message;
         }
         AppUpdateInstaller.CleanUp(store.DataDirectory, Version);
         updateTimer.Start();
@@ -160,12 +163,12 @@ public partial class MainWindow
         if (installAfterHostWork && readyUpdate is not null && HostWorkBlocker() is null && !updateBusy)
         {
             installAfterHostWork = false;
-            InstallNow(quiet: false);
+            InstallNow(unattended: false);
             return;
         }
         if (AutoInstallReady && IsIdleForUpdate())
         {
-            InstallNow(quiet: true);
+            InstallNow(unattended: true);
             return;
         }
         if (AutoInstallReady && installWaitingText is not null && UpdateStatusText.Text == installWaitingText) ShowInstallWaiting();
@@ -215,7 +218,7 @@ public partial class MainWindow
             {
                 if (IsIdleForUpdate())
                 {
-                    InstallNow(quiet: true);
+                    InstallNow(unattended: true);
                     return;
                 }
                 ShowInstallWaiting();
@@ -433,17 +436,21 @@ public partial class MainWindow
             UpdateStatusText.Text = ActionText.Text = $"Martlet {update.Version.ToString(3)} installs as soon as this finishes: {still}.";
             return;
         }
-        InstallNow(quiet: false);
+        InstallNow(unattended: false);
     }
 
-    /// <summary>Closes Martlet; the installer runs once it has exited and then starts Martlet again (minimized after an
-    /// automatic install, so it does not take focus from what you are doing, and in the notification area when it was there).</summary>
-    private void InstallNow(bool quiet)
+    /// <summary>Closes Martlet; the installer runs once it has exited and then starts Martlet again. <paramref name="unattended"/>
+    /// (an automatic install, or one another computer asked for): the installer shows no window at all and Martlet restarts
+    /// minimized, so it does not take focus from what you are doing (in the notification area when it was there); its steps
+    /// still go to Martlet's log. Otherwise the installer shows its progress window.</summary>
+    private void InstallNow(bool unattended)
     {
         if (readyUpdate is not { } ready || closing) return;
-        installOnExit = (ready.Path, ready.Update.Version, true, quiet);
-        UpdateStatusText.Text = ActionText.Text =
-            $"Installing Martlet {ready.Update.Version.ToString(3)}. Martlet will restart when it's done.";
+        var version = ready.Update.Version.ToString(3);
+        installOnExit = (ready.Path, ready.Update.Version, true, unattended);
+        UpdateStatusText.Text = ActionText.Text = unattended
+            ? $"Installing Martlet {version} in the background, with no installer window. Martlet restarts by itself when it's done."
+            : $"Installing Martlet {version}. Martlet will restart when it's done.";
         ExitMartlet();
     }
 
@@ -455,10 +462,13 @@ public partial class MainWindow
         if (install is not { } run) return;
         try
         {
-            AppUpdateInstaller.Launch(run.Installer, run.Version, store.DataDirectory, run.Relaunch, run.Quiet,
+            AppUpdateInstaller.Launch(run.Installer, run.Version, store.DataDirectory, run.Relaunch, run.Unattended,
                 (Application.Current as App)?.DataDirectoryArgument, inTray);
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+        {
+            ErrorLog.Warn($"Could not start installing Martlet {run.Version.ToString(3)}", error);
+        }
     }
 
     private void ReviewUpdate_Click(object sender, RoutedEventArgs e)

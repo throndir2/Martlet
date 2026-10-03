@@ -565,6 +565,39 @@ run's 45-minute limit (`asked-update-waits`). It contacts nothing and touches no
 Docker, host or data directory; the engine side of waiting is
 `host_engine_check`'s `asked-update-waits-then-runs`.
 
+`app_update_check` (no arguments) rehearses how Martlet installs its own update,
+with the desktop's production update helper (`AppUpdateHelper`: the same
+`install-update.cmd` script and the same hidden start Martlet uses) in a
+disposable temp folder, and returns `{exitCode, report: {passed, total, steps:
+[{name, ok, detail}], notCovered}}`. A windowless process that exits after about
+two seconds stands in for Martlet; `Martlet.NodeLinkCheck` (built with
+`Martlet.Mcp`) stands in for the installer and for the restarted Martlet
+(FIXTURE: with `MARTLET_UPDATE_CHECK_RECORD` set it records its arguments,
+whether its console window shows and which processes share its console, writes
+one line to the `/LOG` file and exits with `MARTLET_UPDATE_CHECK_EXIT`). Three
+installs run side by side: one another computer asked for
+(`asked-by-another-computer`), an automatic one from the notification area whose
+installer fails with exit 5 (`automatic-from-tray-fails`) and one you confirmed
+(`confirmed`). For each, the steps check that the installer starts only after
+Martlet's process exited (`waits-for-martlet`); its switches
+(`installer-switches`: `/VERYSILENT` with no window at all for the unattended
+two, `/SILENT` with only the progress window when confirmed, always
+`/SUPPRESSMSGBOXES /NORESTART /SP- /TASKS=` and `/LOG=...\install.log`); that it
+runs inside the helper's console, which shows no window (`helper-hidden`); that
+Martlet starts again after it with `--data-directory`, plus `--after-update`
+(minimized, no focus) when unattended and `--tray` when it was in the
+notification area, without a console window of its own (`restarts`); that
+`last-install.txt` holds the exit code and version (`records-result`); and that
+`update.log` has every step (`logs-steps`). After the failed install the
+installer log's tail, which Martlet copies into its log, is checked too
+(`installer-log-for-failure`). It installs nothing, starts no real Martlet and
+contacts nothing; the real Inno Setup installer is not run (`notCovered`). What
+Martlet does with these files when it starts again shows in `logs_tail`
+(`Update helper: ...` lines, then *Martlet updated to ...* or a WARN *The update
+to ... didn't finish* followed by the installer log's last lines), and
+`ui_snapshot`'s `windowStates` shows the restarted window `minimized` and not
+`foreground` (launch the desktop with `-DesktopArguments '--after-update'`).
+
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
 an Audio2Face service on a numeric loopback `endpoint` (default
@@ -942,7 +975,8 @@ alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
-whether its frame is `resizable`, `minimizable` and `maximizable`; with
+whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
+`minimized` and whether it is the `foreground` window (has the focus); with
 `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
