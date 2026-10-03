@@ -51,8 +51,9 @@ neither slice enables automatic listening, provider permission, capture or previ
 Provide a **Companion** settings page with a multiline persona text editor and
 named profiles. Create, duplicate, rename, select, save and delete profiles;
 keep one active persona at a time initially, not multiple autonomous agents.
-Each profile holds the persona text, companion name/aliases and response-style
-weights. Participation controls remain separately labeled; switching personas
+Each profile holds the persona text, companion name/aliases, response-style
+weights and where its voice may pause between spoken pieces (see
+[voice latency](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)). Participation controls remain separately labeled; switching personas
 must not arm a microphone, increase capture permission or change provider routes.
 
 Support explicit UTF-8 plain-text import/export of the persona text so a user

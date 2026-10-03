@@ -78,6 +78,13 @@ public sealed record PersonaProfile : IContract
     public required string Name { get; init; }
     public required string Text { get; init; }
     public required ResponseStyleWeights Styles { get; init; }
+    /// <summary>Where this persona's spoken replies break between pieces; absent for the defaults.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SpeechBreaks? Breaks { get; init; }
+
+    /// <summary>The breaks this persona's voice uses: its own, or the defaults.</summary>
+    [JsonIgnore]
+    public SpeechBreaks SpokenBreaks => Breaks ?? SpeechBreaks.Default;
 
     public void Validate()
     {
@@ -89,6 +96,7 @@ public sealed record PersonaProfile : IContract
         ValidateText(Text);
         ContractRules.Require(Styles is not null, "Response-style weights are required.");
         Styles!.Validate();
+        Breaks?.Validate();
     }
 
     public static void ValidateText(string text)
@@ -154,7 +162,8 @@ public sealed record CompanionSettings : IContract
             ConfigurationRevision = Guid.NewGuid(),
             Name = name,
             Text = source?.Text ?? "",
-            Styles = source?.Styles ?? ResponseStyleWeights.HelpfulOnly()
+            Styles = source?.Styles ?? ResponseStyleWeights.HelpfulOnly(),
+            Breaks = source?.Breaks
         };
         persona.Validate();
         var updated = this with
@@ -166,13 +175,19 @@ public sealed record CompanionSettings : IContract
         return updated;
     }
 
-    public CompanionSettings Update(Guid id, string name, string text, ResponseStyleWeights styles)
+    /// <summary>Replaces a persona's name, text and styles, and its speech breaks when <paramref name="breaks"/> is given
+    /// (null keeps them).</summary>
+    public CompanionSettings Update(Guid id, string name, string text, ResponseStyleWeights styles, SpeechBreaks? breaks = null)
     {
         var prior = Personas.SingleOrDefault(persona => persona.Id == id);
         ContractRules.Require(prior is not null, "Select a persona from this profile.");
-        var replacement = prior! with { Name = name, Text = text, Styles = styles };
+        var replacement = prior! with
+        {
+            Name = name, Text = text, Styles = styles, Breaks = breaks is null ? prior.Breaks : SpeechBreaks.Normalize(breaks)
+        };
         replacement.Validate();
-        if (replacement.Name == prior.Name && replacement.Text == prior.Text && replacement.Styles == prior.Styles)
+        if (replacement.Name == prior.Name && replacement.Text == prior.Text && replacement.Styles == prior.Styles &&
+            replacement.Breaks == prior.Breaks)
             return this;
         replacement = replacement with { ConfigurationRevision = Guid.NewGuid() };
         var updated = this with

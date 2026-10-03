@@ -1,4 +1,5 @@
 using System.Text;
+using Martlet.Core.Settings;
 
 namespace Martlet.Conversation.Tests;
 
@@ -49,6 +50,57 @@ public sealed class SegmenterTests
             var pieces = segmenter.Push(input[..split]).Concat(segmenter.Push(input[split..])).Concat(segmenter.Finish()).ToArray();
             Assert.Equal(expected, string.Join('|', pieces.Where(x => x.Text is not null).Select(x => x.Text)));
         }
+    }
+
+    [Theory]
+    // A short ending joins the piece before it, whether a comma or a sentence end came before it.
+    [InlineData("I'm so glad you're here with me today, cutie. Shall we start?", true, true, true, true, 2,
+        "I'm so glad you're here with me today, cutie.|Shall we start?")]
+    [InlineData("That was a wonderful idea. Cutie! And now we can get going.", true, true, true, true, 2,
+        "That was a wonderful idea. Cutie!|And now we can get going.")]
+    [InlineData("I'm so glad you're here with me today, cutie. Shall we start?", true, true, true, true, 0,
+        "I'm so glad you're here with me today,|cutie.|Shall we start?")]
+    // Longer endings stand on their own.
+    [InlineData("I'm so glad you're here with me today, my favorite person. Hi.", true, true, true, true, 2,
+        "I'm so glad you're here with me today,|my favorite person. Hi.")]
+    // A stop that is off doesn't break.
+    [InlineData("I'm so glad you're here with me today, cutie. Shall we start?", false, true, true, true, 0,
+        "I'm so glad you're here with me today, cutie.|Shall we start?")]
+    [InlineData("It is a lovely day outside. Shall we go for a walk? Yes!", true, false, true, true, 0,
+        "It is a lovely day outside. Shall we go for a walk?|Yes!")]
+    [InlineData("It is a lovely day outside. Shall we go for a walk? Yes! Great.", true, true, false, false, 0,
+        "It is a lovely day outside.|Shall we go for a walk? Yes! Great.")]
+    // With every stop off, a long piece still ends at its next stop.
+    [InlineData("This first sentence runs on for a while to make the piece long. And this second one also keeps going on and on, until here, then more.",
+        false, false, false, false, 0,
+        "This first sentence runs on for a while to make the piece long. And this second one also keeps going on and on,|until here, then more.")]
+    public void Persona_speech_breaks_choose_where_pieces_end(string input, bool commas, bool periods, bool questions,
+        bool exclamations, int shortEnding, string expected)
+    {
+        var breaks = new SpeechBreaks
+        {
+            Commas = commas, Periods = periods, QuestionMarks = questions, ExclamationMarks = exclamations, ShortEndingWords = shortEnding
+        };
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var segmenter = new SpeechSegmenter(1536, 16_384, eagerFirstClause: true, breaks: breaks);
+            var pieces = segmenter.Push(input[..split]).Concat(segmenter.Push(input[split..])).Concat(segmenter.Finish()).ToArray();
+            Assert.Equal(expected, string.Join('|', pieces.Where(x => x.Text is not null).Select(x => x.Text)));
+        }
+    }
+
+    [Fact]
+    public void A_joined_ending_keeps_its_character_cues_and_a_line_end_lets_a_waiting_piece_go()
+    {
+        var segmenter = new SpeechSegmenter(1536, 16_384, eagerFirstClause: true, characterTags: ["{blush}"], breaks: SpeechBreaks.Default);
+        var pieces = segmenter.Push("I'm so glad you're here with me today, {blush}cutie. ").ToArray();
+        Assert.Empty(pieces);
+        pieces = segmenter.Push("\n").ToArray();
+        var piece = Assert.Single(pieces);
+        Assert.Equal("I'm so glad you're here with me today, cutie.", piece.Text);
+        var cue = Assert.Single(piece.Cues!);
+        Assert.Equal("{blush}", cue.Tag);
+        Assert.Equal(piece.Text!.IndexOf("cutie", StringComparison.Ordinal), cue.Offset);
     }
 
     [Theory]

@@ -259,7 +259,7 @@ public sealed class ConversationTurn
         var segmenter = request.Speech is { } voice
             ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
                 eagerFirstClause: true, tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId),
-                characterTags: request.CharacterTags) : null;
+                characterTags: request.CharacterTags, breaks: request.SpeechBreaks) : null;
         try
         {
             var input = request.Input;

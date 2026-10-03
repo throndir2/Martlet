@@ -19,10 +19,21 @@ internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues 
 // characterTags: the desktop character's tags ({blush}): dropped from the words like other engines' tags. Each kept engine
 // tag and each character tag is listed in its piece's Cues with where it fell, so the character acts in time with the voice;
 // a character tag after the last words of a reply arrives in a piece with no text.
+// breaks: the persona's stops (Martlet.Core.Settings.SpeechBreaks). A stop that is off never ends a piece until the piece is
+// LongPiece characters long; then any stop ends it, so a piece stays short enough for the voice to say at once. A piece of at
+// most ShortEndingWords words (", cutie.") joins the piece before it: each piece waits until more words than that follow it
+// (or a line, the reply or a piece with nothing to say ends). Null breaks at every sentence end and never joins pieces.
 internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false,
-    IReadOnlyList<VoiceTag>? tags = null, IReadOnlyList<string>? characterTags = null)
+    IReadOnlyList<VoiceTag>? tags = null, IReadOnlyList<string>? characterTags = null, SpeechBreaks? breaks = null)
 {
     internal const int FirstClauseMinimum = 24;
+    internal const int LongPiece = 100;
+    private readonly bool commas = eagerFirstClause && (breaks?.Commas ?? true);
+    private readonly bool periods = breaks?.Periods ?? true;
+    private readonly bool questionMarks = breaks?.QuestionMarks ?? true;
+    private readonly bool exclamationMarks = breaks?.ExclamationMarks ?? true;
+    private readonly int shortEnding = breaks?.ShortEndingWords ?? 0;
+    private SpeechPiece? held;
     private readonly StringBuilder sentence = new();
     private readonly IReadOnlyList<VoiceTag> keep = tags ?? [];
     private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(tags ?? []).Concat(VoiceTags.CharacterTags(characterTags))
@@ -46,16 +57,16 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
             if (!fenced && (candidateTag.Length > 0 || known.Any(tag => char.ToLowerInvariant(tag.Text[0]) == char.ToLowerInvariant(c))))
             {
                 candidateTag.Append(c);
-                var held = candidateTag.ToString();
-                if (known.FirstOrDefault(tag => string.Equals(tag.Text, held, StringComparison.OrdinalIgnoreCase)) is { } whole)
+                var prefix = candidateTag.ToString();
+                if (known.FirstOrDefault(tag => string.Equals(tag.Text, prefix, StringComparison.OrdinalIgnoreCase)) is { } whole)
                 {
                     candidateTag.Clear();
                     foreach (var piece in AcceptTag(whole)) yield return piece;
                     continue;
                 }
-                if (known.Any(tag => tag.Text.StartsWith(held, StringComparison.OrdinalIgnoreCase))) continue;
+                if (known.Any(tag => tag.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) continue;
                 candidateTag.Clear();
-                foreach (var replayed in held)
+                foreach (var replayed in prefix)
                     foreach (var piece in Accept(replayed)) yield return piece;
                 continue;
             }
@@ -97,6 +108,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
             if (c is '\n')
             {
                 foreach (var piece in Flush()) yield return piece;
+                foreach (var piece in Release()) yield return piece;
                 if (closingLine) fenced = false;
                 atLineStart = true;
                 leadingSpaces = markerRun = 0;
@@ -147,19 +159,32 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
                 '|' or '\\' or '/' or ':' or '@' or '=' or '^' or '&' or '\t')
                 suppressLine = true;
             sentence.Append(c);
-            pendingBoundary = c is '.' or '!' or '?' ||
-                eagerFirstClause && !spoke && c is ',' or ';' or '\u2014' or '\u2013' && sentence.Length >= FirstClauseMinimum;
+            pendingBoundary = IsStop(c);
+            // Enough words follow the waiting piece that they can't be a short ending to say with it.
+            if (held is not null && MoreWords(sentence, shortEnding))
+                foreach (var piece in Release()) yield return piece;
         }
     }
+
+    // Whether c ends a piece when whitespace follows it: a stop the persona keeps, or any stop once the piece is long.
+    private bool IsStop(char c) => c switch
+    {
+        '.' => periods,
+        '?' => questionMarks,
+        '!' => exclamationMarks,
+        ',' or ';' or '\u2014' or '\u2013' => commas && !spoke && sentence.Length >= FirstClauseMinimum,
+        _ => false
+    } || sentence.Length >= LongPiece && c is '.' or '?' or '!' or ',' or ';' or '\u2014' or '\u2013';
 
     internal IEnumerable<SpeechPiece> Finish()
     {
         // An unfinished tag prefix at the end is ordinary text.
-        var held = candidateTag.ToString();
+        var prefix = candidateTag.ToString();
         candidateTag.Clear();
-        foreach (var replayed in held)
+        foreach (var replayed in prefix)
             foreach (var piece in Accept(replayed)) yield return piece;
         foreach (var piece in Flush()) yield return piece;
+        foreach (var piece in Release()) yield return piece;
     }
 
     internal void Clear()
@@ -167,9 +192,70 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         sentence.Clear();
         candidateTag.Clear();
         cues.Clear();
+        held = null;
     }
 
     private IEnumerable<SpeechPiece> Flush()
+    {
+        foreach (var piece in Cut())
+            foreach (var ready in Hold(piece)) yield return ready;
+    }
+
+    // A spoken piece waits for what follows it: a short ending joins it; anything else, or a piece with nothing to say,
+    // lets it go first.
+    private IEnumerable<SpeechPiece> Hold(SpeechPiece piece)
+    {
+        if (shortEnding == 0)
+        {
+            yield return piece;
+            yield break;
+        }
+        if (piece.Text is { } ending && held?.Text is { } before && !MoreWords(ending, shortEnding) &&
+            Encoding.UTF8.GetByteCount(before) + 1 + Encoding.UTF8.GetByteCount(ending) <= byteLimit)
+        {
+            var shift = before.Length + 1;
+            var joined = (held.Cues ?? []).Concat((piece.Cues ?? []).Select(c => c with { Offset = c.Offset + shift })).ToArray();
+            held = new(before + " " + ending, joined.Length > 0 ? joined : null);
+            yield break;
+        }
+        foreach (var ready in Release()) yield return ready;
+        if (piece.Text is null) yield return piece;
+        else held = piece;
+    }
+
+    private IEnumerable<SpeechPiece> Release()
+    {
+        if (held is not { } piece) yield break;
+        held = null;
+        yield return piece;
+    }
+
+    private static bool MoreWords(StringBuilder text, int limit)
+    {
+        var (words, inWord) = (0, false);
+        foreach (var chunk in text.GetChunks())
+            if (MoreWords(chunk.Span, limit, ref words, ref inWord)) return true;
+        return false;
+    }
+
+    private static bool MoreWords(string text, int limit)
+    {
+        var (words, inWord) = (0, false);
+        return MoreWords(text, limit, ref words, ref inWord);
+    }
+
+    private static bool MoreWords(ReadOnlySpan<char> text, int limit, ref int words, ref bool inWord)
+    {
+        foreach (var c in text)
+        {
+            var letter = !char.IsWhiteSpace(c);
+            if (letter && !inWord && ++words > limit) return true;
+            inWord = letter;
+        }
+        return false;
+    }
+
+    private IEnumerable<SpeechPiece> Cut()
     {
         if (sentence.Length == 0)
         {
