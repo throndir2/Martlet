@@ -29,6 +29,8 @@ internal sealed class TrayIcon : IDisposable
     internal event Action? Opened;
     internal event Action<Point>? MenuRequested;
     internal bool Added { get; private set; }
+    /// <summary>The icon's (hidden) window content, where the icon's menu is placed: that window takes the foreground for it.</summary>
+    internal UIElement MenuAnchor { get; }
 
     internal TrayIcon()
     {
@@ -39,6 +41,8 @@ internal sealed class TrayIcon : IDisposable
             PositionX = 0, PositionY = 0, Width = 0, Height = 0
         });
         source.AddHook(Hook);
+        // An empty root gives the icon's menu a placement target that always has a window, even before Martlet's window is shown.
+        source.RootVisual = MenuAnchor = new System.Windows.Controls.Border();
         taskbarCreated = RegisterWindowMessage("TaskbarCreated");
         if (taskbarCreated != 0) ChangeWindowMessageFilterEx(source.Handle, taskbarCreated, MSGFLT_ALLOW, 0);
         icon = LoadIcon(GetSystemMetrics(SM_CXSMICON));
@@ -68,7 +72,8 @@ internal sealed class TrayIcon : IDisposable
     }
 
     /// <summary>Takes the foreground for the icon's own (hidden) window before its menu opens, as Windows expects for a
-    /// notification-area menu: a Martlet window that was active then lets go first instead of taking the menu's focus back.</summary>
+    /// notification-area menu: the menu, placed on that window, then has the keyboard and the mouse, so Esc and a click elsewhere
+    /// close it.</summary>
     internal bool TakeForeground() => !disposed && SetForegroundWindow(source.Handle);
 
     private void Add()

@@ -394,17 +394,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
     internal static readonly string[] TrayActions = ["status", "open", "menu", "close"];
 
     /// <summary>Martlet's notification-area icon: "status" reads whether the icon is shown and the main window visible; "open"
-    /// and "menu" send the icon exactly what Explorer sends for a left click (show Martlet) and a right click (its menu, at the
-    /// mouse pointer), then ui_snapshot lists the menu's Tray* items; "close" presses the main window's close button, which
-    /// hides Martlet in the notification area by default and exits it when Keep running when closed is off, so it needs
-    /// --allow-ui-effects.</summary>
+    /// and "menu" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu, at the mouse
+    /// pointer), granting it the foreground as Explorer does when this process may, then ui_snapshot lists the menu's Tray*
+    /// items; every action reports menuOpen. "close" presses the main window's close button, which hides Martlet in the
+    /// notification area by default and exits it when Keep running when closed is off, so it needs --allow-ui-effects.</summary>
     internal object Tray(string action)
     {
         if (!TrayActions.Contains(action)) throw new ArgumentException($"Unknown ui_tray action '{action}'.");
         if (action == "close" && !allowEffects)
             throw new InvalidOperationException("Closing Martlet's window can exit it, so it requires --allow-ui-effects.");
         if (action == "status" && processId is int exited && !Running(exited))
-            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false };
+            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
         var windows = ConnectedWindows();
         var pid = processId!.Value;
         var icon = TrayWindow(pid);
@@ -414,6 +414,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 if (icon == 0) throw new InvalidOperationException("Martlet has no notification-area icon.");
                 GetCursorPos(out var pointer);
                 var at = (nint)((pointer.Y & 0xFFFF) << 16 | (pointer.X & 0xFFFF));
+                // Explorer lets the clicked icon's app take the foreground; this only works while this process may take it itself.
+                AllowSetForegroundWindow(pid);
                 if (!PostMessage(icon, TrayCallbackMessage, at, TrayIconId << 16 | (action == "open" ? NinSelect : WmContextMenu)))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 break;
@@ -424,12 +426,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 break;
         }
         if (action != "status") Thread.Sleep(500);
-        if (!Running(pid)) return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false };
-        var visible = MainWindowVisible(Windows(pid));
+        if (!Running(pid))
+            return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
+        var now = Windows(pid);
+        var visible = MainWindowVisible(now);
         icon = TrayWindow(pid);
         return new { processId = pid, running = true, trayIcon = icon != 0 && GetProp(icon, TrayAddedProperty) != 0, mainWindowVisible = visible,
-            inTray = icon != 0 && !visible };
+            inTray = icon != 0 && !visible, menuOpen = TrayMenuOpen(now) };
     }
+
+    /// <summary>The icon's menu is open: a Martlet popup window (not the main window) holds the TrayMenu.</summary>
+    private static bool TrayMenuOpen(AutomationElement[] windows) =>
+        windows.Where(window => window.Current.AutomationId != "MartletMainWindow").Any(window =>
+            window.Current.AutomationId == "TrayMenu" ||
+            window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "TrayMenu")) is not null);
 
     private static bool Running(int pid)
     {
@@ -464,6 +474,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetCursorPos(out NativePoint point);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(nint window, int message, nint wParam, nint lParam);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool AllowSetForegroundWindow(int processId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint GetProp(nint window, string name);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLength(nint window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

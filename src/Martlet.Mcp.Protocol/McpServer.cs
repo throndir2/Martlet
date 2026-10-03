@@ -73,10 +73,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             id = new { type = "string" }
         }, ["id"]),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
-            "window is visible or hidden in the notification area, and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
-            "what Explorer sends for a left click (show Martlet) and a right click (its menu at the mouse pointer; ui_snapshot then " +
-            "lists the Tray* items). \"close\" presses the main window's close button, which hides Martlet in the notification area " +
-            "by default or exits it, so it requires --allow-ui-effects.", new
+            "window is visible or hidden in the notification area, whether its menu is open (menuOpen) and whether Martlet still " +
+            "runs. \"open\" and \"menu\" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu " +
+            "at the mouse pointer; ui_snapshot then lists the Tray* items). \"close\" presses the main window's close button, which " +
+            "hides Martlet in the notification area by default or exits it, so it requires --allow-ui-effects.", new
         {
             action = new { type = "string", @enum = DesktopAutomation.TrayActions }
         }),
