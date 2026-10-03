@@ -804,7 +804,10 @@ vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
 hour; it never contains window titles), `LiveContext` (*Keeps the last N
 exchanges in mind.*: how many recent exchanges the next reply sees; absent when
-none, and unchanged when a settings change is picked up)
+none, and unchanged when a settings change is picked up; beside it,
+`LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
+forgets them so the next reply starts fresh, adds the note *Context refreshed.*
+to `LiveHistory` and hides `LiveContext`)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
