@@ -13,14 +13,14 @@ public partial class App : Application
             ? logs : ErrorLog.DefaultDirectory(null), "avatar-renderer");
         // Desktop owns the user-facing error experience; the renderer logs and keeps drawing.
         ErrorLog.AttachDispatcher(this, "Martlet avatar", showDialog: false);
-        if (e.Args is not ["--private-pipes", var input, var output])
+        if (e.Args is not ["--private-pipes", var input, var output, var requests])
         {
             ErrorLog.Error("Renderer started without the private pipe arguments.");
             Shutdown(2);
             return;
         }
         MainWindow = new RendererWindow(new AnonymousPipeClientStream(PipeDirection.In, input),
-            new AnonymousPipeClientStream(PipeDirection.Out, output));
+            new AnonymousPipeClientStream(PipeDirection.Out, output), new AnonymousPipeClientStream(PipeDirection.Out, requests));
         MainWindow.Show();
     }
 

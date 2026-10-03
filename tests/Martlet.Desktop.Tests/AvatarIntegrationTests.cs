@@ -24,6 +24,7 @@ public sealed class AvatarIntegrationTests
         public bool HasExited { get; private set; }
         private readonly TaskCompletionSource exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task Exited => exited.Task;
+        public event Action<string>? Requested { add { } remove { } }
         internal bool FailApply { get; set; }
         internal TaskCompletionSource? ConfigureRelease { get; set; }
         internal TaskCompletionSource EnteredConfigure { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -40,6 +40,8 @@ internal sealed class AvatarController : IAsyncDisposable
     internal bool IsShowing => renderer is { HasExited: false } && profile is not null;
     internal RendererCapabilities? Capabilities => renderer?.Capabilities;
     internal AvatarProfile? InspectedProfile => profile;
+    /// <summary>A choice from the showing character's menu ("hide", "open", "talk" or "settings"), raised off the UI thread.</summary>
+    internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
         Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null)
@@ -467,6 +469,7 @@ internal sealed class AvatarController : IAsyncDisposable
             var snapshot = await LocalAvatarFiles.SnapshotAsync(selected, attempt.Token);
             CheckAttempt(attempt, version);
             var next = createRenderer();
+            next.Requested += action => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) Requested?.Invoke(action); };
             renderer = next;
             await next.StartAsync(selected, snapshot.Revision, attempt.Token);
             lock (stateGate)
