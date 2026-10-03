@@ -1000,8 +1000,10 @@ public partial class MainWindow
     private void LaunchOnHost(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null) =>
         RunHostActionAsync(host, action, answers).Forget();
 
-    /// <summary><see cref="LaunchOnHost"/>, awaitable: returns the run's summary, or null when it stopped or could not run.</summary>
-    private async Task<string?> RunHostActionAsync(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null)
+    /// <summary><see cref="LaunchOnHost"/>, awaitable: returns the run's summary, or null when it stopped or could not run.
+    /// <paramref name="confirmed"/>: the owner already agreed to a role removal, so its run window doesn't ask again.</summary>
+    private async Task<string?> RunHostActionAsync(PairedHost host, HostAction action, IReadOnlyDictionary<string, string>? answers = null,
+        bool confirmed = false)
     {
         try
         {
@@ -1019,7 +1021,7 @@ public partial class MainWindow
             var recommended = answers is null && local && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? (await ListeningAdviceAsync()).Answers() : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
-                host.Pairing);
+                host.Pairing, confirmed);
             if (closing) return done;
             ActionText.Text = done is null ? $"{HostSetupCommands.Engine(action)} on {host.HostId} stopped. See the progress window for details." : $"{host.HostId}: {done}";
             if (done is not null && action != HostAction.Status) CheckHostsAsync([host]).Forget();

@@ -72,6 +72,19 @@ internal static class HostRoles
     /// <summary>Whether <paramref name="kind"/> is a voice engine's role (any of <see cref="SpeechEngines"/>).</summary>
     internal static bool Speaks(string kind) => SpeechEngines.ForRoleKind(kind) is not null;
 
+    /// <summary>The voice engines a host offers (<paramref name="offers"/>, from <see cref="HostControl.CheckAsync"/>) other
+    /// than <paramref name="keep"/>. Each keeps its model in the graphics card's memory, so a host runs one at a time
+    /// (role.conf exclusive=voice) and switching engines there stops the others.</summary>
+    internal static IReadOnlyList<HostRoleInfo> OtherVoiceEngines(IReadOnlyDictionary<string, string>? offers, string keep) =>
+        offers is null ? [] : All.Where(r => r.Kind != keep && Speaks(r.Kind) && offers.ContainsKey(r.Kind)).ToList();
+
+    /// <summary>Roles in words, a voice engine by its engine's name ("F5-TTS and XTTS-v2"); an unknown kind keeps its own name.</summary>
+    internal static string Names(IEnumerable<string> kinds)
+    {
+        var names = kinds.Select(kind => SpeechEngines.ForRoleKind(kind)?.Name ?? All.FirstOrDefault(r => r.Kind == kind)?.Name ?? kind).ToList();
+        return names.Count <= 1 ? string.Concat(names) : string.Join(", ", names[..^1]) + " and " + names[^1];
+    }
+
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
         new(Audio2Face, "Lip-sync", "Lip-sync", "an NVIDIA GPU (RTX 20 series or newer) with at least 4 GB (no NVIDIA account or key)",

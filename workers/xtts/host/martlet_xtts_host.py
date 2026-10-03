@@ -726,12 +726,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(400, {"error": "request.invalid"})
             return
         # An interrupted reply keeps the worker busy until it notices the cancel, and a crashed worker stays down: wait
-        # for it (restarting a dead worker) instead of failing the next reply with "busy".
+        # for it (restarting a dead worker, or one whose model failed to load, for example while another voice engine
+        # still held the graphics card's memory) instead of failing the next reply with "busy".
         remaining = (_utc(message["deadline_utc"]) - datetime.now(timezone.utc)).total_seconds()
         with WORKER.lock:
-            restart = WORKER.state in {"failed", "cold"} and not WORKER.running()
+            restart = WORKER.state == "failed" or (WORKER.state == "cold" and not WORKER.running())
         if restart:
-            _log("XTTS worker is not running; restarting it for a reply.")
+            _log("XTTS worker is down or failed to load; restarting it for a reply.")
             WORKER.start()
         WORKER.wait_admissible(min(BUSY_WAIT_SECONDS, max(0.0, remaining / 2)))
         request_id = message["ids"]["request_id"]

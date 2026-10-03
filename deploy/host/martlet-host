@@ -4,7 +4,8 @@
 #   martlet-host setup          set up this host's Martlet gateway (the only network entry point)
 #   martlet-host roles          list the roles this host can run
 #   martlet-host describe <role> print a role's terms, secrets and choices (machine-readable, no secret values)
-#   martlet-host add <role>     install a role service and publish it through the gateway (or report a route-less feature)
+#   martlet-host add <role>     install a role service and publish it through the gateway (or report a route-less feature);
+#                               a voice engine replaces the one already installed (role.conf exclusive=voice)
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
 #   martlet-host pair           pair a Martlet desktop: shows this host's address and a one-use code (like K7QM-4XPA) to
 #                               type in Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes
@@ -33,8 +34,9 @@
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
 # requirements (including docker-engine for Linux-only host networking) -> GPU or CPU -> choices -> terms -> secrets ->
-# registry login -> pinned assets -> compose service (loopback behind the gateway, or network=host for route-less LAN
-# features) -> readiness -> post-start steps -> gateway route or machine feature. role.conf entries between
+# registry login -> pinned assets -> stop the roles it replaces (exclusive=<group>) -> compose service (loopback behind the
+# gateway, or network=host for route-less LAN features) -> readiness -> post-start steps -> gateway route or machine
+# feature. role.conf entries between
 # "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the Audio2Face engine).
 # Each system change is confirmed first (typed "yes", or --yes when Martlet desktop already asked the owner).
 set -euo pipefail
@@ -158,6 +160,22 @@ conf_value() {
 
 installed_file() { printf '%s' "${CONF}/roles/$1.role"; }
 
+# Installed roles (other than $1) in the same role.conf exclusive=<group> as $1, one per line: the voice engines, which
+# each keep a model in the graphics card's memory, so a host runs one at a time and adding one stops the others.
+exclusive_others() {
+  local role="$1" group file other
+  group="$(conf_value "${ROLES_DIR}/${role}/role.conf" exclusive)"
+  [[ -n "${group}" ]] || return 0
+  [[ "${group}" =~ ^[a-z0-9-]{1,32}$ ]] || fail "Invalid exclusive in role.conf."
+  for file in "${CONF}/roles"/*.role; do
+    [[ -e "${file}" ]] || continue
+    other="$(basename "${file}" .role)"
+    [[ "${other}" != "${role}" && -f "${ROLES_DIR}/${other}/role.conf" ]] || continue
+    [[ "$(conf_value "${ROLES_DIR}/${other}/role.conf" exclusive)" == "${group}" ]] && printf '%s\n' "${other}"
+  done
+  return 0
+}
+
 cmd_roles() {
   local dir name mark
   for dir in "${ROLES_DIR}"/*/; do
@@ -187,6 +205,9 @@ cmd_describe() {
   printf 'role.terms=%s\n' "$(conf_value "${conf}" terms)"
   state=no; [[ -f "$(installed_file "${role}")" ]] && state=yes
   printf 'role.installed=%s\n' "${state}"
+  # Installed roles that adding this one stops first (role.conf exclusive=<group>), space-separated.
+  local stops; stops="$(exclusive_others "${role}" | tr '\n' ' ')"; stops="${stops% }"
+  [[ -n "${stops}" ]] && printf 'role.stops=%s\n' "${stops}"
   while IFS=$'\t' read -r condition line; do
     case "${line%%=*}" in
       secret)
@@ -1127,6 +1148,21 @@ refresh_installed_role_files() {
   done < <(installed_roles)
 }
 
+# Stops the roles that role $1 replaces (exclusive_others) and unpublishes them at once, so desktops never hand a job to
+# an engine that no longer runs. Their data volumes and images are kept, so adding one again is quick.
+release_roles() {
+  local role="$1" other; shift
+  for other in "$@"; do
+    note "Stopping ${other} so its model leaves the graphics card's memory..."
+    role_compose "${other}" down || true
+    rm -f "$(installed_file "${other}")"
+    journal "stopped ${other} for ${role} (one engine of its group per host)"
+  done
+  collect_machine
+  apply_config
+  note "Stopped $*. Add one again to switch back; its downloads are kept."
+}
+
 cmd_add() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host add <role>"
   load_input
@@ -1239,6 +1275,14 @@ cmd_add() {
   if [[ -n "$(conf_value "${conf}" terms)" ]]; then
     ask "Continue with these terms?" || fail "Role not installed."
   fi
+  # One engine of an exclusive group (the voice engines) per host: the others installed here stop before this one starts,
+  # so the model they keep in the graphics card's memory never starves it. Their volumes and images are kept.
+  local stops=()
+  mapfile -t stops < <(exclusive_others "${role}")
+  if [[ ${#stops[@]} -gt 0 ]]; then
+    note "Only one $(conf_value "${conf}" exclusive) engine runs on a host at a time; ${role} replaces ${stops[*]} here (their downloads are kept, so adding one again is quick)."
+    ask "Stop ${stops[*]} when ${role} starts?" || fail "Role not installed."
+  fi
 
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
@@ -1304,6 +1348,13 @@ cmd_add() {
     if host_port_open "${port}" && ! role_container_running "${role}"; then
       fail "Something else already uses port ${port} on this computer (probably another Home Assistant). Connect to it in Martlet's Smart home page instead."
     fi
+  fi
+
+  if [[ ${#stops[@]} -gt 0 ]]; then
+    # Build (or pull) this role's image while the engine it replaces still works, then free the graphics card for it.
+    say "Preparing ${role} while ${stops[*]} still runs"
+    role_compose "${role}" up --no-start
+    release_roles "${role}" "${stops[@]}"
   fi
 
   say "Starting ${role}"

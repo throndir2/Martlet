@@ -15,7 +15,8 @@ internal static class HostAgentRun
     private static readonly TimeSpan UnreachablePatience = TimeSpan.FromMinutes(15);
 
     internal static Task<string?> RunAsync(Window owner, AvatarRemoteHost pairing, string version, HostAction action,
-        IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
+        IReadOnlyDictionary<string, string>? answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended,
+        bool confirmed = false)
     {
         var name = pairing.HostId;
         var role = action.Role;
@@ -39,7 +40,7 @@ internal static class HostAgentRun
                     "once: it brings its host service up to date by itself, and from then on this PC updates and manages it from here.");
             }
             run.Output.Report(AgentText(name, list.Agent));
-            if (role is not null && action.Verb == HostVerb.Remove && !ConfirmationDialog.Confirm(run,
+            if (role is not null && action.Verb == HostVerb.Remove && !confirmed && !ConfirmationDialog.Confirm(run,
                     $"Stop {role} on {name} and remove it from its gateway? Its data volumes are kept, so adding it again is quick.", "Remove role"))
                 throw new OperationCanceledException();
 
