@@ -385,7 +385,7 @@ public partial class MainWindow
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
         // Voices F5 copies from your recordings. They show wherever F5 can speak: this PC or another of your computers.
-        // A cloud provider has its own voices. Every self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS) uses the same voice list.
+        // A cloud provider has its own voices. Every self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS, Dia) uses the same voice list.
         if (section == CompanionTab.Voice && place != JobPlace.Cloud)
         {
             page.Children.Add(SpeakingEngineCard(route));
@@ -747,8 +747,10 @@ public partial class MainWindow
         var nothingHere = !f5InUse && !windowsInUse;
 
         var f5About = Note((engine.SupportsTags
-                ? $"A natural voice copied from a recording longer than {engine.MinimumReferenceMilliseconds / 1000} seconds; it can " +
-                  "laugh, sigh and change tone. "
+                ? (engine.MinimumReferenceMilliseconds > 1_000
+                      ? $"A natural voice copied from a recording longer than {engine.MinimumReferenceMilliseconds / 1000} seconds; it can "
+                      : "A natural voice copied from a short recording; it can ") +
+                  (engine.Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? "laugh, sigh and change tone. " : "laugh, sigh and cough. ")
                 : "A natural voice copied from a short recording. ") +
             "Use the included voices or add your own. Recordings stay on this PC and go only to the computer that speaks. " +
             (engine.WeightsLicense.Contains("NC", StringComparison.Ordinal) || engine.WeightsLicense.StartsWith("CPML", StringComparison.Ordinal)

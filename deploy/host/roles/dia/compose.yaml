@@ -1,0 +1,25 @@
+# Martlet Dia voice host service (the bot's speaking: a cloned voice that can laugh, sigh, cough and gasp), loopback-only
+# behind the Martlet gateway. The image is built on this host from Martlet's workers/dia sources (workers/dia/host/Dockerfile:
+# Nari Labs' Dia at a pinned commit, hash-pinned PyTorch 2.6.0 CUDA 12.4 and descript-audio-codec 1.0.0). "martlet-host add
+# dia" adds compose.gpu.yaml (Dia needs the NVIDIA GPU), then runs "martlet-dia provision" (downloads and verifies the
+# pinned model and codec files into the martlet-dia-models volume) and "martlet-dia warm". The service listens only on
+# 127.0.0.1:50084 (host loopback natively, the gateway's network namespace in Docker); the Martlet gateway is the single
+# LAN entry point.
+
+services:
+  dia:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/dia
+      dockerfile: host/Dockerfile
+    image: martlet-dia:1
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      DIA_MODEL: ${DIA_MODEL:-dia-1.6b-0626}
+    volumes:
+      - models:/opt/martlet-dia/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-dia-models

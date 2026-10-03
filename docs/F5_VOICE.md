@@ -207,9 +207,9 @@ the next conversation speaks with it. The speech client reads the exact
 preset/revision the route records. The voice in use cannot be removed. The
 worker policy is unchanged: Desktop sends an explicit reference with every
 request, and the worker never chooses a voice or keeps it. The same voice list
-serves [XTTS-v2](XTTS_VOICE.md) and [GPT-SoVITS](GPT_SOVITS_VOICE.md) (Companion >
-Voice > Voice engine), whose routes use this reference contract; GPT-SoVITS adds
-the recording's language and accepts only 3-10 second recordings.
+serves [XTTS-v2](XTTS_VOICE.md), [GPT-SoVITS](GPT_SOVITS_VOICE.md) and [Dia](DIA_VOICE.md)
+(Companion > Voice > Voice engine), whose routes use this reference contract;
+GPT-SoVITS adds the recording's language and accepts only 3-10 second recordings.
 
 ## Gates still not run
 

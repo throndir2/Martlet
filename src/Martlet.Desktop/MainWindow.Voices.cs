@@ -18,7 +18,7 @@ public partial class MainWindow
     private SoundPlayer? voicePlayer;
     private bool retiredSampleChecked;
 
-    /// <summary>Which self-hosted engine speaks: Chatterbox Turbo (default), F5-TTS, XTTS-v2 or GPT-SoVITS (<see cref="SpeechEngines"/>). All use the voices below.
+    /// <summary>Which self-hosted engine speaks: Chatterbox Turbo (default), F5-TTS, XTTS-v2, GPT-SoVITS or Dia (<see cref="SpeechEngines"/>). All use the voices below.
     /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
     /// role there first, after showing what it needs and its licence); otherwise the choice is used the next time Speaking
     /// goes to a computer. Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>.</summary>
@@ -61,8 +61,9 @@ public partial class MainWindow
         return Card(Heading("Voice engine"),
             Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. Chatterbox Turbo (MIT licence) " +
                 "can laugh, sigh and change tone and needs recordings longer than 5 seconds; XTTS-v2 starts speaking sooner; F5-TTS " +
-                "often sounds closest to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording. " +
-                "The F5-TTS and XTTS-v2 models are for non-commercial use only; Chatterbox's and GPT-SoVITS's are MIT.", new Thickness(0, 0, 0, 8)),
+                "often sounds closest to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording; Dia can laugh, sigh and " +
+                "cough (English only). " +
+                "The F5-TTS and XTTS-v2 models are for non-commercial use only; Chatterbox's and GPT-SoVITS's are MIT and Dia's Apache-2.0.", new Thickness(0, 0, 0, 8)),
             choice, status, tags);
     }
 

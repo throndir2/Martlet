@@ -3,7 +3,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
-/// <summary>The paired Martlet host whose voice engine (its f5 or xtts role, <see cref="SpeechEngines"/>) speaks replies,
+/// <summary>The paired Martlet host whose voice engine (its f5, xtts or dia role, <see cref="SpeechEngines"/>) speaks replies,
 /// reached through the host's pinned gateway. <see cref="CredentialId"/> names the TTS route's reference to the host pairing
 /// kept in the OS vault; <see cref="ModelId"/> is the host's advertised model on <see cref="RouteId"/> (the engine's gateway
 /// route) and <see cref="ReferenceRevision"/> the applied reference voice.</summary>

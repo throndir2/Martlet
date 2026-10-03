@@ -1,0 +1,26 @@
+Third-party components used by the Martlet Dia worker image (installed or fetched at build time, or downloaded by the
+role's provisioning step; none are redistributed in this repository).
+
+Dia (Nari Labs), source at commit 876125e461a03b157ec905b0fe8b57a0f8b9e7a0
+  https://github.com/nari-labs/dia
+  License: Apache License 2.0. Nari Labs forbids using Dia to produce audio resembling real people without their
+  permission, deceptive content, and illegal or harmful use.
+
+Dia-1.6B-0626 model (nari-labs/Dia-1.6B-0626, revision ef2795fcc29c5abe6ffc91fd33808588b49bbc66)
+  https://huggingface.co/nari-labs/Dia-1.6B-0626
+  License: Apache License 2.0
+
+Descript Audio Codec 1.0.0 and its 44 kHz weights (release 0.0.1, weights.pth)
+  https://github.com/descriptinc/descript-audio-codec
+  License: MIT
+
+descript-audiotools 0.7.2
+  https://github.com/descriptinc/audiotools
+  License: MIT
+
+PyTorch 2.6.0 and torchaudio 2.6.0 (CUDA 12.4 builds)
+  https://pytorch.org
+  License: BSD-3-Clause
+
+The remaining Python packages are listed with their exact versions and SHA-256 digests in host/requirements.lock;
+each keeps its own license.

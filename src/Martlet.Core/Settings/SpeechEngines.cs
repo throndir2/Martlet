@@ -85,8 +85,36 @@ public static class SpeechEngines
         "Good for anime-style voices; needs a 3-10 second recording and speaks each sentence as soon as it is generated.",
         3_000, 10_000, 4);
 
+    /// <summary>Dia's nonverbal cues, verbatim from the README at the pinned commit (github.com/nari-labs/dia at
+    /// 876125e461a03b157ec905b0fe8b57a0f8b9e7a0), limited to the ones that suit a conversation; (singing), (sings), (beep),
+    /// (claps), (applause), (burps) and (screams) are left out. Dia warns that overusing cues or using unlisted ones causes
+    /// artifacts, so the worker passes reply text through unchanged.</summary>
+    public static readonly IReadOnlyList<VoiceTag> DiaTags =
+    [
+        new("(laughs)", VoiceTagKind.Sound, "a laugh, after something genuinely funny"),
+        new("(chuckle)", VoiceTagKind.Sound, "a small amused chuckle"),
+        new("(sighs)", VoiceTagKind.Sound, "a sigh, for relief, tiredness or mild exasperation"),
+        new("(gasps)", VoiceTagKind.Sound, "a gasp of surprise"),
+        new("(coughs)", VoiceTagKind.Sound, "a cough"),
+        new("(clears throat)", VoiceTagKind.Sound, "clearing your throat before saying something"),
+        new("(groans)", VoiceTagKind.Sound, "a groan, for something annoying or painful"),
+        new("(sniffs)", VoiceTagKind.Sound, "a sniff"),
+        new("(inhales)", VoiceTagKind.Sound, "a breath in, before something big"),
+        new("(exhales)", VoiceTagKind.Sound, "a breath out, letting go of tension"),
+        new("(mumbles)", VoiceTagKind.Sound, "mumble the words after it"),
+        new("(humming)", VoiceTagKind.Sound, "a short hum"),
+        new("(sneezes)", VoiceTagKind.Sound, "a sneeze"),
+        new("(whistles)", VoiceTagKind.Sound, "a short whistle, impressed or surprised")
+    ];
+
+    /// <summary>Nari Labs' Dia: clones the voice from the recording and its transcript and performs the nonverbal cues in
+    /// <see cref="DiaTags"/>. English only. Shorter references (5-10 s) leave Dia room to speak; longer ones are refused.</summary>
+    public static readonly SpeechEngine Dia = new("dia", "Dia", "dia",
+        "martlet.gateway.dia-synthesis.v1", "/martlet/v1/inference/dia-synthesis", "dia-1.6b-0626", "Apache-2.0",
+        "Can laugh, sigh, cough and gasp; English only; speaks each sentence once it is generated.", 1_000, 20_000, 8, DiaTags);
+
     private static readonly object Gate = new();
-    private static SpeechEngine[] all = [Chatterbox, F5, Xtts, GptSovits];
+    private static SpeechEngine[] all = [Chatterbox, F5, Xtts, GptSovits, Dia];
 
     /// <summary>Every engine; the first is the default cloning engine (Chatterbox Turbo).</summary>
     public static IReadOnlyList<SpeechEngine> All => Volatile.Read(ref all);

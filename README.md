@@ -84,7 +84,8 @@ speaks. The same voices work with [Chatterbox Turbo](docs/CHATTERBOX_VOICE.md), 
 default engine, which can also laugh, sigh and change tone, with
 [XTTS-v2](docs/XTTS_VOICE.md), which starts speaking before a sentence is
 finished, and with [GPT-SoVITS](docs/GPT_SOVITS_VOICE.md), good for anime-style
-voices from 3-10 second recordings (Companion > Voice > Voice engine). See
+voices from 3-10 second recordings, and with [Dia](docs/DIA_VOICE.md), which can
+laugh, sigh, cough and gasp (English only; Companion > Voice > Voice engine). See
 [Voices](docs/SETUP.md#voices-f5) and the [Voice Studio plan](docs/VOICE_STUDIO.md)
 for other engines.
 

@@ -193,10 +193,10 @@ there and the applied voice (an included key, `own`, `retired-sample` or null).
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
 records (an included key, `own`, `retired-sample` or null), plus `engine` (the
-self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts` or `gpt-sovits`), `host` and
+self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`), `host` and
 `model` for a host route. `engines` lists the voice engines
 ([Chatterbox Turbo](CHATTERBOX_VOICE.md), [F5-TTS](F5_VOICE.md),
-[XTTS-v2](XTTS_VOICE.md), [GPT-SoVITS](GPT_SOVITS_VOICE.md); `key`, `name`,
+[XTTS-v2](XTTS_VOICE.md), [GPT-SoVITS](GPT_SOVITS_VOICE.md), [Dia](DIA_VOICE.md); `key`, `name`,
 `hostRole`, `routeId`, `path`, `model`, `weightsLicence`, `minimumGpuMemoryGb`,
 `minimumReferenceMs`, `maximumReferenceMs`, `summary`, `default` (true for
 Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
@@ -753,7 +753,7 @@ automated verification. `f5_voices` reads the same list headlessly.
 Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
 chosen engine ("Chatterbox Turbo (recommended): Clones the voice and can laugh
 ...", the default; options `SpeakingEngine-chatterbox`, `SpeakingEngine-f5`,
-`SpeakingEngine-xtts` and `SpeakingEngine-gpt-sovits`), `SpeakingEngineStatus`
+`SpeakingEngine-xtts`, `SpeakingEngine-gpt-sovits` and `SpeakingEngine-dia`), `SpeakingEngineStatus`
 says where it speaks and its model licence and `SpeakingEngineTags` lists the
 engine's sound and tone tags (or says it reads words only). Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer

@@ -64,6 +64,7 @@ internal static class HostRoles
     internal const string Xtts = "xtts";
     internal const string Chatterbox = "chatterbox";
     internal const string GptSovits = "gpt-sovits";
+    internal const string Dia = "dia";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -96,7 +97,11 @@ internal static class HostRoles
         new(GptSovits, "Speaks", "Speaking (GPT-SoVITS)", "an NVIDIA GPU with at least 4 GB",
             HostRoute.GptSovitsRouteId, "speaking",
             "Speaks replies on that host with GPT-SoVITS, good for anime-style voices; it starts each sentence as soon as it is " +
-            "generated and needs a 3-10 second voice sample. Reply text and the selected voice sample go there.")
+            "generated and needs a 3-10 second             voice sample. Reply text and the selected voice sample go there."),
+        new(Dia, "Speaks", "Speaking (Dia)", "an NVIDIA GPU with at least 8 GB",
+            HostRoute.DiaRouteId, "speaking",
+            "Speaks replies on that host with Dia, which can laugh, sigh, cough and gasp when a reply asks for it (English only). " +
+            "Reply text and the selected voice sample go there. Its model is Apache-2.0.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??
