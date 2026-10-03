@@ -257,7 +257,11 @@ founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
 number; the host tells B (not yet a member) who is paired with it, A and B,
 each with when it last made a signed request; A allows B, and B pairs with the
-other host by itself; a host PC C outside the network pairs with the first host
+other host by itself; every host announces the Martlet release it runs to A, B
+and B reading only (the gateway's own release), and a desktop that last saw a
+host on 0.0.1 (simulated) takes the announced release as an update that needs
+nothing more, while a host still older than the desktop keeps needing one
+(`HostRelease`); a host PC C outside the network pairs with the first host
 and only watches (`NetworkSyncEngine.ReadOnlyAsync`): it sees A, B and itself
 and starts, joins and asks nothing; A sets up a third
 host and B is paired with it on its next sync; a key outside the network
@@ -418,9 +422,17 @@ terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
 gives up with 75; a waiting `--yes remove` continues once the holder is killed
 (SIGKILL); the next automatic run is not blocked (no stale lock);
 `logs/engine.log` records the waits; and the desktop's reader
-(`HostEngineBusy.Read`) reads the engine's real busy line. Without Docker or the
+(`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
+Docker method's launcher and engine against a fake `docker` CLI (state in
+`/tmp/fake`): an automatic `setup` while an `add` engine session runs in the
+network holder's namespace stops with exit 75 and `MARTLET-BUSY installing
+chatterbox (...)` without replacing `martlet-host-net`; a `--yes setup` waits
+for it, then removes and recreates the holder and runs its engine; an engine
+left in a replaced holder's namespace stops at once (`... was replaced while
+this ran ... Nothing was changed`) while one in the current namespace
+continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
-the Docker method's launcher or a real host.
+a real Docker daemon or a real host.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -617,6 +629,24 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
+Every read-only text box has a Copy button `Copy-<box ID>` (the box's
+automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
+`Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
+`Copy-FoundationStatus`), shown only while the box has text. Snapshots return
+its label (*Copy*, or *Copied*/*Couldn't copy* for about three seconds after a
+click), never the copied text. A run window's and *Prepare this computer*'s Copy
+starts with *Martlet <version>: <title>* (and *SSH target: ...* for Prepare)
+and *Status: <status line>*, then a blank line and the output.
+`ConfirmationCopy` (confirmation dialogs: version, title and question) and
+`HostInputCopy` (install and prerequisites dialogs: version, title, heading,
+message and the terms shown; never what was typed) work the same way. Copy
+buttons write the clipboard, so they need `--allow-ui-effects`; check the
+outcome with `ui_snapshot` and, on the dev machine, `Get-Clipboard`. The
+problem dialog (`ProblemDialog`: an unexpected error, or *Martlet couldn't
+start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
+paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
+passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
+`ui_connect` also attaches to a Martlet that shows only its problem dialog.
 Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
@@ -642,7 +672,17 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
-return the selected device's name and status, each row title
+return the selected device's name and status. When a paired host is older
+than this PC, its status *Update available* is a button,
+`SelectedDeviceHealthAction` (returned: its status and what it does, for
+example *Update available: Update to Martlet 0.40.0*); clicking it runs the
+same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
+paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
+as this PC knows it, kept current by the release every host announces on each
+network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
+`SelectedDeviceUpdate` the note on what this PC last did to update it (for
+example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, then *Updated to
+Martlet 0.22.0 (seen at 9:41 PM).* once the host announces it). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
@@ -852,16 +892,22 @@ launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
-whose value reads *<time> <level> <computer> · <part>: <first line>*;
+whose value reads *<time> <level> <computer> · <part>: <first line>*, where
+*<computer>* is *This PC* for this PC's desktop app and for its own host
+service's gateway (its host ID, paired here or read from Docker on a host PC);
 clicking one only selects it, and `LogDetail` then returns the whole line
-(time, level, computer, part, who passed it on and every following line).
+(time, level, computer with its ID, such as *This PC (diva-host) · Host
+gateway*, part, who passed it on and every following line).
 `LogSummary` says how many lines are shown of how many, from how many
-computers, the last 24 hours' errors and warnings and where remote lines came
+computers (this PC's app and host service count once), the last 24 hours'
+errors and warnings and where remote lines came
 from (the log host, each paired host's own log, or why not). The filters are
 pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
 `LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
 and `LogSource-<computer>` (`all`, this PC's device ID such as
-`LogSource-desktop-diva`, or a host ID); all are passive clicks, and snapshots
+`LogSource-desktop-diva`, which also covers this PC's host service, or another
+computer's ID); each returns its label as its value (*From: All computers*,
+*From: This PC (desktop-diva, diva-host)*, *From: gpu-pc*). All are passive clicks, and snapshots
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
 `--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
 it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.

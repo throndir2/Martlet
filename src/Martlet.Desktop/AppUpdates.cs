@@ -67,7 +67,7 @@ internal static class AppVersions
     /// <summary>Whether a host reporting <paramref name="reported"/> runs an older Martlet than <paramref name="target"/>;
     /// hosts from 0.2.0 and earlier report nothing and count as older.</summary>
     internal static bool IsOlder(string? reported, string target) =>
-        !Version.TryParse(target, out var wanted) || reported is null || !Version.TryParse(reported, out var have) || have < wanted;
+        Martlet.Avatar.Audio2Face.Remote.HostRelease.IsOlder(reported, target);
 }
 
 /// <summary>Downloads a release installer into the local updates directory and runs it after Martlet exits. The installer is
