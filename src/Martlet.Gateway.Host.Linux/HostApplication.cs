@@ -21,7 +21,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
         CancellationToken cancellation)
     {
         var relay = config.Roles.Select(RoleWorker).ToArray();
-        return command switch
+        var host = command switch
         {
             "init" => DurableGatewayHost.CreateNewForBinding(config.StateDirectory, config.HostId, config.Binding,
                 GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation, relay),
@@ -34,6 +34,9 @@ internal sealed class NativeHostPlatform : IHostPlatform
             _ => DurableGatewayHost.OpenForLocalAdministration(config.StateDirectory, config.HostId, config.Binding,
                 GatewayStorageBackend.LinuxServicePermissions, [], new QuietAudit(), LocalGatewayDecision.Enable, cancellation, relay)
         };
+        // A voice service's own reason for failing a reply goes into this host's log, which paired desktops show.
+        foreach (var voice in relay.OfType<Martlet.Gateway.F5.F5RelayWorker>()) voice.Report = host.RecordActivity;
+        return host;
     }
 
     // One relay worker per installed host role; each kind maps to exactly one gateway route.

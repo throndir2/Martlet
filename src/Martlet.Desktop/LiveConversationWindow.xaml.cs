@@ -873,6 +873,9 @@ public partial class LiveConversationWindow : ThemedWindow
                 var refusal = done.Turn?.Content.Refusal?.Trim();
                 if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet declined: " + refusal);
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
+                else if (done.Turn?.Snapshot is { SpeechFailed: true } voiceless)
+                    reply.AddNote(voiceless.MayHavePlayed ? "The voice stopped partway, so only the beginning was spoken."
+                        : "The voice failed, so this wasn't spoken.");
                 else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the beginning was spoken.");
             }
         }

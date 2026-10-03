@@ -95,7 +95,19 @@ comment; it needs a Thinking model that can see images. See
    provider extras (other delta fields, repeated usage or finish chunks,
    changing ids) instead of ending the reply mid-sentence. When a spoken reply
    outgrows the speech budget below, Martlet stops saying it aloud but still
-   shows all of it, with an *Only the start was said aloud* note.
+   shows all of it, with an *Only the start was said aloud* note. The voice
+   never cuts a reply short either: when the voice fails (a paired host's voice
+   worker fails or is reloading, the voice takes too long, or the speakers
+   fail), Martlet stops speaking and the rest of the reply still streams in
+   from the Thinking model and is shown in full, with a *The voice failed, so
+   this wasn't spoken* or *The voice stopped partway* note and the voice's own
+   remedy below the history. Nothing else is asked to speak it instead. The
+   speech bubble beside the character (and the subtitles, when on) still shows
+   what the voice couldn't say: the sentence that failed and each one after it,
+   one after another for about as long as reading it takes (2-20 s), until the
+   next reply or *Stop*. The
+   desktop log records it as `Spoken reply failed (...)` against the Speaking
+   route, not as a Thinking failure.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper and each response style, reply length,
    always listening, tools, who is talking, lorebook and memory introductions,
@@ -274,7 +286,8 @@ voice pipeline never waits for a whole reply:
 - **Overlapped synthesis.** While one sentence plays, the next is already being
   synthesized (one sentence ahead, never more), so there is no synthesis gap
   between sentences. A voice failure on the next sentence surfaces only when
-  playback reaches it, so what is already playing finishes.
+  playback reaches it, so what is already playing finishes; then the voice
+  stops for the rest of the reply while its text keeps streaming.
 - **Barge-in.** With always listening, *Let me interrupt Martlet by talking* in
   Companion › Listening (on by default) keeps the microphone open while
   Martlet speaks. Talking over a reply stops it at once: the Thinking request
@@ -489,7 +502,7 @@ Docker. See [Recognizing people by voice, and Parakeet](VOICES.md).
 | Mic access/busy/lost/default-change/format | Use Audio setup's specific privacy/device remedy. Always listening shows *Mic unavailable* and tries the same chosen microphone again every 5 seconds; there is no loopback or device fallback. Typed input remains available. |
 | Provider auth/model/quota/rate/network failure | Inspect the stable provider code; review account/model availability and current limits outside Martlet. A failed request is not a safe automatic retry. |
 | Refused / partial answer | Refusal is separate from answer text. Partial answer remains visible; unfinished/unsupported speech is discarded, not replayed. |
-| TTS/output failed | Read the response text. For the next new action choose text-only, or review the selected output/model/voice. Earlier speech may have played. |
+| TTS/output failed | The reply's text still completes and stays visible; only the voice stopped (`SpeechFailure`, and the voice's provider code with `FailedProvider` Tts). For the next new action choose text-only, or review the selected output/model/voice or the paired host's voice role. Earlier speech may have played. |
 | Cleanup pending / quarantined | No new effectful action may take the slot. Wait for actual release; close Martlet if the native worker never returns. Do not start a replacement factory to evade quarantine. |
 
 Submitted samples, device-consumed samples and observed drain are different

@@ -58,7 +58,9 @@ public sealed class AuthorizationTests
                     Reservation(allowed.Reservation, reason, h.Clock)));
             };
         var result = await Harness.Finish(h.Start());
-        Assert.Equal(role == "llm" ? ConversationState.Failed : ConversationState.Partial, result.State);
+        // A denied voice only goes quiet: the reply's text still completes.
+        Assert.Equal(role == "llm" ? ConversationState.Failed : ConversationState.Completed, result.State);
+        Assert.Equal(role != "llm", result.SpeechFailed);
         Assert.Equal(role == "llm" ? 0 : 1, h.Credentials.Calls);
         Assert.Equal(role == "llm" ? 0 : 1, h.Llm.Calls);
         Assert.Equal(0, h.Tts.Calls);
@@ -100,7 +102,7 @@ public sealed class AuthorizationTests
             return ValueTask.FromResult<BoundProviderCredential?>(new(binding, ProviderFixtures.Secret));
         };
         var result = await Harness.Finish(h.Start());
-        Assert.Equal(ConversationFailure.AuthorizationExpired, result.Failure);
+        Assert.Equal(ConversationFailure.AuthorizationExpired, role == ProviderRole.Llm ? result.Failure : result.SpeechFailure);
         Assert.Equal(role == ProviderRole.Llm ? 0 : 1, h.Llm.Calls);
         Assert.Equal(0, h.Tts.Calls);
         Assert.Equal(0, h.Device.Opens);

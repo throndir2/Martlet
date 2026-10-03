@@ -19,6 +19,8 @@ public sealed class ConversationTurn
     private readonly IConversationAuthorizationSource authorization;
     private readonly MonotonicWindow whole;
     private readonly CancellationTokenSource stop = new();
+    // Ends only what is said aloud (synthesis and playback); canceled with the turn, or alone when the voice fails.
+    private readonly CancellationTokenSource speaking;
     private readonly TaskCompletionSource stopSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<ConversationSnapshot> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -31,7 +33,9 @@ public sealed class ConversationTurn
     private readonly StringBuilder text = new();
     private readonly Guid? retryOf;
     private readonly bool earlierSpeech;
-    private Task callbacks = Task.CompletedTask;
+    private Task callbacks = Task.CompletedTask, speechCallbacks = Task.CompletedTask;
+    // Captions for words the voice couldn't say, shown one after another (ShowUnsaid).
+    private Task unsaidCaptions = Task.CompletedTask;
     private CancellationToken originalCaller;
     private CancellationTokenRegistration callerRegistration;
     private MonotonicWindow? textWindow, speechWindow, playWindow;
@@ -44,7 +48,7 @@ public sealed class ConversationTurn
     private PlaybackSnapshot? lastPlayback;
     private PlaybackSnapshot? observedPlayback;
     private ConversationState state = ConversationState.Authorizing;
-    private ConversationFailure failure;
+    private ConversationFailure failure, speechFailure;
     private ProviderFailureCode? providerFailure;
     private ProviderRole? failedProvider;
     private SequenceIssueInfo? sequenceFailure;
@@ -79,6 +83,7 @@ public sealed class ConversationTurn
         this.retryOf = retryOf;
         this.earlierSpeech = earlierSpeech;
         whole = new(Clock, request.Limits.TurnTimeout);
+        speaking = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
         startedAt = Clock.GetTimestamp();
         TextIds = NewIds();
         events = Channel.CreateBounded<ConversationEvent>(new BoundedChannelOptions(request.Limits.EventCapacity)
@@ -184,6 +189,45 @@ public sealed class ConversationTurn
             sequenceFailure = sequence is { } issue ? new(issue) : null;
             Invalidate();
         }
+    }
+
+    // A voice that fails or runs out of time ends what is said aloud, never the reply: the rest of the text still streams to
+    // completion and is shown, and the turn records why it went quiet. No other voice is asked instead.
+    private void StopSpeaking(ConversationFailure reason, ProviderFailureCode? provider = null)
+    {
+        lock (Sync)
+        {
+            if (originalCaller.IsCancellationRequested)
+            {
+                CancelByUser();
+                return;
+            }
+            if (request.Speech is null || invalidated || workFinished || speechFailure != ConversationFailure.None) return;
+            // The whole turn ran out of time before the text finished, which ends the reply too.
+            if (whole.Expired && !textComplete)
+            {
+                Fail(ConversationFailure.DeadlineExceeded);
+                return;
+            }
+            speechFailure = reason;
+            if (provider is not null)
+            {
+                providerFailure = provider;
+                failedProvider = ProviderRole.Tts;
+            }
+            speechObservation?.Stop();
+            // Capture-scoped handle: never use sink-wide Stop.
+            _ = playback?.StopAsync();
+            speechCallbacks = speaking.CancelAsync();
+            if (!textComplete && state != ConversationState.Generating) SetState(ConversationState.Generating);
+            else Emit(ConversationEventKind.State);
+        }
+    }
+
+    private void CheckSpeaking(MonotonicWindow window)
+    {
+        Check(window);
+        speaking.Token.ThrowIfCancellationRequested();
     }
 
     private enum RoundEnd { Completed, Refused, Failed, Invalid }
@@ -342,7 +386,12 @@ public sealed class ConversationTurn
                     }
                     textComplete = true;
                 }
-                if (segmenter is not null) await StageAsync(segmenter.Finish(), whole).ConfigureAwait(false);
+                // The text is all shown; staging its last sentence for the voice can only end what is said aloud.
+                if (segmenter is not null)
+                {
+                    try { await StageAsync(segmenter.Finish(), whole).ConfigureAwait(false); }
+                    catch (ConversationException error) { StopSpeaking(error.Failure); }
+                }
                 return;
             }
         }
@@ -513,11 +562,16 @@ public sealed class ConversationTurn
         internal bool ProviderFailed { get; set; }
         internal ProviderFailureCode? Failure { get; set; }
         internal ExceptionDispatchInfo? Error { get; set; }
+        // A sentence written after the voice failed: it is only shown in the captions, in its place after the ones before it.
+        internal bool CaptionOnly { get; init; }
+        // Its words were posted to the captions (when its playback started).
+        internal bool Captioned { get; set; }
     }
 
     // Synthesis runs one sentence ahead of playback: while sentence N plays, sentence N+1 is already being synthesized, so
     // there is no synthesis gap between sentences. A synthesis failure is raised only when playback reaches that sentence,
-    // so what is already playing finishes first, as it did before.
+    // so what is already playing finishes first, as it did before. A voice failure then stops speaking (StopSpeaking); both
+    // stages keep draining until the text ends, so the reply's text is never held up or cut short by its voice.
     private async Task SpeakAsync()
     {
         if (request.Speech is not { } voice) return;
@@ -536,11 +590,30 @@ public sealed class ConversationTurn
         {
             await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
-                // Once the speech budget is spent (or a sentence failed) the rest of the reply is text only; keep draining so
-                // the text still finishes.
-                if (speechLimitReached || broken) continue;
+                // Once the speech budget is spent, a sentence failed or the voice stopped, the rest of the reply is text only;
+                // keep draining so the text still finishes. After a voice failure each sentence still reaches the captions.
+                if (broken || speaking.IsCancellationRequested)
+                {
+                    if (await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false))
+                        ready.TryWrite(new SpeechTake(piece.Text!, 0, NewIds()) { CaptionOnly = true });
+                    continue;
+                }
+                if (speechLimitReached) continue;
                 if (!await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false)) return;
-                if (Reserve(piece.Text!, voice) is not { } take) continue;
+                if (speaking.IsCancellationRequested) continue;
+                SpeechTake? take;
+                try { take = Reserve(piece.Text!, voice); }
+                catch (ConversationException error)
+                {
+                    StopSpeaking(error.Failure);
+                    continue;
+                }
+                catch (ContractException)
+                {
+                    StopSpeaking(ConversationFailure.InvalidStream);
+                    continue;
+                }
+                if (take is null) continue;
                 if (!ready.TryWrite(take)) throw new ConversationException(ConversationFailure.InvalidStream);
                 var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
                 lock (Sync)
@@ -594,39 +667,40 @@ public sealed class ConversationTurn
     {
         try
         {
-            Check(window);
+            CheckSpeaking(window);
             var input = new BoundedSpeechInput(take.Text);
             var context = new ProviderRequestContext { Ids = take.Ids, Epoch = Epoch, Deadline = Deadline(window) };
             var budget = new OperationBudget(take.Ids, Epoch, ProviderRole.Tts, 1, input.Utf8Bytes, 0, 0, voice.Limits.MaxSamples);
             var action = new SpeechAuthorizationAction(context, take.Number, input, voice.Selection, voice.Limits, budget);
-            var permission = await authorization.AuthorizeSpeechAsync(action, stop.Token).ConfigureAwait(false);
-            Check(window);
+            var permission = await authorization.AuthorizeSpeechAsync(action, speaking.Token).ConfigureAwait(false);
+            CheckSpeaking(window);
             if (permission?.Authorization is not { } consent)
                 throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
             window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
             lock (Sync) speechWindow = window;
-            Check(window);
+            CheckSpeaking(window);
             context = context with { Deadline = Deadline(window) };
             var stream = Owner.StreamSpeech(context, request, input, consent, originalCaller);
             lock (Sync)
             {
                 CheckActive();
+                speaking.Token.ThrowIfCancellationRequested();
                 speechProvenance = stream.Capabilities.Provenance;
                 if (playback is null) SetState(ConversationState.Synthesizing);
             }
-            await using (var enumeration = stream.GetAsyncEnumerator(stop.Token))
+            await using (var enumeration = stream.GetAsyncEnumerator(speaking.Token))
             {
                 while (true)
                 {
-                    Check(window);
+                    CheckSpeaking(window);
                     bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
-                    Check(window);
+                    CheckSpeaking(window);
                     if (!moved) break;
                     if (!take.Frames.Writer.TryWrite(enumeration.Current))
                         throw new ConversationException(ConversationFailure.InvalidStream);
                 }
             }
-            Check(window);
+            CheckSpeaking(window);
             if (stream.Result is not { Outcome: SpeechSynthesisOutcome.Completed, FinalSampleCount: { } samples })
             {
                 take.ProviderFailed = true;
@@ -648,54 +722,91 @@ public sealed class ConversationTurn
     {
         await foreach (var take in ready.ReadAllAsync(stop.Token).ConfigureAwait(false))
         {
+            // Once the voice stopped, a sentence already synthesized is dropped unplayed (its words still show in the captions);
+            // keep draining so synthesis never waits.
+            if (take.CaptionOnly || speaking.IsCancellationRequested)
+            {
+                ShowUnsaid(take.Text);
+                continue;
+            }
             var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
             lock (Sync) playWindow = window;
-            try
-            {
-                if (!await PlayAsync(take, voice, window).ConfigureAwait(false)) return;
-            }
+            try { await PlayAsync(take, voice, window).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (speaking.IsCancellationRequested) { }
+            catch (ConversationException error) { StopSpeaking(error.Failure); }
+            catch (ContractException) { StopSpeaking(ConversationFailure.InvalidStream); }
+            // A voice provider or the playback device can fail arbitrarily; only what is said aloud ends.
+            catch (Exception) { StopSpeaking(ConversationFailure.DependencyFailed); }
             finally { lock (Sync) playWindow = null; }
+            // The voice failed before this sentence started playing: its words still show.
+            if (!take.Captioned && speaking.IsCancellationRequested) ShowUnsaid(take.Text);
         }
     }
 
-    private async Task<bool> PlayAsync(SpeechTake take, SpeechOutput voice, MonotonicWindow window)
+    // Captions (speech bubble, subtitles) for words the voice couldn't say, one sentence after another for about as long as
+    // reading each takes. A newer reply or Stop ends them; the turn never waits for them.
+    private void ShowUnsaid(string text)
+    {
+        if (Owner.SpokenText is not { } feed || VoiceTags.Strip(text).Trim() is not { Length: > 0 } caption) return;
+        lock (Sync)
+        {
+            if (userStopped) return;
+            unsaidCaptions = CaptionAfterAsync(unsaidCaptions, feed, caption);
+        }
+    }
+
+    private async Task CaptionAfterAsync(Task previous, SpokenTextFeed feed, string caption)
+    {
+        await previous.ConfigureAwait(false);
+        lock (Sync)
+            if (userStopped || Owner.CurrentEpoch != Epoch) return;
+        var shown = Task.Delay(ReadingTime(caption), Clock);
+        feed.Post(caption, shown);
+        await shown.ConfigureAwait(false);
+    }
+
+    internal static TimeSpan ReadingTime(string caption) =>
+        TimeSpan.FromSeconds(Math.Clamp(1.5 + caption.Length / 15.0, 2, 20));
+
+    private async Task PlayAsync(SpeechTake take, SpeechOutput voice, MonotonicWindow window)
     {
         PlaybackRun? run = null;
         try
         {
-            await foreach (var frame in take.Frames.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
+            await foreach (var frame in take.Frames.Reader.ReadAllAsync(speaking.Token).ConfigureAwait(false))
             {
-                Check(window);
+                CheckSpeaking(window);
                 if (run is null)
                 {
                     lock (Sync)
                     {
                         CheckActive();
-                        run = Owner.StartPlayback(this, take.Ids, voice.Output, Deadline(window), stop.Token);
+                        speaking.Token.ThrowIfCancellationRequested();
+                        run = Owner.StartPlayback(this, take.Ids, voice.Output, Deadline(window), speaking.Token);
                         playback = run;
                         speechRequest = take.Ids.RequestId;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
                         // Captions show the words only; the voice still hears its own tags ([laugh]...).
                         if (VoiceTags.Strip(take.Text).Trim() is { Length: > 0 } caption) Owner.SpokenText?.Post(caption, run.Completion);
+                        take.Captioned = true;
                     }
                 }
                 await SubmitAsync(run, frame, window).ConfigureAwait(false);
             }
-            Check(window);
+            CheckSpeaking(window);
             take.Error?.Throw();
             if (take.ProviderFailed)
             {
-                Fail(ConversationFailure.ProviderFailed, take.Failure, failedRole: ProviderRole.Tts);
-                return false;
+                StopSpeaking(ConversationFailure.ProviderFailed, take.Failure);
+                return;
             }
             if (run is null || take.FinalSamples is not { } samples || !run.CompleteInput(samples))
                 throw new ConversationException(ConversationFailure.PlaybackFailed);
             speechObservation?.CompleteInput(samples);
-            var terminalPlayback = await run.Completion.WaitAsync(stop.Token).ConfigureAwait(false);
-            Check(window);
+            var terminalPlayback = await run.Completion.WaitAsync(speaking.Token).ConfigureAwait(false);
+            CheckSpeaking(window);
             if (terminalPlayback.State != PlaybackState.Completed)
                 throw new ConversationException(ConversationFailure.PlaybackFailed);
-            return true;
         }
         finally
         {
@@ -722,7 +833,8 @@ public sealed class ConversationTurn
                     playback = null;
                     speechObservation = null;
                     speechRequest = null;
-                    if (!invalidated && !textComplete) SetState(synthesizing ? ConversationState.Synthesizing : ConversationState.Generating);
+                    if (!invalidated && !textComplete)
+                        SetState(synthesizing && !speaking.IsCancellationRequested ? ConversationState.Synthesizing : ConversationState.Generating);
                 }
             }
         }
@@ -732,7 +844,7 @@ public sealed class ConversationTurn
     {
         while (true)
         {
-            Check(window);
+            CheckSpeaking(window);
             var snapshot = run.Snapshot;
             if (run.Completion.IsCompleted)
                 throw new ConversationException(ConversationFailure.PlaybackFailed);
@@ -752,7 +864,7 @@ public sealed class ConversationTurn
                 }
                 return;
             }
-            await Task.Delay(TimeSpan.FromMilliseconds(10), Clock, stop.Token).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(10), Clock, speaking.Token).ConfigureAwait(false);
         }
     }
 
@@ -776,7 +888,7 @@ public sealed class ConversationTurn
         {
             if (originalCaller.IsCancellationRequested) CancelByUser();
             workFinished = true;
-            pendingCallbacks = callbacks;
+            pendingCallbacks = Task.WhenAll(callbacks, speechCallbacks);
         }
         try { await pendingCallbacks.ConfigureAwait(false); }
         catch (Exception)
@@ -788,6 +900,7 @@ public sealed class ConversationTurn
             }
         }
         await callerRegistration.DisposeAsync().ConfigureAwait(false);
+        speaking.Dispose();
         stop.Dispose();
         lock (Sync)
         {
@@ -814,10 +927,16 @@ public sealed class ConversationTurn
                     if (!invalidated && progress.State == PlaybackState.Playing) SetState(ConversationState.Playing);
                     Emit(ConversationEventKind.Playback);
                 }
-                if (whole.Expired) Fail(ConversationFailure.DeadlineExceeded);
+                // The whole turn ran out of time: after the text finished, only the voice still speaking ends.
+                if (whole.Expired)
+                {
+                    if (textComplete && request.Speech is not null) StopSpeaking(ConversationFailure.DeadlineExceeded);
+                    else Fail(ConversationFailure.DeadlineExceeded);
+                }
                 else if (textWindow?.Expired == true) Fail(textWindow.ExpiryFailure);
-                else if (speechWindow?.Expired == true) Fail(speechWindow.ExpiryFailure);
-                else if (playWindow?.Expired == true) Fail(playWindow.ExpiryFailure);
+                // A sentence that takes too long to synthesize or play ends the voice, not the reply.
+                else if (speechWindow?.Expired == true) StopSpeaking(speechWindow.ExpiryFailure);
+                else if (playWindow?.Expired == true) StopSpeaking(playWindow.ExpiryFailure);
             }
             if (stopSignal.Task.IsCompleted) break;
             await Task.WhenAny(release.Task, stopSignal.Task,
@@ -858,6 +977,7 @@ public sealed class ConversationTurn
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
-            speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected);
+            speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
+            speechFailure);
     }
 }
