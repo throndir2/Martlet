@@ -360,7 +360,7 @@ public partial class MainWindow
             (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
                 SetupRole.Llm => "Run a local model here. Conversations stay on this PC, with no API key or per-request cost.",
-                SetupRole.Tts => "Use F5 in Docker or a Windows voice. Audio stays on this PC.",
+                SetupRole.Tts => "Run a voice engine here, or use a Windows voice. Audio stays on this PC.",
                 _ => "Turn your speech into text on this PC. Your voice stays here."
             }),
             (JobPlace.Computer, "Another of your computers",
@@ -372,7 +372,8 @@ public partial class MainWindow
         page.Children.Add(place switch
         {
             JobPlace.ThisPc when role == SetupRole.Llm => LocalThinkingCard(route),
-            JobPlace.ThisPc when role == SetupRole.Tts => LocalVoiceCard(job, route, thisPc),
+            JobPlace.ThisPc when role == SetupRole.Tts => VoiceEnginesCard(route, thisPc, onThisPc: true),
+            JobPlace.Computer when role == SetupRole.Tts => VoiceEnginesCard(route, thisPc, onThisPc: false),
             JobPlace.ThisPc => LocalListeningCard(route, thisPc),
             JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
             _ => CloudCard(section, job, route)
@@ -380,13 +381,9 @@ public partial class MainWindow
 
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
-        // Voices F5 copies from your recordings. They show wherever F5 can speak: this PC or another of your computers.
-        // A cloud provider has its own voices. Every self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS, Dia) uses the same voice list.
-        if (section == CompanionTab.Voice && place != JobPlace.Cloud)
-        {
-            page.Children.Add(SpeakingEngineCard(route));
-            page.Children.Add(VoicesCard(route));
-        }
+        // The voices the self-hosted engines copy from your recordings, wherever one can speak: this PC or another of your
+        // computers. A cloud provider has its own voices.
+        if (section == CompanionTab.Voice && place != JobPlace.Cloud) page.Children.Add(VoicesCard(route));
 
         if (section == CompanionTab.Voice) page.Children.Add(AudioCard(output: true));
         if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
@@ -427,7 +424,7 @@ public partial class MainWindow
             : $"{PlaceName(route)}: {route.ModelId}";
         var status = route is null
             ? section == CompanionTab.Voice
-                ? "Not chosen yet. Set up F5 or use a Windows voice."
+                ? "Not chosen yet. Pick a voice engine below."
                 : "Not chosen yet. This PC is recommended below."
             : routeName +
                 VoiceSuffix(route) +
@@ -703,125 +700,7 @@ public partial class MainWindow
         $"Martlet now uses {model} in Ollama on this PC." +
         (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" Download {model} to use it." : ""));
 
-    // ---------- this PC: F5 through this PC's host service, or a Windows voice ----------
-
-    /// <summary>F5 in Martlet's host service on this PC (Docker Desktop). Without the host service, one click sets it up and
-    /// pairs it, so this PC also becomes one of your hosts, then installs F5 and switches over, all in one run window.</summary>
-    private List<UIElement> HostServiceSteps(HostJob job, SetupRoute? route, PairedHost? thisPc, bool primary)
-    {
-        var inUse = route?.RouteType == job.RouteType && thisPc is not null && route.Gateway?.HostId == thisPc.HostId;
-        var steps = new List<UIElement>();
-        if (thisPc is null)
-        {
-            steps.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
-                    : machine.DockerInstalled ? "Docker Desktop is installed. Martlet can start it when needed. "
-                    : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
-                $"Setting this up installs the local voice service and {job.Engine}, then uses it for Martlet's voice.", new Thickness(0, 0, 0, 8)));
-            steps.Add(Row(PageButton($"Set up {SpeakingEngineChoice.Current.Name} with Docker", () => UseF5HereAsync().Forget(), primary, id: "SetupHostThisPc")));
-            return steps;
-        }
-        var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(job.HostRoleKind);
-        var others = job.Role == SetupRole.Tts && !inUse
-            ? HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers, job.HostRoleKind) : [];
-        steps.Add(Note((inUse ? $"In use: {job.Engine} on this PC{(route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
-            : model is not null ? $"{job.Engine} is ready on this PC."
-            : $"{job.Engine} isn't ready on this PC yet. Martlet installs it when you choose Use.") +
-            (others.Count > 0 ? $" Using it stops {HostRoles.Names(others.Select(o => o.Kind))} here to free the graphics card's memory." : ""),
-            new Thickness(0, 0, 0, 8)));
-        steps.Add(Row(
-            inUse ? null : PageButton($"Use {SpeakingEngineChoice.Current.Name} on this PC", () => UseF5HereAsync().Forget(), primary: primary, id: "SetupUseLocal-" + job.Job),
-            PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupCheckLocal-" + job.Job)));
-        return steps;
-    }
-
-    /// <summary>Its voice on this PC: two ways, each set up by one click. F5 in Docker (through this PC's host service, with
-    /// Martlet's starter voices so it speaks right away) or an installed Windows voice (no Docker, no host service).
-    /// The one in use, otherwise the one this PC's hardware suits, comes first.</summary>
-    private Border LocalVoiceCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
-    {
-        var gpu = machine.BestGpu;
-        var engine = SpeakingEngineChoice.Current;
-        var f5Fits = gpu is { IsNvidia: true } && (gpu.MemoryGb ?? 0) >= engine.MinimumGpuMemoryGb;
-        var f5InUse = route?.RouteType == SetupRouteType.GatewayF5 && thisPc is not null && route.Gateway?.HostId == thisPc.HostId;
-        var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
-        var nothingHere = !f5InUse && !windowsInUse;
-
-        var f5About = Note((engine.SupportsTags
-                ? (engine.MinimumReferenceMilliseconds > 1_000
-                      ? $"A natural voice copied from a recording longer than {engine.MinimumReferenceMilliseconds / 1000} seconds; it can "
-                      : "A natural voice copied from a short recording; it can ") +
-                  (engine.Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? "laugh, sigh and change tone. " : "laugh, sigh and cough. ")
-                : "A natural voice copied from a short recording. ") +
-            "Start with Martlet's starter voices or add your own. Your voices are shared with your paired Martlet computers. " +
-            (engine.WeightsLicense.Contains("NC", StringComparison.Ordinal) || engine.WeightsLicense.StartsWith("CPML", StringComparison.Ordinal)
-                ? $"The {engine.Name} model is for personal, non-commercial use only."
-                : $"The {engine.Name} model is {engine.WeightsLicense}-licensed" +
-                  (engine == SpeechEngines.Chatterbox ? "; every reply carries Resemble AI's inaudible watermark." :
-                      $". It needs a {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} second recording.")),
-            new Thickness(0, 2, 0, 6));
-        AutomationProperties.SetAutomationId(f5About, "SetupF5About");
-        var f5 = new List<UIElement>
-        {
-            OptionTitle($"{engine.Name} voice, with Docker", f5InUse ? "in use" : nothingHere && f5Fits ? "recommended for this PC" : null),
-            f5About,
-            Note(gpu is null ? $"No dedicated graphics card was found on this PC; {engine.Name} needs an NVIDIA graphics card with {engine.MinimumGpuMemoryGb} GB or more."
-                : $"This PC has {gpu.Describe()}." + (f5Fits ? "" : $" {engine.Name} needs an NVIDIA graphics card with {engine.MinimumGpuMemoryGb} GB or more, so a Windows voice suits this PC better."),
-                new Thickness(0, 0, 0, 6))
-        };
-        f5.AddRange(HostServiceSteps(job, route, thisPc, primary: nothingHere && f5Fits));
-
-        var windows = new List<UIElement>
-        {
-            OptionTitle("Windows voice, no Docker", windowsInUse ? "in use" : nothingHere && !f5Fits ? "recommended for this PC" : null),
-            Note("A voice already installed in Windows. Nothing to download, no Docker, and nothing leaves this PC. It sounds simpler than F5.",
-                new Thickness(0, 2, 0, 6))
-        };
-        windows.AddRange(WindowsVoiceSteps(route, windowsInUse, primary: nothingHere && !f5Fits));
-
-        var f5First = f5InUse || !windowsInUse && f5Fits;
-        return Card(Heading("Its voice on this PC"),
-            Note("Choose one; it sets itself up.", new Thickness(0, 0, 0, 4)),
-            Option(f5First ? f5 : windows, f5First ? f5InUse : windowsInUse),
-            Option(f5First ? windows : f5, f5First ? windowsInUse : f5InUse));
-    }
-
-    private IEnumerable<UIElement> WindowsVoiceSteps(SetupRoute? route, bool inUse, bool primary)
-    {
-        if (windowsVoices is { Count: 0 })
-        {
-            yield return Note("No voices are installed in Windows on this PC. Add a language with its voice in Windows Settings, then try again.",
-                new Thickness(0, 0, 0, 4));
-            yield return Row(
-                PageButton("Open Windows speech settings", OpenWindowsSpeechSettings, id: "SetupWindowsSpeechSettings"),
-                PageButton("Try again", () => UseWindowsVoiceAsync(null).Forget(), id: "SetupWindowsVoiceRetry"));
-            yield break;
-        }
-        if (!inUse)
-        {
-            yield return Row(PageButton("Use a Windows voice", () => UseWindowsVoiceAsync(null).Forget(), primary, id: "SetupUseWindowsVoice"));
-            yield break;
-        }
-        var voiceId = route!.VoiceId!;
-        if (windowsVoices is null)
-        {
-            yield return Note($"In use: {WindowsVoices.DisplayName(voiceId)}.", new Thickness(0, 0, 0, 4));
-            yield return Row(
-                PageButton("Change Windows voice", () => FindWindowsVoicesAsync().Forget(), id: "SetupChangeWindowsVoice"),
-                PageButton("Hear it", () => PreviewWindowsVoiceAsync(voiceId).Forget(), id: "SetupHearWindowsVoice"));
-            yield break;
-        }
-        var choice = new ComboBox { ItemsSource = windowsVoices, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left,
-            SelectedItem = windowsVoices.FirstOrDefault(v => v.Id == voiceId), Margin = new Thickness(0, 4, 0, 0) };
-        AutomationProperties.SetName(choice, "Windows voice");
-        AutomationProperties.SetAutomationId(choice, "SetupWindowsVoice");
-        choice.SelectionChanged += (_, _) =>
-        {
-            if (choice.SelectedItem is WindowsVoice picked && picked.Id != voiceId) UseWindowsVoiceAsync(picked.Id).Forget();
-        };
-        yield return choice;
-        yield return Row(PageButton("Hear it", () => PreviewWindowsVoiceAsync((choice.SelectedItem as WindowsVoice)?.Id ?? voiceId).Forget(),
-            id: "SetupHearWindowsVoice"));
-    }
+    // ---------- this PC: a Windows voice (the voice engines are in MainWindow.VoiceEngines.cs) ----------
 
     private static TextBlock OptionTitle(string title, string? tag, double size = 16)
     {
@@ -869,7 +748,8 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Makes Martlet speak with a Windows voice: <paramref name="voiceId"/>, or the one in this PC's language.</summary>
+    /// <summary>Makes Martlet speak with a Windows voice: <paramref name="voiceId"/>, or the one in this PC's language. A voice
+    /// engine Speaking leaves on a host stops there afterwards (asked first).</summary>
     private async Task UseWindowsVoiceAsync(string? voiceId)
     {
         var voices = windowsVoices is { Count: > 0 } known && voiceId is not null ? known : await FindWindowsVoicesAsync();
@@ -880,8 +760,16 @@ public partial class MainWindow
             ActionText.Text = "No voices are installed in Windows on this PC. Add a language with its voice in Windows Settings, then try again.";
             return;
         }
+        var leaving = LeavingEngine(null, null);
+        if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Speak with the Windows voice {voice} on this PC?" + LeavingNote(leaving),
+                "Use a Windows voice"))
+            return;
         await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
             $"Martlet now speaks with the Windows voice {voice} on this PC. Audio stays on this PC.");
+        if (closing || leaving is null) return;
+        assigningRole = true;
+        try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
+        finally { assigningRole = false; }
     }
 
     private async Task PreviewWindowsVoiceAsync(string voiceId)
@@ -1127,6 +1015,11 @@ public partial class MainWindow
             return;
         }
         var role = job.Role;
+        // A voice engine Speaking leaves on a host stops there once the cloud voice is saved (asked first, before the key is taken).
+        var leaving = role == SetupRole.Tts ? LeavingEngine(null, null) : null;
+        if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Use {provider.Name} for {job.Job}?" + LeavingNote(leaving),
+                $"Use {provider.Name}"))
+            return;
         var url = provider.Chat ? provider.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl : null;
         SecretLease? key = null;
         try
@@ -1156,6 +1049,12 @@ public partial class MainWindow
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
                 key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.");
+            if (!closing && leaving is not null)
+            {
+                assigningRole = true;
+                try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
+                finally { assigningRole = false; }
+            }
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
         finally { key?.Dispose(); }

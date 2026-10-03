@@ -68,15 +68,15 @@ is the owner's assertion, not legal clearance.
 
 ## Desktop
 
-**Companion > Voice > Voice engine** chooses F5-TTS or XTTS-v2 (automation ID
-`SpeakingEngine`, status `SpeakingEngineStatus`; the choice is kept in
-`speaking-engine.txt`). When a computer already speaks, choosing the other
-engine hands Speaking to that engine on the same computer, installing its role
-there first after confirmation; otherwise the choice is used the next time
-Speaking goes to a computer (Devices, or **Use XTTS-v2 on this PC**). The
-speaking route records the engine's route, and the speech client asks the host
-for that route and model. The Devices map lists both roles ("Speaking
-(F5-TTS)", "Speaking (XTTS-v2)").
+**Companion > Voice > Voice engine** lists every engine as one row with chips
+(XTTS-v2: `VoiceEngineFeatures-xtts` reads NVIDIA GPU 4 GB+, Docker, voice
+cloning, *Streams*, 17 languages) and one button, `VoiceEngineUse-xtts`, that
+sets XTTS-v2 up on the shown computer (this PC, or the one picked under Another
+of your computers) after a confirmation naming its non-commercial licence, then
+switches Speaking to it; the engine it replaces stops. The choice is kept in
+`speaking-engine.txt`. The speaking route records the engine's route, and the
+speech client asks the host for that route and model. The Devices map lists both
+roles ("Speaking (F5-TTS)", "Speaking (XTTS-v2)").
 
 ## Verification
 

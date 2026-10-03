@@ -6,7 +6,8 @@ namespace Martlet.Core.Settings;
 /// transcript and the reply text, and the stream returns contiguous 24 kHz mono 16-bit PCM frames (Martlet.F5's
 /// <c>martlet.f5.worker</c> 1.0 events, which F5 defined first). Saved TTS gateway routes
 /// (<see cref="SetupRouteType.GatewayF5"/>) may name any engine's route. <see cref="Tags"/> is the engine's own tag
-/// catalog in its native syntax (empty when it reads words only): see <see cref="VoiceTags"/>.
+/// catalog in its native syntax (empty when it reads words only): see <see cref="VoiceTags"/>. <see cref="Summary"/> is its
+/// strength in a few words; <see cref="Features"/> lists what it needs and can do, as Companion › Voice shows them.
 /// <see cref="MultipleReferences"/> engines learn a voice from each of several recordings (zero-shot on all of them); the
 /// others hear a voice made from several recordings as one, the recordings joined with a short pause.</summary>
 public sealed record SpeechEngine(
@@ -22,12 +23,40 @@ public sealed record SpeechEngine(
     int MaximumReferenceMilliseconds,
     int MinimumGpuMemoryGb,
     IReadOnlyList<VoiceTag>? TagCatalog = null,
+    string Languages = "English",
+    bool StreamsWhileGenerating = false,
     bool MultipleReferences = false)
 {
     /// <summary>The tags the engine speaks as sounds or tones; replies keep exactly these for it and lose every other tag.</summary>
     public IReadOnlyList<VoiceTag> Tags => TagCatalog ?? [];
 
     public bool SupportsTags => Tags.Count > 0;
+
+    /// <summary>Whether its model allows only non-commercial use (CC-BY-NC, Coqui Public Model License).</summary>
+    public bool NonCommercial => WeightsLicense.Contains("NC", StringComparison.Ordinal) || WeightsLicense.StartsWith("CPML", StringComparison.Ordinal);
+
+    /// <summary>The recording lengths it clones, when narrower than the usual 1-30 seconds ("5 s+ samples", "3-10 s samples").</summary>
+    public string? SampleLimits =>
+        MinimumReferenceMilliseconds > 1_000 && MaximumReferenceMilliseconds < 30_000
+            ? $"{MinimumReferenceMilliseconds / 1000}-{MaximumReferenceMilliseconds / 1000} s samples"
+        : MinimumReferenceMilliseconds > 1_000 ? $"{MinimumReferenceMilliseconds / 1000} s+ samples"
+        : MaximumReferenceMilliseconds < 30_000 ? $"Samples up to {MaximumReferenceMilliseconds / 1000} s"
+        : null;
+
+    /// <summary>What it needs and can do, a few words each: the graphics card and Docker it runs on, voice cloning (and
+    /// its recording lengths), sounds and tones, streaming and its languages.</summary>
+    public IReadOnlyList<string> Features =>
+    [
+        $"NVIDIA GPU, {MinimumGpuMemoryGb} GB+",
+        "Docker",
+        "Voice cloning",
+        .. SampleLimits is { } limits ? [limits] : Array.Empty<string>(),
+        .. Tags.Any(tag => tag.Kind == VoiceTagKind.Sound) ? ["Laughs & sighs"] : Array.Empty<string>(),
+        .. Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? ["Emotions"] : Array.Empty<string>(),
+        .. StreamsWhileGenerating ? ["Streams"] : Array.Empty<string>(),
+        .. MultipleReferences ? ["Learns from several samples"] : Array.Empty<string>(),
+        Languages
+    ];
 }
 
 public enum VoiceTagKind { Sound, Emotion }
@@ -69,18 +98,17 @@ public static class SpeechEngines
 
     public static readonly SpeechEngine Chatterbox = new("chatterbox", "Chatterbox Turbo", "chatterbox",
         "martlet.gateway.chatterbox-synthesis.v1", "/martlet/v1/inference/chatterbox-synthesis", "chatterbox-turbo", "MIT",
-        "Clones the voice and can laugh, sigh, gasp and change tone; every reply carries Resemble AI's inaudible watermark.",
-        5_001, 30_000, 6, ChatterboxTurboTags);
+        "Expressive and quick.", 5_001, 30_000, 6, ChatterboxTurboTags);
 
     public static readonly SpeechEngine F5 = new("f5", "F5-TTS", "f5",
         "martlet.gateway.f5-synthesis.v1", "/martlet/v1/inference/f5-synthesis", "f5tts-v1-base", "CC-BY-NC-4.0",
-        "Close likeness; speaks each sentence once it is fully generated.", 1_000, 30_000, 6);
+        "Closest likeness to the recording.", 1_000, 30_000, 6, Languages: "English, Chinese");
 
-    /// <summary>XTTS-v2: averages the speaker from each of a voice's recordings (<c>get_conditioning_latents</c> on all of
-    /// them).</summary>
+    /// <summary>XTTS-v2 speaks the language chosen when its host role is installed (XTTS_LANGUAGE, English by default), and
+    /// averages the speaker from each of a voice's recordings (<c>get_conditioning_latents</c> on all of them).</summary>
     public static readonly SpeechEngine Xtts = new("xtts", "XTTS-v2", "xtts",
         "martlet.gateway.xtts-synthesis.v1", "/martlet/v1/inference/xtts-synthesis", "xtts-v2", "CPML-1.0",
-        "Starts speaking before a sentence is finished (streams as it generates).", 1_000, 30_000, 4, MultipleReferences: true);
+        "Starts speaking soonest.", 1_000, 30_000, 4, Languages: "17 languages", StreamsWhileGenerating: true, MultipleReferences: true);
 
     /// <summary>GPT-SoVITS v2Pro (release 20250606v2pro): good for anime-style voices; clones a 3-10 second recording whose
     /// transcript is English or Japanese (<see cref="ReferenceLanguage"/>), and speaks each sentence as soon as it is
@@ -88,8 +116,7 @@ public static class SpeechEngines
     /// (aux_ref_audio_paths).</summary>
     public static readonly SpeechEngine GptSovits = new("gpt-sovits", "GPT-SoVITS", "gpt-sovits",
         "martlet.gateway.gpt-sovits-synthesis.v1", "/martlet/v1/inference/gpt-sovits-synthesis", "gpt-sovits-v2pro", "MIT",
-        "Good for anime-style voices; needs a 3-10 second recording and speaks each sentence as soon as it is generated.",
-        3_000, 10_000, 4, MultipleReferences: true);
+        "Best for anime-style voices.", 3_000, 10_000, 4, Languages: "English, Japanese", MultipleReferences: true);
 
     /// <summary>Dia's nonverbal cues, verbatim from the README at the pinned commit (github.com/nari-labs/dia at
     /// 876125e461a03b157ec905b0fe8b57a0f8b9e7a0), limited to the ones that suit a conversation; (singing), (sings), (beep),
@@ -117,7 +144,7 @@ public static class SpeechEngines
     /// <see cref="DiaTags"/>. English only. Shorter references (5-10 s) leave Dia room to speak; longer ones are refused.</summary>
     public static readonly SpeechEngine Dia = new("dia", "Dia", "dia",
         "martlet.gateway.dia-synthesis.v1", "/martlet/v1/inference/dia-synthesis", "dia-1.6b-0626", "Apache-2.0",
-        "Can laugh, sigh, cough and gasp; English only; speaks each sentence once it is generated.", 1_000, 20_000, 8, DiaTags);
+        "Lifelike, conversational delivery.", 1_000, 20_000, 8, DiaTags);
 
     private static readonly object Gate = new();
     private static SpeechEngine[] all = [Chatterbox, F5, Xtts, GptSovits, Dia];
