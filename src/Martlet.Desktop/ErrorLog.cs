@@ -108,8 +108,11 @@ internal static class ErrorLog
         return uncleanPreviousExit;
     }
 
-    /// <summary>Installs the WPF UI-thread handler: log, tell the user once, and keep running when possible.</summary>
-    internal static void AttachDispatcher(Application application, string productName, bool showDialog = true)
+    /// <summary>Installs the WPF UI-thread handler: log, tell the user once, and keep running when possible.
+    /// <paramref name="showReport"/> (title, heading, report) shows the report with a Copy button and returns whether it could;
+    /// otherwise, or when it couldn't, a plain message box tells the user.</summary>
+    internal static void AttachDispatcher(Application application, string productName, bool showDialog = true,
+        Func<string, string, string, bool>? showReport = null)
     {
         application.DispatcherUnhandledException += (_, e) =>
         {
@@ -121,13 +124,19 @@ internal static class ErrorLog
             shownDialog = true;
             try
             {
-                var choice = MessageBox.Show(
-                    $"{productName} recovered from an unexpected error. The last action may not have finished.\n\n" +
-                    $"Error: {e.Exception.Message}\n\n" +
-                    $"Details were saved locally to:\n{CurrentFile ?? "(log unavailable)"}\n\n" +
-                    "Open the logs folder now?",
-                    $"{productName} - Unexpected error", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (choice == MessageBoxResult.Yes) OpenFolder();
+                var log = CurrentFile ?? "(log unavailable)";
+                var report = "The last action may not have finished.\n\n" +
+                    $"Error: {e.Exception.Message}\n\nDetails were saved locally to:\n{log}\n\n{e.Exception}";
+                if (showReport?.Invoke($"{productName} - Unexpected error", $"{productName} recovered from an unexpected error", report) != true)
+                {
+                    var choice = MessageBox.Show(
+                        $"{productName} recovered from an unexpected error. The last action may not have finished.\n\n" +
+                        $"Error: {e.Exception.Message}\n\n" +
+                        $"Details were saved locally to:\n{log}\n\n" +
+                        "Open the logs folder now? (Ctrl+C copies this message.)",
+                        $"{productName} - Unexpected error", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (choice == MessageBoxResult.Yes) OpenFolder();
+                }
             }
             catch (Exception ex) when (!IsFatal(ex)) { Error("Error dialog failed", ex); }
             finally { shownDialog = false; lastDialog = DateTimeOffset.UtcNow; }
@@ -187,7 +196,7 @@ internal static class ErrorLog
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    private static bool IsFatal(Exception exception) =>
+    internal static bool IsFatal(Exception exception) =>
         exception is OutOfMemoryException or StackOverflowException or AccessViolationException or BadImageFormatException;
 
     private static DateTimeOffset MarkerStarted(string marker)

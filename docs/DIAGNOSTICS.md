@@ -10,7 +10,8 @@ again and failed provider requests), the avatar renderer
 older copies, and Martlet hosts' gateways. Filters choose the level
 (everything, warnings and errors, errors only), the part (app, character, host
 runs, host gateway) and the computer, and a search box matches the text.
-Selecting a line shows it in full (stack traces and output lines included).
+Selecting a line shows it in full (stack traces and output lines included), and
+that box's *Copy* button copies the whole line.
 Home's *unexpected errors* and *closed unexpectedly* items open this page.
 *Copy shown* copies the shown lines; *Open logs folder* opens this PC's folder.
 The page refreshes every 15 seconds while open; *Refresh* reads again and sends

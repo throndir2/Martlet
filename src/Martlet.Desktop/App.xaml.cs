@@ -66,7 +66,8 @@ public partial class App : Application
         }
         var crashedLastTime = ErrorLog.Initialize(ErrorLog.DefaultDirectory(store?.DataDirectory), "desktop");
         CrashedLastTime = crashedLastTime && !afterUpdate;
-        ErrorLog.AttachDispatcher(this, "Martlet");
+        ErrorLog.AttachDispatcher(this, "Martlet", showReport: (title, heading, report) =>
+            ProblemDialog.Show(MainWindow, title, heading, report, () => ErrorLog.OpenFolder()));
         // Failed provider requests record their HTTP status and the provider's own short explanation locally.
         Martlet.Providers.ProviderDiagnostics.SetSink(line => ErrorLog.Warn(line));
         if (error is not null) ErrorLog.Warn(error);
@@ -120,8 +121,18 @@ public partial class App : Application
         catch (Exception ex)
         {
             ErrorLog.Error("Martlet failed to start", ex);
-            MessageBox.Show($"Martlet couldn't start.\n\n{ex.Message}\n\nDetails were saved to:\n" +
-                $"{ErrorLog.CurrentFile ?? "(log unavailable)"}", "Martlet couldn't start", MessageBoxButton.OK, MessageBoxImage.Error);
+            var log = ErrorLog.CurrentFile ?? "(log unavailable)";
+            // The dialog may become the main window; closing it must not shut Martlet down before Shutdown(1) below.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            if (palette is null)
+            {
+                try { ApplyTheme(SelectedTheme); }
+                catch (Exception theme) when (!ErrorLog.IsFatal(theme)) { ErrorLog.Warn("Couldn't apply the theme for the startup error", theme); }
+            }
+            if (!ProblemDialog.Show(null, "Martlet couldn't start", "Martlet couldn't start",
+                    $"{ex.Message}\n\nDetails were saved to:\n{log}\n\n{ex}", () => ErrorLog.OpenFolder()))
+                MessageBox.Show($"Martlet couldn't start.\n\n{ex.Message}\n\nDetails were saved to:\n{log}\n\n(Ctrl+C copies this message.)",
+                    "Martlet couldn't start", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
             return;
         }

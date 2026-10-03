@@ -10,6 +10,8 @@
   <ItemGroup>
     <Compile Include="..\Martlet.Desktop\AppearancePalette.cs" Link="AppearancePalette.cs" />
     <Compile Include="..\Martlet.Desktop\ErrorLog.cs" Link="ErrorLog.cs" />
+    <!-- Controls.xaml's read-only text boxes use it for their Copy button. -->
+    <Compile Include="..\Martlet.Desktop\CopyText.cs" Link="CopyText.cs" />
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <PackageReference Include="Microsoft.Web.WebView2" />

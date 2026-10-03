@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Martlet.Core.Access;
+using Martlet.Presentation;
 
 namespace Martlet.Desktop;
 
@@ -145,6 +146,8 @@ internal sealed class ApiKeyCreatedDialog : ThemedWindow
         };
         AutomationProperties.SetAutomationId(value, "ApiKeyValue");
         AutomationProperties.SetName(value, "The new API key");
+        // Its own Copy button sits beside it and says where the key goes.
+        CopyText.SetButton(value, false);
         var copy = new Button { Content = "_Copy", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
         AutomationProperties.SetAutomationId(copy, "ApiKeyCopy");
         var copied = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
