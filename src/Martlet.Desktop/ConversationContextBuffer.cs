@@ -29,18 +29,24 @@ internal sealed class ConversationContextBuffer
     /// so a snapshot's indices can be matched with the buffer later.</summary>
     internal long Start => removed;
 
-    internal void Add(string user, string assistant)
+    /// <summary>Keeps an exchange. <paramref name="sent"/> is the user's message exactly as the Thinking model got it (the words
+    /// and Martlet's notes): the next replies send it again as it was (see <see cref="Snapshot"/>), so each request starts like
+    /// the one before and the provider's prompt cache (or Ollama's, which reuses only a request that starts with a whole earlier
+    /// one) holds it. Null for a paired host, which gets the notes with its instructions.</summary>
+    internal void Add(string user, string assistant, string? sent = null)
     {
-        var bytes = checked(Encoding.UTF8.GetByteCount(user) + Encoding.UTF8.GetByteCount(assistant));
-        entries.Enqueue(new(user, assistant, bytes));
+        var bytes = checked(Encoding.UTF8.GetByteCount(sent ?? user) + Encoding.UTF8.GetByteCount(assistant));
+        entries.Enqueue(new(user, assistant, bytes, sent));
         utf8Bytes += bytes;
         while (entries.Count > MaximumTurns || utf8Bytes > MaximumUtf8Bytes)
             RemoveOldest();
     }
 
-    internal IReadOnlyList<TextHistoryMessage> Snapshot() => entries.SelectMany(entry => new[]
+    /// <summary>The kept exchanges: what the user said, or with <paramref name="sent"/> each message as it went to the Thinking
+    /// model (with its notes) where Martlet kept that. Lore, memory and learning names read the plain ones.</summary>
+    internal IReadOnlyList<TextHistoryMessage> Snapshot(bool sent = false) => entries.SelectMany(entry => new[]
     {
-        new TextHistoryMessage(TextHistoryRole.User, entry.User),
+        new TextHistoryMessage(TextHistoryRole.User, sent ? entry.Sent ?? entry.User : entry.User),
         new TextHistoryMessage(TextHistoryRole.Assistant, entry.Assistant)
     }).ToArray();
 

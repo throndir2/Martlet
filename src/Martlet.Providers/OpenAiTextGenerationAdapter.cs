@@ -405,6 +405,8 @@ internal sealed class TextGenerationOperation(
             writer.WriteEndObject();
             if (input.Personality is not null)
                 writer.WriteString("instructions", input.Personality);
+            // Martlet's notes for this message close it, after the user's words, as in Chat Completions: the instructions and
+            // the conversation before stay the same from request to request, so OpenAI reuses its prompt cache for them.
             writer.WriteStartArray("input");
             foreach (var message in input.History)
                 WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
@@ -415,7 +417,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteStartArray("content");
                 writer.WriteStartObject();
                 writer.WriteString("type", "input_text");
-                writer.WriteString("text", input.UserText);
+                writer.WriteString("text", input.SentUserText);
                 writer.WriteEndObject();
                 writer.WriteStartObject();
                 writer.WriteString("type", "input_image");
@@ -425,10 +427,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }
-            else WriteMessage(writer, "user", input.UserText);
-            // Martlet's notes for this message follow it, so the instructions and the conversation before stay the same
-            // from request to request (OpenAI reuses its prompt cache for them).
-            if (input.Notes is not null) WriteMessage(writer, "developer", input.Notes);
+            else WriteMessage(writer, "user", input.SentUserText);
             foreach (var round in input.ToolRounds)
             {
                 if (round.Text.Trim().Length > 0) WriteMessage(writer, "assistant", round.Text);

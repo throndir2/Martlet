@@ -868,8 +868,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var configured = operation.Authorization.Configuration;
                 var persona = configured.Persona;
                 ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
-                // A Thinking model on this PC gets earlier messages exactly as it got them, so its cache still holds them.
-                var history = context.Snapshot(sent: configured.LocalThinking);
+                // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
+                var history = context.Snapshot(sent: true);
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera, configured.Prompts),
                     LiveConversationConfiguration.SilentReply);
@@ -1037,9 +1037,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 style = persona is null ? null :
                     ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 history = context.Snapshot();
-                // A Thinking model on this PC gets earlier messages exactly as it got them, so its cache still holds them; lore,
-                // memory and learning names read what was said (history).
-                sentHistory = context.Snapshot(sent: operation.Authorization.Configuration.LocalThinking);
+                // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before;
+                // lore, memory and learning names read what was said (history).
+                sentHistory = context.Snapshot(sent: true);
                 historyStart = context.Start;
             }
 
@@ -1103,12 +1103,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
-                        extraInstructions: Join(home?.Instructions,
-                            VoicePromptContext.Instructions(operation.Heard, prompts),
+                        extraInstructions: Join(home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
+                            VoicePromptContext.Preamble(operation.Heard, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
+                        voices: VoicePromptContext.Block(operation.Heard),
+                        messageNotes: home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions,
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true);
                 ConversationRequest request;
@@ -1172,7 +1174,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         var said = operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
                         // A pass stays in the conversation too, so later replies know what was said around Martlet.
                         context.Add(said, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text,
-                            configured.LocalThinking ? operation.Sent?.SentUserText : null);
+                            configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
                         var spokenOwn = operation.PcAudio ? operation.UserWords : input.UserText;
                         var remembered = spokenOwn is null ? null

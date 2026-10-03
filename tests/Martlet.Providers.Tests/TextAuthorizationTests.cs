@@ -68,7 +68,7 @@ public sealed class TextAuthorizationTests
     }
 
     [Fact]
-    public async Task Responses_notes_are_sent_as_current_message_developer_content()
+    public async Task Responses_notes_are_appended_to_current_user_message()
     {
         var handler = new TextRecordingHandler();
         var context = ProviderFixtures.Context();
@@ -83,9 +83,9 @@ public sealed class TextAuthorizationTests
         using var json = JsonDocument.Parse(handler.Body);
         Assert.Equal("Stable instructions", json.RootElement.GetProperty("instructions").GetString());
         var items = json.RootElement.GetProperty("input").EnumerateArray().ToArray();
-        Assert.Equal(new[] { "user", "developer" }, items.Select(item => item.GetProperty("role").GetString()));
-        Assert.Equal("Current message", items[0].GetProperty("content").GetString());
-        Assert.Equal("Per-turn notes", items[1].GetProperty("content").GetString());
+        var item = Assert.Single(items);
+        Assert.Equal("user", item.GetProperty("role").GetString());
+        Assert.Equal("Current message\n\nPer-turn notes", item.GetProperty("content").GetString());
     }
 
     [Theory]

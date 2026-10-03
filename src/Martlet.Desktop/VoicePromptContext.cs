@@ -20,9 +20,19 @@ internal static class VoicePromptContext
 
     internal static string? Instructions(HeardVoices? heard, PromptSettings? prompts = null)
     {
+        if (Block(heard) is not { } block) return null;
+        return Preamble(heard, prompts) is { } preamble ? preamble + "\n" + block : block;
+    }
+
+    /// <summary>What the voices block means (Companion › Prompts › Who is talking), for the instructions; null without voices.</summary>
+    internal static string? Preamble(HeardVoices? heard, PromptSettings? prompts = null) =>
+        heard is null || heard.Voices.Count == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.Voices, ("label", Label));
+
+    /// <summary>Who is talking in this message, between <see cref="Label"/> labels; null without voices.</summary>
+    internal static string? Block(HeardVoices? heard)
+    {
         if (heard is null || heard.Voices.Count == 0) return null;
         var text = new StringBuilder();
-        if (PromptSettings.Fill(prompts, PromptCatalog.Voices, ("label", Label)) is { } preamble) text.Append(preamble).Append('\n');
         text.Append('[').Append(Label).Append("]\n");
         text.Append("Speaking now: ").Append(Describe(heard.Speaker!)).Append('\n');
         foreach (var other in heard.Others) text.Append("Also heard in this message: ").Append(Describe(other)).Append('\n');

@@ -178,7 +178,8 @@ public sealed class BoundedTextInput
     public static int TextTokens(string? text) =>
         string.IsNullOrEmpty(text) ? 0 : TextReservation(Encoding.UTF8.GetByteCount(text), 0);
 
-    // The current message, plus the instructions and the notes when present (the notes may travel as their own message).
+    // The current message, plus the instructions and the notes when present (the notes close the message; their separators get a
+    // message's room).
     private static int PromptMessages(string? personality, string? notes) => 1 + (personality is null ? 0 : 1) + (notes is null ? 0 : 1);
 
     /// <summary>Where the earlier messages a request carries start, kind to prompt caches: the whole history while it fits
