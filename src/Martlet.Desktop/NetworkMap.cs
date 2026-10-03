@@ -21,7 +21,8 @@ internal enum LipSyncHandler { ThisPc, Host, Loudness }
 /// <summary>Something a device does. <paramref name="Component"/> (<see cref="DeviceComponent"/>) groups it with the
 /// commands that configure it in the device's details.</summary>
 internal sealed record HostedRole(string Chip, string Name, string Detail, string? Component = null);
-internal sealed record NodeFact(string Label, string Value);
+/// <summary>A line in a device's details; <paramref name="AutomationId"/> exposes its value to UI Automation (MCP).</summary>
+internal sealed record NodeFact(string Label, string Value, string? AutomationId = null);
 /// <summary>A node command; <paramref name="Argument"/> names the paired host or role it applies to and
 /// <paramref name="Component"/> the hosted role it configures (null: it applies to the whole device).</summary>
 internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false, string? Argument = null, string? Component = null);
@@ -369,7 +370,8 @@ internal static class NetworkMap
             target.Facts.Add(new(local ? "Host service" : "Martlet", !known ? "Version not reported yet. Use Check connection."
                 : reported is null ? $"Needs update. This PC runs {app}."
                 : outdated ? $"Needs update from {reported} to {app}."
-                : reported == app ? $"{reported}, up to date" : $"{reported}. Update this PC to {app}."));
+                : reported == app ? $"{reported}, up to date" : $"{reported}, newer than this PC ({app}). Update this PC to {reported}.",
+                "SelectedDeviceRelease"));
             var updateShown = outdated && !local && target.Worsen(NodeHealth.Attention, "Update available");
             if (inputs.HostUpdates?.GetValueOrDefault(id) is { } update) target.Notes.Insert(0, update);
             var offersFace = check?.Offers?.ContainsKey(HostRoles.Audio2Face) == true;

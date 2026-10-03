@@ -12,7 +12,8 @@ namespace Martlet.NodeLinkCheck;
 /// Rehearses the Martlet network end to end on this PC with the production code: three real gateways (Kestrel, pinned TLS,
 /// volatile credentials) on 127.0.0.1 and two simulated desktops that drive the desktop's own client and sync engine. It
 /// founds a network, binds hosts, joins a second desktop with a check number, pairs every member with every host by
-/// itself, refuses forged keys and rosters, and removes a desktop and a host (revoking their access). Nothing leaves
+/// itself, checks that every host announces the Martlet release it runs, refuses forged keys and rosters, and removes a
+/// desktop and a host (revoking their access). Nothing leaves
 /// loopback, nothing is written to disk or the credential vault, and every key is thrown away at the end.
 /// </summary>
 internal static class NetworkRehearsal
@@ -87,6 +88,26 @@ internal static class NetworkRehearsal
             var works = await b.CanUseAsync(h2.HostId, token);
             return (b.State.Roster?.Trusts(keyB.DeviceId, keyB.PublicKey) == true && b.Has(h2.HostId) && works,
                 $"B member: {b.State.Roster is not null}; paired: {string.Join(", ", b.HostIds)}; signed request to lab-host-2: {(works ? "accepted" : "refused")}. {string.Join(" ", result.Events)}");
+        });
+        await Run("Every host announces the Martlet release it runs, so a computer that knew an older one takes the update and stops asking for it", async () =>
+        {
+            var release = typeof(GatewayServer).Assembly.GetName().Version!.ToString(3);
+            var member = await a.SyncAsync(token);
+            var other = await b.SyncAsync(token);
+            var watched = await b.WatchAsync(token);
+            var announced = new[] { ("A", member), ("B", other), ("B watching", watched) }
+                .SelectMany(r => r.Item2.Views.Values.Select(v => (Who: r.Item1, v.HostId, v.MartletVersion))).ToArray();
+            var now = member.Views.GetValueOrDefault(h1.HostId)?.MartletVersion ?? "none";
+            // As a desktop that last saw lab-host-1 on 0.0.1 (simulated) takes the release it announces, compared with its own.
+            var updated = HostRelease.Compare(h1.HostId, "0.0.1", now, release);
+            var steady = HostRelease.Compare(h1.HostId, now, now, release);
+            var behind = HostRelease.Compare(h1.HostId, "0.0.1", "0.0.2", release);
+            return (announced.Length >= 4 && announced.All(v => v.MartletVersion == release) &&
+                    updated is { Changed: true, Current: true, Updated: true } && steady is { Changed: false, Current: true, Updated: false } &&
+                    behind is { Changed: true, Current: false, Updated: false },
+                "announced: " + string.Join("; ", announced.Select(v => $"{v.HostId} to {v.Who}: {v.MartletVersion ?? "nothing"}")) +
+                $". Gateway release {release}. Last saw 0.0.1, now {now}: updated {updated.Updated}, current {updated.Current}; " +
+                $"seen again: changed {steady.Changed}; still older (0.0.2): current {behind.Current}, updated {behind.Updated}");
         });
         await Run("A host PC outside the network (C) only watches: it sees who uses lab-host-1 but starts, joins and asks nothing", async () =>
         {

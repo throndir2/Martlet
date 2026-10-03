@@ -301,6 +301,11 @@ Nothing is interrupted and nothing is lost:
   same. An update that computer asked for joins an update check or download
   already under way instead of failing. While Martlet exits to install, it
   takes no new command; commands sent meanwhile wait in the mailbox.
+- **Every computer hears of an update.** A host announces the Martlet release
+  it runs on every network sync ([NETWORK](NETWORK.md#when-a-computer-is-updated)),
+  so once Martlet on a host PC has updated itself and its host service (or any
+  computer updated a host), all your other computers show the new release
+  within 20 seconds and stop offering or retrying an update it no longer needs.
 
 Checked locally: `node_link_check` (MCP) runs the protocol end to end on
 loopback with the real gateway, desktop client and agent loop, including a
