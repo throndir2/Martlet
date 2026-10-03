@@ -951,8 +951,25 @@ fits a 1,000-exchange synthetic conversation the way a reply does into a cloud
 model's default 100,000 tokens, 1,000,000 tokens on gpt-4.1, a paired host
 (8,192 tokens, 16 KiB, 16 messages) and Ollama on this PC at 32,768:
 `exchangesSent`, `exchangesLeftOut`, `estimatedTokens` and `bytes`, `ok` when
-the newest exchanges fit and one more wouldn't. Each part has an `ok`. It
-reads no credentials and nothing leaves loopback. On Companion › Replies,
+the newest exchanges fit and one more wouldn't. Its `cache` part rehearses the
+[request layout that lets prompt caches work](CONVERSATION.md#prompt-caching-and-the-request-layout)
+with the production Chat Completions adapter against a fixture endpoint on
+127.0.0.1 (canned reply and usage, NOT AI): two replies in a row whose notes
+differ send the instructions and earlier messages again unchanged
+(`messagesSentAgainUnchanged` of `messagesBeforeTheMessage`, `stableStart`),
+the notes close the user's message (`notesAt`, `notesInInstructions` false),
+the usage chunk's cached tokens are read (`usage`), only Ollama on this PC is
+asked for usage (`asksUsageFromOllamaOnThisPc`, `asksUsageFromOtherServers`),
+and `trimming` replays 60 replies of a synthetic conversation into Ollama's
+smallest context: how often the request's start moved letting go of the
+oldest quarter at once (`startMovedLettingGoAQuarter`, 7) against one exchange
+at a time (`startMovedOneAtATime`, 37). Each part has an `ok`. It
+reads no credentials and nothing leaves loopback. A real model's cache use shows in
+the desktop log's *Thinking input (Reply): first words after … ms; N input
+tokens, M of them (P %) from the model's prompt cache.* lines
+(`{"name":"logs_tail","arguments":{"contains":"Thinking input"}}`, also for
+glances and *Remembering*/*Learning names*) and at the end of the talk
+window's `LiveContext`. On Companion › Replies,
 `RepliesContextStatus` reads the size in use and where it comes from and what
 Martlet knows of the model's own limit; `RepliesCheckContext` (*Check model
 limit*) asks the Thinking model's server (loading the model in Ollama on this
@@ -1740,7 +1757,9 @@ picture (*Your message at 10:14 PM went with it.*); it never contains window
 titles; to rehearse a flash, show any test window minimized and call
 `FlashWindowEx` on it), `LiveContext` (*Keeps the last N
 exchanges in mind, about T tokens of its C-token context.*, or *Replies send the
-newest that fit its C-token context.* once they outgrow it: how many exchanges
+newest that fit its C-token context.* once they outgrow it, followed by *Last
+reply: P% of its N input tokens came from the model's cache.* once the Thinking
+model reported its cache use: how many exchanges
 of the open talk window the next reply can see, their estimated tokens and the
 context size from Companion › Replies; absent when none, and unchanged when a
 settings change is picked up; beside it,

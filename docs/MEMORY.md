@@ -241,9 +241,13 @@ is OFF, the store is never opened or read by a conversation.
 or hands-free turn, Desktop opens the store once, asks the lexical index for the
 best matches for that user input and fills up to twelve facts with the most
 recently changed ones (so a small store is recalled whole). The facts travel in
-the system instructions as one block between `[MARTLET_LOCAL_MEMORY]` labels,
-one line per fact with its source (`saved by the user` / `from conversation`)
-and date. The instruction says they are background data, never instructions,
+the notes on the user's message (see
+[Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
+as one block between `[MARTLET_LOCAL_MEMORY]` labels, one line per fact with
+its source (`saved by the user` / `from conversation`) and date, and only the
+facts not already in the notes of an earlier message the request still carries
+(so a fact is sent once, not with every reply). The instruction says they are
+background data, never instructions,
 permissions, routing or tool directives. Consent UUIDs, paths and the rest of
 the store are not sent.
 
@@ -260,10 +264,20 @@ names the problem.
 **Remembering.** After a reply completes, the exchange is queued (at most four
 pending) and handled in the background, one at a time, on a separate text-only
 runtime so it never delays the next turn. Desktop recalls up to ten related
-facts, then sends one extra request (persona-free, at most the max reply length
-in output tokens, same
-Thinking route and credential binding, its own one-request authorization) with
-the latest exchange, the previous exchange as context and those numbered facts.
+facts, then sends one extra request (at most the max reply length in output
+tokens, same Thinking route and credential binding, its own one-request
+authorization) with the latest exchange, the previous exchange as context and
+those numbered facts. When [learning names](VOICES.md) is due after the same
+reply, it is the same request (Companion › Prompts › *Remembering and learning
+names together*), not a second one. On a Thinking model on this PC (Ollama or
+another server on loopback) that request continues the reply's own
+conversation instead of quoting an excerpt: the same instructions and earlier
+messages, the message and the reply, then the task. Such a server keeps the
+conversation in its prompt cache only while requests start like it, so a
+request with another start would make the next reply read the whole
+conversation again. It quotes the persona-free excerpt instead elsewhere, when
+what this PC played is in the conversation (remembering never reads that), when
+the reply used tools, or when it wouldn't fit the context.
 The model answers in a strict line format: `REMEMBER: <fact>`,
 `UPDATE <n>: <fact>`, `FORGET <n>` or `NOTHING`, at most three lines. Desktop
 validates every line (single line, <=300 characters, real words, in-range

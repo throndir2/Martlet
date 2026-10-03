@@ -41,6 +41,9 @@ public sealed class ConversationTurn
     private MonotonicWindow? textWindow, speechWindow, playWindow;
     private readonly long startedAt;
     private TimeSpan? firstTextAfter, firstAudioAfter;
+    // What the providers reported this reply's requests read (every tool round, retry and fallback), and how much of it came
+    // from their prompt cache; null until a request reported it.
+    private long? inputTokens, cachedInputTokens;
     private TimeSpan? textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
         firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter;
     private bool synthesizing;
@@ -488,7 +491,15 @@ public sealed class ConversationTurn
         }
         Check(window);
         var end = validator.EndOfInput().Snapshot;
-        lock (Sync) textWindow = null;
+        lock (Sync)
+        {
+            textWindow = null;
+            if (stream.Result?.Usage is { InputTokens: { } read } usage)
+            {
+                inputTokens = (inputTokens ?? 0) + read;
+                if (usage.CachedInputTokens is { } cached) cachedInputTokens = (cachedInputTokens ?? 0) + Math.Min(cached, read);
+            }
+        }
         return end.Result?.Outcome switch
         {
             TurnOutcome.Completed => new(RoundEnd.Completed, said.ToString(), stream.Result?.ToolCalls ?? []),
@@ -1049,6 +1060,6 @@ public sealed class ConversationTurn
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
             speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
-                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter));
+                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter), inputTokens, cachedInputTokens);
     }
 }

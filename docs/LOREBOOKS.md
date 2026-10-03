@@ -25,10 +25,13 @@ editor.
    **order**) until the **budget** is used (4,096 UTF-8 bytes by default,
    256-12,288). With **recursion** on, triggered entries' text is searched again
    (up to five rounds) so one entry can bring in another.
-6. The kept entries are written into the LLM instructions as labeled blocks
-   **before** or **after** the persona; within each block lower orders come
-   first, so higher orders sit closer to the reply. `{{char}}` becomes the
-   persona's name and `{{user}}` "the user".
+6. The kept entries are written into the notes on the message (see
+   [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
+   as labeled blocks, the **before**-persona block first and then the
+   **after**-persona block; within each block lower orders come first, so
+   higher orders sit closer to the reply. An entry already in the notes of an
+   earlier message the request still carries isn't sent again. `{{char}}`
+   becomes the persona's name and `{{user}}` "the user".
 7. Everything must fit the same request reservation as the persona, recalled
    memory facts and recent exchanges. Memory facts go first, then the oldest
    exchanges; lore entries are dropped (lowest priority first) only when nothing

@@ -1,5 +1,6 @@
 using Martlet.Core.Speakers;
 using Martlet.Desktop;
+using Martlet.Memory;
 using Xunit;
 
 namespace Martlet.Desktop.Tests;
@@ -62,5 +63,37 @@ public sealed class VoiceNamingTests
         Assert.Equal("[Sam] ", VoicePromptContext.Prefix(new([new(named, VoiceMatchKind.Known, 0.9, 2, false)], false)));
         Assert.Null(VoicePromptContext.Instructions(HeardVoices.None));
         Assert.Equal("", VoicePromptContext.Prefix(null));
+    }
+
+    [Fact]
+    public void AfterReplyAsksOnceWhenMemoryAndVoiceNamesAreBothDue()
+    {
+        var (heard, _, unnamed) = Heard();
+        var provenance = MemoryProvenance.Conversation(Guid.NewGuid(), Start);
+        var fact = new MemoryFact
+        {
+            Id = Guid.NewGuid(),
+            Revision = 1,
+            Content = "The user likes tea.",
+            CreatedAtUtc = Start,
+            UpdatedAtUtc = Start,
+            CreatedFrom = provenance,
+            LastModifiedBy = provenance,
+            Retention = MemoryRetention.UntilDeleted()
+        };
+
+        var prompt = AfterReply.Prompt([fact], heard, "Earlier question.", "Earlier answer.",
+            "Hi, I'm Alex.", "Nice to meet you, Alex!", null);
+
+        Assert.False(prompt.Continued);
+        Assert.Equal(1, prompt.ShownFacts);
+        Assert.Equal(2, prompt.Voices.Count);
+        Assert.Contains("REMEMBER:", prompt.Input.Personality);
+        Assert.Contains("UPDATE <number>:", prompt.Input.Personality);
+        Assert.Contains("FORGET <number>", prompt.Input.Personality);
+        Assert.Contains("NAME V<number>:", prompt.Input.Personality);
+        Assert.Contains("1. The user likes tea.", prompt.Input.UserText);
+        Assert.Contains(unnamed.Tag + ": no name yet (the one speaking to Martlet)", prompt.Input.UserText);
+        Assert.Contains($"User ({unnamed.Tag}): Hi, I'm Alex.", prompt.Input.UserText);
     }
 }

@@ -1474,7 +1474,7 @@ public partial class LiveConversationWindow : ThemedWindow
         PcAudioText.Text = pcLine;
         PcAudioText.Visibility = available && preferences.HandsFree && pcLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
-        ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context);
+        ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context, controller.LastCache);
         ContextRow.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Not mid-reply or mid-glance: a finishing turn would put its exchange straight back.
         RefreshContextButton.IsEnabled = owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false };
@@ -1512,14 +1512,18 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     /// <summary>The context row: how many exchanges Martlet keeps in mind, about how many tokens they are and the context size
-    /// replies fit them into (the newest that fit are sent).</summary>
-    internal static string ContextLine(int turns, int tokens, ContextBudget? budget)
+    /// replies fit them into (the newest that fit are sent), and how much of the last reply's input the model read from its
+    /// prompt cache, when it said.</summary>
+    internal static string ContextLine(int turns, int tokens, ContextBudget? budget, (long Input, long Cached)? cache = null)
     {
         var kept = turns == 1 ? "Keeps the last exchange in mind" : $"Keeps the last {turns} exchanges in mind";
-        if (budget is null) return kept + ".";
-        return tokens <= budget.InputTokens
+        var cached = cache is { Input: > 0 } last
+            ? $" Last reply: {Math.Min(last.Cached, last.Input) * 100 / last.Input}% of its {last.Input:N0} input tokens came from the model's cache."
+            : "";
+        if (budget is null) return kept + "." + cached;
+        return (tokens <= budget.InputTokens
             ? $"{kept}, about {tokens:N0} tokens of its {budget.Tokens:N0}-token context."
-            : $"{kept}. Replies send the newest that fit its {budget.Tokens:N0}-token context.";
+            : $"{kept}. Replies send the newest that fit its {budget.Tokens:N0}-token context.") + cached;
     }
 
     private string Activity()

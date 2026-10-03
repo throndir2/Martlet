@@ -63,17 +63,20 @@ on), while speech-to-text runs:
    on all its speech, but only a confident match counts and nothing is learned
    or added. When the list is full (64 voices), the longest-unheard voice with
    no name that isn't yours makes room.
-3. **Telling the Thinking model.** The reply's instructions get one labeled
-   block (`MARTLET_VOICES`, background data, never instructions): who is
-   speaking now (name or voice tag, other names, whether it is you or heard for
-   the first time) and anyone else heard. Earlier messages in the short
-   conversation history start with `[name]`, and so does what Memory reads, so
-   replies and remembered facts know who said what. The talk window labels the
-   message with the speaker's name.
+3. **Telling the Thinking model.** The reply's instructions say what the
+   voices block means (Companion › Prompts › *Who is talking*), and the notes
+   on the message carry the labeled block (`MARTLET_VOICES`, background data,
+   never instructions): who is speaking now (name or voice tag, other names,
+   whether it is you or heard for the first time) and anyone else heard. The
+   block is noted only when who is talking changed since the last one in the
+   conversation sent, and holds until the next. What Memory reads starts with
+   `[name]`, so remembered facts know who said what. The talk window labels
+   the message with the speaker's name.
 4. **Learning names.** After a completed reply, if a voice in it has no name
    yet, or the words suggest a name came up ("my name is", "call me",
    "thanks, Sam"...), the exchange is sent once more to the same Thinking model
-   in one extra text-only request (like remembering). It answers
+   in one extra text-only request, the same one as [remembering](MEMORY.md)
+   when both are due. It answers
    `NAME V3: Sam` lines; only listed voices, real names (at most three words,
    not Martlet's or the persona's name, not "Voice N") are accepted. Each name
    is added to that voice with a use count, so a voice collects every name it
