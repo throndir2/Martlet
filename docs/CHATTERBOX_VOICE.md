@@ -26,7 +26,7 @@ clearance.
 
 ## How it runs
 
-- **Host role `chatterbox`** (`deploy/host/roles/chatterbox`, port 50082,
+- **Host role `chatterbox`** (`deploy/host/roles/chatterbox`, port 50083,
   NVIDIA GPU with 6 GB+). The image is built on the host from
   `workers/chatterbox/host/Dockerfile`: `python:3.12.10`, hash-locked PyTorch
   2.6.0 CUDA 12.4 (the same wheels as F5), `transformers` 5.2.0 and the rest of
@@ -42,7 +42,7 @@ clearance.
   does not wait. Loading is local only (`HF_HUB_OFFLINE`), never
   `from_pretrained`.
 - **Service** `workers/chatterbox/martlet_chatterbox_host.py` listens on
-  127.0.0.1:50082 only and speaks the f5 role's protocol (`/status`, `/warmup`,
+  127.0.0.1:50083 only and speaks the f5 role's protocol (`/status`, `/warmup`,
   `/synthesize`, `/cancel`) and `martlet.f5.worker` 1.0 events. Per text chunk it
   calls `ChatterboxTurboTTS.generate(text, audio_prompt_path=<the reference>)`
   and sends contiguous 24 kHz mono 16-bit frames (`model.sr` is 24 kHz;

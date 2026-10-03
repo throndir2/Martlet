@@ -25,10 +25,6 @@ public sealed record SpeechEngine(
     public IReadOnlyList<VoiceTag> Tags => TagCatalog ?? [];
 
     public bool SupportsTags => Tags.Count > 0;
-
-    /// <summary>Whether a reference recording of this length is one the engine accepts.</summary>
-    public bool Accepts(int durationMilliseconds) =>
-        durationMilliseconds >= MinimumReferenceMilliseconds && durationMilliseconds <= MaximumReferenceMilliseconds;
 }
 
 public enum VoiceTagKind { Sound, Emotion }
@@ -81,8 +77,16 @@ public static class SpeechEngines
         "martlet.gateway.xtts-synthesis.v1", "/martlet/v1/inference/xtts-synthesis", "xtts-v2", "CPML-1.0",
         "Starts speaking before a sentence is finished (streams as it generates).", 1_000, 30_000, 4);
 
+    /// <summary>GPT-SoVITS v2Pro (release 20250606v2pro): good for anime-style voices; clones a 3-10 second recording whose
+    /// transcript is English or Japanese (<see cref="ReferenceLanguage"/>), and speaks each sentence as soon as it is
+    /// generated.</summary>
+    public static readonly SpeechEngine GptSovits = new("gpt-sovits", "GPT-SoVITS", "gpt-sovits",
+        "martlet.gateway.gpt-sovits-synthesis.v1", "/martlet/v1/inference/gpt-sovits-synthesis", "gpt-sovits-v2pro", "MIT",
+        "Good for anime-style voices; needs a 3-10 second recording and speaks each sentence as soon as it is generated.",
+        3_000, 10_000, 4);
+
     private static readonly object Gate = new();
-    private static SpeechEngine[] all = [Chatterbox, F5, Xtts];
+    private static SpeechEngine[] all = [Chatterbox, F5, Xtts, GptSovits];
 
     /// <summary>Every engine; the first is the default cloning engine (Chatterbox Turbo).</summary>
     public static IReadOnlyList<SpeechEngine> All => Volatile.Read(ref all);
@@ -107,6 +111,22 @@ public static class SpeechEngines
             Volatile.Write(ref all, index < 0 ? [.. all, engine] : [.. all[..index], engine, .. all[(index + 1)..]]);
         }
     }
+
+    /// <summary>Reference recording languages engines that need one (GPT-SoVITS) accept.</summary>
+    public static readonly IReadOnlyList<string> ReferenceLanguages = ["en", "ja"];
+
+    /// <summary>The language of a reference recording, read from its exact transcript: "ja" when it has kana or kanji,
+    /// otherwise "en". GPT-SoVITS needs it with every request.</summary>
+    public static string ReferenceLanguage(string transcript) =>
+        transcript.Any(c => c is >= '\u3041' and <= '\u30ff' or >= '\u3400' and <= '\u4dbf' or >= '\u4e00' and <= '\u9fff' or
+            >= '\uff66' and <= '\uff9d') ? "ja" : "en";
+
+    /// <summary>Why <paramref name="engine"/> cannot clone a recording of <paramref name="durationMilliseconds"/>, or null.</summary>
+    public static string? ReferenceProblem(SpeechEngine engine, int durationMilliseconds) =>
+        durationMilliseconds < engine.MinimumReferenceMilliseconds || durationMilliseconds > engine.MaximumReferenceMilliseconds
+            ? $"{engine.Name} needs a {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} " +
+              $"second recording; this one is {durationMilliseconds / 1000d:0.#} seconds."
+            : null;
 
     public static SpeechEngine? ForRoute(string? routeId) => All.FirstOrDefault(engine => engine.RouteId == routeId);
 

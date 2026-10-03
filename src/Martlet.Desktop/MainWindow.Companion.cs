@@ -385,7 +385,7 @@ public partial class MainWindow
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
         // Voices F5 copies from your recordings. They show wherever F5 can speak: this PC or another of your computers.
-        // A cloud provider has its own voices. Every self-hosted engine (F5-TTS, XTTS-v2) uses the same voice list.
+        // A cloud provider has its own voices. Every self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS) uses the same voice list.
         if (section == CompanionTab.Voice && place != JobPlace.Cloud)
         {
             page.Children.Add(SpeakingEngineCard(route));
@@ -754,7 +754,8 @@ public partial class MainWindow
             (engine.WeightsLicense.Contains("NC", StringComparison.Ordinal) || engine.WeightsLicense.StartsWith("CPML", StringComparison.Ordinal)
                 ? $"The {engine.Name} model is for personal, non-commercial use only."
                 : $"The {engine.Name} model is {engine.WeightsLicense}-licensed" +
-                  (engine == SpeechEngines.Chatterbox ? "; every reply carries Resemble AI's inaudible watermark." : ".")),
+                  (engine == SpeechEngines.Chatterbox ? "; every reply carries Resemble AI's inaudible watermark." :
+                      $". It needs a {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} second recording.")),
             new Thickness(0, 2, 0, 6));
         AutomationProperties.SetAutomationId(f5About, "SetupF5About");
         var f5 = new List<UIElement>

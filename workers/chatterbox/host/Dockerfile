@@ -2,7 +2,7 @@
 FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
 
 ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_ROOT_USER_ACTION=ignore
-ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 NUMBA_CACHE_DIR=/tmp/numba MPLCONFIGDIR=/tmp/matplotlib MARTLET_CHATTERBOX_PORT=50082
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 NUMBA_CACHE_DIR=/tmp/numba MPLCONFIGDIR=/tmp/matplotlib MARTLET_CHATTERBOX_PORT=50083
 
 COPY host/requirements.lock /tmp/requirements.lock
 RUN grep -A200 '^setuptools==' /tmp/requirements.lock | sed '/^    # via/q' > /tmp/setuptools.lock \
@@ -23,6 +23,6 @@ RUN printf '#!/bin/sh\nexec /usr/local/bin/python3.12 /opt/martlet-chatterbox/ho
 
 USER 10051:10051
 WORKDIR /tmp
-EXPOSE 50082
+EXPOSE 50083
 ENTRYPOINT ["/usr/local/bin/python3.12", "/opt/martlet-chatterbox/host/martlet_chatterbox_host.py"]
 CMD ["serve"]

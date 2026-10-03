@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Gateway.F5\Martlet.Gateway.F5.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+Third-party components of the Martlet GPT-SoVITS host role image (workers/gpt-sovits/host/Dockerfile).
+Nothing below is redistributed in Martlet's repository or installers; the image build and the role's provisioning step
+download each item from its source on the host that runs the role, checked against its pinned SHA-256.
+
+GPT-SoVITS 20250606v2pro, https://github.com/RVC-Boss/GPT-SoVITS (commit d7c2210da8c013e81a94bfc7b811a477c99fd506)
+  MIT License, Copyright (c) 2024 RVC-Boss
+
+Pretrained weights, https://huggingface.co/lj1995/GPT-SoVITS (revision 336b2ec4e8d4ac74740798dd40af44e74659ecaf),
+model card licence: MIT
+  s1v3.ckpt (GPT), v2Pro/s2Gv2Pro.pth (SoVITS v2Pro)
+  sv/pretrained_eres2netv2w24s4ep4.ckpt: ERes2NetV2 speaker verification, 3D-Speaker (Alibaba), Apache-2.0
+  chinese-hubert-base: TencentGameMate/chinese-hubert-base, MIT
+  chinese-roberta-wwm-ext-large: hfl/chinese-roberta-wwm-ext-large, Apache-2.0
+
+fastText language identification model lid.176.bin, https://fasttext.cc/docs/en/language-identification.html
+  Creative Commons Attribution-Share-Alike 3.0, Facebook
+
+NLTK data (averaged_perceptron_tagger, averaged_perceptron_tagger_eng, cmudict),
+https://github.com/nltk/nltk_data (commit 550b6625bcef1f2abff2ff770a5a0d272c9c6b2a); see each package's licence
+
+OpenJTalk dictionary open_jtalk_dic_utf_8-1.11 (r9y9/open_jtalk v1.11.1), Modified BSD License
+
+Python packages: workers/gpt-sovits/host/requirements.lock (each package under its own licence).

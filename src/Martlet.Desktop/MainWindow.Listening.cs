@@ -59,6 +59,7 @@ public partial class MainWindow
 
 
             if (offers.ContainsKey(HostRoles.Xtts)) loads.Add(new("the XTTS voice", 3));
+            if (offers.ContainsKey(HostRoles.GptSovits)) loads.Add(new("the GPT-SoVITS voice", 3));
             if (offers.ContainsKey(HostRoles.Audio2Face)) loads.Add(new("Audio2Face lip-sync", 5));
         }
         return loads;

@@ -4,7 +4,7 @@ Loopback HTTP front for Resemble AI Chatterbox Turbo. It mirrors the F5 host's
 HTTP shape and NDJSON worker-event protocol so Martlet's relay can consume it.
 
 Commands:
-  serve                 listen on 127.0.0.1:$MARTLET_CHATTERBOX_PORT (default 50082)
+  serve                 listen on 127.0.0.1:$MARTLET_CHATTERBOX_PORT (default 50083)
   provision [--fixture] download pinned model files, or write a deterministic FIXTURE - NOT AI engine
   warm                  POST /warmup to the running service and fail unless ready
 """
@@ -39,7 +39,7 @@ MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
 MODEL = os.environ.get("CHATTERBOX_MODEL", "chatterbox-turbo")
 DEVICE = os.environ.get("MARTLET_CHATTERBOX_DEVICE", "cuda:0")
-PORT = int(os.environ.get("MARTLET_CHATTERBOX_PORT", "50082"))
+PORT = int(os.environ.get("MARTLET_CHATTERBOX_PORT", "50083"))
 
 CONTRACT_ID = "martlet.f5.worker"
 PROTOCOL_VERSION = {"major": 1, "minor": 0}

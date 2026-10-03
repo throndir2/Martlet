@@ -20,7 +20,7 @@ public sealed class ChatterboxRelayTests(ITestOutputHelper output)
     {
         await using var f5 = new F5RelayWorker(new Uri("http://127.0.0.1:50080/"), F5RelayWorker.DefaultModel);
         await using var xtts = XttsRelay.Create(new Uri("http://127.0.0.1:50081/"), XttsRelay.DefaultModel);
-        await using var chatterbox = ChatterboxRelay.Create(new Uri("http://127.0.0.1:50082/"), ChatterboxRelay.DefaultModel);
+        await using var chatterbox = ChatterboxRelay.Create(new Uri("http://127.0.0.1:50083/"), ChatterboxRelay.DefaultModel);
         await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [f5, xtts, chatterbox]);
         var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
         var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
@@ -33,7 +33,7 @@ public sealed class ChatterboxRelayTests(ITestOutputHelper output)
         Assert.Equal("fcf1f8c1d651bb7e3acd69ee5be269b4ac10c02980b7708213d598bc9f7cdf87", voice.ModelSha256);
         Assert.Equal(SpeechEngines.VoiceDestination, voice.DestinationId);
         Assert.Equal(3, routes.Count(r => SpeechEngines.ForRoute(r.RouteId) is not null));
-        Assert.Throws<ArgumentException>(() => ChatterboxRelay.Create(new Uri("http://127.0.0.1:50082/"), "unknown-model"));
+        Assert.Throws<ArgumentException>(() => ChatterboxRelay.Create(new Uri("http://127.0.0.1:50083/"), "unknown-model"));
     }
 
     [Fact]

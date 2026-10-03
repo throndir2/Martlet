@@ -312,7 +312,8 @@ public static class PlatformCatalog
             Impossible(Mac, Host, "the Chatterbox container is built for NVIDIA CUDA"),
             Impossible(Ios, Host, "Chatterbox needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "Chatterbox needs an NVIDIA GPU; phones and tablets have none")
-        ]),        new("f5", ClusterJobs.Speaking, "F5 voice cloning",
+        ]),
+        new("f5", ClusterJobs.Speaking, "F5 voice cloning",
         [
             Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
             Impossible(Mac, Host, "the F5 worker needs NVIDIA CUDA; an Apple-silicon Mac serves the same route with F5 on MLX"),
@@ -325,6 +326,13 @@ public static class PlatformCatalog
             Impossible(Mac, Host, "the XTTS worker is built for NVIDIA CUDA"),
             Impossible(Ios, Host, "XTTS needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "XTTS needs an NVIDIA GPU; phones and tablets have none")
+        ]),
+        new("gpt-sovits", ClusterJobs.Speaking, "GPT-SoVITS voice cloning (anime-style voices, 3-10 s sample)",
+        [
+            Works(Linux, Host, "", Nvidia4), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia4),
+            Impossible(Mac, Host, "the GPT-SoVITS worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "GPT-SoVITS needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "GPT-SoVITS needs an NVIDIA GPU; phones and tablets have none")
         ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
@@ -443,6 +451,7 @@ public static class PlatformCatalog
         "f5" => "f5",
         "xtts" => "xtts",
         "chatterbox" => "chatterbox",
+        "gpt-sovits" => "gpt-sovits",
         "audio2face" => "audio2face",
         _ => null
     };

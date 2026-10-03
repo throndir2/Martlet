@@ -3,7 +3,7 @@
 # hash-pinned PyTorch 2.6.0 CUDA 12.4, chatterbox-tts 0.1.7, transformers 5.2.0 and the loopback front
 # martlet_chatterbox_host.py). "martlet-host add chatterbox" adds compose.gpu.yaml, then runs
 # "martlet-chatterbox provision" (downloads and verifies the pinned model files into the martlet-chatterbox-models
-# volume) and "martlet-chatterbox warm". The service listens only on 127.0.0.1:50082.
+# volume) and "martlet-chatterbox warm". The service listens only on 127.0.0.1:50083.
 
 services:
   chatterbox:

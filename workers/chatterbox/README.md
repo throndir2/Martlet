@@ -4,7 +4,7 @@ This worker hosts Resemble AI's self-hosted Chatterbox Turbo TTS model behind th
 
 ## Commands
 
-- `martlet-chatterbox serve` listens on `127.0.0.1:$MARTLET_CHATTERBOX_PORT` (default `50082`). If `worker-config.json` exists, loading starts in a background thread.
+- `martlet-chatterbox serve` listens on `127.0.0.1:$MARTLET_CHATTERBOX_PORT` (default `50083`). If `worker-config.json` exists, loading starts in a background thread.
 - `martlet-chatterbox provision` downloads the pinned Chatterbox-Turbo files from Hugging Face revision `749d1c1a46eb10492095d68fbcf55691ccf137cd` into `$MARTLET_CHATTERBOX_ROOT/models/chatterbox-turbo`, verifies exact size and SHA-256, and writes `$MARTLET_CHATTERBOX_ROOT/models/worker-config.json`.
 - `martlet-chatterbox provision --fixture` writes a deterministic **FIXTURE - NOT AI** sine-tone engine. It imports no torch packages and is only for plumbing tests.
 - `martlet-chatterbox warm` posts `/warmup` to a running service and exits non-zero unless the model is ready.
