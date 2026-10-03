@@ -188,6 +188,79 @@ internal static class VoiceRehearsal
                 var missing = await a.FetchAsync(h1, new string('0', 64), token);
                 return (missing is null, missing is null ? "no recording" : "unexpected bytes");
             });
+
+            // A voice made from several recordings: joined into one with short pauses, shared like any other, and handed to
+            // engines that learn from several (XTTS-v2) as separate recordings.
+            JoinedVoiceRecording? joined = null;
+            string? severalSha = null, severalId = null;
+            await Run("A makes one voice from three recordings (24, 16 and 24 kHz): joined at 24 kHz after 0.5 s pauses, the list keeps where each lies", async () =>
+            {
+                joined = SpeakingVoiceRecordings.Join(
+                [
+                    (Wave(2.0, 0.05), "The first thing I said."),
+                    (Wave(4.0, 0.04, 16_000), "The second, recorded elsewhere."),
+                    (Wave(3.5, 0.09), "And the third.")
+                ]);
+                severalSha = Convert.ToHexStringLower(SHA256.HashData(joined.Wave));
+                severalId = SpeakingVoiceLibrary.ReferenceId(severalSha, joined.Transcript);
+                var path = Path.Combine(root, "several.wav");
+                await File.WriteAllBytesAsync(path, joined.Wave, token);
+                using (var store = F5ReferencePresetStore.Open(a.StoreDirectory))
+                    await store.SnapshotAsync(new()
+                    {
+                        PresetName = "Several recordings", AbsoluteSourcePath = path, Transcript = joined.Transcript,
+                        Rights = new()
+                        {
+                            AcknowledgementId = Guid.NewGuid(), Basis = F5VoiceRightsBasis.OwnVoice, StatementVersion = F5ReferenceLimits.RightsStatementVersion,
+                            ProcessingDestinationId = F5RelayWorker.DefaultDestinationId, AcknowledgedAtUtc = DateTimeOffset.UtcNow, Confirmed = true
+                        }
+                    }, token);
+                a.Library = a.Library.Add("Several recordings", joined.Transcript, severalSha, joined.DurationMilliseconds, SpeakingVoiceRights.OwnVoice,
+                    a.DeviceId, DateTimeOffset.UtcNow, clips: joined.Clips, sampleRate: joined.SampleRate);
+                var result = await a.ReconcileAsync(null, token);
+                var voice = a.Library.Find(severalId)!;
+                var clips = voice.ClipMilliseconds!;
+                var gpt = Martlet.Core.Settings.SpeechEngines.ReferenceProblem(Martlet.Core.Settings.SpeechEngines.GptSovits, voice.DurationMilliseconds, clips);
+                return (joined.SampleRate == 24_000 && joined.Clips.Count == 3 && joined.Clips[1].SampleCount == 96_000 &&
+                        joined.Clips[1].StartSample == 48_000 + 12_000 && joined.DurationMilliseconds == 10_500 &&
+                        clips.SequenceEqual([2_000, 4_000, 3_500]) && result.Local.ContainsKey(severalId) && gpt is null &&
+                        Martlet.Core.Settings.SpeechEngines.ReferenceProblem(Martlet.Core.Settings.SpeechEngines.GptSovits, voice.DurationMilliseconds) is not null,
+                    $"joined: {joined.DurationMilliseconds} ms at {joined.SampleRate} Hz, recordings {string.Join("/", clips)} ms; in A's store: " +
+                    $"{result.Local.ContainsKey(severalId)}; GPT-SoVITS (3-10 s) can use it through its 4 s recording: {gpt is null}");
+            });
+            await Run("A shares it through lab-voice-1; desktop B takes the voice with its three recordings' places and the joined recording", async () =>
+            {
+                await a.ShareAsync(h1, token);
+                var onHost = (await b.ReadAsync(h1, token)).Library.Find(severalId!);
+                b.Library = SpeakingVoiceLibrary.Merge(b.Library, (await b.ReadAsync(h1, token)).Library);
+                var result = await b.ReconcileAsync((sha256, t) => b.FetchAsync(h1, sha256, t), token);
+                var theirs = b.Library.Find(severalId!);
+                return (onHost?.Clips?.Count == 3 && theirs?.Clips is { } clips && clips.SequenceEqual(joined!.Clips) &&
+                        theirs.SampleRate == joined.SampleRate && result.Local.ContainsKey(severalId!) && h1.SavedLibrary is not null,
+                    $"lab-voice-1's list has {onHost?.Clips?.Count ?? 0} recordings for it; B's has {theirs?.Clips?.Count ?? 0}; B holds the joined recording: " +
+                    $"{result.Local.ContainsKey(severalId!)}");
+            });
+            await Run("Speaking with it on lab-voice-1: XTTS-v2 gets where each of the three recordings lies, F5-TTS gets them joined", async () =>
+            {
+                var xtts = await a.SpeakAsync(h1, severalId!, token, routeId: Martlet.Core.Settings.SpeechEngines.Xtts.RouteId);
+                var xttsClips = h1.Xtts.Clips.LastOrDefault();
+                var f5 = await a.SpeakAsync(h1, severalId!, token);
+                var f5Clips = h1.Voice.Clips.LastOrDefault();
+                return (xtts.Ok && !xtts.Sent && h1.Xtts.Received.LastOrDefault() == severalSha && xttsClips == 3 &&
+                        f5.Ok && h1.Voice.Received.LastOrDefault() == severalSha && f5Clips == 0,
+                    $"XTTS-v2 reply: {xtts.Ok}, recordings handed over separately: {xttsClips}; F5-TTS reply: {f5.Ok}, separately: {f5Clips} (joined)");
+            });
+            await Run("A list entry whose recordings don't match its recording or transcript is refused", async () =>
+            {
+                var clips = joined!.Clips.ToArray();
+                clips[^1] = clips[^1] with { SampleCount = clips[^1].SampleCount + 48_000 };
+                string? beyond = null, words = null;
+                try { a.Library.Remove(severalId!, a.DeviceId, DateTimeOffset.UtcNow).Add("Bad", joined.Transcript, severalSha!, joined.DurationMilliseconds, SpeakingVoiceRights.OwnVoice, a.DeviceId, DateTimeOffset.UtcNow, clips: clips, sampleRate: joined.SampleRate); }
+                catch (ContractException error) { beyond = error.Message; }
+                try { SpeakingVoiceLibrary.Empty.Add("Bad", "Other words.", severalSha!, joined.DurationMilliseconds, SpeakingVoiceRights.OwnVoice, a.DeviceId, DateTimeOffset.UtcNow, clips: joined.Clips, sampleRate: joined.SampleRate); }
+                catch (ContractException error) { words = error.Message; }
+                return (beyond is not null && words is not null, $"past the recording's end: {beyond ?? "accepted"}; other transcript: {words ?? "accepted"}");
+            });
         }
         finally
         {
@@ -202,8 +275,8 @@ internal static class VoiceRehearsal
             passed = steps.Count(s => s.Ok),
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
-            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, the real reference-voice relay route over a fixture voice " +
-                "service, NOT AI) with in-memory speaking-voices.json and recordings, and two simulated desktops using the desktop's " +
+            scope = "Two real gateways on 127.0.0.1 (Kestrel, pinned TLS, the real reference-voice relay routes of F5-TTS and XTTS-v2 over " +
+                "fixture voice services, NOT AI) with in-memory speaking-voices.json and recordings, and two simulated desktops using the desktop's " +
                 "paired client and Martlet.F5's reconcile engine over real F5 voice stores in a temporary folder. Not covered: the " +
                 "desktop window and its 30-second sync, the Linux host's files, a real voice engine, an older host and a real LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
@@ -222,10 +295,10 @@ internal static class VoiceRehearsal
         catch (Audio2FaceHostException error) { return error.Code; }
     }
 
-    /// <summary>A quiet 24 kHz mono PCM16 tone of <paramref name="seconds"/>: a recording every voice engine accepts.</summary>
-    internal static byte[] Wave(double seconds, double step)
+    /// <summary>A quiet mono PCM16 tone of <paramref name="seconds"/> (24 kHz unless <paramref name="rate"/> says otherwise): a
+    /// recording every voice engine accepts.</summary>
+    internal static byte[] Wave(double seconds, double step, int rate = 24_000)
     {
-        const int rate = 24_000;
         var samples = (int)(rate * seconds);
         var wav = new byte[44 + samples * 2];
         Encoding.ASCII.GetBytes("RIFF").CopyTo(wav, 0);
@@ -234,8 +307,8 @@ internal static class VoiceRehearsal
         BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(16), 16);
         BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(20), 1);
         BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(22), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(24), rate);
-        BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(28), rate * 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(24), (uint)rate);
+        BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(28), (uint)rate * 2);
         BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(32), 2);
         BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(34), 16);
         Encoding.ASCII.GetBytes("data").CopyTo(wav, 36);
@@ -311,9 +384,10 @@ internal static class VoiceRehearsal
             return present;
         }
 
-        /// <summary>Speaks one sentence with a voice through the host's voice route, as HostSpeechClient does.</summary>
+        /// <summary>Speaks one sentence with a voice through the host's voice route (F5-TTS unless <paramref name="routeId"/>
+        /// names another engine's), as HostSpeechClient does.</summary>
         internal async Task<(bool Ok, bool Sent, int Samples)> SpeakAsync(VoiceHost host, string voiceId, CancellationToken token,
-            byte[]? audio = null, string? transcript = null)
+            byte[]? audio = null, string? transcript = null, string? routeId = null)
         {
             HostSpeechReference reference;
             if (audio is not null)
@@ -328,10 +402,11 @@ internal static class VoiceRehearsal
                 using var store = F5ReferencePresetStore.Open(StoreDirectory);
                 using var lease = await store.AcquireForPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
                 var r = lease.Reference;
-                reference = new(r.PresetId, r.ReferenceRevision, r.AudioSha256, r.Transcript, r.TranscriptRevision, r.Audio.ToArray());
+                reference = new(r.PresetId, r.ReferenceRevision, r.AudioSha256, r.Transcript, r.TranscriptRevision, r.Audio.ToArray(),
+                    Library.Find(voiceId)?.ClipMilliseconds);
             }
             using var connection = Connect(host);
-            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == HostRoute.F5RouteId);
+            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == (routeId ?? HostRoute.F5RouteId));
             var samples = 0;
             await foreach (var frame in connection.StreamSpeechAsync(route,
                 new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() }, 1,
@@ -353,16 +428,19 @@ internal static class VoiceRehearsal
         }
     }
 
-    /// <summary>A real gateway on 127.0.0.1 with the reference-voice relay route over a fixture voice service and an
-    /// in-memory copy of speaking-voices.json and the recordings that survives a restart.</summary>
+    /// <summary>A real gateway on 127.0.0.1 with the reference-voice relay routes of F5-TTS and XTTS-v2 (an engine that learns
+    /// from several recordings), each over its own fixture voice service, and an in-memory copy of speaking-voices.json and
+    /// the recordings that survives a restart.</summary>
     private sealed class VoiceHost : IAsyncDisposable, IGatewaySpeakingVoiceStorage, IGatewayAuditSink
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
         private F5RelayWorker? worker;
+        private F5RelayWorker? xttsWorker;
         internal GatewayServer Server { get; private set; } = null!;
         internal GatewayHostIdentity Identity { get; private set; } = null!;
         internal FixtureVoice Voice { get; private set; } = null!;
+        internal FixtureVoice Xtts { get; private set; } = null!;
         internal string HostId { get; private init; } = "";
         internal string Origin { get; private set; } = "";
         internal byte[]? SavedLibrary { get; private set; }
@@ -389,9 +467,13 @@ internal static class VoiceRehearsal
             Origin = $"https://127.0.0.1:{FreePort()}";
             var origin = new GatewayOrigin(Origin);
             // The relay owns (and disposes) its handler; the requests the fixture saw outlive a restart.
-            Voice = new FixtureVoice(Voice?.Received ?? []);
+            Voice = new FixtureVoice(Voice?.Received ?? [], Voice?.Clips ?? []);
+            Xtts = new FixtureVoice(Xtts?.Received ?? [], Xtts?.Clips ?? []);
             worker = new F5RelayWorker(new Uri("http://127.0.0.1:50080/"), FixtureModel, FixtureRevision, FixtureSha256, handler: Voice);
-            Server = new GatewayServer(Identity, origin, [], this, inferenceWorkers: [worker]);
+            xttsWorker = new F5RelayWorker(new Uri("http://127.0.0.1:50081/"), GatewayInferenceRoute.ReferenceSpeechRelay(
+                Martlet.Core.Settings.SpeechEngines.Xtts, F5RelayWorker.DefaultDestinationId, "xtts-relay", FixtureModel, FixtureRevision,
+                FixtureSha256), handler: Xtts);
+            Server = new GatewayServer(Identity, origin, [], this, inferenceWorkers: [worker, xttsWorker]);
             Server.AttachSpeakingVoiceStorage(this);
             listener = await Server.StartAsync(new GatewayTlsBinding(origin, Identity, certificate), new KestrelGatewayListenerFactory());
         }
@@ -413,8 +495,10 @@ internal static class VoiceRehearsal
         {
             if (listener is not null) await listener.DisposeAsync();
             if (worker is not null) await worker.DisposeAsync();
+            if (xttsWorker is not null) await xttsWorker.DisposeAsync();
             listener = null;
             worker = null;
+            xttsWorker = null;
         }
 
         public async ValueTask DisposeAsync()
@@ -451,10 +535,13 @@ internal static class VoiceRehearsal
     }
 
     /// <summary>Stands in for a voice role's loopback service (FIXTURE, NOT AI): checks the recording it is handed against its
-    /// SHA-256, notes it, and streams 0.1 s of canned PCM in the worker's event shape.</summary>
-    internal sealed class FixtureVoice(List<string> received) : HttpMessageHandler
+    /// SHA-256 and the places of a voice's several recordings (<c>reference.clips</c>) against the recording, notes both, and
+    /// streams 0.1 s of canned PCM in the worker's event shape.</summary>
+    internal sealed class FixtureVoice(List<string> received, List<int> clips) : HttpMessageHandler
     {
         internal List<string> Received => received;
+        /// <summary>How many recordings each request handed over separately (0: the recording as one).</summary>
+        internal List<int> Clips => clips;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -466,7 +553,26 @@ internal static class VoiceRehearsal
             var sha256 = reference.GetProperty("audio_sha256").GetString();
             if (Convert.ToHexStringLower(SHA256.HashData(audio)) != sha256)
                 return new HttpResponseMessage(HttpStatusCode.BadRequest);
-            lock (Received) Received.Add(sha256!);
+            var separate = 0;
+            if (reference.TryGetProperty("clips", out var list))
+            {
+                var samples = PcmWaveInfo.Inspect(audio, SpeakingVoiceLibrary.MaximumAudioBytes).SampleCount;
+                var end = 0L;
+                foreach (var clip in list.EnumerateArray())
+                {
+                    var start = clip.GetProperty("start_sample").GetInt64();
+                    var count = clip.GetProperty("sample_count").GetInt64();
+                    if (start < end || count <= 0 || start + count > samples || string.IsNullOrWhiteSpace(clip.GetProperty("transcript").GetString()))
+                        return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                    end = start + count;
+                    separate++;
+                }
+            }
+            lock (Received)
+            {
+                Received.Add(sha256!);
+                Clips.Add(separate);
+            }
             var pcm = new byte[2_400 * 2];
             for (var i = 0; i < pcm.Length; i++) pcm[i] = (byte)(i * 7);
             string Event(string kind, long sequence, object? frame = null, int? chunk = null, long? final = null) =>

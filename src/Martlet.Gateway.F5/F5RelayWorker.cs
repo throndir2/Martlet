@@ -165,6 +165,21 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
             writer.WriteString("transcript_revision", payload.TranscriptRevision);
             writer.WriteString("audio_base64", Convert.ToBase64String(payload.ReferenceAudio.Span));
             if (payload.ReferenceLanguage is { } language) writer.WriteString("language", language);
+            // A voice made from several recordings, for an engine that learns from each: where each lies in the recording
+            // (samples at its rate) and its words. Other engines never get this and clone the joined recording.
+            if (payload.ReferenceClips is { } clips)
+            {
+                writer.WriteStartArray("clips");
+                foreach (var clip in clips)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("start_sample", clip.StartSample);
+                    writer.WriteNumber("sample_count", clip.SampleCount);
+                    writer.WriteString("transcript", clip.Transcript);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
             writer.WriteEndObject();
             writer.WriteStartArray("chunks");
             foreach (var chunk in payload.Chunks)

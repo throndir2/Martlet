@@ -29,7 +29,8 @@ internal sealed partial class GatewayHttpApplication
                 bytes,
                 route,
                 clock.GetUtcNow(),
-                SpeakingVoices.Audio);
+                SpeakingVoices.Audio,
+                SpeakingVoices.Voice);
         }
         finally
         {

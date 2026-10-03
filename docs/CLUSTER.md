@@ -142,6 +142,15 @@ removed like any other ([F5 voice](F5_VOICE.md#one-voice-list-on-every-computer)
   rules as the plan; removed voices leave tombstones. Starter entries are
   revision 1, so a removal anywhere wins everywhere. JSON, snake case, schema 1,
   at most 1 MiB, 32 voices and 64 tombstones.
+- **A voice made from several recordings** (2 to 10, each at least 0.5 s) is
+  still one recording on the wire: the desktop joins them, in order, after a
+  0.5 s pause each, at the highest sample rate among them (others resampled), and
+  their transcripts with spaces; together at most 30 s and 4 MB. Its entry adds
+  `clips` (each recording's `transcript`, `start_sample` and `sample_count` in
+  the joined recording) and the joined `sample_rate`, so the recording, its
+  sharing and its SHA-256 work like any other voice's. A Martlet older than this
+  can't read a list holding such a voice (unknown fields are refused) until it
+  updates.
 - **Each host** keeps `speaking-voices.json` and one `speaking-voice-<sha256>.wav`
   per live voice beside `host.json` (0600, gateway service owner; not part of the
   approved configuration). A recording no live voice uses is deleted.
@@ -174,10 +183,24 @@ older than shared speaking voices refuses the request with `request.invalid`;
 the desktop then sends the recording with every request to that host, as
 before, and the status asks you to update it.
 
+For a voice made from several recordings, the host's gateway looks the voice up
+in its own copy of the list. An engine that learns from several recordings
+(`SpeechEngine.MultipleReferences`: XTTS-v2 and GPT-SoVITS) gets the joined
+recording plus `reference.clips` (where each lies and its words) when at least
+one recording fits its length bounds, and its service cuts them apart: XTTS-v2
+computes its speaker from every recording, and GPT-SoVITS prompts with the
+first 3-10 second recording and adds the others' tone (`aux_ref_audio_paths`).
+Every other engine (Chatterbox Turbo, F5-TTS, Dia), or a host whose list lacks
+the voice, clones the joined recording, so a voice usable as one recording is
+always usable. The engine's length check takes either: GPT-SoVITS can speak a
+14-second voice through one of its 3-10 second recordings.
+
 Checked locally with `speaking_voices_selftest` (MCP): two real gateways and
-two simulated desktops with real voice stores on loopback. The desktop's
-sync window with real paired hosts, the Linux files and two real computers are
-**NOT RUN**.
+two simulated desktops with real voice stores on loopback, including a voice
+of three recordings shared between them and handed to the XTTS-v2 relay as
+three recordings and to F5-TTS joined. The desktop's
+sync window with real paired hosts, the Linux files, real voice engines and two
+real computers are **NOT RUN**.
 
 ## The shared character models
 

@@ -114,6 +114,35 @@ class HostTests(unittest.TestCase):
         self.assertEqual(400, self.post("/synthesize", body(wav(10.6)))[0])
         self.assertEqual(400, self.post("/synthesize", body(wav(2.5)))[0])
 
+    def test_a_voice_of_several_recordings_prompts_with_one_and_adds_the_others(self) -> None:
+        # Recordings of 2, 4 and 6 seconds joined after 0.5 s pauses (13 s): the 4-second one is the prompt.
+        rate, joined = 24_000, wav(13)
+        value = body(joined, transcript="One. Two. Three.")
+        value["reference"]["clips"] = [
+            {"start_sample": 0, "sample_count": 2 * rate, "transcript": "One."},
+            {"start_sample": int(2.5 * rate), "sample_count": 4 * rate, "transcript": "Two."},
+            {"start_sample": 7 * rate, "sample_count": 6 * rate, "transcript": "Three."},
+        ]
+        self.post("/warmup", {})
+        status, events = self.post("/synthesize", value)
+        self.assertEqual(200, status)
+        self.assertEqual("completed", events[-1]["kind"])
+        revision = value["reference"]["reference_revision"]
+        names = sorted(path.name for path in (Path(self.root) / "references").glob(revision + "*.wav"))
+        self.assertEqual([f"{revision}-a0.wav", f"{revision}-a1.wav", f"{revision}-p.wav"], names)
+        # None of them 3-10 seconds and the joined recording too long: refused.
+        value["reference"]["clips"] = [
+            {"start_sample": 0, "sample_count": 2 * rate, "transcript": "One."},
+            {"start_sample": int(2.5 * rate), "sample_count": int(10.5 * rate), "transcript": "Two."},
+        ]
+        self.assertEqual(400, self.post("/synthesize", value)[0])
+        # Overlapping or out-of-range recordings: refused.
+        value["reference"]["clips"] = [
+            {"start_sample": 0, "sample_count": 4 * rate, "transcript": "One."},
+            {"start_sample": 3 * rate, "sample_count": 4 * rate, "transcript": "Two."},
+        ]
+        self.assertEqual(400, self.post("/synthesize", value)[0])
+
     def test_restarts_a_dead_worker_for_the_next_reply(self) -> None:
         self.post("/warmup", {})
         subprocess.run([sys.executable, "-c", "import os,signal,sys; os.kill(int(sys.argv[1]), signal.SIGTERM)",

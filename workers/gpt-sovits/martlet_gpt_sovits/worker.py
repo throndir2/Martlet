@@ -42,6 +42,29 @@ def sha256_file(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
+def _stage(path: Path, audio_base64: str) -> Path:
+    """Writes a reference recording once (its name carries its revision) and marks it used."""
+    if path.is_file():
+        path.touch()
+    else:
+        staged = path.with_suffix(".partial")
+        staged.write_bytes(base64.b64decode(audio_base64))
+        staged.replace(path)
+    return path
+
+
+def _prune(keep: str) -> None:
+    """Keeps the reference files of the four most recently used revisions (always ``keep``'s)."""
+    revisions: dict[str, list[Path]] = {}
+    for path in REFERENCES.glob("*.wav"):
+        revisions.setdefault(path.name[:64], []).append(path)
+    ordered = sorted(revisions.items(), key=lambda item: max(p.stat().st_mtime for p in item[1]))
+    for revision, paths in ordered[:-4]:
+        if revision != keep:
+            for path in paths:
+                path.unlink(missing_ok=True)
+
+
 def identity(engine: str) -> dict[str, Any]:
     fixture = engine == "fixture"
     artifacts = [item.wire() for item in pins.ARTIFACTS]
@@ -72,7 +95,8 @@ class FixtureEngine:
     def stop(self) -> None:
         return
 
-    def synthesize(self, reference: Path, transcript: str, prompt_lang: str, text: str, text_lang: str) -> Iterator[bytes]:
+    def synthesize(self, reference: Path, transcript: str, prompt_lang: str, text: str, text_lang: str,
+                   auxiliary: list[Path] | None = None) -> Iterator[bytes]:
         import array
 
         rate = pins.OUTPUT_SAMPLE_RATE
@@ -141,13 +165,15 @@ class GptSovitsEngine:
         if self.tts is not None:
             self.tts.stop()
 
-    def synthesize(self, reference: Path, transcript: str, prompt_lang: str, text: str, text_lang: str) -> Iterator[bytes]:
+    def synthesize(self, reference: Path, transcript: str, prompt_lang: str, text: str, text_lang: str,
+                   auxiliary: list[Path] | None = None) -> Iterator[bytes]:
         tts = self.tts
         if tts.prompt_cache.get("prompt_lang") not in (None, prompt_lang):
             tts.prompt_cache["prompt_text"] = None
         tts.stop_flag = False
         inputs = {
-            "text": text, "text_lang": text_lang, "ref_audio_path": str(reference), "aux_ref_audio_paths": [],
+            "text": text, "text_lang": text_lang, "ref_audio_path": str(reference),
+            "aux_ref_audio_paths": [str(path) for path in auxiliary or []],
             "prompt_text": transcript, "prompt_lang": prompt_lang, "top_k": 5, "top_p": 1, "temperature": 1,
             "text_split_method": "cut5", "batch_size": 1, "batch_threshold": 0.75, "split_bucket": False,
             "speed_factor": 1.0, "fragment_interval": 0.3, "seed": -1, "parallel_infer": True,
@@ -243,18 +269,16 @@ class Worker:
         try:
             event("started")
             REFERENCES.mkdir(parents=True, exist_ok=True)
-            # GPT-SoVITS caches the reference by path, so each reference revision gets its own file.
-            path = REFERENCES / f"{revision}.wav"
-            if not path.is_file():
-                staged = path.with_suffix(".partial")
-                staged.write_bytes(base64.b64decode(reference["audio_base64"]))
-                staged.replace(path)
-            for old in sorted(REFERENCES.glob("*.wav"), key=lambda p: p.stat().st_mtime)[:-4]:
-                old.unlink(missing_ok=True)
+            # GPT-SoVITS caches the reference by path, so each reference revision gets its own file; a voice made from several
+            # recordings gets one for its prompt recording and one for each other recording (aux_ref_audio_paths).
+            auxiliary = reference.get("auxiliary_base64") or []
+            path = _stage(REFERENCES / (f"{revision}-p.wav" if auxiliary else f"{revision}.wav"), reference["audio_base64"])
+            others = [_stage(REFERENCES / f"{revision}-a{index}.wav", data) for index, data in enumerate(auxiliary)]
+            _prune(keep=revision)
             for chunk in message["chunks"]:
                 text = chunk["text"]
                 for pcm in self.engine.synthesize(path, reference["transcript"], reference["language"], text,
-                                                  wire.text_language(text)):
+                                                  wire.text_language(text), others):
                     if request_id in self.canceled:
                         self.engine.stop()
                         event("canceled", final_sample_count=offset)

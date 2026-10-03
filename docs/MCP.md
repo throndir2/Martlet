@@ -192,7 +192,12 @@ voice is first used, added or removed or the desktop shares voices with a host,
 the starter voices in it (`starters`), the count of the owner's own voices
 (`own`), tombstones (`removed`) and the keys of removed starter voices
 (`removedStarters`), and the voice chosen on all computers (`chosen`: a starter
-key, `own` or null) with the device that chose it (`chosenBy`). `list` is this PC's
+key, `own` or null) with the device that chose it (`chosenBy`), and
+`severalRecordings`: each voice made from several recordings, by the key the
+Voices page uses (the first 16 hex digits of its ID), with how many `recordings`,
+each one's length (`clipMs`), the joined `durationMs` and `sampleRate`, the
+`engines` that can clone it and those that learn from each recording
+(`learnsFromEach`; the others hear them joined). `list` is this PC's
 recordings (the `f5-voices` store): `state` (`none`, `loaded`, `busy` while the desktop holds it,
 or `unreadable`), the number of voices, the keys of starter voices in it (`starters`), the
 count of the owner's own voices, whether the retired F5-TTS example clip is still
@@ -208,7 +213,9 @@ self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts`, `gp
 `hostRole`, `routeId`, `path`, `model`, `weightsLicence`, `minimumGpuMemoryGb`,
 `minimumReferenceMs`, `maximumReferenceMs`, `summary`, `default` (true for
 Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
-syntax, `kind` `Sound` or `Emotion` and `usage`; Chatterbox clones only
+syntax, `kind` `Sound` or `Emotion` and `usage`, and `multipleReferences` (true
+for XTTS-v2 and GPT-SoVITS, which learn from each of a voice's several
+recordings); Chatterbox clones only
 recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
 `ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
@@ -314,7 +321,7 @@ Windows Credential Manager; it does not cover the desktop window,
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
 the production code: two real gateways on 127.0.0.1 (pinned TLS, the real
-reference-voice relay route over a fixture voice service, NOT AI, and in-memory
+reference-voice relay routes of F5-TTS and XTTS-v2 over fixture voice services, NOT AI, and in-memory
 `speaking-voices.json` and recordings) and two simulated desktops that keep real
 F5 voice stores in a temporary folder and use the desktop's paired client and
 Martlet.F5's reconcile engine. It runs `src\Martlet.NodeLinkCheck` (mode
@@ -331,7 +338,12 @@ and the other desktop's copy; a stale copy can't bring it back; speaking with a
 removed voice sends the recording, which the host doesn't keep; a host restart
 keeps the list and recordings; a wrong SHA-256, a recording no voice has and a
 listed recording that isn't a WAV are refused; reading a missing recording
-answers none. Nothing leaves loopback, the temporary folder is deleted and
+answers none; one voice made from three recordings (24, 16 and 24 kHz) is joined
+at 24 kHz after 0.5 s pauses with each recording's place kept, reaches the other
+desktop through a host with those places, and speaking with it hands the XTTS-v2
+relay's service the three places (`reference.clips`) and F5-TTS the joined
+recording only; a list entry whose recordings don't match its recording or
+transcript is refused. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
@@ -710,7 +722,7 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -1107,8 +1119,13 @@ that returns its name with "· chosen" or "· in use" when it is. Its controls a
 `F5VoicePlay-<key>`, `F5VoiceUse-<key>` and, unless it is in use or chosen on all
 computers, `F5VoiceRemove-<key>`; any other voice's controls use the first 16 hex
 digits of its ID (its reference revision) instead of the key, and its name is not
-returned. When the speaking engine cannot clone a voice (Chatterbox: 5 seconds or
-shorter; GPT-SoVITS: shorter than 3 or longer than 10 seconds) its title adds
+returned. Every voice's detail line, `F5VoiceDetail-<key>`, returns its length
+(or, for a voice made from several recordings, "3 recordings, 10.5 seconds
+joined, added ..." and whether the speaking engine learns from each recording or
+hears them joined), where a starter voice comes from and why the engine can't
+use it; never its name or words. When the speaking engine cannot clone a voice (Chatterbox: 5 seconds or
+shorter; GPT-SoVITS: shorter than 3 or longer than 10 seconds, unless one of
+its recordings is 3-10 seconds) its title adds
 "· wrong length for this engine" and `F5VoiceUse-<key>` is disabled, with the reason
 as its help text; Play and Use are also disabled while its recording is still
 being copied to this PC. Remove asks with `ConfirmationYes`/`ConfirmationNo` and
@@ -1117,25 +1134,47 @@ removes the voice on every computer. `F5AddVoice` opens *Add a voice*
 `F5AddVoiceTranscript`, `F5AddVoiceBasis` (whose voice), `F5VoiceRights` (the
 rights confirmation) and `F5AddVoiceOk`, which adds the voice, shares it and uses
 it; `F5AddVoiceProblem` returns why it couldn't (the typed name, transcript and
-path are never returned). Use, Remove and adding change the voice list and need
+path are never returned). `F5AddVoiceMore` (passive: it only adds an empty row)
+adds another recording of the same voice, whose controls end in its number
+(`F5AddVoicePath-2`, `F5AddVoiceTranscript-2`, `F5AddVoicePlay-2`,
+`F5AddVoiceBrowse-2`); with several, each row has `F5AddVoiceDrop-<n>` (passive)
+and `F5AddVoicePlayJoined` plays them joined. `F5AddVoiceRecordings` returns how
+many recordings there are and, once their files exist, how long they are joined
+with the pauses ("3 recordings make one voice, 10.5 seconds joined with the
+pauses.", more than 30 seconds, or which recording isn't a usable WAV); never
+paths or words. Use, Remove and adding change the voice list and need
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 Passive navigation writes nothing: the list is shown as it would start until a
 voice is first used, added or removed. `f5_voices` reads the same list headlessly.
 
-Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
-chosen engine ("Chatterbox Turbo (recommended): Clones the voice and can laugh
-...", the default; options `SpeakingEngine-chatterbox`, `SpeakingEngine-f5`,
-`SpeakingEngine-xtts`, `SpeakingEngine-gpt-sovits` and `SpeakingEngine-dia`), `SpeakingEngineStatus`
-says where it speaks and its model licence and `SpeakingEngineTags` lists the
-engine's sound and tone tags (or says it reads words only). Choosing
-another engine with `ui_select` needs `--allow-ui-effects`: when a computer
-speaks it hands Speaking to that engine there (installing its role after a
-confirmation) and stops the engine it replaces on that computer, since a host
-runs one voice engine at a time. `SpeakingEngineOthers` (shown only then) names
-voice engines the speaking computer still runs besides the one that speaks,
-for example a host set up before that rule; `SpeakingEngineRelease` stops them
-after a confirmation (`martlet-host remove`, downloads kept) and needs
-`--allow-ui-effects`. `f5_voices` returns the same choice as `chosenEngine`.
+Above the voices, the Voice engine card lists every way Martlet can speak on the
+shown computer as one row each, keyed by engine (`chatterbox`, `f5`, `xtts`,
+`gpt-sovits`, `dia`, and `windows` for a Windows voice under This PC):
+`VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
+"Windows voice · in use"), `VoiceEngineFeatures-<key>` its chips ("NVIDIA GPU,
+6 GB+, Docker, Voice cloning, 5 s+ samples, Laughs & sighs, Emotions, English";
+the same list as `features` in `f5_voices`), `VoiceEngineState-<key>` (shown only
+when the button doesn't already say it) where it stands ("Speaking on this PC.",
+"Ready on gpu-pc.", "Setting up on gpu-pc...", or why it can't run there), and
+`VoiceEngineUse-<key>` its one button ("Set up and use Dia", "Use XTTS-v2", "In
+use Windows voice"; disabled with the reason as help text when the computer can't
+run it). Under *Another of your computers*, the computer pills
+`SpeakingHost-<host ID>` ("gpu-pc · speaking", "laptop · not reachable") only
+choose which computer the rows set up, so clicking one is passive;
+`SpeakingHostStatus` says when the shown one isn't reachable and
+`HostChoices-speaking` when no other computer is paired. Clicking a
+`VoiceEngineUse-<key>` button needs `--allow-ui-effects`: it asks one
+confirmation, sets the engine up on that computer when needed (a run window) and
+switches Speaking to it. Switching cleans up: a host runs one voice engine at a
+time (adding one stops the others there; using one already installed stops the
+leftovers), and the engine Speaking leaves on another computer, or when it moves
+to a Windows or cloud voice, stops there once Speaking has moved (named in the
+confirmation; kept when failover keeps the same engine there as a backup).
+`SpeakingEngineOthers` (shown only then) names voice engines the speaking
+computer still runs besides the one that speaks, for example a host set up before
+that rule; `SpeakingEngineRelease` stops them after a confirmation
+(`martlet-host remove`, downloads kept) and needs `--allow-ui-effects`.
+`f5_voices` returns the chosen engine as `chosenEngine`.
 
 On Companion › Tools (`CompanionTab-Tools`), each server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
@@ -1207,16 +1246,18 @@ reports it as `role.stops`).
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
 `Place-LipSync-ThisPc`) only shows that place's choices, so clicking it is
-passive; the card's own buttons commit. Under *Another of your computers*, each
-paired computer that can run the job (every one except this PC's own host
-service on Voice, Listening and Lip-sync; a host saved as *This PC* whose
-address is another computer counts as that other computer) is listed with
-`HostChoice-<job>-<host ID>` (for example `HostChoice-speaking-diva-host`),
-which reads the host ID and what it does or could do. `HostChoices-<job>` says
-why none are listed (none paired, only this PC's own host service, or none can
-run it) and `HostChoicesUnable-<job>` names paired computers whose platform or
-hardware can't run it, with why. `SetupUseHost-<job>-<host ID>` hands the job
-over and needs `--allow-ui-effects`.
+passive; the card's own buttons commit. Under *Another of your computers* on
+Thinking, Listening and Lip-sync, each paired computer that can run the job
+(every one except this PC's own host service on Listening and Lip-sync; a host
+saved as *This PC* whose address is another computer counts as that other
+computer) is listed with `HostChoice-<job>-<host ID>` (for example
+`HostChoice-listening-diva-host`), which reads the host ID and what it does or
+could do. `HostChoices-<job>` says why none are listed (none paired, only this
+PC's own host service, or none can run it) and `HostChoicesUnable-<job>` names
+paired computers whose platform or hardware can't run it, with why.
+`SetupUseHost-<job>-<host ID>` hands the job over and needs `--allow-ui-effects`.
+Voice lists its engines per computer instead (`SpeakingHost-<host ID>` and
+`VoiceEngineUse-<key>`, above).
 
 Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (the Start listening / Stop listening button; its value starts with

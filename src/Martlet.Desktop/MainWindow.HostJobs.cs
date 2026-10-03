@@ -179,6 +179,9 @@ public partial class MainWindow
             var replaces = others.Count == 0 ? ""
                 : $" Only one voice engine runs on a computer, so {HostRoles.Names(others.Select(o => o.Kind))} there stops and frees the " +
                   "graphics card's memory. Downloads are kept, so switching back is quick.";
+            // The engine Speaking leaves on another computer stops there once Speaking has moved.
+            var leaving = job.Role == SetupRole.Tts ? LeavingEngine(host.HostId, SpeechEngines.ForRoute(job.RouteId)) : null;
+            replaces += LeavingNote(leaving);
             var pauses = others.Count > 0 && NetworkMap.JobHost(homeSettings, job.Role) == host.HostId;
             // The engines copy a reference voice. Handing Speaking to a host keeps the voice chosen on all computers (else the one
             // applied here, else the first in the list); Companion › Voice › Voices adds voices and switches between them.
@@ -225,7 +228,7 @@ public partial class MainWindow
                 pendingJobHosts[job.Role] = host.HostId;
                 if (voice is not null) pendingJobVoices[job.Role] = voice;
                 LaunchOnHost(host, role.Add, answers);
-                WatchJobHandoffAsync(job, host).Forget();
+                WatchJobHandoffAsync(job, host, leaving).Forget();
                 return;
             }
             if (!ConfirmationDialog.Confirm(this,
@@ -239,6 +242,7 @@ public partial class MainWindow
             var moved = $"{job.Title} now uses {host.HostId}{withVoice}. Reload any open conversation to use it.";
             ActionText.Text = moved;
             if (others.Count > 0) ActionText.Text = moved + await ReleaseVoiceEnginesAsync(host, others);
+            if (leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
         }
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
@@ -309,12 +313,15 @@ public partial class MainWindow
             return;
         }
         var name = NetworkMap.ProviderName(saved);
+        var leaving = job.Role == SetupRole.Tts ? LeavingEngine(null, null) : null;
         if (!ConfirmationDialog.Confirm(this,
                 $"Use {name} for {job.Job} again? " +
-                (IsCloud(saved) ? $"{job.Sent} go to that provider again, and requests may cost money." : "It runs on this PC again."),
+                (IsCloud(saved) ? $"{job.Sent} go to that provider again, and requests may cost money." : "It runs on this PC again.") +
+                LeavingNote(leaving),
                 "Use the Setup choice"))
             return;
         await HandBackAsync(job, saved);
+        if (leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
     }
 
     /// <summary>Puts the job back on the route kept aside while a host did it, already confirmed by the caller, and records
@@ -337,8 +344,9 @@ public partial class MainWindow
     }
 
     /// <summary>After an install started from a handoff, checks the host until its route appears (up to an hour, as model
-    /// downloads can be slow) and then completes the handoff the user already confirmed.</summary>
-    private async Task WatchJobHandoffAsync(HostJob job, PairedHost host)
+    /// downloads can be slow) and then completes the handoff the user already confirmed, including stopping
+    /// <paramref name="leaving"/>, the voice engine Speaking leaves on another computer.</summary>
+    private async Task WatchJobHandoffAsync(HostJob job, PairedHost host, (PairedHost Host, SpeechEngine Engine)? leaving = null)
     {
         for (var attempt = 0; attempt < 180; attempt++)
         {
@@ -363,6 +371,7 @@ public partial class MainWindow
                 // A host whose martlet-host predates one voice engine per computer still runs the replaced engine.
                 if (job.Role == SetupRole.Tts && HostRoles.OtherVoiceEngines(check.Offers, job.HostRoleKind) is { Count: > 0 } leftovers)
                     ActionText.Text += await ReleaseVoiceEnginesAsync(host, leftovers);
+                if (leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
             }
             catch (OperationCanceledException) { return; }
             catch (F5Exception error)
