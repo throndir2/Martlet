@@ -104,7 +104,13 @@ key, sudo or an approval fails that run without changing anything and keeps
 *Update host*. A host busy with another change (below) is not interrupted: the
 background `update` stops at once without changing anything, its Devices card
 says what the host is busy with, and Martlet tries it again every three minutes
-until it is free.
+until it is free. *Update hosts now* runs the same `update` but waits its turn:
+it sets `MARTLET_LOCK_WAIT` (30 minutes) so it queues behind that change and then
+updates. Martlet never races itself: a host it is already updating by another
+route (an *Update host* run window, a command from another computer, keeping
+this PC's own host service current) is left to that run, so its own update is
+never reported as "busy", and once a host is found up to date an earlier
+"waiting to update" note on its card says it is updated.
 
 ### One change at a time
 
@@ -128,9 +134,11 @@ stale lock is ever left behind. Read-only commands (`roles`, `describe`,
 - A **background** run that nobody confirmed and nobody watches (no terminal
   and no `--yes`, as Martlet's automatic host updates run) does not queue
   behind a long install: it stops at once, changes nothing and exits **75**
-  with one line `MARTLET-BUSY <what is running>`. An attended run that waited
-  `MARTLET_LOCK_WAIT` seconds ends the same way. Martlet reads that line and
-  tries again later instead of reporting a failure.
+  with one line `MARTLET-BUSY <what is running>`, unless it sets
+  `MARTLET_LOCK_WAIT` (as *Update hosts now* does): then it waits like an
+  attended run. A run that waited `MARTLET_LOCK_WAIT` seconds ends the same
+  way. Martlet reads that line and tries again later instead of reporting a
+  failure.
 - `status` shows `Busy now: ...` while a change runs. When the holder is a
   console session open 10+ minutes, the waiting lines name the command that
   stops it (a closed console window can leave its engine waiting for input).
