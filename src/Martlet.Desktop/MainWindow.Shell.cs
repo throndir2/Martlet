@@ -1,7 +1,5 @@
 using System.ComponentModel;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
@@ -39,7 +37,16 @@ public partial class MainWindow
     private string selectedNode = "this-pc";
     private readonly Dictionary<Panel, HashSet<string>> previousDone = [];
     private int tourStep;
-    private bool? hostServiceReachable;
+    /// <summary>This PC's own host service as the last read found it (<see cref="LocalHostService"/>); null until the first read.</summary>
+    private LocalHostServiceState? hostState;
+    private Task? hostProbe;
+    private bool hostProbeAgain;
+    private DateTime hostProbedAt;
+    private string? hostStateSignature;
+    /// <summary>When Show a pairing code last paired a computer, until the host's network names it.</summary>
+    private DateTime? hostPairedAt;
+    private static readonly TimeSpan HostProbeInterval = TimeSpan.FromSeconds(30);
+    private readonly System.Windows.Threading.DispatcherTimer hostProbeTimer = new() { Interval = HostProbeInterval };
     private WindowsVirtualization? virtualization;
     private bool refreshingHome;
     private bool hostBusy;
@@ -58,6 +65,18 @@ public partial class MainWindow
         actionTextDescriptor.AddValueChanged(ActionText, ActionTextChanged);
         deviceRole = store is null ? DeviceRole.Companion : DeviceRolePreference.Load(store.DataDirectory);
         InitializeHealth();
+        // The host dashboard reads this PC's host service by itself: at start, every 30 seconds while the window shows and
+        // whenever it shows again, so finished steps tick without a button.
+        hostProbeTimer.Tick += (_, _) =>
+        {
+            if (!closing && Role == DeviceRole.Host && IsVisible && !hostBusy) CheckThisPcHostAsync().Forget();
+        };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!closing && IsVisible && Role == DeviceRole.Host && DateTime.UtcNow - hostProbedAt > TimeSpan.FromSeconds(10))
+                CheckThisPcHostAsync().Forget();
+        };
+        hostProbeTimer.Start();
         ApplyRole();
         RenderHome();
         if (deviceRole is null) ShowTour(TourWelcome);
@@ -66,6 +85,7 @@ public partial class MainWindow
     private void ReleaseShell()
     {
         actionTextDescriptor?.RemoveValueChanged(ActionText, ActionTextChanged);
+        hostProbeTimer.Stop();
         ReleaseHealth();
     }
 
@@ -100,6 +120,7 @@ public partial class MainWindow
         else virtualization = null;
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        if (Role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
     }
 
     // ---------- status line ----------
@@ -160,6 +181,7 @@ public partial class MainWindow
         ApplyRole();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
+        if (role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
     }
 
     private void ApplyRole()
@@ -348,6 +370,9 @@ public partial class MainWindow
                 optional.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "MutedBrush");
                 title.Inlines.Add(optional);
             }
+            // Whether the step is ticked, for screen readers and MCP ("Host service: done").
+            AutomationProperties.SetAutomationId(title, $"StepState-{step.Id}");
+            AutomationProperties.SetName(title, $"{step.Title}: {(step.Done ? "done" : step.Optional ? "optional, not done" : "to do")}");
             text.Children.Add(title);
             var detail = new TextBlock { Text = step.Detail, Margin = new Thickness(0, 2, 0, 0) };
             detail.SetResourceReference(StyleProperty, "Muted");
@@ -401,70 +426,232 @@ public partial class MainWindow
     private void RenderHost()
     {
         if (Role != DeviceRole.Host) return;
-        HostAddressText.Text = machine.LanAddress is { } address
-            ? $"https://{address}:{WindowsFirewall.Port}" : "No home network address found yet";
-        HostStatusText.Text = hostServiceReachable switch
-        {
-            true => "Host is reachable",
-            false => "Not reachable yet",
-            null => "Not checked yet"
-        };
-        if (hostServiceReachable == true) Motion.PulseRing(HostPulse, to: 1.35);
+        var state = hostState;
+        var lan = machine.LanAddress ?? HostSetupCommands.ThisPcAddress();
+        HostAddressText.Text = state?.Address is { } published ? $"https://{published}"
+            : lan is not null ? $"https://{lan}:{WindowsFirewall.Port}" : "No home network address found yet";
+        HostStatusText.Text = HostHeadline(state);
+        if (state?.Ready == true) Motion.PulseRing(HostPulse, to: 1.35);
         else
         {
             HostPulse.BeginAnimation(OpacityProperty, null);
             HostPulse.Opacity = 0;
         }
-        var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}." : "No NVIDIA graphics card found.";
+        var setUp = state?.Stage is LocalHostServiceStage.Stopped or LocalHostServiceStage.Running;
+        var steps = new List<HomeStep> { DockerStep(state), ServiceStep(state), PairStep(state), RolesStep(state), UpdateStep(state, setUp) };
+        RenderSteps(HostStepsPanel, steps, numbered: true);
+
+        var left = steps.Where(s => !s.Optional && !s.Done).ToList();
+        HostStepsHeading.Text = left.Count == 0 && state is not null ? "This host is ready" : "Get this host running";
+        var checkedAt = hostProbedAt == default ? "" : $" Last checked {hostProbedAt.ToLocalTime():t}.";
+        HostStepsSummary.Text = state is null ? "Checking this PC's host service..."
+            : left.Count == 0
+                ? "All set: the host service is running and paired." +
+                  (state.Roles is { Count: 0 } ? " Add a role so it has work to do." : "") +
+                  $" Martlet keeps checking it every {HostProbeInterval.TotalSeconds:0} seconds.{checkedAt}"
+                : $"{left.Count} step{(left.Count == 1 ? "" : "s")} left. Next: {left[0].Title}. Steps tick by themselves once " +
+                  $"they're done; Martlet checks every {HostProbeInterval.TotalSeconds:0} seconds.{checkedAt}";
+    }
+
+    private static string HostHeadline(LocalHostServiceState? state) => state?.Stage switch
+    {
+        null => "Checking...",
+        LocalHostServiceStage.DockerMissing => "Needs Docker Desktop",
+        LocalHostServiceStage.DockerNotRunning => "Waiting for Docker Desktop",
+        LocalHostServiceStage.NotSetUp => "Not set up yet",
+        LocalHostServiceStage.Stopped => "Host service stopped",
+        _ when state.AddressOnThisPc == false => "Address changed",
+        _ when state.Answering != true => "Not answering yet",
+        _ => "Host is running"
+    };
+
+    private HomeStep DockerStep(LocalHostServiceState? state)
+    {
         var windowsBlocks = !machine.DockerRunning && machine.DockerInstalled && virtualization is { } windows &&
             (windows.FirmwareOff || windows.NeedsChanges);
-        var steps = new List<HomeStep>
-        {
-            new("docker", "Docker Desktop",
-                machine.DockerRunning ? "Running."
-                    : windowsBlocks ? "Windows needs a setup change. " + (virtualization!.FirmwareOff
-                        ? "Turn on virtualization in firmware settings."
-                        : "Martlet can turn this on. Windows may ask for administrator approval and a restart.")
-                    : machine.DockerInstalled ? "Installed, but not running." : "Required for the host service.",
-                machine.DockerRunning, false,
-                machine.DockerRunning ? []
-                    : windowsBlocks ? [new(virtualization!.FirmwareOff ? "Turn on virtualization" : "Turn on Windows features", PrepareWindows, true)]
-                    : machine.DockerInstalled
-                    ? [new("Start Docker Desktop", StartDocker, true)]
-                    : [new("Install Docker Desktop", InstallDocker, true)]),
-            new("service", "Host service",
-                hostServiceReachable == true ? "Ready on your network."
-                    : "Sets up the host service. Windows may ask to allow private-network access.",
-                hostServiceReachable == true, false, [new("Set up host service", () => SetUpHostServiceAsync().Forget(), true)]),
-            new("pair", "Pair your main PC",
-                "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
-                "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a " +
-                "pairing code)." + (NearbyBlocked
-                    ? " Windows Firewall doesn't let your other computers find this PC yet; Let my other computers find this PC fixes " +
-                      "that (administrator approval once)."
-                    : ""),
-                false, false, NearbyBlocked
-                    ? [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true),
-                       new("Let my other computers find this PC", () => NearbyFirewall_Click(this, new RoutedEventArgs()))]
-                    : [new("Show a pairing code", () => LaunchHost(HostAction.Pair), true)]),
-            new("roles", "Add roles",
-                "Add tasks this host can handle. " + nvidia,
-                false, true, [.. HostRoles.All.SelectMany(r => new[]
-                {
-                    new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add), r == HostRoles.All[0]),
-                    new StepCommand($"Remove {r.Name}", () => LaunchHost(r.Remove))
-                })]),
-            new("update", "Keep it up to date",
-                thisPcHostVersion is null
-                    ? $"Updates the host service to Martlet {Version}. Pairings and roles stay."
-                    : AppVersions.IsOlder(thisPcHostVersion, Version)
-                        ? $"The host service runs Martlet {thisPcHostVersion}. Update it to {Version}. Pairings and roles stay."
-                        : "The host service is up to date.",
-                thisPcHostVersion is not null && !AppVersions.IsOlder(thisPcHostVersion, Version), true,
-                [new("Update host service", () => LaunchHost(HostAction.Update))])
-        };
-        RenderSteps(HostStepsPanel, steps, numbered: true);
+        // Docker Desktop's window can be open while its engine still starts (or can't); the host service needs the engine.
+        var engineWaiting = machine.DockerRunning && state?.Stage == LocalHostServiceStage.DockerNotRunning;
+        var done = machine.DockerRunning && !engineWaiting;
+        return new("docker", "Docker Desktop",
+            done ? "Running."
+                : engineWaiting ? "Docker Desktop is open, but its engine isn't answering yet. The first start can take a few minutes."
+                : windowsBlocks ? "Windows needs a setup change. " + (virtualization!.FirmwareOff
+                    ? "Turn on virtualization in firmware settings."
+                    : "Martlet can turn this on. Windows may ask for administrator approval and a restart.")
+                : machine.DockerInstalled ? "Installed, but not running." : "Required for the host service.",
+            done, false,
+            done || engineWaiting ? []
+                : windowsBlocks ? [new(virtualization!.FirmwareOff ? "Turn on virtualization" : "Turn on Windows features", PrepareWindows, true)]
+                : machine.DockerInstalled
+                ? [new("Start Docker Desktop", StartDocker, true)]
+                : [new("Install Docker Desktop", InstallDocker, true)]);
     }
+
+    private HomeStep ServiceStep(LocalHostServiceState? state)
+    {
+        StepCommand SetUp(string label, bool primary = true) => new(label, () => SetUpHostServiceAsync().Forget(), primary);
+        (string Detail, StepCommand[] Commands) step = state?.Stage switch
+        {
+            null => ("Checking this PC's host service...", Array.Empty<StepCommand>()),
+            LocalHostServiceStage.DockerMissing or LocalHostServiceStage.DockerNotRunning =>
+                ("Runs in Docker Desktop. Martlet checks it again once Docker Desktop is running.", []),
+            LocalHostServiceStage.NotSetUp =>
+                ("Not set up yet. Sets up the host service; Windows may ask to allow private-network access.", [SetUp("Set up host service")]),
+            LocalHostServiceStage.Stopped => ("Set up, but not running. Start it again; pairings and roles stay.", [SetUp("Start host service")]),
+            _ when state.AddressOnThisPc == false =>
+                ("This PC's network address changed since setup, so your other computers can't reach the host service. Set it up " +
+                 "again for the new address; pairings and roles stay.", [SetUp("Set up again")]),
+            _ when state.Answering != true =>
+                ("Running, but not answering on your network yet. It can take a moment after a start; if this lasts, set it up " +
+                 "again (pairings and roles stay).", [SetUp("Set up again", primary: false)]),
+            _ => ($"Running and reachable on your network{(state.HostId is { } id ? $" as {id}" : "")}.", [])
+        };
+        return new("service", "Host service", step.Detail, state?.Ready == true, false, step.Commands);
+    }
+
+    private HomeStep PairStep(LocalHostServiceState? state)
+    {
+        var self = NetworkIdentity.DeviceId(homeHosts);
+        var desktops = state?.Desktops ?? [];
+        var others = desktops.Where(d => d.Id != self).Select(d => d.Name).ToList();
+        var thisPc = desktops.Any(d => d.Id == self) || homeHosts.Any(h => h.Method == HostSetupMethod.ThisPcDocker);
+        var justPaired = hostPairedAt is { } at && DateTime.UtcNow - at < TimeSpan.FromMinutes(5);
+        var paired = others.Count > 0 || thisPc || justPaired;
+        // Who is paired is read from the running host service; until it runs there is nothing to pair with.
+        if (!paired && state?.Stage != LocalHostServiceStage.Running)
+            return new("pair", "Pair your main PC", state?.Stage switch
+            {
+                null => "Checking which computers are paired...",
+                LocalHostServiceStage.NotSetUp => "Set up the host service first, then pair your main PC here.",
+                _ => "Martlet sees which computers are paired once the host service runs."
+            }, false, false, []);
+        var detail = others.Count > 0 ? $"Paired with {JoinNames(others)}{(thisPc ? " and this PC" : "")}. You can pair more computers any time."
+            : thisPc ? "Paired with this PC. To use this host from another computer too, choose Devices > Add a computer there: " +
+                "this PC is listed under Martlet on your network."
+            : justPaired ? "Paired. Your main PC shows here by name once it joins this host's Martlet network."
+            : "On your main PC, choose Devices > Add a computer: this PC is listed under Martlet on your network. Press Connect " +
+              "there, then Allow here when both show the same check number. Or show a pairing code and type it there (Enter a " +
+              "pairing code).";
+        if (NearbyBlocked)
+            detail += " Windows Firewall doesn't let your other computers find this PC yet; Let my other computers find this PC " +
+                "fixes that (administrator approval once).";
+        var pair = new StepCommand(paired ? "Pair another computer" : "Show a pairing code", () => LaunchHost(HostAction.Pair), !paired);
+        return new("pair", "Pair your main PC", detail, paired, false, NearbyBlocked
+            ? [pair, new("Let my other computers find this PC", () => NearbyFirewall_Click(this, new RoutedEventArgs()))]
+            : [pair]);
+    }
+
+    private HomeStep RolesStep(LocalHostServiceState? state)
+    {
+        var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}." : "No NVIDIA graphics card found.";
+        // Roles are read from the running host service; until it runs there is nothing to add them to.
+        if (state?.Roles is not { } installed)
+            return new("roles", "Add roles", "Add tasks this host can handle once the host service runs. " + nvidia, false, true, []);
+        string Name(string kind) => HostRoles.All.FirstOrDefault(r => r.Kind == kind)?.Name ?? kind;
+        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal)).ToList();
+        IReadOnlyList<StepCommand> commands =
+        [
+            .. missing.Select((r, i) => new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add), installed.Count == 0 && i == 0)),
+            .. HostRoles.All.Where(r => installed.Contains(r.Kind, StringComparer.Ordinal))
+                .Select(r => new StepCommand($"Remove {r.Name}", () => LaunchHost(r.Remove)))
+        ];
+        return new("roles", "Add roles",
+            installed.Count == 0 ? "No roles yet. Add tasks this host can handle. " + nvidia
+                : $"Runs {JoinNames([.. installed.Select(Name)])}. Add or remove roles any time.",
+            installed.Count > 0, true, commands);
+    }
+
+    private HomeStep UpdateStep(LocalHostServiceState? state, bool setUp)
+    {
+        var update = new StepCommand("Update host service", () => LaunchHost(HostAction.Update));
+        if (!setUp)
+            return new("update", "Keep it up to date", state?.Stage switch
+            {
+                null => "Checking the host service's version...",
+                LocalHostServiceStage.NotSetUp => $"Once it's set up, the host service runs this app's version (Martlet {Version}).",
+                _ => "Martlet checks the host service's version once Docker Desktop is running."
+            }, false, true, []);
+        if (state!.Version is not { } running)
+            return new("update", "Keep it up to date", $"Updates the host service to Martlet {Version}. Pairings and roles stay.",
+                false, true, [update]);
+        return AppVersions.IsOlder(running, Version)
+            ? new("update", "Keep it up to date",
+                $"The host service runs Martlet {running}. Update it to {Version}. Pairings and roles stay.", false, true, [update with { Primary = true }])
+            : new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+    }
+
+    /// <summary>"A", "A and B", "A, B and C", "A, B, C and 2 more".</summary>
+    private static string JoinNames(IReadOnlyList<string> names) => names.Count switch
+    {
+        0 => "",
+        1 => names[0],
+        <= 3 => string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1],
+        _ => string.Join(", ", names.Take(3)) + $" and {names.Count - 3} more"
+    };
+
+    /// <summary>Reads this PC's host service from Docker (<see cref="LocalHostService"/>) and shows it on the host dashboard. A
+    /// call while a read runs returns that read, which then reads once more so it sees what just changed.</summary>
+    private Task CheckThisPcHostAsync()
+    {
+        if (hostProbe is { IsCompleted: false } running)
+        {
+            hostProbeAgain = true;
+            return running;
+        }
+        return hostProbe = ProbeThisPcHostAsync();
+    }
+
+    private async Task ProbeThisPcHostAsync()
+    {
+        do
+        {
+            hostProbeAgain = false;
+            if (closing || Role != DeviceRole.Host) return;
+            LocalHostServiceState state;
+            try { state = await LocalHostService.ProbeAsync(lifetime.Token); }
+            catch (OperationCanceledException) { return; }
+            if (closing) return;
+            ApplyHostState(state);
+        } while (hostProbeAgain);
+    }
+
+    private void ApplyHostState(LocalHostServiceState state)
+    {
+        hostState = state;
+        hostProbedAt = DateTime.UtcNow;
+        var before = thisPcHostVersion;
+        if (state.Stage is LocalHostServiceStage.Stopped or LocalHostServiceStage.Running) thisPcHostVersion = state.Version;
+        else if (state.Stage == LocalHostServiceStage.NotSetUp) thisPcHostVersion = null;
+        var self = NetworkIdentity.DeviceId(homeHosts);
+        if (state.Desktops.Any(d => d.Id != self)) hostPairedAt = null;
+        var signature = $"{state.Stage}|{state.Ready}|{state.Version}|{string.Join(",", state.Roles ?? [])}|" +
+            string.Join(",", state.Desktops.Select(d => d.Id));
+        if (signature != hostStateSignature)
+        {
+            hostStateSignature = signature;
+            ErrorLog.Info($"This PC's host service: {HostHeadline(state)} (stage {state.Stage}, version {state.Version ?? "-"}, " +
+                $"roles {(state.Roles is { } roles ? roles.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) : "unknown")}, " +
+                $"network {state.Network ?? "unknown"} with {state.Desktops.Count} desktop(s))" +
+                (state.Problem is { } problem ? $": {problem}" : "."));
+        }
+        if (before != thisPcHostVersion) UpdateNearby();
+        RenderHost();
+    }
+
+    /// <summary>What the last read of this PC's host service means, as one sentence for the status line.</summary>
+    private string HostServiceSentence(LocalHostServiceState state) => state.Stage switch
+    {
+        LocalHostServiceStage.DockerMissing => "Docker Desktop isn't installed. Install it first (step 1).",
+        LocalHostServiceStage.DockerNotRunning => machine.DockerRunning
+            ? "Docker Desktop is open, but its engine isn't answering yet, so the host service can't run. The first start can take a few minutes."
+            : "Docker Desktop isn't running yet, so the host service can't run. Start Docker Desktop (step 1).",
+        LocalHostServiceStage.NotSetUp => "The host service isn't set up yet. Use Set up host service.",
+        LocalHostServiceStage.Stopped => "The host service is set up but stopped. Use Start host service; pairings and roles stay.",
+        _ when state.AddressOnThisPc == false => "This PC's network address changed since setup. Use Set up again; pairings and roles stay.",
+        _ when state.Answering != true => "The host service runs but isn't answering on your network yet. Check again in a moment.",
+        _ => "The host service is running and reachable on your network." +
+            (PairStep(state).Done ? "" : " Pair your main PC next.")
+    };
 
     /// <summary>Runs a host-dashboard step on this PC's host service in a run window (never a console). Pairing shows the
     /// one-use code for the main PC.</summary>
@@ -483,8 +670,7 @@ public partial class MainWindow
                 : await HostActions.RunAsync(this, store.DataDirectory, ThisPcTarget(), null, action);
             if (closing) return;
             ActionText.Text = done ?? "Stopped. See the progress window for details.";
-            if (done is not null && action.Verb is HostVerb.Setup or HostVerb.Update)
-                thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
+            if (done is not null && action.Verb == HostVerb.Pair) hostPairedAt = DateTime.UtcNow;
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
@@ -495,7 +681,11 @@ public partial class MainWindow
         finally
         {
             hostBusy = false;
-            if (!closing) RenderHost();
+            if (!closing)
+            {
+                RenderHost();
+                CheckThisPcHostAsync().Forget();
+            }
         }
     }
 
@@ -595,40 +785,23 @@ public partial class MainWindow
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException) { ActionText.Text = error.Message; }
     }
 
+    /// <summary>Check again: reads this PC and its host service now (Docker, the gateway's roles and network, its published
+    /// port) and says what that means. Read-only; it changes nothing.</summary>
     private async void CheckHostService_Click(object sender, RoutedEventArgs e)
     {
-        if (hostBusy) return;
-        var address = machine.LanAddress ?? HostSetupCommands.ThisPcAddress();
-        if (address is null || !IPAddress.TryParse(address, out var ip))
-        {
-            ActionText.Text = "Connect this PC to your home network first.";
-            return;
-        }
-        hostBusy = true;
+        if (closing) return;
         CheckHostServiceButton.IsEnabled = false;
         HostStatusText.Text = "Checking...";
         try
         {
-            using var client = new TcpClient();
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(3));
-            await client.ConnectAsync(ip, WindowsFirewall.Port, timeout.Token);
-            hostServiceReachable = true;
+            await ReadMachineAsync();
+            // Reading this PC also starts a read of its host service; wait for that one rather than starting another.
+            await (hostProbe is { IsCompleted: false } reading ? reading : CheckThisPcHostAsync());
         }
-        catch (SocketException) { hostServiceReachable = false; }
-        catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { hostServiceReachable = false; }
-        catch (OperationCanceledException) { return; }
-        finally
-        {
-            hostBusy = false;
-            if (!closing) CheckHostServiceButton.IsEnabled = true;
-        }
-        if (hostServiceReachable == true) thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
-        await ReadMachineAsync();
-        if (!closing)
-            ActionText.Text = hostServiceReachable == true
-                ? "The host service is reachable. Pair your main PC next."
-                : "The host service isn't reachable yet. Start Docker Desktop, then set it up.";
+        finally { if (!closing) CheckHostServiceButton.IsEnabled = true; }
+        if (closing) return;
+        RenderHost();
+        if (hostState is { } state) ActionText.Text = HostServiceSentence(state);
     }
 
     // ---------- devices map ----------
