@@ -33,20 +33,20 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.29.0, )",
-          "Martlet.Core": "[0.29.0, )"
+          "Martlet.Avatars": "[0.30.0, )",
+          "Martlet.Core": "[0.30.0, )"
         }
       },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.29.0, )"
+          "Martlet.Avatars": "[0.30.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.29.0, )"
+          "Martlet.Core": "[0.30.0, )"
         }
       },
       "martlet.core": {
@@ -55,45 +55,45 @@
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.29.0, )"
+          "Martlet.Core": "[0.30.0, )"
         }
       },
       "martlet.gateway": {
         "type": "Project",
         "dependencies": {
-          "Martlet.F5": "[0.29.0, )",
-          "Martlet.Perception": "[0.29.0, )",
-          "Martlet.Providers": "[0.29.0, )"
+          "Martlet.F5": "[0.30.0, )",
+          "Martlet.Perception": "[0.30.0, )",
+          "Martlet.Providers": "[0.30.0, )"
         }
       },
       "martlet.gateway.dia": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.F5": "[0.29.0, )"
+          "Martlet.Gateway.F5": "[0.30.0, )"
         }
       },
       "martlet.gateway.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.29.0, )"
+          "Martlet.Gateway": "[0.30.0, )"
         }
       },
       "martlet.gateway.gptsovits": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.F5": "[0.29.0, )"
+          "Martlet.Gateway.F5": "[0.30.0, )"
         }
       },
       "martlet.gateway.ollama": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.29.0, )"
+          "Martlet.Gateway": "[0.30.0, )"
         }
       },
       "martlet.gateway.xtts": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.F5": "[0.29.0, )"
+          "Martlet.Gateway.F5": "[0.30.0, )"
         }
       },
       "martlet.perception": {
@@ -102,7 +102,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.29.0, )"
+          "Martlet.Core": "[0.30.0, )"
         }
       },
       "Google.Protobuf": {
