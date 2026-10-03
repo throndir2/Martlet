@@ -44,7 +44,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.17.0, )",
+          "Martlet.Core": "[0.20.0, )",
           "NAudio.Wasapi": "[3.1.0, )"
         }
       },
@@ -53,14 +53,14 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.17.0, )",
-          "Martlet.Core": "[0.17.0, )"
+          "Martlet.Avatars": "[0.20.0, )",
+          "Martlet.Core": "[0.20.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.17.0, )"
+          "Martlet.Core": "[0.20.0, )"
         }
       },
       "martlet.core": {
@@ -69,26 +69,26 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.17.0, )"
+          "Martlet.Core": "[0.20.0, )"
         }
       },
       "martlet.doctor": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.17.0, )",
-          "Martlet.Diagnostics": "[0.17.0, )"
+          "Martlet.Audio": "[0.20.0, )",
+          "Martlet.Diagnostics": "[0.20.0, )"
         }
       },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.17.0, )"
+          "Martlet.Core": "[0.20.0, )"
         }
       },
       "martlet.home": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.17.0, )"
+          "Martlet.Core": "[0.20.0, )"
         }
       },
       "martlet.mcp.client": {
@@ -97,12 +97,19 @@
       "martlet.mcp.protocol": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatar.Audio2Face": "[0.17.0, )",
-          "Martlet.Doctor": "[0.17.0, )",
-          "Martlet.F5": "[0.17.0, )",
-          "Martlet.Home": "[0.17.0, )",
-          "Martlet.Mcp.Client": "[0.17.0, )",
-          "Martlet.Sherpa": "[0.17.0, )"
+          "Martlet.Avatar.Audio2Face": "[0.20.0, )",
+          "Martlet.Doctor": "[0.20.0, )",
+          "Martlet.F5": "[0.20.0, )",
+          "Martlet.Home": "[0.20.0, )",
+          "Martlet.Mcp.Client": "[0.20.0, )",
+          "Martlet.Providers": "[0.20.0, )",
+          "Martlet.Sherpa": "[0.20.0, )"
+        }
+      },
+      "martlet.providers": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.20.0, )"
         }
       },
       "martlet.sherpa": {

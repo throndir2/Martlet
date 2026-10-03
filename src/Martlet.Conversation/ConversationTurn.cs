@@ -45,7 +45,8 @@ public sealed class ConversationTurn
     private EvidenceProvenance? textProvenance, speechProvenance;
     private Guid? speechRequest;
     private string? refusal;
-    private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected;
+    private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected,
+        audioRejected;
     private bool speechLimitReached;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
     private string? activeTool, fellBackAfter;
@@ -207,7 +208,7 @@ public sealed class ConversationTurn
         {
             var input = request.Input;
             var rounds = new List<TextToolRound>();
-            bool retried = false, fallback = false;
+            bool retried = false, fallback = false, audioDropped = false;
             for (var attempt = 0; ; attempt++)
             {
                 int before;
@@ -215,7 +216,8 @@ public sealed class ConversationTurn
                 RoundResult result;
                 try
                 {
-                    result = await RequestAsync(input, attempt == 0 ? TextIds : NewIds(), segmenter, fallback).ConfigureAwait(false);
+                    result = await RequestAsync(fallback || audioDropped ? input.WithoutAudio() : input,
+                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback).ConfigureAwait(false);
                 }
                 // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
                 catch (Exception error) when (error is ConversationException { Failure: ConversationFailure.DeadlineExceeded or
@@ -227,6 +229,19 @@ public sealed class ConversationTurn
                 }
                 if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
                 {
+                    // A model that refuses the attached recording rejects the request before answering; ask again with the
+                    // transcript only, and drop the recording for the rest of this reply.
+                    if (!audioDropped && !fallback && input.Audio is not null && result.Text.Length == 0 &&
+                        result.Failure == ProviderFailureCode.RequestRejected)
+                    {
+                        audioDropped = true;
+                        lock (Sync)
+                        {
+                            CheckActive();
+                            audioRejected = true;
+                        }
+                        continue;
+                    }
                     // A model without tool support (many local models) rejects the request before answering; ask once more
                     // without tools so the conversation keeps working.
                     if (!retried && rounds.Count == 0 && input.Tools.Count > 0 && result.Text.Length == 0 &&
@@ -238,6 +253,8 @@ public sealed class ConversationTurn
                             CheckActive();
                             // Only the selected Thinking model is remembered as rejecting tools.
                             if (!fallback) toolsRejected = true;
+                            // Rejected again without the recording: the tools were the problem, not the audio.
+                            if (audioDropped) audioRejected = false;
                         }
                         input = request.Input.WithoutTools();
                         continue;
@@ -698,6 +715,6 @@ public sealed class ConversationTurn
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
-            speechLimitReached, failedProvider, fellBackAfter);
+            speechLimitReached, failedProvider, fellBackAfter, audioRejected);
     }
 }

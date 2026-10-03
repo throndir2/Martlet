@@ -15,8 +15,9 @@ namespace Martlet.Desktop;
 internal sealed record LiveConversationStatus(string Code, bool Finished = false, bool Quarantined = false,
     PolicyReason? Policy = null, ProviderFailureCode? ProviderFailure = null, ErrorCode? AudioFailure = null);
 
-// HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded.
-internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId)
+// HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
+// is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice).
+internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -43,6 +44,10 @@ internal sealed class LiveConversationOperation
     internal ConversationTurn? Turn => Volatile.Read(ref turn);
     internal TranscriptionResult? Transcription { get; set; }
     [JsonIgnore] internal string? Transcript { get; set; }
+    /// <summary>What the user said, kept only while Thinking may hear it (never saved); null otherwise.</summary>
+    [JsonIgnore] internal BoundedWaveAudio? Recording { get; set; }
+    /// <summary>The reply's request carried the user's recording with the transcript.</summary>
+    internal bool VoiceSent { get; set; }
     internal Guid? PersonaRevision { get; set; }
     internal ResponseStyle? ResponseStyle { get; set; }
     internal int ContextMessages { get; set; }
@@ -199,6 +204,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private LiveListener? listener;
     private LiveConversationOperation? transcribing;
     private long listenEpoch, spokeUntil;
+    // Thinking models that rejected a recording this app session; they get the transcript only until Martlet restarts.
+    private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
 
     internal bool IsRunning => operations.IsRunning;
     internal int ContextTurns { get { lock (gate) return context.Count; } }
@@ -358,11 +365,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
-        ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null)
+        ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
+        BoundedWaveAudio? recording = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
-        if (listening is not null && !microphone || spoken && microphone) throw new LiveActionException("conversation.invalid_input");
+        if (listening is not null && !microphone || spoken && microphone || recording is not null && !spoken)
+            throw new LiveActionException("conversation.invalid_input");
         listening?.Activity.Validate();
         Voiceprint? voiceprint = null;
         if (listening?.RequireVoiceId == true)
@@ -380,12 +389,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
-                () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller);
+                () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
+                hear: microphone ? listening?.Hear == true : recording is not null);
             operation = new(authorization, caller)
             {
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
-                SpokenConfidence = spoken ? confidence : null
+                SpokenConfidence = spoken ? confidence : null, Recording = recording
             };
             active = operation;
             var worker = operations.TryStart(async token =>
@@ -564,7 +574,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     private static HeardSpeech Result(LiveConversationOperation utterance) => new(utterance.Status,
         utterance.Status.Code == "listen.heard" ? utterance.Transcript : null, utterance.Transcription?.Confidence, utterance.Heard,
-        utterance.SpeakerCheck, utterance.Voiceprint);
+        utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null);
 
     // Voice ID, then speech-to-text, one utterance after another (so what you said stays in order) while the next is recorded.
     private async Task TranscribeHeardAsync(Task previous, LiveListener listening, LiveConversationOperation utterance, byte[] speech,
@@ -587,6 +597,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (result is null) return;
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
             utterance.Transcript = result.Text;
+            if (listening.Options.Hear) utterance.Recording = audio;
             utterance.Publish(new("listen.heard", Finished: true));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -856,6 +867,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     return new(operation.Transcription?.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
                 operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
                 operation.Transcript = result.Text;
+                if (operation.Authorization.Hear) operation.Recording = audio;
                 input = new(result.Text!);
             }
             operation.Authorization.Check(worker);
@@ -930,14 +942,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
             lock (gate)
             {
                 operation.Authorization.Check(worker);
+                var prompts = operation.Authorization.Configuration.Prompts;
+                // The recording goes only to a Thinking model that hears and hasn't refused one this session.
+                var recording = operation.Authorization.Hear && configured.Hearing() == HearingSupport.Supported &&
+                    !deafModels.Contains(configured.ToolModelKey()) ? operation.Recording : null;
                 var request = operation.Authorization.Configuration.Request(
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
                     out var usedHistory, out var usedMemory, out var usedLore,
                     extraInstructions: Join(home?.Instructions,
-                        VoicePromptContext.Instructions(operation.Heard, operation.Authorization.Configuration.Prompts),
-                        operation.Spoken ? LiveConversationConfiguration.Listening(operation.Authorization.Configuration.Prompts) : null),
+                        VoicePromptContext.Instructions(operation.Heard, prompts),
+                        operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
+                        recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice)),
                     silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
-                    closingInstructions: operation.Authorization.Configuration.ReplyLength);
+                    closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording);
+                operation.VoiceSent = request.Input.Audio is not null;
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -958,6 +976,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 tools?.MarkUnsupported(configured.ToolModelKey());
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
                     "Martlet asked again without tools and stops offering them to it until it restarts.");
+            }
+            // A model that rejected the recording gets the transcript only from now on (this app session).
+            if (terminal.AudioRejected)
+            {
+                lock (gate) deafModels.Add(configured.ToolModelKey());
+                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with your recording; " +
+                    "Martlet asked again with the transcript only and sends it only the transcript until it restarts.");
             }
             if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);

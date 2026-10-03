@@ -6,9 +6,10 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 /// <summary>What always listening made of one utterance: the words heard, or why there are none (another voice for Voice ID,
-/// a speech-to-text or microphone failure). Text is set only when the utterance was transcribed.</summary>
+/// a speech-to-text or microphone failure). Text is set only when the utterance was transcribed; Recording only when Thinking may
+/// also hear it.</summary>
 internal sealed record HeardSpeech(LiveConversationStatus Status, string? Text, double? Confidence, HeardVoices? Voices,
-    SpeakerCheck? SpeakerCheck, Voiceprint? Voiceprint);
+    SpeakerCheck? SpeakerCheck, Voiceprint? Voiceprint, Martlet.Providers.BoundedWaveAudio? Recording = null);
 
 /// <summary>Always listening (<see cref="LiveConversationController.Listen"/>): one loop on its own slot beside replies. It
 /// records one utterance at a time and transcribes each in order while it already listens for the next, so nothing said while

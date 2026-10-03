@@ -33,17 +33,20 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     internal bool Microphone { get; }
     /// <summary>A screen glance: this action may send its one attached screen image with the text.</summary>
     internal bool Screen { get; }
+    /// <summary>The user let Thinking hear their voice: this action may send their recording with the transcript.</summary>
+    internal bool Hear { get; }
     internal int ReservedRequests { get { lock (gate) return textRequests + sttRequests + speechRequests; } }
     internal CredentialError? CredentialFailure { get; private set; }
 
     internal ConversationAuthorization(LiveConversationConfiguration configuration, bool voice, bool microphone,
         TimeProvider clock, Func<bool> current, Func<CancellationToken, Task<SettingsLoadResult>> load,
-        ICredentialStore vault, CancellationToken caller, bool screen = false)
+        ICredentialStore vault, CancellationToken caller, bool screen = false, bool hear = false)
     {
         Configuration = configuration;
         Voice = voice;
         Microphone = microphone;
         Screen = screen;
+        Hear = hear;
         this.clock = clock;
         this.current = current;
         this.load = load;
@@ -61,9 +64,10 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         lock (gate)
         {
             exactInput = input;
-            // A Thinking fallback may ask once more, and once more without tools if it rejects them.
+            // A Thinking fallback may ask once more, and once more without tools if it rejects them; a model that rejects the
+            // recording is asked once more with the transcript only.
             maxTextRequests = (input.Tools.Count > 0 ? Math.Max(toolRounds + 1, 2) : 1) +
-                (Configuration.Fallback is null ? 0 : 2);
+                (Configuration.Fallback is null ? 0 : 2) + (input.Audio is null ? 0 : 1);
         }
     }
     internal void Revoke() => Interlocked.Exchange(ref revoked, 1);
@@ -133,7 +137,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         lock (gate)
         {
             Check(token);
-            var continues = exactInput is { Tools.Count: > 0 } && ReferenceEquals(action.Input.Origin, exactInput);
+            // Tool rounds, a retry without tools and one without the recording all continue this exact input.
+            var continues = exactInput is not null && ReferenceEquals(action.Input.Origin, exactInput);
             if (!ReferenceEquals(action.Input, exactInput) && !continues || action.Model != selection && !fallback ||
                 action.Limits != Configuration.TextLimits || action.Budget != expected ||
                 textRequests >= maxTextRequests || !requests.Add(action.Context.Ids.RequestId)) return null;
@@ -142,7 +147,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             else Ticket(ProviderRole.Llm);
         }
         return new(new(fallback ? FallbackBinding() : Binding(SetupRole.Llm), action.Model, action.Context.Ids, action.Context.Epoch,
-            action.Limits, expiry, true, true, allowImageDisclosure: Screen && action.Input.Image is not null), new(action.Budget, expiry));
+            action.Limits, expiry, true, true, allowImageDisclosure: Screen && action.Input.Image is not null,
+            allowAudioDisclosure: Hear && !fallback && action.Input.Audio is not null), new(action.Budget, expiry));
     }
 
     // The fallback's key is bound to its exact base URL and model, like a Chat Completions Thinking key.
