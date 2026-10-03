@@ -101,7 +101,44 @@ without asking anything: for SSH hosts through Martlet's SSH runner (its own key
 the pinned host key and a sudo password only if you chose to remember one; no
 `--yes`), for this PC in Docker Desktop. A host that needs a password, a new host
 key, sudo or an approval fails that run without changing anything and keeps
-*Update host*.
+*Update host*. A host busy with another change (below) is not interrupted: the
+background `update` stops at once without changing anything, its Devices card
+says what the host is busy with, and Martlet tries it again every three minutes
+until it is free.
+
+### One change at a time
+
+A host makes one change at a time, whoever asks for it: a console on the host,
+a desktop over SSH, Martlet on that computer for a paired desktop (commands
+between computers), another desktop's automatic update, or this PC's own. Every
+command that changes the host (`setup`, `add`, `remove`, `pair`, `console`,
+`network-reset`, `machine`, `update`) holds `engine.lock` in the config volume
+(natively `~/.config/martlet/host/`) with `flock` while it runs, and writes
+what it does to `engine.holder` beside it. The kernel drops the lock when the
+command ends however it ends (finished, killed, a dropped SSH connection), so no
+stale lock is ever left behind. Read-only commands (`roles`, `describe`,
+`status`, `config`) never wait.
+
+- A command that finds another one running **waits** for it and says so:
+  `This host is busy: installing ollama (12 min so far; martlet-host-add-..., from Martlet). Waiting for it to finish before updating this host...`,
+  then a line every minute, then `That finished. Continuing with ...`. Martlet's
+  run windows (and, for commands between computers, the computer that sent
+  the command) show these lines. It waits up to `MARTLET_LOCK_WAIT` seconds
+  (default 7200).
+- A **background** run that nobody confirmed and nobody watches (no terminal
+  and no `--yes`, as Martlet's automatic host updates run) does not queue
+  behind a long install: it stops at once, changes nothing and exits **75**
+  with one line `MARTLET-BUSY <what is running>`. An attended run that waited
+  `MARTLET_LOCK_WAIT` seconds ends the same way. Martlet reads that line and
+  tries again later instead of reporting a failure.
+- `status` shows `Busy now: ...` while a change runs. When the holder is a
+  console session open 10+ minutes, the waiting lines name the command that
+  stops it (a closed console window can leave its engine waiting for input).
+- `engine.log` records each wait (`busy, waiting`, `lock free after waiting`)
+  and each stop (`busy, stopped without changing anything`).
+
+MCP's `host_engine_check` runs this engine in a disposable `ubuntu:24.04`
+container and checks all of the above ([MCP](../../docs/MCP.md#local-mcp-control-windows)).
 
 ### What the host tells Martlet
 

@@ -26,7 +26,14 @@ public partial class MainWindow
     private string? nodeAgentHostId;
     private bool installAfterNodeCommand;
     private string? nodeUpdateWaiting;
+    /// <summary>What the update another computer asked for waits for here, and when the asker was last told.</summary>
+    private string? nodeUpdateBlocker;
+    private DateTimeOffset nodeUpdateToldAt;
+    /// <summary>The command from another computer this PC runs right now (an install waits for it to finish).</summary>
+    private Martlet.Core.Nodes.NodeCommand? nodeCommandRunning;
     private string? ownHostUpdateTried;
+    /// <summary>When keeping this PC's own host service current found it busy with another change, the next try.</summary>
+    private DateTimeOffset? ownHostRetryAt;
     private string? lastNodeCommand;
 
     private void InitializeNodeAgent()
@@ -60,6 +67,28 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
     }
 
+    /// <summary>node-command.txt holds the ID of the last command from another computer whose martlet-host run started here,
+    /// so after a restart Martlet can tell a command it only took (which it then simply runs) from one cut off midway.</summary>
+    private const string NodeCommandStartedFile = "node-command.txt";
+
+    private bool NodeCommandStarted(string id)
+    {
+        if (store is null) return true;
+        try { return File.ReadAllText(Path.Combine(store.DataDirectory, NodeCommandStartedFile)).Trim() == id; }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return false; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
+    }
+
+    private void MarkNodeCommandStarted(string id)
+    {
+        if (store is null) return;
+        try { File.WriteAllText(Path.Combine(store.DataDirectory, NodeCommandStartedFile), id); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn("Could not note which command from another computer started here", error);
+        }
+    }
+
     /// <summary>Checked/Unchecked, so UI Automation's toggle (MCP ui_toggle) changes the choice too.</summary>
     private void AllowNodeCommands_Changed(object sender, RoutedEventArgs e)
     {
@@ -91,7 +120,8 @@ public partial class MainWindow
 
     private async Task NodeAgentTickAsync()
     {
-        if (nodeAgentBusy || closing || store is null) return;
+        // Exiting (for example to install an update): take no new command that the exit would cut off.
+        if (nodeAgentBusy || closing || exiting || store is null) return;
         if (!nodeCommandsAllowed)
         {
             ShowNodeAgentStatus(NodeCommandsOffText);
@@ -129,7 +159,9 @@ public partial class MainWindow
                         CheckHostsAsync([host]).Forget();
                     break;
                 case NodeAgentPassKind.Pending:
-                    ShowNodeAgentStatus(pass.Text);
+                    ShowNodeAgentStatus(!installAfterNodeCommand && nodeUpdateBlocker is { } blocker && nodeUpdateWaiting == pass.Command?.Id
+                        ? $"{(pass.Command is { } waiting ? NodeCommandAgent.Describe(waiting) : "An update")} waits until nothing needs Martlet here. Now: {blocker}."
+                        : pass.Text);
                     if (installAfterNodeCommand)
                     {
                         installAfterNodeCommand = false;
@@ -194,19 +226,30 @@ public partial class MainWindow
                 "did not finish; the host-runs log shows why. Update hosts now (above) tries again.");
             return;
         }
+        if (ownHostRetryAt is { } retry && DateTimeOffset.UtcNow < retry) return;
+        ownHostRetryAt = null;
         ownHostUpdateTried = Version;
         hostUpdatesRunning = true;
         const string title = "Keep this PC's host service current";
-        var output = new LineSink(line => HostRunLog.Write(title, line));
+        var output = new EngineOutput(new LineSink(line => HostRunLog.Write(title, line)));
         ShowNodeAgentStatus($"Updating {host.HostId} from Martlet {current} to {Version}, so your other computers can update and manage it from now on...");
         HostRunLog.Write(title, $"--- started: {current} -> {Version}");
         try
         {
             var target = ThisPcTarget();
             await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(title, "status: " + status), output, lifetime.Token);
-            var exit = await HostLocal.EngineAsync(target, ["update"], output, lifetime.Token);
+            // Automatic: it doesn't queue behind a change already running on this host (an install, for example).
+            var exit = await HostLocal.EngineAsync(target, ["update"], output, lifetime.Token, waitForOtherChanges: false);
             HostRunLog.Write(title, $"--- exit {exit}");
             if (closing) return;
+            if (output.Busy(exit) is { } busy)
+            {
+                ownHostUpdateTried = null;
+                ownHostRetryAt = DateTimeOffset.UtcNow + HostRetryDelay;
+                ShowNodeAgentStatus($"{host.HostId} is busy ({busy}), so updating it to {Version} waits; nothing was changed. " +
+                    $"Martlet tries again at {ownHostRetryAt.Value.ToLocalTime():t}.");
+                return;
+            }
             if (exit == 0)
             {
                 thisPcHostVersion = Version;
@@ -243,51 +286,84 @@ public partial class MainWindow
     {
         var here = Environment.MachineName;
         ShowNodeAgentStatus($"Running {NodeCommandAgent.Describe(command)}...");
-        if (command.Kind == NodeCommandKinds.Update) return await RunUpdateCommandAsync(command, output, token);
-        if (resumed) return new(false, $"Martlet on {here} restarted while it ran. Send it again.");
-        var role = command.Arguments.GetValueOrDefault("role");
-        string[] engine = command.Kind switch
+        nodeCommandRunning = command;
+        try
         {
-            NodeCommandKinds.Status => ["status"],
-            NodeCommandKinds.DescribeRole => ["describe", role!],
-            NodeCommandKinds.AddRole => ["add", role!],
-            NodeCommandKinds.RemoveRole => ["remove", role!],
-            _ => throw new InvalidOperationException($"Martlet on {here} does not run {command.Kind}.")
-        };
-        if (command.Kind == NodeCommandKinds.AddRole && CannotHand(nodeAgentHostId ?? "", role!, HostRoles.All.FirstOrDefault(r => r.Kind == role)?.Job ?? "")
-            is { } cannot)
-            return new(false, $"{role} can't be installed on {here}: {cannot}");
-        await EnsureLocalEngineAsync(output, token);
-        var target = ThisPcTarget();
-        await HostLocal.EnsureImageAsync(target, output.Report, output, token);
-        Dictionary<string, string>? answers = null;
-        if (command.Kind == NodeCommandKinds.AddRole)
-        {
-            answers = new(StringComparer.Ordinal);
-            foreach (var (key, value) in command.Arguments.Where(pair => pair.Key.StartsWith("choice.", StringComparison.Ordinal))) answers[key] = value;
-            foreach (var (key, value) in secrets) answers[key] = value;
+            if (command.Kind == NodeCommandKinds.Update) return await RunUpdateCommandAsync(command, output, token);
+            // Taken but never started here (Martlet exited first, for example to install an update): it simply runs now.
+            if (resumed && !NodeCommandStarted(command.Id)) resumed = false;
+            if (resumed) return new(false, $"Martlet on {here} restarted while it ran. Send it again.");
+            // Martlet is exiting: leave it waiting for after the restart rather than start what the exit would cut off.
+            if (closing || exiting) return null;
+            var role = command.Arguments.GetValueOrDefault("role");
+            string[] engine = command.Kind switch
+            {
+                NodeCommandKinds.Status => ["status"],
+                NodeCommandKinds.DescribeRole => ["describe", role!],
+                NodeCommandKinds.AddRole => ["add", role!],
+                NodeCommandKinds.RemoveRole => ["remove", role!],
+                _ => throw new InvalidOperationException($"Martlet on {here} does not run {command.Kind}.")
+            };
+            if (command.Kind == NodeCommandKinds.AddRole && CannotHand(nodeAgentHostId ?? "", role!, HostRoles.All.FirstOrDefault(r => r.Kind == role)?.Job ?? "")
+                is { } cannot)
+                return new(false, $"{role} can't be installed on {here}: {cannot}");
+            await EnsureLocalEngineAsync(output, token);
+            var target = ThisPcTarget();
+            await HostLocal.EnsureImageAsync(target, output.Report, output, token);
+            Dictionary<string, string>? answers = null;
+            if (command.Kind == NodeCommandKinds.AddRole)
+            {
+                answers = new(StringComparer.Ordinal);
+                foreach (var (key, value) in command.Arguments.Where(pair => pair.Key.StartsWith("choice.", StringComparison.Ordinal))) answers[key] = value;
+                foreach (var (key, value) in secrets) answers[key] = value;
+            }
+            // A change waits for one already running on this host (its output says what it waits for).
+            var engineOutput = new EngineOutput(output);
+            MarkNodeCommandStarted(command.Id);
+            var exit = await HostLocal.EngineAsync(target, engine, engineOutput, token, answers: answers);
+            if (engineOutput.Busy(exit) is { } busy)
+                return new(false, $"{here}'s host stayed busy with another change ({busy}), so nothing was changed. Send it again when that finishes.", exit);
+            if (exit != 0) return new(false, $"martlet-host {string.Join(' ', engine)} stopped on {here} (exit {exit}). The output shows why.", exit);
+            if (command.Kind is NodeCommandKinds.AddRole or NodeCommandKinds.RemoveRole) gpuProbe = null;
+            return new(true, command.Kind switch
+            {
+                NodeCommandKinds.Status => $"{here}'s host service status is shown above.",
+                NodeCommandKinds.DescribeRole => $"Read what {role} needs on {here}.",
+                NodeCommandKinds.AddRole => $"{role} is running in {here}'s host service.",
+                _ => $"{role} was removed from {here}'s host service."
+            }, 0);
         }
-        var exit = await HostLocal.EngineAsync(target, engine, output, token, answers: answers);
-        if (exit != 0) return new(false, $"martlet-host {string.Join(' ', engine)} stopped on {here} (exit {exit}). The output shows why.", exit);
-        if (command.Kind is NodeCommandKinds.AddRole or NodeCommandKinds.RemoveRole) gpuProbe = null;
-        return new(true, command.Kind switch
+        finally
         {
-            NodeCommandKinds.Status => $"{here}'s host service status is shown above.",
-            NodeCommandKinds.DescribeRole => $"Read what {role} needs on {here}.",
-            NodeCommandKinds.AddRole => $"{role} is running in {here}'s host service.",
-            _ => $"{role} was removed from {here}'s host service."
-        }, 0);
+            if (ReferenceEquals(nodeCommandRunning, command)) nodeCommandRunning = null;
+        }
     }
 
     /// <summary>Brings this PC to at least the asked version: first Martlet itself (from its GitHub Release, checked against
     /// GitHub's SHA-256 digest; Martlet restarts into it and then continues), then its host service. Returns null while it
-    /// continues later (waiting until Martlet is idle, or restarting into the new version).</summary>
+    /// continues later: while it waits until nothing needs Martlet here (you, a conversation, a setup task, another host
+    /// update), telling the computer that asked what it waits for, or while Martlet restarts into the new version.</summary>
     private async Task<NodeCommandOutcome?> RunUpdateCommandAsync(Martlet.Core.Nodes.NodeCommand command, IProgress<string> output, CancellationToken token)
     {
         var here = Environment.MachineName;
         var wanted = System.Version.Parse(command.Arguments["version"]);
+        NodeCommandOutcome? Wait(string why, string message)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (nodeUpdateWaiting != command.Id || nodeUpdateBlocker != why && now - nodeUpdateToldAt >= TimeSpan.FromMinutes(1))
+            {
+                output.Report(message);
+                nodeUpdateToldAt = now;
+            }
+            nodeUpdateWaiting = command.Id;
+            nodeUpdateBlocker = why;
+            return null;
+        }
+
         if (System.Version.Parse(Version) < wanted)
         {
+            // A check or download already under way (the periodic one) is joined rather than mistaken for a failure.
+            await WaitForUpdateWorkAsync(token);
             if (readyUpdate is not { } ready || ready.Update.Version < wanted)
             {
                 output.Report($"Martlet on {here} is {Version}; {command.RequestedBy} asked for {wanted.ToString(3)}. Checking Martlet's GitHub Releases...");
@@ -298,21 +374,21 @@ public partial class MainWindow
                 if (failedInstall == offered.Version.ToString(3))
                     return new(false, $"Installing Martlet {failedInstall} on {here} failed before: {failedInstallMessage ?? "see Settings > App updates there"}");
                 output.Report($"Downloading Martlet {offered.Version.ToString(3)} ({Mib(offered)}) and checking it against GitHub's SHA-256 digest...");
-                await DownloadUpdateAsync();
+                for (var attempt = 0; attempt < 3 && readyUpdate?.Update.Version != offered.Version && !closing; attempt++)
+                {
+                    await WaitForUpdateWorkAsync(token);
+                    if (readyUpdate?.Update.Version != offered.Version) await DownloadUpdateAsync();
+                }
                 if (readyUpdate is not { } downloaded || downloaded.Update.Version != offered.Version)
                     return new(false, $"The download on {here} didn't finish: {UpdateStatusText.Text}");
                 output.Report($"Martlet {offered.Version.ToString(3)} is downloaded and matches GitHub's SHA-256 digest. " +
                     "(The installer is not code-signed; the digest detects a damaged download, not who published it.)");
             }
             var version = readyUpdate!.Value.Update.Version.ToString(3);
-            if (!IsIdleForUpdate())
-            {
-                if (nodeUpdateWaiting != command.Id)
-                    output.Report($"{BusyReason() ?? "Someone is using Martlet"} on {here} right now, so Martlet {version} installs as soon as it is idle.");
-                nodeUpdateWaiting = command.Id;
-                return null;
-            }
+            if (InstallBlocker(asked: true) is { } blocker)
+                return Wait(blocker, $"Martlet {version} installs on {here} as soon as nothing needs Martlet there. Waiting: {blocker}.");
             output.Report($"Installing Martlet {version} on {here}. Martlet restarts into it and then brings its host service up to date.");
+            nodeUpdateBlocker = null;
             installAfterNodeCommand = true;
             return null;
         }
@@ -320,7 +396,10 @@ public partial class MainWindow
         var current = await HostSetupCommands.ThisPcGatewayVersionAsync(token);
         if (current is not null && !AppVersions.IsOlder(current, Version))
             return new(true, $"{here} runs Martlet {Version}, and its host service runs {current}.", 0);
-        if (hostUpdatesRunning) return null;
+        if (hostUpdatesRunning)
+            return Wait("another update of this PC's host service is running",
+                $"Another update of {here}'s host service is running; this one continues when it ends.");
+        nodeUpdateBlocker = null;
         await EnsureLocalEngineAsync(output, token);
         output.Report($"Updating {here}'s host service from {current ?? "an unknown version"} to {Version}. Its pairings and roles stay; " +
             "it restarts at the end, so it stops answering for a moment.");
@@ -329,7 +408,11 @@ public partial class MainWindow
         {
             var target = ThisPcTarget();
             await HostLocal.EnsureImageAsync(target, output.Report, output, token);
-            var exit = await HostLocal.EngineAsync(target, ["update"], output, token);
+            // A change already running on this host (an install, for example) finishes first; the output says so.
+            var engineOutput = new EngineOutput(output);
+            var exit = await HostLocal.EngineAsync(target, ["update"], engineOutput, token);
+            if (engineOutput.Busy(exit) is { } busy)
+                return new(false, $"{here}'s host stayed busy with another change ({busy}), so its host service wasn't updated. Send the update again when that finishes.", exit);
             if (exit != 0) return new(false, $"Updating {here}'s host service stopped (exit {exit}). The output shows why.", exit);
             thisPcHostVersion = ownHostUpdateTried = Version;
             return new(true, $"{here} runs Martlet {Version}: the app and its host service.", 0);

@@ -322,12 +322,35 @@ refused, only the agent's local token takes and reports commands, output and
 outcomes reach the sender, secrets never appear in lists, commands or the saved
 copy, the shared Home Assistant connection (including token sharing, revision
 wins, tombstones, invalid bodies, restart storage and no token in gateway logs),
-cancel works (waiting and running), commands survive a restart with a new token
+cancel works (waiting and running), a command sent while another runs waits
+behind it and the sender's `HostCommandList.WaitingText` names what it waits
+for, an update that continues later (FIXTURE: "Martlet is in use here") stays
+first and holds the queue until it finishes and the waiting command runs right
+after it, commands survive a restart with a new token
 and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
 `Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
 runtime; it takes no arguments and contacts nothing outside loopback. The same
 program's `live <pairing-code> <container>` mode checks a disposable Linux
 gateway container built from this checkout (not the real host service).
+
+`host_engine_check` (no arguments) checks that a host makes
+[one change at a time](../deploy/host/README.md#one-change-at-a-time) with this
+checkout's real `deploy\host\martlet-host`: it starts one disposable
+`ubuntu:24.04` container (`--network none`, `--pull never`, removed afterwards,
+the engine in native mode against a fixture setup under `/tmp`; Martlet's own
+host containers and volumes are never touched) and returns `{exitCode, report:
+{passed, total, image, engine, steps: [{name, ok, detail}]}}`. Steps: `flock`
+is present; a change (a `network-reset` waiting for a typed yes, like a console
+left open) holds `engine.lock` (0600) and records itself in `engine.holder`;
+`roles` still runs; `status` says `Busy now: ...`; an automatic `update` (no
+terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
+`--yes update` with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and
+gives up with 75; a waiting `--yes remove` continues once the holder is killed
+(SIGKILL); the next automatic run is not blocked (no stale lock);
+`logs/engine.log` records the waits; and the desktop's reader
+(`HostEngineBusy.Read`) reads the engine's real busy line. Without Docker or the
+image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
+the Docker method's launcher or a real host.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with

@@ -257,9 +257,13 @@ internal static partial class HostLocal
     }
 
     /// <summary>Runs one martlet-host command unattended in a container on this PC; returns its exit code.
-    /// <paramref name="answers"/> are martlet-host answers (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...) sent over stdin.</summary>
+    /// <paramref name="answers"/> are martlet-host answers (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...) sent over stdin.
+    /// The engine makes one change to this host at a time: a change waits for one already running (its output says what it
+    /// waits for) unless <paramref name="waitForOtherChanges"/> is false, when it stops at once with
+    /// <see cref="HostEngineBusy.ExitCode"/> and changes nothing.</summary>
     internal static Task<int> EngineAsync(HostSetupTarget target, IReadOnlyList<string> engine, IProgress<string> output,
-        CancellationToken token, Task<string?>? moreInput = null, IReadOnlyDictionary<string, string>? answers = null)
+        CancellationToken token, Task<string?>? moreInput = null, IReadOnlyDictionary<string, string>? answers = null,
+        bool waitForOtherChanges = true)
     {
         HostSetupCommands.Validate(target, HostAction.Status);
         var setup = engine.Count > 0 && engine[0] == "setup";
@@ -269,6 +273,7 @@ internal static partial class HostLocal
             args.AddRange(["-e", "MARTLET_HOST_ADDRESS=" + target.Address]);
             if (target.HostId is { } id) args.AddRange(["-e", "MARTLET_HOST_ID=" + id]);
         }
+        if (!waitForOtherChanges) args.AddRange(["-e", "MARTLET_LOCK_WAIT=0"]);
         args.Add(HostSetupCommands.Image(target));
         args.Add("--yes");
         args.AddRange(engine);

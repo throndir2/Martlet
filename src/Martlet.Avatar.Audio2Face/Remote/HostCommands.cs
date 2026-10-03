@@ -8,7 +8,27 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 
 /// <summary>A host's command mailbox as one paired computer sees it: the Martlet app that runs its commands (null when none
 /// has asked for work since the gateway started) and its recent commands.</summary>
-public sealed record HostCommandList(NodeAgentInfo? Agent, IReadOnlyList<NodeCommand> Commands);
+public sealed record HostCommandList(NodeAgentInfo? Agent, IReadOnlyList<NodeCommand> Commands)
+{
+    /// <summary>What <paramref name="waiting"/> waits behind, or null when it is not waiting or nothing is ahead of it. The
+    /// host's agent runs one command at a time and finishes the one it took before it takes another (an update stays first
+    /// while it waits until Martlet there is idle and while Martlet restarts into it); waiting commands go oldest first.</summary>
+    public NodeCommand? Ahead(NodeCommand waiting) =>
+        waiting.State != NodeCommandState.Queued ? null
+        : Commands.Where(c => c.State == NodeCommandState.Running && c.Id != waiting.Id).OrderBy(c => c.RequestedAt).FirstOrDefault()
+          ?? Commands.Where(c => c.State == NodeCommandState.Queued && c.Id != waiting.Id && c.RequestedAt < waiting.RequestedAt)
+              .OrderBy(c => c.RequestedAt).FirstOrDefault();
+
+    /// <summary>Why <paramref name="waiting"/> has not started yet, in words, or null when nothing is ahead of it.</summary>
+    public string? WaitingText(NodeCommand waiting, string host) => Ahead(waiting) switch
+    {
+        null => null,
+        { State: NodeCommandState.Running, Kind: NodeCommandKinds.Update } update =>
+            $"Martlet on {host} is updating first: {NodeCommandAgent.Describe(update)}. This runs right after it.",
+        { State: NodeCommandState.Running } running => $"Martlet on {host} is busy with: {NodeCommandAgent.Describe(running)}. This runs next.",
+        var earlier => $"Waiting behind {NodeCommandAgent.Describe(earlier)}, sent earlier. Martlet on {host} runs them in order."
+    };
+}
 
 /// <summary>Work the gateway hands the host's agent: a command (null when there is none), its secrets (handed over once)
 /// and whether the agent had taken it before (after a restart).</summary>

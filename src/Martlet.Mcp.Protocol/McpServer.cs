@@ -141,8 +141,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
             "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
-            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works and commands survive a " +
-            "restart. Contacts nothing outside loopback and touches no real credentials, Docker or installs.", new { }),
+            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works, an update that waits " +
+            "holds the queue and the sender sees what its command waits behind, and commands survive a restart. Contacts nothing " +
+            "outside loopback and touches no real credentials, Docker or installs.", new { }),
+        Tool("host_engine_check", "Check that a Martlet host makes one change at a time: runs this checkout's real martlet-host " +
+            "engine in one disposable ubuntu:24.04 container (no network, never pulled, removed afterwards; Martlet's own host " +
+            "containers and volumes are never touched) against a fixture setup. A change holds the engine lock; read-only commands " +
+            "still run; status names the holder; an automatic run (no terminal, no --yes) stops at once with exit 75 and " +
+            "MARTLET-BUSY, changing nothing; an attended run waits and gives up after MARTLET_LOCK_WAIT; a waiting run continues when " +
+            "the holder is killed; no stale lock remains; the journal records it; the desktop's reader reads the busy line. Returns " +
+            "notRun when Docker or the image is missing.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new
@@ -313,6 +321,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
+                "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
