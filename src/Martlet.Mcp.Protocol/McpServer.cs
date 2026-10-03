@@ -130,8 +130,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
-            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
-            "installed and running and its engine state, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, their host services, WSL version and status), " +
+            "pending and required restarts, blockers and recovery guidance, whether Docker Desktop is installed and running and its engine " +
+            "state, and any setup Martlet continues after a Windows restart. Read-only; starts no VM, changes nothing and returns no distribution names.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -618,14 +619,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             ready = state.Ready,
+            blocked = state.Blocked,
             firmwareOff = state.FirmwareOff,
             needsWindowsChanges = state.NeedsChanges,
+            restartPending = state.RestartPending,
+            restartRequired = state.RestartRequired,
             problems = state.Problems(),
+            recovery = state.Recovery,
+            probeIssues = state.ProbeIssues,
             firmware = state.Firmware,
             hypervisor = state.Hypervisor,
             virtualMachinePlatform = state.MachinePlatform.ToString(),
             windowsSubsystemForLinux = state.Subsystem.ToString(),
             wsl = state.Wsl,
+            wslStatus = state.WslStatus.ToString(),
+            wslStatusExitCode = state.WslStatusExitCode,
+            hostComputeService = state.ComputeService.ToString(),
+            hostNetworkService = state.NetworkService.ToString(),
             virtualMachine = state.VirtualMachine,
             summary = state.Describe(),
             dockerDesktop = new

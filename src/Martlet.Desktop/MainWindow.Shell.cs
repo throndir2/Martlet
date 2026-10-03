@@ -111,14 +111,6 @@ public partial class MainWindow
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or
             System.ComponentModel.Win32Exception) { }
         if (closing) return;
-        // The host dashboard says why Docker Desktop can't start when Windows is the reason (virtualization, WSL 2).
-        if (Role == DeviceRole.Host && machine.DockerInstalled && !machine.DockerRunning)
-        {
-            try { virtualization = await WindowsVirtualization.ProbeAsync(lifetime.Token); }
-            catch (OperationCanceledException) { return; }
-            if (closing) return;
-        }
-        else virtualization = null;
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         if (Role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
@@ -472,10 +464,12 @@ public partial class MainWindow
                   $"they're done; Martlet checks every {HostProbeInterval.TotalSeconds:0} seconds.{checkedAt}";
     }
 
-    private static string HostHeadline(LocalHostServiceState? state) => state?.Stage switch
+    private string HostHeadline(LocalHostServiceState? state) => state?.Stage switch
     {
         null => "Checking...",
         LocalHostServiceStage.DockerMissing => "Needs Docker Desktop",
+        LocalHostServiceStage.DockerNotRunning when virtualization?.RestartRequired == true => "Needs Windows restart",
+        LocalHostServiceStage.DockerNotRunning when virtualization?.Blocked == true => "Windows isn't ready for Docker Desktop",
         LocalHostServiceStage.DockerNotRunning => "Waiting for Docker Desktop",
         LocalHostServiceStage.NotSetUp => "Not set up yet",
         LocalHostServiceStage.Stopped => "Host service stopped",
@@ -486,22 +480,27 @@ public partial class MainWindow
 
     private HomeStep DockerStep(LocalHostServiceState? state)
     {
-        var windowsBlocks = !machine.DockerRunning && machine.DockerInstalled && virtualization is { } windows &&
-            (windows.FirmwareOff || windows.NeedsChanges);
-        // Docker Desktop's window can be open while its engine still starts (or can't); the host service needs the engine.
+        var installed = state is null ? machine.DockerInstalled : state.Stage != LocalHostServiceStage.DockerMissing;
+        var done = state is not null && state.Stage is not (LocalHostServiceStage.DockerMissing or LocalHostServiceStage.DockerNotRunning);
+        var windowsBlocks = !done && installed && virtualization?.Blocked == true;
         var engineWaiting = machine.DockerRunning && state?.Stage == LocalHostServiceStage.DockerNotRunning;
-        var done = machine.DockerRunning && !engineWaiting;
+        var action = virtualization switch
+        {
+            { RestartRequired: true } => "Restart Windows",
+            { FirmwareOff: true, VirtualMachine: false } => "Turn on virtualization",
+            { NeedsChanges: true } => "Turn on Windows features",
+            _ => "Review Windows setup"
+        };
         return new("docker", "Docker Desktop",
             done ? "Running."
+                : windowsBlocks ? string.Join("; ", virtualization!.Problems()) + ". " + virtualization.Recovery
                 : engineWaiting ? "Docker Desktop is open, but its engine isn't answering yet. The first start can take a few minutes."
-                : windowsBlocks ? "Windows needs a setup change. " + (virtualization!.FirmwareOff
-                    ? "Turn on virtualization in firmware settings."
-                    : "Martlet can turn this on. Windows may ask for administrator approval and a restart.")
-                : machine.DockerInstalled ? "Installed, but not running." : "Required for the host service.",
+                : state is null && installed ? "Checking Docker Desktop's engine..."
+                : installed ? "Installed, but not running." : "Required for the host service.",
             done, false,
-            done || engineWaiting ? []
-                : windowsBlocks ? [new(virtualization!.FirmwareOff ? "Turn on virtualization" : "Turn on Windows features", PrepareWindows, true)]
-                : machine.DockerInstalled
+            done ? []
+                : windowsBlocks ? [new(action, PrepareWindows, true)]
+                : installed
                 ? [new("Start Docker Desktop", StartDocker, true)]
                 : [new("Install Docker Desktop", InstallDocker, true)]);
     }
@@ -640,7 +639,13 @@ public partial class MainWindow
             hostProbeAgain = false;
             if (closing || Role != DeviceRole.Host) return;
             LocalHostServiceState state;
-            try { state = await LocalHostService.ProbeAsync(lifetime.Token); }
+            try
+            {
+                state = await LocalHostService.ProbeAsync(lifetime.Token);
+                // An open Docker Desktop window is not a working engine. Diagnose Windows even while that window is open.
+                virtualization = state.Stage == LocalHostServiceStage.DockerNotRunning
+                    ? await WindowsVirtualization.ProbeAsync(lifetime.Token) : null;
+            }
             catch (OperationCanceledException) { return; }
             if (closing) return;
             ApplyHostState(state);
@@ -656,7 +661,7 @@ public partial class MainWindow
         else if (state.Stage == LocalHostServiceStage.NotSetUp) thisPcHostVersion = null;
         var self = NetworkIdentity.DeviceId(homeHosts);
         if (state.Desktops.Any(d => d.Id != self)) hostPairedAt = null;
-        var signature = $"{state.Stage}|{state.Ready}|{state.Version}|{string.Join(",", state.Roles ?? [])}|" +
+        var signature = $"{state.Stage}|{state.Ready}|{state.Version}|{virtualization?.Describe()}|{string.Join(",", state.Roles ?? [])}|" +
             string.Join(",", state.Desktops.Select(d => d.Id));
         if (signature != hostStateSignature)
         {
@@ -674,6 +679,8 @@ public partial class MainWindow
     private string HostServiceSentence(LocalHostServiceState state) => state.Stage switch
     {
         LocalHostServiceStage.DockerMissing => "Docker Desktop isn't installed. Install it first (step 1).",
+        LocalHostServiceStage.DockerNotRunning when virtualization?.Blocked == true =>
+            string.Join("; ", virtualization.Problems()) + ". " + virtualization.Recovery,
         LocalHostServiceStage.DockerNotRunning => machine.DockerRunning
             ? "Docker Desktop is open, but its engine isn't answering yet, so the host service can't run. The first start can take a few minutes."
             : "Docker Desktop isn't running yet, so the host service can't run. Start Docker Desktop (step 1).",
@@ -759,8 +766,8 @@ public partial class MainWindow
         {
             var done = await HostRunWindow.RunAsync(this, "Get Windows ready for Docker Desktop", async run =>
             {
-                await WindowsVirtualizationSetup.EnsureReadyAsync(run, ContinueSetupKind.Docker);
-                return "Windows is ready for Docker Desktop. Start it next.";
+                await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
+                return "Docker Desktop is running.";
             });
             if (!closing) ActionText.Text = done ?? "Windows isn't ready for Docker Desktop yet. See the progress window for details.";
         }
@@ -807,15 +814,7 @@ public partial class MainWindow
         if (!closing) await ReadMachineAsync();
     }
 
-    private void StartDocker()
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose();
-            ActionText.Text = "Starting Docker Desktop. This can take a few minutes.";
-        }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException) { ActionText.Text = error.Message; }
-    }
+    private void StartDocker() => StartDockerAfterRestartAsync("host setup").Forget();
 
     /// <summary>Check again: reads this PC and its host service now (Docker, the gateway's roles and network, its published
     /// port) and says what that means. Read-only; it changes nothing.</summary>
