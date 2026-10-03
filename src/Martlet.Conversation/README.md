@@ -125,8 +125,17 @@ separate device state/accounting. `Playing` is observed from the actual sink,
 not inferred from a completed TTS HTTP download. `TextComplete` is independent
 of the turn state: fully generated text can remain visible in a partial
 voice turn. Failed/incomplete LLM streams retain already displayed partial
-text but discard uncommitted speech. An output/provider failure cancels the
+text but discard uncommitted speech. An LLM output/provider failure cancels the
 rest of this turn; no hidden continuation or text/voice fallback request.
+A voice failure never ends the reply: a TTS provider failure, a denied or
+expired speech authorization, a speech/playback window expiry or a playback
+failure stops what is said aloud (synthesis and playback are canceled through
+a speech-only token linked to the turn) while the LLM stream continues to its
+end. The turn then completes normally (`Completed`) with `SpeechFailure` set
+(`SpeechFailed`), the voice's provider code in `ProviderFailure` with
+`FailedProvider` `Tts`, and any segments still staged drained unspoken. No
+other voice is asked. A whole-turn deadline after the text completed likewise
+ends only the voice; before the text completed it fails the turn.
 Text-only is the deliberate alternative for the next explicit action.
 
 `ConversationTurn.Content` is a content-bearing polling surface, excluded

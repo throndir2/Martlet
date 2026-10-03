@@ -739,6 +739,29 @@ change; the `TalkHearVoice` check box saves the choice, so it needs
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
 
+`spoken_reply_check` rehearses a spoken reply whose voice fails partway, end to
+end with the production conversation runtime (`ConversationRuntime`, the Chat
+Completions adapter, the Martlet host voice stream and the playback sink). A
+fixture endpoint on 127.0.0.1 streams a canned four-sentence reply (NOT AI) a
+sentence at a time, the way OpenRouter streams; a fixture Martlet host voice (a
+quiet tone, NOT AI) fails on the `failAt`-th piece (1-4, default 1) it is asked
+to say, as `voiceFailure`: `server` (default; the host's voice worker failed,
+`worker.failed`), `unavailable` (it is reloading, `worker.unavailable`),
+`stall` (no audio until the voice's time runs out, shortened to a few seconds)
+or `none`; a fixture speaker opens no device and plays nothing. It returns
+`reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
+`servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
+turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
+`piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
+`mayHavePlayed`). `ok` is true when the reply completed with all of its text
+and only the voice stopped, at the chosen piece with the expected provider
+code (or, with `none`, every piece was spoken). Before the fix this reported
+`Partial` with only the text up to the failed sentence. It reads no
+credentials, needs no data directory and nothing leaves loopback. A real
+paired host's voice failing is NOT reproduced; the talk window then notes
+*The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
+only the beginning was spoken.* under the reply.
+
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,

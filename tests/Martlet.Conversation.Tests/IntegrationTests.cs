@@ -172,10 +172,12 @@ public sealed class IntegrationTests
         h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(new FragmentedTextBody(SpeechFixtures.Audio()[..bytes])));
         var turn = h.Start();
         var result = await Harness.Finish(turn);
-        Assert.Equal(ConversationState.Partial, result.State);
+        // The voice failing never ends the reply: it completes with its text, and only the voice stopped.
+        Assert.Equal(ConversationState.Completed, result.State);
         Assert.Equal("A complete answer.", turn.Content.Text);
         Assert.True(result.TextComplete);
-        Assert.Equal(ConversationFailure.ProviderFailed, result.Failure);
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.Equal(ProviderRole.Tts, result.FailedProvider);
         Assert.Equal(1, h.Tts.Calls);
         Assert.InRange(result.AcceptedSamples, 0, 480);
         Assert.NotEqual(PlaybackState.Completed, result.Playback?.State);
@@ -253,5 +255,27 @@ public sealed class IntegrationTests
         Assert.DoesNotContain("https:", metadata);
         Assert.DoesNotContain(ProviderFixtures.Secret, metadata);
         Assert.Equal(ProviderFailureCode.Authentication, result.ProviderFailure);
+    }
+
+    [Fact]
+    public async Task A_voice_that_fails_on_the_first_sentence_never_cuts_the_rest_of_the_reply()
+    {
+        await using var h = new Harness();
+        h.Answer("First sentence here. ", "Second sentence here. ", "Third and last sentence.");
+        h.Tts.Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("{}")
+        });
+        var turn = h.Start();
+        var result = await Harness.Finish(turn);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.None, result.Failure);
+        Assert.True(result.TextComplete);
+        Assert.Equal("First sentence here. Second sentence here. Third and last sentence.", turn.Content.Text);
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.Equal(ProviderRole.Tts, result.FailedProvider);
+        // Nothing more is asked of the failed voice, and nothing else speaks instead.
+        Assert.Equal(1, h.Tts.Calls);
+        Assert.Equal(0, h.Device.Opens);
     }
 }

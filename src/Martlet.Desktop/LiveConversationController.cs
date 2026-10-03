@@ -1229,22 +1229,23 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private static bool IsFailure(ConversationSnapshot terminal) =>
-        terminal.State is ConversationState.Failed or ConversationState.Partial || terminal.ProviderFailure is not null;
+        terminal.State is ConversationState.Failed or ConversationState.Partial || terminal.ProviderFailure is not null ||
+        terminal.SpeechFailed;
 
-    // A reply whose voice failed after its text arrived is a Speaking failure: Thinking answered, so it counts as working.
+    // A reply whose voice failed is a Speaking failure: its text still completes, so Thinking answered and counts as working.
+    // The voice stopping never cuts the reply short; a reply that itself failed is a Thinking failure too.
     private void LogReplyFailure(string what, LiveConversationConfiguration configured, ConversationSnapshot terminal)
     {
-        if (terminal.FailedProvider != ProviderRole.Tts)
-        {
+        if (terminal.SpeechFailed || terminal.FailedProvider == ProviderRole.Tts)
+            LogFailure("Spoken " + what.ToLowerInvariant(), configured, SetupRole.Tts, Describe(terminal));
+        if (terminal.State is ConversationState.Failed or ConversationState.Partial && terminal.FailedProvider != ProviderRole.Tts)
             LogFailure(what, configured, SetupRole.Llm, Describe(terminal));
-            return;
-        }
-        LogFailure("Spoken " + what.ToLowerInvariant(), configured, SetupRole.Tts, Describe(terminal));
-        if (terminal.TextComplete) Succeeded(SetupRole.Llm);
+        else if (terminal.TextComplete) Succeeded(SetupRole.Llm);
     }
 
     private static string Describe(ConversationSnapshot terminal) =>
         $"state {terminal.State}, failure {terminal.Failure}" +
+        (terminal.SpeechFailed ? $", voice stopped {terminal.SpeechFailure}" : "") +
         (terminal.ProviderFailure is { } provider ? $", provider {provider}" : "") +
         (terminal.SequenceFailure is { } sequence ? $", stream {sequence.Issue}" : "") +
         (terminal.Playback?.Error?.Code is { } audio ? $", audio {audio}" : "") +

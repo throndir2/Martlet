@@ -288,6 +288,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             modelId = new { type = "string", maxLength = 128 }
         }),
+        Tool("spoken_reply_check", "Rehearse a spoken reply whose voice fails partway, end to end with the production conversation " +
+            "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
+            "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
+            "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
+            "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
+            "device and plays nothing. Returns the reply's state and whether its whole text arrived, and how far the voice got and " +
+            "why it stopped. ok means the text completed and only the voice stopped. Loopback only; reads no credentials.", new
+        {
+            voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
+            failAt = new { type = "integer", minimum = 1, maximum = 4 }
+        }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
@@ -421,6 +432,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
+                    OptionalInt(arguments, "failAt"), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
