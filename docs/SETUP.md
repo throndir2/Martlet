@@ -546,7 +546,10 @@ the file says what Martlet found. Martlet keeps a mono 16-bit PCM WAV: a WAV
 already in that form (16/22.05/24/44.1/48 kHz) is kept exactly; anything else is
 mixed to mono and, at another sample rate, resampled to the next of those rates
 (at most 48 kHz). **Play** plays that WAV. A longer recording is refused rather
-than cut, since the transcript must match it. **Add another recording** adds
+than cut, since the transcript must match it. With Parakeet downloaded
+(**Companion > Listening**) or Listening on a paired host, Martlet fills in the
+transcript as soon as it has read the recording; check it and fix anything it
+misheard. **Add another recording** adds
 more recordings of the same voice (up to 10, 30 seconds in all), each converted
 the same way and then joined. Only the WAV is stored and shared
 with your other computers. The new voice is used right away. Up to 32 voices

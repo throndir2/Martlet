@@ -1235,7 +1235,17 @@ adds another recording of the same voice, whose controls end in its number
 files are read, how long they are joined with the pauses ("3 recordings make one
 voice, 10.5 seconds joined with the pauses.", more than 30 seconds, "Reading the
 recordings...", or which recording Martlet can't use); never
-paths or words. Use, Remove and adding change the voice list and need
+paths or words. `F5AddVoiceAbout` returns the dialog's intro, which names the
+speech-to-text that fills in each recording's words ("... Martlet fills in its
+words with Parakeet on this PC ...") or, without one, says to download Parakeet.
+With one, each recording's transcript is filled in from the converted WAV once
+the file is read, unless the owner typed words there, and `F5AddVoiceHeard`
+(`F5AddVoiceHeard-2`, ...) returns how that went ("Filled in by Parakeet on this
+PC: 25 words. Check them and fix anything it misheard.", no words heard, "Kept
+the words you typed." or why it couldn't; never the words). `F5AddVoiceFill`
+(`F5AddVoiceFill-2`, ...) fills them in again, replacing what is there; it runs
+speech-to-text (and may send the recording to the Listening host), so it needs
+`--allow-ui-effects`. Use, Remove and adding change the voice list and need
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 Passive navigation writes nothing: the list is shown as it would start until a
 voice is first used, added or removed. `f5_voices` reads the same list headlessly
