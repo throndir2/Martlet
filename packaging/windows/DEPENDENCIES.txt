@@ -125,24 +125,31 @@ ARCTIC COPYING text unchanged. LJ Speech's reader and the LibriVox and CMU
 ARCTIC speakers do not say or endorse anything Martlet speaks in their voices.
 Earlier versions bundled F5-TTS's English example clip; it is no longer included.
 
-Voice recognition and Parakeet (optional, downloaded on request, never bundled):
-Desktop includes authored Martlet.Sherpa and Martlet.Home (BCL-only, no NuGet
-package or native binary). Only when the owner asks (Companion > People, or
-Companion > Listening > Parakeet) Martlet downloads into its data folder's
-speech\ directory, checking exact sizes and SHA-256 before use:
+Voice recognition (bundled, on by default): Desktop includes authored
+Martlet.Sherpa and Martlet.Home (BCL-only) and ships, unmodified, in its Desktop
+folder:
 - sherpa-onnx 1.13.8 (Apache-2.0, Xiaomi Corporation / Next-gen Kaldi) and
-  ONNX Runtime (MIT, Microsoft): sherpa-onnx-c-api.dll and onnxruntime.dll from
-  the unmodified NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64 1.13.8.
-- WeSpeaker ResNet34-LM speaker embedding model (CC BY 4.0, WeSpeaker authors;
-  sherpa-onnx ONNX export, unmodified bytes).
-- pyannote segmentation 3.0 ONNX export (MIT, CNRS; its LICENSE is downloaded
-  with it).
-- NVIDIA Parakeet TDT 0.6B v3, int8 ONNX export by sherpa-onnx (CC BY 4.0,
-  NVIDIA).
-Each download writes a NOTICE file with attribution and license links beside
-the files. Martlet binds the sherpa-onnx C API with authored P/Invoke code; no
-managed sherpa-onnx package is redistributed. These components are not part of
-this payload or its SBOM.
+  ONNX Runtime 1.28.2 (MIT, Microsoft): sherpa-onnx-c-api.dll and onnxruntime.dll
+  from the NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64 1.13.8 (pinned in
+  toolchain.json). notices\sherpa-onnx-LICENSE.txt, notices\onnxruntime-
+  LICENSE.txt and notices\onnxruntime-ThirdPartyNotices.txt carry the full
+  upstream texts.
+- voice-recognition\wespeaker_en_voxceleb_resnet34_LM.onnx: WeSpeaker ResNet34-LM
+  speaker embedding model (CC BY 4.0, WeSpeaker authors; sherpa-onnx ONNX export).
+- voice-recognition\pyannote-segmentation-3-0\model.onnx and its LICENSE:
+  pyannote segmentation 3.0 ONNX export (MIT, CNRS).
+The Desktop build downloads the models once and keeps each only if it matches
+the SHA-256 pinned in Martlet.Desktop.csproj and toolchain.json (voiceModels);
+packaging checks the shipped bytes again. notices\Voice-Recognition-NOTICES.txt
+gives attribution, sources and hashes. Martlet binds the sherpa-onnx C API with
+authored P/Invoke code; no managed sherpa-onnx package is redistributed.
+
+Parakeet (optional, downloaded on request, never bundled): only when the owner
+asks (Companion > Listening > Parakeet) Martlet downloads NVIDIA Parakeet TDT
+0.6B v3, int8 ONNX export by sherpa-onnx (CC BY 4.0, NVIDIA), into its data
+folder's speech\ directory, checking exact sizes and SHA-256 before use, and
+writes a NOTICE file with attribution and license links beside it. It runs on
+the bundled sherpa-onnx runtime and is not part of this payload or its SBOM.
 
 Installer: built with Inno Setup 7.1.0 x64, copyright Jordan Russell / Martijn
 Laan. https://jrsoftware.org/ . The compiler is NOT installed with Martlet.

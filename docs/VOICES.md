@@ -7,18 +7,23 @@ pyannote segmentation 3.0 and WeSpeaker ResNet34-LM models. The same engine
 also runs **Parakeet**, AudioTranscriber's default speech-to-text, as a
 Listening choice on this PC.
 
-Both are optional and off until you ask for them. Nothing is downloaded,
-recorded or uploaded for them by itself. Voices are recognized and learned only
-from the microphone, never from [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays).
+Voice recognition is part of Martlet and on by default: the engine and its two
+voice models ship with Martlet, so there is nothing to download, and Martlet
+starts learning who is talking from your first conversation. Turn it off on
+People at any time (your saved voices are kept). Parakeet stays optional and is
+downloaded only when you ask. Nothing is recorded or uploaded for either. Voices
+are recognized and learned only from the microphone, never from
+[what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays).
 
 ## Companion › People
 
-- **Recognize who is talking.** *Download and turn on* asks once, then downloads
-  sherpa-onnx 1.13.8 with ONNX Runtime (from the official NuGet runtime package)
-  and the two voice models, about 41 MB, into `speech\` in Martlet's data
-  folder. Every file is checked against a pinned size and SHA-256; a file that
-  doesn't match is deleted. The checkbox turns recognition on and off
-  (`voice-recognition.txt`).
+- **Recognize voices in conversations.** On unless you turned it off
+  (`voice-recognition.txt`). Martlet's Desktop folder includes sherpa-onnx
+  1.13.8 with ONNX Runtime 1.28.2 (from the official NuGet runtime package) and
+  the two voice models (about 41 MB together, in `voice-recognition\`). The
+  build downloads the models once and keeps each only if it matches its pinned
+  SHA-256; packaging checks the shipped bytes again. If the files are missing
+  (a damaged installation), People says so and asks you to reinstall Martlet.
 - **On all my computers.** On by default (`voice-sharing.txt`). See
   [sharing](#sharing-between-your-computers).
 - **Voices Martlet knows.** Every voice it has heard, the owner's first, then
@@ -111,10 +116,11 @@ voices (which syncs tombstones) or remove the host.
 Companion › Listening › This PC now offers **Parakeet in Martlet** next to
 whisper. NVIDIA Parakeet TDT 0.6B v3 (int8 ONNX export) runs inside Martlet on
 the processor through the same sherpa-onnx runtime: no Docker, no host
-service. *Download and use Parakeet* asks once, downloads about 670 MB (plus
-the 9 MB runtime if voice recognition hasn't downloaded it yet) from Hugging
-Face at a pinned revision, checks each file and switches Listening to the
-`LocalParakeet` route (`local-parakeet`, model `parakeet-tdt-0.6b-v3-int8`).
+service. *Download and use Parakeet* asks once, downloads about 670 MB from
+Hugging Face at a pinned revision into `speech\` in Martlet's data folder,
+checks each file (a file that doesn't match is deleted) and switches Listening
+to the `LocalParakeet` route (`local-parakeet`, model `parakeet-tdt-0.6b-v3-int8`).
+It runs on the sherpa-onnx runtime that ships with Martlet.
 It needs about 1 GB of memory while Martlet runs.
 
 AudioTranscriber measured it on 48 public English clips: 6.85% word error rate
@@ -151,8 +157,17 @@ request against a real Thinking model and multi-computer sync on real hosts are
 **NOT RUN** (no audio capture or provider calls in agent verification, and no
 second paired host here).
 
-To run the native tests, point `MARTLET_SPEECH_ROOT` at a speech folder with
-the runtime, voice models and Parakeet installed and `MARTLET_SPEECH_FIXTURES`
-at a folder with `a1.wav`, `a2.wav` (one speaker) and `b1.wav` (another),
-16 kHz mono PCM16, then run `LocalSpeechNativeTests`. They skip otherwise and
-never download.
+Since voice recognition became part of Martlet, MCP's `voices_engine_check`
+loaded the runtime and models from the Desktop build's own folder (as the
+desktop does) and, on three synthetic SAPI recordings, scored the same speaker
+at 0.94 and the other speaker at 0.38-0.42. On a fresh disposable data
+directory People showed recognition on with nothing to download, and turning
+it off and on was reflected by `voices_status`.
+
+`voices_engine_check` runs the bundled engine on any 16 kHz mono PCM16 WAV
+files you give it. To run the native tests, point `MARTLET_SPEECH_FIXTURES` at
+a folder with `a1.wav`, `a2.wav` (one speaker) and `b1.wav` (another), 16 kHz
+mono PCM16, and for Parakeet `MARTLET_SPEECH_ROOT` at a speech folder with
+Parakeet downloaded, then run `LocalSpeechNativeTests`. They use the runtime
+and models the build places beside the tests, skip otherwise and never
+download.

@@ -27,8 +27,9 @@ public sealed class ParakeetEngine : IDisposable
         this.threads = threads ?? Math.Clamp(Environment.ProcessorCount / 4, 2, 4);
     }
 
+    /// <summary>Parakeet is downloaded to <paramref name="root"/> and Martlet's folder has the sherpa-onnx runtime.</summary>
     public static bool Installed(string root) =>
-        SherpaComponents.IsInstalled(root, SherpaPart.Runtime) && SherpaComponents.IsInstalled(root, SherpaPart.Parakeet);
+        SherpaComponents.RuntimeDirectory() is not null && SherpaComponents.IsParakeetInstalled(root);
 
     /// <summary>Transcribes 16 kHz mono <paramref name="samples"/> (at most a minute).</summary>
     public ParakeetTranscript Transcribe(float[] samples)
@@ -68,8 +69,9 @@ public sealed class ParakeetEngine : IDisposable
     private void Open()
     {
         if (recognizer != IntPtr.Zero) return;
-        if (!Installed(root)) throw new SherpaException("The Parakeet model isn't downloaded yet.");
-        SherpaNative.Load(SherpaComponents.RuntimeDirectory(root));
+        if (!SherpaComponents.IsParakeetInstalled(root)) throw new SherpaException("The Parakeet model isn't downloaded yet.");
+        SherpaNative.Load(SherpaComponents.RuntimeDirectory() ??
+            throw new SherpaException("The speech runtime is missing from Martlet's folder. Reinstall Martlet."));
         var model = SherpaComponents.ParakeetDirectory(root);
         // Offsets of SherpaOnnxOfflineRecognizerConfig (608 bytes): feat{sample_rate@0, feature_dim@4},
         // model{transducer{encoder@8, decoder@16, joiner@24}, tokens@104, num_threads@112, debug@116, provider@120,

@@ -1,0 +1,40 @@
+Martlet voice recognition: third-party components and notices
+================================================================
+
+Voice recognition (Companion > People) is part of Martlet. These components ship
+unmodified in Martlet's Desktop folder. Martlet binds the sherpa-onnx C API with
+its own P/Invoke code (Martlet.Sherpa); no managed sherpa-onnx package is used.
+
+1. sherpa-onnx 1.13.8 runtime (sherpa-onnx-c-api.dll)
+   Copyright Xiaomi Corporation and the Next-gen Kaldi team.
+   https://github.com/k2-fsa/sherpa-onnx (commit dc5583f49917e4c95f6e7d862bb378e4ed5e9076)
+   License: Apache License 2.0; full text in notices\sherpa-onnx-LICENSE.txt.
+   From the unmodified NuGet package org.k2fsa.sherpa.onnx.runtime.win-x64 1.13.8.
+
+2. ONNX Runtime 1.28.2 (onnxruntime.dll)
+   Copyright (c) Microsoft Corporation. https://github.com/microsoft/onnxruntime
+   License: MIT; full text in notices\onnxruntime-LICENSE.txt and third-party
+   notices in notices\onnxruntime-ThirdPartyNotices.txt.
+   From the same unmodified NuGet package.
+
+3. WeSpeaker ResNet34-LM speaker embedding model, trained on VoxCeleb
+   (voice-recognition\wespeaker_en_voxceleb_resnet34_LM.onnx,
+   SHA-256 e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012)
+   By the WeSpeaker authors, https://github.com/wenet-e2e/wespeaker
+   License: Creative Commons Attribution 4.0 International (CC BY 4.0),
+   https://creativecommons.org/licenses/by/4.0/
+   ONNX conversion by the sherpa-onnx contributors:
+   https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx
+   No changes were made to the model.
+
+4. pyannote segmentation 3.0
+   (voice-recognition\pyannote-segmentation-3-0\model.onnx,
+   SHA-256 220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079)
+   https://huggingface.co/pyannote/segmentation-3.0, Copyright (c) 2023 CNRS. MIT License.
+   ONNX export from https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0
+   (revision 9403a6902bb58e3d5ae8c7e77c3422de279db2e0); its MIT license
+   (Copyright (c) 2022 CNRS) ships beside it as
+   voice-recognition\pyannote-segmentation-3-0\LICENSE. No changes were made.
+
+Voiceprints are computed on this PC. No recording, training audio or personal
+voice data is included.

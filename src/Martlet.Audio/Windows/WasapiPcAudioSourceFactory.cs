@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Martlet.Core.Contracts;
 using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 
 namespace Martlet.Audio.Windows;
@@ -10,10 +11,19 @@ namespace Martlet.Audio.Windows;
 /// the stream up and closing it without starting it: nothing is recorded.</summary>
 public sealed record PcAudioProbe(bool WithoutMartlet, CaptureSourceFormat? Format, string? Problem);
 
-/// <summary>What this PC plays, for Companion › Listening › Hear what this PC plays: every app's sound except Martlet's own
-/// (a Windows process loopback that leaves out Martlet and the processes it started), so Martlet never hears its own voice.
-/// Where Windows can't leave Martlet out, it falls back to the default output's loopback, Martlet included, and listening
-/// holds off while Martlet speaks. Opened and polled on the capture's worker thread; nothing is played, kept or sent here.</summary>
+/// <summary>The outputs as hearing what this PC plays sees them (their sessions' state only, never their sound): the output you
+/// hear (Windows' default) and another output an app other than Martlet is streaming to right now, such as a voice changer's or
+/// a microphone app's virtual cable, or null.</summary>
+public sealed record PcOutputs(string? Output, string? Elsewhere);
+
+/// <summary>What this PC plays, for Companion › Listening › Hear what this PC plays, chosen each time it opens. While only the
+/// output you hear has apps streaming to it: every app's sound except Martlet's own (a Windows process loopback that leaves out
+/// Martlet and the processes it started), so Martlet never hears its own voice and keeps hearing the PC while it speaks. A
+/// process loopback mixes every output, virtual ones included, so while another app streams to another output (Voicemod's or
+/// NVIDIA Broadcast's virtual cable carries your own voice from the microphone, never played aloud) it hears only the output
+/// you hear (Windows' default): Martlet's voice included, so listening holds off while Martlet speaks. That is also the
+/// fallback where Windows can't leave Martlet out. Opened and polled on the capture's worker thread; nothing is played, kept
+/// or sent here.</summary>
 public sealed class WasapiPcAudioSourceFactory(int? martletProcessId = null) : IPcAudioSourceFactory
 {
     // Windows converts every app's sound to this; the capture normalizer takes it to 16 kHz mono like a microphone.
@@ -29,7 +39,8 @@ public sealed class WasapiPcAudioSourceFactory(int? martletProcessId = null) : I
     public IPcAudioSource Open(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (Volatile.Read(ref processLoopback) != 0)
+        var outputs = Outputs(processId);
+        if (outputs.Elsewhere is null && Volatile.Read(ref processLoopback) != 0)
         {
             var source = new ProcessSource();
             try
@@ -52,7 +63,42 @@ public sealed class WasapiPcAudioSourceFactory(int? martletProcessId = null) : I
                 throw;
             }
         }
-        return new EndpointSource(new WasapiLoopbackReferenceFactory().Open(null, cancellationToken));
+        return new EndpointSource(new WasapiLoopbackReferenceFactory().Open(null, cancellationToken), outputs.Output ?? "your speakers");
+    }
+
+    /// <summary>The output you hear and another output an app other than Martlet (<paramref name="martletProcessId"/>, this
+    /// process when null) streams to right now. Reads the outputs' sessions only; when they can't be read, every other output
+    /// counts as in use, so a virtual cable is never heard by mistake.</summary>
+    public static PcOutputs Outputs(int? martletProcessId = null)
+    {
+        var martlet = martletProcessId ?? Environment.ProcessId;
+        string? output = null;
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            using var heard = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+            output = heard.FriendlyName;
+            foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
+            {
+                using (device)
+                {
+                    if (device.ID == heard.ID) continue;
+                    var sessions = device.AudioSessionManager.Sessions;
+                    for (var i = 0; i < sessions.Count; i++)
+                    {
+                        using var session = sessions[i];
+                        if (session.State == AudioSessionState.AudioSessionStateActive && !session.IsSystemSoundsSession &&
+                            session.GetProcessID != (uint)martlet)
+                            return new(output, device.FriendlyName);
+                    }
+                }
+            }
+            return new(output, null);
+        }
+        catch (Exception error) when (error is COMException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            return new(output, "another output (Windows didn't say which apps play where)");
+        }
     }
 
     /// <summary>Sets up a process loopback that leaves out <paramref name="processId"/> (this process when null) and closes it
@@ -186,10 +232,11 @@ public sealed class WasapiPcAudioSourceFactory(int? martletProcessId = null) : I
         }
     }
 
-    // The default output's loopback (Martlet's voice included): what this PC plays where process loopback isn't available.
-    private sealed class EndpointSource(IEchoReference loopback) : IPcAudioSource
+    // The output you hear (Windows' default), Martlet's voice included: listening to it holds off while Martlet speaks.
+    private sealed class EndpointSource(IEchoReference loopback, string output) : IPcAudioSource
     {
         public bool WithoutMartlet => false;
+        public string? Output => output;
         public CaptureSourceFormat Format => loopback.Format;
         public void Start() => loopback.Start();
         public CapturePacket Read(Span<byte> destination) => loopback.Read(destination) with { Discontinuity = false };

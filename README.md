@@ -8,7 +8,7 @@ default Martlet listens from when you press **Start listening** until **Stop
 listening** (once a microphone is tested), or push-to-talk; it streams the reply and speaks it with the chosen
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
-anything is uploaded. Optional **People** recognition tells everyone at the
+anything is uploaded. **People** recognition (part of Martlet, on by default) tells everyone at the
 microphone apart, learns the names they go by and shares that list with your
 other computers; **Parakeet** listens on this PC without Docker (see
 [VOICES](docs/VOICES.md)). Each message or utterance is its own bounded action; no
@@ -160,7 +160,14 @@ the result. With *Download and install updates automatically* this happens by
 itself, but only while the character is hidden, no conversation or
 Martlet window is open and Martlet is not the active window (it restarts
 minimized, or in the notification area when it was there); otherwise the
-downloaded update installs when you exit Martlet.
+downloaded update installs when you exit Martlet. An automatic install, and one
+another of your computers asks for (`martlet.update`, see
+[CLUSTER](docs/CLUSTER.md#commands-between-your-computers)), shows no installer
+window at all (`/VERYSILENT`): Martlet downloads, closes, installs and restarts
+by itself. Every step still goes to the log: the helper's steps
+(`updates\update.log`) and, after a failed install, the end of the installer's
+own `updates\install.log` are copied into Martlet's log (the **Diagnostics**
+page) when it starts again.
 Choices live in `update-checks.txt` and `updates.json`, separately from profile
 settings and configuration backup; a choice saved while checks were opt-in
 resets to on, and unreadable preferences fall back to checks ON (installs and
@@ -182,6 +189,18 @@ start at sign-in (the per-user Run entry `Martlet`, off by default; Windows'
 own Startup apps switch is respected, and the uninstaller removes the entry).
 Starting Martlet again while it runs shows the running window instead of a
 second copy (per data folder). Choices live in `background.json`.
+
+**Exiting.** If an exit would cut work short (an update download, an install
+in a run window, backup and restore, a troubleshooting report, a download or a
+command from another computer), Martlet lists what it is still doing and asks:
+*Exit anyway* interrupts it, *Keep Martlet open* doesn't. While it closes, its
+window says what it is finishing (the notification-area tooltip too); if that
+takes more than a few seconds the window shows with **Exit now**, which says
+what exiting without waiting interrupts and asks once more. A part that fails
+to close is logged and skipped, so Martlet never stays stuck closing. An
+unattended update's exit (automatic, or asked for by another computer) never
+asks or shows the window: it starts only when nothing would be cut short (and
+otherwise waits for it), and a slow close stays out of sight.
 
 Paired **Martlet hosts** follow the desktop's version: the gateway reports its
 release, the Devices map shows *Update available* for older hosts, and clicking

@@ -13,6 +13,10 @@ using Martlet.Gateway;
 // signed requests, the command mailbox and its storage), the desktop's real client and its real agent loop with a fixture
 // runner. Two fixture devices pair: a requester and the host's agent. Nothing leaves loopback; no real credentials, Docker or
 // Martlet installs are touched. Prints one JSON object {passed, steps} and exits 0 only when every step passed.
+// With MARTLET_UPDATE_CHECK_RECORD set (MCP's app_update_check) it stands in for the installer and for Martlet, which the
+// desktop's update helper starts, and records how it was started (UpdateHelperFixture).
+if (Environment.GetEnvironmentVariable(Martlet.NodeLinkCheck.UpdateHelperFixture.RecordVariable) is { Length: > 0 } updateRecord)
+    return Martlet.NodeLinkCheck.UpdateHelperFixture.Record(updateRecord, args);
 // With "network" it rehearses the Martlet network instead (NetworkRehearsal) and prints its report.
 if (args is ["network"])
 {

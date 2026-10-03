@@ -544,8 +544,14 @@ public GitHub releases list. A newer versioned win-x64 installer from a normal
 folder only after an exact GitHub asset size/SHA-256 check. *Install* (or *Update now*, or the
 opt-in automatic install, which waits until the character, conversations and
 Martlet windows are closed, or until exit) closes Martlet, runs the installer
-silently with its progress window and no optional prerequisite tasks, records
-the exit code and restarts Martlet. That digest is not publisher trust.
+silently with no optional prerequisite tasks, records the exit code and
+restarts Martlet. An install you confirmed shows the installer's progress
+window (`/SILENT`); an automatic one, or one another of your computers asked
+for, shows no window at all (`/VERYSILENT`) and Martlet restarts minimized. The
+helper logs each step to `updates\update.log` and the installer to
+`updates\install.log`; Martlet copies the steps (and, after a failure, the end
+of the installer's log) into its own log when it starts again. That digest is
+not publisher trust.
 Releases ship an unsigned installer with a narrow personal/noncommercial
 binary-use grant; code signing is not a requirement for this personal project.
 Rollback is reinstalling an older release; there is no automatic downgrade.

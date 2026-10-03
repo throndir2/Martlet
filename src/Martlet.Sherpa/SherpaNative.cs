@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Martlet.Sherpa;
 
-/// <summary>The few sherpa-onnx C API calls Martlet uses, bound to the native libraries Martlet downloaded (sherpa-onnx
+/// <summary>The few sherpa-onnx C API calls Martlet uses, bound to the native libraries that ship in Martlet's folder (sherpa-onnx
 /// 1.13.8, Apache-2.0, with ONNX Runtime, MIT). Configuration structs are written field by field at the offsets of the
 /// v1.13.8 <c>c-api.h</c> layout for 64-bit Windows; every other field stays zero, which the C API maps to its defaults.</summary>
 internal static class SherpaNative

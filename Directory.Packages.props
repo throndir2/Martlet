@@ -12,6 +12,7 @@
     <PackageVersion Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.30.0" />
     <PackageVersion Include="NAudio.Wasapi" Version="3.1.0" />
     <PackageVersion Include="NVorbis" Version="0.10.5" />
+    <PackageVersion Include="org.k2fsa.sherpa.onnx.runtime.win-x64" Version="1.13.8" />
     <PackageVersion Include="SoundFlow" Version="1.4.0" />
     <PackageVersion Include="SoundFlow.Extensions.WebRtc.Apm" Version="1.4.0" />
     <PackageVersion Include="SSH.NET" Version="2024.1.0" />

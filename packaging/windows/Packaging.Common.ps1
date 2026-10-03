@@ -252,11 +252,14 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
     foreach ($file in @((Get-PackagingChannel $Channel).help, 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'prerequisites\Install-Prerequisites.ps1', 'notices\NAudio-THIRD-PARTY-NOTICES.txt', 'notices\WebRTC-APM-NOTICES.txt',
             'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md', 'notices\F5-Voices-NOTICES.txt',
+            'notices\Voice-Recognition-NOTICES.txt',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
         $null = Get-RequiredFile (Join-Path $Root $file)
     }
     if ($Channel -ceq 'PublicUnsigned') { $null = Get-RequiredFile (Join-Path $Root 'help\LICENSE.txt') }
+    # Voice recognition is part of Martlet: its models ship exactly as pinned (the Desktop build downloads and checks them).
+    foreach ($model in $pins.voiceModels) { Assert-Sha256 (Join-Path $Root $model.path) $model.sha256 }
     foreach ($notice in $pins.notices) {
         $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
         Assert-Sha256 (Join-Path $Root "notices\$($notice.file)") $notice.sha256
@@ -1185,7 +1188,9 @@ function Test-PackageProvenance([string]$Root, $Provenance,
                     'Desktop\AvatarRenderer\web\index.html', 'Desktop\AvatarRenderer\web\THIRD-PARTY-NOTICES.txt')
             # Bundled Live2D runtime and Hiyori come from the pinned official SDK archive (see src\Martlet.Avatar.Live2D\scripts\sdk.mjs).
             $live2d = $file.path -imatch '^Desktop\\AvatarRenderer\\live2d\\(LIVE2D-NOTICES\.txt|sdk\\(core|sdk)\.js|characters\\Hiyori\\[A-Za-z0-9_.\\-]+\.(json|moc3|png))$'
-            if (-not $live2d -and $allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
+            # Bundled voice recognition models, each exactly its pinned download (see toolchain.json voiceModels).
+            $voiceModel = @($pins.voiceModels | Where-Object { $_.path -ceq $file.path -and $_.sha256 -ceq $file.sha256 -and $_.bytes -eq $file.bytes }).Count -eq 1
+            if (-not $live2d -and -not $voiceModel -and $allowed -inotcontains $file.path) { throw "Unowned published content: $($file.path)" }
         }
     }
     foreach ($asset in Get-WebViewArchiveAssets) {
@@ -1204,7 +1209,8 @@ function Test-PackageProvenance([string]$Root, $Provenance,
     foreach ($notice in @(
         @{ source = 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md'; target = 'notices\Audio2Face-THIRD-PARTY-NOTICES.md' },
         @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' },
-        @{ source = 'src\Martlet.F5\BundledVoices\NOTICES.txt'; target = 'notices\F5-Voices-NOTICES.txt' })) {
+        @{ source = 'src\Martlet.F5\BundledVoices\NOTICES.txt'; target = 'notices\F5-Voices-NOTICES.txt' },
+        @{ source = 'src\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt'; target = 'notices\Voice-Recognition-NOTICES.txt' })) {
         $sourceNotice = @($Provenance.source.files | Where-Object path -CEQ $notice.source)
         if ($sourceNotice.Count -ne 1 -or -not $fileMap.ContainsKey($notice.target) -or
             $sourceNotice[0].sha256 -cne $fileMap[$notice.target].sha256 -or $sourceNotice[0].bytes -ne $fileMap[$notice.target].bytes) {

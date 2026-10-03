@@ -429,7 +429,7 @@ refused with `request.invalid`):
 
 | Kind | Arguments | What the agent does |
 | --- | --- | --- |
-| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed when Martlet is idle, then restarts and continues), then the host service to Martlet's version |
+| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed when Martlet is idle with no installer window at all, then restarts by itself, minimized, and continues; each step is in that PC's log), then the host service to Martlet's version |
 | `host.status` | none | `martlet-host status` |
 | `host.describe-role` | `role` | `martlet-host describe <role>` (its terms, secrets and choices, for the sender's install dialog) |
 | `host.add-role` | `role`, `choice.<VAR>`; secrets `secret.<name>` | `martlet-host add <role>` with the answers on stdin |
@@ -511,7 +511,9 @@ Nothing is interrupted and nothing is lost:
   download under way. Settings › App updates says what the downloaded update
   waits for; a `martlet.update` from another computer tells that computer the
   same. An update that computer asked for joins an update check or download
-  already under way instead of failing. While Martlet exits to install, it
+  already under way instead of failing, and Martlet there doesn't also ask
+  whether to install it: it installs with no installer window and restarts by
+  itself, minimized (or in the notification area). While Martlet exits to install, it
   takes no new command; commands sent meanwhile wait in the mailbox.
 - **Every computer hears of an update.** A host announces the Martlet release
   it runs on every network sync ([NETWORK](NETWORK.md#when-a-computer-is-updated)),
@@ -524,7 +526,10 @@ loopback with the real gateway, desktop client and agent loop, including a
 command queued behind a running one and an update that waits and holds the
 queue; `host_engine_check` (MCP) runs the real `martlet-host` engine's lock in a
 disposable container; `host_update_check` (MCP) rehearses how one Martlet keeps
-its own host updates from colliding with its production update tracker. The same client and agent ran against a real Linux
+its own host updates from colliding with its production update tracker;
+`app_update_check` (MCP) runs the desktop's real update helper with stand-ins for
+Martlet and the installer (it waits for Martlet to exit, runs the installer with
+no window, logs each step and restarts Martlet minimized). The same client and agent ran against a real Linux
 gateway container built from this source (token read with `docker exec`,
 `commands.json` without secrets, a new token after restart). The desktop's own
 runner on a real host PC (installing an update, `martlet-host` runs), the
