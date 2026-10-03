@@ -188,6 +188,13 @@ public interface ICredentialStore
     CredentialError Delete(CredentialBinding binding);
 }
 
+/// <summary>A vault that knows when a credential was last written (Windows Credential Manager's LastWritten), so the first
+/// settings sync after an update can tell which computer set up its key most recently.</summary>
+public interface ICredentialTimes
+{
+    DateTimeOffset? WrittenAt(CredentialBinding binding);
+}
+
 public static class CredentialMessages
 {
     public static string Describe(CredentialError error) => error switch

@@ -68,6 +68,26 @@ internal sealed class WindowsCredentialNative : ICredentialNative
         return CredDelete(target, 1, 0) ? 0 : Marshal.GetLastPInvokeError();
     }
 
+    public DateTimeOffset? WrittenAt(string target)
+    {
+        if (!OperatingSystem.IsWindows() || !CredRead(target, 1, 0, out var pointer)) return null;
+        var credential = new NativeCredential();
+        try
+        {
+            credential = Marshal.PtrToStructure<NativeCredential>(pointer);
+            if (credential.Type != 1 || credential.TargetName != target) return null;
+            var ticks = (long)(uint)credential.LastWritten.dwHighDateTime << 32 | (uint)credential.LastWritten.dwLowDateTime;
+            return ticks <= 0 ? null : DateTimeOffset.FromFileTime(ticks).ToUniversalTime();
+        }
+        catch (ArgumentOutOfRangeException) { return null; }
+        finally
+        {
+            if (credential.CredentialBlob != IntPtr.Zero && credential.CredentialBlobSize <= 2560)
+                Zero(credential.CredentialBlob, (int)credential.CredentialBlobSize);
+            CredFree(pointer);
+        }
+    }
+
     private static void Zero(IntPtr pointer, int length)
     {
         for (var i = 0; i < length; i++) Marshal.WriteByte(pointer, i, 0);

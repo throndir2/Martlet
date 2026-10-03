@@ -7,7 +7,8 @@ breathing, physics, cursor look-at and lip-sync. Automatic lip-sync uses a local
 Audio2Face service when one is running on the PC, else a paired Martlet host that
 runs Audio2Face on its NVIDIA GPU (host role installed with [`martlet-host add audio2face`](../deploy/host/README.md)),
 else the loudness of Martlet's own voice; no microphone or upload is used. Users can switch
-to their own Live2D `.model3.json` or VRM `.vrm` model in **Character settings**
+to their own Live2D `.model3.json` (including VTube Studio model folders, with
+names in any script and textures up to 8192 pixels) or VRM `.vrm` model in **Character settings**
 and optionally show the character automatically at launch. See the
 [Desktop integration guide](../src/Martlet.Avatar.Hosting/README.md) and the
 [Live2D module](../src/Martlet.Avatar.Live2D/README.md#bundled-runtime-and-default-character).
@@ -72,8 +73,8 @@ to deliver, not permission to silently reduce the product scope.
 **Show character** / **Hide character** on the main window toggles the saved
 character (Hiyori when nothing is configured; no Setup profile is required).
 Companion › Character's **Your characters** lists the built-in character and the
-models you added (**Add a character...**: a Live2D `.model3.json`, whose folder
-is copied, or a VRM `.vrm`), each with **Use** and **Remove**. Martlet keeps its
+models you added (**Add a character...**: a Live2D `.model3.json`, whose declared
+files are copied, or a VRM `.vrm`), each with **Use** and **Remove**. Martlet keeps its
 own copy of each model and shares it with every paired Martlet computer that
 can be the companion, so they all offer the same characters; each computer picks
 which one it shows ([shared character models](CLUSTER.md#the-shared-character-models)).

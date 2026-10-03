@@ -239,6 +239,15 @@ each recording and the other engines clone the joined one
 ([shared speaking voices](CLUSTER.md#the-shared-speaking-voices)). The list
 shows such a voice as "3 recordings, 10.5 seconds joined" and whether the
 speaking engine learns from each or hears them joined.
+Each recording can be almost any audio or video file: Desktop's
+`VoiceRecordingImport` (Martlet.Audio) has Windows decode it on that PC (Media
+Foundation; uncompressed WAV and AIFF through NAudio's managed readers), mixes
+it to mono, resamples a rate the store doesn't accept to the next accepted one
+(at most 48 kHz) and writes a mono PCM16 WAV; an acceptable WAV is kept byte for
+byte. Joining and the store then work on those WAVs. Decoding stops just past 30
+seconds, and a longer recording is refused rather than cut. Only WAVs reach the
+store and the paired computers, which still accept nothing else, so no codec
+ever runs on audio another computer sent.
 **Use** applies the voice in the store, makes it the voice chosen on all
 computers and, when a computer speaks, records it on the speaking route with a
 refreshed selection, so the next conversation speaks with it; other desktops

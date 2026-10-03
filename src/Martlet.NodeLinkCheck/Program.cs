@@ -41,6 +41,13 @@ if (args is ["characters"])
     Console.WriteLine(JsonSerializer.Serialize(charactersReport));
     return charactersOk ? 0 : 1;
 }
+// With "settings" it rehearses one Martlet on every computer: the shared settings and their API keys (SettingsRehearsal).
+if (args is ["settings"])
+{
+    var (settingsOk, settingsReport) = await Martlet.NodeLinkCheck.SettingsRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(settingsReport));
+    return settingsOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

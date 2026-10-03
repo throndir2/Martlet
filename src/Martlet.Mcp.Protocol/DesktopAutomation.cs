@@ -38,8 +38,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
-        // The host dashboard's Check again only reads this PC's own host service (Docker, the gateway's role records and network
-        // roster, its published port); it starts, sets up and pairs nothing.
+        // The host dashboard's Check again reads this PC's host service and, while the engine is unavailable, Windows' WSL
+        // status, virtualization services and pending restart. It starts, sets up and pairs nothing.
         "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
@@ -85,21 +85,31 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
+        // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
+        // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
+        // also shows why a chosen model couldn't load; and the character window's status line.
+        "SetupCharacterModel", "AvatarModelInfo",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
         "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
+        // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
+        // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
+        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects.
+        "SettingsSyncStatus", "SettingsSyncWaiting",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
-        // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words) and its intro, which
-        // names the speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads
-        // through the prefix below.
-        "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceAbout",
+        // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words), under each
+        // recording's file, what Martlet found in it (its kind, length and whether Martlet converts it) or why it can't be used
+        // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
+        // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
+        // prefix below.
+        "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
@@ -148,7 +158,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "BackgroundStatus", "TrayStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
-        // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
+        // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked).
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
@@ -197,7 +207,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// prompt's state ("PromptState-reply_length" reads "Edited." or, while it saves, "Edited. Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceHeard", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
@@ -421,17 +431,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
     internal static readonly string[] TrayActions = ["status", "open", "menu", "close"];
 
     /// <summary>Martlet's notification-area icon: "status" reads whether the icon is shown and the main window visible; "open"
-    /// and "menu" send the icon exactly what Explorer sends for a left click (show Martlet) and a right click (its menu, at the
-    /// mouse pointer), then ui_snapshot lists the menu's Tray* items; "close" presses the main window's close button, which
-    /// hides Martlet in the notification area by default and exits it when Keep running when closed is off, so it needs
-    /// --allow-ui-effects.</summary>
+    /// and "menu" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu, at the mouse
+    /// pointer), granting it the foreground as Explorer does when this process may, then ui_snapshot lists the menu's Tray*
+    /// items; every action reports menuOpen. "close" presses the main window's close button, which hides Martlet in the
+    /// notification area by default and exits it when Keep running when closed is off, so it needs --allow-ui-effects.</summary>
     internal object Tray(string action)
     {
         if (!TrayActions.Contains(action)) throw new ArgumentException($"Unknown ui_tray action '{action}'.");
         if (action == "close" && !allowEffects)
             throw new InvalidOperationException("Closing Martlet's window can exit it, so it requires --allow-ui-effects.");
         if (action == "status" && processId is int exited && !Running(exited))
-            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false };
+            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
         var windows = ConnectedWindows();
         var pid = processId!.Value;
         var icon = TrayWindow(pid);
@@ -441,6 +451,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 if (icon == 0) throw new InvalidOperationException("Martlet has no notification-area icon.");
                 GetCursorPos(out var pointer);
                 var at = (nint)((pointer.Y & 0xFFFF) << 16 | (pointer.X & 0xFFFF));
+                // Explorer lets the clicked icon's app take the foreground; this only works while this process may take it itself.
+                AllowSetForegroundWindow(pid);
                 if (!PostMessage(icon, TrayCallbackMessage, at, TrayIconId << 16 | (action == "open" ? NinSelect : WmContextMenu)))
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 break;
@@ -451,12 +463,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 break;
         }
         if (action != "status") Thread.Sleep(500);
-        if (!Running(pid)) return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false };
-        var visible = MainWindowVisible(Windows(pid));
+        if (!Running(pid))
+            return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
+        var now = Windows(pid);
+        var visible = MainWindowVisible(now);
         icon = TrayWindow(pid);
         return new { processId = pid, running = true, trayIcon = icon != 0 && GetProp(icon, TrayAddedProperty) != 0, mainWindowVisible = visible,
-            inTray = icon != 0 && !visible };
+            inTray = icon != 0 && !visible, menuOpen = TrayMenuOpen(now) };
     }
+
+    /// <summary>The icon's menu is open: a Martlet popup window (not the main window) holds the TrayMenu.</summary>
+    private static bool TrayMenuOpen(AutomationElement[] windows) =>
+        windows.Where(window => window.Current.AutomationId != "MartletMainWindow").Any(window =>
+            window.Current.AutomationId == "TrayMenu" ||
+            window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "TrayMenu")) is not null);
 
     private static bool Running(int pid)
     {
@@ -491,6 +511,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetCursorPos(out NativePoint point);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessage(nint window, int message, nint wParam, nint lParam);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool AllowSetForegroundWindow(int processId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint GetProp(nint window, string name);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLength(nint window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

@@ -166,7 +166,7 @@ internal static class CharacterRehearsal
                 var missing = await a.FetchAsync(h1, new string('0', 64), token);
                 return (missing is null, missing is null ? "no piece" : "unexpected bytes");
             });
-            await Run("The list keeps its limits: a 17th character is refused, and so is a Live2D folder with a script", async () =>
+            await Run("The list keeps its limits: a 17th character is refused, and so is a Live2D model that refers to a script", async () =>
             {
                 var library = CharacterModelLibrary.Empty;
                 for (var i = 0; i < CharacterModelLibrary.MaximumModels; i++)
@@ -176,12 +176,14 @@ internal static class CharacterRehearsal
                     [CharacterModelLibrary.File("more.vrm", Encoding.ASCII.GetBytes("glTF-more"))], a.DeviceId, DateTimeOffset.UtcNow));
                 var folder = Path.Combine(root, "scripted");
                 Directory.CreateDirectory(folder);
-                await File.WriteAllTextAsync(Path.Combine(folder, "m.model3.json"), "{}", token);
+                await File.WriteAllTextAsync(Path.Combine(folder, "m.model3.json"),
+                    "{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[],\"UserData\":\"run.js\"}}", token);
+                await File.WriteAllBytesAsync(Path.Combine(folder, "m.moc3"), [1], token);
                 await File.WriteAllTextAsync(Path.Combine(folder, "run.js"), "alert(1)", token);
                 var scripted = await RefusedAsync(() => SharedCharacterModels.ImportAsync(a.DataDirectory, AvatarRenderer.Live2D,
                     Path.Combine(folder, "m.model3.json"), "Scripted", a.DeviceId, DateTimeOffset.UtcNow, token));
                 return (full && scripted && SharedCharacterModels.View(a.DataDirectory).Live.Count == 1,
-                    $"17th character refused: {full}; folder with a script refused: {scripted}");
+                    $"17th character refused: {full}; model that refers to a script refused: {scripted}");
             });
         }
         finally
@@ -214,7 +216,10 @@ internal static class CharacterRehearsal
         Directory.CreateDirectory(Path.Combine(live2d, "textures"));
         Directory.CreateDirectory(Path.Combine(live2d, "motions"));
         var model = Path.Combine(live2d, "Fixture.model3.json");
-        File.WriteAllText(model, "{\"Version\":3,\"FileReferences\":{\"Moc\":\"Fixture.moc3\",\"Textures\":[\"textures/texture_00.png\"]}}");
+        File.WriteAllText(model, "{\"Version\":3,\"FileReferences\":{\"Moc\":\"Fixture.moc3\",\"Textures\":[\"textures/texture_00.png\"]," +
+            "\"Motions\":{\"Idle\":[{\"File\":\"motions/idle.motion3.json\"}]}}}");
+        // Files a model doesn't declare (VTube Studio settings, readmes) stay behind and are never copied.
+        File.WriteAllText(Path.Combine(live2d, "readme.txt"), "not part of the model");
         File.WriteAllBytes(Path.Combine(live2d, "Fixture.moc3"), Bytes(7 * 1024 * 1024 + 123, 1));
         File.WriteAllBytes(Path.Combine(live2d, "textures", "texture_00.png"), Bytes(200_000, 2));
         File.WriteAllText(Path.Combine(live2d, "motions", "idle.motion3.json"), "{\"Version\":3}");

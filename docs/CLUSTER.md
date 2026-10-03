@@ -1,11 +1,15 @@
-# Shared "who does what" and failover
+# Shared "who does what", shared settings and failover
 
-Martlet can keep **who does what** (which computer handles thinking,
-listening, speaking and lip-sync) the same on every computer you own, move
-jobs between computers on the spot, and move a job to another host when its
-host stops answering. Sync is **on by default** (turn it off in **Devices >
-Settings for all devices > Keep who does what in sync on all my computers**);
-failover stays a per-job **Fail over to another host** choice.
+Martlet is one companion with many computers attached. It keeps **who does
+what** (which computer handles thinking, listening, speaking and lip-sync) and
+**its settings** (how it thinks, listens and speaks with your API keys, its
+character, personality and replies; see
+[One Martlet on every computer](#one-martlet-on-every-computer)) the same on
+every computer you own, moves jobs between computers on the spot, and moves a
+job to another host when its host stops answering. Sync is **on by default**
+(turn it off in **Devices > Settings for all devices > Keep Martlet the same on
+all my computers**); failover stays a per-job **Fail over to another host**
+choice.
 
 ## Model
 
@@ -14,8 +18,9 @@ failover stays a per-job **Fail over to another host** choice.
   jobs; hosts run the roles (Ollama, whisper, F5, Audio2Face).
 - The shared configuration is the **cluster plan** (`Martlet.Core.Cluster`):
   - one entry per **job** (`thinking`, `listening`, `speaking`, `lip-sync`):
-    the host in charge, or each desktop's own choice (its Setup route, or this
-    PC for lip-sync), or nobody (lip-sync by voice loudness); whether it
+    the host in charge, or no host (the job's
+    [shared route](#one-martlet-on-every-computer), or this PC for lip-sync),
+    or nobody (lip-sync by voice loudness); whether it
     **fails over**; and `moved_from`, the host a failover moved it away from;
   - one entry per **host**: its address and the roles (with models) it was
     last seen running, or a `removed` tombstone after you forget it.
@@ -60,8 +65,9 @@ hosts**) the desktop:
 4. records the roles each reachable host runs;
 5. applies failover (below);
 6. follows the plan: each job moves to the planned host with this PC's own
-   pairing, or back to this PC's saved Setup choice; an open conversation
-   window reloads when idle;
+   pairing, or back to the job's shared route (or, when this PC can't use it
+   yet, its own saved Setup choice); an open conversation window reloads when
+   idle;
 7. merges its copy into every reachable host whose copy differs.
 
 Changes made on this PC (the Devices page, Setup, forgetting a host, failover
@@ -116,6 +122,103 @@ row says where it came from.
 Merge rules, the endpoint (in-process, including signing and rejection) and
 failover ranking were checked locally. Multi-host failover on real hosts and
 networks is **NOT RUN**.
+
+## One Martlet on every computer
+
+The plan above says *who* does each job. What a job uses when no host does it,
+and everything else that makes Martlet the same companion, travels as **shared
+settings** through the same paired hosts, so any of your computers can be the
+companion (or a host) and Martlet stays familiar on all of them. Before this, a
+job nobody's host did used *each desktop's own Setup choice*: a PC switched to
+OpenRouter kept OpenRouter, while the other PC, made the companion later, kept
+NVIDIA Build and its old key.
+
+| Shared setting | What travels | Stays with each computer |
+| --- | --- | --- |
+| `thinking`, `listening`, `speaking` | The route a job uses when no paired host does it: provider (OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, Ollama on the computer itself, Windows speech, Parakeet), model, voice and **the API key** | Host routes and pairings (the plan above); a local whisper package |
+| `thinking-fallback` | The *If Thinking fails* endpoint, model and its own key (or none) | |
+| `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
+| `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off | Where memory is stored, and the memories themselves |
+| `lorebooks` | Every lorebook and the scan settings (up to 1 MiB) | |
+| `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
+| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras, Voice ID, echo reduction |
+| `speech-display`, `appearance` | Speech bubbles and subtitles, the theme | |
+
+Audio devices, the device role (companion or host PC), startup choices, MCP
+servers, updates and host pairings stay with each computer. Conversations are
+not shared.
+
+### Conflicts and offline changes
+
+Each setting is its own last-writer-wins register (`Martlet.Core.Sync.SharedSettings`)
+stamped with the same hybrid revision as the plan,
+`max(newest revision known + 1, current Unix milliseconds)`, the writer's device
+ID and the time. Merging keeps, per setting, the highest (revision, writer,
+content), so every copy converges whatever order changes arrive in, and changes
+to *different* settings made on different computers are all kept.
+
+- **Changes made here** are noticed every 15 seconds by comparing what this PC
+  has with a digest of what it had last time (kept in `shared-settings.json`),
+  and stamped then. This happens even while sync is off or no host answers, so
+  an edit made offline keeps its time and wins only if nothing newer was
+  changed elsewhere meanwhile. The same setting edited offline on two
+  computers ends as the later edit everywhere.
+- **Following** a newer setting goes through the same rules as Martlet's own
+  pages: a key this PC already has for that provider is used again, a replaced
+  key the owner typed on this PC is set aside for removal in Advanced setup
+  (never orphaned), and a replaced key this PC only had because another
+  computer shared it is removed (`shared-keys.txt` lists those). The owner's
+  choice is recorded as made on the computer where it was made. A setting
+  followed from elsewhere is not counted as a change made here.
+- **A setting this PC can't use yet** (a Windows voice not installed, Parakeet
+  not downloaded, Ollama without the model, a character file not at the same
+  path, a job a paired host does now) keeps its current value and is tried on
+  every check; *Settings for all devices* lists it with why, and it is never
+  shared back as this PC's choice.
+- **A failed push** is not lost: the change is in this PC's copy and goes to
+  every host whose copy differs on the next check; a host that was off gets it
+  when it answers again, and a restarted host serves its saved copy.
+- **The first sync after updating** (or on a new computer) has no record of
+  when each setting changed. A value that is still Martlet's default never
+  overrides one; otherwise the evidence of when it last changed here decides:
+  the write time of its API key in Windows Credential Manager, else the file's
+  time. So the PC where you set up OpenRouter most recently wins over a PC that
+  set up NVIDIA Build earlier, whichever syncs first.
+- **Use this PC's settings on all my computers** stamps everything this PC has
+  as changed now, for when the computers disagree and you want this one.
+- When the plan hands a job back from a host (*Setup choice*), the shared route
+  is used rather than whatever the PC kept aside.
+
+### Where copies live
+
+| Copy | Location |
+| --- | --- |
+| Each host | `shared-settings.json` beside `host.json` (0600, gateway service owner), with the API keys |
+| Each desktop | `shared-settings.json` in Martlet's data folder: the merged copy **without any key** and the digests of what it last saw; keys stay in Windows Credential Manager |
+
+The gateway serves `GET /martlet/v1/settings`, `GET /martlet/v1/settings/digest`
+and `POST /martlet/v1/settings` (merge and return) to paired devices only, over
+their pinned, signed connection; API keys for other apps may not use them
+([gateway contract](../src/Martlet.Gateway/README.md)). Desktops read a host's
+copy only when its digest changed and give their copy to every host whose
+digest differs. Secrets are pooled by SHA-256 of the key, and only those a
+setting still uses are kept. Like the shared Home Assistant token, the keys are
+readable by every paired device and kept in the host's private file; they are
+not encrypted end to end between desktops yet.
+
+### Qualification
+
+`settings_sync_selftest` (MCP) runs it end to end on loopback: two real
+gateways, three simulated desktops with real settings files and the real sync
+engine and sections, covering the owner's case in both orders, model and key
+changes, offline edits on both sides, a host that missed a change and
+restarted, a stale copy, a newer Martlet's setting, a Windows voice a new
+computer lacks, a new computer, the fallback and its key, lorebooks, no keys in
+desktop files and an unsigned request refused. The desktop window's own sync
+(status, the character, how you talk, speech bubbles and theme) was checked on
+a disposable data folder through `-Desktop`. Two real computers with real paired
+hosts, a real Credential Manager across them and the Linux host's file are
+**NOT RUN**.
 
 ## The shared voice list
 
@@ -210,8 +313,11 @@ every Martlet computer that can be the companion: each Martlet desktop, whether
 it is a companion or a host PC right now (a host PC can become the companion in
 one click and then already has them). Desktops reach each other only through
 paired hosts, so each host keeps a copy too, only to pass it on; a host never
-shows a character. Which character a computer shows stays its own choice. The
-built-in character is part of Martlet and never in the list.
+shows a character. Which character is shown travels with the
+[shared settings](#one-martlet-on-every-computer) (`character`), naming one of
+these models by its ID, so every computer shows its own copy of the same
+character (a computer still copying it keeps its current one until the copy is
+complete). The built-in character is part of Martlet and never in the list.
 
 - **The list** (`Martlet.Core.Characters.CharacterModelLibrary`): one
   last-writer-wins entry per model, keyed by its ID (SHA-256 of its renderer,
@@ -224,9 +330,10 @@ built-in character is part of Martlet and never in the list.
   removed models leave tombstones. JSON, snake case, schema 1, at most 2 MiB,
   16 models (512 MB together; older ones leave the list when newer ones need
   the room) and 64 tombstones. Each model follows the renderer's rules: a VRM is
-  one `.vrm` of at most 32 MB; a Live2D model is its `.model3.json` folder of
-  `.json`, `.moc3`, `.png` and `.wav` files only (128 files, 128 folders,
-  16 MB per file, 1 MB per JSON, 64 MB in all), never scripts.
+  one `.vrm` of at most 32 MB; a Live2D model is its `.model3.json` and the
+  files it declares, `.json`, `.moc3`, `.png` and `.wav` only (128 files,
+  128 folders, 64 MB per file, 1 MB per JSON, 128 MB in all), never scripts;
+  other files beside it (VTube Studio settings, readmes) are not copied.
 - **Each host** keeps `character-models.json` and one
   `character-model-chunk-<sha256>.bin` per piece of a live model beside
   `host.json` (0600, gateway service owner; not part of the approved

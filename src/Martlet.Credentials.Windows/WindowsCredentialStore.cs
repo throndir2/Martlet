@@ -9,11 +9,16 @@ public interface ICredentialNative
     int Write(string target, ReadOnlySpan<char> secret);
     int Read(string target, out SecretLease? secret);
     int Delete(string target);
+    /// <summary>When the credential was last written, or null when it is missing or unreadable.</summary>
+    DateTimeOffset? WrittenAt(string target) => null;
 }
 
-public sealed class WindowsCredentialStore(ICredentialNative native) : ICredentialStore
+public sealed class WindowsCredentialStore(ICredentialNative native) : ICredentialStore, ICredentialTimes
 {
     public WindowsCredentialStore() : this(new WindowsCredentialNative()) { }
+
+    public DateTimeOffset? WrittenAt(CredentialBinding binding) =>
+        Valid(binding) && native.IsSupported ? native.WrittenAt(Target(binding)) : null;
 
     public CredentialError Write(CredentialBinding binding, SecretLease secret)
     {

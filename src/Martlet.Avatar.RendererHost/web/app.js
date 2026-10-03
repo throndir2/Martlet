@@ -5,10 +5,16 @@ const canvas = document.getElementById("avatar");
 let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop;
 let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
-const resource = name => fetch(`asset/${name}`).then(response => {
-  if (!response.ok) throw new Error("Local resource unavailable.");
+// Percent-encodes every character but A-Z a-z 0-9 - . _ ~ (like .NET's Uri.EscapeDataString), so the host matches the
+// request to the asset exactly for names such as 简.moc3 or "texture (1).png".
+const encodePath = name => name.split("/").map(part => encodeURIComponent(part)
+  .replace(/[!'()*]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase())).join("/");
+const resource = name => fetch(`asset/${encodePath(name)}`).then(response => {
+  if (!response.ok) throw new Error(`Local resource ${name} unavailable.`);
   return response.arrayBuffer();
 });
+// Why a model couldn't load, for the host's log and the person choosing it; never a stack or a local path.
+const reason = error => String(error?.message ?? error).replace(/[\u0000-\u001f]/g, " ").slice(0, 300);
 const mouth = new Set(["aa", "ih", "ou", "ee", "oh"]);
 const blink = new Set(["blink", "blinkLeft", "blinkRight"]);
 window.chrome.webview.addEventListener("message", async ({ data: message }) => {
@@ -44,7 +50,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
         post({ modelId: data.resourceRevision.toLowerCase(), parameters: capabilities.parameters.map(p => ({
           id: p.id, minimum: p.minimum, maximum: p.maximum, neutral: p.neutral,
           aspects: p.groups.includes("LipSync") ? ["Mouth"] : p.groups.includes("EyeBlink") ? ["Expression"] : ["Mouth", "Expression"]
-        })) });
+        })), model: adapter.modelSummary });
       } else if (renderer === "Vrm") {
         adapter = new VrmAvatarAdapter(canvas);
         const capabilities = await adapter.load(await resource(data.modelFile));
@@ -93,10 +99,10 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       post({ started: renderer === "Live2D" ? adapter.playMotion(String(data.group)) : false });
     }
     else throw new Error("Unsupported command.");
-  } catch {
+  } catch (error) {
     active = false; failed = true;
     try { adapter?.dispose(); }
-    finally { post({ error: "avatar.renderer_rejected" }); }
+    finally { post(message.kind === "load" ? { error: "avatar.model_rejected", detail: reason(error) } : { error: "avatar.renderer_rejected" }); }
   }
 });
 function draw(now) {

@@ -83,16 +83,49 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         if (!AssignProcessToJobObject(job, process.Handle))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         // No browser is initialized until this handshake; the child is already job-owned.
-        var response = await SendAsync("load", new RendererLoad(profile, revision,
-            Application.Current is App { SelectedTheme: PinkTheme.Dark }), token, TimeSpan.FromSeconds(45));
-        if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");
-        Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
+        try
+        {
+            var response = await SendAsync("load", new RendererLoad(profile, revision,
+                Application.Current is App { SelectedTheme: PinkTheme.Dark }), token, TimeSpan.FromSeconds(45));
+            if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");
+            Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
+        }
+        catch (Exception error) when (error is InvalidDataException or JsonException)
+        {
+            throw new InvalidOperationException("The character renderer couldn't load this model. Details are in the avatar-renderer log.", error);
+        }
         if (Capabilities.Parameters.Length > 512 || Capabilities.Parameters.Any(p =>
             string.IsNullOrWhiteSpace(p.Id) || p.Id.Length > 128 || !double.IsFinite(p.Minimum) ||
             !double.IsFinite(p.Maximum) || !double.IsFinite(p.Neutral) || p.Minimum >= p.Maximum ||
             p.Neutral < p.Minimum || p.Neutral > p.Maximum))
-            throw new InvalidDataException("The character renderer reported unsupported model controls.");
+            throw new InvalidOperationException("The character renderer reported unsupported model controls.");
+        if (Capabilities.Model is { } model && (model.Textures is < 1 or > 16 || model.TextureDivisor is not (1 or 2 or 4) ||
+            model.Expressions is < 0 or > 128 || model.MotionGroups.Length > 32 || model.EyeBlink.Length > 64 || model.LipSync.Length > 64 ||
+            model.EyeBlink.Concat(model.LipSync).Concat(model.MotionGroups).Any(name => name.Length is 0 or > 256 || name.Any(char.IsControl))))
+            throw new InvalidOperationException("The character renderer reported an unsupported model summary.");
+        ErrorLog.Info($"Character model loaded: {Describe(Capabilities)}");
         _ = Task.Run(RelayRequestsAsync);
+    }
+
+    /// <summary>What the loaded model drives, in words: controls, textures (and any downscaling), blinking, mouth,
+    /// motions, expressions and physics. Parameter IDs and motion group names only, never paths.</summary>
+    internal static string Describe(RendererCapabilities capabilities)
+    {
+        var controls = $"{capabilities.Parameters.Length} controls";
+        if (capabilities.Model is not { } model) return controls + ".";
+        static string List(string[] names) => string.Join(", ", names.Take(4)) + (names.Length > 4 ? $" and {names.Length - 4} more" : "");
+        var parts = new List<string>
+        {
+            controls,
+            (model.Textures == 1 ? "1 texture" : $"{model.Textures} textures") +
+                (model.TextureDivisor > 1 ? $" shown at 1/{model.TextureDivisor} size to fit the graphics budget" : ""),
+            model.EyeBlink.Length > 0 ? $"blinks with {List(model.EyeBlink)}" : "doesn't blink",
+            model.LipSync.Length > 0 ? $"mouth moves {List(model.LipSync)}" : "no mouth control for lip-sync",
+            model.MotionGroups.Length > 0 ? $"motions {List(model.MotionGroups)}" : "no idle motions",
+            model.Expressions == 1 ? "1 expression" : $"{model.Expressions} expressions",
+            model.Physics ? "physics on" : "no physics"
+        };
+        return string.Join("; ", parts) + ".";
     }
 
     /// <summary>Raises <see cref="Requested"/> for each menu choice the overlay sends until it closes. Anything but a known
@@ -128,6 +161,11 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         {
             await RendererProtocol.WriteAsync(commands, RendererProtocol.Message(kind, Activation, data), request.Token);
             var response = await RendererProtocol.ReadAsync(replies, request.Token);
+            if (response.Activation == Activation && response.Kind == "error" && response.Data.ValueKind == JsonValueKind.Object &&
+                response.Data.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                code.GetString() == "avatar.model_rejected" && response.Data.TryGetProperty("message", out var reason) &&
+                reason.ValueKind == JsonValueKind.String && reason.GetString() is { Length: > 0 and <= 400 } rejected)
+                throw new InvalidOperationException(rejected);
             if (response.Activation != Activation || response.Kind == "error")
                 throw new InvalidDataException("The character renderer couldn't apply those controls.");
             return response;

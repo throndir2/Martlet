@@ -46,6 +46,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The network's API keys (names, scopes and SHA-256 verifiers; never a usable secret).</summary>
     internal const string ApiKeys = "api-keys.json", ApiKeysStaging = "api-keys.staging";
     internal const int MaximumApiKeysBytes = 65_536;
+    /// <summary>The settings the owner's computers share, including their API keys (not part of the approved configuration).</summary>
+    internal const string SharedSettings = "shared-settings.json", SharedSettingsStaging = "shared-settings.staging";
+    internal const int MaximumSharedSettingsBytes = Martlet.Core.Sync.SharedSettings.MaximumBytes;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -105,7 +108,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys) &&
+        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys or SharedSettings) &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
@@ -270,6 +273,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces api-keys.json (0600, service owner).</summary>
     internal void WriteApiKeys(byte[] bytes) => ReplaceRecovering(ApiKeys, ApiKeysStaging, bytes, MaximumApiKeysBytes);
+
+    /// <summary>Atomically replaces shared-settings.json (0600, service owner).</summary>
+    internal void WriteSharedSettings(byte[] bytes) => ReplaceRecovering(SharedSettings, SharedSettingsStaging, bytes, MaximumSharedSettingsBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

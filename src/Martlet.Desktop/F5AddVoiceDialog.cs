@@ -3,6 +3,8 @@ using System.Media;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Threading;
+using Martlet.Audio.Windows;
 using Martlet.Core.Contracts;
 using Martlet.Core.Voices;
 using Martlet.F5;
@@ -11,15 +13,19 @@ using Microsoft.Win32;
 namespace Martlet.Desktop;
 
 /// <summary>Adds a voice: one recording or several of the same voice, each with its exact transcript, and the owner's
-/// voice-rights confirmation (voice-rights-v1), which the store requires. The voice engines copy the voice for each reply;
-/// nothing is trained. Several recordings become one voice: Martlet joins them after a short pause into one recording (and
-/// their transcripts into one), which every engine can use, and remembers where each lies, so engines that learn from several
-/// recordings (XTTS-v2, GPT-SoVITS) get each one. Martlet keeps its own copy, so the originals can be moved or deleted
-/// afterwards, and shares the voice with the owner's paired Martlet computers. When speech-to-text is available without the
-/// cloud (<see cref="RecordingTranscriber"/>), each recording's words are filled in as soon as it is chosen, for the owner to
-/// check and correct.</summary>
+/// voice-rights confirmation (voice-rights-v1), which the store requires. A recording can be almost any audio or video file:
+/// <see cref="VoiceRecordingImport"/> turns each into the mono 16-bit WAV the voice engines take, and the line under it says
+/// what it found and whether it converts it. The voice engines copy the voice for each reply; nothing is trained. Several
+/// recordings become one voice: Martlet joins them after a short pause into one recording (and their transcripts into one),
+/// which every engine can use, and remembers where each lies, so engines that learn from several recordings (XTTS-v2,
+/// GPT-SoVITS) get each one. Martlet keeps its own copy, so the originals can be moved or deleted afterwards, and shares the
+/// voice with the owner's paired Martlet computers. When speech-to-text is available without the cloud
+/// (<see cref="RecordingTranscriber"/>), each recording's words are filled in from its WAV as soon as it is read, for the owner
+/// to check and correct.</summary>
 internal sealed class F5AddVoiceDialog : ThemedWindow
 {
+    private const string RecordingHint = "MP3, M4A, WAV, FLAC, OGG, the sound of a video and most other audio files work. " +
+        "Martlet converts the recording for you.";
     private readonly string dataDirectory;
     private readonly string destination;
     private readonly RecordingTranscriber? transcriber;
@@ -44,11 +50,13 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
     private readonly Button ok = new() { Content = "_Add voice", IsDefault = true, MinWidth = 110 };
     private F5ReferenceSnapshot? added;
     private SoundPlayer? player;
+    private bool closed;
 
-    /// <summary>One recording's row: its file, its exact words and its buttons.</summary>
+    /// <summary>One recording's row: its file, what Martlet found in it, its exact words and its buttons.</summary>
     private sealed class Recording
     {
         internal TextBox Path { get; } = new() { MinWidth = 300 };
+        internal TextBlock Found { get; } = new() { Text = RecordingHint, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
         internal TextBox Transcript { get; } = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 48, MaxHeight = 120 };
         internal Label FileLabel { get; } = new() { Padding = new Thickness(0, 10, 0, 4) };
         internal Label WordsLabel { get; } = new() { Padding = new Thickness(0, 8, 0, 4) };
@@ -59,35 +67,33 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         internal TextBlock Heard { get; } = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 6, 8, 0) };
         internal Button Fill { get; } = new() { Content = "_Fill in the words", Margin = new Thickness(0, 6, 0, 0), MinWidth = 130, VerticalAlignment = VerticalAlignment.Top };
         internal StackPanel Root { get; } = new();
+        /// <summary>Reads the file once typing in <see cref="Path"/> settles.</summary>
+        internal DispatcherTimer Settle { get; } = new() { Interval = TimeSpan.FromMilliseconds(400) };
+        internal CancellationTokenSource? Preparing { get; set; }
+        internal Task<VoiceRecording?>? Pending { get; set; }
+        internal string? PendingStamp { get; set; }
+        /// <summary>The WAV Martlet keeps for the chosen file, once read (null while none is chosen, it is being read or it
+        /// can't be used).</summary>
+        internal VoiceRecording? Ready { get; set; }
+        internal bool Reading { get; set; }
+        internal bool Failed { get; set; }
         /// <summary>Cancels the words being filled in (null when none are).</summary>
         internal CancellationTokenSource? Listening { get; set; }
-        /// <summary>The words last filled in, so choosing another file replaces them while they are unedited.</summary>
+        /// <summary>The words last filled in, so another file's words replace them while they are unedited.</summary>
         internal string? Filled { get; set; }
+
+        internal void Forget()
+        {
+            Settle.Stop();
+            Preparing?.Cancel();
+            Listening?.Cancel();
+            (Pending, PendingStamp, Ready, Reading, Failed) = (null, null, null, false, false);
+        }
 
         internal void Say(string? text)
         {
             Heard.Text = text ?? "";
             Heard.Visibility = text is null ? Visibility.Collapsed : Visibility.Visible;
-        }
-        /// <summary>The chosen file's length, or why Martlet can't use it (null while no file is chosen).</summary>
-        internal int? Milliseconds { get; private set; }
-        internal bool Unusable { get; private set; }
-        internal bool TooLarge { get; private set; }
-
-        internal void Measure()
-        {
-            (Milliseconds, Unusable, TooLarge) = (null, false, false);
-            var file = Path.Text;
-            if (!File.Exists(file)) return;
-            try
-            {
-                if (new FileInfo(file).Length > SpeakingVoiceLibrary.MaximumAudioBytes) TooLarge = true;
-                else Milliseconds = PcmWaveInfo.Inspect(File.ReadAllBytes(file), SpeakingVoiceLibrary.MaximumAudioBytes).DurationMilliseconds;
-            }
-            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or ContractException or OverflowException)
-            {
-                Unusable = true;
-            }
         }
     }
 
@@ -111,12 +117,12 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         var about = new TextBlock
         {
             Text = (transcriber is null
-                    ? "Choose a clear WAV recording (mono 16-bit PCM) and type its exact words: F5-TTS, GPT-SoVITS and Dia read them " +
-                        "along with it. With Parakeet downloaded in Companion › Listening, Martlet fills them in for you. "
-                    : $"Choose a clear WAV recording (mono 16-bit PCM) and Martlet fills in its words with {transcriber.Name}. Check " +
-                        "them and fix anything it misheard: F5-TTS, GPT-SoVITS and Dia read them along with it. ") +
-                "You can add several recordings of the same voice: XTTS-v2 and GPT-SoVITS learn from each one, and the other " +
-                $"engines hear them joined, one after another with a short pause ({SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} " +
+                    ? "Choose a clear recording, in almost any audio format, and type its exact words: F5-TTS, GPT-SoVITS and Dia read " +
+                        "them along with it. With Parakeet downloaded in Companion › Listening, Martlet fills them in for you. "
+                    : $"Choose a clear recording, in almost any audio format, and Martlet fills in its words with {transcriber.Name}. " +
+                        "Check them and fix anything it misheard: F5-TTS, GPT-SoVITS and Dia read them along with it. ") +
+                "You can add several recordings of the same voice: XTTS-v2 and GPT-SoVITS learn from each one, and the other engines " +
+                $"hear them joined, one after another with a short pause ({SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} " +
                 "seconds in all). Martlet keeps a copy and shares it with your paired Martlet computers, so any of them can speak " +
                 "with this voice.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6)
@@ -165,8 +171,9 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         Content = root;
         Closed += (_, _) =>
         {
+            closed = true;
+            foreach (var row in recordings) row.Forget();
             player?.Stop();
-            foreach (var row in recordings) row.Listening?.Cancel();
         };
         AddRecording();
     }
@@ -189,25 +196,21 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         row.Fill.Click += async (_, _) => await FillAsync(row);
         row.Drop.Click += (_, _) =>
         {
-            row.Listening?.Cancel();
+            row.Forget();
             recordings.Remove(row);
             list.Children.Remove(row.Root);
             Renumber();
         };
         row.Path.TextChanged += (_, _) =>
         {
-            row.Measure();
+            row.Forget();
+            row.Say(null);
+            ShowFill(row);
+            if (row.Path.Text.Trim().Length == 0) row.Found.Text = RecordingHint;
+            else row.Settle.Start();
             Summarize();
-            // A new file's words replace none or the ones filled in for the last file, never words the owner typed.
-            if (row.Milliseconds is not null && (row.Transcript.Text.Trim().Length == 0 || row.Transcript.Text == row.Filled))
-                FillAsync(row).Forget();
-            else
-            {
-                row.Listening?.Cancel();
-                row.Say(null);
-                ShowFill(row);
-            }
         };
+        row.Settle.Tick += (_, _) => PrepareAsync(row).Forget();
         row.FileLabel.Target = row.Path;
         row.WordsLabel.Target = row.Transcript;
         var pick = new DockPanel();
@@ -225,6 +228,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         row.Heard.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         row.Root.Children.Add(row.FileLabel);
         row.Root.Children.Add(pick);
+        row.Root.Children.Add(row.Found);
         row.Root.Children.Add(row.WordsLabel);
         row.Root.Children.Add(row.Transcript);
         row.Root.Children.Add(heard);
@@ -235,21 +239,21 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         return row;
     }
 
-    /// <summary>Fill in the words is shown only with a transcriber, and works once a usable file is chosen and nothing is
-    /// being filled in for it.</summary>
+    /// <summary>Fill in the words is shown only with a transcriber, and works once the recording is read and nothing is being
+    /// filled in for it.</summary>
     private void ShowFill(Recording row)
     {
         row.Fill.Visibility = transcriber is null ? Visibility.Collapsed : Visibility.Visible;
-        row.Fill.IsEnabled = row.Milliseconds is not null && row.Listening is null;
+        row.Fill.IsEnabled = row.Ready is not null && row.Listening is null;
     }
 
-    /// <summary>Fills in <paramref name="row"/>'s words with <see cref="transcriber"/>, one recording at a time. Words typed while
-    /// it listens are kept. The status line (<c>F5AddVoiceHeard</c>) says how it went, never the words.</summary>
+    /// <summary>Fills in <paramref name="row"/>'s words from its WAV with <see cref="transcriber"/>, one recording at a time.
+    /// Words typed while it listens are kept. The status line (<c>F5AddVoiceHeard</c>) says how it went, never the words.</summary>
     private async Task FillAsync(Recording row)
     {
-        if (transcriber is null || row.Milliseconds is not { } milliseconds) return;
+        if (transcriber is null || closed || row.Ready is not { } ready) return;
         row.Listening?.Cancel();
-        if (milliseconds > transcriber.MaximumMilliseconds)
+        if (ready.DurationMilliseconds > transcriber.MaximumMilliseconds)
         {
             row.Say($"This recording is too long for {transcriber.Name} to fill in its words. Type them.");
             return;
@@ -257,7 +261,6 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         using var stop = new CancellationTokenSource();
         row.Listening = stop;
         ShowFill(row);
-        var file = row.Path.Text;
         var before = row.Transcript.Text;
         row.Say($"Filling in the words with {transcriber.Name}...");
         var waited = false;
@@ -265,7 +268,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         {
             await listening.WaitAsync(stop.Token);
             waited = true;
-            var text = await transcriber.TranscribeAsync(await File.ReadAllBytesAsync(file, stop.Token), stop.Token);
+            var text = await transcriber.TranscribeAsync(ready.Wave, stop.Token);
             stop.Token.ThrowIfCancellationRequested();
             if (row.Transcript.Text != before) row.Say("Kept the words you typed.");
             else if (text.Length == 0) row.Say($"{transcriber.Name} heard no words in this recording. Type them.");
@@ -278,7 +281,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-        catch (Exception error) when (error is not OperationCanceledException)
+        catch (Exception error) when (error is not OperationCanceledException && !ErrorLog.IsFatal(error))
         {
             ErrorLog.Warn($"Filling in a voice recording's words with {transcriber.Name} failed.", error);
             row.Say($"Couldn't fill in the words with {transcriber.Name}: {RecordingTranscriber.Reason(error)}. Type them.");
@@ -292,8 +295,9 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
     }
 
     /// <summary>Labels and automation IDs by position: the first recording keeps the single-recording IDs
-    /// (<c>F5AddVoicePath</c>, <c>F5AddVoiceTranscript</c>, <c>F5AddVoicePlay</c>, <c>F5AddVoiceBrowse</c>, <c>F5AddVoiceFill</c>,
-    /// <c>F5AddVoiceHeard</c>); recording n of several adds "-n" and has <c>F5AddVoiceDrop-n</c>.</summary>
+    /// (<c>F5AddVoicePath</c>, <c>F5AddVoiceRecording</c>, <c>F5AddVoiceTranscript</c>, <c>F5AddVoicePlay</c>,
+    /// <c>F5AddVoiceBrowse</c>, <c>F5AddVoiceFill</c>, <c>F5AddVoiceHeard</c>); recording n of several adds "-n" and has
+    /// <c>F5AddVoiceDrop-n</c>.</summary>
     private void Renumber()
     {
         var several = recordings.Count > 1;
@@ -308,6 +312,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             AutomationProperties.SetName(row.Fill, several ? $"Fill in the words of recording {i + 1}" : "Fill in the words");
             AutomationProperties.SetName(row.Drop, $"Remove recording {i + 1}");
             AutomationProperties.SetAutomationId(row.Path, "F5AddVoicePath" + suffix);
+            AutomationProperties.SetAutomationId(row.Found, "F5AddVoiceRecording" + suffix);
             AutomationProperties.SetAutomationId(row.Transcript, "F5AddVoiceTranscript" + suffix);
             AutomationProperties.SetAutomationId(row.Play, "F5AddVoicePlay" + suffix);
             AutomationProperties.SetAutomationId(row.Browse, "F5AddVoiceBrowse" + suffix);
@@ -324,9 +329,10 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
     /// <summary>Picks recordings for <paramref name="row"/>: the first file goes to it and any others to new rows.</summary>
     private void Browse(Recording row)
     {
-        var dialog = new OpenFileDialog { Filter = "WAV recordings (*.wav)|*.wav", CheckFileExists = true, Multiselect = true };
+        var dialog = new OpenFileDialog { Filter = VoiceRecordingImport.DialogFilter, CheckFileExists = true, Multiselect = true };
         if (dialog.ShowDialog(this) != true || dialog.FileNames.Length == 0) return;
         row.Path.Text = dialog.FileNames[0];
+        PrepareAsync(row).Forget();
         foreach (var file in dialog.FileNames.Skip(1))
         {
             var next = recordings.FirstOrDefault(r => r.Path.Text.Length == 0) ?? AddRecording();
@@ -336,47 +342,137 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
                 break;
             }
             next.Path.Text = file;
+            PrepareAsync(next).Forget();
         }
         if (name.Text.Length == 0) name.Text = Path.GetFileNameWithoutExtension(dialog.FileNames[0]);
     }
 
-    /// <summary>Says how many recordings the voice has and, once their files are chosen, how long they are together (or which
+    /// <summary>Reads <paramref name="row"/>'s file into the WAV Martlet would keep (off the UI thread) and says under it what
+    /// it found, or why it can't be used. The same file, unchanged since, is read only once (a failure is tried again).</summary>
+    private Task<VoiceRecording?> PrepareAsync(Recording row)
+    {
+        row.Settle.Stop();
+        if (closed) return Task.FromResult<VoiceRecording?>(null);
+        var chosen = row.Path.Text.Trim();
+        var stamp = Stamp(chosen);
+        if (row.Pending is { } pending && row.PendingStamp == stamp &&
+            !(pending.IsCompleted && (!pending.IsCompletedSuccessfully || pending.Result is null))) return pending;
+        row.Preparing?.Cancel();
+        row.Preparing = new CancellationTokenSource();
+        row.PendingStamp = stamp;
+        return row.Pending = PrepareAsync(row, chosen, row.Preparing.Token);
+    }
+
+    private async Task<VoiceRecording?> PrepareAsync(Recording row, string chosen, CancellationToken token)
+    {
+        (row.Ready, row.Failed, row.Reading) = (null, false, chosen.Length > 0);
+        if (chosen.Length == 0)
+        {
+            row.Found.Text = RecordingHint;
+            Summarize();
+            return null;
+        }
+        row.Found.Text = "Reading the recording...";
+        Summarize();
+        try
+        {
+            var ready = await Task.Run(() => VoiceRecordingImport.Prepare(chosen, token), token);
+            if (token.IsCancellationRequested) return null;
+            (row.Ready, row.Reading, row.Found.Text) = (ready, false, ready.Describe());
+            Summarize();
+            // A new file's words replace none or the ones filled in for the last file, never words the owner typed.
+            if (transcriber is not null && (row.Transcript.Text.Trim().Length == 0 || row.Transcript.Text == row.Filled))
+                FillAsync(row).Forget();
+            else ShowFill(row);
+            return ready;
+        }
+        catch (VoiceRecordingException failure)
+        {
+            if (token.IsCancellationRequested) return null;
+            (row.Failed, row.Reading, row.Found.Text) = (true, false, failure.Message);
+            Summarize();
+            return null;
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception failure) when (!ErrorLog.IsFatal(failure))
+        {
+            ErrorLog.Warn("Couldn't read a recording for Add a voice", failure);
+            if (token.IsCancellationRequested) return null;
+            (row.Failed, row.Reading, row.Found.Text) = (true, false,
+                "Martlet couldn't read this recording. Try an MP3, M4A, WAV or FLAC recording.");
+            Summarize();
+            return null;
+        }
+    }
+
+    /// <summary>The recording <paramref name="row"/>'s path names now, waiting out a file chosen again while it was read.</summary>
+    private async Task<VoiceRecording?> ReadyAsync(Recording row)
+    {
+        Task<VoiceRecording?> task;
+        VoiceRecording? ready;
+        do
+        {
+            task = PrepareAsync(row);
+            ready = await task;
+        }
+        while (!ReferenceEquals(task, row.Pending) && recordings.Contains(row) && !closed);
+        return ready;
+    }
+
+    /// <summary>Which file, in which version, a path names: a changed file is read again.</summary>
+    private static string Stamp(string chosen)
+    {
+        try
+        {
+            var file = new FileInfo(chosen);
+            return file.Exists ? $"{file.FullName}|{file.Length}|{file.LastWriteTimeUtc.Ticks}" : chosen + "|missing";
+        }
+        catch (Exception failure) when (failure is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return chosen + "|invalid";
+        }
+    }
+
+    /// <summary>Says how many recordings the voice has and, once their files are read, how long they are together (or which
     /// one Martlet can't use). Readable as <c>F5AddVoiceRecordings</c>; never the paths or words.</summary>
     private void Summarize()
     {
         var count = recordings.Count;
-        var index = recordings.FindIndex(r => r.TooLarge || r.Unusable);
-        var problem = index < 0 ? null
-            : recordings[index].TooLarge ? $"Recording {index + 1} is larger than 4 MB."
-            : $"Recording {index + 1} isn't a mono 16-bit PCM WAV Martlet can use.";
-        var chosen = count > 0 && recordings.All(r => r.Milliseconds is not null);
-        var seconds = (recordings.Sum(r => r.Milliseconds ?? 0) + (count - 1) * SpeakingVoiceLibrary.ClipPauseMilliseconds) / 1000d;
-        summary.Text = problem ?? (count == 1
-            ? chosen ? $"One recording, {seconds:0.#} seconds." : "One recording. Add more recordings of the same voice if you have them."
-            : $"{count} recordings make one voice" + (chosen ? $", {seconds:0.#} seconds joined with the pauses" +
-                (seconds * 1000 > SpeakingVoiceLibrary.MaximumDurationMilliseconds
-                    ? $": more than {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds, so leave some out." : ".")
-                : "; choose each recording's file."));
+        var index = recordings.FindIndex(r => r.Failed);
+        var reading = recordings.Any(r => r.Reading);
+        var chosen = count > 0 && recordings.All(r => r.Ready is not null);
+        var milliseconds = recordings.Sum(r => r.Ready?.DurationMilliseconds ?? 0) + (count - 1) * SpeakingVoiceLibrary.ClipPauseMilliseconds;
+        var seconds = milliseconds / 1000d;
+        summary.Text = index >= 0 ? count == 1 ? "Martlet can't use this recording." : $"Martlet can't use recording {index + 1}."
+            : reading ? count == 1 ? "Reading the recording..." : "Reading the recordings..."
+            : count == 1
+                ? chosen
+                    ? milliseconds < SpeakingVoiceLibrary.MinimumDurationMilliseconds
+                        ? $"One recording, {seconds:0.#} seconds: a voice from one recording needs at least " +
+                            $"{SpeakingVoiceLibrary.MinimumDurationMilliseconds / 1000} second."
+                        : $"One recording, {seconds:0.#} seconds."
+                    : "One recording. Add more recordings of the same voice if you have them."
+                : $"{count} recordings make one voice" + (chosen ? $", {seconds:0.#} seconds joined with the pauses" +
+                    (milliseconds > SpeakingVoiceLibrary.MaximumDurationMilliseconds
+                        ? $": more than {SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds, so leave some out." : ".")
+                    : "; choose each recording's file.");
     }
 
     private async Task PlayAsync(Recording row)
     {
         error.Visibility = Visibility.Collapsed;
-        if (!File.Exists(row.Path.Text))
+        if (row.Path.Text.Trim().Length == 0)
         {
-            Show("Choose the recording (a WAV file) to play it.");
+            Show("Choose the recording to play it.");
             return;
         }
-        try
+        if (await ReadyAsync(row) is not { } ready)
         {
-            if (new FileInfo(row.Path.Text).Length > F5ReferenceLimits.MaximumAudioFileBytes)
-            {
-                Show("The recording must be a mono 16-bit PCM WAV of at most 4 MB.");
-                return;
-            }
-            Play(await File.ReadAllBytesAsync(row.Path.Text));
+            Show(row.Found.Text);
+            return;
         }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException)
+        try { Play(ready.Wave); }
+        catch (Exception failure) when (failure is IOException or InvalidOperationException)
         {
             Show("This recording can't be played: " + failure.Message);
         }
@@ -391,7 +487,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             if (await JoinAsync() is { } joined) Play(joined.Wave);
         }
         catch (ContractException failure) { Show(failure.Message); }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception failure) when (failure is IOException or InvalidOperationException)
         {
             Show("These recordings can't be played: " + failure.Message);
         }
@@ -404,25 +500,24 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         player.Play();
     }
 
-    /// <summary>The recordings joined (null, after saying why, when one isn't chosen or is too large). Throws
-    /// <see cref="ContractException"/> naming a recording Martlet can't use.</summary>
+    /// <summary>The recordings, each converted to the WAV Martlet keeps, joined (null, after saying why, when one isn't chosen
+    /// or can't be used). Throws <see cref="ContractException"/> when together they are too long.</summary>
     private async Task<JoinedVoiceRecording?> JoinAsync()
     {
         var parts = new List<(ReadOnlyMemory<byte> Wave, string Transcript)>();
         for (var i = 0; i < recordings.Count; i++)
         {
-            var file = recordings[i].Path.Text;
-            if (!File.Exists(file))
+            if (recordings[i].Path.Text.Trim().Length == 0)
             {
-                Show($"Choose recording {i + 1} (a WAV file), or remove it.");
+                Show($"Choose recording {i + 1}, or remove it.");
                 return null;
             }
-            if (new FileInfo(file).Length > SpeakingVoiceLibrary.MaximumAudioBytes)
+            if (await ReadyAsync(recordings[i]) is not { } ready)
             {
-                Show($"Recording {i + 1} is larger than 4 MB.");
+                Show($"Recording {i + 1}: {recordings[i].Found.Text}");
                 return null;
             }
-            parts.Add((await File.ReadAllBytesAsync(file), recordings[i].Transcript.Text));
+            parts.Add((ready.Wave, recordings[i].Transcript.Text));
         }
         return await Task.Run(() => SpeakingVoiceRecordings.Join(parts));
     }
@@ -432,11 +527,11 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
         error.Visibility = Visibility.Collapsed;
         player?.Stop();
         var several = recordings.Count > 1;
-        var missing = recordings.FindIndex(r => !File.Exists(r.Path.Text));
+        var missing = recordings.FindIndex(r => r.Path.Text.Trim().Length == 0);
         var unsaid = recordings.FindIndex(r => r.Transcript.Text.Trim().Length == 0);
-        var problem = missing >= 0 ? several ? $"Choose recording {missing + 1} (a WAV file), or remove it." : "Choose the recording (a WAV file)."
+        var problem = missing >= 0 ? several ? $"Choose recording {missing + 1}, or remove it." : "Choose the recording."
             : name.Text.Trim().Length == 0 ? "Give the voice a name."
-            : unsaid >= 0 && recordings[unsaid].Listening is not null
+            : unsaid >= 0 && (recordings[unsaid].Listening is not null || transcriber is not null && recordings[unsaid].Reading)
                 ? several ? $"Martlet is still filling in the words of recording {unsaid + 1}. Wait a moment, or type them."
                     : "Martlet is still filling in the words. Wait a moment, or type them."
             : unsaid >= 0 ? several ? $"Type exactly what recording {unsaid + 1} says." : "Type exactly what the recording says."
@@ -448,7 +543,6 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             return;
         }
         ok.IsEnabled = false;
-        string? staged = null;
         try
         {
             if (F5Voices.View(dataDirectory).Live.Count >= SpeakingVoiceLibrary.MaximumVoices)
@@ -456,7 +550,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
                 Show("The voice list is full. Remove one you no longer use first.");
                 return;
             }
-            var source = Path.GetFullPath(recordings[0].Path.Text);
+            byte[] wave;
             var words = recordings[0].Transcript.Text.Trim();
             JoinedVoiceRecording? joined = null;
             if (several)
@@ -464,51 +558,46 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
                 // Several recordings become one: joined after a short pause, with where each lies kept in the shared list.
                 joined = await JoinAsync();
                 if (joined is null) return;
-                var folder = Path.Combine(dataDirectory, "speaking-voices-joining");
-                Directory.CreateDirectory(folder);
-                staged = source = Path.Combine(folder, $"{Guid.NewGuid():N}.wav");
-                await File.WriteAllBytesAsync(staged, joined.Wave);
-                words = joined.Transcript;
+                (wave, words) = (joined.Wave, joined.Transcript);
             }
-            using (var store = F5Voices.Open(dataDirectory))
+            else
             {
-                added = await store.SnapshotAsync(new()
+                if (await ReadyAsync(recordings[0]) is not { } ready)
                 {
-                    PresetName = name.Text.Trim(),
-                    AbsoluteSourcePath = source,
-                    Transcript = words,
-                    Rights = new()
-                    {
-                        AcknowledgementId = Guid.NewGuid(),
-                        Basis = (basis.SelectedItem as ComboBoxItem)?.Tag is F5VoiceRightsBasis chosenBasis ? chosenBasis : F5VoiceRightsBasis.OwnVoice,
-                        StatementVersion = F5ReferenceLimits.RightsStatementVersion,
-                        ProcessingDestinationId = destination,
-                        AcknowledgedAtUtc = DateTimeOffset.UtcNow,
-                        Confirmed = true
-                    }
-                });
+                    Show(recordings[0].Found.Text);
+                    return;
+                }
+                if (ready.DurationMilliseconds < SpeakingVoiceLibrary.MinimumDurationMilliseconds)
+                {
+                    Show($"A voice from one recording needs {SpeakingVoiceLibrary.MinimumDurationMilliseconds / 1000} to " +
+                        $"{SpeakingVoiceLibrary.MaximumDurationMilliseconds / 1000} seconds.");
+                    return;
+                }
+                wave = ready.Wave;
             }
+            added = await F5Voices.SnapshotAsync(dataDirectory, name.Text.Trim(), wave, words, new()
+            {
+                AcknowledgementId = Guid.NewGuid(),
+                Basis = (basis.SelectedItem as ComboBoxItem)?.Tag is F5VoiceRightsBasis chosenBasis ? chosenBasis : F5VoiceRightsBasis.OwnVoice,
+                StatementVersion = F5ReferenceLimits.RightsStatementVersion,
+                ProcessingDestinationId = destination,
+                AcknowledgedAtUtc = DateTimeOffset.UtcNow,
+                Confirmed = true
+            }, CancellationToken.None);
             F5Voices.Add(dataDirectory, added, words, joined);
             DialogResult = true;
         }
         catch (F5Exception failure) { Show(F5Voices.Describe(failure)); }
-        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or ArgumentException or ContractException)
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            // These messages usually name a path, and the problem line is returned to automation.
+            Show("Martlet couldn't save the voice on this PC. Check that there is free disk space, then try again.");
+        }
+        catch (Exception failure) when (failure is ArgumentException or ContractException)
         {
             Show(failure.Message);
         }
-        finally
-        {
-            ok.IsEnabled = true;
-            if (staged is not null)
-            {
-                try
-                {
-                    File.Delete(staged);
-                    Directory.Delete(Path.GetDirectoryName(staged)!);
-                }
-                catch (Exception failure) when (failure is IOException or UnauthorizedAccessException) { }
-            }
-        }
+        finally { ok.IsEnabled = true; }
     }
 
     private void Show(string text)

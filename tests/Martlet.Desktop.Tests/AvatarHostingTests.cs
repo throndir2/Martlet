@@ -85,6 +85,48 @@ public sealed class AvatarHostingTests
     }
 
     [Fact]
+    public async Task Live2D_snapshot_reads_only_declared_assets_with_unicode_names()
+    {
+        using var scope = new Scope();
+        var folder = Directory.CreateDirectory(Path.Combine(scope.DirectoryPath, "简")).FullName;
+        var sdk = Directory.CreateDirectory(Path.Combine(scope.DirectoryPath, "sdk")).FullName;
+        File.WriteAllText(Path.Combine(sdk, "core.js"), "core");
+        File.WriteAllText(Path.Combine(sdk, "sdk.js"), "sdk");
+        Directory.CreateDirectory(Path.Combine(folder, "简.8192"));
+        File.WriteAllBytes(Path.Combine(folder, "简.moc3"), [1]);
+        File.WriteAllBytes(Path.Combine(folder, "简.8192", "texture_00.png"), [2]);
+        File.WriteAllBytes(Path.Combine(folder, "简.physics3.json"), [3]);
+        // VTube Studio leaves its own settings, notes and icons beside the model; they are never read.
+        File.WriteAllText(Path.Combine(folder, "按键.txt"), "hotkeys");
+        File.WriteAllText(Path.Combine(folder, "plugin.js"), "alert(1)");
+        File.WriteAllBytes(Path.Combine(folder, "unreferenced.exp3.json"), [4]);
+        var model = Path.Combine(folder, "简.model3.json");
+        void Write(string references) => File.WriteAllText(model, "{\"Version\":3,\"FileReferences\":{" + references + "}}");
+        AvatarProfile Profile() => scope.Profile() with { Renderer = AvatarRenderer.Live2D, ModelPath = model, SdkDirectory = sdk };
+
+        Write("""
+            "Moc":"简.moc3","Textures":["简.8192/texture_00.png"],"Physics":"简.physics3.json"
+            """);
+        var snapshot = await LocalAvatarFiles.SnapshotAsync(Profile(), default);
+        Assert.Equal("简.model3.json", snapshot.ModelFile);
+        Assert.Equal(["core.js", "sdk.js", "简.8192/texture_00.png", "简.moc3", "简.model3.json", "简.physics3.json"],
+            snapshot.Assets.Select(a => a.Name).Order(StringComparer.Ordinal));
+
+        foreach (var references in new[]
+        {
+            """ "Moc":"missing.moc3","Textures":[] """,
+            """ "Moc":"简.moc3","Textures":["../outside.png"] """,
+            """ "Moc":"简.moc3","Textures":["C:/outside.png"] """,
+            """ "Moc":"简.moc3","Textures":[],"UserData":"plugin.js" """,
+            """ "Moc":"简.moc3","Textures":["a%2fb.png"] """
+        })
+        {
+            Write(references);
+            await Assert.ThrowsAsync<ContractException>(() => LocalAvatarFiles.SnapshotAsync(Profile(), default));
+        }
+    }
+
+    [Fact]
     public async Task Framing_rejects_oversize_and_truncated_messages_and_preserves_native_ranges()
     {
         using var pipe = new MemoryStream();
@@ -138,6 +180,9 @@ public sealed class AvatarHostingTests
         Assert.Equal(RendererResourcePolicy.CanonicalName("asset/My Model.model3.json"),
             RendererResourcePolicy.ResourceName(RendererResourcePolicy.Origin + "asset/My%20Model.model3.json", "GET"));
         Assert.Null(RendererResourcePolicy.ResourceName(RendererResourcePolicy.Origin + "asset%2fcore.js", "GET"));
+        // The page percent-encodes everything but unreserved characters, as these names are requested.
+        Assert.Equal(RendererResourcePolicy.CanonicalName("asset/简.8192/texture (1).png"),
+            RendererResourcePolicy.ResourceName(RendererResourcePolicy.Origin + "asset/%E7%AE%80.8192/texture%20%281%29.png", "GET"));
     }
 
     [Fact]

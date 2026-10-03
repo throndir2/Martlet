@@ -73,10 +73,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             id = new { type = "string" }
         }, ["id"]),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
-            "window is visible or hidden in the notification area, and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
-            "what Explorer sends for a left click (show Martlet) and a right click (its menu at the mouse pointer; ui_snapshot then " +
-            "lists the Tray* items). \"close\" presses the main window's close button, which hides Martlet in the notification area " +
-            "by default or exits it, so it requires --allow-ui-effects.", new
+            "window is visible or hidden in the notification area, whether its menu is open (menuOpen) and whether Martlet still " +
+            "runs. \"open\" and \"menu\" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu " +
+            "at the mouse pointer; ui_snapshot then lists the Tray* items). \"close\" presses the main window's close button, which " +
+            "hides Martlet in the notification area by default or exits it, so it requires --allow-ui-effects.", new
         {
             action = new { type = "string", @enum = DesktopAutomation.TrayActions }
         }),
@@ -99,6 +99,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("voice_recording_check", "What Companion > Voice > Add a voice does with an audio or video file (path, read on this PC): " +
+            "whether it is readable, the kind of file, its channels and sample rate, and the mono 16-bit WAV Martlet would keep (sample " +
+            "rate, length, bytes, SHA-256, kept as is or converted), with the line Add a voice shows, or why it can't be used. Uses " +
+            "the production converter; saves, plays and contacts nothing and never returns the path or the audio.", new
+        {
+            path = new { type = "string" }
+        }, ["path"]),
         Tool("voice_tags", "Show how a reply's voice tags are handled for a self-hosted voice engine (engine key, default the " +
             "default engine Chatterbox Turbo; \"none\" for a voice without tags such as OpenAI or Windows): the engine's tag catalog in " +
             "its own syntax, the Thinking prompt it adds (Companion > Prompts > Voice sounds and tones, from dataDirectory's settings " +
@@ -132,8 +139,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
-            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
-            "installed and running and its engine state, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, their host services, WSL version and status), " +
+            "pending and required restarts, blockers and recovery guidance, whether Docker Desktop is installed and running and its engine " +
+            "state, and any setup Martlet continues after a Windows restart. Read-only; starts no VM, changes nothing and returns no distribution names.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -200,6 +208,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "resuming an interrupted copy, passing characters on to a host the first desktop never reached, removal everywhere (host " +
             "pieces and desktop copies deleted), keeping the copy a computer shows, stale copies, a host restart, piece checks and the " +
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+        Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
+            "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
+            "companion, replies, prompts, memory, lorebooks, character, talk, speech-display, appearance) with which computer changed it " +
+            "and when, its revision, whether it uses an API key (never the key or its digest), the provider and model of each job's " +
+            "route, and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
+            "contacts nothing and reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
+            "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
+            "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
+            "desktop's paired client, sync engine and settings sections. Walks the owner's case (a PC on OpenRouter becomes a host, the " +
+            "other PC still on NVIDIA Build becomes the companion and takes OpenRouter, its model and key), model and key changes, offline " +
+            "edits on both sides (different and the same setting; the later edit wins), a host that missed a change, a stale copy, a " +
+            "newer Martlet's setting, a Windows voice a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
+            "no keys in desktop files and an unsigned request refused. Loopback only; the folder is deleted and the vault untouched.", new { }),
         Tool("audio2face_check", "Animate a short synthesized speech-like test signal (generated here; no microphone, nothing played) " +
             "with an Audio2Face service on a numeric loopback endpoint (default http://127.0.0.1:52000) through Martlet's production " +
             "Audio2Face client, the one the host gateway's lip-sync relay uses, so either Audio2Face engine (the local open-source SDK " +
@@ -357,6 +382,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
+                "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
@@ -372,6 +398,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
+                "settings_sync_status" => SettingsSyncStatus(arguments),
+                "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
@@ -636,14 +664,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             ready = state.Ready,
+            blocked = state.Blocked,
             firmwareOff = state.FirmwareOff,
             needsWindowsChanges = state.NeedsChanges,
+            restartPending = state.RestartPending,
+            restartRequired = state.RestartRequired,
             problems = state.Problems(),
+            recovery = state.Recovery,
+            probeIssues = state.ProbeIssues,
             firmware = state.Firmware,
             hypervisor = state.Hypervisor,
             virtualMachinePlatform = state.MachinePlatform.ToString(),
             windowsSubsystemForLinux = state.Subsystem.ToString(),
             wsl = state.Wsl,
+            wslStatus = state.WslStatus.ToString(),
+            wslStatusExitCode = state.WslStatusExitCode,
+            hostComputeService = state.ComputeService.ToString(),
+            hostNetworkService = state.NetworkService.ToString(),
             virtualMachine = state.VirtualMachine,
             summary = state.Describe(),
             dockerDesktop = new
@@ -750,6 +787,36 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 : shownKey is not null ? "unlisted-copy:" + shownKey
                 : "model-file-outside-list"
         };
+    }
+
+    /// <summary>voice_recording_check: Add a voice's conversion of one file, through the production
+    /// <see cref="Martlet.Audio.Windows.VoiceRecordingImport"/>, then F5's own reference rules on the WAV it would keep.</summary>
+    private static async Task<object> VoiceRecordingCheckAsync(string path, CancellationToken cancellation)
+    {
+        try
+        {
+            var ready = await Task.Run(() => Martlet.Audio.Windows.VoiceRecordingImport.Prepare(path, cancellation), cancellation);
+            // F5's reference rules decide whether the recording can be a voice by itself (one of several may be shorter).
+            string? aloneProblem = null;
+            try { Martlet.F5.F5ReferenceAudioFormat.Parse(ready.Wave); }
+            catch (Martlet.F5.F5Exception failure) { aloneProblem = failure.Failure.ToString(); }
+            return new
+            {
+                usable = true, sourceFormat = ready.SourceFormat, sourceChannels = ready.SourceChannels, sourceSampleRate = ready.SourceSampleRate,
+                converted = ready.Converted, sampleRate = ready.SampleRate, channels = BitConverter.ToInt16(ready.Wave, 22),
+                bitsPerSample = BitConverter.ToInt16(ready.Wave, 34), durationMs = ready.DurationMilliseconds, bytes = ready.Wave.Length,
+                sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(ready.Wave)),
+                voiceAlone = aloneProblem is null, voiceAloneProblem = aloneProblem,
+                engines = Martlet.Core.Settings.SpeechEngines.All
+                    .Where(engine => Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, ready.DurationMilliseconds) is null)
+                    .Select(engine => engine.Key).ToArray(),
+                shown = ready.Describe()
+            };
+        }
+        catch (Martlet.Audio.Windows.VoiceRecordingException failure)
+        {
+            return new { usable = false, problem = failure.Message };
+        }
     }
 
     private static object F5Voices(JsonElement arguments)
@@ -926,6 +993,55 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+    }
+
+    /// <summary>The settings this PC shares with the owner's other computers (shared-settings.json, the name
+    /// Martlet.Core.Sync.SharedSettingsState uses). Personal text (personality, prompts, lorebooks) and keys are never returned:
+    /// only who changed each setting and when, its size, whether it uses a key, and for jobs the provider and model.</summary>
+    private static object SettingsSyncStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName))) return new { sync, state = "none" };
+        var (document, observed) = Martlet.Core.Sync.SharedSettingsState.Load(directory);
+        object? Route(Martlet.Core.Sync.SharedSetting setting)
+        {
+            try
+            {
+                if (setting.Key is "thinking" or "listening" or "speaking")
+                {
+                    var route = Martlet.Core.Sync.SharedRoute.Parse(setting.Value);
+                    return new { type = route.Type, origin = route.Origin, model = route.Model, voice = route.Voice };
+                }
+                if (setting.Key == "thinking-fallback" && setting.Value != "null")
+                {
+                    using var parsed = JsonDocument.Parse(setting.Value);
+                    return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
+                }
+                if (setting.Key is "memory" or "appearance" or "talk")
+                {
+                    using var parsed = JsonDocument.Parse(setting.Value);
+                    return parsed.RootElement.Clone();
+                }
+            }
+            catch (Exception error) when (error is JsonException or Martlet.Core.Contracts.ContractException or KeyNotFoundException or InvalidOperationException) { }
+            return null;
+        }
+        return new
+        {
+            sync, state = "loaded", revision = document.Revision, count = document.Settings.Count,
+            settings = document.Settings.Select(s => new
+            {
+                key = s.Key, updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision, usesKey = s.SecretSha256 is not null,
+                characters = s.Value.Length, off = s.Value == "null",
+                here = !observed.TryGetValue(s.Key, out var seen) ? "unknown"
+                    : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
+                value = Route(s)
+            }).ToArray()
+        };
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the

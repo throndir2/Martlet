@@ -89,9 +89,10 @@ None of them finishes the job alone.
 ### 1.6 No network
 
 Every desktop pairs with every host on its own. A second PC cannot "join";
-it repeats setup, pairing and keys. The shared *cluster plan* syncs only
-routing and is on by default (Devices › *Keep who does what in sync on all
-my computers*).
+it repeats setup and pairing. The shared *cluster plan* (routing) and the
+[shared settings](CLUSTER.md#one-martlet-on-every-computer) (each job's
+provider, model and cloud key, the character, personality and replies) are on
+by default (Devices › *Keep Martlet the same on all my computers*).
 
 ---
 
@@ -424,8 +425,9 @@ don't redo everything, and tell the network what this PC can do.*
   [Martlet network](NETWORK.md) with no second Allow, so it also pairs with
   every host added later, on any member. Pairing with any one host of the
   network (a code or SSH) works too: it asks to join and a member allows it
-  under Devices › Your Martlet network. Not yet: combining setups, cloud keys
-  travelling with it; who-does-what sync is on by default.
+  under Devices › Your Martlet network. Its setup and cloud keys come from the
+  [shared settings](CLUSTER.md#one-martlet-on-every-computer) on its first
+  sync; who-does-what sync is on by default. Not yet: combining setups.
 
 #### B2. Approve a joining machine
 
@@ -1393,5 +1395,5 @@ Each flow below asks for a step Martlet could do itself.
 | 14 | Memory | Storage choice and enable checkbox (they save on their own; *Save memory configuration* removed) | One switch | `MemoryWindow.xaml(.cs)` |
 | 15 | Updates | Four separate preferences | All on by default | `MainWindow.Updates.cs`, `UpdateCheckPreferences.cs` |
 | 16 | Devices sync and failover | Sync on by default with a toggle; failover opt-in per job | Always on inside a network | `MainWindow.Cluster.cs` |
-| 17 | Add a voice | Done: the passive Voice Library window is gone; *Add a voice...* on *Voices* takes the file, name, exact transcript and whose voice, then uses it; the transcript is filled in by Parakeet or the Listening host's whisper for the owner to check | Record in place (D3) | `F5AddVoiceDialog.cs`, `RecordingTranscriber.cs` |
+| 17 | Add a voice | Done: the passive Voice Library window is gone; *Add a voice...* on *Voices* takes the file (almost any audio or video format, converted to the WAV Martlet keeps), name, exact transcript and whose voice, then uses it; the transcript is filled in by Parakeet or the Listening host's whisper for the owner to check | Record in place (D3) | `F5AddVoiceDialog.cs`, `VoiceRecordingImport.cs`, `RecordingTranscriber.cs` |
 | 18 | Setup advisor | Three question pages, then a plan the user still carries out by hand | Hardware-based plan that sets itself up (A1) | `SetupAdvisorWindow.xaml(.cs)` |
