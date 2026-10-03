@@ -1,4 +1,4 @@
-import { LIMITS, LocalModelBundle, pngDimensions } from "./assets.js";
+import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
@@ -32,14 +32,28 @@ export interface FrameResult {
 }
 
 export interface BrowserServices {
-  decodeTexture(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal): Promise<ImageBitmap>;
+  /** Decodes a PNG, resized to `size` when given. */
+  decodeTexture(bytes: Uint8Array<ArrayBuffer>, signal: AbortSignal,
+    size?: { readonly width: number; readonly height: number }): Promise<ImageBitmap>;
   requestFrame(callback: FrameRequestCallback): number;
   cancelFrame(handle: number): void;
   now(): number;
 }
 
+/** What the loaded model drives, after Martlet's fallbacks, for status and diagnostics. */
+export interface ModelSummary {
+  readonly textures: number;
+  readonly textureDivisor: number;
+  readonly eyeBlink: readonly string[];
+  readonly lipSync: readonly string[];
+  readonly motionGroups: readonly string[];
+  readonly expressions: number;
+  readonly physics: boolean;
+  readonly animated: boolean;
+}
+
 export const browserServices: BrowserServices = {
-  decodeTexture(bytes, signal) {
+  decodeTexture(bytes, signal, size) {
     requireCondition(typeof createImageBitmap === "function", "MISSING_IMAGE_DECODER",
       "This runtime requires createImageBitmap PNG decoding.");
     return new Promise((resolve, reject) => {
@@ -53,11 +67,12 @@ export const browserServices: BrowserServices = {
         else if (image) resolve(image);
       };
       const abort = () => finish(new Live2DError("LOAD_CANCELLED", "Model load was cancelled."));
-      const timer = setTimeout(() => finish(new Live2DError("TEXTURE_TIMEOUT", "PNG decode exceeded 10 seconds.")), 10_000);
+      const timer = setTimeout(() => finish(new Live2DError("TEXTURE_TIMEOUT", "PNG decode exceeded 20 seconds.")), 20_000);
       signal.addEventListener("abort", abort, { once: true });
       if (signal.aborted) { abort(); return; }
       createImageBitmap(new Blob([bytes], { type: "image/png" }), {
         premultiplyAlpha: "premultiply", colorSpaceConversion: "none", imageOrientation: "none",
+        ...(size ? { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: "high" as const } : {}),
       }).then(image => finish(undefined, image),
         error => finish(new Live2DError("INVALID_TEXTURE", `PNG decode failed: ${String(error)}`)));
     });
@@ -141,6 +156,8 @@ export class Live2DAdapter {
   #look = { x: 0, y: 0 };
   #view = { zoom: 1, x: 0, y: 0 };
   #modelTop: number | undefined;
+  #eyeBlinkIds: readonly string[] = [];
+  #lipSyncIds: readonly string[] = [];
 
   constructor(canvas: HTMLCanvasElement, options: {
     sdk?: SdkModules;
@@ -160,6 +177,17 @@ export class Live2DAdapter {
   get animated(): boolean { return this.#resources?.animator !== undefined; }
   get motionGroups(): readonly string[] { return this.#resources?.animator?.motionGroups ?? []; }
   get expressions(): readonly string[] { return this.#resources?.animator?.expressions ?? []; }
+
+  get modelSummary(): ModelSummary | undefined {
+    const description = this.#bundle?.description;
+    if (!description || !this.#resources?.model || this.#loading) return undefined;
+    return Object.freeze({
+      textures: description.textures.length, textureDivisor: description.textureDivisor,
+      eyeBlink: this.animated ? this.#eyeBlinkIds : [], lipSync: this.animated ? this.#lipSyncIds : [],
+      motionGroups: this.motionGroups, expressions: this.expressions.length,
+      physics: this.animated && description.physics !== undefined, animated: this.animated,
+    });
+  }
 
   /** Speech loudness 0..1; decays to closed when not refreshed for 300ms. */
   setLipSync(level: number): void {
@@ -246,10 +274,12 @@ export class Live2DAdapter {
       renderer.setIsPremultipliedAlpha(true);
       for (const [slot, path] of bundle.description.textures.entries()) {
         const textureBytes = bundle.read(path);
-        const expected = pngDimensions(textureBytes);
+        const source = pngDimensions(textureBytes);
+        const expected = scaledSize(source, bundle.description.textureDivisor);
         requireCondition(Math.max(expected.width, expected.height) <= gl.getParameter(gl.MAX_TEXTURE_SIZE),
           "RESOURCE_LIMIT", "Texture dimensions exceed the local GPU limit.");
-        const image = await this.#services.decodeTexture(textureBytes, resources.abort.signal);
+        const resized = expected.width !== source.width || expected.height !== source.height;
+        const image = await this.#services.decodeTexture(textureBytes, resources.abort.signal, resized ? expected : undefined);
         try {
           requireCondition(generation === this.#generation && !resources.abort.signal.aborted,
             "LOAD_CANCELLED", "This model load is no longer active.");
@@ -500,6 +530,16 @@ export class Live2DAdapter {
   #animatorAssets(bundle: LocalModelBundle): AnimatorAssets {
     const description = bundle.description;
     const buffer = (name: string): ArrayBuffer => bundle.read(name).buffer;
+    const present = new Set(this.#parameters.map(p => p.id));
+    const declared = (ids: readonly string[]) => ids.filter(id => present.has(id));
+    // Models made for face tracking (VTube Studio) often leave these groups empty; use the standard Cubism eye and
+    // mouth parameters then, so the character still blinks and talks.
+    let eyeBlink = declared(description.groups.eyeBlink);
+    if (eyeBlink.length === 0) eyeBlink = declared(["ParamEyeLOpen", "ParamEyeROpen"]);
+    let lipSync = declared(description.groups.lipSync);
+    if (lipSync.length === 0) lipSync = declared(["ParamMouthOpenY"]);
+    this.#eyeBlinkIds = Object.freeze(eyeBlink);
+    this.#lipSyncIds = Object.freeze(lipSync);
     return {
       parameterIds: this.#parameters.map(p => p.id),
       motions: Object.fromEntries(Object.entries(description.motions).map(([group, entries]) => [group,
@@ -511,8 +551,8 @@ export class Live2DAdapter {
       expressions: description.expressions.map(entry => ({ name: entry.name, bytes: buffer(entry.file) })),
       ...(description.physics ? { physics: buffer(description.physics) } : {}),
       ...(description.pose ? { pose: buffer(description.pose) } : {}),
-      eyeBlinkIds: description.groups.eyeBlink,
-      lipSyncIds: description.groups.lipSync,
+      eyeBlinkIds: this.#eyeBlinkIds,
+      lipSyncIds: this.#lipSyncIds,
     };
   }
 
@@ -605,6 +645,8 @@ export class Live2DAdapter {
     this.#lookTarget = { x: 0, y: 0 };
     this.#look = { x: 0, y: 0 };
     this.#modelTop = undefined;
+    this.#eyeBlinkIds = [];
+    this.#lipSyncIds = [];
     if (!resources) return;
     const errors: unknown[] = [];
     const release = (action: () => void) => {

@@ -7,7 +7,8 @@ breathing, physics, cursor look-at and lip-sync. Automatic lip-sync uses a local
 Audio2Face service when one is running on the PC, else a paired Martlet host that
 runs Audio2Face on its NVIDIA GPU (host role installed with [`martlet-host add audio2face`](../deploy/host/README.md)),
 else the loudness of Martlet's own voice; no microphone or upload is used. Users can switch
-to their own Live2D `.model3.json` or VRM `.vrm` model in **Character settings**
+to their own Live2D `.model3.json` (including VTube Studio model folders, with
+names in any script and textures up to 8192 pixels) or VRM `.vrm` model in **Character settings**
 and optionally show the character automatically at launch. See the
 [Desktop integration guide](../src/Martlet.Avatar.Hosting/README.md) and the
 [Live2D module](../src/Martlet.Avatar.Live2D/README.md#bundled-runtime-and-default-character).

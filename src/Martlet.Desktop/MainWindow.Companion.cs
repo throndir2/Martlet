@@ -229,7 +229,8 @@ public partial class MainWindow
         if (homeAvatar is null) return "Built-in character";
         return BundledLive2D.IsBuiltIn(homeAvatar.ModelPath)
             ? homeAvatar.ModelPath[BundledLive2D.Prefix.Length..] + " (built-in)"
-            : Path.GetFileNameWithoutExtension(homeAvatar.ModelPath);
+            : Path.GetFileName(homeAvatar.ModelPath) is var file && file.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase)
+                ? file[..^".model3.json".Length] : Path.GetFileNameWithoutExtension(homeAvatar.ModelPath);
     }
 
     private string LipSyncOwnerName() => NetworkMap.LipSync(homeAvatar) switch
@@ -1270,12 +1271,20 @@ public partial class MainWindow
         page.Children.Add(PageNowCard(CharacterModelName() + (homeAvatar is { } profile ? $" ({profile.Renderer})" : "") +
             (showing ? ", on your desktop." : ", hidden."), null, "SetupCharacterNow", characterCleanupProblem));
 
-        page.Children.Add(Card(Heading("Character model"),
+        var modelCard = Card(Heading("Character model"),
             Note("Choose a character model, then adjust its size, position and motion.", new Thickness(0, 0, 0, 8)),
             Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
-                showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+                showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null));
+        // What the showing model drives: textures (and any downscaling), blinking, mouth, motions and physics.
+        if (showing && avatar.Capabilities is { } loaded && modelCard.Child is Panel modelStack)
+        {
+            var modelNote = Note("Model: " + AvatarRendererProcess.Describe(loaded), new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(modelNote, "SetupCharacterModel");
+            modelStack.Children.Add(modelNote);
+        }
+        page.Children.Add(modelCard);
         page.Children.Add(SpeechDisplayCard());
         characterViewText = null;
         if (!showing) return;

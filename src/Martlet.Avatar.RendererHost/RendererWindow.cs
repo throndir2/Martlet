@@ -54,6 +54,8 @@ internal sealed class RendererWindow : Window
     private TaskCompletionSource<JsonElement>? response;
     private Guid activation;
     private readonly RendererFailureLatch failure = new();
+    // Why the browser couldn't load the selected model (a bounded Live2D/VRM reason), reported back to Martlet.
+    private volatile string? modelRejection;
     private string? userData;
 
     internal RendererWindow(Stream input, Stream output, Stream? requests = null)
@@ -612,6 +614,13 @@ internal sealed class RendererWindow : Window
                     using var document = JsonDocument.Parse(args.WebMessageAsJson);
                     if (document.RootElement.TryGetProperty("error", out var rendererError))
                     {
+                        if (rendererError.ValueKind == JsonValueKind.String && rendererError.GetString() == "avatar.model_rejected" &&
+                            document.RootElement.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String)
+                        {
+                            modelRejection = new string((detail.GetString() ?? "").Take(300)
+                                .Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
+                            ErrorLog.Warn($"The character model couldn't be shown: {modelRejection}");
+                        }
                         FailRenderer();
                         return;
                     }
@@ -692,14 +701,15 @@ internal sealed class RendererWindow : Window
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested && !failure.Failed) { }
         catch (Exception error) when (error is IOException or ArgumentException or InvalidOperationException or
-            System.Runtime.InteropServices.COMException or TimeoutException or JsonException or
+            System.Runtime.InteropServices.COMException or TimeoutException or JsonException or InvalidDataException or
             Martlet.Core.Contracts.ContractException or OperationCanceledException)
         {
             try
             {
                 if (activation != Guid.Empty)
-                    await RendererProtocol.WriteAsync(output, RendererProtocol.Message("error", activation,
-                        new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }),
+                    await RendererProtocol.WriteAsync(output, RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
+                        ? new { code = "avatar.model_rejected", message = $"This model can't be shown: {rejected}" }
+                        : new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }),
                         CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
             }
             catch (Exception failure) when (failure is IOException or ObjectDisposedException or TimeoutException) { }

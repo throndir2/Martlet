@@ -73,6 +73,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
+        // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
+        // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
+        // also shows why a chosen model couldn't load; and the character window's status line.
+        "SetupCharacterModel", "AvatarModelInfo", "AvatarStatus",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs

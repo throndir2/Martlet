@@ -899,7 +899,23 @@ character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
 even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the overlay's
 size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
-stay in view at every zoom).
+stay in view at every zoom). While the character shows, `SetupCharacterModel`
+describes what its model drives, for example *Model: 236 controls; 1 texture
+shown at 1/2 size to fit the graphics budget; blinks with ParamEyeLOpen,
+ParamEyeROpen; mouth moves ParamMouthOpenY; no idle motions; 0 expressions;
+physics on.* (parameter IDs only, never paths); the desktop log records the same
+as *Character model loaded: ...*.
+
+`OpenAvatar` (*Choose and customize*, needs `--allow-ui-effects`) opens the
+character window (*Martlet - Character*). To show your own model there, `ui_select`
+`CharacterChoice` *My own model file*, `ui_set_text` the full path of its
+`.model3.json` or `.vrm` into `AvatarModelPath` (the path itself is never
+returned) and `ui_click` `ShowCharacter`, all with `--allow-ui-effects`.
+`AvatarStatus` returns the window's status line and `AvatarModelInfo` the same
+*Model: ...* description, or *Model not loaded:* and why (for example *The model
+refers to x.png, which isn't in its folder.* or, when the renderer rejects it,
+*This model can't be shown: ...*, which `logs_tail` `avatar-renderer` also
+records).
 
 The character overlay itself is drawn by Martlet's renderer child process
 (`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the

@@ -146,6 +146,8 @@ public partial class AvatarWindow : ThemedWindow
         }
         finally { renderingDraft = false; }
         InspectPermission.IsChecked = AnalysisPermission.IsChecked = false;
+        if (controller.IsShowing && controller.Capabilities is { } showing)
+            ModelInfoText.Text = "Model: " + AvatarRendererProcess.Describe(showing);
         ResultText.Text = BundledLive2D.Available
             ? "Choices loaded. Press Show character to open the character on your desktop."
             : "Choices loaded. Choose your own model or select a Live2D SDK folder.";
@@ -196,10 +198,17 @@ public partial class AvatarWindow : ThemedWindow
         if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
         else revision = await profiles.SaveAsync(selected, revision, lifetime.Token);
         ResultText.Text = "Opening the character...";
-        await controller.ShowAsync(selected, lifetime.Token);
+        ModelInfoText.Text = "";
+        try { await controller.ShowAsync(selected, lifetime.Token); }
+        catch (Exception error) when (error is ContractException or InvalidOperationException)
+        {
+            ModelInfoText.Text = $"Model not loaded: {error.Message}";
+            throw;
+        }
         ResultText.Text = controller.Status;
         if (controller.Capabilities is { } capabilities)
         {
+            ModelInfoText.Text = "Model: " + AvatarRendererProcess.Describe(capabilities);
             TargetChoice.ItemsSource = capabilities.Parameters;
             TargetChoice.SelectedIndex = 0;
             CapabilityText.Text = string.Join(Environment.NewLine, capabilities.Parameters.Select(p =>
@@ -212,6 +221,7 @@ public partial class AvatarWindow : ThemedWindow
         if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
         if (InspectPermission.IsChecked != true) throw new InvalidOperationException("Allow local model inspection first.");
         await controller.InspectAsync(Selected(), lifetime.Token);
+        ModelInfoText.Text = "Model: " + AvatarRendererProcess.Describe(controller.Capabilities!);
         TargetChoice.ItemsSource = controller.Capabilities!.Parameters;
         TargetChoice.SelectedIndex = 0;
         CapabilityText.Text = string.Join(Environment.NewLine, controller.Capabilities.Parameters.Select(p =>

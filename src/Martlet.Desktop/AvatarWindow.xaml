@@ -24,7 +24,8 @@
             <StackPanel x:Name="CustomModelPanel">
                 <Label Target="{Binding ElementName=ModelPathText}" Content="Local _model (.model3.json or .vrm)"/>
                 <DockPanel><Button Content="Browse model" DockPanel.Dock="Right" Click="BrowseModel_Click"/>
-                    <TextBox x:Name="ModelPathText" MinHeight="28" TextChanged="Configuration_Changed"/></DockPanel>
+                    <TextBox x:Name="ModelPathText" MinHeight="28" TextChanged="Configuration_Changed"
+                             AutomationProperties.AutomationId="AvatarModelPath"/></DockPanel>
             </StackPanel>
             <Label Target="{Binding ElementName=LipSyncChoice}" Content="_Lip-sync"/>
             <ComboBox x:Name="LipSyncChoice" MinHeight="28" SelectionChanged="Selection_Changed"
@@ -61,6 +62,8 @@
             <TextBlock x:Name="CreditText" TextWrapping="Wrap" Margin="0,10" Foreground="{DynamicResource MutedBrush}"
                 Text="Built-in character: This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion."/>
             <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock x:Name="ModelInfoText" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource MutedBrush}"
+                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AvatarModelInfo"/>
 
             <Expander Header="Advanced lip-sync setup" Margin="0,16,0,0">
                 <StackPanel Margin="0,8,0,0">
