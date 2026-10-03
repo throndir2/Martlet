@@ -3,8 +3,10 @@
     <!-- Imported for both normal and cross-targeting outer builds; never rewrite normal locks. -->
     <NuGetLockFilePath>$(MSBuildThisFileDirectory)locks\$(MSBuildProjectName).packages.lock.json</NuGetLockFilePath>
   </PropertyGroup>
+  <!-- AssemblyName, not MSBuildProjectName: WPF's markup pass 2 builds a temporary *_wpftmp project
+       (Controls.xaml uses local types) that must resolve the same pinned packs. -->
   <Target Name="PinRendererWindowsSdkRuntime" BeforeTargets="ProcessFrameworkReferences"
-          Condition="'$(MSBuildProjectName)' == 'Martlet.Avatar.RendererHost'">
+          Condition="'$(AssemblyName)' == 'Martlet.Avatar.RendererHost'">
     <!-- The app runtime pin is not the Windows SDK projection pack's version. -->
     <PropertyGroup>
       <!-- The SDK also resolves unreferenced profiles; a global runtime version corrupts those SDK pack requests. -->
