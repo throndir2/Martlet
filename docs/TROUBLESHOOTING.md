@@ -95,9 +95,15 @@ of it is also in `host-runs.log`.
 Docker Desktop's WSL 2 engine needs hardware virtualization turned on in the
 PC's firmware (UEFI/BIOS), the **Virtual Machine Platform** and **Windows
 Subsystem for Linux** features, the Windows hypervisor running and WSL 2.1.5 or
-later. Before Martlet starts Docker Desktop for any host step on this PC (and
+later, with Windows' **Host Compute Service** (`vmcompute`) and **Host Network
+Service** (`hns`) installed and not disabled. Before Martlet starts Docker
+Desktop for any host step on this PC (and
 after it installs Docker Desktop), it checks these without administrator rights
-and shows the result in the run window (`Windows: ...`). When something is off:
+and reads `wsl --status` and Windows' pending-restart markers, showing the result
+in the run window (`Windows: ...`). WSL can report that WSL 2 cannot start even
+when its status command exits successfully; a version number alone is not
+readiness. A stopped service is normal when it starts on demand, and WSL 1 being
+unavailable does not prevent Docker's WSL 2 engine. When something is off:
 
 - **Features or WSL**: one administrator prompt turns on both features (with
   their parent features), sets the Windows hypervisor to start with Windows when
@@ -105,6 +111,14 @@ and shows the result in the run window (`Windows: ...`). When something is off:
   (`wsl --install --no-distribution`, falling back to `wsl --update`) or
   updates it. When WSL itself says Windows must restart to finish installing,
   Martlet treats it like any other restart below.
+- **Restart already pending**: Windows can report both optional features as
+  *on*, a current WSL version and a running hypervisor while the services WSL 2
+  needs have not been installed into the running Windows session. Docker then
+  says *Virtual Machine Platform not enabled* / *No virtualization available*.
+  When those runtime checks fail and Windows has a restart pending, Martlet
+  offers **Restart Windows** immediately, before another administrator step,
+  Docker restart or ten-minute wait. Restarting Docker alone cannot finish this
+  Windows change. An unrelated pending update does not block working WSL.
 - **Restart**: when Windows must restart, Martlet asks first (save your work in
   other apps), then restarts. It leaves `continue-setup.json` in its data folder
   and a one-time sign-in entry (`MartletContinueSetup` under the current user's
@@ -116,16 +130,28 @@ and shows the result in the run window (`Windows: ...`). When something is off:
   to restart straight into the firmware settings (administrator approval), where
   you turn on *Intel Virtualization Technology (VT-x)* or *SVM Mode* (AMD), save
   and exit; the setup then continues after you sign in.
+- **Virtual machine**: enable nested virtualization on its host, not in the
+  guest's firmware. Martlet explains this rather than restarting the guest into
+  firmware settings.
+- **Services or WSL still unavailable**: Martlet stops with the specific problem
+  instead of claiming Windows is ready. Restart Windows and check again; if the
+  services remain missing/disabled, repair the Windows Virtual Machine Platform
+  and WSL installation with administrator help. Martlet does not toggle features
+  off, delete distributions or reset Docker's data.
 
-The host dashboard's Docker Desktop step says the same thing (*Turn on Windows
-features* or *Turn on virtualization*). A Docker Desktop that was already open
+The host dashboard's Docker Desktop step says the same thing, including
+**Restart Windows**, even when Docker Desktop's window is already open. **Check
+again** refreshes its Windows diagnosis when the engine is down; a window or
+background process alone never ticks the Docker step as running. A Docker
+Desktop that was already open
 while Martlet changed Windows doesn't notice the new WSL by itself, so Martlet
 restarts it. Martlet also restarts it once when it is open but keeps reporting
 its engine `stopped` (its log says *backend is not running*), for example
 because it started before WSL was installed. If Windows is ready and Docker
 Desktop still reports that it is unable to start, or never gets past
-`stopped`, restart Windows, or use Docker Desktop's *Troubleshoot* page
-(*Restart*, or *Reset to factory defaults*), and try again.
+`stopped`, restart Windows or use Docker Desktop's *Troubleshoot > Restart*, and
+try again. Do not use *Reset to factory defaults* as a virtualization repair:
+it deletes Docker data and does not enable Windows virtualization.
 
 ## A local model doesn't answer (Ollama on this PC)
 

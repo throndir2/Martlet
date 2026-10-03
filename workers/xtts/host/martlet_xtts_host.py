@@ -7,7 +7,9 @@ stream, so the gateway checks XTTS output exactly like F5's: contiguous 24 kHz m
 
 Unlike F5, XTTS streams: ``Xtts.inference_stream`` yields audio while the GPT is still generating a sentence, and each
 piece is sent at once, so the first audio leaves long before the sentence is finished. The reference voice's conditioning
-latents (``Xtts.get_conditioning_latents``) are computed once per reference revision and cached.
+latents (``Xtts.get_conditioning_latents``) are computed once per reference revision and cached. For a voice made from
+several recordings, the relay sends where each lies in the joined recording (``reference.clips``) and the latents come
+from all of them, each as its own reference file.
 
 The model runs in a separate worker process (``worker`` command) that this service starts, warms and restarts if it
 dies; a reply waits (bounded) for a busy worker instead of failing. Stopping a reply stops generation between pieces.
@@ -269,8 +271,8 @@ class DeadlineExceeded(Exception):
 class ToneEngine:
     """FIXTURE - NOT AI: a deterministic tone per text chunk, streamed in pieces like XTTS, for plumbing checks."""
 
-    def latents(self, audio: bytes) -> Any:
-        return len(audio)
+    def latents(self, audios: list[bytes]) -> Any:
+        return sum(len(audio) for audio in audios)
 
     def stream(self, text: str, latents: Any):
         samples = min(SAMPLE_RATE * 2, 2_400 * max(1, len(text) // 4))
@@ -306,21 +308,27 @@ class XttsEngine:
         model.eval()
         self.model = model
 
-    def latents(self, audio: bytes) -> Any:
-        handle, path = tempfile.mkstemp(suffix=".wav")
+    def latents(self, audios: list[bytes]) -> Any:
+        # One file per recording: a voice made from several recordings is learned from all of them at once (XTTS averages
+        # the speaker over its reference files).
+        paths: list[str] = []
         try:
-            with os.fdopen(handle, "wb") as output:
-                output.write(audio)
+            for audio in audios:
+                handle, path = tempfile.mkstemp(suffix=".wav")
+                paths.append(path)
+                with os.fdopen(handle, "wb") as output:
+                    output.write(audio)
             with self.torch.inference_mode():
                 return self.model.get_conditioning_latents(
-                    audio_path=[path],
+                    audio_path=paths,
                     gpt_cond_len=self.config.gpt_cond_len,
                     gpt_cond_chunk_len=self.config.gpt_cond_chunk_len,
                     max_ref_length=self.config.max_ref_len,
                     sound_norm_refs=self.config.sound_norm_refs,
                 )
         finally:
-            os.unlink(path)
+            for path in paths:
+                os.unlink(path)
 
     def stream(self, text: str, latents: Any):
         gpt_latent, speaker_embedding = latents
@@ -442,13 +450,14 @@ class ModelWorker:
             if self.engine is None:
                 raise RuntimeError("model_not_ready")
             event("started")
-            key = reference["reference_revision"] + ":" + reference["audio_sha256"]
+            clips = reference.get("clips")
+            key = reference["reference_revision"] + ":" + reference["audio_sha256"] + (f":{len(clips)}" if clips else "")
             latents = self.latents.get(key)
             if latents is None:
                 audio = base64.b64decode(reference["audio_base64"], validate=True)
                 if hashlib.sha256(audio).hexdigest() != reference["audio_sha256"]:
                     raise ValueError("reference_mismatch")
-                latents = self.engine.latents(audio)
+                latents = self.engine.latents(_split_clips(audio, clips) if clips else [audio])
                 self.latents[key] = latents
                 while len(self.latents) > LATENT_CACHE:
                     self.latents.popitem(last=False)
@@ -633,6 +642,42 @@ class Worker:
 WORKER = Worker()
 
 
+MAX_CLIPS = 10
+
+
+def _split_clips(audio: bytes, clips: list[dict[str, Any]]) -> list[bytes]:
+    """Each recording of a voice made from several, cut from its joined recording at the sample ranges the gateway sent
+    (in order, not overlapping, within the recording); raises ValueError otherwise."""
+    import io  # noqa: PLC0415
+    import wave  # noqa: PLC0415
+
+    if not isinstance(clips, list) or not 2 <= len(clips) <= MAX_CLIPS:
+        raise ValueError("reference")
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as source:
+            if source.getnchannels() != 1 or source.getsampwidth() != 2 or source.getcomptype() != "NONE":
+                raise ValueError("reference")
+            rate, total = source.getframerate(), source.getnframes()
+            frames = source.readframes(total)
+    except (wave.Error, EOFError) as error:
+        raise ValueError("reference") from error
+    parts: list[bytes] = []
+    end = 0
+    for clip in clips:
+        start, count = clip["start_sample"], clip["sample_count"]
+        if type(start) is not int or type(count) is not int or start < end or count <= 0 or start + count > total:
+            raise ValueError("reference")
+        output = io.BytesIO()
+        with wave.open(output, "wb") as part:
+            part.setnchannels(1)
+            part.setsampwidth(2)
+            part.setframerate(rate)
+            part.writeframes(frames[start * 2 : (start + count) * 2])
+        parts.append(output.getvalue())
+        end = start + count
+    return parts
+
+
 def _worker_message(request: dict[str, Any]) -> dict[str, Any]:
     reference = request["reference"]
     audio = base64.b64decode(reference["audio_base64"], validate=True)
@@ -640,6 +685,11 @@ def _worker_message(request: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("reference")
     if hashlib.sha256(audio).hexdigest() != reference["audio_sha256"]:
         raise ValueError("reference")
+    # A voice made from several recordings: where each lies in the joined recording, checked here and cut apart in the worker.
+    clips = reference.get("clips")
+    if clips is not None:
+        _split_clips(audio, clips)
+        clips = [{"start_sample": clip["start_sample"], "sample_count": clip["sample_count"]} for clip in clips]
     chunks = request["chunks"]
     if not isinstance(chunks, list) or not 0 < len(chunks) <= MAX_CHUNKS:
         raise ValueError("chunks")
@@ -660,6 +710,7 @@ def _worker_message(request: dict[str, Any]) -> dict[str, Any]:
             "audio_base64": reference["audio_base64"],
             "audio_sha256": reference["audio_sha256"],
             "reference_revision": reference["reference_revision"],
+            **({"clips": clips} if clips else {}),
         },
         "chunks": [{"chunk_id": chunk.get("chunk_id"), "index": chunk["index"], "text": chunk["text"]} for chunk in chunks],
     }

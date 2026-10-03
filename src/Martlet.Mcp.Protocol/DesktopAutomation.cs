@@ -38,8 +38,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
-        // The host dashboard's Check again only reads this PC's own host service (Docker, the gateway's role records and network
-        // roster, its published port); it starts, sets up and pairs nothing.
+        // The host dashboard's Check again reads this PC's host service and, while the engine is unavailable, Windows' WSL
+        // status, virtualization services and pending restart. It starts, sets up and pairs nothing.
         "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
@@ -47,21 +47,30 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
+        // Personality, Character, Lorebooks and Memory open their windows (the character itself doesn't show), and Done/Close
+        // closes them. Those windows save each change on their own as it is made (edits need --allow-ui-effects), so closing
+        // never writes anything that wasn't already changed. The Character window's sections only expand.
+        "OpenCompanion", "OpenAvatar", "OpenLorebooks", "OpenMemory", "CompanionClose", "AvatarClose", "LorebookClose", "MemoryClose",
+        "AvatarAdvanced", "RemoteHostSection",
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
         "ProblemClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
-        "CharacterModelAddCancel"
+        "CharacterModelAddCancel",
+        // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
+        // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing and Add voice need --allow-ui-effects.
+        "F5AddVoiceMore"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
-    /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit. Home's
+    /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
+    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
     /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full. An MCP directory
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "HealthCheck-", "HealthOpen-",
-        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-"];
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "HealthCheck-", "HealthOpen-",
+        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -80,13 +89,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
         "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
+        // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
+        // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
+        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects.
+        "SettingsSyncStatus", "SettingsSyncWaiting",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
-        "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
+        "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
-        // and why Add a voice couldn't add a recording (never the typed name, transcript or file path).
-        "F5VoicesShared", "F5AddVoiceProblem",
+        // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
+        // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words).
+        "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
@@ -94,14 +108,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
-        // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS or Dia) and where it speaks with its
-        // model licence, and the engines the speaking computer still runs besides it (SpeakingEngineOthers). Choosing another engine
-        // (ui_select SpeakingEngine) may install a host role and stops the one it replaces, and SpeakingEngineRelease stops the others,
-        // so both need --allow-ui-effects.
-        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags", "SpeakingEngineOthers",
+        // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
+        // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects) and, under Another
+        // of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads through the
+        // VoiceEngine prefix below.
+        "SpeakingEngineOthers", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
+        // Editors that save on their own (no Save button): whether every change is saved ("All changes saved.", "Saving...",
+        // "Not saved yet: <why>"), in Personality (the Companion window), the Character window and Lorebooks; and the Character
+        // window's character status ("Character is showing...", "Character hidden. Voice continues.").
+        "CompanionSaveState", "AvatarSaveState", "LorebookSaveState", "AvatarStatus",
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
         // what its key field will do.
         "FallbackNow", "FallbackKeyStatus",
@@ -131,7 +149,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "BackgroundStatus", "TrayStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
-        // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
+        // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked).
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
@@ -147,13 +165,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
     /// ("SmartHomeUpdate-0" reads "Update: Home Assistant Core 2026.9.3 → 2026.9.4");
     /// Companion › Voice's starter voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is;
-    /// never the names of the owner's own recordings); each character's detail line in Companion › Character › Your characters
+    /// never the names of the owner's own recordings) and every voice's detail line ("F5VoiceDetail-3f2a..." reads
+    /// "3 recordings, 14.5 seconds joined, added 10/2/2026. XTTS-v2 learns from each recording."; never names or words);
+    /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
+    /// "VoiceEngineFeatures-chatterbox" "NVIDIA GPU, 6 GB+, Docker, Voice cloning, ...", "VoiceEngineState-chatterbox"
+    /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
+    /// Turbo"; key "windows" for a Windows voice; clicking a button needs --allow-ui-effects) and its computer pills
+    /// ("SpeakingHost-gpu-pc" reads "gpu-pc · speaking");
+    /// each character's detail line in Companion › Character › Your characters
     /// ("CharacterModelState-builtin" reads "Live2D. Part of Martlet on every computer. Shown on this PC.",
     /// "CharacterModelState-0123456789abcdef" reads "VRM, 12.4 MB. Added on desktop-a 10/2/2026. Copying to this PC..."; never
     /// the character's name);
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
-    /// the paired computers a job can be handed to ("HostChoice-speaking-gpu-pc" reads "gpu-pc: Runs F5 (f5tts-v1-base).")
-    /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
+    /// the paired computers a job can be handed to ("HostChoice-listening-gpu-pc" reads "gpu-pc: Runs speech recognition (small).")
+    /// and why none are listed or which can't run it ("HostChoices-listening", "HostChoicesUnable-listening"); Home's items
     /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles ("HealthCheck-microphone"
     /// reads "Microphone: OK. Windows default"); Diagnostics' shown lines, newest first ("LogEntry-0" reads
     /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ...") and its computer filters ("LogSource-desktop-diva"
@@ -168,10 +193,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
-    /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text); and the Copy button
-    /// on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a click; never the
-    /// text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "CharacterModelState-", "StepDetail-", "StepState-", "Step-",
+    /// prompt's state ("PromptState-reply_length" reads "Edited." or, while it saves, "Edited. Saving..."; never the prompt text);
+    /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
+    /// click; never the text it copies).</summary>
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
+        "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-"];

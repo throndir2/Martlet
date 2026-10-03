@@ -23,128 +23,12 @@ public partial class MainWindow
     private SoundPlayer? voicePlayer;
     private bool retiredSampleChecked;
 
-    /// <summary>Which self-hosted engine speaks: Chatterbox Turbo (default), F5-TTS, XTTS-v2, GPT-SoVITS or Dia (<see cref="SpeechEngines"/>). All use the voices below.
-    /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
-    /// role there first, after showing what it needs and its licence) and stops the engine it replaces there, so their models
-    /// never share the graphics card's memory; otherwise the choice is used the next time Speaking goes to a computer.
-    /// Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>; <c>SpeakingEngineOthers</c> names engines the
-    /// speaking computer still runs besides it (<c>SpeakingEngineRelease</c> stops them).</summary>
-    private Border SpeakingEngineCard(SetupRoute? route)
-    {
-        var current = SpeakingEngineChoice.Current;
-        var host = route is { RouteType: SetupRouteType.GatewayF5 } ? route.Gateway?.HostId : null;
-        var choice = new ComboBox { MinWidth = 260, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(choice, "Voice engine");
-        AutomationProperties.SetAutomationId(choice, "SpeakingEngine");
-        foreach (var engine in SpeechEngines.All)
-        {
-            var item = new ComboBoxItem
-            {
-                Content = $"{engine.Name}{(engine == SpeechEngines.Default ? " (recommended)" : "")}: {engine.Summary}", Tag = engine.Key
-            };
-            AutomationProperties.SetAutomationId(item, "SpeakingEngine-" + engine.Key);
-            choice.Items.Add(item);
-            if (engine == current) choice.SelectedItem = item;
-        }
-        choice.SelectionChanged += (_, _) =>
-        {
-            if (choice.SelectedItem is ComboBoxItem { Tag: string key } && SpeechEngines.ForKey(key) is { } picked && picked != current)
-                SelectSpeakingEngineAsync(picked, host).Forget();
-        };
-        var status = Note(host is null
-                ? $"{current.Name} speaks once you hand Speaking to a computer (or set it up on this PC). Its model licence: {current.WeightsLicense}."
-                : $"{current.Name} speaks on {host}. Its model licence: {current.WeightsLicense}.",
-            new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(status, "SpeakingEngineStatus");
-        var sounds = current.Tags.Where(t => t.Kind == VoiceTagKind.Sound).Select(t => t.Text).ToArray();
-        var tones = current.Tags.Where(t => t.Kind == VoiceTagKind.Emotion).Select(t => t.Text).ToArray();
-        var tags = Note(current.SupportsTags
-                ? $"{current.Name} makes sounds in replies ({string.Join(" ", sounds)})" +
-                  (tones.Length > 0 ? $" and changes tone ({string.Join(" ", tones)})" : "") +
-                  ". The conversation model is told to use them sparingly; they never show in the chat or captions."
-                : $"{current.Name} reads words only; sound tags such as [laugh] are removed before it speaks.",
-            new Thickness(0, 6, 0, 0));
-        AutomationProperties.SetAutomationId(tags, "SpeakingEngineTags");
-        var children = new List<UIElement>
-        {
-            Heading("Voice engine"),
-            Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. Chatterbox Turbo (MIT licence) " +
-                "can laugh, sigh and change tone and needs recordings longer than 5 seconds; XTTS-v2 starts speaking sooner; F5-TTS " +
-                "often sounds closest to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording; Dia can laugh, sigh and " +
-                "cough (English only). " +
-                "The F5-TTS and XTTS-v2 models are for non-commercial use only; Chatterbox's and GPT-SoVITS's are MIT and Dia's Apache-2.0. " +
-                "A computer runs one engine at a time: choosing another stops the one there, freeing its graphics card's memory.", new Thickness(0, 0, 0, 8)),
-            choice, status, tags
-        };
-        // A host set up before one engine per computer can still run engines Speaking no longer uses, each holding its model in
-        // the graphics card's memory (the engine that speaks may then fail to load). Readable as SpeakingEngineOthers.
-        var speaking = SpeechEngines.ForRoute(route?.GatewaySnapshot?.RouteId) ?? current;
-        if (host is not null && HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(host)?.Offers, speaking.HostRoleKind) is { Count: > 0 } others)
-        {
-            var names = HostRoles.Names(others.Select(o => o.Kind));
-            var idle = Note($"{host} also runs {names}, which {(others.Count == 1 ? "keeps its" : "keep their")} model in the graphics card's memory " +
-                $"that {speaking.Name} needs.", new Thickness(0, 6, 0, 0));
-            AutomationProperties.SetAutomationId(idle, "SpeakingEngineOthers");
-            children.Add(idle);
-            children.Add(Row(PageButton($"Stop {names}", () => StopIdleVoiceEnginesAsync(host, speaking).Forget(), id: "SpeakingEngineRelease")));
-        }
-        return Card([.. children]);
-    }
-
-    /// <summary>Stops the voice engines <paramref name="hostId"/> runs besides the one that speaks there, after saying what
-    /// that does, so their models leave its graphics card's memory.</summary>
-    private async Task StopIdleVoiceEnginesAsync(string hostId, SpeechEngine speaking)
-    {
-        if (store is null || closing) return;
-        if (assigningRole) { ActionText.Text = "Another change is still finishing."; return; }
-        if (FindHost(hostId) is not { } host) return;
-        var others = HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(hostId)?.Offers, speaking.HostRoleKind);
-        if (others.Count == 0) return;
-        var names = HostRoles.Names(others.Select(o => o.Kind));
-        if (!ConfirmationDialog.Confirm(this,
-                $"Stop {names} on {hostId}? That frees graphics card memory there for {speaking.Name}, which keeps speaking. Downloads are kept, so " +
-                "switching back is quick. Any other computer that still speaks with them there stops speaking until it chooses another engine.",
-                "Stop them"))
-            return;
-        assigningRole = true;
-        try { ActionText.Text = (await ReleaseVoiceEnginesAsync(host, others)).TrimStart(); }
-        finally
-        {
-            assigningRole = false;
-            if (!closing) RenderHome();
-        }
-    }
-
-    private async Task SelectSpeakingEngineAsync(SpeechEngine engine, string? host)
-    {
-        if (store is null || closing) return;
-        try
-        {
-            SpeakingEngineChoice.Save(store.DataDirectory, engine);
-            if (host is null)
-            {
-                ActionText.Text = $"Speaking will use {engine.Name} when it goes to a computer.";
-                return;
-            }
-            await AssignJobAsync(HostJob.Speaking, "host:" + host);
-            // Unless Speaking moved (or is moving) to the new engine, the choice follows the engine that still speaks.
-            if (!pendingJobHosts.ContainsKey(SetupRole.Tts)) SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            ActionText.Text = $"Couldn't save the voice engine: {error.Message}";
-        }
-        finally
-        {
-            if (!closing) RenderHome();
-        }
-    }
-
     /// <summary>One voice in the list: its ID (reference revision), name, where it comes from (<paramref name="Note"/>), this
     /// PC's recording of it (null while it is still being copied here, or for a starter voice not used yet) and its automation
-    /// key: a starter recording's key, else the first 16 hex digits of its ID.</summary>
+    /// key: a starter recording's key, else the first 16 hex digits of its ID. <paramref name="Clips"/> are the lengths of the
+    /// recordings it was made from (null for one recording).</summary>
     private sealed record VoiceItem(string Id, string Name, string? Note, string? Transcript, string AudioSha256, int DurationMilliseconds,
-        DateTimeOffset AddedAt, F5ReferenceSnapshot? Local, string Key, bool Starter)
+        DateTimeOffset AddedAt, F5ReferenceSnapshot? Local, string Key, bool Starter, IReadOnlyList<int>? Clips = null)
     {
         /// <summary>Its recording is here, or Martlet carries it.</summary>
         internal bool Available => Local is not null || Starter;
@@ -160,7 +44,7 @@ public partial class MainWindow
         {
             var (key, starter) = KeyOf(v.Id, v.AudioSha256!);
             return new VoiceItem(v.Id, v.Name!, v.Note, v.Transcript, v.AudioSha256!, v.DurationMilliseconds, v.AddedAt,
-                local.GetValueOrDefault(v.Id), key, starter);
+                local.GetValueOrDefault(v.Id), key, starter, v.ClipMilliseconds);
         }).ToList();
         foreach (var (id, snapshot) in local.Where(pair => library.Find(pair.Key) is null).OrderBy(pair => pair.Value.CreatedAtUtc))
         {
@@ -177,19 +61,16 @@ public partial class MainWindow
         var destination = f5?.GatewaySnapshot?.DestinationId ?? F5Destination;
         // The engine that speaks (or will): some clone only recordings of certain lengths (GPT-SoVITS: 3-10 seconds).
         var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot?.RouteId) ?? SpeakingEngineChoice.Current;
-        string? Cannot(int milliseconds) => SpeechEngines.ReferenceProblem(engine, milliseconds);
+        string? Cannot(VoiceItem item) => SpeechEngines.ReferenceProblem(engine, item.DurationMilliseconds, item.Clips);
         string Language(string? transcript) => engine == SpeechEngines.GptSovits && transcript is not null
             ? SpeechEngines.ReferenceLanguage(transcript) == "ja" ? " Japanese recording." : " English recording."
             : "";
         var stack = new List<UIElement>
         {
             Heading("Voices"),
-            Note($"{engine.Name} copies a voice from a short recording" +
-                (engine.MinimumReferenceMilliseconds > 1_000 || engine.MaximumReferenceMilliseconds < 30_000
-                    ? $" of {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} seconds" : "") +
-                ". Keep the voices you like, remove the rest and add your own. Every voice is shared with your paired Martlet " +
-                "computers, so whichever one speaks already has it." + (f5 is null ? $" The chosen voice is used when {engine.Name} speaks." : ""),
-                new Thickness(0, 0, 0, 10))
+            Note($"{engine.Name} copies these voices from short recordings" + (engine.SampleLimits is { } limits ? $" ({limits})" : "") +
+                ". A voice can have several recordings" + (engine.MultipleReferences ? $"; {engine.Name} learns from each." : ", heard one after another.") +
+                " They're shared with your paired computers.", new Thickness(0, 0, 0, 10))
         };
         var library = SpeakingVoiceLibrary.Empty;
         IReadOnlyDictionary<string, F5ReferenceSnapshot> local = new Dictionary<string, F5ReferenceSnapshot>();
@@ -225,11 +106,17 @@ public partial class MainWindow
         stack.Add(shared);
 
         var chosenId = library.ChosenVoice?.Id;
+        // A voice made from several recordings says how many and whether the engine learns from each or hears them joined.
+        string Recorded(VoiceItem item) => item.Clips is { Count: > 1 } clips
+            ? $"{clips.Count} recordings, {item.DurationMilliseconds / 1000d:0.#} seconds joined, added {item.AddedAt.ToLocalTime():d}. " +
+              (SpeechEngines.UsesClips(engine, clips) ? $"{engine.Name} learns from each recording."
+                  : $"{engine.Name} hears them one after another with a short pause.")
+            : $"{item.DurationMilliseconds / 1000d:0.#} second recording, added {item.AddedAt.ToLocalTime():d}.";
         foreach (var item in items)
         {
             var used = item.Id == inUseId;
-            var cannot = Cannot(item.DurationMilliseconds);
-            var detail = (item.Note ?? $"{item.DurationMilliseconds / 1000d:0.#} second recording, added {item.AddedAt.ToLocalTime():d}.") +
+            var cannot = Cannot(item);
+            var detail = (item.Note ?? Recorded(item)) +
                 (item.Available ? "" : " Copying to this PC...") + (cannot is null ? Language(item.Transcript) : " " + cannot);
             stack.Add(VoiceRow(item.Name, detail, used, mark, item.Key, status: item.Starter,
                 () => PlayVoiceAsync(item), () => UseVoiceAsync(item.Id, destination),
@@ -250,8 +137,10 @@ public partial class MainWindow
 
     /// <summary>One voice: its name (with the in-use mark), a detail line, and Play, Use and (when it may go) Remove. Controls
     /// are identified by <paramref name="key"/>; starter recordings' titles are also readable status (<c>F5VoiceRow-key</c>),
-    /// never the names of the owner's own recordings. <paramref name="cannot"/> says why the speaking engine cannot use it
-    /// and <paramref name="available"/> is false while its recording is still being copied here (Use is then off).</summary>
+    /// never the names of the owner's own recordings, and every voice's detail line (<c>F5VoiceDetail-key</c>: its length or
+    /// recordings, where it comes from and why the engine can't use it; never its name or words) is readable status.
+    /// <paramref name="cannot"/> says why the speaking engine cannot use it and <paramref name="available"/> is false while its
+    /// recording is still being copied here (Use is then off).</summary>
     private UIElement VoiceRow(string name, string detail, bool inUse, string mark, string key, bool status, Func<Task> play, Func<Task> use,
         Func<Task>? remove, string? cannot = null, bool available = true)
     {
@@ -260,7 +149,9 @@ public partial class MainWindow
             FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         if (status) AutomationProperties.SetAutomationId(title, $"F5VoiceRow-{key}");
         text.Children.Add(title);
-        text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
+        var line = Note(detail, new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(line, $"F5VoiceDetail-{key}");
+        text.Children.Add(line);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         Button Small(string label, Func<Task> run, string id)
         {
@@ -337,7 +228,8 @@ public partial class MainWindow
             if (!result.Local.TryGetValue(voiceId, out var voice))
                 throw new InvalidOperationException("That voice is still being copied to this PC. Try again in a moment.");
             var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId) ?? SpeakingEngineChoice.Current;
-            if (SpeechEngines.ReferenceProblem(engine, voice.AudioFormat.DurationMilliseconds) is { } problem)
+            if (SpeechEngines.ReferenceProblem(engine, voice.AudioFormat.DurationMilliseconds,
+                    result.Library.Find(voiceId)?.ClipMilliseconds) is { } problem)
                 throw new InvalidOperationException($"{problem} Add another recording of '{voice.PresetName}' or choose another engine.");
             var saved = await ApplyVoiceAsync(loaded, voice, token);
             F5Voices.Choose(store.DataDirectory, voiceId);
@@ -621,7 +513,7 @@ public partial class MainWindow
         var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
         if ((f5?.Reference?.ReferenceRevision ?? F5Voices.Applied(store.DataDirectory)?.ReferenceRevision) == voice.Id) return false;
         var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId) ?? SpeakingEngineChoice.Current;
-        if (SpeechEngines.ReferenceProblem(engine, snapshot.AudioFormat.DurationMilliseconds) is not null) return false;
+        if (SpeechEngines.ReferenceProblem(engine, snapshot.AudioFormat.DurationMilliseconds, voice.ClipMilliseconds) is not null) return false;
         assigningRole = true;
         try
         {

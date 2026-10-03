@@ -116,8 +116,10 @@ Limits, by design for a home network:
 - A PC learns about changes through its hosts. A PC whose only host is
   unreachable learns about them when it reaches one.
 - At most 64 entries per roster, removed ones included.
-- Not yet: a join code, *Leave network* on the PC itself, sharing cloud keys or
-  setups (see [user stories B1-B7](USER_STORIES.md#b-joining-a-network)).
+- Not yet: a join code, *Leave network* on the PC itself (see
+  [user stories B1-B7](USER_STORIES.md#b-joining-a-network)). Cloud keys and
+  setups travel as [shared settings](CLUSTER.md#one-martlet-on-every-computer)
+  through the network's hosts.
 
 ## Where it lives
 

@@ -280,6 +280,19 @@ public partial class MainWindow
             .Where(n => !string.Equals(n, voice.Name, StringComparison.OrdinalIgnoreCase))), MaxLength = 400 };
         AutomationProperties.SetName(others, $"Other names of {voice.DisplayName}, comma-separated");
         AutomationProperties.SetAutomationId(others, "PeopleOtherNames-" + voice.Number);
+        // No Save button: names save when you leave the field or press Enter, or after a pause in typing, and then sync to
+        // your other computers. A half-typed name isn't shared while you are still typing it.
+        var namesSave = new AutoSave(() =>
+        {
+            SaveVoiceNames(voice, name.Text, others.Text);
+            return Task.FromResult(true);
+        }, TimeSpan.FromSeconds(2));
+        foreach (var box in new[] { name, others })
+        {
+            box.TextChanged += (_, _) => namesSave.Changed();
+            box.LostKeyboardFocus += (_, _) => { if (namesSave.Pending) namesSave.SaveNowAsync().Forget(); };
+            box.KeyDown += (_, args) => { if (args.Key == System.Windows.Input.Key.Enter) namesSave.SaveNowAsync().Forget(); };
+        }
         var names = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
         names.Children.Add(Labeled("Name", name, 60));
         names.Children.Add(Labeled("Also called", others, 90));
@@ -308,7 +321,6 @@ public partial class MainWindow
         stack.Add(mergeRow);
 
         stack.Add(Row(
-            PageButton("Save names", () => SaveVoiceNames(voice, name.Text, others.Text), primary: true, id: "PeopleSave-" + voice.Number),
             PageButton("Forget this voice", () => ForgetVoice(voice), link: true, id: "PeopleForget-" + voice.Number)));
         return Option(stack, voice.Owner);
     }
@@ -330,16 +342,26 @@ public partial class MainWindow
             : when.LocalDateTime.ToString("d");
     }
 
+    /// <summary>Saves a voice's names when they differ from what is saved; the change syncs to your other computers shortly
+    /// after. The page isn't rebuilt under your typing; it refreshes when you leave it.</summary>
     private void SaveVoiceNames(KnownVoice voice, string name, string others)
     {
+        if (closing) return;
         var typed = name.Trim();
         if (typed.Length > 0 && VoiceRoster.CleanName(typed) is null)
         {
-            ActionText.Text = $"Names must start with a letter and use at most {VoiceRoster.MaximumNameLength} characters.";
+            ActionText.Text = $"Not saved yet: names must start with a letter and use at most {VoiceRoster.MaximumNameLength} characters.";
             return;
         }
         var list = others.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var rejected = list.Where(n => VoiceRoster.CleanName(n) is null).ToArray();
+        var current = localVoices.Roster.Resolve(voice.Id) ?? voice;
+        var wanted = (typed.Length == 0 ? Array.Empty<string>() : [VoiceRoster.CleanName(typed)!]).Concat(list.Select(VoiceRoster.CleanName).OfType<string>())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (string.Equals(current.Name ?? "", typed.Length == 0 ? "" : VoiceRoster.CleanName(typed), StringComparison.Ordinal) &&
+            wanted.Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(current.Names.Select(n => n.Text).Order(StringComparer.OrdinalIgnoreCase),
+                StringComparer.OrdinalIgnoreCase))
+            return;
         try
         {
             localVoices.SetNames(voice.Id, typed.Length == 0 ? null : typed, list);
@@ -347,8 +369,6 @@ public partial class MainWindow
                 (rejected.Length > 0 ? $" Left out: {string.Join(", ", rejected)}." : "");
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
-        peopleStale = false;
-        RenderTab();
     }
 
     private void MergeVoices(KnownVoice from, KnownVoice into)

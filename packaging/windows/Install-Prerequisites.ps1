@@ -55,6 +55,7 @@ function Open-Page([string]$Uri) {
 }
 
 function Invoke-Probe([string]$File, [string]$Arguments, [int]$TimeoutMs = 20000) {
+    $process = $null
     try {
         $info = New-Object Diagnostics.ProcessStartInfo $File, $Arguments
         $info.UseShellExecute = $false
@@ -63,15 +64,16 @@ function Invoke-Probe([string]$File, [string]$Arguments, [int]$TimeoutMs = 20000
         $info.CreateNoWindow = $true
         $process = [Diagnostics.Process]::Start($info)
         $errorTask = $process.StandardError.ReadToEndAsync()
-        $output = $process.StandardOutput.ReadToEnd()
+        $outputTask = $process.StandardOutput.ReadToEndAsync()
         if (-not $process.WaitForExit($TimeoutMs)) {
             try { $process.Kill() } catch { }
             return $null
         }
         $null = $errorTask.Result
-        return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $output }
+        return [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $outputTask.Result }
     }
     catch { return $null }
+    finally { if ($process) { $process.Dispose() } }
 }
 
 function Get-Winget {
@@ -194,12 +196,58 @@ function Get-NvidiaVramGiB {
     return [math]::Floor($largest / 1024)
 }
 
-function Test-Wsl {
+function Get-WslReadiness {
     $wsl = Join-Path $env:SystemRoot 'System32\wsl.exe'
-    if (-not (Test-Path -LiteralPath $wsl)) { return $false }
+    if (-not (Test-Path -LiteralPath $wsl)) {
+        return [pscustomobject]@{ Ready = $false; RestartRequired = $false; Detail = 'WSL is not installed' }
+    }
     $env:WSL_UTF8 = '1'
+    $problems = [System.Collections.Generic.List[string]]::new()
+    $version = Invoke-Probe $wsl '--version'
+    if (-not $version -or $version.ExitCode -ne 0 -or ($version.Output -replace "`0", '') -notmatch '(\d+\.\d+\.\d+)') {
+        $problems.Add('a current WSL version could not be read')
+    }
+    elseif ([version]$Matches[1] -lt [version]'2.1.5') { $problems.Add('WSL needs an update to 2.1.5 or later') }
     $result = Invoke-Probe $wsl '--status'
-    return [bool]($result -and $result.ExitCode -eq 0 -and $result.Output -notmatch 'not installed')
+    $runtimeBlocked = $false
+    $restart = $false
+    if (-not $result) { $problems.Add('WSL status did not answer') }
+    else {
+        $text = $result.Output -replace "`0", ''
+        if ($result.ExitCode -in 3010, 1641, -2147021886 -or $text -match 'until the system is rebooted') {
+            $restart = $true
+            $problems.Add('WSL needs a Windows restart')
+        }
+        elseif ($text -match '(?im)^\s*WSL\s*2\b.*(?:not supported|unable to start|not available|not enabled)|HCS_E_HYPERV_NOT_INSTALLED|0x80370102') {
+            $runtimeBlocked = $true
+            $problems.Add('WSL reports that WSL 2 cannot start')
+        }
+        elseif ($result.ExitCode -ne 0) {
+            $runtimeBlocked = $true
+            $problems.Add("WSL status failed (exit $($result.ExitCode))")
+        }
+    }
+    try {
+        $services = @(Get-CimInstance Win32_Service -Filter "Name='vmcompute' OR Name='hns'" -ErrorAction Stop)
+        foreach ($name in @('vmcompute', 'hns')) {
+            $service = $services | Where-Object { $_.Name -eq $name }
+            if (-not $service -or $service.StartMode -eq 'Disabled') {
+                $runtimeBlocked = $true
+                $problems.Add("$name is missing or disabled")
+            }
+        }
+        $pending = (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -ErrorAction Stop) -or
+            (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction Stop)
+        if ($pending -and $runtimeBlocked) {
+            $features = @(Get-CimInstance Win32_OptionalFeature -Filter "Name='VirtualMachinePlatform' OR Name='Microsoft-Windows-Subsystem-Linux'" -ErrorAction Stop)
+            if ($features.Count -eq 2 -and @($features | Where-Object { $_.InstallState -ne 1 }).Count -eq 0) { $restart = $true }
+        }
+    }
+    catch { $problems.Add('Windows host service or restart status could not be read') }
+    $detail = if ($restart) {
+        'Windows has a restart pending and WSL 2 cannot start. Restart Windows before continuing; restarting Docker Desktop alone cannot finish this change'
+    } else { $problems -join '; ' }
+    return [pscustomobject]@{ Ready = $problems.Count -eq 0; RestartRequired = $restart; Detail = $detail }
 }
 
 function Get-DockerDesktopPath {
@@ -242,12 +290,12 @@ function Get-PrerequisiteState([string]$Id) {
         }
         'DockerDesktop' {
             $docker = Get-DockerDesktopPath
-            $wsl = Test-Wsl
+            $wsl = Get-WslReadiness
             if ($docker -and -not (Test-VirtualizationAvailable)) { return New-State 'ACTION' 'virtualization is off in the firmware (UEFI/BIOS); Docker Desktop needs it' }
-            if ($docker -and $wsl) { return New-State 'OK' 'WSL 2 and Docker Desktop are installed' }
-            if ($docker) { return New-State 'OPTIONAL' 'Docker Desktop found, but WSL does not answer' }
-            if ($wsl) { return New-State 'OPTIONAL' 'WSL is installed; Docker Desktop is not' }
-            return New-State 'OPTIONAL' 'not installed'
+            if ($docker -and $wsl.Ready) { return New-State 'OK' 'WSL 2 prerequisites and Docker Desktop are installed; the Docker engine is not checked here' }
+            if ($docker) { return New-State 'ACTION' $wsl.Detail }
+            if ($wsl.Ready) { return New-State 'OPTIONAL' 'WSL is installed; Docker Desktop is not' }
+            return New-State 'OPTIONAL' ("Docker Desktop is not installed; " + $wsl.Detail)
         }
     }
 }
@@ -420,6 +468,8 @@ function Test-VirtualizationAvailable {
 
 function Install-DockerDesktop {
     Write-Host 'Docker Desktop is free for personal use under the Docker Subscription Service Agreement (docker.com/legal).'
+    $readiness = Get-WslReadiness
+    if ($readiness.RestartRequired) { Write-Note $readiness.Detail; return }
     if (-not (Test-VirtualizationAvailable)) {
         Write-Note "Virtualization is turned off in this PC's firmware (UEFI/BIOS), and Docker Desktop needs it. Restart, open the"
         Write-Note 'firmware settings (usually Del, F2 or F10 while the PC starts), turn on Intel Virtualization Technology (VT-x) or'
@@ -437,8 +487,11 @@ foreach ($name in @('VirtualMachinePlatform', 'Microsoft-Windows-Subsystem-Linux
     Write-Host "Turning on $name..."
     if ((Enable-WindowsOptionalFeature -Online -FeatureName $name -All -NoRestart).RestartNeeded) { $restart = $true }
 }
-if ((& bcdedit.exe /enum '{current}' 2>$null | Out-String) -match 'hypervisorlaunchtype\s+Off') {
+$boot = (& bcdedit.exe /enum '{current}' 2>$null | Out-String)
+if ($LASTEXITCODE -ne 0) { Write-Host 'The Windows boot configuration could not be read.'; exit 1 }
+if ($boot -match 'hypervisorlaunchtype\s+Off') {
     & bcdedit.exe /set '{current}' hypervisorlaunchtype auto | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host 'The Windows hypervisor boot setting could not be changed.'; exit 1 }
     Write-Host 'The Windows hypervisor was set not to start; it now starts with Windows.'
     $restart = $true
 }
@@ -468,11 +521,20 @@ if (-not $wsl -or $wsl -lt $minimum) {
 }
 if ($wsl) { Write-Host "WSL $wsl is installed." }
 if ($restart) { Write-Host 'Restart Windows to finish turning on virtualization.'; exit 3010 }
+if (-not $wsl -or $wsl -lt $minimum) { Write-Host 'WSL could not be installed or updated.'; exit 2 }
 '@
     $exit = Invoke-Elevated $script 'turn on Virtual Machine Platform and Windows Subsystem for Linux, and install or update WSL 2'
+    if ($null -eq $exit -or $exit -notin 0, 3010) {
+        Write-Note 'Windows setup did not finish. Check the output above before trying Docker Desktop again.'
+        return
+    }
     if (Get-DockerDesktopPath) { Write-Host 'Docker Desktop is already installed.' }
     elseif (-not (Install-WithWinget 'Docker.DockerDesktop' 'Docker Desktop')) { Open-Page 'https://docs.docker.com/desktop/setup/install/windows-install/' }
     if ($exit -eq 3010) { Write-Note 'Restart Windows to finish turning on virtualization, then start Docker Desktop.' }
+    else {
+        $readiness = Get-WslReadiness
+        if (-not $readiness.Ready) { Write-Note $readiness.Detail; return }
+    }
     Write-Host 'Then open Martlet > Martlet hosts > This PC and press Set up host. GPU roles also need the NVIDIA driver.'
 }
 

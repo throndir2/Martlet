@@ -87,13 +87,15 @@ shows the tags, what the voice and the chat receive and the prompt.
 
 ## Desktop
 
-**Companion > Voice > Voice engine** lists Dia (`SpeakingEngine-dia`);
-`SpeakingEngineStatus` reads where it speaks and its Apache-2.0 licence, and
-`SpeakingEngineTags` its cues. Choosing it hands Speaking to Dia on the
-computer that already speaks (installing the `dia` role there after
-confirmation) or is used the next time Speaking goes to a computer. The
-Devices map lists the role as "Speaking (Dia)". MCP `f5_voices` lists Dia in
-`engines` and reports `chosenEngine` and the speaking route's `engine`.
+**Companion > Voice > Voice engine** lists Dia as a row (`VoiceEngine-dia`) with
+its chips (`VoiceEngineFeatures-dia`: NVIDIA GPU 8 GB+, Docker, voice cloning,
+samples up to 20 s, laughs & sighs, English) and one button
+(`VoiceEngineUse-dia`) that sets Dia up on the shown computer (this PC, or the
+one picked under Another of your computers) after a confirmation naming its
+licence and Nari Labs' terms, and switches Speaking to it; the engine it
+replaces stops. The Devices map lists the role as "Speaking (Dia)". MCP
+`f5_voices` lists Dia in `engines` and reports `chosenEngine` and the speaking
+route's `engine`.
 
 ## Verification
 
@@ -114,7 +116,8 @@ Devices map lists the role as "Speaking (Dia)". MCP `f5_voices` lists Dia in
   Voice engine starts on Chatterbox Turbo, and selecting
   `SpeakingEngine-dia` changes `SpeakingEngineStatus` to Dia with its
   Apache-2.0 licence, `SpeakingEngineTags` to Dia's cues and `chosenEngine` to
-  `dia`. `voice_tags` with `{"engine":"dia"}` keeps `(laughs)` and `(sighs)`
+  `dia` (controls of the engine combo box that the Voice engine rows later
+  replaced). `voice_tags` with `{"engine":"dia"}` keeps `(laughs)` and `(sighs)`
   for the voice, drops Chatterbox's `[laugh]`, hides the cues from the chat
   text and lists Dia's cues in the prompt (its example now uses the engine's
   own first tag, `(laughs)`).

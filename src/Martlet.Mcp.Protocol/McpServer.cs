@@ -88,11 +88,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("f5_voices", "List Martlet's starter voices (key, name, female, cute, licence, transcript, format; each clip is checked " +
             "against its SHA-256 and F5's reference rules; a new voice list starts with them, after which they are ordinary voices) and " +
             "the default voice; from a data directory, the shared speaking-voice list (speaking-voices.json: live voices, which starter " +
-            "voices are in it or removed, how many of the owner's own, tombstones and the voice chosen on all computers), this PC's " +
+            "voices are in it or removed, how many of the owner's own, tombstones, the voice chosen on all computers and, for each voice " +
+            "made from several recordings, how many, their lengths and which engines learn from each or hear them joined), this PC's " +
             "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
             "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds and tag catalog; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "length bounds, tag catalog, summary, languages, whether it learns from several recordings and the feature chips Companion > " +
+            "Voice > Voice engine shows; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -130,8 +132,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
-            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, the WSL version), whether Docker Desktop is " +
-            "installed and running and its engine state, and any setup Martlet continues after a Windows restart. Read-only; changes nothing.", new
+            "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, their host services, WSL version and status), " +
+            "pending and required restarts, blockers and recovery guidance, whether Docker Desktop is installed and running and its engine " +
+            "state, and any setup Martlet continues after a Windows restart. Read-only; starts no VM, changes nothing and returns no distribution names.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -198,6 +201,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "resuming an interrupted copy, passing characters on to a host the first desktop never reached, removal everywhere (host " +
             "pieces and desktop copies deleted), keeping the copy a computer shows, stale copies, a host restart, piece checks and the " +
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+        Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
+            "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
+            "companion, replies, prompts, memory, lorebooks, character, talk, speech-display, appearance) with which computer changed it " +
+            "and when, its revision, whether it uses an API key (never the key or its digest), the provider and model of each job's " +
+            "route, and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
+            "contacts nothing and reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
+            "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
+            "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
+            "desktop's paired client, sync engine and settings sections. Walks the owner's case (a PC on OpenRouter becomes a host, the " +
+            "other PC still on NVIDIA Build becomes the companion and takes OpenRouter, its model and key), model and key changes, offline " +
+            "edits on both sides (different and the same setting; the later edit wins), a host that missed a change, a stale copy, a " +
+            "newer Martlet's setting, a Windows voice a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
+            "no keys in desktop files and an unsigned request refused. Loopback only; the folder is deleted and the vault untouched.", new { }),
         Tool("audio2face_check", "Animate a short synthesized speech-like test signal (generated here; no microphone, nothing played) " +
             "with an Audio2Face service on a numeric loopback endpoint (default http://127.0.0.1:52000) through Martlet's production " +
             "Audio2Face client, the one the host gateway's lip-sync relay uses, so either Audio2Face engine (the local open-source SDK " +
@@ -242,6 +262,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
+        }),
+        Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
+            "with no Save button): the personas (name, whether Martlet uses it, response-style weights, instruction length; never the " +
+            "instructions), the character model (built-in character name or the own model's file type, never its path; renderer, " +
+            "lip-sync mode, show at startup, the lip-sync host's ID) and the lorebooks (counts only). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
         }),
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
             "directory, or modelId): the model's and the route's hearing support and whether Companion > Listening > Let Thinking hear " +
@@ -363,6 +390,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
+                "settings_sync_status" => SettingsSyncStatus(arguments),
+                "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
@@ -371,6 +400,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
+                "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
@@ -626,14 +656,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             ready = state.Ready,
+            blocked = state.Blocked,
             firmwareOff = state.FirmwareOff,
             needsWindowsChanges = state.NeedsChanges,
+            restartPending = state.RestartPending,
+            restartRequired = state.RestartRequired,
             problems = state.Problems(),
+            recovery = state.Recovery,
+            probeIssues = state.ProbeIssues,
             firmware = state.Firmware,
             hypervisor = state.Hypervisor,
             virtualMachinePlatform = state.MachinePlatform.ToString(),
             windowsSubsystemForLinux = state.Subsystem.ToString(),
             wsl = state.Wsl,
+            wslStatus = state.WslStatus.ToString(),
+            wslStatusExitCode = state.WslStatusExitCode,
+            hostComputeService = state.ComputeService.ToString(),
+            hostNetworkService = state.NetworkService.ToString(),
             virtualMachine = state.VirtualMachine,
             summary = state.Describe(),
             dockerDesktop = new
@@ -792,7 +831,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     removed = shared.Voices.Count(v => v.Removed),
                     removedStarters = shared.Voices.Where(v => v.Removed).Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
                     chosen = shared.ChosenVoice is { } chosenVoice ? KindOfId(chosenVoice.Id) : null,
-                    chosenBy = shared.ChosenVoice is not null ? shared.Chosen!.UpdatedBy : null
+                    chosenBy = shared.ChosenVoice is not null ? shared.Chosen!.UpdatedBy : null,
+                    // Voices made from several recordings, by the key the Voices page uses (the ID's first 16 hex digits): how many
+                    // recordings, each one's length, the joined length, the engines that can clone it and those that learn from each.
+                    severalRecordings = live.Where(v => v.Clips is not null).Select(v => new
+                    {
+                        key = v.Id[..16], recordings = v.Clips!.Count, clipMs = v.ClipMilliseconds, durationMs = v.DurationMilliseconds,
+                        sampleRate = v.SampleRate,
+                        engines = Martlet.Core.Settings.SpeechEngines.All
+                            .Where(engine => Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, v.DurationMilliseconds, v.ClipMilliseconds) is null)
+                            .Select(engine => engine.Key).ToArray(),
+                        learnsFromEach = Martlet.Core.Settings.SpeechEngines.All
+                            .Where(engine => Martlet.Core.Settings.SpeechEngines.UsesClips(engine, v.ClipMilliseconds))
+                            .Select(engine => engine.Key).ToArray()
+                    }).ToArray()
                 };
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -854,10 +906,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var engines = Martlet.Core.Settings.SpeechEngines.All.Select(engine => new
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
-            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
+            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, nonCommercial = engine.NonCommercial,
+            minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
             minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
-            summary = engine.Summary, @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
-            supportsTags = engine.SupportsTags,
+            summary = engine.Summary, languages = engine.Languages, streams = engine.StreamsWhileGenerating, features = engine.Features,
+            @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
+            supportsTags = engine.SupportsTags, multipleReferences = engine.MultipleReferences,
             tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
         return new
@@ -901,6 +955,55 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { sync = choice switch { "off" => "off", null => "on (default)", _ => "on" }, plan };
+    }
+
+    /// <summary>The settings this PC shares with the owner's other computers (shared-settings.json, the name
+    /// Martlet.Core.Sync.SharedSettingsState uses). Personal text (personality, prompts, lorebooks) and keys are never returned:
+    /// only who changed each setting and when, its size, whether it uses a key, and for jobs the provider and model.</summary>
+    private static object SettingsSyncStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.SharedSettingsState.FileName))) return new { sync, state = "none" };
+        var (document, observed) = Martlet.Core.Sync.SharedSettingsState.Load(directory);
+        object? Route(Martlet.Core.Sync.SharedSetting setting)
+        {
+            try
+            {
+                if (setting.Key is "thinking" or "listening" or "speaking")
+                {
+                    var route = Martlet.Core.Sync.SharedRoute.Parse(setting.Value);
+                    return new { type = route.Type, origin = route.Origin, model = route.Model, voice = route.Voice };
+                }
+                if (setting.Key == "thinking-fallback" && setting.Value != "null")
+                {
+                    using var parsed = JsonDocument.Parse(setting.Value);
+                    return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
+                }
+                if (setting.Key is "memory" or "appearance" or "talk")
+                {
+                    using var parsed = JsonDocument.Parse(setting.Value);
+                    return parsed.RootElement.Clone();
+                }
+            }
+            catch (Exception error) when (error is JsonException or Martlet.Core.Contracts.ContractException or KeyNotFoundException or InvalidOperationException) { }
+            return null;
+        }
+        return new
+        {
+            sync, state = "loaded", revision = document.Revision, count = document.Settings.Count,
+            settings = document.Settings.Select(s => new
+            {
+                key = s.Key, updatedBy = s.UpdatedBy, updatedAt = s.UpdatedAt, revision = s.Revision, usesKey = s.SecretSha256 is not null,
+                characters = s.Value.Length, off = s.Value == "null",
+                here = !observed.TryGetValue(s.Key, out var seen) ? "unknown"
+                    : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
+                value = Route(s)
+            }).ToArray()
+        };
     }
 
     /// <summary>The Martlet network as the desktop keeps it in a data directory (network.json and network\device_ecdsa, the
@@ -1037,6 +1140,78 @@ internal sealed class McpServer(DesktopAutomation desktop)
             edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"), prompts = list,
             prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
         };
+    }
+
+    /// <summary>Companion › Personality and Character as saved in a data directory: settings.json's personas, avatar.json (read as
+    /// JSON; the field names match Martlet.Avatar.Hosting's AvatarProfile) and lorebooks.json. Persona instructions, model paths
+    /// and lorebook text are personal and never returned.</summary>
+    private static async Task<object> CharacterStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var loaded = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync(cancellation);
+        var companion = loaded.Settings?.Companion;
+        object personality = new
+        {
+            state = loaded.State switch
+            {
+                Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
+                Martlet.Core.Settings.SettingsLoadState.FirstRun => "none",
+                _ => "unreadable"
+            },
+            problem = loaded.Error?.Summary,
+            active = companion?.Personas.FirstOrDefault(p => p.Id == companion.ActivePersonaId)?.Name,
+            personas = companion?.Personas.Select(p => new
+            {
+                name = p.Name, active = p.Id == companion.ActivePersonaId, instructionCharacters = p.Text.Length,
+                styles = new
+                {
+                    helpful = p.Styles.Helpful, sarcastic = p.Styles.Sarcastic, silly = p.Styles.Silly,
+                    distracted = p.Styles.Distracted, playfulTeasing = p.Styles.PlayfulTeasing
+                }
+            }).ToArray() ?? []
+        };
+
+        object character;
+        var avatar = Path.Combine(directory, "avatar.json");
+        if (!File.Exists(avatar)) character = new { state = "none" };
+        else
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(avatar, cancellation));
+                var root = document.RootElement;
+                string? Text(JsonElement parent, string name) =>
+                    parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                var model = Text(root, "model_path") ?? "";
+                const string builtIn = "builtin:";
+                character = new
+                {
+                    state = "loaded",
+                    model = model.StartsWith(builtIn, StringComparison.Ordinal) ? "built-in" : "own model",
+                    builtInCharacter = model.StartsWith(builtIn, StringComparison.Ordinal) ? model[builtIn.Length..] : null,
+                    ownModelType = model.StartsWith(builtIn, StringComparison.Ordinal) ? null
+                        : model.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase) ? ".model3.json" : Path.GetExtension(model).ToLowerInvariant(),
+                    renderer = Text(root, "renderer"),
+                    lipSync = Text(root, "lip_sync") ?? "auto",
+                    autoShow = root.TryGetProperty("auto_show", out var show) && show.ValueKind == JsonValueKind.True,
+                    lipSyncHost = root.TryGetProperty("remote_host", out var host) && host.ValueKind == JsonValueKind.Object ? Text(host, "host_id") : null
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            {
+                character = new { state = "unreadable", problem = error.GetType().Name };
+            }
+        }
+
+        var lore = await new Martlet.Core.Lorebooks.LorebookStore(directory).LoadAsync(cancellation);
+        object lorebooks = new
+        {
+            state = lore.Loaded ? File.Exists(Path.Combine(directory, Martlet.Core.Lorebooks.LorebookStore.FileName)) ? "loaded" : "none" : "unreadable",
+            books = lore.Library.Books.Count,
+            on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
+            entries = lore.Library.Books.Sum(book => book.Entries.Count)
+        };
+        return new { personality, character, lorebooks };
     }
 
     /// <summary>smart-home.json in a data directory (the file name and fields match Martlet.Desktop's HomePreferences). The

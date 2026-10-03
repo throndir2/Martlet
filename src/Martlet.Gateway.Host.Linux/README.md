@@ -86,7 +86,10 @@ the owner added are kept in `character-models.json` (at most 2 MiB, through
 `character-model-chunk.staging`; pieces no live model uses are deleted; see
 [shared character models](../../docs/CLUSTER.md#the-shared-character-models)); the shared Home Assistant connection, including its access token,
 lives in `home-assistant.json` (at most 16 KiB, through
-`home-assistant.staging`). All are 0600 service-owner files and none is part
+`home-assistant.staging`). The settings the owner's computers share
+([one Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),
+including their cloud API keys, live in `shared-settings.json` (at most 2 MiB,
+through `shared-settings.staging`). All are 0600 service-owner files and none is part
 of approval. Its log (own activity plus, as the owner's
 [log host](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), every
 computer's lines) is kept the same way in `logs.json` (at most 2 MiB, through

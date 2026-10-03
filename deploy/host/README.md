@@ -189,10 +189,15 @@ such as `home-assistant`; probes add `ha-existing` (something else on port
 
 The gateway also keeps a copy of the shared **who does what** plan in
 `cluster.json` beside `host.json`, written by the gateway when a paired desktop
-syncs (Devices > Settings for all devices > *Keep who does what in sync*). It names which
+syncs (Devices > Settings for all devices > *Keep Martlet the same on all my computers*). It names which
 host does each job, which jobs fail over and which roles each host runs; it
 holds no keys and the host never acts on it. See
-[Shared who does what and failover](../../docs/CLUSTER.md). Beside them it keeps
+[Shared who does what and failover](../../docs/CLUSTER.md). Beside it,
+`shared-settings.json` holds the settings the owner's computers share
+(how Martlet thinks, listens and speaks with their cloud API keys, its
+character and personality; see
+[One Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),
+given only to paired devices. Beside them it keeps
 `commands.json` (commands paired computers sent, never their secrets) and
 `agent.token` (written fresh at each start; only Martlet on the host computer
 reads it, to take those commands). See
@@ -439,15 +444,17 @@ what* shows which computer handles each job:
   `listening-previous.json`. Push-to-talk and hands-free utterances then go only to
   that host over its pinned TLS gateway and are transcribed there in memory.
 - **Speaking** moves the same way between the Setup voice (OpenAI or Windows speech)
-  and any paired host that runs the chosen voice engine (`chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`, chosen on
-  Companion > Voice > Voice engine), saved as a gateway F5 route; the previous route
-  is kept in `speaking-previous.json`. A host runs one voice engine at a time: choosing
-  another engine there installs it with `exclusive=voice` (above), or, when it is already
-  installed, switches Speaking to it and then removes the engines it no longer uses
-  (`martlet-host remove`, downloads kept), so the old model frees the graphics card's
-  memory. The confirmation names them; Speaking on that host pauses while a new engine
-  installs. The Voice engine card's *Stop* button does the same for a host set up before
-  this rule that still runs several engines. Martlet uses the voice chosen on all your computers
+  and any paired host that runs a voice engine (`chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`,
+  each set up and used with one button on Companion > Voice > Voice engine), saved as a gateway
+  F5 route; the previous route is kept in `speaking-previous.json`. A host runs one voice engine
+  at a time: choosing another engine there installs it with `exclusive=voice` (above), or, when
+  it is already installed, switches Speaking to it and then removes the engines it no longer uses
+  (`martlet-host remove`, downloads kept), so the old model frees the graphics card's memory.
+  When Speaking leaves a host's engine for another computer, a Windows voice or a cloud voice,
+  Martlet removes that engine there the same way once Speaking has moved (unless failover keeps
+  the same engine on it as a backup). The confirmation names them; Speaking on that host pauses
+  while a new engine installs. The Voice engine card's *Stop* button removes leftovers on a host
+  set up before this rule that still runs several engines. Martlet uses the voice chosen on all your computers
   (or the first in your voice list): every voice, with its recording, is shared with your
   paired hosts (`speaking-voices.json` and `speaking-voice-<sha256>.wav` beside `host.json`;
   each desktop keeps its copy in `f5-voices`, Martlet.F5's reference preset store, see

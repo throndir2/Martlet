@@ -14,7 +14,8 @@ using Microsoft.Win32;
 namespace Martlet.Desktop;
 
 /// <summary>Edits every lorebook on this PC: SillyTavern World Info import/export, entries, persona scope, scan settings and a
-/// local "what triggers" test. Nothing here contacts a model or provider.</summary>
+/// local "what triggers" test. Nothing here contacts a model or provider. There is no Save button: every edit saves on its own
+/// (a short pause after typing, at once for adding, deleting or importing), and the footer says whether everything is saved.</summary>
 public partial class LorebookWindow : ThemedWindow
 {
     private readonly LorebookStore store;
@@ -22,11 +23,17 @@ public partial class LorebookWindow : ThemedWindow
     private readonly PersonaProfile? activePersona;
     private readonly bool importOnOpen;
     private readonly List<LorebookItem> books = [];
+    private readonly AutoSave autoSave;
     private string? revision;
     private string? savedSnapshot;
     private bool loaded;
     private bool busy;
+    private bool saving;
     private bool closeConfirmed;
+    private bool finishing;
+    /// <summary>Why the current edits can't be saved (an invalid entry or setting), or why the last save failed.</summary>
+    private string? problem;
+    private string? saveError;
 
     internal Func<string?> ChooseImport { get; init; } = SelectImport;
     internal Func<string, string?> ChooseExport { get; init; } = SelectExport;
@@ -37,10 +44,51 @@ public partial class LorebookWindow : ThemedWindow
         personas = companion?.Personas ?? [];
         activePersona = companion?.ActivePersona;
         this.importOnOpen = importOnOpen;
+        autoSave = new AutoSave(SaveChangesAsync);
+        autoSave.Settled += () => { if (!closeConfirmed) RenderSaveState(); };
         InitializeComponent();
         TestPersona.ItemsSource = personas;
         TestPersona.SelectedItem = activePersona;
+        // Every edit in the editor bubbles up here (typing, ticking, choosing); browsing, searching and testing don't save.
+        EditorRoot.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, new RoutedEventHandler(Edited));
+        EditorRoot.AddHandler(System.Windows.Controls.Primitives.ToggleButton.CheckedEvent, new RoutedEventHandler(Edited));
+        EditorRoot.AddHandler(System.Windows.Controls.Primitives.ToggleButton.UncheckedEvent, new RoutedEventHandler(Edited));
+        EditorRoot.AddHandler(System.Windows.Controls.Primitives.Selector.SelectionChangedEvent, new RoutedEventHandler(Edited));
         Render();
+    }
+
+    private void Edited(object sender, RoutedEventArgs e)
+    {
+        if (!loaded || busy || e.OriginalSource is not DependencyObject source ||
+            Within(source, BookChoice, EntryList, EntrySearch, TestInput, TestPersona, TestResult)) return;
+        problem = null;
+        autoSave.Changed();
+        RenderSaveState();
+    }
+
+    private static bool Within(DependencyObject source, params DependencyObject[] controls)
+    {
+        for (var node = source; node is not null; node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                 ? System.Windows.Media.VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+            if (controls.Contains(node)) return true;
+        return false;
+    }
+
+    private void SaveNow()
+    {
+        autoSave.SaveNowAsync().Forget();
+        RenderSaveState();
+    }
+
+    private void RenderSaveState()
+    {
+        var unsaved = problem ?? saveError;
+        SaveStateText.Text = !loaded ? busy ? "Loading your lorebooks..." : "Your lorebooks couldn't be loaded."
+            : problem is not null ? "Not saved yet: " + problem
+            : saveError is not null ? "Not saved: " + saveError + " Martlet tries again with your next change."
+            : saving || autoSave.Pending ? "Saving..."
+            : "All changes saved.";
+        SaveStateText.SetResourceReference(TextBlock.ForegroundProperty, unsaved is null ? "MutedBrush" : "WarningBrush");
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -63,6 +111,7 @@ public partial class LorebookWindow : ThemedWindow
                 books.AddRange(result.Library.Books.Select(book => LorebookItem.From(book, personas)));
             ShowSettings(result.Library);
             savedSnapshot = loaded ? Snapshot(result.Library) : null;
+            problem = saveError = null;
             ResultText.Text = result.Error ?? (books.Count == 0
                 ? "No lorebooks yet. Create one, or import a lorebook or character card."
                 : $"{books.Count} {(books.Count == 1 ? "lorebook" : "lorebooks")} loaded.");
@@ -87,7 +136,6 @@ public partial class LorebookWindow : ThemedWindow
     private void Render()
     {
         EditorRoot.IsEnabled = loaded && !busy;
-        SaveButton.IsEnabled = loaded && !busy;
         var book = BookChoice.SelectedItem as LorebookItem;
         BookPanel.Visibility = book is null ? Visibility.Collapsed : Visibility.Visible;
         ExportButton.IsEnabled = DeleteBookButton.IsEnabled = book is not null;
@@ -95,6 +143,7 @@ public partial class LorebookWindow : ThemedWindow
         EntryCount.Text = book is null ? "" : CollectionViewSource.GetDefaultView(book.Entries) is { } view && EntrySearch.Text.Length > 0
             ? $"{view.Cast<object>().Count()} of {book.Entries.Count} entries match."
             : book.Entries.Count == 0 ? "No entries yet. Add one." : "";
+        RenderSaveState();
     }
 
     private void RenderBooks(LorebookItem? select)
@@ -143,18 +192,20 @@ public partial class LorebookWindow : ThemedWindow
         book.Entries.Add(new LorebookEntryItem { Uid = 0, Title = "First entry" });
         books.Add(book);
         RenderBooks(book);
-        ResultText.Text = "New lorebook added. Add entries, then save.";
+        ResultText.Text = "New lorebook added. Add entries; they save as you go.";
+        SaveNow();
     }
 
     private void DeleteBook_Click(object sender, RoutedEventArgs e)
     {
         if (BookChoice.SelectedItem is not LorebookItem book) return;
-        if (!ConfirmationDialog.Confirm(this, $"Delete \"{book.Name}\" and its entries? Save to make this permanent.",
+        if (!ConfirmationDialog.Confirm(this, $"Delete \"{book.Name}\" and its entries? This can't be undone.",
             "Delete lorebook")) return;
         var index = books.IndexOf(book);
         books.Remove(book);
         RenderBooks(books.Count == 0 ? null : books[Math.Min(index, books.Count - 1)]);
-        ResultText.Text = $"\"{book.Name}\" removed. Save lorebooks to make it permanent.";
+        ResultText.Text = $"Deleted \"{book.Name}\".";
+        SaveNow();
     }
 
     private void AddEntry_Click(object sender, RoutedEventArgs e)
@@ -169,6 +220,7 @@ public partial class LorebookWindow : ThemedWindow
         book.Entries.Add(entry);
         SelectEntry(entry);
         EntryKeys.Focus();
+        SaveNow();
     }
 
     private void DuplicateEntry_Click(object sender, RoutedEventArgs e)
@@ -179,6 +231,7 @@ public partial class LorebookWindow : ThemedWindow
             var copy = entry.Copy(book.NextUid());
             book.Entries.Insert(book.Entries.IndexOf(entry) + 1, copy);
             SelectEntry(copy);
+            SaveNow();
         }
         catch (ContractException error) { ResultText.Text = "Fix this entry before duplicating. " + error.Message; }
     }
@@ -189,8 +242,9 @@ public partial class LorebookWindow : ThemedWindow
         var index = book.Entries.IndexOf(entry);
         book.Entries.Remove(entry);
         if (book.Entries.Count > 0) EntryList.SelectedItem = book.Entries[Math.Min(index, book.Entries.Count - 1)];
-        ResultText.Text = $"Entry \"{entry.Label}\" removed. Save to make it permanent.";
+        ResultText.Text = $"Deleted the entry \"{entry.Label}\".";
         Render();
+        SaveNow();
     }
 
     private void SelectEntry(LorebookEntryItem entry)
@@ -213,6 +267,7 @@ public partial class LorebookWindow : ThemedWindow
         }
         busy = true;
         Render();
+        var imported = false;
         try
         {
             var import = await Task.Run(() =>
@@ -227,7 +282,8 @@ public partial class LorebookWindow : ThemedWindow
             ResultText.Text = $"Imported \"{item.Name}\" with {import.Book.Entries.Count} " +
                 $"{(import.Book.Entries.Count == 1 ? "entry" : "entries")}" + (constant > 0 ? $" ({constant} always on)" : "") +
                 (import.SkippedEntries > 0 ? $". {import.SkippedEntries} skipped." : "") +
-                " It is on for every persona; review and save.";
+                " It is on for every persona.";
+            imported = true;
         }
         catch (ContractException error) { ResultText.Text = error.Message; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -239,6 +295,7 @@ public partial class LorebookWindow : ThemedWindow
             busy = false;
             Render();
         }
+        if (imported) SaveNow();
     }
 
     private void Export_Click(object sender, RoutedEventArgs e)
@@ -284,54 +341,55 @@ public partial class LorebookWindow : ThemedWindow
 
     private static string Snapshot(LorebookLibrary library) => JsonSerializer.Serialize(library);
 
-    private bool IsDirty()
+    /// <summary>The auto-save: writes the lorebooks when they differ from what is saved. Returns false to be tried again shortly
+    /// while an import or load runs.</summary>
+    private async Task<bool> SaveChangesAsync()
     {
-        if (!loaded) return false;
-        try { return Snapshot(Build()) != savedSnapshot; }
-        catch (ContractException) { return true; }
-    }
-
-    private async void Save_Click(object sender, RoutedEventArgs e) => await SaveAsync();
-
-    private async Task<bool> SaveAsync()
-    {
-        if (!loaded || busy) return false;
+        if (!loaded) return true;
+        if (busy) return false;
         LorebookLibrary library;
         try { library = Build(); }
         catch (ContractException error)
         {
-            ResultText.Text = "Not saved. " + error.Message;
-            return false;
+            problem = error.Message;
+            RenderSaveState();
+            return true;
         }
-        busy = true;
-        Render();
+        problem = null;
+        var snapshot = Snapshot(library);
+        if (snapshot == savedSnapshot)
+        {
+            saveError = null;
+            RenderSaveState();
+            return true;
+        }
+        saving = true;
+        RenderSaveState();
         try
         {
             var saved = await store.SaveAsync(library, revision);
             if (!saved.Saved)
             {
-                ResultText.Text = "Not saved. " + saved.Error;
-                return false;
+                saveError = saved.Revision != revision
+                    ? "Your lorebooks were changed somewhere else. Close Lorebooks and open it again to see them."
+                    : saved.Error ?? "Your lorebooks couldn't be written.";
+                return true;
             }
+            saveError = null;
             revision = saved.Revision;
-            savedSnapshot = Snapshot(library);
-            var on = library.Books.Count(book => book.Activation != LorebookActivation.Off);
-            ResultText.Text = $"Lorebooks saved: {library.Books.Count} {(library.Books.Count == 1 ? "lorebook" : "lorebooks")}, {on} on. " +
-                "The next reply can use them.";
+            savedSnapshot = snapshot;
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
+        {
+            saveError = error is ContractException ? error.Message : "Your lorebooks couldn't be written. Check access to your data folder.";
             return true;
         }
         finally
         {
-            busy = false;
-            Render();
+            saving = false;
+            RenderSaveState();
         }
-    }
-
-    private async void Reload_Click(object sender, RoutedEventArgs e)
-    {
-        if (IsDirty() && !ConfirmationDialog.Confirm(this, "Discard your unsaved lorebook changes and reload the saved lorebooks?", "Reload lorebooks"))
-            return;
-        await LoadAsync();
     }
 
     private void Test_Click(object sender, RoutedEventArgs e)
@@ -406,15 +464,41 @@ public partial class LorebookWindow : ThemedWindow
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    /// <summary>Closing saves what is still waiting first. Only edits that can't be saved ask before they are dropped.</summary>
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (closeConfirmed) return;
-        if (busy || IsDirty() && !ConfirmationDialog.Confirm(this, "Close without saving your lorebook changes?", "Unsaved lorebook changes"))
+        if (closeConfirmed || !loaded ||
+            !busy && !saving && !autoSave.Pending && problem is null && saveError is null && !IsDirty()) return;
+        e.Cancel = true;
+        if (finishing) return;
+        finishing = true;
+        try
         {
-            e.Cancel = true;
-            return;
+            for (var tries = 0; tries < 50 && (busy || saving || autoSave.Pending || IsDirty()); tries++)
+            {
+                if (busy) await Task.Delay(100);
+                else
+                {
+                    await autoSave.SaveNowAsync();
+                    if (problem is not null || saveError is not null) break;
+                }
+            }
+            var unsaved = problem ?? saveError ?? (busy || IsDirty() ? "Martlet is still busy with your lorebooks." : null);
+            if (unsaved is not null && !ConfirmationDialog.Confirm(this,
+                    $"Your latest lorebook change isn't saved: {unsaved}\n\nClose anyway and lose it?", "Unsaved lorebook change"))
+                return;
+            autoSave.Cancel();
+            closeConfirmed = true;
+            await Dispatcher.InvokeAsync(Close);
         }
-        closeConfirmed = true;
+        finally { finishing = false; }
+    }
+
+    private bool IsDirty()
+    {
+        if (!loaded) return false;
+        try { return Snapshot(Build()) != savedSnapshot; }
+        catch (ContractException) { return true; }
     }
 
     private static string? SelectImport()
