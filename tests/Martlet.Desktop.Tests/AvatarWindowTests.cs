@@ -139,6 +139,7 @@ public sealed class AvatarWindowTests
         public RendererCapabilities? Capabilities { get; private set; }
         public bool HasExited => exited.Task.IsCompleted;
         public Task Exited => exited.Task;
+        public event Action<string>? Requested { add { } remove { } }
         internal TaskCompletionSource? ConfigureRelease { get; init; }
         internal TaskCompletionSource ConfigureEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal RendererTheme? LastTheme { get; private set; }

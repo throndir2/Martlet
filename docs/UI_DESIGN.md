@@ -235,22 +235,33 @@ When the device role is *host*, Home becomes the dashboard for the Martlet host
 service on this PC:
 
 - **Hero**: "This PC is a Martlet host", with a status pill and the address
-  desktops use (`https://<LAN IP>:9443`).
-- **Five steps**, each with one button:
-  1. *Docker Desktop*: installed or running, read locally. Installs it with
-     winget in a run window.
-  2. *Host service*: set up the gateway, including the one-time firewall prompt.
-  3. *Pair a desktop*: the main PC finds this PC under Add a computer ›
-     *Martlet on your network*; *Allow* here when both show the same check
-     number. *Show a pairing code* still shows this PC's address and a short
+  desktops use (the one the host service publishes, `https://<LAN IP>:9443`).
+- **Five steps** that tick by themselves: the dashboard reads this PC's host
+  service from Docker (`LocalHostService`: the gateway container, its published
+  port, its role records and the Martlet network roster it accepted) when it
+  opens, every 30 seconds while the window shows and when it shows again. A
+  done step shows what it found and no setup button.
+  1. *Docker Desktop*: installed or running, read locally (and whether its
+     engine answers). Installs it with winget in a run window.
+  2. *Host service*: done when the gateway runs and answers at an address this
+     PC still has. Otherwise *Set up host service*, *Start host service* (set
+     up but stopped) or *Set up again* (this PC's address changed), including
+     the one-time firewall prompt.
+  3. *Pair a desktop*: done when a computer is in the host's Martlet network
+     (named, for example *Paired with DIVA and this PC*). The main PC finds
+     this PC under Add a computer › *Martlet on your network*; *Allow* here
+     when both show the same check number. *Show a pairing code* (*Pair
+     another computer* once paired) still shows this PC's address and a short
      one-use code in large type in a run window, to type on the main PC. When
      Windows Firewall keeps other computers from finding this PC, *Let my
      other computers find this PC* adds the rule (one administrator prompt).
-  4. *Roles*: add or remove Audio2Face lip-sync, and show host status.
+  4. *Roles*: lists the installed roles, with *Add* for each other role and
+     *Remove* for each installed one.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
-- **Check host service** is an explicit TCP reachability probe of this PC's
-  host port. It never runs automatically.
+- The steps' heading reads *This host is ready* once Docker Desktop, the host
+  service and pairing are done, and the line under it says what is left.
+- **Check again** repeats the read at once and says what it found.
 - *Use this PC as a companion instead* switches the device role.
 
 ### 5. Add a computer (Martlet hosts wizard)

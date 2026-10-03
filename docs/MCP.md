@@ -307,7 +307,8 @@ unticked **Let my other computers find this PC**; `port` (9444); and `hosts`
 from `hosts.json` (`state` `none`, `loaded` or `unreadable`; when loaded the
 number `paired` and the `shareable` ones with `hostId` and `reach`
 (`ThisPcDocker`, `SshDocker` or `SshNative`)). This PC's own host service set
-up from the host dashboard is found by the desktop from Docker, not here. It
+up from the host dashboard is found by the desktop from Docker, not here
+(`host_service_status` reads it). It
 never returns addresses, SSH targets or keys and contacts nothing.
 
 `node_link_check` runs [commands between computers](CLUSTER.md#commands-between-your-computers)
@@ -361,6 +362,24 @@ created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 entry that starts Martlet at the next sign-in exists). It runs a CIM query and
 `wsl --version` in a hidden Windows PowerShell and `docker desktop status`,
 changes nothing and returns no paths.
+
+`host_service_status` reads this PC's own Martlet host service on Docker
+Desktop (the one the host dashboard sets up) with the same production code as
+the dashboard (`LocalHostService` in `Martlet.Core`): `stage` (`DockerMissing`,
+`DockerNotRunning`, `NotSetUp`, `Stopped` or `Running`), `ready` (running,
+answering and still at one of this PC's addresses), `version` (the
+`martlet-host:x.y.z` image), `hostId`, `published`, `addressOnThisPc` (false
+once the network gave this PC another address than the one set up),
+`answering` (a TCP connect to the published port), `roles` (the installed role
+records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
+`network` (`unbound`, `bound`, `removed` or `unreadable`), `desktops` (`{id,
+name}` of the active desktops in the host's Martlet network, that is the
+computers paired with it, including this PC when it is one) and `problem`
+(Docker's first error line). It runs `docker container inspect` on
+`martlet-host-gateway` and `martlet-host-net` and one `docker exec` that lists
+the role records and prints `host_id` and `network.json`; it never reads the
+agent token, keys, secrets or pairings, returns no addresses and changes
+nothing. Setting `DOCKER_HOST` to a missing named pipe gives `DockerNotRunning`.
 
 `logs_tail` reads the last `lines` (1-400, default 100) of one local log under
 `<dataDirectory>\logs` (`log`: `desktop` (default), `avatar-renderer` or
@@ -576,17 +595,44 @@ it), or on with the hosts it offers; then *Last request:* allowed, denied,
 withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
 PC*, shown only when blocked: an administrator prompt, never part of
 verification).
-Home and host-dashboard steps have their buttons as `Step-<step>-<n>` and their
-detail line as `StepDetail-<step>` (status text). A step with more than two
+Home and host-dashboard steps have their buttons as `Step-<step>-<n>` (returned:
+the button's label and step, for example *Add Thinking: Add roles*), whether
+each is ticked as `StepState-<step>` (returned: *Host service: done*, *Pair your
+main PC: to do* or *Add roles: optional, not done*) and their detail line as
+`StepDetail-<step>` (status text). A step with more than two
 buttons (or long labels, like `Step-roles-<n>`) wraps them on rows under its
 detail, so with `layout` the buttons' `bounds` start at the detail's left edge
-and stay inside the window. On the host dashboard,
-`StepDetail-docker` says whether Docker Desktop runs or why Windows can't start
+and stay inside the window. The host dashboard reads this PC's own host service
+by itself (the same read as `host_service_status`): when it opens, every 30
+seconds while the window shows and when it shows again, so steps tick without a
+button. `HostServiceStatus` (returned) is the status under its icon (*Checking...*,
+*Needs Docker Desktop*, *Waiting for Docker Desktop*, *Not set up yet*, *Host
+service stopped*, *Address changed*, *Not answering yet* or *Host is running*),
+`HostStepsHeading` (returned) reads *This host is ready* once the required steps
+(Docker Desktop, host service, pairing) are done and `HostStepsSummary`
+(returned) says how many steps are left and the next one, or *All set*, and when
+it last checked. `CheckHostService` (*Check again*) only repeats that read and
+says what it found in the status line, so it is a passive click. On the host
+dashboard,
+`StepDetail-docker` says whether Docker Desktop runs, that it is open but its
+engine isn't answering yet, or why Windows can't start
 it yet (virtualization off in the firmware, Virtual Machine Platform or Windows
 Subsystem for Linux off, WSL missing, hypervisor not running), and
 `Step-docker-0` then reads *Turn on virtualization* or *Turn on Windows
 features* (administrator prompt and possibly a restart, so it needs
-`--allow-ui-effects` and is never part of verification). After a restart for
+`--allow-ui-effects` and is never part of verification). `StepDetail-service`
+says the host service is not set up (`Step-service-0` *Set up host service*),
+set up but stopped (*Start host service*), set up for an address this PC no
+longer has or not answering (*Set up again*), or *Running and reachable on your
+network as <host ID>* (done, no button). `StepDetail-pair` names the computers
+in the host's Martlet network and, when this PC is paired with its own host
+service, every other computer that service reports as paired, member or not,
+with when each was last active (*Paired with IMOUTO (active now) and this PC.*,
+done, with `Step-pair-0` *Pair another computer*). `StepDetail-roles` lists the installed
+roles (*Runs Lip-sync and Listening.*, done) with an *Add* button for each other
+role and a *Remove* button for each installed one. `StepDetail-update` reads
+*Up to date: the host service runs Martlet x.y.z* (done, no button) or offers
+*Update host service*. After a restart for
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
@@ -610,12 +656,10 @@ device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes. `StepDetail-pair` also tells the owner to find this PC from the
+masks codes. While the host isn't paired, `StepDetail-pair` tells the owner to find this PC from the
 main PC (*Martlet on your network*), and when Windows Firewall keeps other
 computers out it says so and `Step-pair-1` (*Let my other computers find this
-PC*, an administrator prompt) appears. Once another computer is paired with this
-PC's host service the step is done and `StepDetail-pair` names them (*Paired with
-diva-host: IMOUTO (desktop-imouto), active now. ...*). While a computer asks to
+PC*, an administrator prompt) appears. While a computer asks to
 join the network this host PC is in, a step `join-<device ID>` (*Let IMOUTO into
 your Martlet network*) follows it: `StepDetail-join-<device ID>` gives the check
 number, `Step-join-<device ID>-0` is **Allow** and `Step-join-<device ID>-1`
@@ -730,6 +774,26 @@ size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
 
+The character overlay itself is drawn by Martlet's renderer child process
+(`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
+overlay is titled *Martlet character overlay*; another Martlet's renderer is
+never included). Its drag surface `MoveAvatar` supports UI Automation
+expand/collapse, so `ui_click` on it opens (or closes again) the character's
+right-click menu with no flag; opened this way, the menu stays open until a
+choice or another `MoveAvatar` click. While it is open, snapshots list
+`CharacterMenu` and its items: `CharacterTalk` (*Talk to Martlet*, like
+`TrayTalk`), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
+`TrayOpen`, also from the notification area) and `CharacterSettings`
+(*Character settings*, opens Companion › Character), which are passive clicks;
+then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
+the default zoom), `CharacterResetPosition`, the checkable `CharacterOnTop`
+(*Keep on top*, on by default; its `checkedState` is the current choice for
+this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
+the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
+carried out by Martlet itself, so the desktop log records *The character's menu
+chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
+by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
 (off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
@@ -781,7 +845,12 @@ says where it speaks and its model licence and `SpeakingEngineTags` lists the
 engine's sound and tone tags (or says it reads words only). Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a
-confirmation). `f5_voices` returns the same choice as `chosenEngine`.
+confirmation) and stops the engine it replaces on that computer, since a host
+runs one voice engine at a time. `SpeakingEngineOthers` (shown only then) names
+voice engines the speaking computer still runs besides the one that speaks,
+for example a host set up before that rule; `SpeakingEngineRelease` stops them
+after a confirmation (`martlet-host remove`, downloads kept) and needs
+`--allow-ui-effects`. `f5_voices` returns the same choice as `chosenEngine`.
 
 On Companion › Tools (`CompanionTab-Tools`), each server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
@@ -846,6 +915,9 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
 required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+Adding a voice engine to a host that runs another one says in the dialog's
+message that installing it stops that engine there (`martlet-host describe`
+reports it as `role.stops`).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
@@ -934,7 +1006,8 @@ after … ms, first audio after … ms* line to the desktop log, which `logs_tai
 returns.
 
 Window discovery uses visible top-level native handles filtered to the attached
-process, then verifies ownership around each UI Automation handle lookup.
+process (and its own character renderer child process), then verifies ownership
+around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
 still required on every operation, unless the window is hidden in the
