@@ -80,9 +80,10 @@ internal enum ComputerStanding { Member, Asking, Outside }
 
 /// <summary>Another computer that runs Martlet: a member of your Martlet network, one asking to join it (with its check number
 /// and the host it asked through) or one that uses your hosts outside it. <paramref name="Activity"/> is where it was last
-/// active ("Active now on diva-host."), as your hosts report it.</summary>
+/// active ("Active now on diva-host."), as your hosts report it; <paramref name="Role"/> and <paramref name="HostId"/> are what
+/// it says it is (companion or host PC) and the host service Martlet runs on it, null until it shares them.</summary>
 internal sealed record MartletComputer(string DeviceId, string Name, ComputerStanding Standing, string? Activity, bool Active,
-    string? CheckNumber = null, string? Through = null);
+    string? CheckNumber = null, string? Through = null, DeviceRole? Role = null, string? HostId = null);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -582,26 +583,38 @@ internal static class NetworkMap
                 target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status) over the paired connection.");
         }
 
-        // Your other Martlet computers, so every one of them shows the same computers. One that runs a host service is that
-        // host's node (Martlet names a PC's own host service after the PC: DIVA runs diva-host); the others are companion PCs.
+        // Your other Martlet computers, so every one of them shows the same computers: one device per computer. One that runs a
+        // host service is that host's device too (the host it names, or the one Martlet names after the PC: DIVA runs diva-host).
         foreach (var computer in inputs.Computers ?? [])
         {
-            var hostId = HostSetupCommands.SuggestedHostId(computer.Name);
+            var hostId = computer.HostId ?? HostSetupCommands.SuggestedHostId(computer.Name);
             var hosting = nodes.GetValueOrDefault("host:" + hostId);
             var node = hosting ?? Node("pc:" + computer.DeviceId, NodeKind.Computer, computer.Name, computer.DeviceId, ThisPcGlyph);
             var where = computer.Activity is { } activity ? " " + activity : "";
-            var text = computer.Standing switch
+            var standing = computer.Standing switch
             {
                 ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}). " +
                     "Allow it under Your Martlet network below.",
                 ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network." + where,
-                _ => (hosting is null ? "In your Martlet network." : "In your Martlet network; Martlet on this computer runs its host service.") + where
+                _ => "In your Martlet network." + where
             };
-            node.Roles.Insert(hosting is null ? 0 : node.Roles.Count, new("Martlet", "Martlet app", text, DeviceComponent.Member));
+            // What it is, as it said itself; a computer on an older Martlet hasn't said, so it shows as the Martlet app.
+            var (chip, name, does) = computer.Role switch
+            {
+                DeviceRole.Host => ("Host PC", "Martlet host PC",
+                    $"Runs Martlet's host service ({computer.HostId ?? hostId}) for your companion PCs and uses no jobs itself. "),
+                DeviceRole.Companion => ("Companion", "Martlet companion", "Conversations, its microphone and speakers" +
+                    (hosting is not null ? $"; it runs a host service too ({hostId}). " : ". ")),
+                _ => ("Martlet", "Martlet app", hosting is not null ? $"Martlet on this computer runs its host service ({hostId}). " : "")
+            };
+            node.Roles.Insert(0, new(chip, name, $"{computer.DeviceId}. {does}{standing}", DeviceComponent.Member));
+            // The jobs every companion PC does itself (a Windows voice, Parakeet) show on each companion PC.
+            if (computer.Standing != ComputerStanding.Asking && (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
+                node.Roles.AddRange(onEachPc);
             if (hosting is not null)
             {
                 hosting.Title = computer.Name;
-                hosting.Subtitle = $"{hostId} \u00b7 {hosting.Subtitle}";
+                hosting.Subtitle = $"{computer.DeviceId} \u00b7 {hostId}";
                 hosting.Facts.Insert(0, new("Computer", $"{computer.Name} ({computer.DeviceId})"));
                 if (computer.Standing == ComputerStanding.Asking) hosting.Worsen(NodeHealth.Attention, "Asks to join");
                 continue;
@@ -617,7 +630,6 @@ internal static class NetworkMap
             else if (computer.Standing == ComputerStanding.Outside) node.Worsen(NodeHealth.Unknown, "Not in your network");
             else if (computer.Active) node.HealthText = "Active now";
             else node.Worsen(NodeHealth.Unknown, "Not active now");
-            if (computer.Standing != ComputerStanding.Asking) node.Roles.AddRange(onEachPc);
         }
 
         if (companion)

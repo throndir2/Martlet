@@ -184,6 +184,8 @@ public partial class MainWindow
         if (DevicesPage.IsVisible) RenderMap();
         QueueNetworkSync();
         QueueClusterSync();
+        // Your other computers' Devices maps learn what this PC is now with the next settings sync.
+        if (previous != role) QueueSettingsSync();
         if (role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
     }
 

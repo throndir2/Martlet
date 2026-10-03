@@ -94,7 +94,10 @@ public partial class MainWindow
             settingsHosts = (reachable.Count(r => settingsCopies.GetValueOrDefault(r.HostId).Digest == digest), hosts.Count,
                 reads.Count(r => !r.Ok && !r.Old), reads.Count(r => r.Old));
             foreach (var key in result.Recorded)
-                ErrorLog.Info($"Shared settings: {SharedTitle(key)} changed on this PC; your other computers follow it.");
+                ErrorLog.Info(SharedPc.IsKey(key)
+                    ? $"Shared settings: told your other computers that this PC is a {(Role == DeviceRole.Host ? "host" : "companion")} PC" +
+                      (ThisPcHost() is { } own ? $" and runs {own.HostId}." : ".")
+                    : $"Shared settings: {SharedTitle(key)} changed on this PC; your other computers follow it.");
             if (result.Applied.Count > 0) await AfterSettingsAppliedAsync(result.Applied);
         }
         catch (OperationCanceledException) { }
@@ -107,7 +110,12 @@ public partial class MainWindow
         {
             if (holding) assigningRole = false;
             settingsBusy = false;
-            if (!closing) ShowSettingsStatus();
+            if (!closing)
+            {
+                ShowSettingsStatus();
+                // Another computer's role (companion or host PC) arrives with the settings and changes how the map draws it.
+                if (DevicesPage.IsVisible && NetworkDevicesSignature() != networkDevicesShown) RenderMap();
+            }
         }
     }
 
@@ -126,6 +134,7 @@ public partial class MainWindow
         TalkKey => "how you talk",
         SpeechDisplayKey => "speech bubbles and subtitles",
         AppearanceKey => "the theme",
+        _ when SharedPc.IsKey(key) => "whether this PC is a companion or a host",
         _ => key
     };
 
@@ -209,7 +218,7 @@ public partial class MainWindow
             SettingsSyncWaitingText.Visibility = Visibility.Collapsed;
             return;
         }
-        var shared = settingsNode.Document.Settings.Count;
+        var shared = settingsNode.Document.Settings.Count(s => !SharedPc.IsKey(s.Key));
         string text;
         if (!clusterEnabled) text = "Settings stay on this PC while this is off; changes made here are shared when you turn it on.";
         else if (settingsCheckedAt is not { } checkedAt) text = "Settings: checking your hosts...";
@@ -255,6 +264,11 @@ public partial class MainWindow
     private IEnumerable<ISharedSection> DesktopSections()
     {
         var directory = store!.DataDirectory;
+        // Only this PC writes its own entry, so every computer's Devices map knows what each of the others is.
+        yield return new DelegateSection(SharedPc.Key(ClusterDevice), "This PC's role", _ =>
+            Task.FromResult<SharedLocal?>(new(new SharedPc(Role == DeviceRole.Host ? SharedPc.HostRole : SharedPc.CompanionRole,
+                ThisPcHost()?.HostId).Write(), null, false, DateTimeOffset.UtcNow)),
+            (_, _) => Task.FromResult(SharedApply.Done));
         yield return new DelegateSection(CharacterKey, "Character", ReadCharacterAsync, ApplyCharacterAsync);
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
@@ -418,5 +432,51 @@ public partial class MainWindow
         var loaded = await setupService!.LoadAsync(lifetime.Token);
         homeSettings = loaded.Settings ?? homeSettings;
         return (true, null);
+    }
+}
+
+/// <summary>What a computer tells your other computers about itself through the shared settings, under its own key
+/// ("pc.desktop-imouto"): whether it is a companion or a host PC (<see cref="Role"/>) and the host service Martlet runs on it
+/// (<see cref="Host"/>), so every Devices map draws it the same way. Only that computer writes its key, so the newest value is
+/// always its own; Martlet versions without it pass it on unchanged.</summary>
+internal sealed record SharedPc(string Role, string? Host)
+{
+    internal const string Prefix = "pc.";
+    internal const string CompanionRole = "companion";
+    internal const string HostRole = "host";
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    /// <summary>The shared setting's name for a device ID: lowercase letters, digits, dots and hyphens only.</summary>
+    internal static string Key(string deviceId)
+    {
+        var clean = new string(deviceId.ToLowerInvariant().Select(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.' ? c : '-').ToArray());
+        var key = Prefix + clean;
+        return key.Length > 64 ? key[..64] : key;
+    }
+
+    internal static bool IsKey(string key) => key.StartsWith(Prefix, StringComparison.Ordinal);
+
+    internal DeviceRole? DeviceRole => Role switch
+    {
+        CompanionRole => Desktop.DeviceRole.Companion,
+        HostRole => Desktop.DeviceRole.Host,
+        _ => null
+    };
+
+    internal string Write() => JsonSerializer.Serialize(this, Json);
+
+    /// <summary>A computer's entry, or null when it is unreadable (written by a newer Martlet, say).</summary>
+    internal static SharedPc? Read(string value)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<SharedPc>(value, Json) is { Role.Length: > 0 and <= 32 } pc &&
+                (pc.Host is null || pc.Host.Length <= 64) ? pc : null;
+        }
+        catch (JsonException) { return null; }
     }
 }
