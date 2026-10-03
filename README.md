@@ -158,10 +158,14 @@ directory, verifies the exact bytes against GitHub's SHA-256 asset digest,
 closes Martlet, runs the installer with its progress window (`/SILENT`, no
 optional prerequisite tasks) and starts Martlet again; the next launch reports
 the result. With *Download and install updates automatically* this happens by
-itself, but only while the character is hidden, no conversation or
-Martlet window is open and Martlet is not the active window (it restarts
-minimized, or in the notification area when it was there); otherwise the
-downloaded update installs when you exit Martlet. An automatic install, and one
+itself as soon as the update is downloaded, whether or not you are at the PC,
+Martlet's window is in front or the character is showing. It waits only for a
+reply or something you are saying, a question waiting for your answer, or work
+that exiting would cut short (a setup task, a host update, a command from
+another computer, backup and restore, a troubleshooting report, a download),
+and Status in **Settings › App updates** says which. Martlet restarts minimized
+(or in the notification area when it was there) and shows the character and
+listens again when they were on as it closed. An automatic install, and one
 another of your computers asks for (`martlet.update`, see
 [CLUSTER](docs/CLUSTER.md#commands-between-your-computers)), shows no installer
 window at all (`/VERYSILENT`): Martlet downloads, closes, installs and restarts

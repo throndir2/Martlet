@@ -635,6 +635,35 @@ Martlet does with these files when it starts again shows in `logs_tail`
 to ... didn't finish* followed by the installer log's last lines), and
 `ui_snapshot`'s `windowStates` shows the restarted window `minimized` and not
 `foreground` (launch the desktop with `-DesktopArguments '--after-update'`).
+Steps `resume: ...` check the note Martlet leaves itself as it closes to install
+(`updates\resume.txt`, `AppUpdateResume`), so the restarted Martlet shows the
+character and starts listening again: it is read once
+(`picks-up-character-and-listening-once`), carries only what was on
+(`only-what-was-on`), leaves nothing when nothing was on
+(`nothing-on-leaves-no-note`) and is ignored after 15 minutes, when you started
+Martlet yourself rather than the update (`stale-note-ignored`).
+
+**Automatic installs in the desktop.** With *Install updates automatically*
+(`AutomaticUpdateInstall`), a downloaded update installs at once, even with
+Martlet's window in front, other Martlet windows open, the character showing
+or always listening on. It waits only for a reply, speech being heard or
+transcribed, a modal question, or work exiting would cut short; then
+`AppUpdateStatus` reads *Martlet x.y.z is downloaded and installs as soon as
+Martlet isn't busy. Waiting: <what>.* and the next one-minute tick tries again.
+Installing logs *Installing Martlet x.y.z automatically, with no installer
+window. Martlet closes and restarts into it[, showing the character and
+listening again].*, and the restarted Martlet logs *Martlet restarted after its
+update and is showing the character [and listening] again, as before the
+update.* To exercise this without GitHub or a real install, set
+`MARTLET_SIMULATE_APP_UPDATE` to a version newer than the build (for example
+`9.9.9`) before launching the desktop (FIXTURE): checks find that version
+without contacting GitHub, its download is a small text file, and installing it
+runs the real update helper, whose stand-in installer fails at once (Windows
+can't run it), so nothing is installed; the helper records the failure and
+starts Martlet again (`--after-update`, same data directory), which reports
+*The update to 9.9.9 didn't finish* and doesn't install it automatically again
+that session. Turning on `AutomaticUpdateInstall` (`ui_toggle`) saves
+`updates.json`, so it needs `--allow-ui-effects`.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
