@@ -93,13 +93,13 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.22.0, )"
         }
       },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.9.0, )"
+          "Martlet.Core": "[0.22.0, )"
         }
       }
     }
