@@ -39,11 +39,12 @@ public sealed record RendererRequest(string Action)
     public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings"];
 }
 /// <summary>
-/// The overlay's size in device-independent pixels, its top relative to the top of its screen's work area (negative
-/// when it extends above the screen; null if unknown), its camera zoom, and how far the top of the character's head
-/// sits below the overlay's top edge as a fraction of its height (negative when cut off; null until reported).
+/// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
+/// (negative when it extends above the screen; null if unknown), its camera zoom, how far the top of the character's head
+/// sits below the frame's top edge as a fraction of its height (negative when cut off; null until reported), and the
+/// overlay's full drawing width: the frame plus the transparent room beside it the model can move into (null if unknown).
 /// </summary>
-public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop);
+public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);
