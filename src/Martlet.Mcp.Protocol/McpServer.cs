@@ -333,7 +333,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceller) with fixture devices on a simulated clock: no microphone or speaker is opened and nothing plays. A synthesized " +
             "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
             "default 60), with the user's synthesized voice alone and over it. Returns how much quieter Martlet's echo got, how much " +
-            "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction.", new
+            "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction, and " +
+            "talkOver: what the barge-in gate (TalkOverDetector with the capture's echo timeline) heard in each part: Martlet's own " +
+            "echo must never talk over it, and the user's voice over it must, only after the required second of voice.", new
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }

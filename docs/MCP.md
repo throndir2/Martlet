@@ -860,10 +860,19 @@ while the speakers played, the user's voice included), and per part the levels
 `withoutDb`/`withDb` (dBFS), `martletOnly.reducedDb` and
 `firstSecondsReducedDb` (0-1.5 s, while the canceller learns the room),
 `userOnly.keptDb` and `bothTalking.userAloneDb`, plus `speechFrames*`: the
-20 ms frames Martlet's own voice-activity detector counted as speech. `ok` is
-true when the reducer was active, Martlet's echo got at least 20 dB quieter, the
-detector heard it without reduction but not with it, and it still heard the user
-alone (kept within 3 dB) and over Martlet. It contacts nothing.
+20 ms frames Martlet's own voice-activity detector counted as speech. Its
+`talkOver` runs the barge-in gate (`TalkOverDetector`, `requiredMs` 1000 and
+`gapMs` 500, with the capture's own `EchoTimeline`, `speakersRemovedDb` 10)
+over the cleaned recording the way always listening does, for `martletOnly`,
+`userOnly`, `shortSound` (the first 0.8 s of the user alone) and
+`bothTalking`: `userFrames` and `speakerFrames` (loud 20 ms frames that were
+a voice or the speakers' sound), `timeline` (`room`, `user`, `speakers`
+10 ms frames) and `talkedOver` with `afterMs`. `ok` is true when the reducer
+was active, Martlet's echo got at least 20 dB quieter, the detector heard it
+without reduction but not with it, it still heard the user alone (kept within
+3 dB) and over Martlet, and `talkOver.ok`: Martlet's echo and the short sound
+never talked over it, while the user over Martlet did, no sooner than
+`requiredMs`. It contacts nothing.
 
 `pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
 (Companion › Listening › Watch along › **Hear what this PC plays**; optional
@@ -1615,7 +1624,9 @@ applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, on by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`). Below it, the *Speakers and echo* card has
+`talk-preferences.json`) and `TalkBargeInAbout` (returned: what talking over
+Martlet takes, about a second of your voice on the microphone, never a short
+sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays

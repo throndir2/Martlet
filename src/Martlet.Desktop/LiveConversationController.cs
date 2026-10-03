@@ -17,7 +17,8 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
 
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
 // is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice). BargeIn: keep listening while
-// Martlet speaks, so talking over a reply stops it. ReduceEcho: what the PC plays (Martlet's voice included) is removed from the
+// Martlet speaks, so talking over a reply (a sustained voice on the microphone, TalkOverDetector) stops it. ReduceEcho: what
+// the PC plays (Martlet's voice included) is removed from the
 // microphone first (Companion › Listening › Reduce echo from my speakers), so speakers work without headphones. Pc: listens to
 // what this PC plays instead of the microphone (Companion › Listening › Hear what this PC plays): never Voice ID, voice
 // recognition, a recording for Thinking or memory.
@@ -118,6 +119,12 @@ internal sealed class LiveConversationOperation
     private int hearing;
     /// <summary>Speech longer than a cough or click is being recorded right now.</summary>
     internal bool Hearing { get => Volatile.Read(ref hearing) != 0; set => Volatile.Write(ref hearing, value ? 1 : 0); }
+    private int talkingOver;
+    /// <summary>The microphone has heard the user's own voice for long enough to stop Martlet talking
+    /// (<see cref="TalkOverDetector"/>): never a short sound, and never what this PC plays.</summary>
+    internal bool TalkingOver { get => Volatile.Read(ref talkingOver) != 0; set => Volatile.Write(ref talkingOver, value ? 1 : 0); }
+    /// <summary>Frame by frame, whether this utterance's sound was what the speakers played (echo reduction only).</summary>
+    [JsonIgnore] internal EchoTimeline? Echo { get; set; }
     internal Voiceprint? Voiceprint { get; init; }
     internal SpeakerCheck? SpeakerCheck { get; set; }
     /// <summary>Who is being recognized in this utterance (runs alongside speech-to-text).</summary>
@@ -627,6 +634,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 if (speech is null)
                 {
                     utterance.Hearing = false;
+                    utterance.TalkingOver = false;
                     var status = utterance.Status;
                     if (status.Code is not ("mic.no_speech" or "listen.held"))
                         listening.Post(Result(utterance));
@@ -636,6 +644,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 }
                 listening.BeginTranscribing();
                 utterance.Hearing = false;
+                utterance.TalkingOver = false;
                 var previous = pending;
                 pending = Task.Run(() => TranscribeHeardAsync(previous, listening, utterance, speech, token), CancellationToken.None);
             }
@@ -1637,13 +1646,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     // Reads the capture's own 20 ms frames (no second audio queue) and releases it when the speaker pauses.
-    // Returns the speech range to send, or null when nobody spoke before the idle restart.
+    // Returns the speech range to send, or null when nobody spoke before the idle restart. With echo reduction, sound that is
+    // mostly what the speakers played (Martlet's own voice, a video) is let go like a cough: it is never you. Only the
+    // microphone talks over Martlet, and only with a sustained voice (TalkOverDetector).
     private async Task<SpeechRange?> EndpointAsync(LiveConversationOperation operation, CaptureRun run)
     {
         var settings = operation.Listening!.Activity;
         var detector = new EnergyVoiceActivityDetector(settings);
+        var talkOver = operation.Listening.Pc ? null : new TalkOverDetector();
+        var echo = operation.Echo;
         var minimumFrames = (int)(ListeningOptions.MinimumUtterance.TotalMilliseconds / 20);
         var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
+        // Running counts of loud frames that were a voice the speakers don't explain, and that were the speakers' sound.
+        var userSum = new List<int> { 0 };
+        var speakerSum = new List<int> { 0 };
         var started = clock.GetTimestamp();
         int index = 0, accepted = -1;
         try
@@ -1656,29 +1672,34 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     try { copied = run.TryCopyMonoFrame(index, frame); }
                     catch (OperationCanceledException) { copied = false; }
                     if (!copied) break;
+                    var speakers = echo?.Speakers((long)index * EnergyVoiceActivityDetector.FrameSamples, EnergyVoiceActivityDetector.FrameSamples) == true;
                     index++;
                     var transition = detector.Process(frame);
                     operation.VoiceLevel = detector.LastLevelDb;
+                    var loud = detector.LastFrameLoud;
+                    userSum.Add(userSum[^1] + (loud && !speakers ? 1 : 0));
+                    speakerSum.Add(speakerSum[^1] + (loud && speakers ? 1 : 0));
+                    if (talkOver?.Process(loud, speakers) == true) operation.TalkingOver = true;
                     if (transition == VoiceActivityTransition.SpeechStarted)
                     {
                         if (accepted < 0) operation.Publish(new("mic.hearing_speech"));
                     }
                     else if (transition == VoiceActivityTransition.SpeechEnded)
                     {
-                        // A cough or click is ignored; keep listening for real speech.
-                        if (accepted < 0 && detector.SpeechEndFrame - detector.SpeechStartFrame < minimumFrames)
+                        // A cough or click, or what the speakers played, is ignored; keep listening for real speech.
+                        if (accepted < 0 && (detector.SpeechEndFrame - detector.SpeechStartFrame < minimumFrames || !Voice()))
                         {
                             operation.Publish(new("mic.listening"));
                             continue;
                         }
-                        if (accepted < 0) accepted = detector.SpeechStartFrame;
+                        if (accepted < 0) accepted = Onset();
                         operation.Hearing = true;
                         await run.ReleaseAsync().ConfigureAwait(false);
                         return Range(accepted, detector.SpeechEndFrame);
                     }
-                    if (detector.Speaking && accepted < 0 && index - detector.SpeechStartFrame >= minimumFrames)
+                    if (detector.Speaking && accepted < 0 && index - detector.SpeechStartFrame >= minimumFrames && Voice())
                     {
-                        accepted = detector.SpeechStartFrame;
+                        accepted = Onset();
                         operation.Hearing = true;
                     }
                 }
@@ -1694,7 +1715,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 await Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock)).ConfigureAwait(false);
             }
             // Duration limit or Finish: send everything from the onset to the end of the recording.
-            if (accepted < 0 && detector.Speaking) accepted = detector.SpeechStartFrame;
+            if (accepted < 0 && detector.Speaking && Voice()) accepted = Onset();
             if (accepted >= 0) operation.Hearing = true;
             return accepted < 0 ? null : Range(accepted, 0) with { EndSampleExclusive = int.MaxValue };
         }
@@ -1703,6 +1724,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
             CryptographicOperations.ZeroMemory(frame);
             operation.VoiceLevel = -100;
         }
+
+        // The speech under way is someone's voice, not mostly what the speakers played (or the user has talked over them).
+        bool Voice() => talkOver?.Sustained == true || !SpeakersMostly(detector.SpeechStartFrame);
+        bool SpeakersMostly(int from) => from >= 0 && from < userSum.Count &&
+            speakerSum[^1] - speakerSum[from] > userSum[^1] - userSum[from];
+        // Where what is sent starts: the speech's onset, or where the user's own voice began over what the speakers played.
+        int Onset() => SpeakersMostly(detector.SpeechStartFrame) && talkOver is { StretchStartFrame: >= 0 } over
+            ? Math.Max(detector.SpeechStartFrame, over.StretchStartFrame) : detector.SpeechStartFrame;
 
         SpeechRange Range(int startFrame, int endFrame) => new(
             Math.Max(0, startFrame * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll)),
@@ -1728,9 +1757,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // What the PC plays is its own device; echo reduction hears the output Martlet's own voice plays on (the chosen one, or
         // Windows' default).
         var pc = operation.Listening?.Pc == true;
+        // Hands-free listening also learns, frame by frame, which of what it hears was the speakers' sound.
+        if (!pc && operation.HandsFree && operation.Listening?.ReduceEcho == true && echoReducer is not null)
+            operation.Echo = new EchoTimeline(LiveConversationConfiguration.CaptureDuration);
         var devices = pc ? pcAudio ?? throw new LiveActionException("conversation.configuration_unsupported")
             : operation.Listening?.ReduceEcho == true && echoReducer is not null
-            ? echoReducer.For(audio.Output.EndpointId) : captureDevices;
+            ? echoReducer.For(audio.Output.EndpointId, operation.Echo) : captureDevices;
         await using var microphone = new MicrophoneCapture(runtime.SessionId, devices,
             new() { MaximumDuration = LiveConversationConfiguration.CaptureDuration, MaximumPcmBytes = 800_000 }, clock);
         var request = new CaptureRequest(Ids(), Interlocked.Increment(ref captureEpoch),

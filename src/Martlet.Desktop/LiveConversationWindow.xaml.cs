@@ -760,23 +760,25 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // You kept talking before Martlet answered (you are talking now, or something new was heard since the reply was asked for):
     // that reply (or remark) stops, and once you pause, everything you said is answered together. A reply that already acted
-    // (Home Assistant or a tool) finishes; what you add is answered after it.
+    // (Home Assistant or a tool) finishes; what you add is answered after it. Once Martlet is speaking, only talking over it
+    // stops it: a sustained voice on the microphone (TalkOverDetector), never a short sound, a queued word or what this PC plays
+    // (the PC listener never interrupts anything).
     private void Interrupt()
     {
-        var talking = listener is { Hearing: true } or { Transcribing: > 0 };
+        var over = listener is { TalkingOver: true };
+        var talking = over || listener is { Hearing: true } or { Transcribing: > 0 };
         if (!talking && heardQueue.Count == 0) return;
         pacer?.NoteConversation();
         // Barge-in: you talked over a reply Martlet is already saying. It stops at once (the rest of the reply and its queued
         // audio are dropped) and what you say now is answered next, with the reply so far kept in context.
-        if (preferences.BargeIn && listener is { Hearing: true } && owned is { OwnershipReleased: false } speaking &&
-            !ReferenceEquals(yielded, speaking) &&
-            speaking.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true })
+        if (preferences.BargeIn && over && owned is { OwnershipReleased: false } speaking && !ReferenceEquals(yielded, speaking) &&
+            Speaking(speaking))
         {
             yielded = speaking;
             controller.Stop(speaking, "conversation.interrupted", keepContext: true);
         }
         if (owned is { OwnershipReleased: false, Spoken: true } reply && answering is { } batch && !ReferenceEquals(yielded, reply) &&
-            restarts < MaximumRestarts && Restartable(reply))
+            restarts < MaximumRestarts && Restartable(reply) && !Speaking(reply))
         {
             yielded = reply;
             restarts++;
@@ -784,12 +786,16 @@ public partial class LiveConversationWindow : ThemedWindow
             Requeue(batch);
             controller.Stop(reply, "conversation.continued", keepContext: true);
         }
-        if (talking && commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance))
+        if (talking && commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance) && (over || !Speaking(glance)))
         {
             yielded = glance;
             controller.Stop(glance, "commentary.interrupted", keepContext: true);
         }
     }
+
+    /// <summary>Martlet is saying it (or may already have said some of it).</summary>
+    private static bool Speaking(LiveConversationOperation operation) =>
+        operation.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true };
 
     private static bool Restartable(LiveConversationOperation reply) =>
         reply.HomeSummary is null && reply.Status.Code != "home.asking" &&
