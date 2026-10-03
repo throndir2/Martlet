@@ -486,6 +486,24 @@ internal sealed class LiveConversationConfiguration
 
     internal static string ListeningInstructions => Listening(null)!;
 
+    /// <summary>What starts each line of a message that was heard from what the PC plays (Hear what this PC plays), so the
+    /// Thinking model, the history and memory tell it apart from the user's own words.</summary>
+    internal const string PcAudioMarker = "[PC audio]";
+
+    /// <summary>Replies whose message includes what the PC plays: those lines are never the user, and on their own they
+    /// usually get [pass].</summary>
+    internal static string? PcAudio(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.PcAudio, ("marker", PcAudioMarker), ("silent", SilentReply));
+
+    /// <summary>The text without the lines heard from what the PC plays (null when nothing else is left): what memory and
+    /// learning names may read.</summary>
+    internal static string? WithoutPcAudio(string? text)
+    {
+        if (text is null || !text.Contains(PcAudioMarker, StringComparison.Ordinal)) return text;
+        var own = string.Join("\n", text.Split('\n').Where(line => !line.TrimStart().StartsWith(PcAudioMarker, StringComparison.Ordinal)));
+        return string.IsNullOrWhiteSpace(own) ? null : own.Trim();
+    }
+
     internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
 
     internal static VisionSupport Vision(SetupRoute? thinking) =>

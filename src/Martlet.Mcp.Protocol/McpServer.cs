@@ -304,6 +304,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
         }),
+        Tool("pc_audio_check", "Companion > Listening > Hear what this PC plays: the saved choice (off by default) with HandsFree and " +
+            "ReduceEcho, whether this Windows can hear the PC without Martlet's own sound (a process loopback is set up and closed " +
+            "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
+            "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
+            "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +
+            "continuous and the pause ended the first utterance. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
@@ -422,6 +431,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
+                "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };

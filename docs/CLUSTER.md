@@ -146,7 +146,7 @@ NVIDIA Build and its old key.
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off | Where memory is stored, and the memories themselves |
 | `lorebooks` | Every lorebook and the scan settings (up to 1 MiB) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
-| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras, Voice ID, echo reduction |
+| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras, Voice ID, echo reduction, hearing what the PC plays |
 | `speech-display`, `appearance` | Speech bubbles and subtitles, the theme | |
 
 Audio devices, the device role (companion or host PC), startup choices, MCP

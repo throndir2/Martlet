@@ -8,7 +8,8 @@ also runs **Parakeet**, AudioTranscriber's default speech-to-text, as a
 Listening choice on this PC.
 
 Both are optional and off until you ask for them. Nothing is downloaded,
-recorded or uploaded for them by itself.
+recorded or uploaded for them by itself. Voices are recognized and learned only
+from the microphone, never from [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays).
 
 ## Companion › People
 

@@ -1198,6 +1198,87 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public Task WhatThePcPlaysIsMarkedAndNeverRemembered() => DispatcherTest(async () =>
+    {
+        var pc = new PcSourceFixture();
+        await using var fixture = await LiveFixture.Create(pcAudio: pc);
+        await fixture.EnableMemory();
+        fixture.Answer("Ha, good one.");
+        // The video speaks for 2.5 s; then nothing plays at all (a loopback delivers no packets).
+        pc.Enqueue(quiet: 3, speech: 25);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearPc: true));
+        try
+        {
+            await Loaded(window);
+            Assert.Equal("Also hears what this PC plays once you start listening.", Control<TextBlock>(window, "PcAudioText").Text);
+            Click(window, "MicChip");
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+                while (!window.Messages.Any(m => m.Role == ChatRole.Martlet))
+                {
+                    fixture.Clock.Advance(TimeSpan.FromMilliseconds(50));
+                    await Task.Delay(1, timeout.Token);
+                }
+            var heard = Assert.Single(window.Messages, m => m.IsPcAudio);
+            Assert.StartsWith("Playing on this PC", heard.Caption);
+            Assert.Equal("Synthetic fixture transcript.", heard.Text);
+            Assert.DoesNotContain(window.Messages, m => m.IsUser);
+            Assert.NotNull(window.PcListener);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("[PC audio] Synthetic fixture transcript.", body, StringComparison.Ordinal);
+            Assert.Contains("never the user", body, StringComparison.Ordinal);
+            await fixture.FinishRemembering();
+            // One transcription and one reply: nothing was remembered from what the PC played.
+            Assert.Equal(1, fixture.Stt.Calls);
+            Assert.Equal(1, fixture.Llm.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public void PcLinesAreMarkedInTheOrderTheyWereHeard() =>
+        Assert.Equal("[PC audio] And now the weather.\nWhat did he say? Was it rain?\n[PC audio] Rain all week.",
+            LiveConversationWindow.PcMessage([("And now the weather.", true), ("What did he say?", false), ("Was it rain?", false),
+                ("Rain all week.", true)]));
+
+    private sealed class PcSourceFixture : IPcAudioSourceFactory, IPcAudioSource
+    {
+        private readonly ConcurrentQueue<byte[]> packets = new();
+        private int sample;
+        public bool WithoutMartlet => true;
+        public CaptureSourceFormat Format { get; } = new(16000, 1, 16, DeviceSampleEncoding.IntegerPcm);
+        public IPcAudioSource Open(CancellationToken cancellationToken) => this;
+        public void Start() { }
+        public void Stop() { }
+        public void Dispose() { }
+        public CapturePacket Read(Span<byte> destination)
+        {
+            if (!packets.TryDequeue(out var bytes)) return new(0);
+            bytes.AsSpan().CopyTo(destination);
+            return new(bytes.Length);
+        }
+
+        internal void Enqueue(int quiet, int speech)
+        {
+            void Packets(int count, double amplitude)
+            {
+                for (var p = 0; p < count; p++)
+                {
+                    var packet = new byte[3200];
+                    for (var i = 0; i < 1600; i++, sample++)
+                    {
+                        var t = sample / 16000.0;
+                        var value = amplitude * Math.Sin(2 * Math.PI * 180 * t) * (0.7 + 0.3 * Math.Sin(2 * Math.PI * 4 * t));
+                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(packet.AsSpan(i * 2), (short)(value * 32767));
+                    }
+                    packets.Enqueue(packet);
+                }
+            }
+            Packets(quiet, 0.001);
+            Packets(speech, 0.25);
+        }
+    }
+
+    [Fact]
     public async Task HandsFreeListeningSendsOnlyTheEndpointedUtterance()
     {
         await using var fixture = await LiveFixture.Create();
@@ -1740,7 +1821,8 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledDevice Output { get; }
     internal DesktopMemoryService Memory { get; }
     internal LiveConversationController Controller { get; }
-    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null)
+    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
+        IPcAudioSourceFactory? pcAudio = null)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -1755,7 +1837,8 @@ internal sealed class LiveFixture : IAsyncDisposable
                     target.Keyless ? null : credentials, clock)),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
-            memory: Memory, voiceIdentity: voiceIdentity);
+            memory: Memory, voiceIdentity: voiceIdentity,
+            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock));
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -1764,9 +1847,9 @@ internal sealed class LiveFixture : IAsyncDisposable
         };
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
-        bool legacy = false, VoiceIdentity? voiceIdentity = null)
+        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
