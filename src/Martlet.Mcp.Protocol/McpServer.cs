@@ -361,7 +361,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
         }),
         Tool("pc_audio_check", "Companion > Listening > Hear what this PC plays: the saved choice (off by default) with HandsFree and " +
-            "ReduceEcho, whether this Windows can hear the PC without Martlet's own sound (a process loopback is set up and closed " +
+            "ReduceEcho, which outputs are in use (sessions only) and what Martlet would hear (every app but Martlet, or only the output " +
+            "you hear while another output such as a virtual cable is in use), whether this Windows can hear the PC without Martlet's own sound (a process loopback is set up and closed " +
             "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
             "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
             "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +

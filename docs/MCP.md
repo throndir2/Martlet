@@ -932,7 +932,13 @@ speakers wants echo reduction on). `windows` says whether this Windows can hear
 the PC without Martlet's own sound (`withoutMartlet`, with the process
 loopback's `format`, or `problem` and the `fallback`): a process loopback that
 leaves out the MCP server's own process is set up and closed again without
-starting, so `recorded` is always false. Its `rehearsal` runs the production
+starting, so `recorded` is always false. It also reads the outputs' sessions
+(never their sound): `output` (the output you hear, Windows' default),
+`elsewhere` (another output an app other than Martlet streams to right now,
+such as a voice changer's or microphone app's virtual cable, or null) and
+`hears` (every app's sound except Martlet's, or only what plays on `output`
+while listening to the PC holds off for Martlet's voice, which is what
+happens whenever `elsewhere` is set). Its `rehearsal` runs the production
 path (`PcAudioCaptureFactory`, `MicrophoneCapture`, the capture normalizer and
 the voice-activity detector with the defaults the PC listener uses) on a
 fixture loopback and a simulated clock: a synthesized video voice 0-3 s, the
@@ -1688,11 +1694,15 @@ plays*, off by default; `checkedState` is the saved choice and `ui_toggle`
 needs `--allow-ui-effects` because it saves `talk-preferences.json`) and
 `TalkHearPcStatus` (returned: *Off. Martlet hears only your microphone.*, *On.
 While Martlet listens it also hears what this PC plays, without its own
-voice.*, or why it doesn't apply: push-to-talk, echo reduction off, or Martlet's
-voice can't be left out); `pc_audio_check` reads the same choice. With it on
+voice.*, *On. <another output> is in use too (a virtual cable there can carry
+your own voice), so Martlet hears only what plays on <your output> and stops
+hearing it while it speaks.*, or why it doesn't apply: push-to-talk, echo
+reduction off, or Martlet's voice can't be left out; the card reads which
+outputs are in use, never their sound); `pc_audio_check` reads the same choice. With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
-what this PC plays (not Martlet's own voice).*, *Hearing this PC play
+what this PC plays (not Martlet's own voice).*, *Also hearing what this PC
+plays on <your output> (paused while Martlet speaks).*, *Hearing this PC play
 something…* or why it can't hear the PC, followed by *This PC plays your voice
 back too; Martlet left out N line(s) of it.* once a line the PC played repeated
 what you said; what the PC played shows in
