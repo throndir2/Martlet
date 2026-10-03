@@ -378,7 +378,9 @@ left open) holds `engine.lock` (0600) and records itself in `engine.holder`;
 terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
 `--yes update` with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and
 gives up with 75; a waiting `--yes remove` continues once the holder is killed
-(SIGKILL); the next automatic run is not blocked (no stale lock);
+(SIGKILL), and so does an `update` without a terminal or `--yes` that sets
+`MARTLET_LOCK_WAIT=60` (*Update hosts now*): it waits instead of stopping and
+then runs; the next automatic run is not blocked (no stale lock);
 `logs/engine.log` records the waits; and the desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
@@ -391,6 +393,27 @@ this ran ... Nothing was changed`) while one in the current namespace
 continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
+
+`host_update_check` (no arguments) rehearses how one Martlet keeps its own host
+service updates from colliding, with the desktop's production
+`HostUpdateTracker` and `HostEngineBusy` reader, and returns `{exitCode, report:
+{passed, total, steps: [{name, ok, detail}]}}`. The timeline is the one seen on
+a host PC right after Martlet updated itself: *Update this PC's host service*
+(a run window) claims this PC's host service (`keys`,
+`run-window-claims-host`); the automatic pass then leaves that host to the run,
+both as its local pairing and as this PC's own host service, with no second
+engine run and no "busy" note, while another host still updates
+(`automatic-pass-leaves-host-to-run-window`); overlapping routes (a run window
+and a command from another computer) end separately
+(`overlapping-routes-end-separately`); the engine's real busy line for another
+update is named as *Another update of that host was already running ...* while
+an install keeps *Waiting to update ... busy* (`busy-note-names-another-update`);
+a host found current loses its stale note and retry while other hosts keep
+theirs (`current-host-clears-stale-note`, `retry-takes-waiting`); and *Update
+hosts now* waits up to 30 minutes for another change, inside an unattended
+run's 45-minute limit (`asked-update-waits`). It contacts nothing and touches no
+Docker, host or data directory; the engine side of waiting is
+`host_engine_check`'s `asked-update-waits-then-runs`.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -634,7 +657,12 @@ return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
 example *Update available: Update to Martlet 0.40.0*); clicking it runs the
-same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. Each
+same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`.
+`SelectedDeviceUpdateNote` (returned) is the callout with what happened to the
+selected host's latest update (*Updating to Martlet 0.22.0...*, *Updated to
+Martlet 0.22.0 at 8:21 PM.*, *Waiting to update ... that host is busy (...)* or
+*Another update of that host was already running (...)*); it is absent once the
+host is current. Each
 row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)

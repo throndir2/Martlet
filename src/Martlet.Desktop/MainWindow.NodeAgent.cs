@@ -220,6 +220,11 @@ public partial class MainWindow
             ShowNodeAgentStatus($"{host.HostId} runs Martlet {current} but did not hand this PC its agent token: {why}");
             return;
         }
+        if (hostUpdates.IsUpdating(ThisPcHostId))
+        {
+            ShowNodeAgentStatus($"{host.HostId} runs Martlet {current}; Martlet is updating it to {Version} now.");
+            return;
+        }
         if (ownHostUpdateTried == Version || hostUpdatesRunning)
         {
             ShowNodeAgentStatus($"{host.HostId} runs Martlet {current}, older than commands between computers. Bringing it to {Version} " +
@@ -230,6 +235,7 @@ public partial class MainWindow
         ownHostRetryAt = null;
         ownHostUpdateTried = Version;
         hostUpdatesRunning = true;
+        using var updating = hostUpdates.Begin(ThisPcHostId);
         const string title = "Keep this PC's host service current";
         var output = new EngineOutput(new LineSink(line => HostRunLog.Write(title, line)));
         ShowNodeAgentStatus($"Updating {host.HostId} from Martlet {current} to {Version}, so your other computers can update and manage it from now on...");
@@ -253,6 +259,7 @@ public partial class MainWindow
             if (exit == 0)
             {
                 thisPcHostVersion = Version;
+                HostUpdateSettled(ThisPcHostId);
                 ErrorLog.Info($"Updated this PC's host service from {current} to {Version}.");
                 ShowNodeAgentStatus($"Updated {host.HostId} to Martlet {Version}. Your other computers can now update and manage it from there.");
                 CheckHostsAsync([host]).Forget();
@@ -395,17 +402,22 @@ public partial class MainWindow
 
         var current = await HostSetupCommands.ThisPcGatewayVersionAsync(token);
         if (current is not null && !AppVersions.IsOlder(current, Version))
+        {
+            if (!hostUpdates.IsUpdating(ThisPcHostId)) HostUpdateSettled(ThisPcHostId);
             return new(true, $"{here} runs Martlet {Version}, and its host service runs {current}.", 0);
-        if (hostUpdatesRunning)
+        }
+        if (hostUpdatesRunning || hostUpdates.IsUpdating(ThisPcHostId))
             return Wait("another update of this PC's host service is running",
                 $"Another update of {here}'s host service is running; this one continues when it ends.");
         nodeUpdateBlocker = null;
-        await EnsureLocalEngineAsync(output, token);
-        output.Report($"Updating {here}'s host service from {current ?? "an unknown version"} to {Version}. Its pairings and roles stay; " +
-            "it restarts at the end, so it stops answering for a moment.");
+        // Claimed before the first await, so the automatic pass can't start a second update of this host meanwhile.
         hostUpdatesRunning = true;
+        using var updating = hostUpdates.Begin(ThisPcHostId);
         try
         {
+            await EnsureLocalEngineAsync(output, token);
+            output.Report($"Updating {here}'s host service from {current ?? "an unknown version"} to {Version}. Its pairings and roles stay; " +
+                "it restarts at the end, so it stops answering for a moment.");
             var target = ThisPcTarget();
             await HostLocal.EnsureImageAsync(target, output.Report, output, token);
             // A change already running on this host (an install, for example) finishes first; the output says so.
@@ -415,6 +427,7 @@ public partial class MainWindow
                 return new(false, $"{here}'s host stayed busy with another change ({busy}), so its host service wasn't updated. Send the update again when that finishes.", exit);
             if (exit != 0) return new(false, $"Updating {here}'s host service stopped (exit {exit}). The output shows why.", exit);
             thisPcHostVersion = ownHostUpdateTried = Version;
+            HostUpdateSettled(ThisPcHostId);
             return new(true, $"{here} runs Martlet {Version}: the app and its host service.", 0);
         }
         finally { hostUpdatesRunning = false; }

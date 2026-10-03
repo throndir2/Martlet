@@ -10,7 +10,8 @@ namespace Martlet.Mcp;
 /// ubuntu:24.04 container (no network, never pulled, removed afterwards; it never touches Martlet's own host containers or
 /// volumes) and checks that a host makes one change at a time: a change holds the engine lock, read-only commands still
 /// run, status names the holder, an automatic run (no terminal, no --yes) stops at once with exit 75 and MARTLET-BUSY,
-/// an attended run waits and gives up after MARTLET_LOCK_WAIT, a waiting run continues when the holder dies (SIGKILL), no
+/// an attended run waits and gives up after MARTLET_LOCK_WAIT, a waiting run continues when the holder dies (SIGKILL), so
+/// does a run without a terminal or --yes that was told to wait (Update hosts now), no
 /// stale lock remains and the engine journal records it. The desktop's own reader (<see cref="HostEngineBusy"/>) then
 /// reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
@@ -75,7 +76,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 15;
+        const int expected = 16;
         if (steps.Count < expected)
         {
             passed = false;
@@ -183,13 +184,21 @@ internal static class HostEngineCheck
 
         MARTLET_LOCK_WAIT=60 timeout 70 "$E" --yes remove fixture-missing-role </dev/null >/tmp/wait.out 2>&1 &
         WAITER=$!
-        for _ in $(seq 1 50); do has /tmp/wait.out "Waiting for it to finish" && break; sleep 0.1; done
+        # Update hosts now: no terminal and no --yes like an automatic update, but told to wait (MARTLET_LOCK_WAIT).
+        MARTLET_LOCK_WAIT=60 timeout 70 "$E" update </dev/null >/tmp/asked.out 2>&1 &
+        ASKED=$!
+        for _ in $(seq 1 50); do has /tmp/wait.out "Waiting for it to finish" && has /tmp/asked.out "Waiting for it to finish" && break; sleep 0.1; done
         waiting=0; has /tmp/wait.out "Waiting for it to finish before removing fixture-missing-role" && waiting=1
+        asked=0; has /tmp/asked.out "Waiting for it to finish before updating this host" && asked=1
         kill -9 "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
         wait "$WAITER"; rc=$?
+        wait "$ASKED"; arc=$?
         [[ $waiting == 1 && $rc == 1 ]] && has /tmp/wait.out "That finished. Continuing with removing fixture-missing-role." &&
           has /tmp/wait.out "Unknown role 'fixture-missing-role'" && ok=1 || ok=0
         step waiting-run-continues-after-holder-dies "$ok" "holder killed (SIGKILL); the waiting remove continued and ended exit $rc (unknown role)"
+        [[ $asked == 1 && $arc == 1 ]] && has /tmp/asked.out "That finished. Continuing with updating this host." &&
+          has /tmp/asked.out "changes the gateway configuration" && ! grep -q '^MARTLET-BUSY' /tmp/asked.out && ok=1 || ok=0
+        step asked-update-waits-then-runs "$ok" "update without a terminal or --yes but with MARTLET_LOCK_WAIT=60 (Update hosts now): waited instead of stopping, then ran (exit $arc at the fixture's unapproved configuration)"
 
         timeout 15 "$E" update </dev/null >/tmp/after.out 2>&1; rc=$?
         [[ $rc != 75 ]] && ! grep -q '^MARTLET-BUSY' /tmp/after.out && has /tmp/after.out "changes the gateway configuration" && ok=1 || ok=0

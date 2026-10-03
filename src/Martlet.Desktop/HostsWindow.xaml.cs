@@ -381,10 +381,13 @@ public partial class HostsWindow : ThemedWindow
     {
         if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
         busy = true;
+        using var updating = action.Verb == HostVerb.Update ? MainWindow.BeginHostUpdateElsewhere(host.HostId, onThisPc: false) : null;
         try
         {
-            StatusText.Text = await HostActions.RunAsync(this, pairings.DataDirectory, host.Target(version) with { Method = HostSetupMethod.Agent },
-                null, action, pairing: host.Pairing) ?? "Stopped. The run window shows why.";
+            var done = await HostActions.RunAsync(this, pairings.DataDirectory, host.Target(version) with { Method = HostSetupMethod.Agent },
+                null, action, pairing: host.Pairing);
+            if (done is not null && action.Verb == HostVerb.Update) MainWindow.HostUpdatedElsewhere(host.HostId, onThisPc: false);
+            StatusText.Text = done ?? "Stopped. The run window shows why.";
         }
         catch (InvalidOperationException error) { StatusText.Text = error.Message; }
         finally { busy = false; }
@@ -398,11 +401,16 @@ public partial class HostsWindow : ThemedWindow
         if (!Ssh)
         {
             busy = true;
+            using var updating = action.Verb == HostVerb.Update ? MainWindow.BeginHostUpdateElsewhere("", onThisPc: true) : null;
             try
             {
                 if (action.Verb == HostVerb.Pair) await PairThisPcAsync();
-                else StatusText.Text = await HostActions.RunAsync(this, pairings.DataDirectory, Target(), null, action)
-                    ?? "Stopped. Check the run window for details.";
+                else
+                {
+                    var done = await HostActions.RunAsync(this, pairings.DataDirectory, Target(), null, action);
+                    if (done is not null && action.Verb == HostVerb.Update) MainWindow.HostUpdatedElsewhere("", onThisPc: true);
+                    StatusText.Text = done ?? "Stopped. Check the run window for details.";
+                }
             }
             catch (InvalidOperationException error) { StatusText.Text = error.Message; }
             finally { busy = false; }
@@ -427,7 +435,11 @@ public partial class HostsWindow : ThemedWindow
                 return;
             }
             var target = Target() with { HostId = null };
+            var managed = paired is { } host && host.SshTarget == SshTargetText.Text.Trim() ? host.HostId : null;
+            using var updating = action.Verb == HostVerb.Update && managed is not null
+                ? MainWindow.BeginHostUpdateElsewhere(managed, onThisPc: false) : null;
             var done = await HostActions.RunAsync(this, pairings.DataDirectory, target, PinnedHostKey, action);
+            if (done is not null && action.Verb == HostVerb.Update && managed is not null) MainWindow.HostUpdatedElsewhere(managed, onThisPc: false);
             StatusText.Text = done ?? "Stopped. Check the run window for details.";
         }
         catch (InvalidOperationException error) { StatusText.Text = error.Message; }
