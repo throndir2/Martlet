@@ -10,8 +10,8 @@
   },
   "applicationGraphs": {
     "Desktop": {
-      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5", "Martlet.Mcp.Client", "Martlet.Home", "Martlet.Sherpa"],
-      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET"],
+      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5",       "Martlet.Mcp.Client", "Martlet.Home", "Martlet.Sherpa", "Martlet.EchoCancellation"],
+            "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET", "SoundFlow", "SoundFlow.Extensions.WebRtc.Apm"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },
     "Doctor": {
@@ -142,6 +142,23 @@
       "version": "2024.1.0",
       "sha512": "a3e105aea1476e7bc6d95ce1dc27c3448b7f2621de4bbd7d010ea886fee01ba9ba3ee55a800969bd33191199d60ca9c2326d2f1f59e734d17bd6b5db2390d197",
       "runtimeAsset": "lib/net8.0/Renci.SshNet.dll",
+      "notices": []
+    },
+    {
+      "id": "SoundFlow",
+      "version": "1.4.0",
+      "sha512": "b63b159881ca417ab12ce327960bd90fcb3c0ce4b2d5dc6fcc16c2d5feaf6af2bd622f5b6adcbe2b916cba1c0f64b291088b8318a020f1dca6b500553ac672e9",
+      "runtimeAsset": "lib/net8.0/SoundFlow.dll",
+      "notices": [
+        { "source": "LICENSE.md", "file": "SoundFlow-LICENSE.txt", "sha256": "1ac392bd1554c0c2109503f3d0fabae8c397dc091b9c1382373353870298b431" },
+        { "source": "SOUNDFLOW-THIRD-PARTY-NOTICES.txt", "file": "SoundFlow-THIRD-PARTY-NOTICES.txt", "sha256": "5dd50d409d56a6bd6bfd86c6e013318c582f830ededace6fed4b937f59331eb2" }
+      ]
+    },
+    {
+      "id": "SoundFlow.Extensions.WebRtc.Apm",
+      "version": "1.4.0",
+      "sha512": "f29a4d91f69769ef1768867fb158a86b16118cffc56d7af383ed257e2cf3ff6ddaefc5e4d155016840f506a8b210c2f0c59d49baf37d8406882762d0aff97abb",
+      "runtimeAsset": "lib/net8.0/SoundFlow.Extensions.WebRtc.Apm.dll",
       "notices": []
     },
     {

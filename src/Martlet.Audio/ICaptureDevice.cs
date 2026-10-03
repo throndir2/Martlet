@@ -6,7 +6,9 @@ public interface ICaptureDeviceFactory
     ICaptureDevice Open(CaptureDeviceAccess access, CancellationToken cancellationToken);
 }
 
-public readonly record struct CapturePacket(int ByteCount, bool Discontinuity = false);
+// Timestamp: when the device recorded the packet's first frame, on the performance counter in 100 ns units (WASAPI's QPC
+// position), or null when the device reports none. Echo reduction lines microphone and speaker audio up by it.
+public readonly record struct CapturePacket(int ByteCount, bool Discontinuity = false, long? Timestamp = null);
 
 public interface ICaptureDevice : IDisposable
 {

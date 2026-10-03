@@ -56,6 +56,7 @@ try {
     Copy-Item -LiteralPath "$PSScriptRoot\Install-Prerequisites.ps1" -Destination (Join-Path $staging 'prerequisites\Install-Prerequisites.ps1')
     Copy-Item -LiteralPath "$PSScriptRoot\DEPENDENCIES.txt" -Destination (Join-Path $staging 'notices\DEPENDENCIES.txt')
     Copy-Item -LiteralPath "$PSScriptRoot\NAudio-THIRD-PARTY-NOTICES.txt" -Destination (Join-Path $staging 'notices\NAudio-THIRD-PARTY-NOTICES.txt')
+    Copy-Item -LiteralPath "$PSScriptRoot\WebRTC-APM-NOTICES.txt" -Destination (Join-Path $staging 'notices\WebRTC-APM-NOTICES.txt')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md') -Destination (Join-Path $staging 'notices\Audio2Face-THIRD-PARTY-NOTICES.md')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt') -Destination (Join-Path $staging 'notices\Audio2Face-Protos-LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.F5\BundledVoices\NOTICES.txt') -Destination (Join-Path $staging 'notices\F5-Voices-NOTICES.txt')
