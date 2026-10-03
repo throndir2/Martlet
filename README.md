@@ -183,6 +183,15 @@ own Startup apps switch is respected, and the uninstaller removes the entry).
 Starting Martlet again while it runs shows the running window instead of a
 second copy (per data folder). Choices live in `background.json`.
 
+**Exiting.** If an exit would cut work short (an update download, an install
+in a run window, backup and restore, a troubleshooting report, a download or a
+command from another computer), Martlet lists what it is still doing and asks:
+*Exit anyway* interrupts it, *Keep Martlet open* doesn't. While it closes, its
+window says what it is finishing (the notification-area tooltip too); if that
+takes more than a few seconds the window shows with **Exit now**, which says
+what exiting without waiting interrupts and asks once more. A part that fails
+to close is logged and skipped, so Martlet never stays stuck closing.
+
 Paired **Martlet hosts** follow the desktop's version: the gateway reports its
 release, the Devices map shows *Update available* for older hosts, and clicking
 it (or **Update host**) rebuilds that host's gateway from this version in a

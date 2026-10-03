@@ -633,6 +633,15 @@ public partial class PrepareHostWindow : ThemedWindow
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+    /// <summary>Still working on the computer (exiting Martlet would interrupt it).</summary>
+    internal bool IsBusy => busy;
+
+    /// <summary>What this window prepares, as its heading shows it (for example "Prepare gpu-pc").</summary>
+    internal string Heading => HeadingText.Text;
+
+    /// <summary>Martlet is exiting: the work stops (this window closes with Martlet).</summary>
+    internal void Interrupt() => lifetime.Cancel();
+
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (busy && !ConfirmationDialog.Confirm(this,
