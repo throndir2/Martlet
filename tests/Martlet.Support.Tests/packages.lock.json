@@ -93,13 +93,13 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.22.0, )"
+          "Martlet.Core": "[0.23.0, )"
         }
       },
       "martlet.support": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Diagnostics": "[0.22.0, )"
+          "Martlet.Diagnostics": "[0.23.0, )"
         }
       }
     }
