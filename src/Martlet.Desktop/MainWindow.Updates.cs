@@ -250,6 +250,8 @@ public partial class MainWindow
         : !asked && nodeAgentBusy ? "Martlet is checking for commands from your other computers"
         : OwnedWindows.Count > 0 ? "a Martlet window is open"
         : IsActive ? "you're using Martlet"
+        // Anything else exiting would cut short, so an unattended install never has to ask on the way out.
+        : ExitInterruptions(asked) is [var interrupted, ..] ? char.ToLowerInvariant(interrupted[0]) + interrupted[1..]
         : null;
 
     /// <summary>Work on hosts, or for your other computers, that closing Martlet would cut off, in words, or null. Even an

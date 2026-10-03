@@ -197,7 +197,10 @@ command from another computer), Martlet lists what it is still doing and asks:
 window says what it is finishing (the notification-area tooltip too); if that
 takes more than a few seconds the window shows with **Exit now**, which says
 what exiting without waiting interrupts and asks once more. A part that fails
-to close is logged and skipped, so Martlet never stays stuck closing.
+to close is logged and skipped, so Martlet never stays stuck closing. An
+unattended update's exit (automatic, or asked for by another computer) never
+asks or shows the window: it starts only when nothing would be cut short (and
+otherwise waits for it), and a slow close stays out of sight.
 
 Paired **Martlet hosts** follow the desktop's version: the gateway reports its
 release, the Devices map shows *Update available* for older hosts, and clicking

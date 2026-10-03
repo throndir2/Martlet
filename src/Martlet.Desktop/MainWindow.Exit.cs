@@ -53,6 +53,17 @@ public partial class MainWindow
             HideToTray();
             return;
         }
+        // An unattended update (automatic, or one another computer asked for) never asks or shows Martlet: when exiting would
+        // cut work short after all, the update waits for it and Martlet stays as it was.
+        if (!sessionEnding && installOnExit is { Unattended: true } unattended && ExitInterruptions() is [var work, ..])
+        {
+            installOnExit = null;
+            exiting = false;
+            ErrorLog.Info($"Installing Martlet {unattended.Version.ToString(3)} waits; Martlet is still busy: {work}.");
+            UpdateStatusText.Text = ActionText.Text =
+                $"Martlet {unattended.Version.ToString(3)} installs as soon as this finishes: {char.ToLowerInvariant(work[0])}{work[1..]}.";
+            return;
+        }
         if (!await ConfirmInterruptionsAsync())
         {
             RefuseExit();
@@ -62,8 +73,10 @@ public partial class MainWindow
         await CloseMartletAsync();
     }
 
-    /// <summary>What exiting now would cut short, each as a capitalized phrase; empty when nothing would be.</summary>
-    private List<string> ExitInterruptions()
+    /// <summary>What exiting now would cut short, each as a capitalized phrase; empty when nothing would be.
+    /// <paramref name="asked"/>: for the install a martlet.update command from another computer is doing, so that command
+    /// doesn't count.</summary>
+    private List<string> ExitInterruptions(bool asked = false)
     {
         var busy = new List<string>();
         if (recovery is { NeedsCleanup: true })
@@ -85,7 +98,7 @@ public partial class MainWindow
             busy.Add("Downloading Parakeet speech recognition");
         if (hostUpdatesRunning || hostUpdates.Running)
             busy.Add("Updating Martlet on your hosts");
-        if (nodeCommandRunning is { } command)
+        if (!asked && nodeCommandRunning is { } command)
             busy.Add($"A command from another computer: {NodeCommandAgent.Describe(command)}");
         foreach (var window in Application.Current.Windows.OfType<Window>())
         {
@@ -266,22 +279,24 @@ public partial class MainWindow
         UpdateTray();
     }
 
-    /// <summary>Closing has taken longer than usual: Exit now shows, and so does the window when it was hidden.</summary>
+    /// <summary>Closing has taken longer than usual: Exit now shows, and so does the window when it was hidden, except while an
+    /// unattended update installs: then Martlet stays out of sight and restarts by itself once it has closed.</summary>
     private void ClosingIsSlow()
     {
         closingTimer.Stop();
         if (closingFinished) return;
         ErrorLog.Info($"Exiting is taking longer than usual: Martlet is {closingStep}.");
         ClosingSlowPanel.Visibility = Visibility.Visible;
+        if (installOnExit is { Unattended: true }) return;
         RevealClosing();
     }
 
-    /// <summary>Shows the window with the closing panel (from the icon, a second start, or when closing is slow). An automatic
-    /// update's quiet install doesn't take the focus.</summary>
+    /// <summary>Shows the window with the closing panel (from the icon, a second start, or when closing is slow). An unattended
+    /// update's install doesn't take the focus.</summary>
     private void RevealClosing()
     {
         if (closingFinished) return;
-        var quiet = installOnExit?.Quiet == true;
+        var quiet = installOnExit?.Unattended == true;
         if (!IsVisible)
         {
             ShowActivated = !quiet;
