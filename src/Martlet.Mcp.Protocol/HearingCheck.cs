@@ -173,7 +173,7 @@ internal static class HearingCheck
         }
     }
 
-    private static async Task<byte[]> ReadRequestAsync(NetworkStream stream, CancellationToken cancellation)
+    internal static async Task<byte[]> ReadRequestAsync(NetworkStream stream, CancellationToken cancellation)
     {
         var buffer = new MemoryStream();
         var one = new byte[8192];

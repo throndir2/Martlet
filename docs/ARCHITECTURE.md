@@ -568,8 +568,12 @@ playback instead, and *Reduce echo from my speakers* (on by default) supplies
 the echo reference: a WASAPI loopback of the output Martlet's voice uses, read
 only while the microphone captures and only to feed WebRTC's AEC3, which
 subtracts it before VAD, Voice ID or STT see the audio
-([Echo reduction](CONVERSATION.md#echo-reduction)). The loopback audio is never
-stored, transcribed or sent.
+([Echo reduction](CONVERSATION.md#echo-reduction)). That echo reference is never
+stored, transcribed or sent. The opt-in *Hear what this PC plays* is a
+separate process loopback that leaves Martlet's own sound out and is
+transcribed like the microphone, marked as the PC's and kept out of Voice ID,
+voice recognition, memory, Home Assistant and tools
+([Hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)).
 
 R23 makes automatic speech barge-in a required future companion capability,
 opt-in and gated on H07 evidence using qualified feedback protection and an

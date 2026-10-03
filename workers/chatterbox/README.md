@@ -33,6 +33,12 @@ Model card: <https://huggingface.co/ResembleAI/chatterbox-turbo>, MIT license.
 - Reference audio must be RIFF/WAVE PCM16 and strictly longer than 5.0 seconds because Turbo's `prepare_conditionals` asserts that bound.
 - Chatterbox Turbo applies Resemble AI's Perth watermark in `generate`; Martlet preserves it and does not remove or bypass it.
 - Chatterbox Turbo is Martlet's default voice-cloning engine; F5 remains selectable for hosts that prefer it.
+- A failed reply says why: the `failed` event's summary ends with the exception's type and first line (never the reply
+  text), and a 503 while the model isn't ready adds `detail` (why it failed to load or failed the last reply). Martlet's
+  relay writes both into the host's own log, which paired desktops show on their Diagnostics page. When the graphics card
+  runs out of memory, the worker frees PyTorch's cached memory and tries the sentence once more; if it runs out again the
+  reply fails with `gpu_out_of_memory` and the model stays loaded (reloading would need more memory). Any other engine
+  failure (`internal_failure`) drops the model, and the next reply reloads it.
 - Turbo ignores `exaggeration`, `cfg_weight`, and `min_p`; `tts_turbo.py` logs that those controls are not supported. Martlet uses Turbo's native style/emotion tokens as its emotion control instead.
 - Martlet passes these pinned tokenizer tags through unchanged: sounds `[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`, `[cough]`, `[clear throat]`, `[groan]`, `[sniff]`, `[shush]`; emotions/styles `[happy]`, `[sarcastic]`, `[surprised]`, `[angry]`, `[fear]`, `[crying]`, `[whispering]`, `[dramatic]`.
 - The tokenizer also contains `[advertisement]` and `[narration]`, but Martlet intentionally leaves those out.

@@ -29,7 +29,10 @@ clearance.
 - **Host role `chatterbox`** (`deploy/host/roles/chatterbox`, port 50083,
   NVIDIA GPU with 6 GB+). The image is built on the host from
   `workers/chatterbox/host/Dockerfile`: `python:3.12.10`, hash-locked PyTorch
-  2.6.0 CUDA 12.4 (the same wheels as F5), `transformers` 5.2.0 and the rest of
+  2.8.0 CUDA 12.8 (kernels for compute capability 7.0 to 12.0: GeForce GTX 16
+  and RTX 20 series through RTX 50 series; older cards such as the GTX 10
+  series are not supported, and the worker says so when it loads),
+  `transformers` 5.2.0 and the rest of
   `chatterbox-tts` 0.1.7's closure (`host/requirements.lock`; Gradio and the
   other-language extras are left out). Its dependencies conflict with
   Qwen3-TTS/GPT-SoVITS, so it has its own container.
@@ -90,7 +93,18 @@ lists the engine as the default with its `features`; `-Desktop` reads
 tagged reply through a real paired gateway. `provision --fixture` (with
 `MARTLET_CHATTERBOX_FIXTURE_REAL_IDENTITY=1`) runs the service as a
 **FIXTURE - NOT AI** tone generator for that plumbing check.
+`voice_engine_check` (MCP) speaks a sentence with a running service through
+the production relay, a real loopback gateway and the desktop's client, and
+reports the service's state, error and torch/CUDA versions.
 
-**NOT RUN:** building the image, downloading the model and real GPU synthesis
-(no GPU host was available to this change), so voice likeness, how the tags
-sound, latency and VRAM are unmeasured.
+Verified on a GeForce RTX 5080 (compute capability 12.0) under Docker Desktop:
+the image builds, `provision` verifies the pinned files, `warm` loads the
+model, and `voice_engine_check` returned 3-4 s of audible 24 kHz speech for
+tagged sentences (about 0.7x real time once warm). The PyTorch 2.6.0 CUDA 12.4
+image before it failed there with "no kernel image is available", and every
+reply also failed because the worker user could not create its private
+`requests` folder; image `martlet-chatterbox:2` fixes both, and updating a host
+that already has the role rebuilds it.
+
+**NOT RUN:** voice likeness and how the tags sound (nobody listened), VRAM, and
+cards other than the RTX 5080.

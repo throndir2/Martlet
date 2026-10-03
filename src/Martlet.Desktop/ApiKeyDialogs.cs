@@ -29,7 +29,6 @@ internal sealed class ApiKeyCreateDialog : ThemedWindow
         Width = 600;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         AutomationProperties.SetAutomationId(this, "ApiKeyCreateDialog");
         var root = new StackPanel { Margin = new Thickness(24) };
@@ -126,7 +125,6 @@ internal sealed class ApiKeyCreatedDialog : ThemedWindow
         Width = 680;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         AutomationProperties.SetAutomationId(this, "ApiKeyCreatedDialog");
         var root = new StackPanel { Margin = new Thickness(24) };

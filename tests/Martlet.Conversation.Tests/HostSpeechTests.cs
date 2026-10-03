@@ -68,7 +68,8 @@ public sealed class HostSpeechTests
         await using var h = new Harness(hostSpeech: voice);
         var result = await SpeakAsync(h, new Uri("https://api.openai.com"));
         // The reply text stands; only its voice was refused.
-        Assert.Equal(ConversationState.Partial, result.State);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.True(result.SpeechFailed);
         Assert.Equal(ProviderFailureCode.OriginRejected, result.ProviderFailure);
         Assert.Equal(0, voice.Calls);
     }

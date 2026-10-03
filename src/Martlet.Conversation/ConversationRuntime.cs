@@ -61,10 +61,11 @@ public sealed class ConversationRuntime : IAsyncDisposable
         OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
         GeneratedSpeechObserver? generatedSpeech = null,
         Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null, IHostTextClient? hostText = null,
-        IHostSpeechClient? hostSpeech = null, IWindowsVoiceClient? windowsVoice = null)
+        IHostSpeechClient? hostSpeech = null, IWindowsVoiceClient? windowsVoice = null, SpokenTextFeed? spokenText = null)
     {
         return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, WindowsVoice = windowsVoice };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, WindowsVoice = windowsVoice,
+                SpokenText = spokenText };
     }
 
     // The saved TTS destination: a paired Martlet host's F5 voice, an installed Windows voice or the OpenAI speech adapter.

@@ -17,8 +17,9 @@ ENV MARTLET_CHATTERBOX_ROOT=/opt/martlet-chatterbox PYTHONPATH=/opt/martlet-chat
 RUN printf '#!/bin/sh\nexec /usr/local/bin/python3.12 /opt/martlet-chatterbox/host/martlet_chatterbox_host.py "$@"\n' > /usr/local/bin/martlet-chatterbox \
  && chmod 0755 /usr/local/bin/martlet-chatterbox \
  && useradd --uid 10051 --user-group --no-create-home --home-dir /tmp --shell /usr/sbin/nologin martlet-chatterbox \
- && mkdir -p /opt/martlet-chatterbox/models \
- && chown martlet-chatterbox:martlet-chatterbox /opt/martlet-chatterbox/models \
+ && mkdir -p /opt/martlet-chatterbox/models /opt/martlet-chatterbox/requests \
+ && chown martlet-chatterbox:martlet-chatterbox /opt/martlet-chatterbox/models /opt/martlet-chatterbox/requests \
+ && chmod 0700 /opt/martlet-chatterbox/requests \
  && chmod -R go-w /usr/local/lib/python3.12/site-packages /opt/martlet-chatterbox/host
 
 USER 10051:10051

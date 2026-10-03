@@ -150,8 +150,8 @@ public sealed class ReviewRegressionTests
         Assert.Equal(role == ProviderRole.Llm ? 0 : 1, h.Llm.Calls);
         Assert.Equal(0, h.Tts.Calls);
         Assert.Equal((role == ProviderRole.Tts ? 1 : 0) + (expiresInCredentials ? 1 : 0), h.Credentials.Calls);
-        Assert.Equal(role == ProviderRole.Llm ? ConversationState.Failed : ConversationState.Partial, result.State);
-        Assert.Equal(ConversationFailure.AuthorizationExpired, result.Failure);
+        Assert.Equal(role == ProviderRole.Llm ? ConversationState.Failed : ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.AuthorizationExpired, role == ProviderRole.Llm ? result.Failure : result.SpeechFailure);
         Assert.Equal(0, h.Device.Opens);
     }
 

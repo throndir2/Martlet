@@ -90,15 +90,15 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.25.0, )"
+          "Martlet.Core": "[0.26.0, )"
         }
       },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.25.0, )",
-          "Martlet.Core": "[0.25.0, )",
-          "Martlet.Providers": "[0.25.0, )"
+          "Martlet.Audio": "[0.26.0, )",
+          "Martlet.Core": "[0.26.0, )",
+          "Martlet.Providers": "[0.26.0, )"
         }
       },
       "martlet.core": {
@@ -107,7 +107,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.25.0, )"
+          "Martlet.Core": "[0.26.0, )"
         }
       }
     }

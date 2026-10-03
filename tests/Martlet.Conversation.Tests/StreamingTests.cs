@@ -74,8 +74,8 @@ public sealed class StreamingTests
         };
         var turn = h.Start(Harness.Request(speechLimits: Harness.SpeechLimits with { MaxRequestTime = TimeSpan.FromSeconds(1) }));
         var result = await Harness.Finish(turn);
-        Assert.Equal(ConversationState.Partial, result.State);
-        Assert.Equal(ConversationFailure.DeadlineExceeded, result.Failure);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.DeadlineExceeded, result.SpeechFailure);
         Assert.Equal(1, h.Llm.Calls);
         Assert.Equal(0, h.Tts.Calls);
         Assert.Equal(0, h.Device.Opens);

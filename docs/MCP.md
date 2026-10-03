@@ -412,7 +412,12 @@ at 24 kHz after 0.5 s pauses with each recording's place kept, reaches the other
 desktop through a host with those places, and speaking with it hands the XTTS-v2
 relay's service the three places (`reference.clips`) and F5-TTS the joined
 recording only; a list entry whose recordings don't match its recording or
-transcript is refused. Nothing leaves loopback, the temporary folder is deleted and
+transcript is refused; a voice service that fails a reply (out of graphics
+memory, a model that failed to load and answers 503 with its state and why, a
+service that stops mid-reply) gives the desktop `worker.failed` or
+`worker.unavailable` and the host's own log, read by the desktop as the
+Diagnostics page does, says why (the service's error code, stage and summary,
+its state and detail, or that its stream ended unfinished). Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
@@ -554,6 +559,29 @@ or NVIDIA's NIM) and returns `ok`, `frames`, `framesPerSecond`,
 category (for example `DeadlineExceeded` or `TransportFailure` when nothing answers, `InvalidProtocol`
 for a malformed reply). A role service on a host listens only inside the host's
 own loopback, so check it there or through a forward to this PC's loopback.
+
+`voice_engine_check` speaks one sentence with a self-hosted voice engine's
+loopback service through the production path: Martlet.NodeLinkCheck's
+`voice-engine` mode starts a real gateway on 127.0.0.1 (pinned TLS, pairing)
+with that engine's own relay (the one the Linux host creates for the role) and
+speaks through the desktop's paired client, with the first starter voice whose
+length the engine accepts as the reference. Nothing is played or recorded.
+Arguments: `engine` (`chatterbox` default, `f5`, `xtts`, `gpt-sovits` or
+`dia`), a numeric loopback `endpoint` (default the role's port: 50083, 50080,
+50081, 50082 or 50084) and optional `text` (at most 300 characters; default a
+sentence with the engine's first sound tag, such as `[laugh]`, when it has
+tags). It returns `{exitCode, report}` with `ok` (no failure, at least 0.5 s
+of audible audio), `engine`, `route`, `voice`, `text`, `statusBefore` and
+`statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
+`error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions,
+or why it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
+`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`, and `failure`
+and `problem` (the client's error code and message, for example
+`worker.unavailable` when nothing answers or the model could not load). A
+loading model can take minutes, so the tool allows six; pass
+`-TimeoutSeconds 400` to the script. As with `audio2face_check`, a role
+service on a host listens only in the host's loopback, so run it there or
+forward the port.
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
@@ -739,6 +767,35 @@ change; the `TalkHearVoice` check box saves the choice, so it needs
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
 
+`spoken_reply_check` rehearses a spoken reply whose voice fails partway, end to
+end with the production conversation runtime (`ConversationRuntime`, the Chat
+Completions adapter, the Martlet host voice stream and the playback sink). A
+fixture endpoint on 127.0.0.1 streams a canned four-sentence reply (NOT AI) a
+sentence at a time, the way OpenRouter streams; a fixture Martlet host voice (a
+quiet tone, NOT AI) fails on the `failAt`-th piece (1-4, default 1) it is asked
+to say, as `voiceFailure`: `server` (default; the host's voice worker failed,
+`worker.failed`), `unavailable` (it is reloading, `worker.unavailable`),
+`stall` (no audio until the voice's time runs out, shortened to a few seconds)
+or `none`; a fixture speaker opens no device and plays nothing. It returns
+`reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
+`servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
+turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
+`piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
+`mayHavePlayed`) and `captions`, what the speech bubble and subtitles were
+given (`complete`, `shown`, `spoken`, `unsaid` and each line's `text`, `atMs`
+and `spoken`): a line as each piece starts playing and, after the voice
+failed, every sentence it couldn't say, one after another for its reading
+time (2-20 s). `ok` is true when the reply completed with all of its text,
+only the voice stopped, at the chosen piece with the expected provider code
+(or, with `none`, every piece was spoken), and the captions together showed
+the whole reply. Before the fix this reported `Partial` with only the text up
+to the failed sentence, and the captions then showed nothing past the last
+spoken piece. It reads no
+credentials, needs no data directory and nothing leaves loopback. A real
+paired host's voice failing is NOT reproduced; the talk window then notes
+*The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
+only the beginning was spoken.* under the reply.
+
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,
@@ -796,6 +853,27 @@ true when the reducer was active, Martlet's echo got at least 20 dB quieter, the
 detector heard it without reduction but not with it, and it still heard the user
 alone (kept within 3 dB) and over Martlet. It contacts nothing.
 
+`pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
+(Companion › Listening › Watch along › **Hear what this PC plays**; optional
+absolute `dataDirectory`, default the current user's): `hearPc` (the saved
+choice, off by default) with `hearPcSource` (`saved` or `default`),
+`handsFree` and `reduceEcho` (it works only with always listening, and through
+speakers wants echo reduction on). `windows` says whether this Windows can hear
+the PC without Martlet's own sound (`withoutMartlet`, with the process
+loopback's `format`, or `problem` and the `fallback`): a process loopback that
+leaves out the MCP server's own process is set up and closed again without
+starting, so `recorded` is always false. Its `rehearsal` runs the production
+path (`PcAudioCaptureFactory`, `MicrophoneCapture`, the capture normalizer and
+the voice-activity detector with the defaults the PC listener uses) on a
+fixture loopback and a simulated clock: a synthesized video voice 0-3 s, the
+video paused 3-6 s with no packets at all (as a real loopback), the voice
+again 6-9 s, then nothing, 12 s in all. It returns `recordedSeconds` (12 when
+the gaps were filled), `segments` (`startS`, `endS`, `endedAtS`),
+`endedInPause` (the pause ended the first utterance, so always listening sends
+it), `resumed` and `pauseSpeechFrames`; `ok` is true when all hold and the
+fixture's Martlet-free source was used. It reads no credentials and contacts
+nothing.
+
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
 them (optional absolute `dataDirectory`, default the current user's):
@@ -820,10 +898,28 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
+`windowStates` lists each window's `name`, automation `id`, `enabled`, and
+whether its frame is `resizable`, `minimizable` and `maximizable`; with
+`layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
+minus the taskbar), both in physical screen pixels. Every Martlet window opens
+within that work area at any display scale: no larger than it (minimum sizes
+shrink to fit), centered over the window it belongs to (or the main window),
+title bar on screen. Dialogs that size to their content (confirmations, the
+problem dialog, *Add a voice*, *Add a character*, API keys, host input, a
+computer asking to join) are resizable with only Close, scroll when the screen
+is shorter than they are, and stay inside the work area as they grow. To check
+a higher display scale than this PC uses, set `MARTLET_SIMULATE_DISPLAY_SCALE`
+(a percentage, such as `300`) before launching the desktop (for example before
+`Invoke-MartletMcp.ps1 -Desktop`): windows then fit a work area shrunk from its
+top-left corner as that scale would shrink it, which `workArea` does not show
+(at 300% on a 2560 x 1332 work area at 225%, windows stay within
+`[0, 0, 1920, 999]`).
 Every read-only text box has a Copy button `Copy-<box ID>` (the box's
 automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
 `Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
-`Copy-FoundationStatus`), shown only while the box has text. Snapshots return
+`Copy-FoundationStatus`) above its top-right corner (its `bounds` sit above the
+box's text and scroll bar, which keep the box's full width), shown only while
+the box has text. Snapshots return
 its label (*Copy*, or *Copied*/*Couldn't copy* for about three seconds after a
 click), never the copied text. A run window's and *Prepare this computer*'s Copy
 starts with *Martlet <version>: <title>* (and *SSH target: ...* for Prepare)
@@ -1498,7 +1594,20 @@ talking*, on by default; its `checkedState` is the saved choice, and
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
 from the microphone whenever it listens.*, how the last listen went, why echo
 reduction couldn't run, or *Off. ...*); `echo_check` reads the same saved
-choice. Each spoken reply writes a *Reply latency: first words
+choice. The *Watch along* card under it has `TalkHearPc` (*Hear what this PC
+plays*, off by default; `checkedState` is the saved choice and `ui_toggle`
+needs `--allow-ui-effects` because it saves `talk-preferences.json`) and
+`TalkHearPcStatus` (returned: *Off. Martlet hears only your microphone.*, *On.
+While Martlet listens it also hears what this PC plays, without its own
+voice.*, or why it doesn't apply: push-to-talk, echo reduction off, or Martlet's
+voice can't be left out); `pc_audio_check` reads the same choice. With it on
+and always listening chosen, the talk window's `LivePcAudio` line (returned)
+says *Also hears what this PC plays once you start listening.*, *Also hearing
+what this PC plays (not Martlet's own voice).*, *Hearing this PC play
+something…* or why it can't hear the PC; what the PC played shows in
+`LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
+records what the PC plays, so leave it off (or don't start listening) when
+verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words
 after … ms, first audio after … ms* line to the desktop log, which `logs_tail`
 returns.
 
@@ -1604,7 +1713,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

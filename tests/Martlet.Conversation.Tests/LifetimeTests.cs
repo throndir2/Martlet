@@ -279,8 +279,8 @@ public sealed class LifetimeTests
             h.Device.Release.Set();
         }
         var result = await Harness.Finish(turn);
-        Assert.Equal(ConversationState.Partial, result.State);
-        Assert.Equal(ConversationFailure.PlaybackFailed, result.Failure);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.PlaybackFailed, result.SpeechFailure);
         Assert.Equal("A complete answer.", turn.Content.Text);
         Assert.Equal(1, h.Tts.Calls);
         Assert.Equal(1, h.Device.Opens);

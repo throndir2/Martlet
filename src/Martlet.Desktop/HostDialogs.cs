@@ -52,7 +52,6 @@ internal sealed class HostInputDialog : ThemedWindow
         MinWidth = 420;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         AutomationProperties.SetAutomationId(this, "HostInputDialog");
         var root = new StackPanel { Margin = new Thickness(24) };

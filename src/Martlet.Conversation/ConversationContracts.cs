@@ -231,13 +231,17 @@ public sealed record ConversationSnapshot(
     bool OwnershipReleased, bool Quarantined, long DroppedEvents, PlaybackSnapshot? Playback,
     Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
-    TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false)
+    TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false,
+    ConversationFailure SpeechFailure = ConversationFailure.None)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
     /// <summary>Whether the reply was asked of the Thinking fallback after the selected destination failed (FellBackAfter
     /// names how: a provider failure code, a stream issue or a conversation failure).</summary>
     public bool FellBack => FellBackAfter is not null;
+    /// <summary>Whether the voice stopped before the end of the reply (SpeechFailure says why; a voice provider's own code is
+    /// ProviderFailure with FailedProvider Tts). The reply's text is unaffected: it still completes.</summary>
+    public bool SpeechFailed => SpeechFailure != ConversationFailure.None;
 }
 
 public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issue);

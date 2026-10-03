@@ -31,7 +31,6 @@ internal sealed class CharacterModelAddDialog : ThemedWindow
         Width = 640;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         AutomationProperties.SetAutomationId(this, "CharacterModelAddDialog");
         var root = new StackPanel { Margin = new Thickness(24) };

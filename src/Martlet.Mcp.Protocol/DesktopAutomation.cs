@@ -117,6 +117,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
+        // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
+        // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
+        // now, or why it can't). Never what was heard.
+        "TalkHearPcStatus", "LivePcAudio",
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects) and, under Another
         // of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads through the
@@ -250,10 +254,23 @@ internal sealed class DesktopAutomation(bool allowEffects)
             processId,
             windows = windows.Select(window => window.Current.Name).ToArray(),
             // A window that is disabled can't take input, as when a modal dialog blocks it; the talk window never blocks Martlet.
-            windowStates = windows.Select(window => new
+            // Its frame shows whether it can be resized, minimized and maximized; with layout, where it is and the work area
+            // (screen minus taskbar) of its monitor, both in screen pixels, so a window can be checked to open wholly on screen.
+            windowStates = windows.Select(window =>
             {
-                name = window.Current.Name,
-                enabled = IsWindowEnabled(window.Current.NativeWindowHandle)
+                var handle = (nint)window.Current.NativeWindowHandle;
+                var style = GetWindowLongPtrW(handle, WindowStyleIndex);
+                var state = new Dictionary<string, object?>
+                {
+                    ["name"] = window.Current.Name,
+                    ["id"] = window.Current.AutomationId,
+                    ["enabled"] = IsWindowEnabled(handle),
+                    ["resizable"] = (style & ThickFrame) != 0,
+                    ["minimizable"] = (style & MinimizeBox) != 0,
+                    ["maximizable"] = (style & MaximizeBox) != 0
+                };
+                if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
+                return state;
             }).ToArray(),
             controls = Controls(windows).Select(control =>
             {
@@ -297,6 +314,43 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static int[]? Box(System.Windows.Rect rect) =>
         rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0 ? null
             : [(int)Math.Round(rect.X), (int)Math.Round(rect.Y), (int)Math.Round(rect.Width), (int)Math.Round(rect.Height)];
+
+    private const int WindowStyleIndex = -16;
+    private const nint ThickFrame = 0x40000, MinimizeBox = 0x20000, MaximizeBox = 0x10000;
+    private static readonly nint PerMonitorAwareV2 = -4;
+
+    /// <summary>A top-level window's frame and its monitor's work area as [x, y, width, height] in physical screen pixels, like
+    /// UI Automation's bounds at any display scale.</summary>
+    private static (int[]? Bounds, int[]? WorkArea) Placement(nint window)
+    {
+        var previous = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+        try
+        {
+            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            return (GetWindowRect(window, out var frame) ? Area(frame) : null,
+                GetMonitorInfo(MonitorFromWindow(window, 2), ref info) ? Area(info.Work) : null);
+        }
+        finally { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+
+        static int[] Area(NativeRect rect) => [rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor, Work;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint window, int index);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetWindowRect(nint window, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint window, uint flags);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
 
     /// <summary>Where a text control's first line of text is drawn (for checking alignment, e.g. a hint against typed text).
     /// Geometry only: the text itself is never read.</summary>

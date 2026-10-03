@@ -10,6 +10,14 @@ namespace Martlet.Mcp;
 internal sealed class McpServer(DesktopAutomation desktop)
 {
     private const int MaxLineLength = 1024 * 1024;
+
+    /// <summary>Each voice host role's loopback port (deploy/host/roles/*/role.conf); declared before <see cref="Tools"/>,
+    /// which lists its keys.</summary>
+    private static readonly IReadOnlyDictionary<string, int> VoiceEnginePorts = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["chatterbox"] = 50083, ["f5"] = 50080, ["xtts"] = 50081, ["gpt-sovits"] = 50082, ["dia"] = 50084
+    };
+
     private static readonly object[] Tools =
     [
         Tool("doctor_status", "Read local diagnostic status without starting audio or network.", new
@@ -50,9 +58,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             pid = new { type = "integer", minimum = 1 }
         }, ["pid"]),
-        Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows. " +
-            "With layout, each control also returns its screen bounds and, for text, where its first line of text sits " +
-            "(geometry only, never the text).", new
+        Tool("ui_snapshot", "Inspect automation IDs, enabled state and selected non-secret status fields of attached Martlet windows, " +
+            "and whether each window can be resized, minimized and maximized. With layout, each control also returns its screen " +
+            "bounds and, for text, where its first line of text sits (geometry only, never the text), and each window its bounds " +
+            "and its monitor's work area.", new
         {
             layout = new { type = "boolean" }
         }),
@@ -236,6 +245,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             seconds = new { type = "integer", minimum = 1, maximum = 10 },
             sampleRate = new { type = "integer", @enum = Audio2FaceCheck.SampleRates }
         }),
+        Tool("voice_engine_check", "Speak one sentence with a self-hosted voice engine's loopback service (a host role's service, " +
+            "default chatterbox on http://127.0.0.1:50083; f5 50080, xtts 50081, gpt-sovits 50082, dia 50084) through the production " +
+            "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
+            "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
+            "after (state, error, runtime versions such as torch and CUDA), the audio length, time to first audio, total time, " +
+            "real-time factor, peak and RMS level, or the failure code and message. Loopback only; runs Martlet.NodeLinkCheck.", new
+        {
+            engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
+            endpoint = new { type = "string", maxLength = 64 },
+            text = new { type = "string", maxLength = 300 }
+        }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -288,6 +308,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             modelId = new { type = "string", maxLength = 128 }
         }),
+        Tool("spoken_reply_check", "Rehearse a spoken reply whose voice fails partway, end to end with the production conversation " +
+            "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
+            "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
+            "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
+            "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
+            "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
+            "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
+            "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
+            "only the voice stopped and the captions showed the whole reply. Loopback only; reads no credentials.", new
+        {
+            voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
+            failAt = new { type = "integer", minimum = 1, maximum = 4 }
+        }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
@@ -303,6 +336,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
+        }),
+        Tool("pc_audio_check", "Companion > Listening > Hear what this PC plays: the saved choice (off by default) with HandsFree and " +
+            "ReduceEcho, whether this Windows can hear the PC without Martlet's own sound (a process loopback is set up and closed " +
+            "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
+            "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
+            "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +
+            "continuous and the pause ended the first utterance. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
@@ -413,6 +455,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
+                "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
@@ -421,7 +464,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
+                    OptionalInt(arguments, "failAt"), cancellation),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
+                "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
@@ -507,10 +553,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>voice_engine_check: Martlet.NodeLinkCheck's voice-engine mode against a live voice service on loopback. A model
+    /// that is still loading can take minutes, so it gets longer than the rehearsals.</summary>
+    private static async Task<object> VoiceEngineCheckAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var engine = OptionalString(arguments, "engine") ?? "chatterbox";
+        if (!VoiceEnginePorts.TryGetValue(engine, out var port))
+            throw new ArgumentException($"engine must be one of {string.Join(", ", VoiceEnginePorts.Keys)}.");
+        var endpoint = OptionalString(arguments, "endpoint") ?? $"http://127.0.0.1:{port}/";
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
+            !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address))
+            throw new ArgumentException("endpoint must be a numeric loopback address such as http://127.0.0.1:50083/.");
+        string[] command = OptionalString(arguments, "text") is { Length: > 0 } text
+            ? ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text]
+            : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/"];
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(6), cancellation, command);
+    }
+
     /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) with <paramref name="arguments"/>
     /// and returns its JSON report. A separate process, because the in-process gateway needs the ASP.NET Core runtime and this
     /// server does not.</summary>
-    private static async Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments)
+    private static Task<object> NodeLinkCheckAsync(CancellationToken cancellation, params string[] arguments) =>
+        NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, arguments);
+
+    private static async Task<object> NodeLinkCheckAsync(TimeSpan timeLimit, CancellationToken cancellation, string[] arguments)
     {
         var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         var configuration = output.Parent?.Name ?? "Release";
@@ -526,14 +592,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start Martlet.NodeLinkCheck.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        limit.CancelAfter(TimeSpan.FromMinutes(2));
+        limit.CancelAfter(timeLimit);
         var report = process.StandardOutput.ReadToEndAsync(limit.Token);
         var errors = process.StandardError.ReadToEndAsync(limit.Token);
         try { await process.WaitForExitAsync(limit.Token); }
         catch (OperationCanceledException)
         {
             process.Kill(entireProcessTree: true);
-            throw new InvalidOperationException("Martlet.NodeLinkCheck did not finish within two minutes.");
+            throw new InvalidOperationException($"Martlet.NodeLinkCheck did not finish within {timeLimit.TotalMinutes:0} minutes.");
         }
         var text = (await report).Trim();
         try

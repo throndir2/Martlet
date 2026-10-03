@@ -172,13 +172,57 @@ public sealed class IntegrationTests
         h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(new FragmentedTextBody(SpeechFixtures.Audio()[..bytes])));
         var turn = h.Start();
         var result = await Harness.Finish(turn);
-        Assert.Equal(ConversationState.Partial, result.State);
+        // The voice failing never ends the reply: it completes with its text, and only the voice stopped.
+        Assert.Equal(ConversationState.Completed, result.State);
         Assert.Equal("A complete answer.", turn.Content.Text);
         Assert.True(result.TextComplete);
-        Assert.Equal(ConversationFailure.ProviderFailed, result.Failure);
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.Equal(ProviderRole.Tts, result.FailedProvider);
         Assert.Equal(1, h.Tts.Calls);
         Assert.InRange(result.AcceptedSamples, 0, 480);
         Assert.NotEqual(PlaybackState.Completed, result.Playback?.State);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(961)]
+    public async Task Captions_still_show_what_a_failed_voice_could_not_say(int bytes)
+    {
+        var captions = new SpokenTextFeed();
+        await using var h = new Harness(spokenText: captions);
+        h.Answer("[laugh] A complete answer.");
+        h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(new FragmentedTextBody(SpeechFixtures.Audio()[..bytes])));
+        var result = await Harness.Finish(h.Start());
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.True(captions.Lines.TryRead(out var line));
+        Assert.Equal("A complete answer.", line!.Text);
+        Assert.False(captions.Lines.TryRead(out _));
+    }
+
+    [Fact]
+    public async Task Captions_show_every_unsaid_sentence_in_order_one_after_another()
+    {
+        var captions = new SpokenTextFeed();
+        await using var h = new Harness(spokenText: captions);
+        h.Answer("One. Two. Three.");
+        h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(new FragmentedTextBody(SpeechFixtures.Audio()[..0])));
+        var result = await Harness.Finish(h.Start());
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.Equal(1, h.Tts.Calls);
+        var shown = new List<string>();
+        while (shown.Count < 3)
+        {
+            await Harness.Until(() => captions.Lines.TryPeek(out _));
+            Assert.True(captions.Lines.TryRead(out var line));
+            shown.Add(line!.Text);
+            // The next sentence waits until this one has been shown for its reading time.
+            await Task.Delay(50);
+            Assert.False(line.Finished.IsCompleted);
+            Assert.False(captions.Lines.TryPeek(out _));
+            h.Clock.Advance(ConversationTurn.ReadingTime(line.Text));
+        }
+        Assert.Equal(["One.", "Two.", "Three."], shown);
     }
 
     [Fact]
@@ -253,5 +297,27 @@ public sealed class IntegrationTests
         Assert.DoesNotContain("https:", metadata);
         Assert.DoesNotContain(ProviderFixtures.Secret, metadata);
         Assert.Equal(ProviderFailureCode.Authentication, result.ProviderFailure);
+    }
+
+    [Fact]
+    public async Task A_voice_that_fails_on_the_first_sentence_never_cuts_the_rest_of_the_reply()
+    {
+        await using var h = new Harness();
+        h.Answer("First sentence here. ", "Second sentence here. ", "Third and last sentence.");
+        h.Tts.Respond = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("{}")
+        });
+        var turn = h.Start();
+        var result = await Harness.Finish(turn);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(ConversationFailure.None, result.Failure);
+        Assert.True(result.TextComplete);
+        Assert.Equal("First sentence here. Second sentence here. Third and last sentence.", turn.Content.Text);
+        Assert.Equal(ConversationFailure.ProviderFailed, result.SpeechFailure);
+        Assert.Equal(ProviderRole.Tts, result.FailedProvider);
+        // Nothing more is asked of the failed voice, and nothing else speaks instead.
+        Assert.Equal(1, h.Tts.Calls);
+        Assert.Equal(0, h.Device.Opens);
     }
 }

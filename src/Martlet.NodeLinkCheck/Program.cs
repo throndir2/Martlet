@@ -48,6 +48,15 @@ if (args is ["settings"])
     Console.WriteLine(JsonSerializer.Serialize(settingsReport));
     return settingsOk ? 0 : 1;
 }
+// With "voice-engine <engine> <endpoint> [text]" it speaks one sentence with a live voice engine's loopback service through
+// the engine's real relay and gateway (VoiceEngineCheck) and prints its report.
+if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceText] && voiceText.Length <= 1)
+{
+    var (voiceOk, voiceReport) = await Martlet.NodeLinkCheck.VoiceEngineCheck.RunAsync(voiceEngine, voiceEndpoint,
+        voiceText.FirstOrDefault(), CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(voiceReport));
+    return voiceOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)
