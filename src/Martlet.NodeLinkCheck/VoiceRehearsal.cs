@@ -278,6 +278,16 @@ internal static class VoiceRehearsal
                 return (memory == "worker.failed" && loading == "worker.unavailable" && stopped == "worker.failed" && said,
                     $"desktop got {memory}, {loading}, {stopped}; lab-voice-1's log: {string.Join(" | ", lines)}");
             });
+            await Run("A reply with a pause (full-size frames of near-silent audio, whose base64 is full of '+') is spoken whole, and the voice keeps working (no stream.limit, no quarantine)", async () =>
+            {
+                var samples = 0;
+                h1.Voice.QuietNext = true;
+                var pause = await Code(async () => samples = (await a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords)).Samples);
+                var next = await Code(() => a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords));
+                return (pause is null && samples == FixtureVoice.QuietSamples && next is null,
+                    $"pause reply: {pause ?? "spoken"} ({samples:N0} of {FixtureVoice.QuietSamples:N0} samples in {FixtureVoice.QuietFrames} frames); " +
+                    $"next reply: {next ?? "spoken"}");
+            });
         }
         finally
         {
@@ -573,6 +583,11 @@ internal static class VoiceRehearsal
         /// <summary>How the next request fails, as a real voice worker does: <c>out-of-memory</c> (a failed event), <c>loading</c>
         /// (503 while its model failed to load) or <c>stopped</c> (the stream ends unfinished, as when the service dies).</summary>
         internal string? FailNext { get; set; }
+        /// <summary>The next reply is a pause: full-size frames (as the real workers send) of near-silent noise, whose base64 is
+        /// full of '+'.</summary>
+        internal bool QuietNext { get; set; }
+        internal const int QuietFrames = 10;
+        internal const int QuietSamples = QuietFrames * F5WorkerProtocol.MaximumFrameSamples;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -586,6 +601,8 @@ internal static class VoiceRehearsal
                 return new HttpResponseMessage(HttpStatusCode.BadRequest);
             var failure = FailNext;
             FailNext = null;
+            var quiet = QuietNext;
+            QuietNext = false;
             if (failure == "loading")
                 return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
                 {
@@ -616,8 +633,15 @@ internal static class VoiceRehearsal
                     Clips.Add(separate);
                 }
             }
-            var pcm = new byte[2_400 * 2];
+            var pcm = new byte[(quiet ? QuietSamples : 2_400) * 2];
             for (var i = 0; i < pcm.Length; i++) pcm[i] = (byte)(i * 7);
+            if (quiet)
+            {
+                var noise = new Random(7);
+                for (var i = 0; i < QuietSamples; i++)
+                    BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(i * 2), (short)(noise.Next(-1, 2) - 31));
+            }
+            var frameBytes = quiet ? F5WorkerProtocol.MaximumFrameBytes : pcm.Length;
             string Event(string kind, long sequence, object? frame = null, int? chunk = null, long? final = null, object? error = null) =>
                 JsonSerializer.Serialize(new Dictionary<string, object?>
                 {
@@ -641,11 +665,15 @@ internal static class VoiceRehearsal
                         "another host (OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB)."
                 })) + "\n",
                 "stopped" => Event("started", 0) + "\n",
-                _ => string.Join("\n",
-                    Event("started", 0),
-                    Event("audio_frame", 1, new { chunk_index = 0, data_base64 = Convert.ToBase64String(pcm), sample_count = pcm.Length / 2, sample_offset = 0, sequence = 0 }),
-                    Event("chunk_completed", 2, chunk: 0, final: pcm.Length / 2),
-                    Event("completed", 3, final: pcm.Length / 2)) + "\n"
+                _ => string.Join("\n", Enumerable.Range(0, pcm.Length / frameBytes)
+                    .Select(n => Event("audio_frame", n + 1, new
+                    {
+                        chunk_index = 0, data_base64 = Convert.ToBase64String(pcm, n * frameBytes, frameBytes), sample_count = frameBytes / 2,
+                        sample_offset = n * frameBytes / 2, sequence = n
+                    }))
+                    .Prepend(Event("started", 0))
+                    .Append(Event("chunk_completed", pcm.Length / frameBytes + 1, chunk: 0, final: pcm.Length / 2))
+                    .Append(Event("completed", pcm.Length / frameBytes + 2, final: pcm.Length / 2))) + "\n"
             };
             var content = new ByteArrayContent(Encoding.UTF8.GetBytes(lines));
             content.Headers.ContentType = new("application/x-ndjson");

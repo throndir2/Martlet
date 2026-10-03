@@ -204,7 +204,7 @@ internal sealed partial class GatewayHttpApplication
                     HostId = identity.HostId,
                     AudioSha256 = sha256,
                     AudioBase64 = Convert.ToBase64String(audio)
-                }, MaximumSpeakingVoiceAudioBytes).ConfigureAwait(false);
+                }, MaximumSpeakingVoiceAudioBytes, UnescapedJson).ConfigureAwait(false);
             }
             finally { CryptographicOperations.ZeroMemory(audio); }
             return;

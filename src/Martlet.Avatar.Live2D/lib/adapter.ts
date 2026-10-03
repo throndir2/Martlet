@@ -154,7 +154,7 @@ export class Live2DAdapter {
   #lipSyncAge = Number.POSITIVE_INFINITY;
   #lookTarget = { x: 0, y: 0 };
   #look = { x: 0, y: 0 };
-  #view = { zoom: 1, x: 0, y: 0 };
+  #view = { zoom: 1, x: 0, y: 0, frame: 1 };
   #modelTop: number | undefined;
   #eyeBlinkIds: readonly string[] = [];
   #lipSyncIds: readonly string[] = [];
@@ -205,12 +205,17 @@ export class Live2DAdapter {
     this.#lookTarget = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
   }
 
-  /** Camera zoom applied after fitting: screen = fitted * zoom + (x, y), in clip space. */
-  setView(zoom: number, x: number, y: number): void {
+  /**
+   * Camera zoom applied after fitting: screen = fitted * zoom + (x, y), in the frame's clip space. The model is fitted
+   * and centered in a frame spanning `frame` of the canvas width (0.1 to 1); the canvas beyond it on each side is room
+   * the model can move into without being cut off.
+   */
+  setView(zoom: number, x: number, y: number, frame = 1): void {
     finite(zoom, "view zoom");
     finite(x, "view x");
     finite(y, "view y");
-    this.#view = { zoom: Math.max(1, Math.min(32, zoom)), x, y };
+    finite(frame, "view frame");
+    this.#view = { zoom: Math.max(1, Math.min(32, zoom)), x, y, frame: Math.max(0.1, Math.min(1, frame)) };
   }
 
   /** Top of the visible character (top of the head) in fitted clip space, before view zoom/pan; 1 is the canvas top. */
@@ -449,7 +454,7 @@ export class Live2DAdapter {
     const view = this.#view;
     const scale = this.#fitScale(model) * view.zoom;
     const matrix = new sdk.CubismMatrix44();
-    matrix.setMatrix(new Float32Array([scale / aspect, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, view.x, view.y, 0, 1]));
+    matrix.setMatrix(new Float32Array([scale / aspect, 0, 0, 0, 0, scale, 0, 0, 0, 0, 1, 0, view.x * view.frame, view.y, 0, 1]));
     renderer.setMvpMatrix(matrix);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);
@@ -581,9 +586,10 @@ export class Live2DAdapter {
     return undefined;
   }
 
-  /** Model units to clip space that fits the whole model canvas into the render canvas. */
+  /** Model units to clip space that fits the whole model canvas into the frame (see setView) of the render canvas. */
   #fitScale(model: CubismModel): number {
-    return Math.min(2 / model.getCanvasHeight(), 2 * (this.#canvas.width / this.#canvas.height) / model.getCanvasWidth());
+    const frameAspect = this.#canvas.width * this.#view.frame / this.#canvas.height;
+    return Math.min(2 / model.getCanvasHeight(), 2 * frameAspect / model.getCanvasWidth());
   }
 
   #validateCanvas(): void {

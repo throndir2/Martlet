@@ -285,8 +285,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("prompts_status", "Read Companion > Prompts from a data directory's settings.json: every internal prompt Martlet sends " +
             "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +
-            "(sent as nothing), with its character count. With id, also returns that one prompt's effective text (the saved edit or " +
-            "the built-in text) exactly as Martlet uses it. Read-only.", new
+            "(sent as nothing), with its character count and estimated tokens (Martlet's own request-size estimate, about a token " +
+            "per three UTF-8 bytes), plus the tokens of all prompts together. With id, also returns that one prompt's effective text " +
+            "(the saved edit or the built-in text) exactly as Martlet uses it. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -342,7 +343,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "without starting: nothing is recorded), then a rehearsal of the production path (PcAudioCaptureFactory, " +
             "MicrophoneCapture, the capture normalizer, the voice-activity detector) with a fixture loopback on a simulated clock: a " +
             "synthesized video voice 0-3 s, a pause with no packets 3-6 s, the voice again 6-9 s. Returns whether the stream stayed " +
-            "continuous and the pause ended the first utterance. Reads no credentials and contacts nothing.", new
+            "continuous and the pause ended the first utterance, and (echo) whether fixture microphone transcripts that only " +
+            "repeat what the PC played are told apart from the user's own words. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1256,15 +1258,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
         string Of(string prompt) => prompts?.Overrides.TryGetValue(prompt, out var text) != true ? "builtin"
             : string.IsNullOrWhiteSpace(text) ? "empty" : "edited";
-        var list = Martlet.Core.Settings.PromptCatalog.All.Select(p => new
+        var list = Martlet.Core.Settings.PromptCatalog.All.Select(p =>
         {
-            id = p.Id, group = p.Group, title = p.Title, placeholders = p.Placeholders, state = Of(p.Id),
-            characters = Martlet.Core.Settings.PromptSettings.Text(prompts, p.Id).Length
+            var text = Martlet.Core.Settings.PromptSettings.Text(prompts, p.Id);
+            return new
+            {
+                id = p.Id, group = p.Group, title = p.Title, placeholders = p.Placeholders, state = Of(p.Id),
+                characters = text.Length,
+                tokens = string.IsNullOrWhiteSpace(text) ? 0 : Martlet.Providers.BoundedTextInput.TextTokens(text)
+            };
         }).ToArray();
         return new
         {
             state, problem = loaded.Error?.Summary, total = list.Length,
-            edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"), prompts = list,
+            edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"),
+            tokens = list.Sum(p => p.tokens), prompts = list,
             prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
         };
     }
