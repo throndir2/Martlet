@@ -919,7 +919,10 @@ conversation uses it.*
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
 `dataDirectory`, default the current user's, and optional `delayMs` 0-300,
 default 60): `reduceEcho` (the saved choice, on by default) with
-`reduceEchoSource` (`saved` or `default`), and `canceller` (`WebRTC AEC3` once
+`reduceEchoSource` (`saved` or `default`), `bargeIn` (*Let me interrupt Martlet
+by talking*, optional and off by default) with `bargeInSource` (`saved`,
+`default`, or `reset` for a file saved before barge-in became opt-in that had
+it on only by the old default), and `canceller` (`WebRTC AEC3` once
 the native canceller loads, otherwise null with `cancellerProblem` and `ok`
 false). Its `rehearsal` runs the production microphone path
 (`MicrophoneCapture`, `EchoReducer`, the WebRTC canceller, the capture
@@ -1733,9 +1736,10 @@ is a passive click: it only stops a reply, recording or vision. Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
-talking*, on by default; its `checkedState` is the saved choice, and
+talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`) and `TalkBargeInAbout` (returned: what talking over
+`talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
+and off by default, and what talking over
 Martlet takes, about a second of your voice on the microphone, never a short
 sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
