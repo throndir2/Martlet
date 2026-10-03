@@ -56,7 +56,8 @@ public partial class MainWindow
         if (ThisPcHost() is { } thisPc && hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers is { } offers)
         {
             if (offers.GetValueOrDefault(HostRoles.Ollama) is { } model) loads.Add(new($"Ollama {model}", ListeningAdvisor.OllamaModelGb(model)));
-            if (offers.ContainsKey(HostRoles.F5)) loads.Add(new("the F5 voice", 3));
+
+
             if (offers.ContainsKey(HostRoles.Xtts)) loads.Add(new("the XTTS voice", 3));
             if (offers.ContainsKey(HostRoles.Audio2Face)) loads.Add(new("Audio2Face lip-sync", 5));
         }
@@ -301,7 +302,8 @@ public partial class MainWindow
                 run.Status($"Switching {job.Job} to {job.Engine} on this PC...");
                 var route = await WaitForRouteAsync(host, job, run);
                 var voice = job.RouteType == SetupRouteType.GatewayF5
-                    ? await F5Voices.DefaultAsync(dataDirectory, route.DestinationId ?? F5Destination, run.Token) : null;
+                    ? await F5Voices.DefaultAsync(dataDirectory, route.DestinationId ?? F5Destination, run.Token,
+                        SpeechEngines.ForRoute(job.RouteId)) : null;
                 await SaveJobHostAsync(job, host, route, voice);
                 RecordClusterJob(job.Job, new(host.HostId, false));
                 return $"{job.Title} now uses {job.Engine} on this PC" +

@@ -1,0 +1,15 @@
+Martlet Chatterbox Turbo host third-party notices
+=================================================
+
+This file summarizes the key runtime packages and model assets used by the Chatterbox Turbo host role. See each package or model for complete license text.
+
+- Resemble AI Chatterbox Turbo model files, revision 749d1c1a46eb10492095d68fbcf55691ccf137cd, MIT license, https://huggingface.co/ResembleAI/chatterbox-turbo.
+- chatterbox-tts 0.1.7, MIT license, Copyright (c) 2025 Resemble AI.
+- resemble-perth 1.0.1, Resemble AI Perth watermarking package; wheel bundles the implicit watermark model used offline.
+- PyTorch 2.6.0 CUDA 12.4 and torchaudio 2.6.0 CUDA 12.4, BSD-style license and NVIDIA CUDA component licenses for bundled CUDA wheels.
+- transformers 5.2.0, diffusers 0.29.0, huggingface-hub, tokenizers and safetensors, Apache-2.0 licensed Hugging Face packages.
+- librosa 0.11.0, ISC license; numpy 1.26.4 and scipy, BSD-style licenses.
+- s3tokenizer 0.3.0, Apache-2.0 license.
+- conformer 0.3.2, MIT license.
+- pyloudnorm 0.2.0, MIT license.
+- omegaconf and antlr4-python3-runtime, BSD-style licenses.

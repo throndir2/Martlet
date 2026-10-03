@@ -249,6 +249,35 @@ voice pipeline never waits for a whole reply:
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.
 
+## Voice tags
+
+Some voice engines turn tags written in the reply into sounds and tones of
+voice. Each engine declares its own catalog in its own syntax in
+`Martlet.Core.Settings.SpeechEngines` (one shared place; an engine without a
+catalog reads words only). [Chatterbox Turbo](CHATTERBOX_VOICE.md#tags), the
+default self-hosted engine, has `[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`,
+`[cough]`, `[clear throat]`, `[groan]`, `[sniff]`, `[shush]` and the tones
+`[happy]`, `[sarcastic]`, `[surprised]`, `[angry]`, `[fear]`, `[crying]`,
+`[whispering]`, `[dramatic]`. Another engine registers its own with one
+`SpeechEngines.Register(new SpeechEngine(..., TagCatalog: [new("(laughs)",
+VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
+
+- **Thinking prompt.** When a spoken reply's voice has tags, Companion ›
+  Prompts › *Voice sounds and tones* is added to its instructions with exactly
+  that engine's tags, one per line with when to use it, and asks for them
+  sparingly. Text-only replies and voices without tags never get it.
+- **Segmenter.** The speech segmenter (which still silences lines with
+  markdown, links, code or other bracketed text) lets the speaking engine's
+  tags through, case-insensitively, in the engine's own spelling, even when a
+  tag arrives split across stream deltas. Any other registered engine's tag is
+  dropped without silencing its sentence, so OpenAI, Windows voices, F5 and
+  XTTS never read "[laugh]" aloud.
+- **Chat and captions.** The chat, the saved conversation and the speech
+  bubble/captions never show tags: they are stripped as the reply streams, and
+  captions strip the spoken piece's tags.
+
+`voice_tags` in [Martlet MCP](MCP.md) shows all three for any engine.
+
 ## Hands-free voice activity and Voice ID
 
 **How you talk** in Companion › Listening offers **Always listening** (default)

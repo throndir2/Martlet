@@ -746,8 +746,16 @@ public partial class MainWindow
         var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
         var nothingHere = !f5InUse && !windowsInUse;
 
-        var f5About = Note("A natural voice copied from a short recording. Use the included voices or add your own. Recordings stay on this PC " +
-            $"and go only to the computer that speaks. The {engine.Name} model is for personal, non-commercial use only.", new Thickness(0, 2, 0, 6));
+        var f5About = Note((engine.SupportsTags
+                ? $"A natural voice copied from a recording longer than {engine.MinimumReferenceMilliseconds / 1000} seconds; it can " +
+                  "laugh, sigh and change tone. "
+                : "A natural voice copied from a short recording. ") +
+            "Use the included voices or add your own. Recordings stay on this PC and go only to the computer that speaks. " +
+            (engine.WeightsLicense.Contains("NC", StringComparison.Ordinal) || engine.WeightsLicense.StartsWith("CPML", StringComparison.Ordinal)
+                ? $"The {engine.Name} model is for personal, non-commercial use only."
+                : $"The {engine.Name} model is {engine.WeightsLicense}-licensed" +
+                  (engine == SpeechEngines.Chatterbox ? "; every reply carries Resemble AI's inaudible watermark." : ".")),
+            new Thickness(0, 2, 0, 6));
         AutomationProperties.SetAutomationId(f5About, "SetupF5About");
         var f5 = new List<UIElement>
         {

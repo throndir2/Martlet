@@ -88,12 +88,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, female, cute, licence, transcript, format; " +
             "each clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
             "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; " +
-            "which voice the speaking route uses and on which self-hosted engine, host and model; and the voice engines (F5-TTS, " +
-            "XTTS-v2: host role, gateway route, model, weights licence, GPU memory) with the one chosen on this desktop " +
+            "which voice the speaking route uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox Turbo, " +
+            "the default; F5-TTS; XTTS-v2: host role, gateway route, model, weights licence, GPU memory, shortest reference and tag " +
+            "catalog) with the one chosen on this desktop " +
             "(never own voices' names or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("voice_tags", "Show how a reply's voice tags are handled for a self-hosted voice engine (engine key, default the " +
+            "default engine Chatterbox Turbo; \"none\" for a voice without tags such as OpenAI or Windows): the engine's tag catalog in " +
+            "its own syntax, the Thinking prompt it adds (Companion > Prompts > Voice sounds and tones, from dataDirectory's settings " +
+            "when given), the pieces the real speech segmenter hands that engine and the text the chat and captions show. " +
+            "Synthesizes and contacts nothing.", new
+        {
+            text = new { type = "string" }, engine = new { type = "string" }, dataDirectory = new { type = "string" }
+        }, ["text"]),
         Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
             "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
             "changed it last; each host's roles). Read-only; contacts nothing and returns no addresses or keys.", new
@@ -281,6 +290,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
                 "f5_voices" => F5Voices(arguments),
+            "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
@@ -581,6 +591,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
     /// <summary>F5's included reference voices, each checked, and the data directory's F5 voice list (the "f5-voices" store
     /// Martlet.Desktop keeps). Own voices are counted, never named; an included voice is recognized by its clip's SHA-256.</summary>
+    private static object VoiceTagsCheck(JsonElement arguments)
+    {
+        var text = OptionalString(arguments, "text") ?? throw new ArgumentException("'text' is required.");
+        var key = OptionalString(arguments, "engine");
+        var engine = key is "none" ? null : key is null ? Martlet.Core.Settings.SpeechEngines.Default
+            : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
+        Martlet.Core.Settings.PromptSettings? prompts = null;
+        if (OptionalString(arguments, "dataDirectory") is { } directory && File.Exists(Path.Combine(directory, "settings.json")))
+            prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
+        var preview = Martlet.Conversation.SpeechTextPreview.For(text, engine);
+        return new
+        {
+            engine = engine?.Key, name = engine?.Name, supportsTags = engine?.SupportsTags ?? false,
+            tags = (engine?.Tags ?? []).Select(tag => tag.Text).ToArray(),
+            prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
+            spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown
+        };
+    }
     private static object F5Voices(JsonElement arguments)
     {
         var directory = DataDirectory(arguments);
@@ -658,13 +686,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
             model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
-            summary = engine.Summary
+            summary = engine.Summary, @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
+            minimumReferenceMilliseconds = engine.MinimumReferenceMilliseconds, supportsTags = engine.SupportsTags,
+            tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
             cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), included, list, speaking,
-            engines, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.F5.Key
+            engines, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
         };
     }
 

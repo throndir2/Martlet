@@ -39,6 +39,7 @@ COPY deploy/host /opt/martlet/host
 # workers/audio2face/Dockerfile).
 COPY workers/f5 /opt/martlet/source/workers/f5
 COPY workers/xtts /opt/martlet/source/workers/xtts
+COPY workers/chatterbox /opt/martlet/source/workers/chatterbox
 COPY workers/audio2face /opt/martlet/source/workers/audio2face
 RUN chmod 0755 /opt/martlet/host/martlet-host && ln -s /opt/martlet/host/martlet-host /usr/local/bin/martlet-host
 ENV MARTLET_HOST_MODE=docker TERM=xterm-256color

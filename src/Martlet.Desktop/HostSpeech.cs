@@ -52,14 +52,15 @@ internal static class F5Voices
     /// <summary>The voice F5 speaks with when the owner has not picked one for <paramref name="destination"/>: the applied or
     /// most recent voice already chosen for it, otherwise <see cref="F5BundledVoices.Default"/> (a female voice). The retired
     /// F5-TTS example clip is never chosen this way.</summary>
-    internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token)
+    internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token,
+        SpeechEngine? engine = null)
     {
         using var store = Open(dataDirectory);
         var inspection = store.Inspect();
         return inspection.Presets
                 .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
                 .OfType<F5ReferenceSnapshot>()
-                .Where(s => !IsRetiredSample(s))
+                .Where(s => !IsRetiredSample(s) && (engine is null || engine.Accepts(s.AudioFormat.DurationMilliseconds)))
                 .OrderByDescending(s => s.PresetId == inspection.AppliedPresetId)
                 .ThenByDescending(s => s.CreatedAtUtc)
                 .FirstOrDefault()

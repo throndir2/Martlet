@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Martlet.Audio;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Core.Streaming;
 using Martlet.Providers;
 
@@ -21,6 +22,7 @@ public sealed class ConversationTurn
     private readonly TaskCompletionSource stopSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<ConversationSnapshot> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly VoiceTagStripper shown = new();
     private readonly Channel<SpeechPiece> segments = Channel.CreateBounded<SpeechPiece>(new BoundedChannelOptions(2)
     {
         FullMode = BoundedChannelFullMode.Wait, SingleWriter = true, SingleReader = false, AllowSynchronousContinuations = false
@@ -209,7 +211,7 @@ public sealed class ConversationTurn
     {
         var segmenter = request.Speech is { } voice
             ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
-                eagerFirstClause: true) : null;
+                eagerFirstClause: true, tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId)) : null;
         try
         {
             var input = request.Input;
@@ -294,8 +296,11 @@ public sealed class ConversationTurn
                         lock (Sync)
                         {
                             CheckActive();
-                            text.Append('\n');
-                            Emit(ConversationEventKind.Text, "\n");
+                            if (shown.Push("\n") is { Length: > 0 } line)
+                            {
+                                text.Append(line);
+                                Emit(ConversationEventKind.Text, line);
+                            }
                         }
                         if (segmenter is not null) await StageAsync(segmenter.Push("\n"), whole).ConfigureAwait(false);
                     }
@@ -313,6 +318,11 @@ public sealed class ConversationTurn
                 lock (Sync)
                 {
                     CheckActive();
+                    if (shown.Finish() is { Length: > 0 } rest)
+                    {
+                        text.Append(rest);
+                        Emit(ConversationEventKind.Text, rest);
+                    }
                     textComplete = true;
                 }
                 if (segmenter is not null) await StageAsync(segmenter.Finish(), whole).ConfigureAwait(false);
@@ -389,8 +399,12 @@ public sealed class ConversationTurn
                     {
                         CheckActive();
                         firstTextAfter ??= Clock.GetElapsedTime(startedAt);
-                        text.Append(chunk!.Text);
-                        Emit(ConversationEventKind.Text, chunk.Text);
+                        // The chat and the saved conversation show words only; the voice gets its tags from the segmenter.
+                        if (shown.Push(chunk!.Text) is { Length: > 0 } visible)
+                        {
+                            text.Append(visible);
+                            Emit(ConversationEventKind.Text, visible);
+                        }
                     }
                     said.Append(chunk.Text);
                     if (segmenter is not null) await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false);
@@ -644,7 +658,8 @@ public sealed class ConversationTurn
                         playback = run;
                         speechRequest = take.Ids.RequestId;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
-                        Owner.SpokenText?.Post(take.Text, run.Completion);
+                        // Captions show the words only; the voice still hears its own tags ([laugh]...).
+                        if (VoiceTags.Strip(take.Text).Trim() is { Length: > 0 } caption) Owner.SpokenText?.Post(caption, run.Completion);
                     }
                 }
                 await SubmitAsync(run, frame, window).ConfigureAwait(false);

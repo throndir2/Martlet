@@ -11,7 +11,7 @@ public static class GatewayInferenceProtocol
 {
     public const string RegistryId = "martlet.gateway.inference-routes";
     public const string RegistryVersion = "1.0";
-    public const int MaximumRoutes = 8;
+    public const int MaximumRoutes = 16;
     public const int MaximumRequestBytes = 5_700_000;
     public const int MaximumCancelRequestBytes = 2_048;
     public static readonly TimeSpan MaximumCancellationDuration = TimeSpan.FromSeconds(2);

@@ -548,7 +548,7 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
             if (root.GetProperty("host_id").GetString() != pairing.HostId)
                 throw new Audio2FaceHostException("response.invalid", "The host identity changed; pair again.");
             var routes = new List<HostRoute>();
-            foreach (var route in root.GetProperty("routes").EnumerateArray().Take(8))
+            foreach (var route in root.GetProperty("routes").EnumerateArray().Take(16))
             {
                 string Text(string name) => route.GetProperty(name).GetString()!;
                 int Number(string name) => route.GetProperty(name).GetInt32();

@@ -80,7 +80,7 @@ talk window asks before each tool call unless you always allow it. See [MCP](doc
 Voices** and switch between them in one click. F5 copies a voice from a short
 recording with its transcript; nothing is trained. Martlet keeps its own copy of
 each recording on this PC and sends it with each reply only to the computer that
-speaks. The same voices work with [XTTS-v2](docs/XTTS_VOICE.md), which starts
+speaks. The same voices work with [Chatterbox Turbo](docs/CHATTERBOX_VOICE.md), the default engine, which can also laugh, sigh and change tone, and with [XTTS-v2](docs/XTTS_VOICE.md), which starts
 speaking before a sentence is finished (Companion > Voice > Voice engine). See
 [Voices](docs/SETUP.md#voices-f5) and the [Voice Studio plan](docs/VOICE_STUDIO.md)
 for other engines.

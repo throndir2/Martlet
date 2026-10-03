@@ -1,0 +1,21 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+# Martlet Chatterbox Turbo host runtime (Linux x86_64 / CPython 3.12). Docker installs with --no-deps.
+# chatterbox-tts==0.1.7 is appended to the lock manually with its exact wheel hash; its metadata also pulls demo/language-only packages we do not import.
+conformer==0.3.2
+diffusers==0.29.0
+einops==0.8.2
+huggingface-hub
+librosa==0.11.0
+numpy==1.26.4
+omegaconf
+pyloudnorm
+resemble-perth==1.0.1
+s3tokenizer==0.3.0
+safetensors==0.5.3
+scipy
+tokenizers
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+tqdm
+transformers==5.2.0

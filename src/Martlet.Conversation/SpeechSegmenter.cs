@@ -1,5 +1,6 @@
 using System.Text;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Conversation;
@@ -10,10 +11,18 @@ internal sealed record SpeechPiece(string? Text);
 // silentWord: a reply sentence that is just this word (for example "[pass]" or "Pass.") means "say nothing".
 // eagerFirstClause: until something has been said, a comma, semicolon or dash after a long enough clause also ends a piece, so
 // the first audio starts before the first sentence is finished; later pieces stay whole sentences for natural prosody.
-internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false)
+// tags: the voice engine's own tags (Martlet.Core.Settings.SpeechEngine.Tags), passed through exactly as the engine spells
+// them; every other registered engine's tag is dropped. Neither silences its sentence the way other bracketed text does.
+internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false,
+    IReadOnlyList<VoiceTag>? tags = null)
 {
     internal const int FirstClauseMinimum = 24;
     private readonly StringBuilder sentence = new();
+    private readonly IReadOnlyList<VoiceTag> keep = tags ?? [];
+    private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(tags ?? [])
+        .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
+    private readonly StringBuilder candidateTag = new();
+    private bool droppedTag;
     private bool spoke;
     private bool pendingBoundary, fenced, suppressLine, atLineStart = true;
     private bool openingRun, markerAtLineStart, closingLine, closingWhitespace;
@@ -26,12 +35,53 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         {
             if (++characters > characterLimit)
                 throw new ConversationException(ConversationFailure.LimitExceeded);
+            // A tag may arrive split across deltas: hold its prefix until it completes or stops matching.
+            if (!fenced && (candidateTag.Length > 0 || known.Any(tag => char.ToLowerInvariant(tag.Text[0]) == char.ToLowerInvariant(c))))
+            {
+                candidateTag.Append(c);
+                var held = candidateTag.ToString();
+                if (known.FirstOrDefault(tag => string.Equals(tag.Text, held, StringComparison.OrdinalIgnoreCase)) is { } whole)
+                {
+                    candidateTag.Clear();
+                    foreach (var piece in AcceptTag(whole)) yield return piece;
+                    continue;
+                }
+                if (known.Any(tag => tag.Text.StartsWith(held, StringComparison.OrdinalIgnoreCase))) continue;
+                candidateTag.Clear();
+                foreach (var replayed in held)
+                    foreach (var piece in Accept(replayed)) yield return piece;
+                continue;
+            }
+            foreach (var piece in Accept(c)) yield return piece;
+        }
+    }
+
+    // A whole tag: the engine's own tags join the sentence as written; other engines' tags are dropped.
+    private IEnumerable<SpeechPiece> AcceptTag(VoiceTag tag)
+    {
+        if (pendingBoundary)
+            foreach (var piece in Flush()) yield return piece;
+        pendingBoundary = false;
+        atLineStart = false;
+        markerRun = 0;
+        openingRun = false;
+        if (keep.FirstOrDefault(k => string.Equals(k.Text, tag.Text, StringComparison.OrdinalIgnoreCase)) is { } kept)
+        {
+            if (sentence.Length > 0 && !char.IsWhiteSpace(sentence[^1])) sentence.Append(' ');
+            sentence.Append(kept.Text);
+        }
+        else droppedTag = true;
+    }
+
+    private IEnumerable<SpeechPiece> Accept(char c)
+    {
+        {
             if (pendingBoundary && char.IsWhiteSpace(c))
             {
                 foreach (var piece in Flush()) yield return piece;
             }
             pendingBoundary = false;
-            if (c is '\r') continue;
+            if (c is '\r') yield break;
             if (c is '\n')
             {
                 foreach (var piece in Flush()) yield return piece;
@@ -40,7 +90,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
                 leadingSpaces = markerRun = 0;
                 openingRun = closingLine = closingWhitespace = false;
                 suppressLine = fenced;
-                continue;
+                yield break;
             }
             bool wasLineStart = atLineStart;
             if (atLineStart)
@@ -90,15 +140,29 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         }
     }
 
-    internal IEnumerable<SpeechPiece> Finish() => Flush();
+    internal IEnumerable<SpeechPiece> Finish()
+    {
+        // An unfinished tag prefix at the end is ordinary text.
+        var held = candidateTag.ToString();
+        candidateTag.Clear();
+        foreach (var replayed in held)
+            foreach (var piece in Accept(replayed)) yield return piece;
+        foreach (var piece in Flush()) yield return piece;
+    }
 
-    internal void Clear() => sentence.Clear();
+    internal void Clear()
+    {
+        sentence.Clear();
+        candidateTag.Clear();
+    }
 
     private IEnumerable<SpeechPiece> Flush()
     {
         if (sentence.Length == 0) yield break;
         string candidate = sentence.ToString().Trim();
         sentence.Clear();
+        if (droppedTag) candidate = VoiceTags.Tidy(candidate);
+        droppedTag = false;
         if (candidate.Length == 0) yield break;
         // Numeric list markers and bare dotted addresses are deliberately outside the prose subset.
         if (candidate.Length > 1 && candidate[^1] == '.' && candidate.AsSpan(0, candidate.Length - 1).IndexOfAnyExceptInRange('0', '9') < 0)

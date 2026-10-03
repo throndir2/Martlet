@@ -32,14 +32,15 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         "Reply text",
         "Reply text and the selected voice sample go to that computer instead of a cloud voice. There is no per-request charge.");
 
-    private static readonly HostJob XttsSpeaking = F5Speaking with
+    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role, with its model licence in the disclosure.</summary>
+    internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.F5.Key ? F5Speaking : F5Speaking with
     {
-        HostRoleKind = HostRoles.Xtts, RouteId = HostRoute.XttsRouteId,
-        Disclosure = F5Speaking.Disclosure + " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
+        HostRoleKind = engine.HostRoleKind, RouteId = engine.RouteId,
+        Disclosure = F5Speaking.Disclosure + (engine.Key == SpeechEngines.Xtts.Key
+            ? " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
+            : $" {engine.Name}'s model licence: {engine.WeightsLicense}." +
+              (engine.Key == SpeechEngines.Chatterbox.Key ? " Every reply carries Resemble AI's inaudible Perth watermark." : ""))
     };
-
-    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS or XTTS-v2).</summary>
-    internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : F5Speaking;
 
     internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];
 
@@ -55,13 +56,13 @@ internal static class SpeakingEngineChoice
 {
     internal const string FileName = "speaking-engine.txt";
 
-    internal static SpeechEngine Current { get; private set; } = SpeechEngines.F5;
+    internal static SpeechEngine Current { get; private set; } = SpeechEngines.Default;
 
     /// <summary>Reads the saved choice, then follows the engine the TTS route uses when Speaking is on a host.</summary>
     internal static void Sync(string directory, AppSettings? settings)
     {
-        try { Current = SpeechEngines.ForKey(File.ReadAllText(Path.Combine(directory, FileName)).Trim()) ?? SpeechEngines.F5; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Current = SpeechEngines.F5; }
+        try { Current = SpeechEngines.ForKey(File.ReadAllText(Path.Combine(directory, FileName)).Trim()) ?? SpeechEngines.Default; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Current = SpeechEngines.Default; }
         var route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         if (route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: { } snapshot } &&
             SpeechEngines.ForRoute(snapshot.RouteId) is { } used && used != Current)
@@ -176,7 +177,8 @@ public partial class MainWindow
             // included voice; Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5)
-                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token);
+                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token,
+                    SpeechEngines.ForRoute(job.RouteId));
             var withVoice = voice is null ? "" : $" using \"{voice.PresetName}\"";
             var changeVoice = voice is null ? "" : " You can change voices in Companion > Voice.";
             if (route is null)
