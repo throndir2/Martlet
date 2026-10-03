@@ -223,6 +223,32 @@ either original cancellation flag. LLM/TTS keep their reviewed original
 caller/enumerator guards; no application bridge substitutes linked-only
 permission for those original sources.
 
+## Voice latency: streaming, overlap and barge-in
+
+Time to first audio is what makes a spoken reply feel conversational, so the
+voice pipeline never waits for a whole reply:
+
+- **Pipelined chunking.** Text is spoken as it streams from the Thinking model:
+  each finished sentence goes to the voice right away. The first piece of a
+  reply is cut even earlier, at a comma, semicolon or dash once it is at least
+  24 characters long, so audio starts before the first sentence is finished;
+  later pieces stay whole sentences, which sound more natural.
+- **Overlapped synthesis.** While one sentence plays, the next is already being
+  synthesized (one sentence ahead, never more), so there is no synthesis gap
+  between sentences. A voice failure on the next sentence surfaces only when
+  playback reaches it, so what is already playing finishes.
+- **Barge-in.** With always listening, *Let me interrupt Martlet by talking* in
+  Companion › Listening (off by default) keeps the microphone open while
+  Martlet speaks. Talking over a reply stops it at once: the Thinking request
+  is canceled, the queued audio is dropped and what you said is answered next,
+  with the reply so far kept in context. Use headphones: Martlet has no echo
+  cancellation, so through speakers it hears itself and stops. Without it,
+  listening holds off while Martlet speaks, and Stop, Esc or the talk button
+  still interrupt.
+- **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
+  `FirstAudioAfter` (from the start of the reply), and the desktop log records
+  them as *Reply latency: first words after … ms, first audio after … ms*.
+
 ## Hands-free voice activity and Voice ID
 
 **How you talk** in Companion › Listening offers **Always listening** (default)

@@ -81,6 +81,28 @@ public sealed class StreamingTests
         Assert.Equal(0, h.Device.Opens);
     }
 
+    [Fact]
+    public async Task Next_sentence_is_synthesized_while_the_previous_one_plays_and_latency_is_reported()
+    {
+        await using var h = new Harness(new ControlledDevice { AutoConsume = false });
+        h.Answer("First sentence. ", "Second sentence.");
+        var turn = h.Start();
+        // The first sentence never finishes playing, yet the second is already synthesized and waiting.
+        await Harness.Until(() => h.Tts.Calls == 2, h.Clock);
+        Assert.Equal(0, h.Device.Disposals);
+        Assert.Equal(1, h.Device.Opens);
+        Assert.Equal(["First sentence.", "Second sentence."], h.Permissions.SpeechActions.Select(a => a.Input.Text));
+        var snapshot = turn.Snapshot;
+        Assert.NotNull(snapshot.FirstTextAfter);
+        Assert.Equal(2, snapshot.CommittedSegments);
+        h.Device.AutoConsume = true;
+        var result = await Harness.Finish(turn, h.Clock);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal(2, h.Device.Opens);
+        Assert.NotNull(result.FirstAudioAfter);
+        Assert.True(result.FirstAudioAfter >= result.FirstTextAfter);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

@@ -122,6 +122,8 @@ public sealed class LifetimeTests
         using var caller = new CancellationTokenSource();
         var turn = h.Start(token: caller.Token);
         await (stage == "playback" ? h.Device.EnteredBlockedWrite.Task : entered.Task).WaitAsync(TimeSpan.FromSeconds(20));
+        // The second sentence is authorized while the first still plays; cancel once the first has been heard.
+        if (stage == "between-segments") await Harness.Until(() => turn.Snapshot.MayHavePlayed, h.Clock);
         await caller.CancelAsync();
         Assert.True(h.Runtime.CurrentEpoch > turn.Epoch);
         Assert.Equal(0, turn.Snapshot.QueuedSegments);
@@ -130,7 +132,8 @@ public sealed class LifetimeTests
         await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(20));
         Assert.Equal(ConversationState.Canceled, result.State);
         Assert.InRange(h.Llm.Calls, 0, 1);
-        Assert.InRange(h.Tts.Calls, 0, 1);
+        // The next sentence may already be synthesized while the first one plays.
+        Assert.InRange(h.Tts.Calls, 0, stage == "playback" ? 2 : 1);
         Assert.InRange(h.Device.Opens, 0, 1);
         if (stage == "between-segments") Assert.True(result.MayHavePlayed);
     }
@@ -227,7 +230,7 @@ public sealed class LifetimeTests
     }
 
     [Fact]
-    public async Task Slow_sink_bounds_pcm_and_two_pending_segments_and_backpressures_llm_transport()
+    public async Task Slow_sink_bounds_pcm_synthesizes_one_sentence_ahead_and_backpressures_llm_transport()
     {
         await using var h = new Harness(new() { AutoConsume = false }, new()
         {
@@ -235,23 +238,29 @@ public sealed class LifetimeTests
         });
         string trace = Harness.Trace(Enumerable.Range(0, 12).Select(i => $"Sentence {i}! ").ToArray());
         var llmBody = new FragmentedTextBody(Encoding.UTF8.GetBytes(trace), 1);
-        var pcmBody = new FragmentedTextBody(SpeechFixtures.Audio(4800), 73);
+        var pcmBodies = new System.Collections.Concurrent.ConcurrentQueue<FragmentedTextBody>();
         h.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(llmBody));
-        h.Tts.Respond = (_, _) => Task.FromResult(SpeechFixtures.Pcm(pcmBody));
+        h.Tts.Respond = (_, _) =>
+        {
+            var body = new FragmentedTextBody(SpeechFixtures.Audio(4800), 73);
+            pcmBodies.Enqueue(body);
+            return Task.FromResult(SpeechFixtures.Pcm(body));
+        };
         var turn = h.Start();
         await h.Device.EnteredWrite.Task.WaitAsync(TimeSpan.FromSeconds(20));
-        await Harness.Until(() => turn.Snapshot.QueuedSegments == 2 && turn.Snapshot.AcceptedSamples >= 1440, h.Clock);
+        await Harness.Until(() => turn.Snapshot.QueuedSegments == 2 && turn.Snapshot.AcceptedSamples >= 1440 && h.Tts.Calls == 2, h.Clock);
         Assert.Equal(2, turn.Snapshot.PeakQueuedSegments);
         Assert.InRange(turn.Snapshot.AcceptedSamples - turn.Snapshot.DeviceConsumedSamples, 1, 2400);
-        Assert.InRange(pcmBody.BytesRead, 1, 5760);
+        Assert.All(pcmBodies, body => Assert.True(body.BytesRead > 0));
         Assert.True(llmBody.BytesRead < Encoding.UTF8.GetByteCount(trace));
         Assert.Equal(1, h.Llm.Calls);
-        Assert.Equal(1, h.Tts.Calls);
+        // The first sentence is still playing; only the next one is synthesized ahead of it.
+        Assert.Equal(2, h.Tts.Calls);
         var stop = turn.StopAsync();
         await Harness.Until(() => stop.IsCompleted, h.Clock);
         Assert.Equal(ConversationState.Canceled, (await stop).State);
         Assert.True(llmBody.Disposed);
-        Assert.True(pcmBody.Disposed);
+        Assert.All(pcmBodies, body => Assert.True(body.Disposed));
         Assert.Equal(0, turn.Snapshot.QueuedSegments);
     }
 

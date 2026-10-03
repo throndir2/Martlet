@@ -16,7 +16,8 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
     PolicyReason? Policy = null, ProviderFailureCode? ProviderFailure = null, ErrorCode? AudioFailure = null);
 
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded.
-internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId)
+// BargeIn: keep listening while Martlet speaks, so talking over a reply stops it (needs headphones, or it hears itself).
+internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool BargeIn = false)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -451,25 +452,24 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     /// <summary>Always listening holds off while Martlet speaks (a reply or a remark, plus a short tail for the room's echo), so
-    /// it never hears itself, and while other setup work (a microphone test, Voice ID enrollment) owns the app slot.</summary>
-    internal bool ListeningHeld
+    /// it never hears itself, and while other setup work (a microphone test, Voice ID enrollment) owns the app slot. With
+    /// barge-in it keeps listening while Martlet speaks, so you can talk over a reply to stop it.</summary>
+    internal bool Held(bool bargeIn)
     {
-        get
+        lock (gate)
         {
-            lock (gate)
+            var now = clock.GetTimestamp();
+            if (active is { Worker: not null } current && !current.OwnershipReleased)
             {
-                var now = clock.GetTimestamp();
-                if (active is { Worker: not null } current && !current.OwnershipReleased)
+                if (bargeIn) return false;
+                if (current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true, OwnershipReleased: false })
                 {
-                    if (current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true, OwnershipReleased: false })
-                    {
-                        spokeUntil = now + (long)(SpeechTail.TotalSeconds * clock.TimestampFrequency);
-                        return true;
-                    }
-                    return now < spokeUntil;
+                    spokeUntil = now + (long)(SpeechTail.TotalSeconds * clock.TimestampFrequency);
+                    return true;
                 }
-                return operations.IsRunning || now < spokeUntil;
+                return now < spokeUntil;
             }
+            return operations.IsRunning || !bargeIn && now < spokeUntil;
         }
     }
 
@@ -484,7 +484,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                if (ListeningHeld)
+                if (Held(listening.Options.BargeIn))
                 {
                     listening.Held = true;
                     await Task.Delay(TimeSpan.FromMilliseconds(50), clock, token).ConfigureAwait(false);
@@ -1519,7 +1519,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 }
                 while (true);
                 // Always listening stops listening the moment Martlet starts speaking, unless you were already talking.
-                if (accepted < 0 && operation.Listen && ListeningHeld)
+                if (accepted < 0 && operation.Listen && Held(operation.Listening?.BargeIn == true))
                 {
                     operation.Publish(new("listen.held"));
                     return null;

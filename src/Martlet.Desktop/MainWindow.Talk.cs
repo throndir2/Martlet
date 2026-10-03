@@ -75,6 +75,14 @@ public partial class MainWindow
             children.Add(Labeled("Reply after", pause));
             children.Add(Note("Martlet listens again after each reply, with or without the talk window open. Stop listening ends it; locking Windows pauses it.",
                 new Thickness(0, 8, 0, 0)));
+
+            var bargeIn = new CheckBox { Content = "Let me interrupt Martlet by talking", IsChecked = prefs.BargeIn, Margin = new Thickness(0, 16, 0, 4) };
+            AutomationProperties.SetAutomationId(bargeIn, "TalkBargeIn");
+            bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
+            bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
+            children.Add(bargeIn);
+            children.Add(Note("Martlet keeps listening while it speaks; talking over it stops the reply at once and answers what you say. " +
+                "Use headphones, or Martlet hears itself through your speakers and stops.", new Thickness(0, 0, 0, 0)));
         }
 
         var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };

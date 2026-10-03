@@ -8,9 +8,13 @@ internal sealed record SpeechPiece(string? Text);
 
 // English-oriented plain prose, not a Markdown parser. State survives arbitrary delta boundaries.
 // silentWord: a reply sentence that is just this word (for example "[pass]" or "Pass.") means "say nothing".
-internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null)
+// eagerFirstClause: until something has been said, a comma, semicolon or dash after a long enough clause also ends a piece, so
+// the first audio starts before the first sentence is finished; later pieces stay whole sentences for natural prosody.
+internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false)
 {
+    internal const int FirstClauseMinimum = 24;
     private readonly StringBuilder sentence = new();
+    private bool spoke;
     private bool pendingBoundary, fenced, suppressLine, atLineStart = true;
     private bool openingRun, markerAtLineStart, closingLine, closingWhitespace;
     private int markerRun, fenceLength, leadingSpaces, characters;
@@ -81,7 +85,8 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
                 '|' or '\\' or '/' or ':' or '@' or '=' or '^' or '&' or '\t')
                 suppressLine = true;
             sentence.Append(c);
-            pendingBoundary = c is '.' or '!' or '?';
+            pendingBoundary = c is '.' or '!' or '?' ||
+                eagerFirstClause && !spoke && c is ',' or ';' or '\u2014' or '\u2013' && sentence.Length >= FirstClauseMinimum;
         }
     }
 
@@ -103,7 +108,11 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
             yield return new(null);
             yield break;
         }
-        foreach (var part in Split(candidate, byteLimit)) yield return new(part);
+        foreach (var part in Split(candidate, byteLimit))
+        {
+            spoke = true;
+            yield return new(part);
+        }
     }
 
     internal static bool IsSilent(string text, string? silentWord) =>

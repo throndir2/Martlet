@@ -282,7 +282,7 @@ public partial class LiveConversationWindow : ThemedWindow
         preferences = next;
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
-            before.VoiceId != next.VoiceId)
+            before.VoiceId != next.VoiceId || before.BargeIn != next.BargeIn)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -455,7 +455,7 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId);
+        preferences.VoiceId, preferences.BargeIn);
 
     // ---------- always listening ----------
 
@@ -580,6 +580,15 @@ public partial class LiveConversationWindow : ThemedWindow
         var talking = listener is { Hearing: true } or { Transcribing: > 0 };
         if (!talking && heardQueue.Count == 0) return;
         pacer?.NoteConversation();
+        // Barge-in: you talked over a reply Martlet is already saying. It stops at once (the rest of the reply and its queued
+        // audio are dropped) and what you say now is answered next, with the reply so far kept in context.
+        if (preferences.BargeIn && listener is { Hearing: true } && owned is { OwnershipReleased: false } speaking &&
+            !ReferenceEquals(yielded, speaking) &&
+            speaking.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true })
+        {
+            yielded = speaking;
+            controller.Stop(speaking, "conversation.interrupted", keepContext: true);
+        }
         if (owned is { OwnershipReleased: false, Spoken: true } reply && answering is { } batch && !ReferenceEquals(yielded, reply) &&
             restarts < MaximumRestarts && Restartable(reply))
         {
@@ -662,6 +671,12 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         var code = status.Code;
         var continued = code == "conversation.continued";
+        // Voice latency for every spoken reply, in the desktop log (logs_tail shows it): when the first words arrived and when
+        // the first audio played, measured from the start of the reply.
+        if (done.Turn?.Snapshot is { FirstAudioAfter: { } firstAudio } spoken)
+            ErrorLog.Info($"Reply latency: first words after {spoken.FirstTextAfter?.TotalMilliseconds ?? 0:0} ms, first audio after " +
+                $"{firstAudio.TotalMilliseconds:0} ms, {spoken.CommittedSegments} spoken pieces" +
+                (ReferenceEquals(yielded, done) && code == "conversation.interrupted" ? ", stopped when you talked over it." : "."));
         if (ReferenceEquals(shown, done) && reply is not null)
         {
             // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it.
@@ -1111,6 +1126,7 @@ public partial class LiveConversationWindow : ThemedWindow
             : started && !listening ? $"{ListeningProblem()} Martlet will listen when it can. Click to stop listening."
             : listening ? (listener is { Held: true }
                 ? "Not listening while Martlet speaks. Click to stop listening."
+                : preferences.BargeIn ? "Martlet listens for you, even while it speaks: talk over it to stop it. Click to stop listening."
                 : "Martlet listens for you and answers when you pause. Click to stop listening.")
             : micUsable ? "Click to have Martlet listen and answer when you pause. You can keep using the rest of Martlet."
             : ListeningProblem();
