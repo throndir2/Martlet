@@ -58,9 +58,13 @@ lorebooks; add, duplicate, find and edit entries (title, keywords, filter
 keywords and rule, content, enabled, always on, placement, order, chance and
 the per-entry options); change the scan settings shared by all lorebooks; and
 **Try it**: type a message to see which entries it would trigger and exactly
-what would be added, without sending anything. Changes are drafts until **Save
-lorebooks**; saving refuses to overwrite a file that changed elsewhere, and a
-file Martlet can't read is never overwritten.
+what would be added, without sending anything. There is no Save button: every
+edit saves on its own (a moment after typing stops, at once for adding,
+duplicating, deleting or importing), the footer says *All changes saved.* or
+why the latest edit isn't saved yet (such as an invalid scan depth), and
+closing saves anything still waiting. A save never overwrites a file that
+changed elsewhere (the footer says to reopen the editor), and a file Martlet
+can't read is never overwritten.
 
 ## SillyTavern compatibility
 

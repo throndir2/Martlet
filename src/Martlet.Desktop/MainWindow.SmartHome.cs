@@ -100,7 +100,7 @@ public partial class MainWindow
             primary: !connected, id: "SmartHomeSignIn");
         var check = PageButton("Set up a new one", () => CheckHomeAddressAsync(address.Text).Forget(), id: "SmartHomeCheck");
         Button? connect = null;
-        connect = PageButton(connected ? "Save and check" : "Connect with token", () => ConnectSmartHomeAsync(address, token, connect!).Forget(),
+        connect = PageButton(connected ? "Reconnect" : "Connect with token", () => ConnectSmartHomeAsync(address, token, connect!).Forget(),
             id: "SmartHomeConnect");
         var disconnect = connected ? PageButton("Disconnect", DisconnectSmartHome, id: "SmartHomeDisconnect") : null;
 
