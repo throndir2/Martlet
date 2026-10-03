@@ -389,6 +389,22 @@ directory's `smart-home.json`: `connected`, `address`, `name`, `version`,
 `shared` (this PC follows the connection shared through the hosts), `sharedBy`
 and `sharedRevision`.
 
+`prompts_status` reads Companion › Prompts from a data directory's
+`settings.json` (optional absolute `dataDirectory`, default the current
+user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
+`total`, `edited` and `emptied` counts, and every internal prompt Martlet
+sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
+`state` `builtin`, `edited` or `empty`, and `characters`). With an
+`id` it also returns `prompt` with that prompt's effective `text` (the
+saved edit or the built-in text), exactly what Martlet fills in and sends.
+On the page, `PromptsNow` reads how many prompts are edited or emptied and
+`PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
+nothing is sent for this prompt.*, plus *Not saved yet.* for unsaved edits);
+neither returns prompt text. `OpenPrompts` (Personality's *Edit prompts*)
+only opens the page. The editors `Prompt-<id>`, their `PromptReset-<id>`
+buttons, `PromptsDefaults` and `PromptsSave` (which writes settings) need
+`--allow-ui-effects`; `ui_set_text` with an empty `text` empties a prompt.
+
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
 them (optional absolute `dataDirectory`, default the current user's):
@@ -413,7 +429,7 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions route unless set, and the other saved settings), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result) and `SetupF5About` (Speaking › This PC: what the F5 voice is and its non-commercial use restriction). `SetupHostThisPc` and `SetupUseLocal-Speaking` start the F5 setup run window straight away (no extra confirmation; installing Docker Desktop still asks for its terms), so they need `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, F5 setup first needs saved settings (*Complete Setup first.*): `SetupUseWindowsVoice` saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -788,7 +804,10 @@ vision is on: what it sees, for example *Watching the window behind Martlet*,
 then the last look's outcome or why it is holding off, and the looks used this
 hour; it never contains window titles), `LiveContext` (*Keeps the last N
 exchanges in mind.*: how many recent exchanges the next reply sees; absent when
-none, and unchanged when a settings change is picked up)
+none, and unchanged when a settings change is picked up; beside it,
+`LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
+forgets them so the next reply starts fresh, adds the note *Context refreshed.*
+to `LiveHistory` and hides `LiveContext`)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
@@ -877,7 +896,7 @@ notification area.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
-`ui_select`, plus `ui_set_text` and `ui_toggle`. It does **not** waive the
+`ui_select`, plus `ui_set_text` (an empty `text` clears a field) and `ui_toggle`. It does **not** waive the
 desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
@@ -913,7 +932,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status` and `smart_home_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status` and `prompts_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

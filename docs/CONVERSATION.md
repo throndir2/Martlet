@@ -79,7 +79,7 @@ comment; it needs a Thinking model that can see images. See
    spoken as ordinary speech; a stopped or failed reply keeps its text with a
    *Cut short* note. Replies are kept short by asking, not by cutting: every
    reply to what you type or say ends its instructions (after persona, lore and
-   memory) with a fixed instruction to answer in one or two short sentences at
+   memory) with an instruction to answer in one or two short sentences at
    most, with no lists, second paragraph or closing offers (longer only when
    you explicitly ask for detail, steps or a list), and to finish its last
    sentence. The max reply length (Companion › Replies; 1,024 tokens by
@@ -90,11 +90,23 @@ comment; it needs a Thinking model that can see images. See
    changing ids) instead of ending the reply mid-sentence. When a spoken reply
    outgrows the speech budget below, Martlet stops saying it aloud but still
    shows all of it, with an *Only the start was said aloud* note.
+7. **Companion › Prompts** lists every internal prompt Martlet sends to the
+   Thinking model: the persona wrapper and each response style, reply length,
+   always listening, tools, who is talking, lorebook and memory introductions,
+   the screen and camera glance instructions, messages and chattiness lines,
+   the Remembering and Learning names requests, and the smart home notes. Each
+   one is editable; a saved edit replaces the built-in text wherever it is used
+   (settings `prompts.overrides`, by prompt ID, absent while nothing is
+   edited). Words in braces such as `{name}`, `{persona}`, `{style}` or
+   `{silent}` are filled in when the prompt is sent, and an emptied prompt
+   sends nothing (the glance messages can't be emptied). Martlet still parses
+   the answers to Remembering and Learning names, so their line formats must
+   stay. Reload an open conversation to use saved prompts.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
 revision, one weighted response style selected only after participation
-accepts the turn, and the fixed reply-length instruction. Persona/style and user input share the existing byte/token
+accepts the turn, and the reply-length instruction (all as worded in Companion › Prompts). Persona/style and user input share the existing byte/token
 reservation; an over-budget combination is rejected without truncation or a
 provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
 instruction until settings v3 is explicitly

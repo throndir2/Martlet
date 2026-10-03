@@ -19,9 +19,9 @@ public static partial class VisionModelCatalog
     public static IReadOnlyList<LocalVisionModel> LocalRecommendations { get; } = Array.AsReadOnly(new[]
     {
         new LocalVisionModel("gemma4:e2b", "about 5 GB of GPU memory (also runs on the CPU)", "small, talks, sees and uses tools; the easy default"),
-        new LocalVisionModel("gemma4:e4b", "about 7 GB", "a smarter talker for 8 GB graphics cards"),
+        new LocalVisionModel("gemma4:e4b", "about 7 GB", "a smarter talker for 12 GB graphics cards"),
         new LocalVisionModel("qwen3-vl:8b", "about 7 GB", "best at reading on-screen text and game HUDs at this size"),
-        new LocalVisionModel("gemma4:12b", "about 9 GB", "a smarter talker that also sees"),
+        new LocalVisionModel("gemma4:12b", "about 9 GB", "a smarter talker that also sees, for 16 GB graphics cards"),
         new LocalVisionModel("gemma4:26b", "about 19-20 GB", "the strongest single-GPU option, and quick")
     });
 

@@ -618,6 +618,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
         remarks.Clear();
     }
 
+    /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
+    internal bool ForgetContext()
+    {
+        lock (gate)
+        {
+            if (context.Count == 0 && remarks.Count == 0) return false;
+            memory?.Invalidate();
+            ClearContextLocked();
+            return true;
+        }
+    }
+
     internal static TimeSpan RemarkMemory => TimeSpan.FromMinutes(30);
 
     /// <summary>One unprompted screen glance: the image, the window title and recent context go to the Thinking model,
@@ -644,7 +656,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation = new(authorization, caller) { Commentary = true };
             active = operation;
             var camera = source is { IsScreen: false };
-            var prompt = CommentaryPromptLocked(windowTitle, camera);
+            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts);
             var worker = operations.TryStart(async token =>
             {
                 await published.Task.ConfigureAwait(false);
@@ -663,15 +675,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return operation;
     }
 
-    private string CommentaryPromptLocked(string windowTitle, bool camera = false)
+    private string CommentaryPromptLocked(string windowTitle, bool camera = false, PromptSettings? prompts = null)
     {
         while (remarks.TryPeek(out var oldest) && clock.GetElapsedTime(oldest.At) >= RemarkMemory) remarks.Dequeue();
         var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
-        var prompt = camera ? "(Camera glance." + (title.Length > 0 ? $" Camera: \"{title}\"." : "")
-            : "(Screen glance." + (title.Length > 0 ? $" Active window: \"{title}\"." : "");
-        if (remarks.Count > 0)
-            prompt += " What you already said while watching, oldest first: " + string.Join(" | ", remarks.Select(r => $"\"{r.Text}\"")) + ".";
-        return prompt + $" Reply [{LiveConversationConfiguration.SilentReply}] or one short remark.)";
+        var said = remarks.Count == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.GlanceRemarks,
+            ("remarks", string.Join(" | ", remarks.Select(r => $"\"{r.Text}\""))));
+        return PromptSettings.Fill(prompts, camera ? PromptCatalog.GlanceCamera : PromptCatalog.GlanceScreen,
+            ("title", title.Length > 0 ? title : "unknown"), ("remarks", said is null ? "" : " " + said),
+            ("silent", LiveConversationConfiguration.SilentReply))!;
     }
 
     internal static bool IsSilentReply(string text)
@@ -709,7 +721,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 var history = context.Snapshot();
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
-                    out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera),
+                    out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera, configured.Prompts),
                     LiveConversationConfiguration.SilentReply);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
@@ -904,11 +916,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 if (house.ModelToolsEnabled && toolset?.Servers.Contains(SmartHome.ServerName) == true &&
                     tools!.ManagedConflicts.All(s => s.Name != SmartHome.ServerName))
-                    home = house.ToolsTurn();
+                    home = house.ToolsTurn(configured.Prompts);
                 else
                 {
                     operation.Publish(new("home.asking"));
-                    home = await house.HandleAsync(input!.UserText, worker).ConfigureAwait(false);
+                    home = await house.HandleAsync(input!.UserText, worker, configured.Prompts).ConfigureAwait(false);
                     operation.Authorization.Check(worker);
                 }
                 operation.HomeSummary = home.Summary;
@@ -922,10 +934,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     input!, operation.Authorization.Voice, style, history, memoryResult, lore,
                     out var usedHistory, out var usedMemory, out var usedLore,
                     extraInstructions: Join(home?.Instructions,
-                        VoicePromptContext.Instructions(operation.Heard),
-                        operation.Spoken ? LiveConversationConfiguration.ListeningInstructions : null),
+                        VoicePromptContext.Instructions(operation.Heard, operation.Authorization.Configuration.Prompts),
+                        operation.Spoken ? LiveConversationConfiguration.Listening(operation.Authorization.Configuration.Prompts) : null),
                     silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
-                    closingInstructions: LiveConversationConfiguration.ReplyLengthInstructions);
+                    closingInstructions: operation.Authorization.Configuration.ReplyLength);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -1297,7 +1309,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var expected = job.Configuration.Memory!;
             var known = await RetryStoreAsync(() => memory!.KnownFactsAsync(expected, job.User, MemoryCapture.MaximumShownFacts, token),
                 token).ConfigureAwait(false);
-            var prompt = MemoryCapture.Prompt(job.EarlierUser, job.EarlierReply, job.User, job.Reply, known.Facts);
+            var prompt = MemoryCapture.Prompt(job.EarlierUser, job.EarlierReply, job.User, job.Reply, known.Facts,
+                job.Configuration.Prompts);
             var (answer, failure) = await AskAsync("Remembering", job.Configuration, prompt.Input, token).ConfigureAwait(false);
             if (answer is null) return token.IsCancellationRequested || failure is null ? null : new(Failure: failure);
             var operations = MemoryCapture.Parse(answer, prompt.ShownFacts);
@@ -1417,7 +1430,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         try
         {
             token.ThrowIfCancellationRequested();
-            var prompt = VoiceNaming.Prompt(job.Heard, job.EarlierUser, job.EarlierReply, job.User, job.Reply);
+            var prompt = VoiceNaming.Prompt(job.Heard, job.EarlierUser, job.EarlierReply, job.User, job.Reply, job.Configuration.Prompts);
             var (answer, _) = await AskAsync("Learning names", job.Configuration, prompt.Input, token).ConfigureAwait(false);
             if (answer is null || voices is null) return null;
             var learned = new List<(Martlet.Core.Speakers.KnownVoice, string)>();
