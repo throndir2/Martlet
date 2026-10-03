@@ -33,6 +33,9 @@
     <ProjectReference Include="..\Martlet.Mcp.Client\Martlet.Mcp.Client.csproj" />
     <ProjectReference Include="..\Martlet.Home\Martlet.Home.csproj" />
     <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />
+    <!-- Voice recognition (Martlet.Sherpa) is part of Martlet: the unmodified sherpa-onnx 1.13.8 runtime with ONNX Runtime
+         (sherpa-onnx-c-api.dll, onnxruntime.dll) ships beside Martlet.Desktop.exe. -->
+    <PackageReference Include="org.k2fsa.sherpa.onnx.runtime.win-x64" />
     <!-- In-app SSH to Linux Martlet hosts (HostShell). -->
     <PackageReference Include="SSH.NET" />
   </ItemGroup>
@@ -47,6 +50,37 @@
       <AvatarRendererFiles Include="$(AvatarRendererOutput)**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(AvatarRendererFiles)" DestinationFiles="@(AvatarRendererFiles->'$(OutDir)AvatarRenderer\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <!-- Voice recognition's models ship in voice-recognition\ beside Martlet.Desktop.exe: WeSpeaker ResNet34-LM (CC BY 4.0) and
+       pyannote segmentation 3.0 with its LICENSE (MIT); see ..\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt. The build downloads
+       each once into obj, checks its pinned SHA-256 (packaging\windows\toolchain.json pins the same) and only then keeps it. -->
+  <PropertyGroup>
+    <VoiceModelCache>$(BaseIntermediateOutputPath)voice-recognition\</VoiceModelCache>
+  </PropertyGroup>
+  <ItemGroup>
+    <VoiceModel Include="wespeaker_en_voxceleb_resnet34_LM.onnx" Sha256="e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012"
+                Url="https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx" />
+    <VoiceModel Include="pyannote-segmentation-3-0\model.onnx" Sha256="220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079"
+                Url="https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/model.onnx" />
+    <VoiceModel Include="pyannote-segmentation-3-0\LICENSE" Sha256="14d7016ad68e7394d6e6b78d96cc2ae431c905287b89674cfdf021e79e62b8ba"
+                Url="https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/LICENSE" />
+    <None Include="$(VoiceModelCache)wespeaker_en_voxceleb_resnet34_LM.onnx" Link="voice-recognition\wespeaker_en_voxceleb_resnet34_LM.onnx"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(VoiceModelCache)pyannote-segmentation-3-0\model.onnx" Link="voice-recognition\pyannote-segmentation-3-0\model.onnx"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(VoiceModelCache)pyannote-segmentation-3-0\LICENSE" Link="voice-recognition\pyannote-segmentation-3-0\LICENSE"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <Target Name="DownloadVoiceModels" BeforeTargets="PrepareForBuild;GetCopyToOutputDirectoryItems"
+          Condition="!$(MSBuildProjectName.EndsWith('_wpftmp'))">
+    <DownloadFile Condition="!Exists('$(VoiceModelCache)%(VoiceModel.Identity)')" SourceUrl="%(VoiceModel.Url)"
+                  DestinationFolder="$(VoiceModelCache)%(VoiceModel.RelativeDir)"
+                  DestinationFileName="%(VoiceModel.Filename)%(VoiceModel.Extension).partial" SkipUnchangedFiles="false" Retries="3" />
+    <VerifyFileHash Condition="!Exists('$(VoiceModelCache)%(VoiceModel.Identity)')" File="$(VoiceModelCache)%(VoiceModel.Identity).partial"
+                    Algorithm="SHA256" Hash="%(VoiceModel.Sha256)" />
+    <Copy Condition="!Exists('$(VoiceModelCache)%(VoiceModel.Identity)')" SourceFiles="$(VoiceModelCache)%(VoiceModel.Identity).partial"
+          DestinationFiles="$(VoiceModelCache)%(VoiceModel.Identity)" />
+    <Delete Files="@(VoiceModel->'$(VoiceModelCache)%(Identity).partial')" />
   </Target>
   <Target Name="PublishAvatarRenderer" AfterTargets="Publish">
     <MSBuild Projects="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj"

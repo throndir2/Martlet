@@ -5,7 +5,6 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Core.Contracts;
 using Martlet.Core.Speakers;
-using Martlet.Sherpa;
 
 namespace Martlet.Desktop;
 
@@ -15,9 +14,8 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private readonly DispatcherTimer voiceSyncTimer = new() { Interval = TimeSpan.FromSeconds(30) };
-    private bool voiceSyncBusy, voiceSyncQueued, installingVoices, peopleStale;
+    private bool voiceSyncBusy, voiceSyncQueued, peopleStale;
     private string voiceSyncStatus = "Not synced yet.";
-    private string? voiceInstallProgress;
 
     private void InitializeVoiceSync()
     {
@@ -126,36 +124,28 @@ public partial class MainWindow
             children.Add(Warning("Voice recognition needs Martlet's data folder, which isn't available."));
             return Card([.. children]);
         }
-        var size = SherpaComponents.Megabytes((localVoices.Root is { } root && SherpaComponents.IsInstalled(root, SherpaPart.Runtime)
-            ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Runtime)) + SherpaComponents.DownloadBytes(SherpaPart.Speakers));
         var status = new TextBlock
         {
             Text = localVoices.Active ? "On. Martlet learns voices and names during conversations."
-                : localVoices.Installed ? "Off. Martlet isn't checking who is talking."
-                : "Off. Martlet can learn who is speaking by voice.",
+                : !localVoices.Included ? "Off. Voice recognition files are missing from this Martlet installation."
+                : "Off. Martlet isn't checking who is talking.",
             FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
         };
         AutomationProperties.SetAutomationId(status, "PeopleStatus");
         children.Add(status);
-        children.Add(Note("Martlet learns people's voices and names as you talk. Recordings are never saved.", new Thickness(0, 0, 0, 8)));
+        children.Add(Note("Martlet learns people's voices and names as you talk. Voice matching happens on this PC. Recordings are never saved.",
+            new Thickness(0, 0, 0, 8)));
         if (localVoices.LoadError is { } error) children.Add(Warning(error));
-        if (voiceInstallProgress is { } progress) children.Add(Note(progress, new Thickness(0, 0, 0, 6)));
-        if (!localVoices.Installed)
+        if (!localVoices.Included) children.Add(Warning("Reinstall Martlet to recognize voices."));
+        var toggle = new CheckBox
         {
-            var install = PageButton(installingVoices ? "Downloading..." : "Download and turn on", () => InstallVoicesAsync().Forget(),
-                primary: true, id: "PeopleInstall");
-            install.IsEnabled = !installingVoices;
-            children.Add(Note($"Voice recognition needs a one-time {size} download.", new Thickness(0, 0, 0, 0)));
-            children.Add(Row(install));
-        }
-        else
-        {
-            var toggle = new CheckBox { Content = "Recognize voices in conversations", IsChecked = localVoices.Enabled, Margin = new Thickness(0, 4, 0, 0) };
-            AutomationProperties.SetAutomationId(toggle, "PeopleRecognize");
-            toggle.Checked += (_, _) => SetRecognition(true);
-            toggle.Unchecked += (_, _) => SetRecognition(false);
-            children.Add(toggle);
-        }
+            Content = "Recognize voices in conversations", IsChecked = localVoices.Enabled, IsEnabled = localVoices.Included,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(toggle, "PeopleRecognize");
+        toggle.Checked += (_, _) => SetRecognition(true);
+        toggle.Unchecked += (_, _) => SetRecognition(false);
+        children.Add(toggle);
         return Card([.. children]);
     }
 
@@ -172,41 +162,6 @@ public partial class MainWindow
             ActionText.Text = $"Couldn't save your choice: {error.Message}";
         }
         RenderTab();
-    }
-
-    private async Task InstallVoicesAsync()
-    {
-        if (installingVoices || closing) return;
-        var total = SherpaComponents.Megabytes(SherpaComponents.DownloadBytes(SherpaPart.Runtime) + SherpaComponents.DownloadBytes(SherpaPart.Speakers));
-        if (!ConfirmationDialog.Confirm(this,
-                $"Download and turn on voice recognition?\n\nThe download is {total}. Voice matching happens on this PC. Recordings are never uploaded or saved.",
-                "Download"))
-            return;
-        installingVoices = true;
-        RenderTab();
-        try
-        {
-            await localVoices.InstallAsync(new Progress<SherpaProgress>(p =>
-            {
-                voiceInstallProgress = $"Downloading voice recognition... {p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}";
-                ActionText.Text = voiceInstallProgress;
-            }), lifetime.Token);
-            localVoices.SetEnabled(true);
-            voiceInstallProgress = null;
-            ActionText.Text = "Voice recognition is on. Voices Martlet hears will appear here.";
-        }
-        catch (OperationCanceledException) { voiceInstallProgress = null; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
-            System.Net.Http.HttpRequestException or InvalidOperationException)
-        {
-            voiceInstallProgress = null;
-            ActionText.Text = "Couldn't download voice recognition: " + error.Message;
-        }
-        finally
-        {
-            installingVoices = false;
-            if (!closing && openTab == CompanionTab.People) RenderTab();
-        }
     }
 
     private Border SharingCard()

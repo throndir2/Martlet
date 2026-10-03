@@ -172,10 +172,26 @@ request or handles credentials.
 
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
-recognition and sharing choices, whether the sherpa-onnx runtime, voice models and
-Parakeet are downloaded, and counts from `voices.json` (voices, named, owner, with
+recognition choice (`on (default)` until it is turned off) and sharing choice,
+whether a Martlet folder (optional absolute `martletDirectory`, default the
+installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
+checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
+the voice models (`included`: `found`, `runtime`, `voiceModels`), whether
+Parakeet is downloaded, and counts from `voices.json` (voices, named, owner, with
 learned names, merged, tombstones). It never returns names, voiceprints or audio and
 runs no model.
+
+`voices_engine_check` runs the voice recognition engine that ships in a Martlet
+folder (same optional `martletDirectory`) the way the desktop does: it loads the
+bundled runtime and both models, takes a voiceprint of a generated test tone
+(`loaded`, `voiceprintDimensions`, `loadMs`) and, for optional `wavFiles`
+(absolute paths to at most 16 canonical 16 kHz mono PCM16 WAV files of at most a
+minute each), reports for each file how many voices were heard, each
+recognizable voice's clean seconds, overlap and speech seconds, plus a
+`similarity` matrix of the files' main voices (cosine; Martlet treats 0.70 as
+the same person). It returns counts and scores only, never audio or
+voiceprints, and uses no data directory, device or network. Without the files
+it returns `included: false`.
 
 `f5_voices` lists Martlet's [starter voices](F5_VOICE.md#desktop-voices-and-playback)
 as `starters` (key, name, `female`, `cute`, description, licence, transcript,
@@ -947,13 +963,14 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 `--allow-ui-effects`; `TourCompanion` leads to `TourAdvisor`/`TourSetup`, and
 `TourHost` closes the tour on the host dashboard. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
-navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
+navigation too. People shows `PeopleStatus` (on, off, or that the installation
+lacks the voice recognition files), `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
 its field loses focus, on Enter or two seconds after typing stops, then syncs);
-like `PeopleInstall`, `PeopleRecognize`,
+like `PeopleRecognize` (ticked by default),
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
@@ -1713,6 +1730,8 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
+- `voices_status` and `voices_engine_check` calls without a `martletDirectory`
+  use this checkout's Desktop build when it is built.
 - Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
