@@ -486,6 +486,8 @@
                             <TextBlock Text="App updates" Style="{DynamicResource SectionHeading}"/>
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
                                        Text="Martlet can check for updates and install them when you choose."/>
+                            <TextBlock x:Name="CurrentVersionText" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="AppCurrentVersion"/>
                             <CheckBox x:Name="AutomaticUpdateCheck" Content="Check for updates automatically"
                                       Margin="0,10,0,6" Checked="UpdateCheckSetting_Changed" Unchecked="UpdateCheckSetting_Changed"
                                       AutomationProperties.AutomationId="AutomaticUpdateCheck" />
