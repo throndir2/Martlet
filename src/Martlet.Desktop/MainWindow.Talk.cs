@@ -82,9 +82,12 @@ public partial class MainWindow
             bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
-            children.Add(Note("Martlet keeps listening while it speaks; talking over it stops the reply at once and answers what you say. " +
+            var bargeInAbout = Note("Martlet keeps listening while it speaks; talking over it for about a second stops the reply and answers " +
+                "what you say. Short sounds (a cough, a click, a quick \"mm-hmm\") and what this PC plays never stop it. " +
                 "With Reduce echo from my speakers on, this works through speakers too. If Martlet still stops itself, use headphones " +
-                "or turn this off.", new Thickness(0, 0, 0, 0)));
+                "or turn this off.", new Thickness(0, 0, 0, 0));
+            AutomationProperties.SetAutomationId(bargeInAbout, "TalkBargeInAbout");
+            children.Add(bargeInAbout);
         }
 
         var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };

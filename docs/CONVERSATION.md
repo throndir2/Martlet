@@ -294,12 +294,22 @@ voice pipeline never waits for a whole reply:
   stops for the rest of the reply while its text keeps streaming.
 - **Barge-in.** With always listening, *Let me interrupt Martlet by talking* in
   Companion › Listening (on by default) keeps the microphone open while
-  Martlet speaks. Talking over a reply stops it at once: the Thinking request
-  is canceled, the queued audio is dropped and what you said is answered next,
-  with the reply so far kept in context. Through speakers this relies on
-  [echo reduction](#echo-reduction) (on by default); if Martlet still stops
-  itself, use headphones or turn the choice off. With it off, listening holds
-  off while Martlet speaks, and Stop, Esc or the talk button still interrupt.
+  Martlet speaks. Talking over a reply stops it: the Thinking request is
+  canceled, the queued audio is dropped and what you said is answered next,
+  with the reply so far kept in context. Only the microphone can do this, and
+  only with a sustained voice (`TalkOverDetector`): at least a second of
+  voice-loud 20 ms frames, where a pause longer than half a second starts the
+  count again, so a cough, a click, a quick "mm-hmm" or a word from across the
+  room never stops Martlet. What this PC plays never does either: the PC
+  listener ([hearing what this PC plays](#hearing-what-this-pc-plays)) never
+  interrupts anything, and with [echo reduction](#echo-reduction) the
+  microphone's frames that were the speakers' sound don't count. Words that
+  were heard but didn't talk over Martlet wait and are answered after the
+  reply; restarting a reply because you kept talking applies only before
+  Martlet starts saying it. Through speakers this relies on echo reduction (on
+  by default); if Martlet still stops itself, use headphones or turn the
+  choice off. With it off, listening holds off while Martlet speaks, and Stop,
+  Esc or the talk button still interrupt.
 - **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.
@@ -326,6 +336,13 @@ video, music or game playing on the PC.
 - The room's echo model is kept in memory for a minute between listens, so it
   doesn't relearn the room every time Martlet listens again; pausing, muting,
   locking Windows or closing the conversation drops it.
+- Always listening also keeps, per capture, a record of which 10 ms frames
+  were the speakers' sound (`EchoTimeline`: the canceller took more than
+  10 dB away while the speakers played or their echo could still be heard).
+  Those frames never count toward talking over Martlet, and a sound that was
+  mostly the speakers' (Martlet's own voice or a video leaking past the
+  canceller) is let go like a cough rather than transcribed as you. Only
+  metadata is kept, never audio.
 - The speaker audio is used only to cancel the echo, on this PC, while the
   microphone listens. It is never saved, logged or sent. A high-pass filter
   removes rumble; noise suppression and gain control stay off so your voice

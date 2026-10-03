@@ -82,8 +82,10 @@ public sealed class EchoReducer : IDisposable
     /// <summary>Raised on the capture's worker thread after each capture, or when one starts without echo reduction.</summary>
     public event Action<EchoReductionReport>? Reported;
 
-    /// <summary>A microphone factory that reduces echo from this output (null: Windows' default output).</summary>
-    public ICaptureDeviceFactory For(string? outputEndpointId) => new Bound(this, outputEndpointId);
+    /// <summary>A microphone factory that reduces echo from this output (null: Windows' default output). With a
+    /// <paramref name="timeline"/>, each capture it opens also says frame by frame whether its sound was what the speakers
+    /// played.</summary>
+    public ICaptureDeviceFactory For(string? outputEndpointId, EchoTimeline? timeline = null) => new Bound(this, outputEndpointId, timeline);
 
     /// <summary>Drops the kept echo model (pause, lock, closing); the next capture learns the room again.</summary>
     public void Forget()
@@ -105,13 +107,13 @@ public sealed class EchoReducer : IDisposable
         Forget();
     }
 
-    private sealed class Bound(EchoReducer owner, string? output) : ICaptureDeviceFactory
+    private sealed class Bound(EchoReducer owner, string? output, EchoTimeline? timeline) : ICaptureDeviceFactory
     {
         public ICaptureDevice Open(CaptureDeviceAccess access, CancellationToken cancellationToken) =>
-            owner.Open(access, output, cancellationToken);
+            owner.Open(access, output, timeline, cancellationToken);
     }
 
-    private ICaptureDevice Open(CaptureDeviceAccess access, string? output, CancellationToken cancellationToken)
+    private ICaptureDevice Open(CaptureDeviceAccess access, string? output, EchoTimeline? timeline, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(access);
         var microphone = microphones.Open(access, cancellationToken);
@@ -149,7 +151,7 @@ public sealed class EchoReducer : IDisposable
                 Publish(new(EchoReductionState.NoSpeakerAudio, SpeakerProblem(error.Code)));
                 return microphone;
             }
-            var device = new EchoCancellingCaptureDevice(this, microphone, speaker, canceller, key, taken, time);
+            var device = new EchoCancellingCaptureDevice(this, microphone, speaker, canceller, key, taken, time, timeline);
             canceller = null;
             speaker = null;
             return device;
@@ -255,11 +257,15 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
     private const int RingSize = 1 << 15;
     private const long RingMask = RingSize - 1;
     private const double SpeakerFloor = 1e-8;
+    // 300 ms in 10 ms frames: a room's echo outlasts what the speakers played by about this much.
+    private const int EchoReach = 30;
+    private int sinceSpeaker = EchoReach;
     private readonly EchoReducer owner;
     private readonly ICaptureDevice microphone;
     private readonly string key;
     private readonly long generation;
     private readonly TimeProvider time;
+    private readonly EchoTimeline? timeline;
     private readonly CaptureNormalizer microphoneNormalizer;
     private readonly byte[] microphoneScratch, microphonePcm, speakerScratch, speakerPcm, output;
     private readonly float[] pending = new float[MaximumPending + 4096];
@@ -280,7 +286,7 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
     public CaptureSourceFormat Format => EchoReduction.Format;
 
     internal EchoCancellingCaptureDevice(EchoReducer owner, ICaptureDevice microphone, IEchoReference speaker, IEchoCanceller canceller,
-        string key, long generation, TimeProvider time)
+        string key, long generation, TimeProvider time, EchoTimeline? timeline = null)
     {
         this.owner = owner;
         this.microphone = microphone;
@@ -289,6 +295,7 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
         this.key = key;
         this.generation = generation;
         this.time = time;
+        this.timeline = timeline;
         microphoneNormalizer = new(microphone.Format);
         speakerNormalizer = new(speaker.Format);
         microphoneScratch = new byte[microphone.Format.MaximumPacketBytes];
@@ -491,7 +498,11 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
                 speakerFrames++;
                 before += input;
                 after += cleaned;
+                sinceSpeaker = 0;
             }
+            else if (sinceSpeaker < EchoReach) sinceSpeaker++;
+            // Only a working canceller tells the speakers' sound from the user's; without one nothing is attributed to them.
+            timeline?.Add(canceller is not null && sinceSpeaker < EchoReach, input, cleaned);
             Array.Clear(pending, pendingStart, Frame);
             pendingStart += Frame;
             pendingCount -= Frame;
