@@ -417,7 +417,11 @@ memory, a model that failed to load and answers 503 with its state and why, a
 service that stops mid-reply) gives the desktop `worker.failed` or
 `worker.unavailable` and the host's own log, read by the desktop as the
 Diagnostics page does, says why (the service's error code, stage and summary,
-its state and detail, or that its stream ended unfinished). Nothing leaves loopback, the temporary folder is deleted and
+its state and detail, or that its stream ended unfinished); and a reply with a
+pause (full-size frames of near-silent audio, whose base64 is full of `+`) is
+spoken whole and the voice keeps working afterwards: the host writes base64
+unescaped, so ordinary audio never exceeds the route's 16 KiB event limit
+(`stream.limit`), which would quarantine the voice until the host restarts. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
