@@ -5,24 +5,26 @@ using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Core.Voices;
 using Martlet.Credentials.Windows;
 using Martlet.F5;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The reference voices F5 clones, in Martlet.F5's reference preset store (f5-voices next to the other local
-/// preferences). Each voice keeps its own copy of the recording, its transcript and the owner's voice-rights confirmation,
-/// so the original file can be moved or deleted after it is added. Martlet's bundled voices (<see cref="F5BundledVoices"/>)
-/// join the list when they are first used.</summary>
+/// <summary>The voices Martlet speaks with. The shared list (speaking-voices.json next to the other local preferences,
+/// <see cref="SpeakingVoiceLibrary"/>) names every voice and is the same on all of the owner's computers; Martlet.F5's
+/// reference preset store (f5-voices) keeps this PC's copy of each recording with its transcript and voice-rights
+/// confirmation, so the original file can be moved or deleted after it is added. A new list starts with the starter voices
+/// (<see cref="F5BundledVoices"/>); after that they are voices like any other. Until the owner first uses or changes a voice
+/// (or this PC shares voices with a paired host) nothing is written: the list is shown as it would start.</summary>
 internal static class F5Voices
 {
     internal const string DirectoryName = "f5-voices";
-    private const string BundledDirectoryName = "f5-bundled-voices";
-    // Earlier versions staged the retired F5-TTS example clip here.
-    private const string RetiredSampleDirectoryName = "f5-sample-voice";
-
-    internal static F5BundledVoice? Bundled(F5ReferenceSnapshot snapshot) => F5BundledVoices.ForAudio(snapshot.AudioSha256);
+    internal const string LibraryFile = "speaking-voices.json";
+    private const string StagingDirectoryName = "speaking-voices-incoming";
+    // Earlier versions staged bundled voices' clips and the retired F5-TTS example clip here.
+    private static readonly string[] RetiredDirectoryNames = ["f5-bundled-voices", "f5-sample-voice"];
 
     /// <summary>The F5-TTS example clip earlier versions bundled; Martlet no longer ships it or starts with it.</summary>
     internal static bool IsRetiredSample(F5ReferenceSnapshot snapshot) => F5BundledVoices.IsRetiredSample(snapshot.AudioSha256);
@@ -31,97 +33,138 @@ internal static class F5Voices
 
     internal static F5ReferencePresetStore Open(string dataDirectory) => F5ReferencePresetStore.Open(Directory(dataDirectory));
 
-    /// <summary>Writes a bundled voice's clip next to the preferences so the store can copy it, and returns its path.</summary>
-    internal static string EnsureBundled(string dataDirectory, F5BundledVoice voice)
+    /// <summary>The saved shared list, or null when this PC has none yet. A damaged copy reads as none (the hosts' copies and
+    /// this PC's recordings restore it).</summary>
+    internal static SpeakingVoiceLibrary? LoadLibrary(string dataDirectory)
     {
-        var bytes = voice.ReadAudio();
-        var folder = Path.Combine(dataDirectory, BundledDirectoryName);
-        var path = Path.Combine(folder, voice.Key + ".wav");
-        if (!File.Exists(path) || !File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
-        {
-            System.IO.Directory.CreateDirectory(folder);
-            var staged = path + ".tmp";
-            File.WriteAllBytes(staged, bytes);
-            File.Move(staged, path, overwrite: true);
-        }
-        try { System.IO.Directory.Delete(Path.Combine(dataDirectory, RetiredSampleDirectoryName), recursive: true); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        return path;
+        try { return SpeakingVoiceLibrary.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, LibraryFile))); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException) { return null; }
     }
 
-    /// <summary>The voice F5 speaks with when the owner has not picked one for <paramref name="destination"/>: the applied or
-    /// most recent voice already chosen for it, otherwise <see cref="F5BundledVoices.Default"/> (a female voice). The retired
-    /// F5-TTS example clip is never chosen this way, nor a recording <paramref name="engine"/> cannot clone (GPT-SoVITS needs
-    /// 3-10 seconds).</summary>
+    /// <summary>The list as it is, or as it would start (the starter voices) when this PC has none yet.</summary>
+    internal static SpeakingVoiceLibrary View(string dataDirectory) =>
+        LoadLibrary(dataDirectory) ?? SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters);
+
+    /// <summary>Merges <paramref name="library"/> into the saved list (so a change saved meanwhile is never lost) and returns
+    /// what was saved. An unchanged list is not written again.</summary>
+    internal static SpeakingVoiceLibrary Commit(string dataDirectory, SpeakingVoiceLibrary library)
+    {
+        var saved = LoadLibrary(dataDirectory);
+        var merged = SpeakingVoiceLibrary.Merge(saved ?? View(dataDirectory), library);
+        if (saved is not null && saved.Digest() == merged.Digest()) return saved;
+        System.IO.Directory.CreateDirectory(dataDirectory);
+        var path = Path.Combine(dataDirectory, LibraryFile);
+        var temporary = Path.Combine(dataDirectory, $"speaking-voices.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllBytes(temporary, merged.Write());
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+        foreach (var name in RetiredDirectoryNames)
+        {
+            try { System.IO.Directory.Delete(Path.Combine(dataDirectory, name), recursive: true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+        return merged;
+    }
+
+    /// <summary>Brings this PC's recordings in step with the shared list and saves it: starter voices and recordings
+    /// <paramref name="fetch"/> finds on another computer are copied in, removed voices are deleted (except one still in use
+    /// or in <paramref name="keep"/>) and recordings only this PC had join the list.</summary>
+    internal static async Task<F5SharedVoicesResult> ReconcileAsync(string dataDirectory, string destination, string by,
+        Func<string, CancellationToken, Task<byte[]?>>? fetch, IReadOnlySet<string>? keep, CancellationToken token)
+    {
+        var result = await F5SharedVoices.ReconcileAsync(Directory(dataDirectory), Path.Combine(dataDirectory, StagingDirectoryName),
+            destination, View(dataDirectory), fetch ?? ((_, _) => Task.FromResult<byte[]?>(null)), by, DateTimeOffset.UtcNow, keep, token);
+        return result with { Library = Commit(dataDirectory, result.Library) };
+    }
+
+    /// <summary>The voice to speak with on <paramref name="destination"/> when the owner has not picked one there: the voice
+    /// chosen on all computers, else the one applied here, else the first in the list. Never the retired F5-TTS example clip,
+    /// nor a recording <paramref name="engine"/> cannot clone (GPT-SoVITS needs 3-10 seconds). The choice is shared when none
+    /// was. Throws <see cref="InvalidOperationException"/> when no voice can be used.</summary>
     internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token,
         SpeechEngine? engine = null)
     {
+        var by = HostSetupCommands.SuggestedDeviceId();
+        var result = await ReconcileAsync(dataDirectory, destination, by, null, null, token);
+        var applied = Applied(dataDirectory)?.PresetId;
+        bool Usable(F5ReferenceSnapshot s) => engine is null || SpeechEngines.ReferenceProblem(engine, s.AudioFormat.DurationMilliseconds) is null;
+        var library = result.Library;
+        var voice = (library.ChosenVoice is { } chosen && result.Local.TryGetValue(chosen.Id, out var picked) && Usable(picked) ? picked : null)
+            ?? result.Local.Values.Where(s => s.PresetId == applied && Usable(s)).FirstOrDefault()
+            ?? library.Live.Select(v => result.Local.GetValueOrDefault(v.Id)).OfType<F5ReferenceSnapshot>().FirstOrDefault(Usable)
+            ?? throw new InvalidOperationException(engine is null || result.Local.Count == 0
+                ? "Add a voice under Companion > Voice > Voices first."
+                : $"None of your voices suits {engine.Name}. Add a recording it can use under Companion > Voice > Voices.");
+        if (library.Chosen is null) Commit(dataDirectory, library.Choose(F5SharedVoices.Id(voice), by, DateTimeOffset.UtcNow));
+        return voice;
+    }
+
+    /// <summary>This PC's recording of each voice for <paramref name="destination"/> (by voice ID) and the applied voice's
+    /// snapshot (which may be the retired F5-TTS example clip, never in the list). Reads nothing when this PC has no
+    /// recordings yet.</summary>
+    internal static (IReadOnlyDictionary<string, F5ReferenceSnapshot> Local, F5ReferenceSnapshot? Applied) Local(string dataDirectory, string destination)
+    {
+        if (!System.IO.Directory.Exists(Directory(dataDirectory))) return (new Dictionary<string, F5ReferenceSnapshot>(), null);
         using var store = Open(dataDirectory);
         var inspection = store.Inspect();
-        return inspection.Presets
-                .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
-                .OfType<F5ReferenceSnapshot>()
-                .Where(s => !IsRetiredSample(s) &&
-                    (engine is null || SpeechEngines.ReferenceProblem(engine, s.AudioFormat.DurationMilliseconds) is null))
-                .OrderByDescending(s => s.PresetId == inspection.AppliedPresetId)
-                .ThenByDescending(s => s.CreatedAtUtc)
-                .FirstOrDefault()
-            ?? await BundledAsync(store, dataDirectory, destination, F5BundledVoices.Default, token);
+        return (F5SharedVoices.Snapshots(inspection, destination), AppliedOf(inspection));
     }
 
-    /// <summary>Every voice in the list for <paramref name="destination"/> (each voice's latest recording), oldest first,
-    /// and the applied voice's preset.</summary>
-    internal static (IReadOnlyList<F5ReferenceSnapshot> Voices, Guid? Applied) List(string dataDirectory, string destination)
+    /// <summary>The applied voice's snapshot, including the retired F5-TTS example clip (which is never in the list).</summary>
+    internal static F5ReferenceSnapshot? Applied(string dataDirectory)
     {
-        if (!System.IO.Directory.Exists(Directory(dataDirectory))) return ([], null);
+        if (!System.IO.Directory.Exists(Directory(dataDirectory))) return null;
         using var store = Open(dataDirectory);
-        var inspection = store.Inspect();
-        var voices = inspection.Presets
-            .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
-            .OfType<F5ReferenceSnapshot>()
-            .OrderBy(s => s.CreatedAtUtc)
-            .ToArray();
-        return (voices, inspection.AppliedPresetId);
+        return AppliedOf(store.Inspect());
     }
 
-    /// <summary>Deletes a voice and Martlet's copy of its recording. The original file is not touched.</summary>
-    internal static async Task RemoveAsync(string dataDirectory, Guid presetId, CancellationToken token)
+    private static F5ReferenceSnapshot? AppliedOf(F5ReferenceStoreInspection inspection) =>
+        inspection.Presets.FirstOrDefault(p => p.Id == inspection.AppliedPresetId)?.Snapshots
+            .FirstOrDefault(s => s.ReferenceRevision == inspection.AppliedReferenceRevision);
+
+    /// <summary>Removes a voice on every computer and deletes this PC's copy of its recording. The original file is not
+    /// touched. The voice this PC speaks with cannot be removed (use another first).</summary>
+    internal static async Task RemoveAsync(string dataDirectory, string destination, string voiceId, CancellationToken token)
     {
+        var by = HostSetupCommands.SuggestedDeviceId();
+        var result = await ReconcileAsync(dataDirectory, destination, by, null, null, token);
+        result.Local.TryGetValue(voiceId, out var snapshot);
+        if (snapshot is not null && Applied(dataDirectory)?.PresetId == snapshot.PresetId)
+            throw new InvalidOperationException("Martlet speaks with this voice now. Use another voice first, then remove it.");
+        Commit(dataDirectory, result.Library.Remove(voiceId, by, DateTimeOffset.UtcNow));
+        if (snapshot is null) return;
         using var store = Open(dataDirectory);
-        await store.DeleteAsync(presetId, token);
+        try { await store.DeleteAsync(snapshot.PresetId, token); }
+        catch (F5Exception error) when (error.Failure == F5Failure.NotFound) { }
     }
 
-    /// <summary>A bundled voice's snapshot for <paramref name="destination"/>, added to the voice list if needed.</summary>
-    internal static async Task<F5ReferenceSnapshot> BundledAsync(F5ReferencePresetStore store, string dataDirectory, string destination,
-        F5BundledVoice voice, CancellationToken token)
+    /// <summary>Adds a voice the owner recorded to the shared list.</summary>
+    internal static SpeakingVoiceLibrary Add(string dataDirectory, F5ReferenceSnapshot snapshot, string transcript) =>
+        Commit(dataDirectory, View(dataDirectory).Add(snapshot.PresetName, transcript, snapshot.AudioSha256,
+            snapshot.AudioFormat.DurationMilliseconds, F5SharedVoices.Rights(snapshot.Rights.Basis), HostSetupCommands.SuggestedDeviceId(),
+            DateTimeOffset.UtcNow));
+
+    /// <summary>Makes a voice the one Martlet speaks with on all of the owner's computers.</summary>
+    internal static SpeakingVoiceLibrary Choose(string dataDirectory, string voiceId) =>
+        Commit(dataDirectory, View(dataDirectory).Choose(voiceId, HostSetupCommands.SuggestedDeviceId(), DateTimeOffset.UtcNow));
+
+    /// <summary>A voice's recording, for playing it: this PC's copy, or the starter clip Martlet carries.</summary>
+    internal static async Task<byte[]> ReadAudioAsync(string dataDirectory, F5ReferenceSnapshot? snapshot, string audioSha256, CancellationToken token)
     {
-        var path = EnsureBundled(dataDirectory, voice);
-        if (store.Inspect().Presets.SelectMany(p => p.Snapshots)
-                .FirstOrDefault(s => Bundled(s) == voice && s.Rights.ProcessingDestinationId == destination) is { } existing)
-            return existing;
-        return await store.SnapshotAsync(new()
+        if (snapshot is not null)
         {
-            PresetName = voice.Name,
-            AbsoluteSourcePath = path,
-            Transcript = voice.Transcript,
-            Rights = new()
-            {
-                AcknowledgementId = Guid.NewGuid(),
-                Basis = F5VoiceRightsBasis.PublishedSample,
-                StatementVersion = F5ReferenceLimits.RightsStatementVersion,
-                ProcessingDestinationId = destination,
-                AcknowledgedAtUtc = DateTimeOffset.UtcNow,
-                Confirmed = true
-            }
-        }, token);
-    }
-
-    /// <summary>The exact recording a voice snapshot keeps, for playing it back.</summary>
-    internal static async Task<byte[]> ReadAudioAsync(string dataDirectory, F5ReferenceSnapshot snapshot, CancellationToken token)
-    {
-        using var store = Open(dataDirectory);
-        using var lease = await store.AcquireForPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
-        return lease.Reference.Audio.ToArray();
+            using var store = Open(dataDirectory);
+            using var lease = await store.AcquireForPreviewAsync(snapshot.PresetId, snapshot.ReferenceRevision, token);
+            return lease.Reference.Audio.ToArray();
+        }
+        return (F5BundledVoices.ForAudio(audioSha256) ?? throw new InvalidOperationException("This voice is still being copied to this PC."))
+            .ReadAudio();
     }
 
     /// <summary>Applies a snapshot as the voice to speak with and returns the settings record the TTS route keeps.</summary>
@@ -148,7 +191,7 @@ internal static class F5Voices
         F5Failure.SourceChanged => "That recording changed while Martlet was reading it. Try again.",
         F5Failure.InvalidAudio => "Use a mono 16-bit PCM WAV from 1 to 30 seconds, up to 4 MB.",
         F5Failure.RightsRequired => "Confirm that you may use this voice.",
-        F5Failure.Busy => "Another Martlet window is using voices. Try again in a moment.",
+        F5Failure.Busy => "Martlet is busy with your voices. Try again in a moment.",
         F5Failure.LimitExceeded => "The voice list is full. Remove one you no longer use first.",
         F5Failure.Conflict => "Martlet speaks with this voice now. Switch to another voice first, then remove it.",
         F5Failure.NotFound => "That voice is no longer in your list.",
@@ -177,19 +220,27 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
 
     private async Task<HostSpeechReference> ReadReferenceAsync(HostSpeechTarget target, CancellationToken token)
     {
-        try
+        // The voice list is held briefly while it changes (sharing voices, or the owner adding one); wait for it.
+        for (var attempt = 1; ; attempt++)
         {
-            // The route names the exact voice it was saved with, so a failed settings save after switching voices keeps
-            // speaking with the voice the route still records.
-            using var store = F5Voices.Open(dataDirectory);
-            using var lease = await store.AcquireForPreviewAsync(target.PresetId, target.ReferenceRevision, token).ConfigureAwait(false);
-            var reference = lease.Reference;
-            return new(reference.PresetId, reference.ReferenceRevision, reference.AudioSha256, reference.Transcript,
-                reference.TranscriptRevision, reference.Audio.ToArray());
-        }
-        catch (Exception error) when (error is F5Exception or IOException or UnauthorizedAccessException)
-        {
-            throw new HostTextException(ProviderFailureCode.VoiceUnsupported);
+            try
+            {
+                // The route names the exact voice it was saved with, so a failed settings save after switching voices keeps
+                // speaking with the voice the route still records.
+                using var store = F5Voices.Open(dataDirectory);
+                using var lease = await store.AcquireForPreviewAsync(target.PresetId, target.ReferenceRevision, token).ConfigureAwait(false);
+                var reference = lease.Reference;
+                return new(reference.PresetId, reference.ReferenceRevision, reference.AudioSha256, reference.Transcript,
+                    reference.TranscriptRevision, reference.Audio.ToArray());
+            }
+            catch (F5Exception error) when (error.Failure == F5Failure.Busy && attempt < 20)
+            {
+                await Task.Delay(50, token).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is F5Exception or IOException or UnauthorizedAccessException)
+            {
+                throw new HostTextException(ProviderFailureCode.VoiceUnsupported);
+            }
         }
     }
 

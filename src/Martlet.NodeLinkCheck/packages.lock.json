@@ -60,6 +60,12 @@
           "Martlet.Providers": "[0.22.0, )"
         }
       },
+      "martlet.gateway.f5": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway": "[0.22.0, )"
+        }
+      },
       "martlet.gateway.ollama": {
         "type": "Project",
         "dependencies": {

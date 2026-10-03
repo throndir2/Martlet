@@ -17,7 +17,8 @@ internal static class GatewayInferenceJson
     internal static GatewayInferenceRequest ParseRequest(
         ReadOnlyMemory<byte> bytes,
         GatewayInferenceRoute route,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        Func<string, byte[]?>? referenceAudio = null)
     {
         try
         {
@@ -83,7 +84,7 @@ internal static class GatewayInferenceJson
                 GatewayInferenceKind.OllamaChat =>
                     ParseOllama(fields["payload"], route),
                 GatewayInferenceKind.F5Synthesis =>
-                    ParseF5(fields["payload"], route),
+                    ParseF5(fields["payload"], route, referenceAudio),
                 GatewayInferenceKind.PerceptionOcr or
                     GatewayInferenceKind.PerceptionVlm =>
                     ParsePerception(fields["payload"], route, now),
@@ -256,9 +257,12 @@ internal static class GatewayInferenceJson
             context);
     }
 
+    // The recording travels with the request, or (without reference_audio_base64) is the one this host keeps for a voice of
+    // the shared speaking-voice list, found by its SHA-256 through referenceAudio; reference.missing when it has none.
     private static GatewayF5SynthesisPayload ParseF5(
         JsonElement element,
-        GatewayInferenceRoute route)
+        GatewayInferenceRoute route,
+        Func<string, byte[]?>? referenceAudio)
     {
         var fields = Object(
             element,
@@ -268,10 +272,9 @@ internal static class GatewayInferenceJson
                 "reference_audio_sha256",
                 "transcript",
                 "transcript_revision",
-                "reference_audio_base64",
                 "chunks"
             ],
-            ["reference_language"]);
+            ["reference_language", "reference_audio_base64"]);
         var presetId = Guid(fields, "preset_id");
         GatewayRules.Require(presetId != System.Guid.Empty, "request.invalid");
         var referenceRevision = Text(fields, "reference_revision", 64);
@@ -298,15 +301,24 @@ internal static class GatewayInferenceJson
             SHA256.HashData(revisionMaterial)) == referenceRevision,
             "request.invalid");
 
-        var encodedAudio = Text(
-            fields,
-            "reference_audio_base64",
-            ((F5ReferenceLimits.MaximumAudioFileBytes + 2) / 3) * 4);
-        var audio = Convert.FromBase64String(encodedAudio);
-        if (Convert.ToBase64String(audio) != encodedAudio)
+        byte[] audio;
+        if (fields.ContainsKey("reference_audio_base64"))
         {
-            CryptographicOperations.ZeroMemory(audio);
-            throw new GatewayProtocolException("request.invalid");
+            var encodedAudio = Text(
+                fields,
+                "reference_audio_base64",
+                ((F5ReferenceLimits.MaximumAudioFileBytes + 2) / 3) * 4);
+            audio = Convert.FromBase64String(encodedAudio);
+            if (Convert.ToBase64String(audio) != encodedAudio)
+            {
+                CryptographicOperations.ZeroMemory(audio);
+                throw new GatewayProtocolException("request.invalid");
+            }
+        }
+        else
+        {
+            GatewayRules.Require(referenceAudio is not null, "request.invalid");
+            audio = referenceAudio!(audioSha256) ?? throw new GatewayProtocolException("reference.missing");
         }
         try
         {

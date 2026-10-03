@@ -100,6 +100,39 @@ internal sealed class ControlVoiceStorage(LinuxControlDirectory directory) : IGa
     }
 }
 
+/// <summary>Keeps the gateway's copy of the voices Martlet speaks with in speaking-voices.json and each live voice's
+/// recording in speaking-voice-&lt;sha256&gt;.wav beside host.json (0600, service owner). Not part of the approved
+/// configuration.</summary>
+internal sealed class ControlSpeakingVoiceStorage(LinuxControlDirectory directory) : IGatewaySpeakingVoiceStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? LoadLibrary()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.SpeakingVoices, LinuxControlDirectory.MaximumSpeakingVoicesBytes);
+    }
+
+    public void SaveLibrary(byte[] bytes)
+    {
+        lock (gate) directory.WriteSpeakingVoices(bytes);
+    }
+
+    public byte[]? LoadAudio(string sha256)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.SpeakingVoiceAudio(sha256), LinuxControlDirectory.MaximumSpeakingVoiceAudioBytes);
+    }
+
+    public void SaveAudio(string sha256, byte[] bytes)
+    {
+        lock (gate) directory.WriteSpeakingVoiceAudio(sha256, bytes);
+    }
+
+    public void RemoveAudio(string sha256)
+    {
+        lock (gate) directory.RemoveSpeakingVoiceAudio(sha256);
+    }
+}
+
 /// <summary>Keeps the shared Home Assistant connection in home-assistant.json beside host.json (0600, service owner).
 /// Contains the HA access token and is not part of the approved configuration.</summary>
 internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory directory) : IGatewayHomeAssistantStorage
@@ -263,6 +296,7 @@ internal static class HostApplication
                 {
                     owner.AttachCluster(new ControlClusterStorage(directory));
                     owner.AttachVoices(new ControlVoiceStorage(directory));
+                    owner.AttachSpeakingVoices(new ControlSpeakingVoiceStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));

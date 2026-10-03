@@ -57,7 +57,7 @@ clearance.
 ## Reference recordings
 
 Chatterbox needs a recording **longer than 5 seconds** (`prepare_conditionals`
-asserts it; it conditions on up to 10/15 s). All of Martlet's included voices
+asserts it; it conditions on up to 10/15 s). All of Martlet's starter voices
 are 6.5-11 s. Handing Speaking to Chatterbox skips shorter own voices when it
 picks a default, and **Use** on a shorter voice explains why it can't. The
 transcript is sent but Chatterbox does not need it.

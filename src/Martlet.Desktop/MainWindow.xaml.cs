@@ -122,6 +122,7 @@ public partial class MainWindow : ThemedWindow
         InitializeApiKeys();
         InitializeNearby();
         InitializeVoiceSync();
+        InitializeSpeakingVoices();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
@@ -185,6 +186,7 @@ public partial class MainWindow : ThemedWindow
         StartNetwork();
         StartApiKeys();
         StartVoiceSync();
+        StartSpeakingVoices();
         StartHomeShare();
         StartNodeAgent();
         StartLogShipping();

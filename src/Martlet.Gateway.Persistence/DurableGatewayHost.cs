@@ -378,6 +378,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the voices Martlet speaks with, and their recordings, paired desktops sync through this host in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachSpeakingVoices(IGatewaySpeakingVoiceStorage storage)
+    {
+        RequireOpen();
+        server!.AttachSpeakingVoiceStorage(storage);
+    }
+
     /// <summary>Keeps the shared Home Assistant connection paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachHomeAssistant(IGatewayHomeAssistantStorage storage)
     {

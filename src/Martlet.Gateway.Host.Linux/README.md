@@ -75,9 +75,13 @@ desktops sync through `/martlet/v1/cluster` in the sibling `cluster.json`
 (same 0600 custody, replaced atomically through `cluster.staging`). It is not
 approved configuration either; a missing or malformed copy starts empty and
 desktops push theirs again. The shared voice list lives beside it in
-`voices.json`; the shared Home Assistant connection, including its access token,
+`voices.json`, and the voices Martlet speaks with in `speaking-voices.json` (at
+most 1 MiB, through `speaking-voices.staging`) with each live voice's recording
+in `speaking-voice-<sha256>.wav` (at most 4 MiB each, through
+`speaking-voice.staging`; a removed voice's recording is deleted; see
+[shared speaking voices](../../docs/CLUSTER.md#the-shared-speaking-voices)); the shared Home Assistant connection, including its access token,
 lives in `home-assistant.json` (at most 16 KiB, through
-`home-assistant.staging`). Both are 0600 service-owner files and neither is part
+`home-assistant.staging`). All are 0600 service-owner files and none is part
 of approval. Its log (own activity plus, as the owner's
 [log host](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), every
 computer's lines) is kept the same way in `logs.json` (at most 2 MiB, through

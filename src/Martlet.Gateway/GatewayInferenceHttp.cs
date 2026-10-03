@@ -28,12 +28,16 @@ internal sealed partial class GatewayHttpApplication
             request = GatewayInferenceJson.ParseRequest(
                 bytes,
                 route,
-                clock.GetUtcNow());
+                clock.GetUtcNow(),
+                SpeakingVoices.Audio);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(bytes);
         }
+        // A recording sent with the request is kept for a voice of the shared list, so the next request can name it.
+        if (request.Payload is GatewayF5SynthesisPayload speech)
+            SpeakingVoices.Remember(speech.ReferenceAudioSha256, speech.ReferenceAudio.Span);
         GatewayInferenceRouteRegistry.GatewayInferenceJob job;
         try
         {

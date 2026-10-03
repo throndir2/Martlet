@@ -1,14 +1,12 @@
-"""Builds the reference voices Martlet bundles for F5 (src/Martlet.F5/BundledVoices) from their pinned upstream recordings.
+"""Builds the starter voices Martlet adds to every voice list (src/Martlet.F5/BundledVoices) from their pinned upstream recordings.
 
-Every source is public domain or CC0 (the cute and anime voices' LibriVox readings of Anne of Green Gables, LJ Speech,
-the other LibriVox readings) or CMU ARCTIC (free for any use; its notice is kept in
+Every source is public domain or CC0 (the cute and anime voices' LibriVox readings of Anne of Green Gables, LJ Speech)
+or CMU ARCTIC (free for any use; its notice is kept in
 src/Martlet.F5/BundledVoices/NOTICES.txt). Download the sources into one directory with their upstream layout:
 
   librivox/anneofgreengables_02_montgomery.mp3 https://archive.org/download/anneofgreengables_sp_librivox/
   librivox/agg_02_montgomery.mp3               https://archive.org/download/anne_gables_0808/
   LJSpeech-1.1/wavs/LJ001-0009.wav             https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
-  librivox/frankenstein_01_shelley.mp3         https://archive.org/download/frankenstein_cs_librivox/
-  librivox/secondsight_01_leverson.mp3         https://archive.org/download/lovesecondsight_1604_librivox/
   cmu_us_<speaker>_arctic/wav/arctic_a00NN.wav http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_<speaker>_arctic/wav/
 
 then run (needs numpy and miniaudio, and praat-parselmouth for the anime voices):
@@ -37,12 +35,7 @@ ARCTIC_SENTENCES = [("arctic_a0058", "I came for information more out of curiosi
                     ("arctic_a0039", "The ship should be in within a week or ten days.")]
 ARCTIC_SOURCES = {
     "slt": ("08f5ad6bfdbcc9327bc9b558b0dd753d110273ccb6d367499ef9ae24c2257498", "4d2df5a499114499467289b26898d8e7e6ea12f5d3acc99592e194afa27b80fa"),
-    "clb": ("9570562f6f0c8130a57c4a9274c2d3ff9c9d05fb4d9311a84a251c097012b61f", "d59f629e47146a8d4e5e1135fbb449a76e567f3c44765876a0259ba72bf44673"),
     "bdl": ("cedcfe39c544f6facf42d791c0d5bc72fff6e5b912c9365a0fdd21f88c71b7d2", "6c2d5d014826053e4dfbfd3760725214809ab181245f1a8b2609f6326c4e857b"),
-    "rms": ("e7dbe8f7688bc6242cbeb0044ac6bbfa04322656fb94f254fd9a93b4178ed74f", "bdaf4c3d81972c3ac0c49a2fe2f3b897b98de542a9901f03857e0a637fc0c9cd"),
-    "awb": ("ee2545275996be9154a222ad16188fe2462b9575b99c17fd6bfb117472e96c94", "2efa2819b0ec3e48d31067f68693c3c6d4c269bd5a179ac2e925e5ca2dc20bad"),
-    "jmk": ("5b9a18e71097597582c223fd1c2abed63b40568b6ac36c5ea9e04847fd883c44", "031cde96d8eeab53ccc213f945f9a19d3d2deefb23712a59b80a30233b24376d"),
-    "ksp": ("04790d7ee04e8873aec54a156b52e9831d1437894f20fabefd858b91173d280f", "e94c2905772c8625239b8868943766a63a2c55e51ca17258bf283f72dfaa2d0c"),
 }
 
 ANNE_V6 = ("librivox/anneofgreengables_02_montgomery.mp3", "39e640f3ca7a59bdfa5c528c4af63bc4233e62e85dc791d3cbdba28a7ef1b145")
@@ -65,11 +58,6 @@ VOICES = {
     "librivox-annie-anime": ([(*ANNE_V4, 795.30, 802.65)], 24_000, ANIME_LIFT),
     "librivox-annie": ([(*ANNE_V4, 795.30, 802.65)], 24_000),
     "lj-speech": ([("LJSpeech-1.1/wavs/LJ001-0009.wav", "d003373f9c769b17995cfff2a99818e720a56f3376678b27fc6c9c27539c3f75", 0, None)], None),
-    # "I have thus endeavoured to preserve the truth of the elementary principles of human nature, while I have not
-    # scrupled to innovate upon their combinations." (Preface; the passage sits between 105.24 s and 113.87 s.)
-    "librivox-cori-samuel": ([("librivox/frankenstein_01_shelley.mp3", "96068a62c2549a698a35e986c8425368d0fbd4ad757bad9a5b5690c4e2b4b951", 105.24, 113.87)], 24_000),
-    # "She was a slim, fair, pretty woman, with more vividness and character than usually goes with her type." (Chapter I)
-    "librivox-helen-taylor": ([("librivox/secondsight_01_leverson.mp3", "b49193791e6090b0623caeac494c6f57596a9ef0c1d9d4f621de97286480898a", 110.88, 117.93)], 24_000),
 }
 for speaker, digests in ARCTIC_SOURCES.items():
     VOICES[f"arctic-{speaker}"] = ([(f"cmu_us_{speaker}_arctic/wav/{name}.wav", digest, 0, None)

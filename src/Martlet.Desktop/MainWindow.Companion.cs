@@ -739,7 +739,7 @@ public partial class MainWindow
     }
 
     /// <summary>Its voice on this PC: two ways, each set up by one click. F5 in Docker (through this PC's host service, with
-    /// Martlet's included voices so it speaks right away) or an installed Windows voice (no Docker, no host service).
+    /// Martlet's starter voices so it speaks right away) or an installed Windows voice (no Docker, no host service).
     /// The one in use, otherwise the one this PC's hardware suits, comes first.</summary>
     private Border LocalVoiceCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
     {
@@ -756,7 +756,7 @@ public partial class MainWindow
                       : "A natural voice copied from a short recording; it can ") +
                   (engine.Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? "laugh, sigh and change tone. " : "laugh, sigh and cough. ")
                 : "A natural voice copied from a short recording. ") +
-            "Use the included voices or add your own. Recordings stay on this PC and go only to the computer that speaks. " +
+            "Start with Martlet's starter voices or add your own. Your voices are shared with your paired Martlet computers. " +
             (engine.WeightsLicense.Contains("NC", StringComparison.Ordinal) || engine.WeightsLicense.StartsWith("CPML", StringComparison.Ordinal)
                 ? $"The {engine.Name} model is for personal, non-commercial use only."
                 : $"The {engine.Name} model is {engine.WeightsLicense}-licensed" +

@@ -180,8 +180,8 @@ public partial class MainWindow
                 : $" Only one voice engine runs on a computer, so {HostRoles.Names(others.Select(o => o.Kind))} there stops and frees the " +
                   "graphics card's memory. Downloads are kept, so switching back is quick.";
             var pauses = others.Count > 0 && NetworkMap.JobHost(homeSettings, job.Role) == host.HostId;
-            // F5 copies a reference voice. Handing Speaking to a host keeps the voice already chosen for it, else Martlet's first
-            // included voice; Companion › Voice › Voices adds voices and switches between them.
+            // The engines copy a reference voice. Handing Speaking to a host keeps the voice chosen on all computers (else the one
+            // applied here, else the first in the list); Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5)
                 voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token,

@@ -429,13 +429,17 @@ what* shows which computer handles each job:
   (`martlet-host remove`, downloads kept), so the old model frees the graphics card's
   memory. The confirmation names them; Speaking on that host pauses while a new engine
   installs. The Voice engine card's *Stop* button does the same for a host set up before
-  this rule that still runs several engines. Martlet first asks which voice to clone: one
-  from its F5 voice list on this PC (`f5-voices`, Martlet.F5's reference preset store)
-  or a new mono 16-bit WAV of 1-30 s with its exact transcript and your confirmation
+  this rule that still runs several engines. Martlet uses the voice chosen on all your computers
+  (or the first in your voice list): every voice, with its recording, is shared with your
+  paired hosts (`speaking-voices.json` and `speaking-voice-<sha256>.wav` beside `host.json`;
+  each desktop keeps its copy in `f5-voices`, Martlet.F5's reference preset store, see
+  [shared speaking voices](../../docs/CLUSTER.md#the-shared-speaking-voices)). Adding a voice takes
+  a mono 16-bit WAV of 1-30 s with its exact transcript and your confirmation
   that the voice is yours or used with its speaker's permission (`voice-rights-v1`).
-  Each reply segment's text and that reference recording then go only to that host;
-  its 24 kHz mono PCM16 plays like any other voice. Keep the original recording where
-  you chose it (the store re-checks it before each use).
+  Each reply segment's text then goes only to that host, naming the recording it already
+  holds by SHA-256 (the recording itself only when the host lacks it); its 24 kHz mono
+  PCM16 plays like any other voice. The original recording may be moved or deleted after
+  adding it.
 - Handing a job to a host detaches the replaced cloud key (it is listed for removal
   in Setup, never silently deleted); handing the job back reattaches it. Jobs on the
   same host share that host's one pairing.

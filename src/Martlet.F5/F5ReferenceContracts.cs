@@ -3,7 +3,7 @@ namespace Martlet.F5;
 public static class F5ReferenceLimits
 {
     public const int SchemaVersion = 1;
-    public const int MaximumPresets = 16;
+    public const int MaximumPresets = 32;
     public const int MaximumSnapshotsPerPreset = 16;
     public const int MaximumTotalSnapshots = 64;
     public const int MaximumPresetNameCharacters = 80;
@@ -49,8 +49,8 @@ public enum F5VoiceRightsBasis
 {
     OwnVoice,
     ExplicitPermission,
-    /// <summary>A voice Martlet bundles (<see cref="F5BundledVoices"/>): public domain (or CC0) or CMU ARCTIC, free to use and share.
-    /// Earlier versions also used it for the F5-TTS example clip they bundled.</summary>
+    /// <summary>A published recording anyone may use, such as Martlet's starter voices (<see cref="F5BundledVoices"/>: public
+    /// domain, CC0 or CMU ARCTIC). Earlier versions also used it for the F5-TTS example clip they bundled.</summary>
     PublishedSample
 }
 

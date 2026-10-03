@@ -526,34 +526,38 @@ device qualification or learned VAD evidence.
 
 ## Voices (F5)
 
-F5 copies a voice from a short recording; nothing is trained. **Companion >
-Voice > Voices** lists Martlet's fourteen included voices, then every voice you
-added, with **Play**, **Use** and **Remove** on each. **Cute voices** come first:
-two LibriVox readers voicing Anne of Green Gables' excitable young heroine, each
-as read and lifted to a high, anime-like pitch; F5 starts with *Annie (cute anime
-girl)*. **More included voices** are LJ Speech, two more LibriVox narrators and
-seven CMU ARCTIC speakers (US, Scottish, Canadian and Indian English). All are
-free to use and share: the cute voices and LibriVox readings are public domain
-(CC0 or public domain mark) and CMU ARCTIC is free for any use. Their
-sources and notices are in `notices\F5-Voices-NOTICES.txt`. An included voice
-joins the voice list when it is first used, and can be removed again (it stays
-offered). **Add a voice...**
+Martlet's voice engines copy a voice from a short recording; nothing is
+trained. There are no built-in voices: **Companion > Voice > Voices** lists your
+voices, with **Play**, **Use** and **Remove** on each. A new list starts with
+seven starter voices. The four **cute voices** come first: two LibriVox readers
+voicing Anne of Green Gables' excitable young heroine, each as read and lifted
+to a high, anime-like pitch; Martlet starts with *Annie (cute anime girl)*. Then
+come LJ Speech (a female narrator) and two CMU ARCTIC speakers (US female and US
+male). All are free to use and share: the cute voices and LJ Speech are public
+domain (CC0 or public domain) and CMU ARCTIC is free for any use. Their sources
+and notices are in `notices\F5-Voices-NOTICES.txt`. Remove any you don't want;
+they don't come back. **Add a voice...**
 takes a mono 16-bit PCM WAV of 1 to 30 seconds (5 to 12 seconds of clear speech
 works best) at 16/22.05/24/44.1/48 kHz, at most 4 MiB, its exact transcript,
 whose voice it is and your rights confirmation. The new voice is used right
-away. Up to 16 voices are kept.
+away. Up to 32 voices are kept.
 
 Earlier versions included F5-TTS's English example clip. It is no longer
-included because where its recording comes from couldn't be confirmed; if it is
-still in your list it is marked as retired. Switch to another voice, then remove
-it. F5 never starts with it again.
+included because where its recording comes from couldn't be confirmed, and it
+never joins your list. A route still speaking with it moves to your chosen (or
+first) voice. Voices earlier versions offered and you used stay in your list.
 
+Your voices are the same on all your computers. The list, the voice you chose
+and every recording are shared with your paired Martlet computers (each paired
+host keeps a copy, as for [who does what](CLUSTER.md#the-shared-speaking-voices)),
+so whichever computer speaks already has the recording and a reply sends only
+its transcript, and any of your PCs can be the companion with the same voices.
 Martlet stores its own copy of each recording under `f5-voices` in the app data
-directory, so the original file can be moved or deleted after adding it.
-**Use** switches the voice in one click: when F5 speaks (on this PC or another
-of your computers) the speaking route records the new voice and the next
-conversation speaks with it; otherwise F5 uses it once it does the speaking.
-The voice in use cannot be removed until you switch to another one. Removing a
-voice deletes only Martlet's copy, never your original file. Each reply sends
-the chosen recording and transcript only to the computer that speaks, over its
-pinned TLS gateway; the host keeps nothing after the reply.
+directory (and on each host beside `host.json`), so the original file can be
+moved or deleted after adding it. **Use** switches the voice on all your
+computers in one click: when a computer speaks (this PC or another of yours) the
+speaking route records the new voice and the next conversation speaks with it;
+otherwise it is used once a computer does the speaking. The voice in use cannot
+be removed until you switch to another one. Removing a voice removes it on all
+your computers, never your original file. The status under the list says with
+how many computers your voices are shared.
