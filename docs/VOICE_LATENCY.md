@@ -72,8 +72,10 @@ and the waits above (now logged).
 
 **Thinking.** `x-ai/grok-4.3` is a reasoning model. OpenRouter's model list
 says it reasons by default (`default_effort: low`) and also accepts `none`
-(`mandatory: false`), but Martlet sends no `reasoning` setting, so every reply
-waits for hidden thinking first. That is most of the 3-8 s to the first word.
+(`mandatory: false`), but Martlet sent no `reasoning` setting, so every reply
+waited for hidden thinking first. That is most of the 3-8 s to the first word.
+Companion › Replies › **Thinking steps** › *Off* now sends OpenRouter
+`reasoning.effort: none` (see [Conversation](CONVERSATION.md)).
 OpenRouter's `provider` block only sets `allow_fallbacks: false`, so it is not
 asked to prefer the lowest-latency provider (grok-4.3 has one, xAI).
 
@@ -185,9 +187,13 @@ backchannel at once would make most of the rest feel instant.
 
 ## Recommendations, biggest win first
 
-1. **Turn hidden reasoning off for conversation** (OpenRouter
-   `reasoning.effort: none` for grok-4.3; expected to remove most of the 3-8 s
-   before the first word). Needs a Companion › Replies setting; next change.
+1. **Turn hidden reasoning off for conversation**: Companion › Replies ›
+   **Thinking steps** › *Off* (OpenRouter `reasoning.effort: none`, which
+   grok-4.3 accepts). Expected to remove most of the 3-8 s before the first
+   word; *hidden reasoning* disappears from the latency line, which names the
+   choice next to the model. A model that always thinks refuses Off; Martlet
+   then asks again with the model's default, logs it and keeps the default for
+   that model, so pick a model that can skip thinking.
 2. **Update hosts to this version** so `imouto-host` rebuilds Chatterbox with
    the speed-ups (30-60% less synthesis time, no 7 s first reply).
 3. **Stream each piece.** Emit the first 10-15 T3 tokens through S3Gen as soon

@@ -238,7 +238,7 @@ public sealed record ConversationSnapshot(
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
     TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false,
     ConversationFailure SpeechFailure = ConversationFailure.None, ConversationTimings? Timings = null, long? InputTokens = null,
-    long? CachedInputTokens = null)
+    long? CachedInputTokens = null, bool ReasoningRejected = false)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;

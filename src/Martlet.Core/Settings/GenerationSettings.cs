@@ -75,6 +75,11 @@ public sealed record GenerationSettings : IContract
     public static GenerationSettings? Normalize(GenerationSettings? settings) =>
         settings is null || settings.IsDefault ? null : settings;
 
+    /// <summary>The same settings without a Thinking steps choice, so the model or server keeps its own default (null when
+    /// nothing else is set): what a reply is asked again with when the choice was refused.</summary>
+    public static GenerationSettings? WithoutReasoning(GenerationSettings? settings) =>
+        settings is { Reasoning: not null } ? Normalize(settings with { Reasoning = null }) : settings;
+
     public void Validate()
     {
         ContractRules.Require(Temperature is null || InRange(Temperature.Value, 0, 2),

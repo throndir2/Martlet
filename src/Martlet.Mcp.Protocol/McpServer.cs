@@ -375,12 +375,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "reasoning and waits that long before the words; with voiceDelayMs the fixture voice takes that long to make each " +
             "piece. latency returns the reply's step timings and the desktop log's reply latency line for it, parsed back as " +
             "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). " +
-            "Loopback only; reads no credentials.", new
+            "thinkingSteps (off or on) sends Companion > Replies > Thinking steps with the reply; with refuseThinking the fixture " +
+            "endpoint refuses a request that carries it, as a model that always thinks does, and ok needs the reply asked once more " +
+            "without it (thinking.sentControl [true, false], reasoningRejected). Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 },
             reasoningMs = new { type = "integer", minimum = 0, maximum = 5000 },
-            voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 }
+            voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 },
+            thinkingSteps = new { type = "string", @enum = new[] { "off", "on" } },
+            refuseThinking = new { type = "boolean" }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -549,7 +553,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
-                    OptionalInt(arguments, "voiceDelayMs")),
+                    OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "thinkingSteps"),
+                    OptionalBool(arguments, "refuseThinking") ?? false),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),

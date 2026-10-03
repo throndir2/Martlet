@@ -32,8 +32,10 @@ internal static class SpokenReplyCheck
     private static readonly TimeSpan SentenceGap = TimeSpan.FromMilliseconds(300);
 
     internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, CancellationToken cancellation,
-        int? reasoningMs = null, int? voiceDelayMs = null)
+        int? reasoningMs = null, int? voiceDelayMs = null, string? thinkingSteps = null, bool refuseThinking = false)
     {
+        if (thinkingSteps is not (null or "off" or "on")) throw new ArgumentException("'thinkingSteps' must be off or on.");
+        if (refuseThinking && thinkingSteps is null) throw new ArgumentException("'refuseThinking' needs thinkingSteps.");
         var failure = voiceFailure ?? "server";
         if (!Failures.Contains(failure)) throw new ArgumentException($"'voiceFailure' must be one of {string.Join(", ", Failures)}.");
         var at = failAt ?? 1;
@@ -46,7 +48,10 @@ internal static class SpokenReplyCheck
         listener.Start();
         var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        var serving = ServeAsync(listener, reasoning, stop.Token);
+        // Whether each request the fixture endpoint got carried the Thinking steps control (a loopback server gets the chat
+        // template's enable_thinking), in order; with refuseThinking it refuses those, as a model that always thinks does.
+        var asked = new List<bool>();
+        var serving = ServeAsync(listener, reasoning, stop.Token, asked, refuseThinking);
         try
         {
             var voice = new Voice(failure, at, voiceDelay);
@@ -66,7 +71,8 @@ internal static class SpokenReplyCheck
             var request = new ConversationRequest(new BoundedTextInput("Say hi.", "Fixture check."),
                 new TextModelSelection(ChatCompletionsSetup.Alias, Model), new TextGenerationLimits(),
                 new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
-                speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: target);
+                speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: target,
+                generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" });
             // What the speech bubble and subtitles are given: each line as its playback starts, or, once the voice failed, each
             // sentence it couldn't say, shown one after another for its reading time.
             var captions = new SpokenTextFeed();
@@ -92,6 +98,12 @@ internal static class SpokenReplyCheck
             var missingSteps = expectedSteps.Where(step => latency?.Steps.ContainsKey(step) != true).ToArray();
             var stepsSum = latency?.Steps.Values.Sum() ?? 0;
             // Each step is rounded to a millisecond on its own, so they add up to the total within a millisecond a step.
+            bool[] sentControl;
+            lock (asked) sentControl = [.. asked];
+            // Off or On reaches the endpoint; a refused one is asked once more without it, and the reply still completes.
+            var thinkingOk = thinkingSteps is null ? sentControl.All(control => !control) && !terminal.ReasoningRejected
+                : refuseThinking ? terminal.ReasoningRejected && sentControl is [true, false]
+                : !terminal.ReasoningRejected && sentControl is [true];
             var latencyOk = failure != "none" || latency is { TotalMs: { } total } && missingSteps.Length == 0 &&
                 Math.Abs(stepsSum - total) <= latency.Steps.Count + 1 &&
                 (reasoning == TimeSpan.Zero || latency.Steps.GetValueOrDefault(ReplyLatency.HiddenReasoning) >= reasoning.TotalMilliseconds * 0.8) &&
@@ -121,10 +133,20 @@ internal static class SpokenReplyCheck
             lock (shown) lines = [.. shown];
             return new
             {
-                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk,
+                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk &&
+                    thinkingOk,
                 voiceFailure = failure,
                 failAt = failure == "none" ? (int?)null : at,
                 endpoint = baseUrl,
+                thinking = new
+                {
+                    ok = thinkingOk,
+                    steps = thinkingSteps,
+                    refused = refuseThinking,
+                    requests = sentControl.Length,
+                    sentControl,
+                    reasoningRejected = terminal.ReasoningRejected
+                },
                 latency = new
                 {
                     ok = latencyOk,
@@ -201,13 +223,24 @@ internal static class SpokenReplyCheck
 
     // Streams the canned reply one sentence at a time with a pause between, the way a cloud model streams it; with reasoning, a
     // hidden reasoning delta comes first and the words only after that long, like a reasoning model on OpenRouter.
-    private static async Task ServeAsync(TcpListener listener, TimeSpan reasoning, CancellationToken cancellation)
+    private static async Task ServeAsync(TcpListener listener, TimeSpan reasoning, CancellationToken cancellation, List<bool> asked,
+        bool refuseThinking)
     {
         while (!cancellation.IsCancellationRequested)
         {
             using var client = await listener.AcceptTcpClientAsync(cancellation);
             await using var stream = client.GetStream();
-            _ = await HearingCheck.ReadRequestAsync(stream, cancellation);
+            var received = Encoding.UTF8.GetString(await HearingCheck.ReadRequestAsync(stream, cancellation));
+            var control = received.Contains("chat_template_kwargs", StringComparison.Ordinal) ||
+                received.Contains("\"reasoning", StringComparison.Ordinal);
+            lock (asked) asked.Add(control);
+            if (control && refuseThinking)
+            {
+                const string refusal = "{\"error\":{\"message\":\"Reasoning is mandatory for this model and cannot be disabled.\"}}";
+                await WriteAsync(stream, "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: " +
+                    Encoding.UTF8.GetByteCount(refusal) + "\r\n\r\n" + refusal, cancellation);
+                continue;
+            }
             await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
                 cancellation);
             const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";

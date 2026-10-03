@@ -910,6 +910,18 @@ example `{"name":"spoken_reply_check","arguments":{"voiceFailure":"none",
 "reasoningMs":600,"voiceDelayMs":400}}` returned *hidden reasoning 590* and
 *voice synthesis 469* out of 1,215 ms.
 
+With `thinkingSteps` (`off` or `on`) the reply carries Companion › Replies ›
+Thinking steps (a loopback server gets the chat template's `enable_thinking`);
+with `refuseThinking` the fixture endpoint answers a request carrying it with
+HTTP 400 *Reasoning is mandatory...*, as a model that always thinks does.
+`thinking` returns `steps`, `refused`, `requests`, `sentControl` (whether each
+request carried the control, in order) and `reasoningRejected` (the turn's
+snapshot). `ok` then also needs one request with the control when it isn't
+refused, none without `thinkingSteps`, and with `refuseThinking` the reply
+asked once more without it (`sentControl` `[true, false]`,
+`reasoningRejected`) and still completed; before this, a refused Off failed
+the reply (or handed it to the Thinking fallback when one was set).
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from

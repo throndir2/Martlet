@@ -280,6 +280,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private long listenEpoch, spokeUntil;
     // Thinking models that rejected a recording this app session; they get the transcript only until Martlet restarts.
     private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
+    // Thinking models that refused the Thinking steps choice this app session; they get their own default until Martlet restarts.
+    private readonly HashSet<string> reasoningRefused = new(StringComparer.Ordinal);
 
     internal bool IsRunning => operations.IsRunning;
     /// <summary>A reply (or a comment on the screen) is running on the shared setup slot.</summary>
@@ -1147,7 +1149,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         messageNotes: home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions,
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
-                        characterActions: characterActions);
+                        characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()));
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 try { request = Ask(seen, out usedHistory, out usedMemory, out usedLore); }
@@ -1194,6 +1196,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (terminal.ImageRejected)
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the picture of your screen sent " +
                     "with your message; Martlet asked again with your words only.");
+            // A model that always thinks refused Thinking steps Off (or its server refused the control): it gets its own default
+            // from now on (this app session).
+            if (terminal.ReasoningRejected)
+            {
+                lock (gate) reasoningRefused.Add(configured.ToolModelKey());
+                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} refused Thinking steps " +
+                    $"{(configured.Generation?.Reasoning == true ? "On" : "Off")}; Martlet asked again with the model's own default and " +
+                    "uses it until it restarts. Choose Default on Companion › Replies › Thinking steps for this model.");
+            }
             if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.

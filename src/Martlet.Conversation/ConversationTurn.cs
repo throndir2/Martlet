@@ -61,7 +61,7 @@ public sealed class ConversationTurn
     private Guid? speechRequest;
     private string? refusal;
     private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected,
-        audioRejected, imageRejected;
+        audioRejected, imageRejected, reasoningRejected;
     private bool speechLimitReached;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
     private string? activeTool, fellBackAfter;
@@ -269,7 +269,7 @@ public sealed class ConversationTurn
         {
             var input = request.Input;
             var rounds = new List<TextToolRound>();
-            bool retried = false, fallback = false, audioDropped = false, imageDropped = false;
+            bool retried = false, fallback = false, audioDropped = false, imageDropped = false, reasoningDropped = false;
             for (var attempt = 0; ; attempt++)
             {
                 int before;
@@ -279,7 +279,7 @@ public sealed class ConversationTurn
                 {
                     var sent = fallback || audioDropped ? input.WithoutAudio() : input;
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
-                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback).ConfigureAwait(false);
+                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped).ConfigureAwait(false);
                 }
                 // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
                 catch (Exception error) when (error is ConversationException { Failure: ConversationFailure.DeadlineExceeded or
@@ -335,6 +335,23 @@ public sealed class ConversationTurn
                             if (imageDropped) imageRejected = false;
                         }
                         input = request.Input.WithoutTools();
+                        continue;
+                    }
+                    // A model that always thinks refuses Thinking steps Off (and a strict server may refuse the control
+                    // itself) before answering; ask again with the model's own default for the rest of this reply.
+                    if (!reasoningDropped && !fallback && request.Generation?.Reasoning is not null && result.Text.Length == 0 &&
+                        result.Failure == ProviderFailureCode.RequestRejected)
+                    {
+                        reasoningDropped = true;
+                        lock (Sync)
+                        {
+                            CheckActive();
+                            reasoningRejected = true;
+                            // Rejected again without those: the Thinking steps choice was the problem, not them.
+                            if (audioDropped) audioRejected = false;
+                            if (imageDropped) imageRejected = false;
+                            if (retried) toolsRejected = false;
+                        }
                         continue;
                     }
                     // Nothing of this answer arrived yet, so the fallback can give it instead.
@@ -418,7 +435,7 @@ public sealed class ConversationTurn
     }
 
     private async Task<RoundResult> RequestAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter,
-        bool fallback = false)
+        bool fallback = false, bool withoutReasoning = false)
     {
         var model = fallback ? request.Fallback!.Model : request.Model;
         var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
@@ -439,7 +456,7 @@ public sealed class ConversationTurn
         context = context with { Deadline = Deadline(window) };
         var requestedAfter = Clock.GetElapsedTime(startedAt);
         lock (Sync) textRequestAfter ??= requestedAfter;
-        var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback);
+        var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback, withoutReasoning);
         using var validator = new ProviderSequenceValidator(new()
         {
             Ids = ids, Epoch = Epoch, Capabilities = stream.Capabilities
@@ -1060,6 +1077,7 @@ public sealed class ConversationTurn
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
             speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
-                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter), inputTokens, cachedInputTokens);
+                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter), inputTokens, cachedInputTokens,
+            reasoningRejected);
     }
 }
