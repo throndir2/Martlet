@@ -29,6 +29,17 @@ public partial class HostRunWindow : ThemedWindow
     /// <summary>What this run does, as its window shows it (for example "Set up this PC's host service").</summary>
     internal string Heading => title;
 
+    /// <summary>The run is still working (exiting Martlet would interrupt it).</summary>
+    internal bool IsRunning => running;
+
+    /// <summary>Martlet is exiting: the run stops (its window closes with Martlet).</summary>
+    internal void Interrupt()
+    {
+        if (!running) return;
+        Status("Canceling: Martlet is exiting...");
+        cancel.Cancel();
+    }
+
     /// <summary>Remote output lines; posts to this window.</summary>
     internal IProgress<string> Output { get; }
     /// <summary>Password, sudo and host-key questions, asked over this window.</summary>

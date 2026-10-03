@@ -15,7 +15,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Navigation rail -->
-        <Border Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+        <Border x:Name="NavRail" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="14,20,14,16">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,0,0,26">
                     <Image x:Name="RailMark" Style="{DynamicResource Mascot}" Width="40" Height="40"/>
@@ -40,7 +40,7 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1">
+        <Grid x:Name="PageArea" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -702,6 +702,26 @@
                     </StackPanel>
                 </Border>
             </ScrollViewer>
+        </Grid>
+
+        <!-- Closing: what Martlet is still finishing as it exits, and Exit now when that takes longer than usual -->
+        <Grid x:Name="ClosingOverlay" Grid.ColumnSpan="2" Visibility="Collapsed" AutomationProperties.AutomationId="ClosingPanel">
+            <Rectangle Fill="{DynamicResource CanvasBrush}" Opacity="0.9"/>
+            <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="20" Padding="32,28" MaxWidth="560" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock Text="Closing Martlet..." Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock x:Name="ClosingStatusText" TextWrapping="Wrap" Margin="0,6,0,0"
+                               AutomationProperties.AutomationId="ClosingStatus" AutomationProperties.LiveSetting="Polite"/>
+                    <StackPanel x:Name="ClosingSlowPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                        <TextBlock x:Name="ClosingSlowText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="ClosingSlow"/>
+                        <Button x:Name="ClosingExitNowButton" Content="E_xit now" Style="{DynamicResource PrimaryButton}"
+                                HorizontalAlignment="Left" Margin="0,14,0,0" Click="ClosingExitNow_Click"
+                                AutomationProperties.AutomationId="ClosingExitNow"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </local:ThemedWindow>

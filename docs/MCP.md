@@ -565,6 +565,39 @@ run's 45-minute limit (`asked-update-waits`). It contacts nothing and touches no
 Docker, host or data directory; the engine side of waiting is
 `host_engine_check`'s `asked-update-waits-then-runs`.
 
+`app_update_check` (no arguments) rehearses how Martlet installs its own update,
+with the desktop's production update helper (`AppUpdateHelper`: the same
+`install-update.cmd` script and the same hidden start Martlet uses) in a
+disposable temp folder, and returns `{exitCode, report: {passed, total, steps:
+[{name, ok, detail}], notCovered}}`. A windowless process that exits after about
+two seconds stands in for Martlet; `Martlet.NodeLinkCheck` (built with
+`Martlet.Mcp`) stands in for the installer and for the restarted Martlet
+(FIXTURE: with `MARTLET_UPDATE_CHECK_RECORD` set it records its arguments,
+whether its console window shows and which processes share its console, writes
+one line to the `/LOG` file and exits with `MARTLET_UPDATE_CHECK_EXIT`). Three
+installs run side by side: one another computer asked for
+(`asked-by-another-computer`), an automatic one from the notification area whose
+installer fails with exit 5 (`automatic-from-tray-fails`) and one you confirmed
+(`confirmed`). For each, the steps check that the installer starts only after
+Martlet's process exited (`waits-for-martlet`); its switches
+(`installer-switches`: `/VERYSILENT` with no window at all for the unattended
+two, `/SILENT` with only the progress window when confirmed, always
+`/SUPPRESSMSGBOXES /NORESTART /SP- /TASKS=` and `/LOG=...\install.log`); that it
+runs inside the helper's console, which shows no window (`helper-hidden`); that
+Martlet starts again after it with `--data-directory`, plus `--after-update`
+(minimized, no focus) when unattended and `--tray` when it was in the
+notification area, without a console window of its own (`restarts`); that
+`last-install.txt` holds the exit code and version (`records-result`); and that
+`update.log` has every step (`logs-steps`). After the failed install the
+installer log's tail, which Martlet copies into its log, is checked too
+(`installer-log-for-failure`). It installs nothing, starts no real Martlet and
+contacts nothing; the real Inno Setup installer is not run (`notCovered`). What
+Martlet does with these files when it starts again shows in `logs_tail`
+(`Update helper: ...` lines, then *Martlet updated to ...* or a WARN *The update
+to ... didn't finish* followed by the installer log's last lines), and
+`ui_snapshot`'s `windowStates` shows the restarted window `minimized` and not
+`foreground` (launch the desktop with `-DesktopArguments '--after-update'`).
+
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
 an Audio2Face service on a numeric loopback `endpoint` (default
@@ -948,7 +981,8 @@ alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
 text typed into `LiveInput`.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
-whether its frame is `resizable`, `minimizable` and `maximizable`; with
+whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
+`minimized` and whether it is the `foreground` window (has the focus); with
 `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
@@ -1298,7 +1332,7 @@ then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
 the character's last stop did not finish cleanly (pressing Show or Hide
 character retries; details go to the `desktop` log). Exiting never waits on the
 character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
-even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the
+even then, and Windows ends the renderer with it (see **Exiting** below). After a zoom, the `SetupCharacterView` status reports the
 character frame's size (with, in parentheses, the overlay's full width: the
 frame plus the transparent room on each side the model can move into), its
 distance from the top of the screen, the camera zoom and where the
@@ -1715,7 +1749,8 @@ host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
 (like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
 choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
-`TrayExit` shows Martlet instead of exiting. Settings › *Startup and closing* has
+`TrayExit` shows Martlet instead of exiting (the status line names the open
+window to close first). Settings › *Startup and closing* has
 `CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
 (the per-user Run entry `Martlet`: this executable, the same `--data-directory`
 and `--tray` when `StartInTray` is checked; verify with a disposable data
@@ -1741,6 +1776,32 @@ exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
 on `scripts\Invoke-MartletMcp.ps1` starts the disposable desktop in the
 notification area.
+
+**Exiting.** `ExitMartlet`, `TrayExit` and (with *Keep running when closed*
+off) `ui_tray` `close` exit Martlet, so they need `--allow-ui-effects`. An exit
+that would cut work short (backup and restore, a setup task other than a reply,
+a troubleshooting report being made or waiting to be exported, an update
+download, a Parakeet download, a host update, a command
+from another computer, a running run window or *Prepare this computer*) waits
+up to 1.5 seconds for quick work to finish, then shows the window and asks in
+an *Exit Martlet* confirmation whose `ExitBusyQuestion` lists what Martlet is
+still busy with: `ConfirmationYes` (*Exit anyway*) interrupts it,
+`ConfirmationNo` (*Keep Martlet open*) keeps Martlet running and logs *Status:
+Martlet stays open...*. Windows signing out never asks. While Martlet closes,
+`ClosingPanel` covers the window (the rest is disabled) and `ClosingStatus`
+names the step (*Stopping your tool servers...*, *Ending the conversation...*,
+*Closing the character...*); the tray icon's tooltip says *Martlet is closing:
+<step>*. After three seconds the window shows even from the notification area
+(clicking the icon, its menu or starting Martlet again shows it at once),
+`ClosingSlow` says what exiting without waiting leaves undone and
+`ClosingExitNow` (or closing the window again, `ui_tray` `close`) opens *Exit
+Martlet now*, whose `ExitNowQuestion` names the step: `ConfirmationYes` exits
+at once (logging *Exited without waiting: Martlet was still <step>*),
+`ConfirmationNo` keeps waiting. A step that fails is logged (*While exiting,
+<step> didn't finish; Martlet exits anyway.*) and closing goes on. Setting
+`MARTLET_SIMULATE_SLOW_EXIT` to a number of seconds (1-600) before launching
+the desktop adds a last step that only waits that long (*Waiting on a simulated
+slow step*), to check the closing panel and Exit now.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
