@@ -698,13 +698,21 @@ and `sharedRevision`.
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
 `total`, `edited` and `emptied` counts, and every internal prompt Martlet
 sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
-`state` `builtin`, `edited` or `empty`, and `characters`). With an
+`state` `builtin`, `edited` or `empty`, `characters` and `tokens`), plus
+`tokens`, the estimate for all prompts together. Token counts are Martlet's
+own request-size estimate (`BoundedTextInput.TextTokens`: about a token per
+three UTF-8 bytes, no message overhead; 0 for an emptied prompt), not a
+provider's count, and cover each prompt as written, before placeholders are
+filled in. With an
 `id` it also returns `prompt` with that prompt's effective `text` (the
 saved edit or the built-in text), exactly what Martlet fills in and sends.
-On the page, `PromptsNow` reads how many prompts are edited or emptied and
-`PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
-nothing is sent for this prompt.*, plus *Saving...* while an edit is still
-being saved); neither returns prompt text. `OpenPrompts` (Personality's *Edit
+On the page, `PromptsNow` reads how many prompts are edited or emptied,
+`PromptsTokens` the estimated tokens of all prompts together as typed
+(*All prompts together: about 3,456 tokens. ...*) and
+`PromptState-<id>` each prompt's state (*Built-in text. About 52 tokens.*,
+*Edited. About 52 tokens.*, *Empty: nothing is sent for this prompt.*, plus
+*Saving...* while an edit is still being saved); none returns prompt text.
+`OpenPrompts` (Personality's *Edit
 prompts*) only opens the page. There is no Save button: an edit saves a moment
 after typing stops (or at once when another page opens), into the newest saved
 settings, and `PromptsNow` then reads the new counts. The editors
