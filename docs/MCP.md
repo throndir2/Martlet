@@ -809,7 +809,11 @@ user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 instructions), `character` (from `avatar.json`: `model` `built-in` with
 `builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
 `.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
-`lipSyncHost`, the paired host's ID) and `lorebooks` (`books`, `on` and
+`lipSyncHost`, the paired host's ID), `placement` (from
+`character-placement.json`, this PC only: `state` `none` when the character's
+position is unlocked, or `loaded` with `locked`, `left`, `top`, `width` and
+`height` in device-independent pixels; see the character overlay below) and
+`lorebooks` (`books`, `on` and
 `entries` counts). Those editors have no Save button; each change saves on its
 own into the newest saved file, keeping what was saved elsewhere meanwhile
 (another page, or sync from your other computers, such as the lip-sync host).
@@ -889,6 +893,54 @@ paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
 only the beginning was spoken.* under the reply.
 
+With `reasoningMs` (0-5000) the fixture endpoint first streams a hidden
+reasoning delta (as OpenRouter streams a reasoning model's thinking) and waits
+that long before the words; with `voiceDelayMs` (0-5000) the fixture voice
+takes that long to make each piece. `latency` returns the reply's step timings
+(`timings`: Thinking request, response headers, first reasoning, first piece,
+voice request, first voice audio, first piece made and how much speech it held,
+playback start; plus `firstWordsMs` and `firstAudioMs`), the desktop log's
+reply latency line for this reply (`line`, counted from sending the message)
+and that line read back as `latency_report` reads it (`totalMs`, `steps`,
+`stepsSumMs`, `missingSteps`). With `voiceFailure` `none`, `ok` also needs
+every step from *Thinking authorization* to *speakers*, the steps adding up to
+the total within a millisecond each, *hidden reasoning* at least 80% of
+`reasoningMs` and *voice synthesis* at least 80% of `voiceDelayMs`. For
+example `{"name":"spoken_reply_check","arguments":{"voiceFailure":"none",
+"reasoningMs":600,"voiceDelayMs":400}}` returned *hidden reasoning 590* and
+*voice synthesis 469* out of 1,215 ms.
+
+### Latency
+
+Every reply writes one *Reply latency* line to the desktop log: how long from
+when you stopped talking (always listening), let go of the talk button or sent
+your message to the first audio (or the first words when nothing was spoken),
+then each step in parentheses, each the wait that ended there, so they add up
+to the total: *end of speech*, *recording*, *Voice ID*, *speech-to-text*,
+*voice recognition*, *waiting to answer*, *preparing*, *memory*, *lore*,
+*tools*, *Home Assistant*, *building the request*, *Thinking authorization*,
+*Thinking connection*, *Thinking before reasoning* and *hidden reasoning* (or
+*Thinking first words* when no reasoning was streamed), *first sentence*,
+*voice authorization*, *voice synthesis*, *playback start* and *speakers*
+(steps that didn't happen are left out). It goes on with the time to the first
+words and audio from the reply's start, the number of spoken pieces, how much
+speech the first piece held and how long it took to make, and the model IDs
+(`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
+is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
+
+`latency_report` reads those lines from a data directory's desktop log (with
+its rotated copies; optional absolute `dataDirectory`, default the current
+user's) for the newest `replies` (1-500, default 20) and returns `measured`
+(lines with steps), `legacy` (older lines that only gave the first words and
+audio from the reply's start), `firstAudio` (from the moment that counts for
+you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
+Median, P90, Min, Max}` in ms), `steps` (the same for every step),
+`slowestSteps` (the five with the largest median) and `newest` (each reply's
+`at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
+`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `models`,
+`interrupted`, `legacy`). It only reads the log: no audio, network or provider
+request.
+
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,
@@ -908,8 +960,25 @@ fits a 1,000-exchange synthetic conversation the way a reply does into a cloud
 model's default 100,000 tokens, 1,000,000 tokens on gpt-4.1, a paired host
 (8,192 tokens, 16 KiB, 16 messages) and Ollama on this PC at 32,768:
 `exchangesSent`, `exchangesLeftOut`, `estimatedTokens` and `bytes`, `ok` when
-the newest exchanges fit and one more wouldn't. Each part has an `ok`. It
-reads no credentials and nothing leaves loopback. On Companion › Replies,
+the newest exchanges fit and one more wouldn't. Its `cache` part rehearses the
+[request layout that lets prompt caches work](CONVERSATION.md#prompt-caching-and-the-request-layout)
+with the production Chat Completions adapter against a fixture endpoint on
+127.0.0.1 (canned reply and usage, NOT AI): two replies in a row whose notes
+differ send the instructions and earlier messages again unchanged
+(`messagesSentAgainUnchanged` of `messagesBeforeTheMessage`, `stableStart`),
+the notes close the user's message (`notesAt`, `notesInInstructions` false),
+the usage chunk's cached tokens are read (`usage`), only Ollama on this PC is
+asked for usage (`asksUsageFromOllamaOnThisPc`, `asksUsageFromOtherServers`),
+and `trimming` replays 60 replies of a synthetic conversation into Ollama's
+smallest context: how often the request's start moved letting go of the
+oldest quarter at once (`startMovedLettingGoAQuarter`, 7) against one exchange
+at a time (`startMovedOneAtATime`, 37). Each part has an `ok`. It
+reads no credentials and nothing leaves loopback. A real model's cache use shows in
+the desktop log's *Thinking input (Reply): first words after … ms; N input
+tokens, M of them (P %) from the model's prompt cache.* lines
+(`{"name":"logs_tail","arguments":{"contains":"Thinking input"}}`, also for
+glances and *Remembering*/*Learning names*) and at the end of the talk
+window's `LiveContext`. On Companion › Replies,
 `RepliesContextStatus` reads the size in use and where it comes from and what
 Martlet knows of the model's own limit; `RepliesCheckContext` (*Check model
 limit*) asks the Thinking model's server (loading the model in Ollama on this
@@ -924,7 +993,10 @@ conversation uses it.*
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
 `dataDirectory`, default the current user's, and optional `delayMs` 0-300,
 default 60): `reduceEcho` (the saved choice, on by default) with
-`reduceEchoSource` (`saved` or `default`), and `canceller` (`WebRTC AEC3` once
+`reduceEchoSource` (`saved` or `default`), `bargeIn` (*Let me interrupt Martlet
+by talking*, optional and off by default) with `bargeInSource` (`saved`,
+`default`, or `reset` for a file saved before barge-in became opt-in that had
+it on only by the old default), and `canceller` (`WebRTC AEC3` once
 the native canceller loads, otherwise null with `cancellerProblem` and `ok`
 false). Its `rehearsal` runs the production microphone path
 (`MicrophoneCapture`, `EchoReducer`, the WebRTC canceller, the capture
@@ -1398,13 +1470,39 @@ choice or another `MoveAvatar` click. While it is open, snapshots list
 `TrayOpen`, also from the notification area) and `CharacterSettings`
 (*Character settings*, opens Companion › Character), which are passive clicks;
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
-the default zoom), `CharacterResetPosition`, the checkable `CharacterOnTop`
+the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
 this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
 the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
 carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
+`MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
+`ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
+returns its bounds before and after, and `ui_snapshot` reports `movable` for
+it. **Locking the character's position**: Home's `ToggleCharacterLock`
+(*Lock character position*, shown while the character shows or is locked),
+Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
+menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
+character's menu chose 'lock'.*) lock it where it is; all need
+`--allow-ui-effects` because they save `character-placement.json` (see
+`character_status`'s `placement`). Locked, `movable` is false and `ui_move` is
+refused; the overlay ignores dragging, the arrow keys and Home; its
+`CharacterResetPosition`, Home's `ResetCharacterPosition` and Companion's
+`SetupCharacterResetPosition` are disabled; and zoom (the wheel, the menu or
+`SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
+Only Martlet's window unlocks it: the same `ToggleCharacterLock` and
+`SetupCharacterLock` then read *Unlock character position* and *Unlock
+position* (also while the character is hidden), and the overlay menu's item
+reads *Position locked: unlock in Martlet* and only opens Companion ›
+Character. `SetupCharacterPlacement` says whether the position is locked and
+where (device-independent pixels), and `SetupCharacterView` ends with
+*Position locked.* when the overlay reports it. A locked character shows at
+its locked place again after Hide/Show or a Martlet restart (at its default
+spot, still locked, if that place is no longer on a screen); the desktop log
+records *Character position locked at ...* and *Character position unlocked.*,
+and `avatar-renderer` *The character's position is locked.*
 
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
@@ -1694,7 +1792,9 @@ picture (*Your message at 10:14 PM went with it.*); it never contains window
 titles; to rehearse a flash, show any test window minimized and call
 `FlashWindowEx` on it), `LiveContext` (*Keeps the last N
 exchanges in mind, about T tokens of its C-token context.*, or *Replies send the
-newest that fit its C-token context.* once they outgrow it: how many exchanges
+newest that fit its C-token context.* once they outgrow it, followed by *Last
+reply: P% of its N input tokens came from the model's cache.* once the Thinking
+model reported its cache use: how many exchanges
 of the open talk window the next reply can see, their estimated tokens and the
 context size from Companion › Replies; absent when none, and unchanged when a
 settings change is picked up; beside it,
@@ -1738,9 +1838,10 @@ is a passive click: it only stops a reply, recording or vision. Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
-talking*, on by default; its `checkedState` is the saved choice, and
+talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
-`talk-preferences.json`) and `TalkBargeInAbout` (returned: what talking over
+`talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
+and off by default, and what talking over
 Martlet takes, about a second of your voice on the microphone, never a short
 sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
@@ -1767,9 +1868,9 @@ back too; Martlet left out N line(s) of it.* once a line the PC played repeated
 what you said; what the PC played shows in
 `LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
-verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words
-after … ms, first audio after … ms* line to the desktop log, which `logs_tail`
-returns.
+verifying on a desktop whose sound must not be captured. Each reply writes a
+*Reply latency* line to the desktop log (see [Latency](#latency)), which
+`logs_tail` returns and `latency_report` summarizes.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership
@@ -1864,7 +1965,9 @@ slow step*), to check the closing panel and Exit now.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
-`ui_select`, plus `ui_set_text` (an empty `text` clears a field) and `ui_toggle`. It does **not** waive the
+`ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`
+and `ui_move` (moves a control that UI Automation can move, such as the
+character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). It does **not** waive the
 desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
@@ -1902,7 +2005,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status` and `voices_engine_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

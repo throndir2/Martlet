@@ -5,7 +5,8 @@ using Martlet.Memory;
 
 namespace Martlet.Desktop;
 
-/// <summary>Recalled facts travel in the system instructions as one clearly labeled block of background facts.</summary>
+/// <summary>Recalled facts travel in a message's notes as one clearly labeled block of background facts, each fact once while the
+/// message that carried it is still in the conversation sent.</summary>
 internal static class MemoryPromptContext
 {
     internal const string Label = "MARTLET_LOCAL_MEMORY";
@@ -21,7 +22,7 @@ internal static class MemoryPromptContext
         return text.Append("[/").Append(Label).Append(']').ToString();
     }
 
-    private static string Line(MemoryFact fact)
+    internal static string Line(MemoryFact fact)
     {
         var content = string.Join(' ', fact.Content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             .Replace(Label, "memory", StringComparison.OrdinalIgnoreCase);

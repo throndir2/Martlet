@@ -501,8 +501,12 @@ BOM, comments, optional event names and multiline `data:` joined by LF.
 Named SSE event and JSON `type` must agree. SSE `id`, `retry` and extension
 fields are bounded/ignored and cannot trigger reconnects. Strict Core JSON
 validation covers ignored optional fields, malformed UTF, duplicates and depth.
-Obfuscation/logprob metadata is not output text. No Chat Completions
-`include_usage` assumption is made.
+Obfuscation/logprob metadata is not output text. Chat Completions usage is
+accounting only: Martlet asks for the closing usage chunk
+(`stream_options.include_usage`) only from Ollama on this PC and reads
+`prompt_tokens_details.cached_tokens` (or DeepSeek's `prompt_cache_hit_tokens`)
+as the input read from the prompt cache; Responses reads
+`input_tokens_details.cached_tokens`.
 
 For ordinary chunked SSE, a valid semantic terminal closes the local stream
 without waiting for physical EOF or `[DONE]`; later bytes are not interpreted.

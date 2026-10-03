@@ -82,7 +82,8 @@ public partial class MainWindow
             bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
-            var bargeInAbout = Note("Martlet keeps listening while it speaks; talking over it for about a second stops the reply and answers " +
+            var bargeInAbout = Note("Optional, off by default: Martlet doesn't listen while it speaks, and Stop (or Esc) in the talk window " +
+                "interrupts it. Turn this on and Martlet keeps listening while it speaks; talking over it for about a second stops the reply and answers " +
                 "what you say. Short sounds (a cough, a click, a quick \"mm-hmm\") and what this PC plays never stop it. " +
                 "With Reduce echo from my speakers on, this works through speakers too. If Martlet still stops itself, use headphones " +
                 "or turn this off.", new Thickness(0, 0, 0, 0));

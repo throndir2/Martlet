@@ -41,11 +41,8 @@ internal static partial class MemoryCapture
         // Drop context before the latest exchange if an unusually large excerpt would not fit the LLM input budget.
         foreach (var (earlier, shown) in new[] { (true, Math.Min(known.Count, MaximumShownFacts)), (false, Math.Min(known.Count, 4)), (false, 0) })
         {
-            var text = new StringBuilder("Already remembered:\n");
-            if (shown == 0)
-                text.Append("(nothing related)\n");
-            for (var index = 0; index < shown; index++)
-                text.Append(index + 1).Append(". ").Append(Clip(known[index].Content, 160)).Append('\n');
+            var text = new StringBuilder();
+            AppendKnown(text, known, shown);
             if (earlier && (earlierUser is not null || earlierReply is not null))
             {
                 text.Append("\nEarlier in the conversation (context only):\n");
@@ -66,6 +63,16 @@ internal static partial class MemoryCapture
             }
         }
         throw new LiveActionException("conversation.input_limit");
+    }
+
+    /// <summary>The numbered facts already remembered that the answer's UPDATE and FORGET lines refer to.</summary>
+    internal static void AppendKnown(StringBuilder text, IReadOnlyList<MemoryFact> known, int shown)
+    {
+        text.Append("Already remembered:\n");
+        if (shown == 0)
+            text.Append("(nothing related)\n");
+        for (var index = 0; index < shown; index++)
+            text.Append(index + 1).Append(". ").Append(Clip(known[index].Content, 160)).Append('\n');
     }
 
     internal static IReadOnlyList<MemoryCaptureOperation> Parse(string? text, int shownFacts)

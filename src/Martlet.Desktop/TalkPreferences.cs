@@ -5,18 +5,20 @@ namespace Martlet.Desktop;
 
 // How the user talks with Martlet, chosen in Companion (Listening, Voice and Vision) and used by the talk window while it is
 // open: always listening or push-to-talk, whether replies are spoken, whether Thinking also hears the recording (HearVoice, off
-// by default), whether what the PC plays is removed from the microphone (ReduceEcho, on by default), whether always listening
-// also hears what the PC plays (HearPc, off by default) and whether (and at what) Martlet may look. The talk
+// by default), whether talking over a reply stops it (BargeIn, opt-in and off by default), whether what the PC plays is removed
+// from the microphone (ReduceEcho, on by default), whether always listening also hears what the PC plays (HearPc, off by
+// default) and whether (and at what) Martlet may look. The talk
 // window's mic and vision buttons pause them there (Stop and Esc pause vision, never listening). A camera address is saved
 // without its user name or password.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
-    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false, bool BargeIn = true, bool ReduceEcho = true,
+    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false, bool BargeIn = false, bool ReduceEcho = true,
     bool HearPc = false)
 {
     private const string FileName = "talk-preferences.json";
     // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.
-    private const int CurrentVersion = 2;
+    // Version 3 made barge-in opt-in; earlier files have it on only because it was the old default.
+    private const int AlwaysListeningVersion = 2, OptInBargeInVersion = 3, CurrentVersion = OptInBargeInVersion;
     internal static readonly TimeSpan[] Pauses = [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(1200)];
 
     internal static TalkPreferences Load(string? directory)
@@ -29,7 +31,8 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
             var loaded = JsonSerializer.Deserialize<TalkPreferences>(File.ReadAllText(path)) ?? new();
             return loaded with
             {
-                HandsFree = loaded.Version < CurrentVersion || loaded.HandsFree,
+                HandsFree = loaded.Version < AlwaysListeningVersion || loaded.HandsFree,
+                BargeIn = loaded.Version >= OptInBargeInVersion && loaded.BargeIn,
                 Sensitivity = double.IsFinite(loaded.Sensitivity) ? Math.Clamp(loaded.Sensitivity, 0, 1) : 0.5,
                 PauseIndex = Math.Clamp(loaded.PauseIndex, 0, Pauses.Length - 1),
                 ScreenChattiness = Math.Clamp(loaded.ScreenChattiness, 0, 2),

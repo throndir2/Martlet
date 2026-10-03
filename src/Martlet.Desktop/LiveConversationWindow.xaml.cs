@@ -99,7 +99,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private int restarts;
     // WhileYouTalked: a line the PC played that was heard while the microphone was still hearing or transcribing you.
     private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
-        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false);
+        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false, ReplyTimeline? Timeline = null);
     // Hearing what this PC plays (Companion › Listening › Hear what this PC plays): a second listener beside the microphone
     // while always listening runs. What it hears waits here, goes with the next thing you say, and on its own is offered to
     // Martlet at most every PcPace (or once the PC goes quiet), so a video never floods Thinking or interrupts you.
@@ -732,7 +732,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
             ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
         lastHeard = clock.GetTimestamp();
-        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null, At: lastHeard));
+        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null, At: lastHeard,
+            Timeline: speech.Timeline));
         saidLately.Add((text, lastHeard));
         LeaveOutYourVoice();
         notice = null;
@@ -846,14 +847,17 @@ public partial class LiveConversationWindow : ThemedWindow
             var recording = preferences.HearVoice && playing.Count == 0 && recordings.All(r => r is not null)
                 ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap,
                     TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
+            // The reply's wait counts from when you last stopped talking (a copy, so a restarted reply counts from there again).
+            var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
             owned = playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
-                    seen: SeenNow())
+                    seen: SeenNow(), timeline: timeline)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
-                    seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null);
+                    seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
+                    timeline: timeline);
             answering = everything;
             yielded = null;
             answeredAt = clock.GetTimestamp();
@@ -951,12 +955,14 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         var code = status.Code;
         var continued = code == "conversation.continued";
-        // Voice latency for every spoken reply, in the desktop log (logs_tail shows it): when the first words arrived and when
-        // the first audio played, measured from the start of the reply.
-        if (done.Turn?.Snapshot is { FirstAudioAfter: { } firstAudio } spoken)
-            ErrorLog.Info($"Reply latency: first words after {spoken.FirstTextAfter?.TotalMilliseconds ?? 0:0} ms, first audio after " +
-                $"{firstAudio.TotalMilliseconds:0} ms, {spoken.CommittedSegments} spoken pieces" +
-                (ReferenceEquals(yielded, done) && code == "conversation.interrupted" ? ", stopped when you talked over it." : "."));
+        // Voice latency for every reply, in the desktop log (logs_tail and MCP's latency_report read it): how long from when you
+        // stopped talking (or sent your message) to the first audio, step by step (ReplyLatency).
+        if (done.Turn?.Snapshot is { } finishedReply &&
+            ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
+                done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
+                interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
+                passed: done.Passed, restarted: continued) is { } latency)
+            ErrorLog.Info(latency);
         if (ReferenceEquals(shown, done) && reply is not null)
         {
             // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it.
@@ -1468,7 +1474,7 @@ public partial class LiveConversationWindow : ThemedWindow
         PcAudioText.Text = pcLine;
         PcAudioText.Visibility = available && preferences.HandsFree && pcLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
-        ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context);
+        ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context, controller.LastCache);
         ContextRow.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Not mid-reply or mid-glance: a finishing turn would put its exchange straight back.
         RefreshContextButton.IsEnabled = owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false };
@@ -1506,14 +1512,18 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     /// <summary>The context row: how many exchanges Martlet keeps in mind, about how many tokens they are and the context size
-    /// replies fit them into (the newest that fit are sent).</summary>
-    internal static string ContextLine(int turns, int tokens, ContextBudget? budget)
+    /// replies fit them into (the newest that fit are sent), and how much of the last reply's input the model read from its
+    /// prompt cache, when it said.</summary>
+    internal static string ContextLine(int turns, int tokens, ContextBudget? budget, (long Input, long Cached)? cache = null)
     {
         var kept = turns == 1 ? "Keeps the last exchange in mind" : $"Keeps the last {turns} exchanges in mind";
-        if (budget is null) return kept + ".";
-        return tokens <= budget.InputTokens
+        var cached = cache is { Input: > 0 } last
+            ? $" Last reply: {Math.Min(last.Cached, last.Input) * 100 / last.Input}% of its {last.Input:N0} input tokens came from the model's cache."
+            : "";
+        if (budget is null) return kept + "." + cached;
+        return (tokens <= budget.InputTokens
             ? $"{kept}, about {tokens:N0} tokens of its {budget.Tokens:N0}-token context."
-            : $"{kept}. Replies send the newest that fit its {budget.Tokens:N0}-token context.";
+            : $"{kept}. Replies send the newest that fit its {budget.Tokens:N0}-token context.") + cached;
     }
 
     private string Activity()

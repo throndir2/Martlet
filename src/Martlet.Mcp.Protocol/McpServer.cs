@@ -53,6 +53,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             lines = new { type = "integer", minimum = 1, maximum = LogTimeline.MaximumLines },
             dataDirectory = new { type = "string" }
         }),
+        Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
+            "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +
+            "speech-to-text, preparing, Thinking connection, hidden reasoning, first sentence, voice synthesis, speakers...), the " +
+            "median and 90th percentile of the total and of each step, the slowest steps and the models used. Read-only; starts " +
+            "no audio, network or provider request.", new
+        {
+            replies = new { type = "integer", minimum = 1, maximum = LatencyReport.MaximumReplies },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
         {
@@ -81,6 +90,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             id = new { type = "string" }
         }, ["id"]),
+        Tool("ui_move", "Move a movable control by dx, dy screen pixels through UI Automation's Transform pattern and report its " +
+            "bounds before and after: the character overlay's MoveAvatar moves the character like a drag. ui_snapshot reports " +
+            "movable for such controls (false while the character's position is locked, when this is refused). Requires " +
+            "--allow-ui-effects.", new
+        {
+            id = new { type = "string" },
+            dx = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove },
+            dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
+        }, ["id", "dx", "dy"]),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen) and whether Martlet still " +
             "runs. \"open\" and \"menu\" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu " +
@@ -330,7 +348,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
             "with no Save button): the personas (name, whether Martlet uses it, response-style weights, instruction length; never the " +
             "instructions), the character model (built-in character name or the own model's file type, never its path; renderer, " +
-            "lip-sync mode, show at startup, the lip-sync host's ID) and the lorebooks (counts only). Read-only.", new
+            "lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on this PC and " +
+            "where (placement) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -352,10 +371,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
-            "only the voice stopped and the captions showed the whole reply. Loopback only; reads no credentials.", new
+            "only the voice stopped and the captions showed the whole reply. With reasoningMs the fixture first streams hidden " +
+            "reasoning and waits that long before the words; with voiceDelayMs the fixture voice takes that long to make each " +
+            "piece. latency returns the reply's step timings and the desktop log's reply latency line for it, parsed back as " +
+            "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). " +
+            "Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
-            failAt = new { type = "integer", minimum = 1, maximum = 4 }
+            failAt = new { type = "integer", minimum = 1, maximum = 4 },
+            reasoningMs = new { type = "integer", minimum = 0, maximum = 5000 },
+            voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -363,7 +388,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default) and whether the " +
+        Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default), the saved " +
+            "Let me interrupt Martlet by talking choice (bargeIn, opt-in and off by default) and whether the " +
             "WebRTC echo canceller loads, then a rehearsal of the production microphone path (MicrophoneCapture, EchoReducer, the " +
             "canceller) with fixture devices on a simulated clock: no microphone or speaker is opened and nothing plays. A synthesized " +
             "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
@@ -464,6 +490,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
                 "logs_timeline" => LogTimeline.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "level"),
                     OptionalString(arguments, "component"), OptionalString(arguments, "contains"), OptionalInt(arguments, "lines")),
+                "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
@@ -472,6 +499,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
+                "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
@@ -508,7 +536,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
-                    OptionalInt(arguments, "failAt"), cancellation),
+                    OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
+                    OptionalInt(arguments, "voiceDelayMs")),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
@@ -1553,7 +1582,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
         };
-        return new { personality, character, lorebooks };
+        return new { personality, character, placement = CharacterPlacement(directory), lorebooks };
+    }
+
+    /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): whether the character's
+    /// position is locked on this PC and where (device-independent pixels). No file means unlocked.</summary>
+    private static object CharacterPlacement(string directory)
+    {
+        var path = Path.Combine(directory, "character-placement.json");
+        if (!File.Exists(path)) return new { state = "none", locked = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return new { state = "unreadable", locked = false, problem = "NotAnObject" };
+            double? Number(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+                value.TryGetDouble(out var number) ? number : null;
+            return new
+            {
+                state = "loaded", locked = root.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
+                left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height")
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", locked = false, problem = error.GetType().Name };
+        }
     }
 
     /// <summary>smart-home.json in a data directory (the file name and fields match Martlet.Desktop's HomePreferences). The
