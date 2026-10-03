@@ -18,6 +18,65 @@ public partial class MainWindow
     private SoundPlayer? voicePlayer;
     private bool retiredSampleChecked;
 
+    /// <summary>Which self-hosted engine speaks: F5-TTS or XTTS-v2 (<see cref="SpeechEngines"/>). Both use the voices below.
+    /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
+    /// role there first, after showing what it needs and its licence); otherwise the choice is used the next time Speaking
+    /// goes to a computer. Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>.</summary>
+    private Border SpeakingEngineCard(SetupRoute? route)
+    {
+        var current = SpeakingEngineChoice.Current;
+        var host = route is { RouteType: SetupRouteType.GatewayF5 } ? route.Gateway?.HostId : null;
+        var choice = new ComboBox { MinWidth = 260, HorizontalAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetName(choice, "Voice engine");
+        AutomationProperties.SetAutomationId(choice, "SpeakingEngine");
+        foreach (var engine in SpeechEngines.All)
+        {
+            var item = new ComboBoxItem { Content = $"{engine.Name}: {engine.Summary}", Tag = engine.Key };
+            AutomationProperties.SetAutomationId(item, "SpeakingEngine-" + engine.Key);
+            choice.Items.Add(item);
+            if (engine == current) choice.SelectedItem = item;
+        }
+        choice.SelectionChanged += (_, _) =>
+        {
+            if (choice.SelectedItem is ComboBoxItem { Tag: string key } && SpeechEngines.ForKey(key) is { } picked && picked != current)
+                SelectSpeakingEngineAsync(picked, host).Forget();
+        };
+        var status = Note(host is null
+                ? $"{current.Name} speaks once you hand Speaking to a computer (or set it up on this PC). Its model licence: {current.WeightsLicense}."
+                : $"{current.Name} speaks on {host}. Its model licence: {current.WeightsLicense}.",
+            new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(status, "SpeakingEngineStatus");
+        return Card(Heading("Voice engine"),
+            Note("Both engines copy a voice from the same recordings, on an NVIDIA graphics card. XTTS-v2 starts speaking sooner; " +
+                "F5-TTS often sounds closer to the recording. Both models are for non-commercial use only.", new Thickness(0, 0, 0, 8)),
+            choice, status);
+    }
+
+    private async Task SelectSpeakingEngineAsync(SpeechEngine engine, string? host)
+    {
+        if (store is null || closing) return;
+        try
+        {
+            SpeakingEngineChoice.Save(store.DataDirectory, engine);
+            if (host is null)
+            {
+                ActionText.Text = $"Speaking will use {engine.Name} when it goes to a computer.";
+                return;
+            }
+            await AssignJobAsync(HostJob.Speaking, "host:" + host);
+            // Unless Speaking moved (or is moving) to the new engine, the choice follows the engine that still speaks.
+            if (!pendingJobHosts.ContainsKey(SetupRole.Tts)) SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ActionText.Text = $"Couldn't save the voice engine: {error.Message}";
+        }
+        finally
+        {
+            if (!closing) RenderHome();
+        }
+    }
+
     private Border VoicesCard(SetupRoute? route)
     {
         var f5 = route?.RouteType == SetupRouteType.GatewayF5 ? route : null;

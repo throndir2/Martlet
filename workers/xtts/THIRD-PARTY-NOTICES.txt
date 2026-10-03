@@ -1,0 +1,22 @@
+Third-party components used by the Martlet XTTS-v2 worker image (installed at build time or downloaded by the
+role's provisioning step; none are redistributed in this repository).
+
+coqui-tts 0.27.5 (Idiap Research Institute fork of Coqui TTS)
+  https://github.com/idiap/coqui-ai-TTS
+  License: Mozilla Public License 2.0
+
+XTTS-v2 model (coqui/XTTS-v2, revision 6c2b0d75eae4b7047358e3b6bd9325f857d43f77)
+  https://huggingface.co/coqui/XTTS-v2
+  License: Coqui Public Model License 1.0.0 (https://coqui.ai/cpml.txt). It allows only non-commercial use of the
+  model and its outputs.
+
+PyTorch 2.6.0 and torchaudio 2.6.0 (CUDA 12.4 builds)
+  https://pytorch.org
+  License: BSD-3-Clause
+
+Hugging Face transformers 4.57.6
+  https://github.com/huggingface/transformers
+  License: Apache-2.0
+
+The remaining Python packages are listed with their exact versions and SHA-256 digests in host/requirements.lock;
+each keeps its own license.

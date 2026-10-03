@@ -251,6 +251,7 @@ public partial class MainWindow
         {
             var loaded = await setupService.LoadAsync(lifetime.Token);
             homeSettings = await LeaveRetiredSampleAsync(loaded, lifetime.Token) ?? loaded.Settings;
+            SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
             // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.

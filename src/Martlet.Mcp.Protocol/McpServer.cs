@@ -87,8 +87,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("f5_voices", "List the reference voices Martlet includes for F5 (key, name, female, cute, licence, transcript, format; " +
             "each clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
-            "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; and " +
-            "which voice the speaking route uses (never own voices' names or audio). Plays nothing and contacts nothing.", new
+            "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; " +
+            "which voice the speaking route uses and on which self-hosted engine, host and model; and the voice engines (F5-TTS, " +
+            "XTTS-v2: host role, gateway route, model, weights licence, GPU memory) with the one chosen on this desktop " +
+            "(never own voices' names or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -634,7 +636,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 speaking = new
                 {
                     state = "loaded", route = route?.RouteType.ToString(),
-                    voice = route?.Reference is { } reference ? Kind(reference.AudioSha256) : null
+                    voice = route?.Reference is { } reference ? Kind(reference.AudioSha256) : null,
+                    engine = route?.GatewaySnapshot is { } snapshot
+                        ? Martlet.Core.Settings.SpeechEngines.ForRoute(snapshot.RouteId)?.Key : null,
+                    host = route?.RouteType == Martlet.Core.Settings.SetupRouteType.GatewayF5 ? route.Gateway?.HostId : null,
+                    model = route?.RouteType == Martlet.Core.Settings.SetupRouteType.GatewayF5 ? route.ModelId : null
                 };
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException or JsonException)
@@ -643,10 +649,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         var fallback = Martlet.F5.F5BundledVoices.Default;
+        // The self-hosted voice engines (F5-TTS, XTTS-v2) and the one chosen on this desktop (speaking-engine.txt, the file
+        // Martlet.Desktop's SpeakingEngineChoice keeps; a speaking route on a host's engine wins over it).
+        string? chosen = null;
+        try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        var engines = Martlet.Core.Settings.SpeechEngines.All.Select(engine => new
+        {
+            key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
+            model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
+            summary = engine.Summary
+        }).ToArray();
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
-            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), included, list, speaking
+            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), included, list, speaking,
+            engines, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.F5.Key
         };
     }
 

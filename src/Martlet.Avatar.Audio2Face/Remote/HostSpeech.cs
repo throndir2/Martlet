@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
 
@@ -17,8 +18,9 @@ public sealed record HostSpeechReference(Guid PresetId, string ReferenceRevision
 
 public sealed partial class Audio2FaceHostConnection
 {
-    /// <summary>Speaks one reply segment with the host's own F5 voice (its f5 role) through the gateway relay and yields
-    /// its contiguous 24 kHz mono PCM16 frames in order. Failures throw <see cref="Audio2FaceHostException"/>.</summary>
+    /// <summary>Speaks one reply segment with one of the host's voice engines (its f5 or xtts role, see
+    /// <see cref="SpeechEngines"/>) through the gateway relay and yields its contiguous 24 kHz mono PCM16 frames in order
+    /// as they arrive (XTTS sends them while it is still generating). Failures throw <see cref="Audio2FaceHostException"/>.</summary>
     public async IAsyncEnumerable<byte[]> StreamSpeechAsync(HostRoute route, CorrelationIds ids, long epoch,
         DateTimeOffset deadline, HostSpeechReference reference, string text,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -27,8 +29,8 @@ public sealed partial class Audio2FaceHostConnection
         ArgumentNullException.ThrowIfNull(ids);
         ArgumentNullException.ThrowIfNull(reference);
         ids.Validate();
-        if (route.RouteId != HostRoute.F5RouteId || route.Path != HostRoute.F5Path)
-            throw new ArgumentException("The route is not the host's F5 voice.", nameof(route));
+        if (SpeechEngines.ForRoute(route.RouteId) is not { } engine || route.Path != engine.Path)
+            throw new ArgumentException("The route is not one of the host's voice engines.", nameof(route));
         var now = clock.GetUtcNow();
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
         if (deadline > latest) deadline = latest;
