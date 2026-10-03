@@ -88,7 +88,9 @@ comment; it needs a Thinking model that can see images. See
    you explicitly ask for detail, steps or a list), and to finish its last
    sentence. The max reply length (Companion › Replies; 1,024 tokens by
    default, or 4,096 on a Chat Completions route such as OpenRouter or NVIDIA
-   Build, whose budget also covers a reasoning model's hidden thinking) is only
+   Build or on a paired host's Ollama, whose budget also covers a reasoning
+   model's hidden thinking; on a host it stays under half a saved context
+   size) is only
    a ceiling against a runaway answer. Chat Completions streams tolerate
    provider extras (other delta fields, repeated usage or finish chunks,
    changing ids) instead of ending the reply mid-sentence. When a spoken reply
