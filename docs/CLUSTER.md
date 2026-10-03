@@ -148,6 +148,7 @@ NVIDIA Build and its old key.
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras, Voice ID, echo reduction |
 | `speech-display`, `appearance` | Speech bubbles and subtitles, the theme | |
+| `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere and not counted as a shared setting | |
 
 Audio devices, the device role (companion or host PC), startup choices, MCP
 servers, updates and host pairings stay with each computer. Conversations are
