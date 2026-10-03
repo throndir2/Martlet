@@ -301,9 +301,10 @@ public partial class MainWindow
 
     private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness);
 
-    /// <summary>The character as it travels: which model (a bundled one, or a model file at the same place on every computer),
-    /// its renderer, its Audio2Face mapping and whether it shows when Martlet starts. Who does lip-sync travels in the
-    /// who-does-what plan; the overlay's place on the screen stays with each computer.</summary>
+    /// <summary>The character as it travels: which model (a bundled one; one of your characters by its ID, shown from each
+    /// computer's own copy; or a model file at the same place on every computer), its renderer, its Audio2Face mapping and
+    /// whether it shows when Martlet starts. Who does lip-sync travels in the who-does-what plan; the overlay's place on the
+    /// screen stays with each computer.</summary>
     private sealed record SharedCharacter
     {
         public required AvatarRenderer Renderer { get; init; }
@@ -312,6 +313,8 @@ public partial class MainWindow
         public bool AutoShow { get; init; }
     }
 
+    private const string SharedModelPrefix = "shared:";
+
     private async Task<SharedLocal?> ReadCharacterAsync(CancellationToken token)
     {
         var loaded = await setupService!.LoadAsync(token);
@@ -319,9 +322,12 @@ public partial class MainWindow
         var profiles = new AvatarProfileStore(store!.DataDirectory);
         AvatarProfile? profile;
         try { profile = (await profiles.LoadAsync(settings.Profile.Id, token)).Profile; }
-        catch (ContractException) { return null; }
+        catch (ContractException error) { throw new ContractException(error.Code, "This PC's character settings can't be read: " + error.Message); }
         if (profile is null) return null;
-        var value = new SharedCharacter { Renderer = profile.Renderer, Model = profile.ModelPath, Configuration = profile.Configuration, AutoShow = profile.AutoShow };
+        // One of your characters is named by its ID: every computer shows its own copy of the same files.
+        var model = SharedCharacterModels.ForPath(store.DataDirectory, SharedCharacterModels.View(store.DataDirectory), profile.ModelPath) is { } shared
+            ? SharedModelPrefix + shared.Id : profile.ModelPath;
+        var value = new SharedCharacter { Renderer = profile.Renderer, Model = model, Configuration = profile.Configuration, AutoShow = profile.AutoShow };
         var isDefault = profile.ModelPath == BundledLive2D.Prefix + BundledLive2D.DefaultCharacter && !profile.AutoShow;
         return new(JsonSerializer.Serialize(value, SharedJson), null, isDefault, FileTime(profiles.FilePath));
     }
@@ -329,21 +335,34 @@ public partial class MainWindow
     private async Task<SharedApply> ApplyCharacterAsync(SharedSetting setting, CancellationToken token)
     {
         var value = JsonSerializer.Deserialize<SharedCharacter>(setting.Value, SharedJson) ?? throw new JsonException();
-        if (!BundledLive2D.IsBuiltIn(value.Model) && !File.Exists(value.Model))
-            return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(value.Model)}). Copy it to {value.Model}, " +
-                "or choose a character in Companion › Character.");
+        if (avatarWindowOpen) return SharedApply.Waiting("The character settings window is open on this PC.");
+        var directory = store!.DataDirectory;
+        var path = value.Model;
+        if (path.StartsWith(SharedModelPrefix, StringComparison.Ordinal))
+        {
+            var id = path[SharedModelPrefix.Length..];
+            if (SharedCharacterModels.View(directory).Live.FirstOrDefault(m => m.Id == id) is not { } model)
+                return SharedApply.Waiting("That character hasn't reached this PC's characters yet.");
+            if (!SharedCharacterModels.IsComplete(directory, model))
+                return SharedApply.Waiting($"'{model.Name}' is still being copied to this PC.");
+            path = SharedCharacterModels.EntryPath(directory, model);
+        }
+        else if (!BundledLive2D.IsBuiltIn(path) && !File.Exists(path))
+            return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(path)}). Add it in Companion › Character › Your " +
+                "characters on the computer that has it, so it is copied here.");
         var loaded = await setupService!.LoadAsync(token);
         if (loaded.Settings is not { } settings) return SharedApply.Waiting("Finish setting up Martlet on this PC first.");
-        var profiles = new AvatarProfileStore(store!.DataDirectory);
+        var profiles = new AvatarProfileStore(directory);
         var current = await profiles.LoadAsync(settings.Profile.Id, token);
         var profile = current.Profile ?? AvatarProfile.BuiltIn(settings.Profile.Id);
         var next = profile with
         {
-            Renderer = value.Renderer, ModelPath = value.Model, Configuration = value.Configuration.Clone(), AutoShow = value.AutoShow,
+            Renderer = value.Renderer, ModelPath = path, Configuration = value.Configuration.Clone(), AutoShow = value.AutoShow,
             ResourceRevision = null
         };
         next.Validate();
         await profiles.SaveAsync(next, current.Revision, token);
+        homeAvatar = next;
         characterChanged = profile.ModelPath != next.ModelPath || profile.Renderer != next.Renderer;
         return SharedApply.Done;
     }

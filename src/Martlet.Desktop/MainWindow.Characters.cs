@@ -15,7 +15,8 @@ namespace Martlet.Desktop;
 /// <summary>Companion › Character › Your characters: the character models the owner added (Live2D folders and VRM files) and
 /// the built-in character. Every model added on one computer is copied to every paired Martlet computer that can be the
 /// companion (each Martlet desktop, whether it is a companion or a host PC right now), through the paired hosts, which keep a
-/// copy only to pass it on. Which character each computer shows stays its own choice.</summary>
+/// copy only to pass it on. Which character is shown travels with the shared settings (MainWindow.SettingsSync.cs), by the
+/// model's ID, so every computer shows its own copy of the same character.</summary>
 public partial class MainWindow
 {
     private const string BuiltInCharacterKey = "builtin";
@@ -74,7 +75,8 @@ public partial class MainWindow
         {
             Heading("Your characters"),
             Note("Add a Live2D model (its .model3.json) or a VRM model (.vrm). Martlet keeps its own copy and copies it to your " +
-                "paired Martlet computers, so any of them can show the same character. Each computer picks which one it shows.",
+                "paired Martlet computers, so any of them can show the same character. The one you use is the one all of them show " +
+                "while Martlet is kept the same on all your computers (Devices).",
                 new Thickness(0, 0, 0, 10))
         };
         var dataDirectory = store?.DataDirectory;

@@ -18,8 +18,9 @@ choice.
   jobs; hosts run the roles (Ollama, whisper, F5, Audio2Face).
 - The shared configuration is the **cluster plan** (`Martlet.Core.Cluster`):
   - one entry per **job** (`thinking`, `listening`, `speaking`, `lip-sync`):
-    the host in charge, or each desktop's own choice (its Setup route, or this
-    PC for lip-sync), or nobody (lip-sync by voice loudness); whether it
+    the host in charge, or no host (the job's
+    [shared route](#one-martlet-on-every-computer), or this PC for lip-sync),
+    or nobody (lip-sync by voice loudness); whether it
     **fails over**; and `moved_from`, the host a failover moved it away from;
   - one entry per **host**: its address and the roles (with models) it was
     last seen running, or a `removed` tombstone after you forget it.
@@ -64,8 +65,9 @@ hosts**) the desktop:
 4. records the roles each reachable host runs;
 5. applies failover (below);
 6. follows the plan: each job moves to the planned host with this PC's own
-   pairing, or back to this PC's saved Setup choice; an open conversation
-   window reloads when idle;
+   pairing, or back to the job's shared route (or, when this PC can't use it
+   yet, its own saved Setup choice); an open conversation window reloads when
+   idle;
 7. merges its copy into every reachable host whose copy differs.
 
 Changes made on this PC (the Devices page, Setup, forgetting a host, failover
@@ -138,7 +140,7 @@ NVIDIA Build and its old key.
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
 | `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off | Where memory is stored, and the memories themselves |
 | `lorebooks` | Every lorebook and the scan settings (up to 1 MiB) | |
-| `character` | The character model (a bundled one, or a model file at the same path), renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
+| `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras, Voice ID, echo reduction |
 | `speech-display`, `appearance` | Speech bubbles and subtitles, the theme | |
 
@@ -311,8 +313,11 @@ every Martlet computer that can be the companion: each Martlet desktop, whether
 it is a companion or a host PC right now (a host PC can become the companion in
 one click and then already has them). Desktops reach each other only through
 paired hosts, so each host keeps a copy too, only to pass it on; a host never
-shows a character. Which character a computer shows stays its own choice. The
-built-in character is part of Martlet and never in the list.
+shows a character. Which character is shown travels with the
+[shared settings](#one-martlet-on-every-computer) (`character`), naming one of
+these models by its ID, so every computer shows its own copy of the same
+character (a computer still copying it keeps its current one until the copy is
+complete). The built-in character is part of Martlet and never in the list.
 
 - **The list** (`Martlet.Core.Characters.CharacterModelLibrary`): one
   last-writer-wins entry per model, keyed by its ID (SHA-256 of its renderer,
