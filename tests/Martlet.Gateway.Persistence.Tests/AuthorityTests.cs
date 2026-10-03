@@ -160,14 +160,15 @@ public sealed class AuthorityTests : NativeTest
             credential = host.Issue();
             clock.Advance(TimeSpan.FromSeconds(10));
             host.Credentials.Authenticate(host.Signed(credential));
-            clock.Utc -= TimeSpan.FromSeconds(5);
+            clock.Utc -= TimeSpan.FromSeconds(40);
             Code("auth.clock_invalid", () => host.Credentials.ListRegistrations());
         }
         var bytes = File.ReadAllBytes(Path.Combine(Store, "authority.bin"));
         Assert.Equal(GatewayPersistenceFailure.ClockUnavailable,
             Assert.Throws<GatewayPersistenceException>(() => new NativeAuthority(Store, clock)).Failure);
         Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(Store, "authority.bin")));
-        clock.Advance(TimeSpan.FromSeconds(5));
+        // Within the 30-second hold of its saved mark, the store reopens and resumes from that mark.
+        clock.Advance(TimeSpan.FromSeconds(15));
         using var next = new NativeAuthority(Store, clock);
         next.Credentials.Authenticate(next.Signed(credential));
         Assert.Single(next.Credentials.ListRegistrations());
