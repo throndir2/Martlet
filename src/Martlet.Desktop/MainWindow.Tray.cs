@@ -139,10 +139,8 @@ public partial class MainWindow
         // A Martlet host doesn't talk, listen or show the character, so its menu only offers what's still running.
         var companion = Role == DeviceRole.Companion;
         var canTalk = companion && !blocked && conversation is not null;
+        // Its colors come from the palette's ContextMenu and MenuItem styles (Themes\Controls.xaml).
         var menu = new ContextMenu { Placement = PlacementMode.AbsolutePoint, HorizontalOffset = at.X, VerticalOffset = at.Y };
-        menu.SetResourceReference(BackgroundProperty, "SurfaceBrush");
-        menu.SetResourceReference(BorderBrushProperty, "BorderBrush");
-        menu.SetResourceReference(ForegroundProperty, "TextBrush");
         AutomationProperties.SetAutomationId(menu, "TrayMenu");
         AutomationProperties.SetName(menu, "Martlet");
 
@@ -189,7 +187,6 @@ public partial class MainWindow
     {
         var item = new MenuItem { Header = header, IsEnabled = enabled };
         if (bold) item.FontWeight = FontWeights.SemiBold;
-        item.SetResourceReference(ForegroundProperty, "TextBrush");
         AutomationProperties.SetAutomationId(item, id);
         item.Click += (_, _) =>
         {

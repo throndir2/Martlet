@@ -184,6 +184,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching).
         "BackgroundStatus", "TrayStatus",
+        // Settings › Appearance: the palette ("Pink light" or "Rose dark"; menus and every window follow it) and its status line.
+        "AppearanceTheme", "AppearanceStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
