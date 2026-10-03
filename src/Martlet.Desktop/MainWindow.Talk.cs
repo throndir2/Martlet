@@ -220,7 +220,8 @@ public partial class MainWindow
         foreach (var (kind, title, detail) in new[]
         {
             (WatchKind.ActiveWindow, "My active window", "The window you're using. Martlet skips its own windows, password managers and private browsers."),
-            (WatchKind.ActiveScreen, "My whole screen", "The monitor your active window is on."),
+            (WatchKind.ActiveScreen, "My whole screen", "Every monitor, with the taskbar and pop-up notifications. Martlet greys out its own windows, " +
+                "password managers and private browsers, and looks right away when a notification pops up or a taskbar button flashes."),
             (WatchKind.Camera, "A camera", "A webcam, a capture card or your phone connected as a webcam."),
             (WatchKind.Url, "A phone or network camera address", "A snapshot or video stream address on your network.")
         })
@@ -318,9 +319,9 @@ public partial class MainWindow
             ActionText.Text = !on ? "Vision is off." : openConversation is null ? "Vision is on. Start listening on Home, or open the talk window, to start." : "Vision is on.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
-        page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"),
-            Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8)),
-            Row(toggle)));
+        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8));
+        AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
+        page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"), disclosure, Row(toggle)));
     }
 
     /// <summary>Lists the cameras Windows offers to desktop apps, on request only; nothing is opened.</summary>

@@ -99,8 +99,10 @@ comment; it needs a Thinking model that can see images. See
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper and each response style, reply length,
    always listening, tools, who is talking, lorebook and memory introductions,
-   the screen and camera glance instructions, messages and chattiness lines,
-   the Remembering and Learning names requests, and the smart home notes. Each
+   the screen and camera glance instructions, messages (including the one sent
+   when a notification pops up or a taskbar button flashes) and chattiness
+   lines, *Screen with your message* (sent with what you type or say while
+   vision is on), the Remembering and Learning names requests, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
    edited). Words in braces such as `{name}`, `{persona}`, `{style}` or

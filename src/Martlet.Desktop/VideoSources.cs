@@ -23,7 +23,7 @@ internal sealed record WatchSource(WatchKind Kind, string Id = "", string Name =
     internal string Label => Kind switch
     {
         WatchKind.ActiveWindow => "your active window",
-        WatchKind.ActiveScreen => "your screen",
+        WatchKind.ActiveScreen => "your whole screen",
         WatchKind.Camera => Name.Length > 0 ? $"the camera \"{Name}\"" : "your camera",
         _ => Name.Length > 0 ? $"the camera at {Name}" : "your phone or network camera"
     };

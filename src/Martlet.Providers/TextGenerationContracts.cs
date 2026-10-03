@@ -143,12 +143,12 @@ public sealed class BoundedTextInput
     }
 
     private BoundedTextInput(BoundedTextInput origin, IReadOnlyList<TextToolDefinition> tools, IReadOnlyList<TextToolRound> rounds,
-        bool callsAllowed, bool keepAudio)
+        bool callsAllowed, bool keepAudio, bool keepImage = true)
     {
         UserText = origin.UserText;
         Personality = origin.Personality;
         History = origin.History;
-        Image = origin.Image;
+        Image = keepImage ? origin.Image : null;
         Audio = keepAudio ? origin.Audio : null;
         Origin = origin;
         Tools = tools;
@@ -161,7 +161,7 @@ public sealed class BoundedTextInput
         ToolUtf8Bytes = tools.Sum(t => t.Utf8Bytes) + exchange;
         ToolTokenReservation = ToolReservation(ToolUtf8Bytes, tools.Count, rounds.Sum(r => r.Calls.Count));
         InputTokenReservation = origin.InputTokenReservation - origin.ToolTokenReservation - AudioReservation(origin.Audio) +
-            AudioReservation(Audio) + ToolTokenReservation;
+            AudioReservation(Audio) - ImageReservation(origin.Image) + ImageReservation(Image) + ToolTokenReservation;
     }
 
     /// <summary>This reply's input plus the finished tool rounds; <paramref name="callsAllowed"/> false asks for a text answer.</summary>
@@ -169,14 +169,21 @@ public sealed class BoundedTextInput
     {
         ArgumentNullException.ThrowIfNull(rounds);
         var origin = Origin ?? this;
-        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed, Audio is not null);
+        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed, Audio is not null, Image is not null);
     }
 
     /// <summary>This reply's input with no tools at all, for a model that rejected them.</summary>
-    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false, Audio is not null);
+    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false, Audio is not null, Image is not null);
 
     /// <summary>This input with only the transcript, for a model that rejected the recording or doesn't hear (a fallback).</summary>
-    public BoundedTextInput WithoutAudio() => Audio is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, false);
+    public BoundedTextInput WithoutAudio() =>
+        Audio is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, false, Image is not null);
+
+    /// <summary>This input without its picture, for a model that rejected the screen picture sent along with the user's words.</summary>
+    public BoundedTextInput WithoutImage() =>
+        Image is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, Audio is not null, false);
+
+    private static int ImageReservation(BoundedImage? image) => image is null ? 0 : BoundedImage.TokenReservation;
 
     private static int AudioReservation(BoundedWaveAudio? audio) =>
         audio is null ? 0 : (int)Math.Ceiling(audio.Duration.TotalSeconds) * AudioTokensPerSecond + 64;

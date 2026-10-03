@@ -110,14 +110,26 @@ public partial class LiveConversationWindow : ThemedWindow
     private WatchSource watchSource = new(WatchKind.ActiveWindow);
     private bool watching, watchPaused, glancing, lookWanted;
     private ScreenCommentaryPacer? pacer;
-    private ScreenFrame? pendingFrame;
+    // The newest picture (it also goes with what you type or say while it is fresh) and when it was taken; a skipped capture
+    // clears it, so an old picture never stands in for what is on screen now.
+    private ScreenFrame? latestFrame;
+    private long latestAt;
+    // Something on screen wants your attention (a notification, a flashing taskbar button) while Martlet watches the whole
+    // screen: the picture taken right after it is kept for one look as soon as Martlet is free.
+    private readonly IScreenAttention attentionWatcher;
+    private bool noticing;
+    private AttentionSignal? attention, lookAttention;
+    private ScreenFrame? attentionFrame;
+    private long attentionAt;
     private LiveConversationOperation? commentary, handledCommentary;
     private long nextGlance;
     // Shown in plain sight while vision is on: what the latest check saw (or why it skipped), how the last look went and
     // why the pacer is holding off. Checks every 3 s never go into the history.
-    private string? sight, lookNote, waitNote, captureNote, visionProblem;
+    private string? sight, lookNote, waitNote, captureNote, visionProblem, sentNote, attentionNote;
     private bool seeing, twinkling;
     private DateTime? lastCheck;
+    // The bubble of the message you typed that the current reply answers (for its "Martlet saw your screen" note).
+    private (LiveConversationOperation Operation, ChatMessage Bubble)? typed;
     // Thinking in Ollama on this PC: loads the model ahead of replies while this window is open.
     private LocalOllamaWarmup? warmup;
 
@@ -128,7 +140,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     internal LiveConversationWindow(ISetupService settings, SetupOperationRunner operations, LiveConversationController controller,
         IAudioSessionEvents sessionEvents, TimeProvider? clock = null, VoiceIdentity? voiceIdentity = null,
-        IScreenGlancer? glancer = null, IVideoInput? video = null, TalkPreferences? preferences = null, string? videoAddress = null)
+        IScreenGlancer? glancer = null, IVideoInput? video = null, TalkPreferences? preferences = null, string? videoAddress = null,
+        IScreenAttention? attention = null)
     {
         this.settings = settings;
         this.operations = operations;
@@ -136,6 +149,7 @@ public partial class LiveConversationWindow : ThemedWindow
         this.sessionEvents = sessionEvents;
         this.clock = clock ?? TimeProvider.System;
         this.glancer = glancer ?? new ScreenGlancer();
+        attentionWatcher = attention ?? new ScreenAttention(this.clock);
         this.video = video ?? new VideoInput(controller.Home is { } home ? home.CameraAuthorization : null);
         this.preferences = preferences ?? TalkPreferences.Load(voiceIdentity?.DataDirectory);
         this.videoAddress = videoAddress;
@@ -406,6 +420,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 message?.AddNote("Not sent.");
                 if (InputText.Text.Length == 0) InputText.Text = text;
             }
+            else if (message is not null && owned is { } sent) typed = (sent, message);
             return;
         }
         if (TryAnswer()) return;
@@ -438,7 +453,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             // Pressing Send or the talk button is the action; the destinations were chosen in Companion.
             owned = controller.Start(text, Voice, microphone, approved: true, localCaptureApproved: microphone, uploadApproved: microphone,
-                listening: microphone ? Listening(false) : null);
+                listening: microphone ? Listening(false) : null, seen: SeenNow());
             yielded = null;
             notice = null;
             pacer?.NoteConversation();
@@ -636,7 +651,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap,
                     TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
             owned = controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
-                spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording);
+                spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
+                seen: SeenNow());
             answering = batch;
             yielded = null;
             Observe();
@@ -704,11 +720,26 @@ public partial class LiveConversationWindow : ThemedWindow
             }
         }
         // Whether Thinking got the recording of what you said with the transcript (Companion › Listening).
-        if (!continued && done.VoiceSent && (done.Spoken ? answering?[^1].Bubble : ReferenceEquals(shown, done) ? heard : null) is { } said)
+        var asked = done.Spoken ? answering?[^1].Bubble
+            : ReferenceEquals(shown, done) ? heard ?? (typed is { } sent && ReferenceEquals(sent.Operation, done) ? sent.Bubble : null) : null;
+        if (!continued && done.VoiceSent && asked is { } said)
         {
             if (done.Turn?.Snapshot.AudioRejected == true) said.AddNote("Thinking couldn't take your recording, so it got the transcript.");
             else if (done.Turn?.Snapshot.State == ConversationState.Completed) said.AddNote("Thinking heard your voice.");
         }
+        // Whether the reply saw the picture of what vision watches that went with your message.
+        if (!continued)
+        {
+            var rejected = done.ScreenSent && done.Turn?.Snapshot.ImageRejected == true;
+            var seenIt = done.ScreenSent && !rejected && done.Turn?.Snapshot.State == ConversationState.Completed;
+            if (rejected) asked?.AddNote("Thinking couldn't take the picture of your screen, so it got your words only.");
+            else if (seenIt && done.Seen is { } seen) asked?.AddNote($"Martlet saw {seen.Source.Label}.");
+            sentNote = rejected ? $"Your message at {DateTime.Now:t} went without it: Thinking couldn't take the picture."
+                : seenIt ? $"Your message at {DateTime.Now:t} went with it." : null;
+            if (rejected && watching && controller.Configuration is { } selected && selected.Vision() != VisionSupport.Supported)
+                StopWatching($"The Thinking model rejected the picture. {selected.VisionAdvice()}");
+        }
+        if (typed is { } finished && ReferenceEquals(finished.Operation, done)) typed = null;
         if (done.Spoken && !continued)
         {
             if (done.Passed) answering?[^1].Bubble.AddNote("Martlet stayed quiet.");
@@ -1163,7 +1194,9 @@ public partial class LiveConversationWindow : ThemedWindow
             }
         }
         VisionChip.ToolTip = watching
-            ? $"Martlet checks {watchSource.Label} and occasionally sends one picture to the Thinking model." +
+            ? $"Martlet checks {watchSource.Label}, occasionally sends one picture to the Thinking model and sends the newest " +
+              "with what you type or say." +
+              (noticing ? " It looks right away when a notification pops up or a taskbar button flashes." : "") +
               (lastCheck is { } checkedAt ? $" Last checked at {checkedAt:T}." : "") +
               (captureNote is { } why ? $" Full-screen capture is unavailable: {why}. Try borderless or windowed mode." : "") + " Click to stop."
             : visionProblem ?? "Click to let Martlet look again.";
@@ -1254,24 +1287,56 @@ public partial class LiveConversationWindow : ThemedWindow
         lookWanted = false;
         pacer = new(SavedChattiness, clock);
         nextGlance = clock.GetTimestamp();
-        sight = lookNote = waitNote = captureNote = null;
+        sight = lookNote = waitNote = captureNote = sentNote = attentionNote = null;
         seeing = false;
         lastCheck = null;
+        // Watching the whole screen also notices what wants your attention: a notification, a flashing taskbar button.
+        if (source.Kind == WatchKind.ActiveScreen)
+        {
+            attentionWatcher.Start();
+            noticing = true;
+        }
+    }
+
+    /// <summary>How fresh the newest picture must be to go with what you type or say.</summary>
+    internal static TimeSpan SeenFreshness => TimeSpan.FromSeconds(10);
+    /// <summary>How long something that wants your attention waits for Martlet to be free before it is let go.</summary>
+    internal static TimeSpan AttentionPatience => TimeSpan.FromSeconds(60);
+
+    /// <summary>While vision is on, the newest picture of what it watches goes with what you type or say, so the reply sees
+    /// what you see: only a picture taken in the last <see cref="SeenFreshness"/> (a capture that was skipped, say a private
+    /// window in front, leaves none).</summary>
+    private SeenScreen? SeenNow()
+    {
+        if (!watching || latestFrame is not { } frame || clock.GetElapsedTime(latestAt) > SeenFreshness) return null;
+        if (controller.Configuration?.Vision() is null or VisionSupport.Unsupported) return null;
+        try
+        {
+            return new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource);
+        }
+        catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
+            System.Runtime.InteropServices.ExternalException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The vision line under the status: what the latest check saw, then the last look's outcome or why Martlet is
-    /// holding off, and the looks used this hour. Paused vision shows nothing (the button says so); a problem shows here
-    /// unless the status line already says it.</summary>
+    /// holding off, and whether your last message went with the picture. Paused vision shows nothing (the button says so); a
+    /// problem shows here unless the status line already says it. It never contains window titles.</summary>
     private string VisionLine()
     {
         if (!watching) return visionProblem is { } problem && problem != notice ? problem : "";
         if (sight is null) return $"Watching {watchSource.Label} soon.";
         if (!seeing) return sight + (lookNote is null ? "" : " " + lookNote);
-        var state = commentary is { OwnershipReleased: false } ? "Taking a look…" : waitNote ?? lookNote ?? "First look soon.";
-        return $"{sight} {state}";
+        var state = commentary is { OwnershipReleased: false } glance
+            ? glance.Attention is { } about ? $"Taking a look at {about.Plain}…" : "Taking a look…"
+            : waitNote ?? lookNote ?? "First look soon.";
+        return $"{sight} {state}" + (attentionNote is null ? "" : " " + attentionNote) + (sentNote is null ? "" : " " + sentNote);
     }
 
-    // Runs on the UI timer: notices conversation, collects finished glances and schedules the next capture.
+    // Runs on the UI timer: notices conversation and what wants your attention, collects finished glances and schedules the
+    // next capture.
     private void Watch()
     {
         if (!watching || closed || pacer is null) return;
@@ -1283,6 +1348,20 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // A reply in progress, someone talking or something heard that waits for a reply means you and Martlet are talking.
         if (Conversing) pacer.NoteConversation();
+        // Something wants your attention: capture now, while the notification is still up.
+        if (noticing && attentionWatcher.Check() is { } signal)
+        {
+            attention = signal;
+            attentionAt = clock.GetTimestamp();
+            DropAttentionFrame();
+            nextGlance = attentionAt;
+        }
+        if (attention is not null && clock.GetElapsedTime(attentionAt) > AttentionPatience)
+        {
+            attention = null;
+            DropAttentionFrame();
+            waitNote = null;
+        }
         if (glancing || clock.GetTimestamp() < nextGlance) return;
         nextGlance = clock.GetTimestamp() + (long)(ScreenCommentaryPacer.Tick.TotalSeconds * clock.TimestampFrequency);
         GlanceAsync().Forget();
@@ -1297,6 +1376,7 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             var source = watchSource;
+            var started = clock.GetTimestamp();
             var result = await Task.Run(() => source.IsScreen ? glancer.Capture(source.Scope) : video.Capture(source));
             if (!watching || closed || pacer is null)
             {
@@ -1310,6 +1390,9 @@ public partial class LiveConversationWindow : ThemedWindow
             seeing = result.Frame is not null;
             if (result.Frame is not { } frame)
             {
+                // Nothing current to look at or to send with your messages.
+                DropLatest();
+                lookWanted = false;
                 sight = !source.IsScreen ? result.Skip switch
                 {
                     GlanceSkip.Blank => $"{char.ToUpperInvariant(source.Label[0])}{source.Label[1..]} is black. Check the lens cover or privacy shutter.",
@@ -1327,15 +1410,61 @@ public partial class LiveConversationWindow : ThemedWindow
                 };
                 return;
             }
-            sight = !result.BehindMartlet ? $"Watching {source.Label}."
-                : source.Scope == ScreenScope.ActiveWindow ? "Watching the window behind Martlet." : "Watching your screen behind Martlet.";
+            sight = source.Kind == WatchKind.ActiveScreen
+                ? result.Monitors > 1 ? $"Watching your whole screen ({result.Monitors} monitors)." : "Watching your whole screen."
+                : !result.BehindMartlet ? $"Watching {source.Label}." : "Watching the window behind Martlet.";
             if (!twinkling) Motion.Blink(VisionDot);
             pacer.ObserveFrame(frame.Change);
-            pendingFrame?.Clear();
-            pendingFrame = frame;
+            DropLatest();
+            latestFrame = frame;
+            latestAt = clock.GetTimestamp();
             var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
-            var verdict = pacer.Decide(busy, source.IsScreen ? glancer.UserIdle : TimeSpan.Zero);
+            var idle = source.IsScreen ? glancer.UserIdle : TimeSpan.Zero;
+            // Something wants your attention: the first picture taken after it noticed is kept for one look as soon as
+            // Martlet is free, the way a friend would say "someone's messaging you".
+            if (attention is { } signal)
+            {
+                if (attentionFrame is null)
+                {
+                    // This capture started before it noticed; the next one, right away, shows it.
+                    if (started < attentionAt)
+                    {
+                        nextGlance = clock.GetTimestamp();
+                        lookWanted = false;
+                        return;
+                    }
+                    attentionFrame = frame;
+                }
+                var heed = pacer.DecideAttention(busy, idle);
+                if (heed == PacerVerdict.Look)
+                {
+                    lookAttention = signal;
+                    attention = null;
+                    attentionNote = null;
+                    lookWanted = true;
+                    waitNote = null;
+                    if (!operations.IsRunning) TryStartCommentary();
+                    return;
+                }
+                if (heed == PacerVerdict.Busy)
+                {
+                    lookWanted = false;
+                    waitNote = $"Martlet noticed {signal.Plain} and looks once you're done talking.";
+                    return;
+                }
+                // Not now (the hourly budget, a busy provider, an empty room, or it just looked at one): the usual pace goes on.
+                attentionNote = $"Noticed {signal.Plain} at {DateTime.Now:t} but didn't look: " + heed switch
+                {
+                    PacerVerdict.UserAway => "you seem away.",
+                    PacerVerdict.HourlyLimit => "Martlet is taking a break from looking.",
+                    PacerVerdict.BackingOff => "the provider is busy.",
+                    _ => "Martlet just looked at one."
+                };
+                attention = null;
+                DropAttentionFrame();
+            }
+            var verdict = pacer.Decide(busy, idle);
             lookWanted = verdict == PacerVerdict.Look;
             waitNote = verdict switch
             {
@@ -1355,23 +1484,44 @@ public partial class LiveConversationWindow : ThemedWindow
         }
     }
 
+    // The newest picture is zeroed when replaced, unless it is still kept for a look at what wants your attention.
+    private void DropLatest()
+    {
+        if (latestFrame is { } old && !ReferenceEquals(old, attentionFrame)) old.Clear();
+        latestFrame = null;
+    }
+
+    private void DropAttentionFrame()
+    {
+        if (attentionFrame is { } old && !ReferenceEquals(old, latestFrame)) old.Clear();
+        attentionFrame = null;
+    }
+
     private bool TryStartCommentary()
     {
-        if (!lookWanted || !watching || closed || pendingFrame is not { } frame || operations.IsRunning) return false;
+        var frame = lookAttention is not null ? attentionFrame : latestFrame;
+        if (!lookWanted || !watching || closed || frame is null || operations.IsRunning) return false;
         lookWanted = false;
-        pendingFrame = null;
+        var about = lookAttention;
+        lookAttention = null;
         try
         {
             var image = frame.Encode();
             // An address's host is not useful to the model; a camera's or window's name is.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChattiness,
-                Voice, screenApproved: true, watchSource);
+                Voice, screenApproved: true, watchSource, attention: about);
+            if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
         }
         catch (LiveActionException error)
         {
-            if (error.Code is "conversation.ownership_busy") return false;
+            if (error.Code is "conversation.ownership_busy")
+            {
+                // Martlet got busy first: a look at what wants your attention waits for the next chance.
+                if (about is not null) attention ??= about;
+                return false;
+            }
             StopWatching(error.Code == "commentary.vision_unsupported" ? controller.Configuration?.VisionAdvice() ?? Remedy(error.Code) : Remedy(error.Code));
             return false;
         }
@@ -1382,14 +1532,14 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         finally
         {
-            frame.Clear();
+            if (about is not null && attention is null) DropAttentionFrame();
         }
     }
 
     private void HandleCommentary(LiveConversationOperation done)
     {
         var status = done.Status;
-        var at = DateTime.Now.ToString("t");
+        var at = DateTime.Now.ToString("t") + (done.Attention is { } about ? $" ({about.Plain})" : "");
         waitNote = null;
         if (done.Passed)
         {
@@ -1441,8 +1591,15 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         watching = lookWanted = false;
         pacer = null;
-        pendingFrame?.Clear();
-        pendingFrame = null;
+        DropAttentionFrame();
+        DropLatest();
+        attention = lookAttention = null;
+        sentNote = attentionNote = null;
+        if (noticing)
+        {
+            attentionWatcher.Stop();
+            noticing = false;
+        }
         // Frees the open duplication, camera or stream (the camera light goes off); off the UI thread in case a capture is finishing.
         Task.Run(glancer.Release).Forget();
         Task.Run(video.Release).Forget();
@@ -1525,6 +1682,7 @@ public partial class LiveConversationWindow : ThemedWindow
         listening = false;
         StopListening(keepHeard: false);
         StopAll("conversation.closed", keepContext: false);
+        attentionWatcher.Stop();
         Task.Run(glancer.Release).Forget();
         Task.Run(video.Release).Forget();
         closed = true;

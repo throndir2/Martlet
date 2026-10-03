@@ -16,6 +16,8 @@ internal sealed class ScreenCommentaryPacer
     internal static TimeSpan Warmup => TimeSpan.FromSeconds(8);
     internal static TimeSpan AwayAfter => TimeSpan.FromMinutes(5);
     internal static TimeSpan Tick => TimeSpan.FromSeconds(3);
+    /// <summary>At most one look a while at what wants attention (a notification, a flashing taskbar button).</summary>
+    internal static TimeSpan AttentionSpacing => TimeSpan.FromSeconds(20);
 
     internal static Tuning For(Chattiness chattiness) => chattiness switch
     {
@@ -28,7 +30,7 @@ internal sealed class ScreenCommentaryPacer
     private readonly Func<double> random;
     private readonly Queue<long> looks = new();
     private readonly long started;
-    private long? lastLook, lastComment, lastConversation;
+    private long? lastLook, lastComment, lastConversation, lastAttention;
     private TimeSpan jitter;
     private double novelty;
     private int backoffs;
@@ -103,6 +105,24 @@ internal sealed class ScreenCommentaryPacer
         else if (clock.GetElapsedTime(lastLook.Value) >= Settings.Boredom) chance += 0.25;
         return random() < Math.Min(chance, 0.95) ? PacerVerdict.Look : PacerVerdict.NothingNew;
     }
+
+    /// <summary>Whether to look right away at something that wants the user's attention (a notification popped up, a
+    /// taskbar button flashes), the way a friend would say "someone's messaging you". Unlike <see cref="Decide"/> it doesn't
+    /// wait out the last remark, the last look or a conversation that just ended, and the picture's change doesn't matter;
+    /// it still never interrupts you or a reply (Busy: wait), waits out a busy provider, keeps to the hourly budget, doesn't
+    /// talk to an empty room and takes at most one such look every <see cref="AttentionSpacing"/> (AfterLook).</summary>
+    internal PacerVerdict DecideAttention(bool busy, TimeSpan userIdle)
+    {
+        if (busy) return PacerVerdict.Busy;
+        if (BackoffLeft is not null) return PacerVerdict.BackingOff;
+        if (lastAttention is { } noticed && clock.GetElapsedTime(noticed) < AttentionSpacing) return PacerVerdict.AfterLook;
+        if (LooksThisHour >= Settings.LooksPerHour) return PacerVerdict.HourlyLimit;
+        if (userIdle >= AwayAfter && novelty < 0.05) return PacerVerdict.UserAway;
+        return PacerVerdict.Look;
+    }
+
+    /// <summary>A look at what wants attention started (its outcome is noted like any look's).</summary>
+    internal void NoteAttention() => lastAttention = clock.GetTimestamp();
 
     private void Evict()
     {

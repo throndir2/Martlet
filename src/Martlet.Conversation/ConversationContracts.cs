@@ -74,12 +74,15 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 // this PC. SilentReply is a word the model may answer with to stay quiet (unprompted screen commentary); a sentence that
 // is only that word is never spoken. Generation carries the persona's optional sampling settings; it changes how the
 // model samples, never what is disclosed, so it is not part of the text authorization (the reply token budget is, through
-// TextLimits). Tools runs the calls a model makes when the input offers tools.
+// TextLimits). Tools runs the calls a model makes when the input offers tools. ImageOptional: the input's picture is context sent
+// along with the user's own words (their screen while vision is on), so a model that rejects it is asked again without it; a
+// screen glance's picture is the whole point of its request and is never dropped.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
-    GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null)
+    GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null,
+    bool imageOptional = false)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -94,6 +97,7 @@ public sealed class ConversationRequest(
     public GenerationSettings? Generation { get; } = generation;
     [JsonIgnore] public IConversationToolHost? Tools { get; } = tools;
     public TextFallback? Fallback { get; } = fallback;
+    public bool ImageOptional { get; } = imageOptional;
 
     internal void Validate()
     {
@@ -226,7 +230,7 @@ public sealed record ConversationSnapshot(
     bool OwnershipReleased, bool Quarantined, long DroppedEvents, PlaybackSnapshot? Playback,
     Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
-    TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null)
+    TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
