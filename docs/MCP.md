@@ -192,7 +192,12 @@ voice is first used, added or removed or the desktop shares voices with a host,
 the starter voices in it (`starters`), the count of the owner's own voices
 (`own`), tombstones (`removed`) and the keys of removed starter voices
 (`removedStarters`), and the voice chosen on all computers (`chosen`: a starter
-key, `own` or null) with the device that chose it (`chosenBy`). `list` is this PC's
+key, `own` or null) with the device that chose it (`chosenBy`), and
+`severalRecordings`: each voice made from several recordings, by the key the
+Voices page uses (the first 16 hex digits of its ID), with how many `recordings`,
+each one's length (`clipMs`), the joined `durationMs` and `sampleRate`, the
+`engines` that can clone it and those that learn from each recording
+(`learnsFromEach`; the others hear them joined). `list` is this PC's
 recordings (the `f5-voices` store): `state` (`none`, `loaded`, `busy` while the desktop holds it,
 or `unreadable`), the number of voices, the keys of starter voices in it (`starters`), the
 count of the owner's own voices, whether the retired F5-TTS example clip is still
@@ -208,7 +213,9 @@ self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts`, `gp
 `hostRole`, `routeId`, `path`, `model`, `weightsLicence`, `minimumGpuMemoryGb`,
 `minimumReferenceMs`, `maximumReferenceMs`, `summary`, `default` (true for
 Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
-syntax, `kind` `Sound` or `Emotion` and `usage`; Chatterbox clones only
+syntax, `kind` `Sound` or `Emotion` and `usage`, and `multipleReferences` (true
+for XTTS-v2 and GPT-SoVITS, which learn from each of a voice's several
+recordings); Chatterbox clones only
 recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
 `ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
@@ -314,7 +321,7 @@ Windows Credential Manager; it does not cover the desktop window,
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
 the production code: two real gateways on 127.0.0.1 (pinned TLS, the real
-reference-voice relay route over a fixture voice service, NOT AI, and in-memory
+reference-voice relay routes of F5-TTS and XTTS-v2 over fixture voice services, NOT AI, and in-memory
 `speaking-voices.json` and recordings) and two simulated desktops that keep real
 F5 voice stores in a temporary folder and use the desktop's paired client and
 Martlet.F5's reconcile engine. It runs `src\Martlet.NodeLinkCheck` (mode
@@ -331,7 +338,12 @@ and the other desktop's copy; a stale copy can't bring it back; speaking with a
 removed voice sends the recording, which the host doesn't keep; a host restart
 keeps the list and recordings; a wrong SHA-256, a recording no voice has and a
 listed recording that isn't a WAV are refused; reading a missing recording
-answers none. Nothing leaves loopback, the temporary folder is deleted and
+answers none; one voice made from three recordings (24, 16 and 24 kHz) is joined
+at 24 kHz after 0.5 s pauses with each recording's place kept, reaches the other
+desktop through a host with those places, and speaking with it hands the XTTS-v2
+relay's service the three places (`reference.clips`) and F5-TTS the joined
+recording only; a list entry whose recordings don't match its recording or
+transcript is refused. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
@@ -1094,8 +1106,13 @@ that returns its name with "· chosen" or "· in use" when it is. Its controls a
 `F5VoicePlay-<key>`, `F5VoiceUse-<key>` and, unless it is in use or chosen on all
 computers, `F5VoiceRemove-<key>`; any other voice's controls use the first 16 hex
 digits of its ID (its reference revision) instead of the key, and its name is not
-returned. When the speaking engine cannot clone a voice (Chatterbox: 5 seconds or
-shorter; GPT-SoVITS: shorter than 3 or longer than 10 seconds) its title adds
+returned. Every voice's detail line, `F5VoiceDetail-<key>`, returns its length
+(or, for a voice made from several recordings, "3 recordings, 10.5 seconds
+joined, added ..." and whether the speaking engine learns from each recording or
+hears them joined), where a starter voice comes from and why the engine can't
+use it; never its name or words. When the speaking engine cannot clone a voice (Chatterbox: 5 seconds or
+shorter; GPT-SoVITS: shorter than 3 or longer than 10 seconds, unless one of
+its recordings is 3-10 seconds) its title adds
 "· wrong length for this engine" and `F5VoiceUse-<key>` is disabled, with the reason
 as its help text; Play and Use are also disabled while its recording is still
 being copied to this PC. Remove asks with `ConfirmationYes`/`ConfirmationNo` and
@@ -1104,7 +1121,15 @@ removes the voice on every computer. `F5AddVoice` opens *Add a voice*
 `F5AddVoiceTranscript`, `F5AddVoiceBasis` (whose voice), `F5VoiceRights` (the
 rights confirmation) and `F5AddVoiceOk`, which adds the voice, shares it and uses
 it; `F5AddVoiceProblem` returns why it couldn't (the typed name, transcript and
-path are never returned). Use, Remove and adding change the voice list and need
+path are never returned). `F5AddVoiceMore` (passive: it only adds an empty row)
+adds another recording of the same voice, whose controls end in its number
+(`F5AddVoicePath-2`, `F5AddVoiceTranscript-2`, `F5AddVoicePlay-2`,
+`F5AddVoiceBrowse-2`); with several, each row has `F5AddVoiceDrop-<n>` (passive)
+and `F5AddVoicePlayJoined` plays them joined. `F5AddVoiceRecordings` returns how
+many recordings there are and, once their files exist, how long they are joined
+with the pauses ("3 recordings make one voice, 10.5 seconds joined with the
+pauses.", more than 30 seconds, or which recording isn't a usable WAV); never
+paths or words. Use, Remove and adding change the voice list and need
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 Passive navigation writes nothing: the list is shown as it would start until a
 voice is first used, added or removed. `f5_voices` reads the same list headlessly.

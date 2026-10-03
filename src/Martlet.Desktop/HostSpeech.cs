@@ -93,8 +93,9 @@ internal static class F5Voices
         var by = HostSetupCommands.SuggestedDeviceId();
         var result = await ReconcileAsync(dataDirectory, destination, by, null, null, token);
         var applied = Applied(dataDirectory)?.PresetId;
-        bool Usable(F5ReferenceSnapshot s) => engine is null || SpeechEngines.ReferenceProblem(engine, s.AudioFormat.DurationMilliseconds) is null;
         var library = result.Library;
+        bool Usable(F5ReferenceSnapshot s) => engine is null ||
+            SpeechEngines.ReferenceProblem(engine, s.AudioFormat.DurationMilliseconds, library.Find(F5SharedVoices.Id(s))?.ClipMilliseconds) is null;
         var voice = (library.ChosenVoice is { } chosen && result.Local.TryGetValue(chosen.Id, out var picked) && Usable(picked) ? picked : null)
             ?? result.Local.Values.Where(s => s.PresetId == applied && Usable(s)).FirstOrDefault()
             ?? library.Live.Select(v => result.Local.GetValueOrDefault(v.Id)).OfType<F5ReferenceSnapshot>().FirstOrDefault(Usable)
@@ -144,11 +145,13 @@ internal static class F5Voices
         catch (F5Exception error) when (error.Failure == F5Failure.NotFound) { }
     }
 
-    /// <summary>Adds a voice the owner recorded to the shared list.</summary>
-    internal static SpeakingVoiceLibrary Add(string dataDirectory, F5ReferenceSnapshot snapshot, string transcript) =>
+    /// <summary>Adds a voice the owner recorded to the shared list; a voice made from several recordings passes where each
+    /// lies in its joined recording (<paramref name="joined"/>).</summary>
+    internal static SpeakingVoiceLibrary Add(string dataDirectory, F5ReferenceSnapshot snapshot, string transcript,
+        JoinedVoiceRecording? joined = null) =>
         Commit(dataDirectory, View(dataDirectory).Add(snapshot.PresetName, transcript, snapshot.AudioSha256,
             snapshot.AudioFormat.DurationMilliseconds, F5SharedVoices.Rights(snapshot.Rights.Basis), HostSetupCommands.SuggestedDeviceId(),
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow, clips: joined?.Clips, sampleRate: joined?.SampleRate));
 
     /// <summary>Makes a voice the one Martlet speaks with on all of the owner's computers.</summary>
     internal static SpeakingVoiceLibrary Choose(string dataDirectory, string voiceId) =>
@@ -230,8 +233,11 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
                 using var store = F5Voices.Open(dataDirectory);
                 using var lease = await store.AcquireForPreviewAsync(target.PresetId, target.ReferenceRevision, token).ConfigureAwait(false);
                 var reference = lease.Reference;
+                // A voice made from several recordings: their lengths, from the shared list, for the engine check.
+                var clips = F5Voices.LoadLibrary(dataDirectory)?.Find(reference.ReferenceRevision) is { Removed: false } voice
+                    ? voice.ClipMilliseconds : null;
                 return new(reference.PresetId, reference.ReferenceRevision, reference.AudioSha256, reference.Transcript,
-                    reference.TranscriptRevision, reference.Audio.ToArray());
+                    reference.TranscriptRevision, reference.Audio.ToArray(), clips);
             }
             catch (F5Exception error) when (error.Failure == F5Failure.Busy && attempt < 20)
             {

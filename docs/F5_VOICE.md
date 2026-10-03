@@ -221,6 +221,15 @@ leaves the list.
 joined (the starter voices first), each with **Play** (this PC's copy or the
 starter clip, locally), **Use** and **Remove**, and **Add a voice...**
 (recording, name, exact transcript, whose voice and the rights confirmation).
+**Add another recording** adds more recordings of the same voice, each with its
+exact transcript (up to 10; **Browse** can pick several at once and **Play
+joined** plays them as most engines will hear them). Several recordings become
+one voice: Martlet joins them after a 0.5 s pause each (30 seconds in all) and
+the shared list remembers where each lies, so XTTS-v2 and GPT-SoVITS learn from
+each recording and the other engines clone the joined one
+([shared speaking voices](CLUSTER.md#the-shared-speaking-voices)). The list
+shows such a voice as "3 recordings, 10.5 seconds joined" and whether the
+speaking engine learns from each or hears them joined.
 **Use** applies the voice in the store, makes it the voice chosen on all
 computers and, when a computer speaks, records it on the speaking route with a
 refreshed selection, so the next conversation speaks with it; other desktops

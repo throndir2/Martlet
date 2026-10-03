@@ -18,7 +18,8 @@ internal static class GatewayInferenceJson
         ReadOnlyMemory<byte> bytes,
         GatewayInferenceRoute route,
         DateTimeOffset now,
-        Func<string, byte[]?>? referenceAudio = null)
+        Func<string, byte[]?>? referenceAudio = null,
+        Func<string, Martlet.Core.Voices.SpeakingVoice?>? referenceVoice = null)
     {
         try
         {
@@ -84,7 +85,7 @@ internal static class GatewayInferenceJson
                 GatewayInferenceKind.OllamaChat =>
                     ParseOllama(fields["payload"], route),
                 GatewayInferenceKind.F5Synthesis =>
-                    ParseF5(fields["payload"], route, referenceAudio),
+                    ParseF5(fields["payload"], route, referenceAudio, referenceVoice),
                 GatewayInferenceKind.PerceptionOcr or
                     GatewayInferenceKind.PerceptionVlm =>
                     ParsePerception(fields["payload"], route, now),
@@ -258,11 +259,14 @@ internal static class GatewayInferenceJson
     }
 
     // The recording travels with the request, or (without reference_audio_base64) is the one this host keeps for a voice of
-    // the shared speaking-voice list, found by its SHA-256 through referenceAudio; reference.missing when it has none.
+    // the shared speaking-voice list, found by its SHA-256 through referenceAudio; reference.missing when it has none. When the
+    // list (referenceVoice) says the voice was made from several recordings, an engine that learns from several gets where
+    // each lies (ReferenceClips); without that, or for any other engine, the joined recording is the reference.
     private static GatewayF5SynthesisPayload ParseF5(
         JsonElement element,
         GatewayInferenceRoute route,
-        Func<string, byte[]?>? referenceAudio)
+        Func<string, byte[]?>? referenceAudio,
+        Func<string, Martlet.Core.Voices.SpeakingVoice?>? referenceVoice)
     {
         var fields = Object(
             element,
@@ -326,8 +330,14 @@ internal static class GatewayInferenceJson
                 "request.too_large");
             GatewayRules.Require(Convert.ToHexStringLower(SHA256.HashData(audio)) ==
                 audioSha256, "request.invalid");
-            ValidateF5Wave(audio, Martlet.Core.Settings.SpeechEngines.ForRoute(route.RouteId) ??
-                Martlet.Core.Settings.SpeechEngines.F5);
+            var engine = Martlet.Core.Settings.SpeechEngines.ForRoute(route.RouteId) ?? Martlet.Core.Settings.SpeechEngines.F5;
+            var recording = ValidateF5Wave(audio);
+            var voice = referenceVoice?.Invoke(referenceRevision) is { } listed &&
+                Martlet.Core.Voices.SpeakingVoiceRecordings.Fits(listed, recording) ? listed : null;
+            GatewayRules.Require(Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, recording.DurationMilliseconds,
+                voice?.ClipMilliseconds) is null, "request.invalid");
+            var clips = voice is not null && Martlet.Core.Settings.SpeechEngines.UsesClips(engine, voice.ClipMilliseconds)
+                ? voice.Clips : null;
             // The recording's language, which GPT-SoVITS needs; other engines ignore it.
             string? referenceLanguage = null;
             if (fields.ContainsKey("reference_language"))
@@ -377,7 +387,8 @@ internal static class GatewayInferenceJson
                 transcriptRevision,
                 audio,
                 chunks.ToArray(),
-                referenceLanguage);
+                referenceLanguage,
+                clips);
         }
         catch
         {
@@ -554,7 +565,8 @@ internal static class GatewayInferenceJson
         return new(GatewayInferenceRoute.TranscriptionSampleRate, pcm);
     }
 
-    private static void ValidateF5Wave(ReadOnlySpan<byte> bytes, Martlet.Core.Settings.SpeechEngine engine)
+    // A mono PCM16 WAV within the reference store's bounds (1-30 s, 4 MB); whether the engine can clone it is checked apart.
+    private static Martlet.Core.Voices.PcmWaveInfo ValidateF5Wave(ReadOnlySpan<byte> bytes)
     {
         GatewayRules.Require(bytes.Length is >= 44 and <=
             F5ReferenceLimits.MaximumAudioFileBytes &&
@@ -619,10 +631,9 @@ internal static class GatewayInferenceJson
             usableSample, "request.invalid");
         var durationMilliseconds = Math.Ceiling(
             dataBytes!.Value / 2d * 1000d / sampleRate!.Value);
-        GatewayRules.Require(durationMilliseconds >=
-            Math.Max(F5ReferenceLimits.MinimumDurationMilliseconds, engine.MinimumReferenceMilliseconds) &&
-            durationMilliseconds <=
-            Math.Min(F5ReferenceLimits.MaximumDurationMilliseconds, engine.MaximumReferenceMilliseconds), "request.invalid");
+        GatewayRules.Require(durationMilliseconds >= F5ReferenceLimits.MinimumDurationMilliseconds &&
+            durationMilliseconds <= F5ReferenceLimits.MaximumDurationMilliseconds, "request.invalid");
+        return new(sampleRate.Value, dataBytes.Value / 2);
     }
 
     private static Dictionary<string, JsonElement> Object(

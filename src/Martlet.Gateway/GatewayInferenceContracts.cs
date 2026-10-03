@@ -649,7 +649,8 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         string transcriptRevision,
         byte[] referenceAudio,
         GatewayF5TextChunk[] chunks,
-        string? referenceLanguage = null)
+        string? referenceLanguage = null,
+        IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? referenceClips = null)
     {
         PresetId = presetId;
         ReferenceRevision = referenceRevision;
@@ -657,6 +658,7 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         Transcript = transcript;
         TranscriptRevision = transcriptRevision;
         ReferenceLanguage = referenceLanguage;
+        ReferenceClips = referenceClips;
         this.referenceAudio = referenceAudio;
         this.chunks = chunks;
         Chunks = Array.AsReadOnly(this.chunks);
@@ -669,6 +671,9 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
     public string TranscriptRevision { get; }
     /// <summary>The recording's language ("en" or "ja") when the client sent it; GPT-SoVITS reads the transcript in it.</summary>
     public string? ReferenceLanguage { get; }
+    /// <summary>For a voice made from several recordings and an engine that learns from each (XTTS-v2, GPT-SoVITS), where
+    /// each lies in <see cref="ReferenceAudio"/> and its words; null when the engine gets the recording as one.</summary>
+    public IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? ReferenceClips { get; }
     public ReadOnlyMemory<byte> ReferenceAudio => referenceAudio;
     public IReadOnlyList<GatewayF5TextChunk> Chunks { get; }
 

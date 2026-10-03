@@ -22,6 +22,7 @@ MAX_TRANSCRIPT_CHARACTERS = 4_096
 MAX_FRAME_SAMPLES = 4_800
 MAX_SAMPLES = pins.OUTPUT_SAMPLE_RATE * 90
 MAX_AUDIO_FILE_BYTES = 4 * 1_024 * 1_024
+MAX_CLIPS = 10
 REFERENCE_SAMPLE_RATES = (16_000, 22_050, 24_000, 44_100, 48_000)
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -52,9 +53,15 @@ def format_utc(value: datetime) -> str:
 
 def wave_duration_ms(audio: bytes) -> int:
     """Duration of a mono PCM16 RIFF/WAVE at a reference sample rate; raises RequestError otherwise."""
+    rate, data, _ = wave_data(audio)
+    return (len(data) // 2) * 1000 // rate
+
+
+def wave_data(audio: bytes) -> tuple[int, bytes, int]:
+    """(sample rate, PCM16 data, data offset) of a mono PCM16 RIFF/WAVE at a reference sample rate; raises RequestError."""
     if len(audio) < 44 or len(audio) > MAX_AUDIO_FILE_BYTES or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
         raise RequestError("reference is not a WAV file")
-    offset, rate, data = 12, None, None
+    offset, rate, data, start = 12, None, None, 0
     while offset + 8 <= len(audio):
         chunk, size = audio[offset:offset + 4], struct.unpack_from("<I", audio, offset + 4)[0]
         body = offset + 8
@@ -65,11 +72,35 @@ def wave_duration_ms(audio: bytes) -> int:
             if fmt != 1 or channels != 1 or bits != 16 or align != 2 or rate not in REFERENCE_SAMPLE_RATES:
                 raise RequestError("reference must be mono 16-bit PCM")
         elif chunk == b"data":
-            data = size
+            data, start = audio[body:body + size - (size & 1)], body
         offset = body + size + (size & 1)
     if rate is None or not data:
         raise RequestError("reference WAV has no audio")
-    return (data // 2) * 1000 // rate
+    return rate, data, start
+
+
+def wave_bytes(rate: int, data: bytes) -> bytes:
+    """A mono PCM16 RIFF/WAVE of ``data`` at ``rate``."""
+    return (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt " +
+            struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16) + b"data" + struct.pack("<I", len(data)) + data)
+
+
+def split_clips(audio: bytes, clips: Any) -> list[dict[str, Any]]:
+    """A voice made from several recordings: each one (``audio_base64`` WAV, ``transcript``, ``duration_ms``) cut from the
+    joined recording at the sample ranges Martlet's relay sent, in order and not overlapping; raises RequestError."""
+    if not isinstance(clips, list) or not 2 <= len(clips) <= MAX_CLIPS:
+        raise RequestError("reference clips are invalid")
+    rate, data, _ = wave_data(audio)
+    total, end, parts = len(data) // 2, 0, []
+    for clip in clips:
+        start, count, transcript = clip["start_sample"], clip["sample_count"], clip["transcript"]
+        if (type(start) is not int or type(count) is not int or start < end or count <= 0 or start + count > total or
+                not isinstance(transcript, str) or not transcript.strip() or len(transcript) > MAX_TRANSCRIPT_CHARACTERS):
+            raise RequestError("reference clip is invalid")
+        parts.append({"audio_base64": base64.b64encode(wave_bytes(rate, data[start * 2:(start + count) * 2])).decode("ascii"),
+                      "duration_ms": -(-count * 1000 // rate), "transcript": transcript})
+        end = start + count
+    return parts
 
 
 def reference_language(transcript: str) -> str:
@@ -109,9 +140,21 @@ def check_request(body: dict[str, Any]) -> dict[str, Any]:
         language = reference.get("language") or reference_language(transcript)
         if language not in pins.REFERENCE_LANGUAGES:
             raise RequestError("reference language is not supported")
-        duration = wave_duration_ms(audio)
-        if not pins.MIN_REFERENCE_MILLISECONDS <= duration <= pins.MAX_REFERENCE_MILLISECONDS:
-            raise RequestError("GPT-SoVITS needs a 3 to 10 second reference recording")
+        # A voice made from several recordings: the first 3-10 second one is the prompt (its words and language) and the
+        # others add their tone (aux_ref_audio_paths). Without one that fits, the joined recording is the reference.
+        prompt, auxiliary = None, []
+        if reference.get("clips") is not None:
+            clips = split_clips(audio, reference["clips"])
+            fitting = [clip for clip in clips
+                       if pins.MIN_REFERENCE_MILLISECONDS <= clip["duration_ms"] <= pins.MAX_REFERENCE_MILLISECONDS]
+            if fitting:
+                prompt = fitting[0]
+                auxiliary = [clip["audio_base64"] for clip in clips if clip is not prompt]
+                language = reference_language(prompt["transcript"])
+        if prompt is None:
+            duration = wave_duration_ms(audio)
+            if not pins.MIN_REFERENCE_MILLISECONDS <= duration <= pins.MAX_REFERENCE_MILLISECONDS:
+                raise RequestError("GPT-SoVITS needs a 3 to 10 second reference recording")
         if not isinstance(chunks, list) or not 0 < len(chunks) <= MAX_TEXT_CHUNKS:
             raise RequestError("chunks are invalid")
         checked = []
@@ -130,11 +173,12 @@ def check_request(body: dict[str, Any]) -> dict[str, Any]:
         "ids": {"parent_request_id": parent, "request_id": ids["request_id"], "session_id": ids["session_id"],
                 "turn_id": ids["turn_id"]},
         "reference": {
-            "audio_base64": reference["audio_base64"],
+            "audio_base64": prompt["audio_base64"] if prompt else reference["audio_base64"],
+            "auxiliary_base64": auxiliary,
             "language": language,
             "preset_id": str(reference.get("preset_id", "")),
             "reference_revision": revision,
-            "transcript": transcript,
+            "transcript": prompt["transcript"] if prompt else transcript,
         },
         "type": "synthesize",
     }

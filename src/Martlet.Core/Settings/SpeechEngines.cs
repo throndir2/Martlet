@@ -7,7 +7,9 @@ namespace Martlet.Core.Settings;
 /// <c>martlet.f5.worker</c> 1.0 events, which F5 defined first). Saved TTS gateway routes
 /// (<see cref="SetupRouteType.GatewayF5"/>) may name any engine's route. <see cref="Tags"/> is the engine's own tag
 /// catalog in its native syntax (empty when it reads words only): see <see cref="VoiceTags"/>. <see cref="Summary"/> is its
-/// strength in a few words; <see cref="Features"/> lists what it needs and can do, as Companion › Voice shows them.</summary>
+/// strength in a few words; <see cref="Features"/> lists what it needs and can do, as Companion › Voice shows them.
+/// <see cref="MultipleReferences"/> engines learn a voice from each of several recordings (zero-shot on all of them); the
+/// others hear a voice made from several recordings as one, the recordings joined with a short pause.</summary>
 public sealed record SpeechEngine(
     string Key,
     string Name,
@@ -22,7 +24,8 @@ public sealed record SpeechEngine(
     int MinimumGpuMemoryGb,
     IReadOnlyList<VoiceTag>? TagCatalog = null,
     string Languages = "English",
-    bool StreamsWhileGenerating = false)
+    bool StreamsWhileGenerating = false,
+    bool MultipleReferences = false)
 {
     /// <summary>The tags the engine speaks as sounds or tones; replies keep exactly these for it and lose every other tag.</summary>
     public IReadOnlyList<VoiceTag> Tags => TagCatalog ?? [];
@@ -51,6 +54,7 @@ public sealed record SpeechEngine(
         .. Tags.Any(tag => tag.Kind == VoiceTagKind.Sound) ? ["Laughs & sighs"] : Array.Empty<string>(),
         .. Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? ["Emotions"] : Array.Empty<string>(),
         .. StreamsWhileGenerating ? ["Streams"] : Array.Empty<string>(),
+        .. MultipleReferences ? ["Learns from several samples"] : Array.Empty<string>(),
         Languages
     ];
 }
@@ -100,17 +104,19 @@ public static class SpeechEngines
         "martlet.gateway.f5-synthesis.v1", "/martlet/v1/inference/f5-synthesis", "f5tts-v1-base", "CC-BY-NC-4.0",
         "Closest likeness to the recording.", 1_000, 30_000, 6, Languages: "English, Chinese");
 
-    /// <summary>XTTS-v2 speaks the language chosen when its host role is installed (XTTS_LANGUAGE, English by default).</summary>
+    /// <summary>XTTS-v2 speaks the language chosen when its host role is installed (XTTS_LANGUAGE, English by default), and
+    /// averages the speaker from each of a voice's recordings (<c>get_conditioning_latents</c> on all of them).</summary>
     public static readonly SpeechEngine Xtts = new("xtts", "XTTS-v2", "xtts",
         "martlet.gateway.xtts-synthesis.v1", "/martlet/v1/inference/xtts-synthesis", "xtts-v2", "CPML-1.0",
-        "Starts speaking soonest.", 1_000, 30_000, 4, Languages: "17 languages", StreamsWhileGenerating: true);
+        "Starts speaking soonest.", 1_000, 30_000, 4, Languages: "17 languages", StreamsWhileGenerating: true, MultipleReferences: true);
 
     /// <summary>GPT-SoVITS v2Pro (release 20250606v2pro): good for anime-style voices; clones a 3-10 second recording whose
     /// transcript is English or Japanese (<see cref="ReferenceLanguage"/>), and speaks each sentence as soon as it is
-    /// generated.</summary>
+    /// generated. With a voice of several recordings, the first 3-10 second one is its prompt and the others add their tone
+    /// (aux_ref_audio_paths).</summary>
     public static readonly SpeechEngine GptSovits = new("gpt-sovits", "GPT-SoVITS", "gpt-sovits",
         "martlet.gateway.gpt-sovits-synthesis.v1", "/martlet/v1/inference/gpt-sovits-synthesis", "gpt-sovits-v2pro", "MIT",
-        "Best for anime-style voices.", 3_000, 10_000, 4, Languages: "English, Japanese");
+        "Best for anime-style voices.", 3_000, 10_000, 4, Languages: "English, Japanese", MultipleReferences: true);
 
     /// <summary>Dia's nonverbal cues, verbatim from the README at the pinned commit (github.com/nari-labs/dia at
     /// 876125e461a03b157ec905b0fe8b57a0f8b9e7a0), limited to the ones that suit a conversation; (singing), (sings), (beep),
@@ -178,10 +184,30 @@ public static class SpeechEngines
 
     /// <summary>Why <paramref name="engine"/> cannot clone a recording of <paramref name="durationMilliseconds"/>, or null.</summary>
     public static string? ReferenceProblem(SpeechEngine engine, int durationMilliseconds) =>
-        durationMilliseconds < engine.MinimumReferenceMilliseconds || durationMilliseconds > engine.MaximumReferenceMilliseconds
+        !Fits(engine, durationMilliseconds)
             ? $"{engine.Name} needs a {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} " +
               $"second recording; this one is {durationMilliseconds / 1000d:0.#} seconds."
             : null;
+
+    /// <summary>Why <paramref name="engine"/> cannot clone a voice whose recording lasts <paramref name="durationMilliseconds"/>
+    /// and, for a voice made from several recordings, whose recordings last <paramref name="clipMilliseconds"/>; or null.
+    /// The joined recording may fit, or (for an engine that learns from several, <see cref="UsesClips"/>) one of them.</summary>
+    public static string? ReferenceProblem(SpeechEngine engine, int durationMilliseconds, IReadOnlyList<int>? clipMilliseconds)
+    {
+        if (Fits(engine, durationMilliseconds) || UsesClips(engine, clipMilliseconds)) return null;
+        var problem = ReferenceProblem(engine, durationMilliseconds)!;
+        return engine.MultipleReferences && clipMilliseconds is { Count: > 1 }
+            ? problem[..^1] + $", and none of its {clipMilliseconds.Count} recordings is."
+            : problem;
+    }
+
+    /// <summary>Whether <paramref name="engine"/> gets each of a voice's several recordings rather than them joined: it learns
+    /// from several and at least one of them (its prompt) fits its length bounds.</summary>
+    public static bool UsesClips(SpeechEngine engine, IReadOnlyList<int>? clipMilliseconds) =>
+        engine.MultipleReferences && clipMilliseconds is { Count: > 1 } && clipMilliseconds.Any(ms => Fits(engine, ms));
+
+    private static bool Fits(SpeechEngine engine, int milliseconds) =>
+        milliseconds >= engine.MinimumReferenceMilliseconds && milliseconds <= engine.MaximumReferenceMilliseconds;
 
     public static SpeechEngine? ForRoute(string? routeId) => All.FirstOrDefault(engine => engine.RouteId == routeId);
 

@@ -5,7 +5,10 @@ and [XTTS-v2](XTTS_VOICE.md). It suits anime-style voices, clones a voice from a
 **3-10 second** recording with its exact transcript, and speaks each sentence as
 soon as it is generated. Code and weights are MIT-licensed. Choose it on
 **Companion > Voice > Voice engine**; it uses the same voice list as the other
-engines.
+engines. For a voice made from several recordings, the first 3-10 second one is
+the prompt (its words and language) and the others add their tone
+(`aux_ref_audio_paths`), so a voice longer than 10 seconds joined can still be
+used when one of its recordings fits.
 
 ## What runs
 
@@ -95,7 +98,9 @@ Run on a Windows dev machine without an NVIDIA GPU (Intel UHD 770), on CPU, on
   `F5VoiceRow-librivox-woollybee` "wrong length for this engine" with
   `F5VoiceUse-librivox-woollybee` disabled.
 - **Plumbing.** `python -m unittest discover -s tests` (FIXTURE - NOT AI engine)
-  covers contiguous frames, the 3-10 s bound and restarting a dead worker.
+  covers contiguous frames, the 3-10 s bound, a voice of several recordings
+  (prompt and auxiliary files, refused when none fits or they overlap) and
+  restarting a dead worker.
 
 **NOT RUN** (no NVIDIA GPU here): CUDA synthesis, GPU latency and VRAM,
 `martlet-host add gpt-sovits` on a GPU host (it requires `gpu`), and a
