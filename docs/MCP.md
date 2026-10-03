@@ -380,9 +380,17 @@ terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
 gives up with 75; a waiting `--yes remove` continues once the holder is killed
 (SIGKILL); the next automatic run is not blocked (no stale lock);
 `logs/engine.log` records the waits; and the desktop's reader
-(`HostEngineBusy.Read`) reads the engine's real busy line. Without Docker or the
+(`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
+Docker method's launcher and engine against a fake `docker` CLI (state in
+`/tmp/fake`): an automatic `setup` while an `add` engine session runs in the
+network holder's namespace stops with exit 75 and `MARTLET-BUSY installing
+chatterbox (...)` without replacing `martlet-host-net`; a `--yes setup` waits
+for it, then removes and recreates the holder and runs its engine; an engine
+left in a replaced holder's namespace stops at once (`... was replaced while
+this ran ... Nothing was changed`) while one in the current namespace
+continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
-the Docker method's launcher or a real host.
+a real Docker daemon or a real host.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -832,16 +840,22 @@ launch).
 
 The Diagnostics page (`NavDiagnostics`) lists log lines newest first. Each
 shown line is a list item `LogEntry-<n>` (`LogEntry-0` is the newest shown)
-whose value reads *<time> <level> <computer> · <part>: <first line>*;
+whose value reads *<time> <level> <computer> · <part>: <first line>*, where
+*<computer>* is *This PC* for this PC's desktop app and for its own host
+service's gateway (its host ID, paired here or read from Docker on a host PC);
 clicking one only selects it, and `LogDetail` then returns the whole line
-(time, level, computer, part, who passed it on and every following line).
+(time, level, computer with its ID, such as *This PC (diva-host) · Host
+gateway*, part, who passed it on and every following line).
 `LogSummary` says how many lines are shown of how many, from how many
-computers, the last 24 hours' errors and warnings and where remote lines came
+computers (this PC's app and host service count once), the last 24 hours'
+errors and warnings and where remote lines came
 from (the log host, each paired host's own log, or why not). The filters are
 pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
 `LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
 and `LogSource-<computer>` (`all`, this PC's device ID such as
-`LogSource-desktop-diva`, or a host ID); all are passive clicks, and snapshots
+`LogSource-desktop-diva`, which also covers this PC's host service, or another
+computer's ID); each returns its label as its value (*From: All computers*,
+*From: This PC (desktop-diva, diva-host)*, *From: gpu-pc*). All are passive clicks, and snapshots
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
 `--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
 it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.

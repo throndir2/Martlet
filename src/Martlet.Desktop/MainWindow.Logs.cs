@@ -11,9 +11,10 @@ using Martlet.Diagnostics;
 
 namespace Martlet.Desktop;
 
-/// <summary>One line on the Diagnostics page. <see cref="Text"/> is its accessible name (time, level, where and the first
-/// line of the message).</summary>
-internal sealed record LogRow(LogRecord Record, string Time, string Level, int Severity, string Where, string Headline,
+/// <summary>One line on the Diagnostics page. <see cref="Where"/> names the computer as shown ("This PC · App"),
+/// <see cref="Origin"/> also gives its ID ("This PC (diva-host) · Host gateway"). <see cref="Text"/> is its accessible name
+/// (time, level, where and the first line of the message).</summary>
+internal sealed record LogRow(LogRecord Record, string Time, string Level, int Severity, string Where, string Origin, string Headline,
     string AutomationId, string Text);
 
 /// <summary>Diagnostics: every line Martlet's parts wrote (desktop app, avatar renderer, host runs, hosts' gateways), newest
@@ -124,7 +125,7 @@ public partial class MainWindow
             ActionText.Text = "No log lines are shown, so nothing was copied.";
             return;
         }
-        var text = string.Join(Environment.NewLine, rows.Select(r => $"{r.Record.At.ToLocalTime():yyyy-MM-dd HH:mm:ss.fff} {r.Level} {r.Where}: {r.Record.Message}"));
+        var text = string.Join(Environment.NewLine, rows.Select(r => $"{r.Record.At.ToLocalTime():yyyy-MM-dd HH:mm:ss.fff} {r.Level} {r.Origin}: {r.Record.Message}"));
         if (text.Length > 4_000_000) text = text[..4_000_000];
         try
         {
@@ -153,7 +154,7 @@ public partial class MainWindow
         }
         var record = row.Record;
         LogDetail.Visibility = Visibility.Visible;
-        LogDetail.Text = $"{record.At.ToLocalTime():yyyy-MM-dd HH:mm:ss.fff zzz} · {record.Level} · {row.Where}" +
+        LogDetail.Text = $"{record.At.ToLocalTime():yyyy-MM-dd HH:mm:ss.fff zzz} · {record.Level} · {row.Origin}" +
             (record.RelayedBy is { } by ? $" · passed on by {by}" : "") + Environment.NewLine + Environment.NewLine + record.Message;
     }
 
@@ -468,7 +469,22 @@ public partial class MainWindow
         return all;
     }
 
-    private string SourceName(string source) => source == ClusterDevice ? $"This PC ({source})" : source;
+    private string SourceName(string source, IReadOnlyCollection<string> thisPc) =>
+        source == ClusterDevice ? $"This PC ({string.Join(", ", thisPc)})" : source;
+
+    /// <summary>The log sources that are this PC: its desktop app (<see cref="ClusterDevice"/>, first) and its own host
+    /// service, whose gateway writes under its host ID (paired here, or read from Docker on a host PC).</summary>
+    private IReadOnlyList<string> ThisPcSources()
+    {
+        var ids = new List<string> { ClusterDevice };
+        foreach (var id in new[] { ThisPcHost()?.HostId, hostState?.HostId })
+            if (id is not null && !ids.Contains(id, StringComparer.Ordinal)) ids.Add(id);
+        return ids;
+    }
+
+    /// <summary>The computer a source belongs to: this PC's sources all count as <see cref="ClusterDevice"/>.</summary>
+    private static string Computer(string source, IReadOnlyList<string> thisPc) =>
+        thisPc.Contains(source, StringComparer.Ordinal) ? ClusterDevice : source;
 
     private static string PartName(string component) => component switch
     {
@@ -482,7 +498,8 @@ public partial class MainWindow
     private void RenderLogFilters()
     {
         var all = localLogs.Concat(collectedLogs).Concat(hostOwnLogs.Values.SelectMany(v => v)).ToArray();
-        var sources = all.Select(r => r.Source).Append(ClusterDevice).Distinct(StringComparer.Ordinal)
+        var thisPc = ThisPcSources();
+        var sources = all.Select(r => Computer(r.Source, thisPc)).Append(ClusterDevice).Distinct(StringComparer.Ordinal)
             .OrderBy(s => s != ClusterDevice).ThenBy(s => s, StringComparer.Ordinal).ToArray();
         var parts = LogComponents.Local.Append(LogComponents.Gateway).Concat(all.Select(r => r.Component)).Distinct(StringComparer.Ordinal).ToArray();
         if (!sources.Contains(logSource) && logSource != "all") logSource = "all";
@@ -490,7 +507,7 @@ public partial class MainWindow
         FillFilters(LogLevelFilters, "LogLevel-", "Show",
             [("all", "Everything"), ("warnings", "Warnings and errors"), ("errors", "Errors only")], logLevel, value => logLevel = value);
         FillFilters(LogSourceFilters, "LogSource-", "From",
-            [("all", "All computers"), .. sources.Select(s => (s, SourceName(s)))], logSource, value => logSource = value);
+            [("all", "All computers"), .. sources.Select(s => (s, SourceName(s, thisPc)))], logSource, value => logSource = value);
         FillFilters(LogPartFilters, "LogPart-", "Part",
             [("all", "All parts"), .. parts.Select(p => (p, PartName(p)))], logPart, value => logPart = value);
     }
@@ -528,16 +545,17 @@ public partial class MainWindow
     private void RenderLogRows()
     {
         var all = AllLogs();
+        var thisPc = ThisPcSources();
         var minimum = logLevel switch { "errors" => 2, "warnings" => 1, _ => 0 };
         var search = LogSearch.Text.Trim();
         var matching = all.Where(r => LogLevels.Rank(r.Level) >= minimum &&
-                (logSource == "all" || r.Source == logSource) &&
+                (logSource == "all" || Computer(r.Source, thisPc) == logSource) &&
                 (logPart == "all" || r.Component == logPart) &&
                 (search.Length == 0 || r.Message.Contains(search, StringComparison.OrdinalIgnoreCase) ||
                     r.Source.Contains(search, StringComparison.OrdinalIgnoreCase)))
             .ToList();
         var shown = matching.Take(ShownLogLimit).ToList();
-        var signature = $"{all.Count}|{(all.Count > 0 ? all[0].Stream + all[0].Seq : "")}|{minimum}|{logSource}|{logPart}|{search}";
+        var signature = $"{all.Count}|{(all.Count > 0 ? all[0].Stream + all[0].Seq : "")}|{minimum}|{logSource}|{logPart}|{search}|{string.Join(",", thisPc)}";
         if (signature != logRowsSignature)
         {
             logRowsSignature = signature;
@@ -545,9 +563,11 @@ public partial class MainWindow
             var rows = shown.Select((r, i) =>
             {
                 var time = r.At.ToLocalTime().ToString(r.At.ToLocalTime().Date == DateTime.Today ? "HH:mm:ss.fff" : "MMM d HH:mm:ss");
-                var where = $"{(r.Source == ClusterDevice ? "This PC" : r.Source)} · {PartName(r.Component)}";
+                var mine = thisPc.Contains(r.Source, StringComparer.Ordinal);
+                var where = $"{(mine ? "This PC" : r.Source)} · {PartName(r.Component)}";
+                var origin = $"{(mine ? $"This PC ({r.Source})" : r.Source)} · {PartName(r.Component)}";
                 var headline = r.Headline.Length > 400 ? r.Headline[..400] + "…" : r.Headline;
-                return new LogRow(r, time, r.Level, LogLevels.Rank(r.Level), where, headline, $"LogEntry-{i}",
+                return new LogRow(r, time, r.Level, LogLevels.Rank(r.Level), where, origin, headline, $"LogEntry-{i}",
                     $"{time} {r.Level} {where}: {(headline.Length > 240 ? headline[..240] + "…" : headline)}");
             }).ToList();
             LogList.ItemsSource = rows;
@@ -558,7 +578,7 @@ public partial class MainWindow
         var recent = all.Where(r => r.At >= day).ToArray();
         var errors = recent.Count(r => LogLevels.Rank(r.Level) >= 2);
         var warnings = recent.Count(r => LogLevels.Rank(r.Level) == 1);
-        var computers = all.Select(r => r.Source).Distinct(StringComparer.Ordinal).Count();
+        var computers = all.Select(r => Computer(r.Source, thisPc)).Distinct(StringComparer.Ordinal).Count();
         LogSummary.Text = (all.Count == 0 ? "No log lines yet." :
             $"Showing {shown.Count:N0} of {all.Count:N0} lines from {computers} computer{(computers == 1 ? "" : "s")}" +
             (matching.Count > shown.Count ? $" (the newest {ShownLogLimit:N0} that match)" : "") +
