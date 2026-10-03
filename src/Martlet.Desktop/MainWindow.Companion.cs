@@ -224,14 +224,6 @@ public partial class MainWindow
         return NetworkMap.ProviderName(route);
     }
 
-    private string CharacterModelName()
-    {
-        if (homeAvatar is null) return "Built-in character";
-        return BundledLive2D.IsBuiltIn(homeAvatar.ModelPath)
-            ? homeAvatar.ModelPath[BundledLive2D.Prefix.Length..] + " (built-in)"
-            : Path.GetFileNameWithoutExtension(homeAvatar.ModelPath);
-    }
-
     private string LipSyncOwnerName() => NetworkMap.LipSync(homeAvatar) switch
     {
         LipSyncHandler.Loudness => "voice loudness",
@@ -1276,6 +1268,7 @@ public partial class MainWindow
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
                 showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null)));
+        page.Children.Add(CharacterModelsCard());
         page.Children.Add(SpeechDisplayCard());
         characterViewText = null;
         if (!showing) return;

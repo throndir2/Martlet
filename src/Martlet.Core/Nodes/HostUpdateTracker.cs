@@ -5,12 +5,15 @@ namespace Martlet.Core.Nodes;
 /// computer, keeping this PC's own host service current, the automatic pass) runs inside <see cref="Begin"/> for that host's
 /// update key (<see cref="ThisPc"/> for this PC's own host service, whatever its pairing is called). The automatic pass skips
 /// a host Martlet is already updating instead of starting a second run that would find the host locked by Martlet's own
-/// update and report it busy. When a host is updated by any route, or a check finds it current, its retry and the note about
-/// an earlier try go away.</summary>
+/// update and report it busy. When a host is updated by any route, or a check finds it current, its retry goes and a note
+/// about an earlier try says it is updated.</summary>
 public sealed class HostUpdateTracker
 {
     /// <summary>The update key (and note ID) of this PC's own host service.</summary>
     public const string ThisPc = "this-pc";
+
+    /// <summary>How a host's note starts once its update is done (here, by another route, or seen from its announced release).</summary>
+    public const string UpdatedNote = "Updated to Martlet ";
 
     /// <summary>How long an update you asked for (Update hosts now) waits for another change running on that host before it
     /// gives up and Martlet tries again later, in seconds. Automatic updates don't wait: they stop at once and try again a few
@@ -60,17 +63,20 @@ public sealed class HostUpdateTracker
         return taken;
     }
 
-    /// <summary>A host is current: updated by any route, or found current by a check. Its retry and the note about an earlier
-    /// try go; true when there was one. For <see cref="ThisPc"/> that includes this PC's own pairings with it
+    /// <summary>A host is current: updated by any route, or found current by a check or the release it announces. Its retry
+    /// goes, and a note about an earlier try (busy, waiting, asked) becomes "Updated to Martlet <paramref name="version"/>";
+    /// true when anything changed. For <see cref="ThisPc"/> that includes this PC's own pairings with it
     /// (<paramref name="thisPcHostIds"/>).</summary>
-    public bool Settled(string key, IEnumerable<string>? thisPcHostIds = null)
+    public bool Current(string key, string version, DateTime at, bool seen = false, IEnumerable<string>? thisPcHostIds = null)
     {
         IEnumerable<string> ids = key == ThisPc ? [ThisPc, .. thisPcHostIds ?? []] : [key];
         var changed = false;
         foreach (var id in ids)
         {
-            changed |= notes.Remove(id);
             changed |= waiting.Remove(id);
+            if (!notes.TryGetValue(id, out var note) || note.StartsWith(UpdatedNote, StringComparison.Ordinal)) continue;
+            notes[id] = seen ? $"{UpdatedNote}{version} (seen at {at:t})." : $"{UpdatedNote}{version} at {at:t}.";
+            changed = true;
         }
         return changed;
     }
@@ -80,7 +86,7 @@ public sealed class HostUpdateTracker
     public static string BusyNote(string version, string what, DateTime at) =>
         what.StartsWith("updating this host", StringComparison.Ordinal)
             ? $"Another update of that host was already running ({what}), so this one changed nothing. Martlet checks again in a few " +
-              $"minutes and clears this once it runs Martlet {version} (last try {at:t})."
+              $"minutes and says so here once it runs Martlet {version} (last try {at:t})."
             : $"Waiting to update to Martlet {version}: that host is busy ({what}). Nothing was changed; Martlet tries again every few " +
               $"minutes until it is free (last try {at:t}).";
 

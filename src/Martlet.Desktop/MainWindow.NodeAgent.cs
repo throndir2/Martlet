@@ -403,7 +403,7 @@ public partial class MainWindow
         var current = await HostSetupCommands.ThisPcGatewayVersionAsync(token);
         if (current is not null && !AppVersions.IsOlder(current, Version))
         {
-            if (!hostUpdates.IsUpdating(ThisPcHostId)) HostUpdateSettled(ThisPcHostId);
+            if (!hostUpdates.IsUpdating(ThisPcHostId)) HostUpdateSettled(ThisPcHostId, current, seen: true);
             return new(true, $"{here} runs Martlet {Version}, and its host service runs {current}.", 0);
         }
         if (hostUpdatesRunning || hostUpdates.IsUpdating(ThisPcHostId))

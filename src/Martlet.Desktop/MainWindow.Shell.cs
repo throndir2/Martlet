@@ -1312,6 +1312,7 @@ public partial class MainWindow
         }
         await Pairings().ForgetAsync(host.HostId, token);
         hostChecks.Remove(host.HostId);
+        hostReleases.Remove(host.HostId);
         ForgetClusterHost(host.HostId);
         if (inCharge)
         {

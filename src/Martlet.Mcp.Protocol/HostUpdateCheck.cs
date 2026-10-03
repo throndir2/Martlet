@@ -76,14 +76,17 @@ internal static class HostUpdateCheck
         tracker.Wait(HostUpdateTracker.ThisPc);
         tracker.Note(OtherHost, installNote);
         tracker.Wait(OtherHost);
-        var cleared = tracker.Settled(HostUpdateTracker.ThisPc, [LocalHost]);
-        var again = tracker.Settled(HostUpdateTracker.ThisPc, [LocalHost]);
-        Step("current-host-clears-stale-note",
-            cleared && !again && !tracker.Notes.ContainsKey(LocalHost) && !tracker.Notes.ContainsKey(HostUpdateTracker.ThisPc) &&
+        var seenAt = new DateTime(2026, 10, 2, 20, 21, 30);
+        var cleared = tracker.Current(HostUpdateTracker.ThisPc, Version, seenAt, seen: true, [LocalHost]);
+        var again = tracker.Current(HostUpdateTracker.ThisPc, Version, seenAt.AddMinutes(3), seen: true, [LocalHost]);
+        var updatedNote = $"{HostUpdateTracker.UpdatedNote}{Version} (seen at {seenAt:t}).";
+        Step("current-host-replaces-stale-note",
+            cleared && !again && tracker.Notes.GetValueOrDefault(LocalHost) == updatedNote &&
+            tracker.Notes.GetValueOrDefault(HostUpdateTracker.ThisPc) == updatedNote &&
             !tracker.Waiting.Contains(LocalHost) && !tracker.Waiting.Contains(HostUpdateTracker.ThisPc) &&
-            tracker.Notes.ContainsKey(OtherHost) && tracker.Waiting.Contains(OtherHost),
-            $"this PC's host service found current: cleared = {cleared}, again = {again}; notes left {string.Join(", ", tracker.Notes.Keys)}; " +
-            $"waiting {string.Join(", ", tracker.Waiting)}");
+            tracker.Notes.GetValueOrDefault(OtherHost) == installNote && tracker.Waiting.Contains(OtherHost),
+            $"this PC's host service found current: changed = {cleared}, again = {again}; {LocalHost} now reads " +
+            $"\"{tracker.Notes.GetValueOrDefault(LocalHost)}\"; still waiting {string.Join(", ", tracker.Waiting)}");
 
         var retry = tracker.TakeWaiting();
         Step("retry-takes-waiting", retry.SequenceEqual([OtherHost]) && tracker.Waiting.Count == 0,

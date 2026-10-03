@@ -159,6 +159,14 @@ internal static class ClusterSync
 
     internal static async Task<T> WithConnectionAsync<T>(AvatarRemoteHost host, Func<Audio2FaceHostConnection, Task<T>> action)
     {
+        var connection = Connect(host);
+        try { return await action(connection); }
+        finally { connection.Dispose(); }
+    }
+
+    /// <summary>A paired connection to <paramref name="host"/> for several requests in a row; the caller disposes it.</summary>
+    internal static Audio2FaceHostConnection Connect(AvatarRemoteHost host)
+    {
         Audio2FaceHostConnection? connection = null;
         using (var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId))
         {
@@ -166,8 +174,7 @@ internal static class ClusterSync
                 throw new InvalidOperationException("Pair this host again.");
             read.Secret.Use(secret => connection = new Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), secret));
         }
-        try { return await action(connection!); }
-        finally { connection!.Dispose(); }
+        return connection!;
     }
 
     internal static bool IsHostFailure(Exception error) => error is Audio2FaceHostException or IOException or UnauthorizedAccessException or

@@ -49,7 +49,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
-        "ProblemClose"
+        "ProblemClose",
+        // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
+        "CharacterModelAddCancel"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -76,12 +78,19 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
-        // --allow-ui-effects. SelectedDeviceUpdateNote is what happened to that host's latest update (its card's callout).
-        "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "SelectedDeviceUpdateNote", "ClusterStatus",
+        // --allow-ui-effects.
+        "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
+        // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
+        // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
+        "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path).
         "F5VoicesShared", "F5AddVoiceProblem",
+        // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
+        // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
+        // couldn't add a model (never the typed name or file path).
+        "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -138,7 +147,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
     /// ("SmartHomeUpdate-0" reads "Update: Home Assistant Core 2026.9.3 → 2026.9.4");
     /// Companion › Voice's starter voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is;
-    /// never the names of the owner's own recordings);
+    /// never the names of the owner's own recordings); each character's detail line in Companion › Character › Your characters
+    /// ("CharacterModelState-builtin" reads "Live2D. Part of Martlet on every computer. Shown on this PC.",
+    /// "CharacterModelState-0123456789abcdef" reads "VRM, 12.4 MB. Added on desktop-a 10/2/2026. Copying to this PC..."; never
+    /// the character's name);
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
     /// the paired computers a job can be handed to ("HostChoice-speaking-gpu-pc" reads "gpu-pc: Runs F5 (f5tts-v1-base).")
     /// and why none are listed or which can't run it ("HostChoices-speaking", "HostChoicesUnable-speaking"); Home's items
@@ -159,7 +171,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text); and the Copy button
     /// on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a click; never the
     /// text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "StepDetail-", "StepState-", "Step-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "CharacterModelState-", "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-"];

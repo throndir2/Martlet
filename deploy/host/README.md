@@ -109,8 +109,8 @@ it sets `MARTLET_LOCK_WAIT` (30 minutes) so it queues behind that change and the
 updates. Martlet never races itself: a host it is already updating by another
 route (an *Update host* run window, a command from another computer, keeping
 this PC's own host service current) is left to that run, so its own update is
-never reported as "busy", and a host found up to date loses any earlier
-"waiting to update" note.
+never reported as "busy", and once a host is found up to date an earlier
+"waiting to update" note on its card says it is updated.
 
 ### One change at a time
 
@@ -458,6 +458,10 @@ what* shows which computer handles each job:
   holds by SHA-256 (the recording itself only when the host lacks it); its 24 kHz mono
   PCM16 plays like any other voice. The original recording may be moved or deleted after
   adding it.
+- Hosts also keep a copy of the character models you add (`character-models.json` and
+  `character-model-chunk-<sha256>.bin` beside `host.json`), only so each of your Martlet
+  desktops can copy them; a host shows no character. See
+  [shared character models](../../docs/CLUSTER.md#the-shared-character-models).
 - Handing a job to a host detaches the replaced cloud key (it is listed for removal
   in Setup, never silently deleted); handing the job back reattaches it. Jobs on the
   same host share that host's one pairing.

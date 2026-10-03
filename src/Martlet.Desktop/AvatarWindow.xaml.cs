@@ -18,6 +18,7 @@ public partial class AvatarWindow : ThemedWindow
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
     private readonly SpeechCaptions? captions;
+    private readonly Func<AvatarProfile, CancellationToken, Task<(AvatarProfile Profile, string? Note)>>? share;
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private Guid profileId;
@@ -25,8 +26,11 @@ public partial class AvatarWindow : ThemedWindow
     private bool busy;
     private bool renderingDraft = true;
 
+    /// <summary><paramref name="share"/> adds a chosen model file to the owner's shared characters and returns the profile
+    /// that shows Martlet's copy, with a note for the owner.</summary>
     internal AvatarWindow(AvatarController controller, AvatarProfileStore profiles,
-        ISetupService settings, SetupOperationRunner operations, SpeechCaptions? captions = null)
+        ISetupService settings, SetupOperationRunner operations, SpeechCaptions? captions = null,
+        Func<AvatarProfile, CancellationToken, Task<(AvatarProfile Profile, string? Note)>>? share = null)
     {
         InitializeComponent();
         this.controller = controller;
@@ -34,6 +38,7 @@ public partial class AvatarWindow : ThemedWindow
         this.settings = settings;
         this.operations = operations;
         this.captions = captions;
+        this.share = share;
         ShowSpeechDisplay();
         if (captions is not null) captions.Changed += ShowSpeechDisplay;
         SpeechBubbleChoice.IsEnabled = SubtitleChoice.IsEnabled = captions is not null;
@@ -192,12 +197,12 @@ public partial class AvatarWindow : ThemedWindow
     private async void Show_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
         if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
-        var selected = Selected() with { ResourceRevision = null };
+        var (selected, note) = await ShareAsync(Selected() with { ResourceRevision = null });
         if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
         else revision = await profiles.SaveAsync(selected, revision, lifetime.Token);
         ResultText.Text = "Opening the character...";
         await controller.ShowAsync(selected, lifetime.Token);
-        ResultText.Text = controller.Status;
+        ResultText.Text = controller.Status + (note is null ? "" : "\n" + note);
         if (controller.Capabilities is { } capabilities)
         {
             TargetChoice.ItemsSource = capabilities.Parameters;
@@ -284,9 +289,25 @@ public partial class AvatarWindow : ThemedWindow
     private async void Save_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
         if (controller.IsActive) throw new InvalidOperationException("Hide the character before saving new settings.");
-        revision = await profiles.SaveAsync(Selected(), revision, lifetime.Token);
-        ResultText.Text = "Avatar settings saved.";
+        var (selected, note) = await ShareAsync(Selected());
+        revision = await profiles.SaveAsync(selected, revision, lifetime.Token);
+        ResultText.Text = "Avatar settings saved." + (note is null ? "" : " " + note);
     });
+
+    /// <summary>Adds a chosen model file to the owner's shared characters and switches the path to Martlet's copy (the same
+    /// files), so the owner's other computers get it too.</summary>
+    private async Task<(AvatarProfile Profile, string? Note)> ShareAsync(AvatarProfile selected)
+    {
+        if (share is null || BuiltInSelected) return (selected, null);
+        var (shared, note) = await share(selected, lifetime.Token);
+        if (shared.ModelPath != selected.ModelPath)
+        {
+            renderingDraft = true;
+            try { ModelPathText.Text = shared.ModelPath; }
+            finally { renderingDraft = false; }
+        }
+        return (shared, note);
+    }
 
     private async void Export_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {

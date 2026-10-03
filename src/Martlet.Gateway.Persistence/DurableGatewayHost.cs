@@ -386,6 +386,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachSpeakingVoiceStorage(storage);
     }
 
+    /// <summary>Keeps the character models, and their pieces, paired desktops share through this host in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachCharacterModels(IGatewayCharacterModelStorage storage)
+    {
+        RequireOpen();
+        server!.AttachCharacterModelStorage(storage);
+    }
+
     /// <summary>Keeps the shared Home Assistant connection paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachHomeAssistant(IGatewayHomeAssistantStorage storage)
     {

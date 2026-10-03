@@ -99,6 +99,7 @@ public partial class MainWindow
                 networkJoins = [];
                 networkCheckedAt = DateTimeOffset.Now;
                 LogNetworkPicture(before);
+                ObserveHostReleases(watched.Views);
                 return;
             }
             NetworkSyncResult result;
@@ -154,6 +155,7 @@ public partial class MainWindow
             networkCheckedAt = DateTimeOffset.Now;
             foreach (var line in result.Events) ErrorLog.Info("Martlet network: " + line);
             LogNetworkPicture(state);
+            ObserveHostReleases(result.Views);
             var messages = result.Events.ToList();
             foreach (var stale in networkPreapproved.Where(p => p.Value <= DateTimeOffset.Now).Select(p => p.Key).ToArray())
                 networkPreapproved.Remove(stale);

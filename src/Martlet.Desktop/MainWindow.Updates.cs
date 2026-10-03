@@ -44,21 +44,22 @@ public partial class MainWindow
     private static IReadOnlyList<string> ThisPcHostIds(IEnumerable<PairedHost> hosts) =>
         hosts.Where(h => h.Method == HostSetupMethod.ThisPcDocker).Select(h => h.HostId).ToList();
 
-    /// <summary>A host was updated (or found current) by any route: its retry and the note about an earlier try go away; true
-    /// when there was one.</summary>
-    private bool HostUpdateSettled(string key)
+    /// <summary>A host runs this PC's release (<paramref name="version"/>, default this PC's), updated by any route or found so by
+    /// a check (<paramref name="seen"/>): its retry goes and a note about an earlier try says it is updated; true when anything
+    /// changed.</summary>
+    private bool HostUpdateSettled(string key, string? version = null, bool seen = false)
     {
-        var changed = hostUpdates.Settled(key, ThisPcHostIds(homeHosts));
+        var changed = hostUpdates.Current(key, version ?? Version, DateTime.Now, seen, ThisPcHostIds(homeHosts));
         if (hostUpdates.Waiting.Count == 0) hostRetryAt = null;
         return changed;
     }
 
     /// <summary>A check found a host running this PC's version: unless a route is updating it right now, a stale "waiting to
-    /// update" note and retry go away (and the Devices map shows it).</summary>
+    /// update" note says it is updated and its retry goes (and the Devices map shows it).</summary>
     private void HostFoundCurrent(string key, string? version)
     {
         if (version is null || AppVersions.IsOlder(version, Version) || hostUpdates.IsUpdating(key)) return;
-        if (HostUpdateSettled(key) && DevicesPage.IsVisible) RenderMap();
+        if (HostUpdateSettled(key, version, seen: true) && DevicesPage.IsVisible) RenderMap();
     }
 
     /// <summary>For an Update run from another window (Manage host): marks that host as being updated, so Martlet's automatic
@@ -538,7 +539,7 @@ public partial class MainWindow
                 if (!AppVersions.IsOlder(check.MartletVersion, Version))
                 {
                     current++;
-                    if (!hostUpdates.IsUpdating(key)) hostUpdates.Settled(key, thisPcIds);
+                    if (!hostUpdates.IsUpdating(key)) hostUpdates.Current(key, check.MartletVersion ?? Version, DateTime.Now, seen: true, thisPcIds);
                     continue;
                 }
                 // Another route of this Martlet updates it right now; a second run would only find the host locked by it.
@@ -573,7 +574,7 @@ public partial class MainWindow
                 if (service is not null && !AppVersions.IsOlder(service, Version))
                 {
                     current++;
-                    if (!hostUpdates.IsUpdating(ThisPcHostId)) hostUpdates.Settled(ThisPcHostId);
+                    if (!hostUpdates.IsUpdating(ThisPcHostId)) hostUpdates.Current(ThisPcHostId, service, DateTime.Now, seen: true);
                 }
                 else if (service is not null && hostUpdates.IsUpdating(ThisPcHostId)) already++;
                 else if (service is not null && (!automatic || hostUpdateAttempts.Add(attempt)))
@@ -677,7 +678,7 @@ public partial class MainWindow
                 return HostUpdateResult.Busy;
             }
             hostUpdates.Note(id, code == 0
-                ? $"Updated to Martlet {Version} at {DateTime.Now:t}."
+                ? $"{HostUpdateTracker.UpdatedNote}{Version} at {DateTime.Now:t}."
                 : "The update needs your attention on that computer. Press Update host to finish it.");
             return code == 0 ? HostUpdateResult.Updated : HostUpdateResult.Failed;
         }
