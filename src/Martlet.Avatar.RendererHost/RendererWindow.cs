@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Martlet.Avatar.Hosting;
+using Martlet.Avatar.RendererHost.Logging;
 using Martlet.Presentation;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
@@ -18,6 +19,9 @@ namespace Martlet.Avatar.RendererHost;
 internal sealed class RendererWindow : Window
 {
     private readonly Stream input, output;
+    // Menu choices Martlet itself carries out (hide, open, talk, settings); null when started without it (tests).
+    private readonly Stream? requests;
+    private readonly SemaphoreSlim requesting = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
     private readonly Dictionary<string, AvatarAsset> resources = new(StringComparer.Ordinal);
     // Composition avoids the child-HWND airspace/opacity of the ordinary WPF WebView2.
@@ -27,7 +31,7 @@ internal sealed class RendererWindow : Window
         IsHitTestVisible = false,
         Focusable = false
     };
-    private readonly Grid viewport = new() { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
+    private readonly CharacterViewport viewport = new() { Background = Brushes.Transparent, Cursor = Cursors.SizeAll };
     private readonly Popup speechBubble = new()
     {
         AllowsTransparency = true, Placement = PlacementMode.Absolute, Focusable = false, IsHitTestVisible = false,
@@ -52,10 +56,11 @@ internal sealed class RendererWindow : Window
     private readonly RendererFailureLatch failure = new();
     private string? userData;
 
-    internal RendererWindow(Stream input, Stream output)
+    internal RendererWindow(Stream input, Stream output, Stream? requests = null)
     {
         this.input = input;
         this.output = output;
+        this.requests = requests;
         Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("pack://application:,,,/Martlet.Avatar.RendererHost;component/Themes/Controls.xaml")
@@ -77,10 +82,10 @@ internal sealed class RendererWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         PlaceOnDesktop();
 
-        // Show/hide and reset-position controls live in the main Martlet window; the overlay shows only the character.
+        // The main Martlet window also shows, hides and resets the character; the overlay shows only the character and its menu.
         AutomationProperties.SetAutomationId(viewport, "MoveAvatar");
         AutomationProperties.SetName(viewport,
-            "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for zoom and reset options.");
+            "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom, position and hide options.");
         viewport.Children.Add(browser);
         var loading = new TextBlock
         {
@@ -102,13 +107,13 @@ internal sealed class RendererWindow : Window
             e.Handled = true;
             Zoom(e.Delta > 0 ? ZoomStep : 1 / ZoomStep, e.GetPosition(viewport));
         };
-        viewport.ContextMenu = CreateZoomMenu();
+        viewport.ContextMenu = CreateCharacterMenu();
         PreviewKeyDown += (_, e) =>
         {
             var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
             switch (e.Key)
             {
-                case Key.Escape: Close(); break;
+                case Key.Escape: Request("hide"); break;
                 case Key.Left: Left -= step; break;
                 case Key.Right: Left += step; break;
                 case Key.Up: Top -= step; break;
@@ -130,6 +135,7 @@ internal sealed class RendererWindow : Window
             lifetime.Cancel();
             input.Dispose();
             output.Dispose();
+            requests?.Dispose();
             browser.Dispose();
         };
     }
@@ -286,27 +292,83 @@ internal sealed class RendererWindow : Window
         viewport.ReleaseMouseCapture();
     }
 
-    private ContextMenu CreateZoomMenu()
+    // Martlet's own actions first (they go to Martlet over the request pipe), then the overlay's view, then Hide.
+    private ContextMenu CreateCharacterMenu()
     {
-        MenuItem Item(string header, string id, string gesture, Action action)
+        MenuItem Item(string header, string id, string? gesture, Action action)
         {
-            var item = new MenuItem { Header = header, InputGestureText = gesture };
+            var item = new MenuItem { Header = header, InputGestureText = gesture ?? "" };
             AutomationProperties.SetAutomationId(item, id);
-            item.Click += (_, _) => action();
+            item.Click += (_, _) =>
+            {
+                CloseMenu(item);
+                action();
+            };
             return item;
         }
-        var zoomIn = Item("Zoom _in", "ZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
-        var zoomOut = Item("Zoom _out", "ZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
-        var reset = Item("_Reset zoom", "ResetZoom", "0", ResetZoom);
-        var home = Item("Reset _position and size", "ResetPosition", "Home", ResetToDefault);
-        var menu = new ContextMenu { Items = { zoomIn, zoomOut, reset, new Separator(), home } };
+        // A menu opened through UI Automation stays open on its own (see CharacterViewport), so a choice closes it here.
+        static void CloseMenu(MenuItem item)
+        {
+            if (item.Parent is ContextMenu { IsOpen: true } owner) owner.IsOpen = false;
+        }
+        var talk = Item("_Talk to Martlet", "CharacterTalk", null, () => Request("talk"));
+        var open = Item("Open _Martlet", "CharacterOpenMartlet", null, () => Request("open"));
+        var settings = Item("Character _settings", "CharacterSettings", null, () => Request("settings"));
+        var zoomIn = Item("Zoom _in", "CharacterZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
+        var zoomOut = Item("Zoom _out", "CharacterZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
+        var reset = Item("_Reset zoom", "CharacterResetZoom", "0", ResetZoom);
+        var home = Item("Reset _position and size", "CharacterResetPosition", "Home", ResetToDefault);
+        var onTop = new MenuItem { Header = "_Keep on top", IsCheckable = true, IsChecked = Topmost };
+        AutomationProperties.SetAutomationId(onTop, "CharacterOnTop");
+        onTop.Checked += (_, _) => Topmost = true;
+        onTop.Unchecked += (_, _) => Topmost = false;
+        onTop.Click += (_, _) => CloseMenu(onTop);
+        var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
+        var menu = new ContextMenu
+        {
+            Items = { talk, open, settings, new Separator(), zoomIn, zoomOut, reset, home, onTop, new Separator(), hide }
+        };
+        AutomationProperties.SetAutomationId(menu, "CharacterMenu");
+        AutomationProperties.SetName(menu, "Character");
+        menu.Closed += (_, _) => menu.StaysOpen = false;
         menu.Opened += (_, _) =>
         {
+            // Until Martlet has loaded the character there is no one to ask; Hide still closes the overlay then.
+            talk.IsEnabled = open.IsEnabled = settings.IsEnabled = CanRequest;
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
             reset.IsEnabled = !IsDefaultZoom;
+            onTop.IsChecked = Topmost;
         };
         return menu;
+    }
+
+    private bool CanRequest => requests is { CanWrite: true } && activation != Guid.Empty && !closed && !failure.Failed;
+
+    /// <summary>Asks Martlet to carry out a menu choice. Hiding goes through Martlet so it stops the character cleanly (and
+    /// its buttons and tray say so); if Martlet can't be asked, the overlay just closes.</summary>
+    private async void Request(string action)
+    {
+        if (!CanRequest)
+        {
+            if (action == "hide") Close();
+            return;
+        }
+        try
+        {
+            await requesting.WaitAsync(lifetime.Token);
+            try
+            {
+                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message("request", activation, new RendererRequest(action)),
+                    lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            }
+            finally { requesting.Release(); }
+        }
+        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
+        {
+            ErrorLog.Warn($"The character's '{action}' choice couldn't reach Martlet.", error);
+            if (action == "hide" && !closed) Close();
+        }
     }
 
     private void DragCharacter(object sender, MouseButtonEventArgs e)

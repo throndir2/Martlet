@@ -58,8 +58,8 @@ internal sealed class LiveConversationConfiguration
         MaxOutputTokens = 4096, MaxContextTokens = 98_304 + 4096, MaxEvents = 4094,
         FirstDeltaTimeout = TimeSpan.FromMinutes(2), IdleTimeout = TimeSpan.FromMinutes(2), MaxRequestTime = TimeSpan.FromMinutes(2)
     };
-    /// <summary>The LLM bounds for a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers). Its max_tokens
-    /// also covers a reasoning model's hidden thinking, which streams one small event per token, so the reply budget, event
+    /// <summary>The LLM bounds for a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers) or a paired host's
+    /// Ollama. Its max_tokens (num_predict) also covers a reasoning model's hidden thinking, which streams one small event per token, so the reply budget, event
     /// count and stream size are the contract's largest; otherwise thinking used up the reply after a few words.</summary>
     internal static TextGenerationLimits ChatTextLimits { get; } = DefaultTextLimits with
     {
@@ -106,10 +106,11 @@ internal sealed class LiveConversationConfiguration
         Fallback = settings.ThinkingFallback is { } fallback &&
             !fallback.Same(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)) ? fallback : null;
         LocalOllama = MainWindow.IsLocalOllama(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+        var thinkingRoute = Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)?.RouteType;
         TextLimits = LocalOllama
             ? LocalOllamaTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? LocalOllamaTextLimits.MaxOutputTokens }
-            : IsChat(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm))
-                ? ChatTextLimits with { MaxOutputTokens = Generation?.MaxReplyTokens ?? GenerationSettings.ChatReplyTokens }
+            : GenerationSupport.BudgetIncludesThinking(thinkingRoute)
+                ? ChatTextLimits with { MaxOutputTokens = GenerationSupport.ReplyTokens(thinkingRoute, Generation) }
                 : DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
     }
 

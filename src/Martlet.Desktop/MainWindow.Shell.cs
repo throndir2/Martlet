@@ -158,6 +158,8 @@ public partial class MainWindow
             }
         }
         ApplyRole();
+        RenderBackground();
+        if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
     }

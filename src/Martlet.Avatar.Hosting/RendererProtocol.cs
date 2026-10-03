@@ -22,6 +22,15 @@ public sealed record RendererBubble(string Placement, double Left, double Top, d
 /// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed camera) or "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
 /// <summary>
+/// Something chosen on the character overlay's menu that Martlet itself carries out, sent unprompted on the renderer's
+/// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
+/// window) or show the character's "settings". Zoom, position and keep-on-top stay inside the overlay.
+/// </summary>
+public sealed record RendererRequest(string Action)
+{
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings"];
+}
+/// <summary>
 /// The overlay's size in device-independent pixels, its top relative to the top of its screen's work area (negative
 /// when it extends above the screen; null if unknown), its camera zoom, and how far the top of the character's head
 /// sits below the overlay's top edge as a fraction of its height (negative when cut off; null until reported).

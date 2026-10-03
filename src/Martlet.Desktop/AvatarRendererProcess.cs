@@ -15,6 +15,9 @@ internal interface IAvatarRenderer : IAsyncDisposable
     RendererCapabilities? Capabilities { get; }
     bool HasExited { get; }
     Task Exited { get; }
+    /// <summary>A choice from the overlay's menu for Martlet to carry out (one of <see cref="RendererRequest.Actions"/>),
+    /// raised off the UI thread.</summary>
+    event Action<string>? Requested;
     Task StartAsync(AvatarProfile profile, string revision, CancellationToken token);
     Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null);
 }
@@ -23,6 +26,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
 {
     private readonly AnonymousPipeServerStream commands = new(PipeDirection.Out, HandleInheritability.Inheritable);
     private readonly AnonymousPipeServerStream replies = new(PipeDirection.In, HandleInheritability.Inheritable);
+    // Unprompted menu choices from the overlay, kept apart from command replies so they never interleave.
+    private readonly AnonymousPipeServerStream requests = new(PipeDirection.In, HandleInheritability.Inheritable);
     private readonly SemaphoreSlim exchange = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
     private Process? process;
@@ -42,6 +47,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         }
     }
     public Task Exited { get; private set; } = Task.CompletedTask;
+    public event Action<string>? Requested;
 
     public async Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
     {
@@ -57,6 +63,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         info.ArgumentList.Add("--private-pipes");
         info.ArgumentList.Add(commands.GetClientHandleAsString());
         info.ArgumentList.Add(replies.GetClientHandleAsString());
+        info.ArgumentList.Add(requests.GetClientHandleAsString());
         job = CreateJobObjectW(IntPtr.Zero, null);
         if (job.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         var limits = new JobLimits { Basic = new() { Flags = 0x2000 } };
@@ -72,6 +79,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         }, TaskScheduler.Default);
         commands.DisposeLocalCopyOfClientHandle();
         replies.DisposeLocalCopyOfClientHandle();
+        requests.DisposeLocalCopyOfClientHandle();
         if (!AssignProcessToJobObject(job, process.Handle))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         // No browser is initialized until this handshake; the child is already job-owned.
@@ -84,6 +92,29 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             !double.IsFinite(p.Maximum) || !double.IsFinite(p.Neutral) || p.Minimum >= p.Maximum ||
             p.Neutral < p.Minimum || p.Neutral > p.Maximum))
             throw new InvalidDataException("The character renderer reported unsupported model controls.");
+        _ = Task.Run(RelayRequestsAsync);
+    }
+
+    /// <summary>Raises <see cref="Requested"/> for each menu choice the overlay sends until it closes. Anything but a known
+    /// choice for this activation ends the relay: the overlay keeps drawing, its menu just no longer reaches Martlet.</summary>
+    private async Task RelayRequestsAsync()
+    {
+        try
+        {
+            while (!disposed)
+            {
+                var message = await RendererProtocol.ReadAsync(requests, CancellationToken.None);
+                var action = message.Activation == Activation && message.Kind == "request"
+                    ? RendererProtocol.Data<RendererRequest>(message).Action : null;
+                if (action is null || !RendererRequest.Actions.Contains(action))
+                {
+                    ErrorLog.Warn("The character renderer sent an unexpected request; its menu no longer reaches Martlet.");
+                    return;
+                }
+                if (!disposed) Requested?.Invoke(action);
+            }
+        }
+        catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidDataException or JsonException) { }
     }
 
     public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token,
@@ -148,6 +179,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             running.Dispose();
             process = null;
         }
+        // Only now: the relay's read is synchronous on this pipe and returns once the renderer (its writer) has ended.
+        requests.Dispose();
         await DeleteCacheAsync(Path.Combine(Path.GetTempPath(), "Martlet.Avatar", Activation.ToString("N")));
         lifetime.Dispose();
     }

@@ -165,8 +165,8 @@ public partial class MainWindow
         const string brief = "Replies are brief";
         // Ollama on this PC gets no reply token budget unless a max reply length is set.
         var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "No maximum length is set"
-            : $"Maximum length is {settings?.MaxReplyTokens ?? GenerationSupport.DefaultReplyTokens(route?.RouteType)} tokens" +
-              (route?.RouteType == SetupRouteType.ChatCompletions ? ", including any hidden thinking" : "");
+            : $"Maximum length is {GenerationSupport.ReplyTokens(route?.RouteType, settings)} tokens" +
+              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) ? ", including any hidden thinking" : "");
         if (settings is null)
             return $"{brief}. {stop}. Other settings use the model default.";
         var parts = new List<string>();

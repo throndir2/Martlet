@@ -14,9 +14,10 @@ public sealed record GenerationSettings : IContract
     /// <summary>A safety ceiling, not how long replies are: each reply is asked to stay short (see the conversation's reply
     /// length instruction), so this only stops a runaway answer and leaves room for a reasoning model's hidden thinking.</summary>
     public const int DefaultMaxReplyTokens = 1_024;
-    /// <summary>The reply token budget on a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers) when no max
-    /// reply length is set. Their max_tokens covers a reasoning model's hidden thinking as well as the answer, so 1,024 tokens
-    /// of thinking left a few words of reply; the brevity instruction keeps the answer itself short.</summary>
+    /// <summary>The reply token budget on a cloud Chat Completions route (OpenRouter, NVIDIA Build, other servers) or a paired
+    /// host's Ollama when no max reply length is set. Their max_tokens (Ollama's num_predict) covers a reasoning model's hidden
+    /// thinking as well as the answer, so 1,024 tokens of thinking left a few words of reply; the brevity instruction keeps the
+    /// answer itself short. It is also the host gateway's largest reply budget.</summary>
     public const int ChatReplyTokens = 4_096;
     public const int MinimumReplyTokens = 16;
     public const int MaximumReplyTokens = 2_048;
@@ -131,11 +132,22 @@ public static class GenerationSupport
     public static bool SendsReplyBudget(string? chatBaseUrl, GenerationSettings? settings) =>
         settings?.MaxReplyTokens is not null || !string.Equals(chatBaseUrl, LocalOllamaChatBaseUrl, StringComparison.Ordinal);
 
+    /// <summary>Whether a route's reply token budget also pays for a thinking model's hidden reasoning: Chat Completions
+    /// max_tokens and a paired host's Ollama num_predict do; the OpenAI route only offers models that don't reason.</summary>
+    public static bool BudgetIncludesThinking(SetupRouteType? routeType) =>
+        routeType is SetupRouteType.ChatCompletions or SetupRouteType.GatewayOllama;
+
     /// <summary>The reply token budget used when no max reply length is set: <see cref="GenerationSettings.ChatReplyTokens"/>
-    /// on a Chat Completions route (its budget includes hidden reasoning), otherwise
+    /// where the budget includes hidden reasoning (<see cref="BudgetIncludesThinking"/>), otherwise
     /// <see cref="GenerationSettings.DefaultMaxReplyTokens"/>.</summary>
     public static int DefaultReplyTokens(SetupRouteType? routeType) =>
-        routeType == SetupRouteType.ChatCompletions ? GenerationSettings.ChatReplyTokens : GenerationSettings.DefaultMaxReplyTokens;
+        BudgetIncludesThinking(routeType) ? GenerationSettings.ChatReplyTokens : GenerationSettings.DefaultMaxReplyTokens;
+
+    /// <summary>The reply token budget in effect: the saved max reply length, otherwise <see cref="DefaultReplyTokens"/>. A
+    /// paired host's gateway needs it below the saved context size, so a small context keeps half of it for the prompt.</summary>
+    public static int ReplyTokens(SetupRouteType? routeType, GenerationSettings? settings) =>
+        settings?.MaxReplyTokens ?? (routeType == SetupRouteType.GatewayOllama && settings?.ContextTokens is { } context
+            ? Math.Min(DefaultReplyTokens(routeType), context / 2) : DefaultReplyTokens(routeType));
 
     /// <summary>Whether top K, min P and repetition penalty are sent to a Chat Completions server: not to OpenAI, which
     /// rejects them, nor to Ollama's OpenAI-compatible endpoint, which ignores them.</summary>
