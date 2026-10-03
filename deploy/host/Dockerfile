@@ -38,6 +38,7 @@ COPY deploy/host /opt/martlet/host
 # gpt-sovits: workers/gpt-sovits/host/Dockerfile; audio2face's local engine: workers/audio2face/Dockerfile).
 COPY workers/f5 /opt/martlet/source/workers/f5
 COPY workers/xtts /opt/martlet/source/workers/xtts
+COPY workers/chatterbox /opt/martlet/source/workers/chatterbox
 COPY workers/gpt-sovits /opt/martlet/source/workers/gpt-sovits
 COPY workers/audio2face /opt/martlet/source/workers/audio2face
 RUN chmod 0755 /opt/martlet/host/martlet-host && ln -s /opt/martlet/host/martlet-host /usr/local/bin/martlet-host

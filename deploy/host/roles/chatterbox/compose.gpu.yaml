@@ -1,0 +1,10 @@
+# Added by martlet-host: the chatterbox role runs on this host's NVIDIA GPU (needs Docker's NVIDIA support).
+services:
+  chatterbox:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]

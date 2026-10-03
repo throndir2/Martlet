@@ -56,7 +56,8 @@ public partial class MainWindow
         if (ThisPcHost() is { } thisPc && hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers is { } offers)
         {
             if (offers.GetValueOrDefault(HostRoles.Ollama) is { } model) loads.Add(new($"Ollama {model}", ListeningAdvisor.OllamaModelGb(model)));
-            if (offers.ContainsKey(HostRoles.F5)) loads.Add(new("the F5 voice", 3));
+
+
             if (offers.ContainsKey(HostRoles.Xtts)) loads.Add(new("the XTTS voice", 3));
             if (offers.ContainsKey(HostRoles.GptSovits)) loads.Add(new("the GPT-SoVITS voice", 3));
             if (offers.ContainsKey(HostRoles.Audio2Face)) loads.Add(new("Audio2Face lip-sync", 5));

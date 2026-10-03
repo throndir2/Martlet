@@ -18,7 +18,7 @@ public partial class MainWindow
     private SoundPlayer? voicePlayer;
     private bool retiredSampleChecked;
 
-    /// <summary>Which self-hosted engine speaks: F5-TTS, XTTS-v2 or GPT-SoVITS (<see cref="SpeechEngines"/>). All use the voices below.
+    /// <summary>Which self-hosted engine speaks: Chatterbox Turbo (default), F5-TTS, XTTS-v2 or GPT-SoVITS (<see cref="SpeechEngines"/>). All use the voices below.
     /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
     /// role there first, after showing what it needs and its licence); otherwise the choice is used the next time Speaking
     /// goes to a computer. Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>.</summary>
@@ -31,7 +31,10 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(choice, "SpeakingEngine");
         foreach (var engine in SpeechEngines.All)
         {
-            var item = new ComboBoxItem { Content = $"{engine.Name}: {engine.Summary}", Tag = engine.Key };
+            var item = new ComboBoxItem
+            {
+                Content = $"{engine.Name}{(engine == SpeechEngines.Default ? " (recommended)" : "")}: {engine.Summary}", Tag = engine.Key
+            };
             AutomationProperties.SetAutomationId(item, "SpeakingEngine-" + engine.Key);
             choice.Items.Add(item);
             if (engine == current) choice.SelectedItem = item;
@@ -46,11 +49,21 @@ public partial class MainWindow
                 : $"{current.Name} speaks on {host}. Its model licence: {current.WeightsLicense}.",
             new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(status, "SpeakingEngineStatus");
+        var sounds = current.Tags.Where(t => t.Kind == VoiceTagKind.Sound).Select(t => t.Text).ToArray();
+        var tones = current.Tags.Where(t => t.Kind == VoiceTagKind.Emotion).Select(t => t.Text).ToArray();
+        var tags = Note(current.SupportsTags
+                ? $"{current.Name} makes sounds in replies ({string.Join(" ", sounds)})" +
+                  (tones.Length > 0 ? $" and changes tone ({string.Join(" ", tones)})" : "") +
+                  ". The conversation model is told to use them sparingly; they never show in the chat or captions."
+                : $"{current.Name} reads words only; sound tags such as [laugh] are removed before it speaks.",
+            new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(tags, "SpeakingEngineTags");
         return Card(Heading("Voice engine"),
-            Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. XTTS-v2 starts speaking sooner; " +
-                "F5-TTS often sounds closer to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording. " +
-                "The F5-TTS and XTTS-v2 models are for non-commercial use only; GPT-SoVITS's are MIT.", new Thickness(0, 0, 0, 8)),
-            choice, status);
+            Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. Chatterbox Turbo (MIT licence) " +
+                "can laugh, sigh and change tone and needs recordings longer than 5 seconds; XTTS-v2 starts speaking sooner; F5-TTS " +
+                "often sounds closest to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording. " +
+                "The F5-TTS and XTTS-v2 models are for non-commercial use only; Chatterbox's and GPT-SoVITS's are MIT.", new Thickness(0, 0, 0, 8)),
+            choice, status, tags);
     }
 
     private async Task SelectSpeakingEngineAsync(SpeechEngine engine, string? host)
@@ -256,6 +269,9 @@ public partial class MainWindow
             }
             if (voice.Rights.ProcessingDestinationId != destination)
                 throw new InvalidOperationException($"Add '{voice.PresetName}' again for the computer that will speak it.");
+            var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId) ?? SpeakingEngineChoice.Current;
+            if (SpeechEngines.ReferenceProblem(engine, voice.AudioFormat.DurationMilliseconds) is { } problem)
+                throw new InvalidOperationException($"{problem} Add another recording of '{voice.PresetName}' or choose another engine.");
             var reference = await F5Voices.ApplyAsync(store.DataDirectory, voice, token);
             if (f5 is not null)
             {

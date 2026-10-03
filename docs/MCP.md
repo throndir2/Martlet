@@ -193,17 +193,31 @@ there and the applied voice (an included key, `own`, `retired-sample` or null).
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
 records (an included key, `own`, `retired-sample` or null), plus `engine` (the
-self-hosted voice engine whose route it records: `f5`, `xtts` or `gpt-sovits`), `host` and
-`model` for a host route. `engines` lists the [voice engines](XTTS_VOICE.md)
-(`key`, `name`, `hostRole`, `routeId`, `path`, `model`, `weightsLicence`,
-`minimumGpuMemoryGb`, `minimumReferenceMs`, `maximumReferenceMs`, `summary`; [GPT-SoVITS](GPT_SOVITS_VOICE.md)
-clones only 3,000-10,000 ms recordings), each included voice adds `engines` (the
-engines that can clone it) and `language` (`en` or `ja`, read from its transcript),
-and `chosenEngine` is the engine chosen on this
-desktop (`speaking-engine.txt`, default `f5`). After the desktop
+self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts` or `gpt-sovits`), `host` and
+`model` for a host route. `engines` lists the voice engines
+([Chatterbox Turbo](CHATTERBOX_VOICE.md), [F5-TTS](F5_VOICE.md),
+[XTTS-v2](XTTS_VOICE.md), [GPT-SoVITS](GPT_SOVITS_VOICE.md); `key`, `name`,
+`hostRole`, `routeId`, `path`, `model`, `weightsLicence`, `minimumGpuMemoryGb`,
+`minimumReferenceMs`, `maximumReferenceMs`, `summary`, `default` (true for
+Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
+syntax, `kind` `Sound` or `Emotion` and `usage`; Chatterbox clones only
+recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each included
+voice adds `engines` (the engines that can clone it) and `language` (`en` or
+`ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
+desktop (`speaking-engine.txt`, default `chatterbox`). After the desktop
 loads settings, a route or applied voice that was `retired-sample` reads the
 default key. It never returns own voices' names, transcripts or audio, plays
 nothing and contacts nothing.
+
+`voice_tags` shows how a reply's [voice tags](CONVERSATION.md#voice-tags) are
+handled: `text` (required) is a reply, `engine` an engine key (default the
+default engine, `chatterbox`; `none` for a voice without tags such as OpenAI or
+Windows) and optional `dataDirectory` whose saved prompt edits are used. It
+returns the engine, `supportsTags`, its `tags`, `prompt` (the *Voice sounds and
+tones* instructions the Thinking model gets, or null), `spoken` (the pieces the
+real speech segmenter hands that engine, its own tags kept), `suppressedPieces`
+and `shown` (the chat and caption text, every tag stripped). It synthesizes and
+contacts nothing.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
@@ -737,9 +751,11 @@ voice list and need `--allow-ui-effects`; Play plays audio and is not for
 automated verification. `f5_voices` reads the same list headlessly.
 
 Above the voices, the Voice engine card's `SpeakingEngine` combo box reads the
-chosen engine ("XTTS-v2: Starts speaking before a sentence is finished ...";
-options `SpeakingEngine-f5`, `SpeakingEngine-xtts` and `SpeakingEngine-gpt-sovits`) and
-`SpeakingEngineStatus` says where it speaks and its model licence. Choosing
+chosen engine ("Chatterbox Turbo (recommended): Clones the voice and can laugh
+...", the default; options `SpeakingEngine-chatterbox`, `SpeakingEngine-f5`,
+`SpeakingEngine-xtts` and `SpeakingEngine-gpt-sovits`), `SpeakingEngineStatus`
+says where it speaks and its model licence and `SpeakingEngineTags` lists the
+engine's sound and tone tags (or says it reads words only). Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a
 confirmation). `f5_voices` returns the same choice as `chosenEngine`.

@@ -13,7 +13,8 @@ Voice Library window never reached a voice route, so it was removed. The
 working voice library is F5's: Companion > Voice > Voices adds recordings with
 their transcripts and rights, plays them, switches the active voice in one click
 and removes voices, keeping Martlet's own copy of each recording. Other engines
-add to that one list when they run: [XTTS-v2](XTTS_VOICE.md) and
+add to that one list when they run: [Chatterbox Turbo](CHATTERBOX_VOICE.md) (the
+default engine, with sound and tone tags), [XTTS-v2](XTTS_VOICE.md) and
 [GPT-SoVITS](GPT_SOVITS_VOICE.md) now do, chosen on
 Companion > Voice > Voice engine (`Martlet.Core.Settings.SpeechEngines`). The existing OpenAI conversation and F5
 route retain their current boundaries.
@@ -62,7 +63,7 @@ Repository license/activity was read from GitHub on 2026-10-02:
 | GPT-SoVITS | MIT / MIT (v2Pro pair and auxiliary models: MIT/Apache-2.0; fastText LID CC-BY-SA-3.0) | Active (2026-08) | **Added** as the `gpt-sovits` host role ([GPT-SoVITS](GPT_SOVITS_VOICE.md)): good for anime-style voices from a 3-10 s reference; streams each sentence as it is generated. One-minute fine-tunes remain VS05. |
 | Seed-VC | GPL-3.0 | **Archived** (2025-04) | Voice conversion, not TTS: needs another TTS first and adds latency. Not added. |
 
-"ElevenLabs-Clone" is a third-party demo app, not a model. Chatterbox (MIT)
+"ElevenLabs-Clone" is a third-party demo app, not a model. Chatterbox Turbo (MIT) is now **added** as the `chatterbox` host role and Martlet's default cloning engine ([Chatterbox Turbo](CHATTERBOX_VOICE.md)): it clones from a >5 s reference and speaks inline tags such as `[laugh]` and `[sigh]`. Chatterbox (MIT)
 and Qwen3-TTS (Apache-2.0) remain the permissive cloning targets above.
 Every candidate needs the same GPU host and VRAM as F5, so switching engines
 alone would not fix host/Docker/network failures; intermittent F5 silence after

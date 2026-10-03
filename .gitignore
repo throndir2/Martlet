@@ -6,6 +6,6 @@ TestResults/
 *.suo
 artifacts/
 
-# Python bytecode caches (workers/f5)
+# Python bytecode caches (workers/f5, workers/chatterbox)
 __pycache__/
 *.pyc
