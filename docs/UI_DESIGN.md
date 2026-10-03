@@ -392,7 +392,7 @@ window ends it.
     9. *Memory*: whether memory is on, and *Manage memory* for its facts.
   - **What it does**: how it answers and acts: *Replies* (generation
     settings, and *Thinking steps*: whether a reasoning model thinks before it
-    answers), *Tools* (the MCP servers Martlet may call while you talk, whether
+    answers, Off by default), *Tools* (the MCP servers Martlet may call while you talk, whether
     each runs without asking, and recent tool use) and *Smart home*.
 
   A page gets its own entry only if it has its own **Where it runs** choice,

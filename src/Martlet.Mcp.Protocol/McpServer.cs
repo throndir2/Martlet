@@ -436,9 +436,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
         Tool("thinking_steps_check", "Companion > Replies > Thinking steps (whether a reasoning model thinks before it answers) as " +
-            "replies use it, from a data directory: the saved choice (Default, Off or On), the Thinking route, how it takes the choice " +
+            "replies use it, from a data directory: the choice replies use (thinkingSteps Off or On; Off unless On is chosen) and " +
+            "whether one was chosen, the Thinking route, how it takes the choice " +
             "(control, use) and exactly what its replies send (sends), and what every kind of route sends for Off and On. Then the " +
-            "production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned reply, NOT AI) for each choice. With " +
+            "production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned reply, NOT AI) for Off, On and the " +
+            "model's own default (sent only after a model refused the choice). With " +
             "live: true it also asks Ollama on this PC (the saved local Thinking model, or model) a fixed question, never anything the " +
             "owner said, with the model's default and with Off: the production adapter's reply and first-words time, and one plain " +
             "request each showing how much Ollama thought first. Loopback only; reads no credentials.", new

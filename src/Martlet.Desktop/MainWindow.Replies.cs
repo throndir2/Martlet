@@ -58,14 +58,15 @@ public partial class MainWindow
             "left out once a conversation outgrows it. Larger sizes send more with each reply, which costs more on paid providers.", true)
     ];
 
-    /// <summary>Companion › Replies › Thinking steps: each choice and the saved <see cref="GenerationSettings.Reasoning"/>.</summary>
-    private static readonly IReadOnlyList<(string Name, bool? Value)> ThinkingChoices = [("Default", null), ("Off", false), ("On", true)];
-    private const string ThinkingRange = "Default, Off or On";
+    /// <summary>Companion › Replies › Thinking steps: each choice and what it saves as <see cref="GenerationSettings.Reasoning"/>.
+    /// Off is the default: it saves nothing (null), and a saved false from earlier versions also reads as Off.</summary>
+    private static readonly IReadOnlyList<(string Name, bool? Value)> ThinkingChoices = [("Off", null), ("On", true)];
+    private const string ThinkingRange = "Off (default) or On";
     private const string ThinkingHelp = "Reasoning models think step by step before they answer. Off skips that, so replies start " +
-        "sooner. On asks for it. Default leaves it to the model.";
+        "sooner. On asks for it, which can help with hard questions but waits seconds before the first word. A model that always " +
+        "thinks refuses Off; Martlet then uses the model's own default.";
 
-    private static int ThinkingIndex(bool? reasoning) =>
-        Math.Max(0, ThinkingChoices.Select(c => c.Value).ToList().IndexOf(reasoning));
+    private static int ThinkingIndex(bool? reasoning) => GenerationSettings.ThinkingSteps(new() { Reasoning = reasoning }) ? 1 : 0;
 
     private void RenderRepliesTab(Panel page)
     {
@@ -224,7 +225,8 @@ public partial class MainWindow
                 $"Used by {place}. If replies fail after changing it, update the host to this Martlet version.",
             GenerationSettingUse.Used => $"Used by {place}.",
             GenerationSettingUse.ServerDependent =>
-                $"Depends on the model at {place}: a model that can't turn thinking off or on may ignore it or fail. If replies fail, choose Default.",
+                $"Depends on the model at {place}: a model that can't turn thinking off or on may ignore it or refuse it; Martlet " +
+                "then uses the model's own default.",
             _ => $"Not used: {place}'s models here answer without thinking first."
         };
 
@@ -260,10 +262,12 @@ public partial class MainWindow
         // Ollama on this PC gets no reply token budget unless a max reply length is set.
         var stop = settings?.MaxReplyTokens is null && IsLocalOllama(route) ? "No maximum length is set"
             : $"Maximum length is {GenerationSupport.ReplyTokens(route?.RouteType, settings)} tokens" +
-              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) && settings?.Reasoning != false ? ", including any hidden thinking" : "");
-        var thinking = settings?.Reasoning switch { false => "Thinking steps are off. ", true => "Thinking steps are on. ", _ => "" };
+              (GenerationSupport.BudgetIncludesThinking(route?.RouteType) ? ", including any hidden thinking" : "");
+        // Thinking steps is Off unless On is chosen; routes whose models don't reason don't mention it.
+        var thinking = route is not null && GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) ==
+            GenerationSettingUse.Unused ? "" : GenerationSettings.ThinkingSteps(settings) ? "Thinking steps are on. " : "Thinking steps are off. ";
         if (settings is null)
-            return $"{brief}. {stop}. Other settings use the model default.";
+            return $"{brief}. {stop}. {thinking}Other settings use the model default.";
         var parts = new List<string>();
         foreach (var setting in ReplySettings.Skip(1))
             if (setting.Read(settings) is { } value)

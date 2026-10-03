@@ -166,7 +166,7 @@ internal sealed class LiveConversationConfiguration
         string? Model(SetupRole role) => Routes.FirstOrDefault(route => route.Role == role && route.Enabled == true)?.ModelId;
         var parts = new List<string>();
         if (Model(SetupRole.Llm) is { } llm)
-            parts.Add("Thinking " + llm + (Generation?.Reasoning is { } steps ? $" (thinking steps {(steps ? "on" : "off")})" : ""));
+            parts.Add("Thinking " + llm + $" (thinking steps {(GenerationSettings.ThinkingSteps(Generation) ? "on" : "off")})");
         if (Model(SetupRole.Tts) is { } tts) parts.Add("voice " + tts);
         if (spokenInput && Model(SetupRole.Stt) is { } stt) parts.Add("speech-to-text " + stt);
         return parts.Count == 0 ? null : string.Join(", ", parts);
@@ -473,12 +473,12 @@ internal sealed class LiveConversationConfiguration
         throw new LiveActionException("conversation.input_limit");
     }
 
-    /// <summary>The generation settings a reply sends. A paired host's Ollama loads at most
-    /// <see cref="GenerationSettings.MaximumHostContextTokens"/>, so a larger saved context size is sent capped.</summary>
-    internal GenerationSettings? ReplyGeneration =>
+    /// <summary>The generation settings a reply sends, with Thinking steps resolved (unset is Off). A paired host's Ollama loads
+    /// at most <see cref="GenerationSettings.MaximumHostContextTokens"/>, so a larger saved context size is sent capped.</summary>
+    internal GenerationSettings ReplyGeneration => GenerationSettings.WithReasoning(
         Generation is { ContextTokens: > GenerationSettings.MaximumHostContextTokens } &&
         Routes.SingleOrDefault(r => r.Role == SetupRole.Llm)?.RouteType == SetupRouteType.GatewayOllama
-            ? Generation with { ContextTokens = Context.Tokens } : Generation;
+            ? Generation with { ContextTokens = Context.Tokens } : Generation);
 
     private static string? Join(params string?[] parts) =>
         parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
@@ -563,7 +563,7 @@ internal sealed class LiveConversationConfiguration
     /// a host's Ollama does not reload the model between the reply and this request, and the same Thinking steps choice.</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
         new(input, TextSelection(), TextLimits, Turn(false), null, ChatTarget(), HostTarget(),
-            generation: GenerationSettings.Normalize(new() { ContextTokens = ReplyGeneration?.ContextTokens, Reasoning = ReplyGeneration?.Reasoning }),
+            generation: GenerationSettings.Normalize(new() { ContextTokens = ReplyGeneration.ContextTokens, Reasoning = ReplyGeneration.Reasoning }),
             fallback: TextFallback());
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
