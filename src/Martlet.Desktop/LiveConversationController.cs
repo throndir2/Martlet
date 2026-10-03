@@ -75,6 +75,10 @@ internal sealed class LiveConversationOperation
     internal CaptureRun? Capture => Volatile.Read(ref capture);
     internal ConversationTurn? Turn => Volatile.Read(ref turn);
     internal TranscriptionResult? Transcription { get; set; }
+    /// <summary>When each step before the reply happened (<see cref="ReplyTimeline"/>), for the desktop log's reply latency line.</summary>
+    [JsonIgnore] internal ReplyTimeline? LatencyTimeline { get; set; }
+    /// <summary>The controller-clock timestamp the reply's turn started at (0 until it starts).</summary>
+    [JsonIgnore] internal long ReplyStartedAt { get; set; }
     [JsonIgnore] internal string? Transcript { get; set; }
     /// <summary>What the user said, kept only while Thinking may hear it (never saved); null otherwise.</summary>
     [JsonIgnore] internal BoundedWaveAudio? Recording { get; set; }
@@ -182,6 +186,8 @@ internal sealed class LiveConversationOperation
     internal void ReleasePress()
     {
         Interlocked.Exchange(ref releasedPress, 1);
+        // Push-to-talk's wait counts from letting go of the talk button.
+        LatencyTimeline?.Restart(ReplyTimeline.YouLetGo);
         if (!Authorization.IsCanceled) _ = Capture?.ReleaseAsync();
     }
     internal void Cancel(string code)
@@ -478,7 +484,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
-        BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null)
+        BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
+        ReplyTimeline? timeline = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -511,8 +518,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen,
-                PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim()
+                PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(),
+                LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
+                    : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
             };
+            // What was heard waited (to be collected, for more words or for the app slot) until now.
+            timeline?.Mark("waiting to answer");
             active = operation;
             var worker = operations.TryStart(async token =>
             {
@@ -655,6 +666,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 listening.BeginTranscribing();
                 utterance.Hearing = false;
                 utterance.TalkingOver = false;
+                if (!listening.Options.Pc)
+                {
+                    // An utterance that ran to the recording limit has no detected end: count from now.
+                    utterance.LatencyTimeline ??= new ReplyTimeline(clock, ReplyTimeline.YouStopped);
+                    utterance.LatencyTimeline.Mark("recording");
+                }
                 var previous = pending;
                 pending = Task.Run(() => TranscribeHeardAsync(previous, listening, utterance, speech, token), CancellationToken.None);
             }
@@ -697,7 +714,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     private static HeardSpeech Result(LiveConversationOperation utterance) => new(utterance.Status,
         utterance.Status.Code == "listen.heard" ? utterance.Transcript : null, utterance.Transcription?.Confidence, utterance.Heard,
-        utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null);
+        utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null,
+        utterance.LatencyTimeline);
 
     // Voice ID, then speech-to-text, one utterance after another (so what you said stays in order) while the next is recorded.
     private async Task TranscribeHeardAsync(Task previous, LiveListener listening, LiveConversationOperation utterance, byte[] speech,
@@ -710,6 +728,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             try { audio = Screen(utterance, speech); }
             finally { CryptographicOperations.ZeroMemory(speech); }
             if (audio is null) return;
+            if (utterance.Voiceprint is not null) utterance.LatencyTimeline?.Mark("Voice ID");
             // Never longer than the upload's own 30 s deadline, even if a native boundary ignores it.
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
@@ -725,7 +744,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 else Interlocked.CompareExchange(ref transcribing, null, utterance);
             }
             if (result is null) return;
+            utterance.LatencyTimeline?.Mark("speech-to-text");
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
+            if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
             utterance.Transcript = result.Text;
             if (listening.Options.Hear) utterance.Recording = audio;
             utterance.Publish(new("listen.heard", Finished: true));
@@ -994,10 +1015,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 var audio = await CaptureAsync(operation).ConfigureAwait(false);
                 if (audio is null) return new(SetupWorkOutcome.Completed);
+                operation.LatencyTimeline?.Mark("recording");
                 var result = await TranscribeAsync(operation, audio, transcription, worker).ConfigureAwait(false);
                 if (result is null)
                     return new(operation.Transcription?.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
+                operation.LatencyTimeline?.Mark("speech-to-text");
                 operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
+                if (operation.Recognition is not null) operation.LatencyTimeline?.Mark("voice recognition");
                 operation.Transcript = result.Text;
                 if (operation.Authorization.Hear) operation.Recording = audio;
                 input = new(result.Text!);
@@ -1030,6 +1054,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
             // Keeps Smart home's list of locks, doors and garages current before the model may call Home Assistant's tools.
             if (smartHome is { ModelToolsEnabled: true } safety) await safety.RefreshSafetyAsync(worker).ConfigureAwait(false);
+            operation.LatencyTimeline?.Mark("preparing");
 
             // What the PC played is never the user: memory, tools and Home Assistant only go by the user's own words, and a
             // message that is only what the PC played gets none of them.
@@ -1042,8 +1067,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Authorization.Check(worker);
                 await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
                 operation.MemoryStoreRevision = memoryResult?.StoreRevision;
+                operation.LatencyTimeline?.Mark("memory");
             }
             var lore = await ScanLoreAsync(operation, input!.UserText, history, persona, worker).ConfigureAwait(false);
+            if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, only for the user's own turns and routes that do function calling.
             DesktopToolset? toolset = null;
@@ -1054,6 +1081,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 toolset = await tools.PrepareAsync(worker).ConfigureAwait(false);
                 operation.Authorization.Check(worker);
                 operation.Toolset = toolset;
+                operation.LatencyTimeline?.Mark("tools");
             }
 
             // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync). When the
@@ -1069,6 +1097,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     operation.Publish(new("home.asking"));
                     home = await house.HandleAsync(own, worker, configured.Prompts).ConfigureAwait(false);
                     operation.Authorization.Check(worker);
+                    operation.LatencyTimeline?.Mark("Home Assistant");
                 }
                 operation.HomeSummary = home.Summary;
                 operation.Publish(new(home.Code));
@@ -1115,6 +1144,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 RecordLore(operation, lore, usedLore);
                 operation.Authorization.BindInput(request.Input, request.Limits.MaxToolRounds, request.ImageOptional);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
+                operation.ReplyStartedAt = clock.GetTimestamp();
+                operation.LatencyTimeline?.Mark("building the request", operation.ReplyStartedAt);
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
             }
@@ -1724,6 +1755,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         }
                         if (accepted < 0) accepted = Onset();
                         operation.Hearing = true;
+                        if (!operation.Listening.Pc)
+                        {
+                            // The speech ended where the silence began; the detector noticed after the end-of-speech pause.
+                            var now = clock.GetTimestamp();
+                            var silence = (long)((index - detector.SpeechEndFrame) * 0.02 * clock.TimestampFrequency);
+                            operation.LatencyTimeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, now - Math.Max(0, silence));
+                            operation.LatencyTimeline.Mark("end of speech", now);
+                        }
                         await run.ReleaseAsync().ConfigureAwait(false);
                         return Range(accepted, detector.SpeechEndFrame);
                     }

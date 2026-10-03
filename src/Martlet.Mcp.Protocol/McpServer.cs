@@ -53,6 +53,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             lines = new { type = "integer", minimum = 1, maximum = LogTimeline.MaximumLines },
             dataDirectory = new { type = "string" }
         }),
+        Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
+            "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +
+            "speech-to-text, preparing, Thinking connection, hidden reasoning, first sentence, voice synthesis, speakers...), the " +
+            "median and 90th percentile of the total and of each step, the slowest steps and the models used. Read-only; starts " +
+            "no audio, network or provider request.", new
+        {
+            replies = new { type = "integer", minimum = 1, maximum = LatencyReport.MaximumReplies },
+            dataDirectory = new { type = "string" }
+        }),
 
         Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
         {
@@ -352,10 +361,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
-            "only the voice stopped and the captions showed the whole reply. Loopback only; reads no credentials.", new
+            "only the voice stopped and the captions showed the whole reply. With reasoningMs the fixture first streams hidden " +
+            "reasoning and waits that long before the words; with voiceDelayMs the fixture voice takes that long to make each " +
+            "piece. latency returns the reply's step timings and the desktop log's reply latency line for it, parsed back as " +
+            "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). " +
+            "Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
-            failAt = new { type = "integer", minimum = 1, maximum = 4 }
+            failAt = new { type = "integer", minimum = 1, maximum = 4 },
+            reasoningMs = new { type = "integer", minimum = 0, maximum = 5000 },
+            voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -465,6 +480,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
                 "logs_timeline" => LogTimeline.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "level"),
                     OptionalString(arguments, "component"), OptionalString(arguments, "contains"), OptionalInt(arguments, "lines")),
+                "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
@@ -509,7 +525,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
-                    OptionalInt(arguments, "failAt"), cancellation),
+                    OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
+                    OptionalInt(arguments, "voiceDelayMs")),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
