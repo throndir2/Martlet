@@ -1433,7 +1433,9 @@ public sealed class LiveConversationTests
         await Until(() => fixture.Output.Starts > 0 && fixture.Output.Samples > 0);
         release.SetResult();
         await fixture.Finish(operation);
-        Assert.Equal(ConversationState.Partial, operation.Turn!.Snapshot.State);
+        // A voice cut off partway leaves the reply complete; only the voice stopped.
+        Assert.Equal(ConversationState.Completed, operation.Turn!.Snapshot.State);
+        Assert.True(operation.Turn.Snapshot.SpeechFailed);
         Assert.Equal(ProviderFailureCode.ResponseTruncated, operation.Turn.Snapshot.ProviderFailure);
         Assert.True(operation.Turn.Snapshot.MayHavePlayed);
         Assert.Equal("Hello fixture.", operation.Turn.Content.Text);
@@ -1449,7 +1451,8 @@ public sealed class LiveConversationTests
         await using var fixture = await LiveFixture.Create(new ControlledDevice { PaddingError = ErrorCode.AudioDeviceLost });
         var operation = fixture.Start(voice: true);
         await fixture.Finish(operation);
-        Assert.Equal(ConversationState.Partial, operation.Turn!.Snapshot.State);
+        Assert.Equal(ConversationState.Completed, operation.Turn!.Snapshot.State);
+        Assert.Equal(ConversationFailure.PlaybackFailed, operation.Turn.Snapshot.SpeechFailure);
         Assert.Equal("Hello fixture.", operation.Turn.Content.Text);
         Assert.Equal(1, fixture.Output.Opens);
         Assert.Equal("private-output-id", fixture.Output.Selection!.EndpointId);

@@ -1,0 +1,238 @@
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using Martlet.Audio;
+using Martlet.Conversation;
+using Martlet.Core.Audio;
+using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
+using Martlet.Providers;
+
+namespace Martlet.Mcp;
+
+/// <summary>spoken_reply_check: a spoken reply whose voice fails partway, rehearsed end to end with the production conversation
+/// runtime (ConversationRuntime, the Chat Completions adapter, the host voice stream and the playback sink). A fixture Chat
+/// Completions endpoint on 127.0.0.1 streams a canned reply (NOT AI) one sentence at a time, like OpenRouter; a fixture Martlet
+/// host voice (a quiet tone, NOT AI) fails on the failAt-th piece it is asked to say the way a paired host's worker does
+/// (server: worker.failed, unavailable: worker.unavailable, stall: no audio until the voice's time runs out); a fixture speaker
+/// opens no device and plays nothing. The reply's whole text must still arrive and the turn complete; only the voice stops.</summary>
+internal static class SpokenReplyCheck
+{
+    internal static readonly string[] Failures = ["server", "unavailable", "stall", "none"];
+    private const string Model = "fixture-model";
+    private const string VoiceModel = "chatterbox-turbo";
+    private static readonly string[] Sentences =
+    [
+        "Hey, you made it back. ", "I was just thinking about you. ", "Want to tell me how your day went? ",
+        "I'll be right here, listening."
+    ];
+    private static readonly TimeSpan SentenceGap = TimeSpan.FromMilliseconds(300);
+
+    internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, CancellationToken cancellation)
+    {
+        var failure = voiceFailure ?? "server";
+        if (!Failures.Contains(failure)) throw new ArgumentException($"'voiceFailure' must be one of {string.Join(", ", Failures)}.");
+        var at = failAt ?? 1;
+        if (at is < 1 or > 4) throw new ArgumentException("'failAt' must be 1 through 4.");
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        var serving = ServeAsync(listener, stop.Token);
+        try
+        {
+            var voice = new Voice(failure, at);
+            var speakers = new Speakers();
+            var preset = Guid.NewGuid();
+            var target = new HostSpeechTarget("https://127.0.0.1:9443", "fixture-host", "sha256:" + new string('0', 64),
+                "desktop-fixture", Guid.NewGuid(), VoiceModel, preset, new string('0', 64));
+            // The desktop's own voice bounds (10 s per piece, 20 s each), shortened for a stalled voice so the check is quick.
+            var limits = new SpeechSynthesisLimits
+            {
+                MaxAudioBytes = 480_000, MaxAudioDuration = TimeSpan.FromSeconds(10),
+                FirstAudioTimeout = TimeSpan.FromSeconds(failure == "stall" ? 3 : 20),
+                MaxRequestTime = TimeSpan.FromSeconds(failure == "stall" ? 4 : 20)
+            };
+            var speech = new SpeechOutput(new SpeechSynthesisSelection(SelfHostSetup.GatewayF5Alias, VoiceModel, preset.ToString("N"),
+                SpeechOutputFormat.Pcm24KhzMono16Le), new OutputSelection(OutputPolicy.DefaultAtStart), limits);
+            var request = new ConversationRequest(new BoundedTextInput("Say hi.", "Fixture check."),
+                new TextModelSelection(ChatCompletionsSetup.Alias, Model), new TextGenerationLimits(),
+                new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
+                speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: target);
+            await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice);
+            var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
+            var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
+            await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+            var text = turn.Content.Text;
+            var served = string.Concat(Sentences);
+            var full = text == served;
+            var expected = failure switch
+            {
+                "server" => ProviderFailureCode.Server,
+                "unavailable" => ProviderFailureCode.ModelNotFound,
+                _ => (ProviderFailureCode?)null
+            };
+            var voiceOk = failure == "none"
+                ? !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls > 0
+                : terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls >= at &&
+                  (expected is null || terminal.ProviderFailure == expected && terminal.FailedProvider == ProviderRole.Tts);
+            return new
+            {
+                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk,
+                voiceFailure = failure,
+                failAt = failure == "none" ? (int?)null : at,
+                endpoint = baseUrl,
+                reply = new
+                {
+                    state = terminal.State.ToString(),
+                    failure = terminal.Failure.ToString(),
+                    textComplete = terminal.TextComplete,
+                    fullText = full,
+                    characters = text.Length,
+                    servedCharacters = served.Length,
+                    text
+                },
+                voice = new
+                {
+                    stopped = terminal.SpeechFailed,
+                    why = terminal.SpeechFailure.ToString(),
+                    provider = terminal.ProviderFailure?.ToString(),
+                    failedJob = terminal.FailedProvider?.ToString(),
+                    piecesAsked = voice.Calls,
+                    piecesSpoken = voice.Spoken,
+                    speechLimitReached = terminal.SpeechLimitReached,
+                    speakerOpens = speakers.Opens,
+                    samplesPlayed = speakers.Samples,
+                    mayHavePlayed = terminal.MayHavePlayed
+                }
+            };
+        }
+        finally
+        {
+            stop.Cancel();
+            listener.Stop();
+            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+        }
+    }
+
+    // Streams the canned reply one sentence at a time with a pause between, the way a cloud model streams it.
+    private static async Task ServeAsync(TcpListener listener, CancellationToken cancellation)
+    {
+        while (!cancellation.IsCancellationRequested)
+        {
+            using var client = await listener.AcceptTcpClientAsync(cancellation);
+            await using var stream = client.GetStream();
+            _ = await HearingCheck.ReadRequestAsync(stream, cancellation);
+            await WriteAsync(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+                cancellation);
+            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
+            for (var i = 0; i < Sentences.Length; i++)
+            {
+                if (i > 0) await Task.Delay(SentenceGap, cancellation);
+                var role = i == 0 ? "\"role\":\"assistant\"," : "";
+                await WriteAsync(stream, "data: " + chunk + "\"delta\":{" + role + "\"content\":" + JsonSerializer.Serialize(Sentences[i]) +
+                    "},\"finish_reason\":null}]}\n\n", cancellation);
+            }
+            await WriteAsync(stream, "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", cancellation);
+        }
+    }
+
+    private static async Task WriteAsync(NetworkStream stream, string text, CancellationToken cancellation)
+    {
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(text), cancellation);
+        await stream.FlushAsync(cancellation);
+    }
+
+    private sealed class Voice(string failure, int failAt) : IHostSpeechClient
+    {
+        private int calls, spoken;
+        internal int Calls => Volatile.Read(ref calls);
+        internal int Spoken => Volatile.Read(ref spoken);
+
+        public async IAsyncEnumerable<byte[]> StreamAsync(HostSpeechTarget target, BoundedSpeechInput input, CorrelationIds ids,
+            long epoch, DateTimeOffset deadline, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref calls);
+            await Task.Delay(50, cancellationToken);
+            if (call == failAt)
+            {
+                // What the desktop's host client throws for the gateway's worker.failed and worker.unavailable.
+                if (failure == "server") throw new HostTextException(ProviderFailureCode.Server);
+                if (failure == "unavailable") throw new HostTextException(ProviderFailureCode.ModelNotFound);
+                if (failure == "stall") await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            // FIXTURE, NOT AI: a quarter second of a quiet 220 Hz tone per piece, written only to the fixture speaker.
+            var pcm = new byte[6_000 * 2];
+            for (var i = 0; i < pcm.Length / 2; i++)
+                BitConverter.TryWriteBytes(pcm.AsSpan(i * 2), (short)(Math.Sin(2 * Math.PI * 220 * i / 24_000.0) * 3000));
+            yield return pcm;
+            Interlocked.Increment(ref spoken);
+        }
+    }
+
+    // Takes every sample at once and opens no device: nothing is played.
+    private sealed class Speakers : IPlaybackDeviceFactory
+    {
+        private long samples;
+        private int opens;
+        internal long Samples => Interlocked.Read(ref samples);
+        internal int Opens => Volatile.Read(ref opens);
+
+        public IPlaybackDevice Open(OutputSelection selection, PcmFormat format, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref opens);
+            return new Speaker(this, format);
+        }
+
+        private sealed class Speaker(Speakers owner, PcmFormat format) : IPlaybackDevice
+        {
+            public PlaybackDeviceInfo Info => new(format.SampleRate, format.Channels, 16, DeviceSampleEncoding.IntegerPcm,
+                format.SampleRate / 20, false);
+            public int GetPadding(CancellationToken cancellationToken) => 0;
+            public int Write(ReadOnlySpan<byte> pcm, CancellationToken cancellationToken)
+            {
+                var written = pcm.Length / format.BlockAlignment;
+                Interlocked.Add(ref owner.samples, written);
+                return written;
+            }
+            public void Start(CancellationToken cancellationToken) { }
+            public void StopAndReset() { }
+            public void Dispose() { }
+        }
+    }
+
+    private sealed class NoCredentials : IProviderCredentialSource
+    {
+        public ValueTask<BoundProviderCredential?> ResolveAsync(ProviderCredentialBinding binding, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<BoundProviderCredential?>(null);
+    }
+
+    // Allows exactly what was asked, bound to the fixture endpoint and fixture host, as the desktop's own authorization does.
+    private sealed class Permissions(Uri baseUri, HostSpeechTarget voice) : IConversationAuthorizationSource
+    {
+        public ValueTask<AuthorizedTextOperation?> AuthorizeTextAsync(TextAuthorizationAction action, CancellationToken cancellationToken)
+        {
+            var until = Until(action.Context.Deadline);
+            return ValueTask.FromResult<AuthorizedTextOperation?>(new(new TextDisclosureAuthorization(
+                new(baseUri, ProviderRole.Llm, action.Model.UpstreamModelId), action.Model, action.Context.Ids, action.Context.Epoch,
+                action.Limits, until, true, true), new(action.Budget, until)));
+        }
+
+        public ValueTask<AuthorizedSpeechOperation?> AuthorizeSpeechAsync(SpeechAuthorizationAction action, CancellationToken cancellationToken)
+        {
+            var until = Until(action.Context.Deadline);
+            return ValueTask.FromResult<AuthorizedSpeechOperation?>(new(new SpeechDisclosureAuthorization(
+                HostSpeechSynthesisStream.Binding(voice), action.Selection, action.Input, action.Context.Ids, action.Context.Epoch,
+                action.Limits, until, true, true, true), new(action.Budget, until)));
+        }
+
+        private static DateTimeOffset Until(DateTimeOffset deadline)
+        {
+            var cap = DateTimeOffset.UtcNow.AddSeconds(30);
+            return deadline < cap ? deadline : cap;
+        }
+    }
+}
