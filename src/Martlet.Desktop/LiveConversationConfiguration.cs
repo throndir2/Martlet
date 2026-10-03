@@ -148,6 +148,18 @@ internal sealed class LiveConversationConfiguration
 
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
 
+    /// <summary>Which Thinking model, voice and speech-to-text a reply used, for the desktop log's reply latency line (model IDs
+    /// only), or null when none is set.</summary>
+    internal string? LatencyModels(bool spokenInput)
+    {
+        string? Model(SetupRole role) => Routes.FirstOrDefault(route => route.Role == role && route.Enabled == true)?.ModelId;
+        var parts = new List<string>();
+        if (Model(SetupRole.Llm) is { } llm) parts.Add("Thinking " + llm);
+        if (Model(SetupRole.Tts) is { } tts) parts.Add("voice " + tts);
+        if (spokenInput && Model(SetupRole.Stt) is { } stt) parts.Add("speech-to-text " + stt);
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
     private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
     private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
     private static bool IsHostVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayF5;

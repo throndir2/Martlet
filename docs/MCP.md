@@ -824,6 +824,54 @@ paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
 only the beginning was spoken.* under the reply.
 
+With `reasoningMs` (0-5000) the fixture endpoint first streams a hidden
+reasoning delta (as OpenRouter streams a reasoning model's thinking) and waits
+that long before the words; with `voiceDelayMs` (0-5000) the fixture voice
+takes that long to make each piece. `latency` returns the reply's step timings
+(`timings`: Thinking request, response headers, first reasoning, first piece,
+voice request, first voice audio, first piece made and how much speech it held,
+playback start; plus `firstWordsMs` and `firstAudioMs`), the desktop log's
+reply latency line for this reply (`line`, counted from sending the message)
+and that line read back as `latency_report` reads it (`totalMs`, `steps`,
+`stepsSumMs`, `missingSteps`). With `voiceFailure` `none`, `ok` also needs
+every step from *Thinking authorization* to *speakers*, the steps adding up to
+the total within a millisecond each, *hidden reasoning* at least 80% of
+`reasoningMs` and *voice synthesis* at least 80% of `voiceDelayMs`. For
+example `{"name":"spoken_reply_check","arguments":{"voiceFailure":"none",
+"reasoningMs":600,"voiceDelayMs":400}}` returned *hidden reasoning 590* and
+*voice synthesis 469* out of 1,215 ms.
+
+### Latency
+
+Every reply writes one *Reply latency* line to the desktop log: how long from
+when you stopped talking (always listening), let go of the talk button or sent
+your message to the first audio (or the first words when nothing was spoken),
+then each step in parentheses, each the wait that ended there, so they add up
+to the total: *end of speech*, *recording*, *Voice ID*, *speech-to-text*,
+*voice recognition*, *waiting to answer*, *preparing*, *memory*, *lore*,
+*tools*, *Home Assistant*, *building the request*, *Thinking authorization*,
+*Thinking connection*, *Thinking before reasoning* and *hidden reasoning* (or
+*Thinking first words* when no reasoning was streamed), *first sentence*,
+*voice authorization*, *voice synthesis*, *playback start* and *speakers*
+(steps that didn't happen are left out). It goes on with the time to the first
+words and audio from the reply's start, the number of spoken pieces, how much
+speech the first piece held and how long it took to make, and the model IDs
+(`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
+is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
+
+`latency_report` reads those lines from a data directory's desktop log (with
+its rotated copies; optional absolute `dataDirectory`, default the current
+user's) for the newest `replies` (1-500, default 20) and returns `measured`
+(lines with steps), `legacy` (older lines that only gave the first words and
+audio from the reply's start), `firstAudio` (from the moment that counts for
+you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
+Median, P90, Min, Max}` in ms), `steps` (the same for every step),
+`slowestSteps` (the five with the largest median) and `newest` (each reply's
+`at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
+`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `models`,
+`interrupted`, `legacy`). It only reads the log: no audio, network or provider
+request.
+
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,
@@ -1674,9 +1722,9 @@ back too; Martlet left out N line(s) of it.* once a line the PC played repeated
 what you said; what the PC played shows in
 `LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
-verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words
-after … ms, first audio after … ms* line to the desktop log, which `logs_tail`
-returns.
+verifying on a desktop whose sound must not be captured. Each reply writes a
+*Reply latency* line to the desktop log (see [Latency](#latency)), which
+`logs_tail` returns and `latency_report` summarizes.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership
@@ -1782,7 +1830,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status` and `voices_engine_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
