@@ -154,6 +154,12 @@
           "Martlet.Gateway": "[0.6.0, )"
         }
       },
+      "martlet.gateway.gptsovits": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway.F5": "[0.6.0, )"
+        }
+      },
       "martlet.gateway.ollama": {
         "type": "Project",
         "dependencies": {

@@ -51,15 +51,18 @@ internal static class F5Voices
 
     /// <summary>The voice F5 speaks with when the owner has not picked one for <paramref name="destination"/>: the applied or
     /// most recent voice already chosen for it, otherwise <see cref="F5BundledVoices.Default"/> (a female voice). The retired
-    /// F5-TTS example clip is never chosen this way.</summary>
-    internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token)
+    /// F5-TTS example clip is never chosen this way, nor a recording <paramref name="engine"/> cannot clone (GPT-SoVITS needs
+    /// 3-10 seconds).</summary>
+    internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token,
+        SpeechEngine? engine = null)
     {
         using var store = Open(dataDirectory);
         var inspection = store.Inspect();
         return inspection.Presets
                 .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
                 .OfType<F5ReferenceSnapshot>()
-                .Where(s => !IsRetiredSample(s))
+                .Where(s => !IsRetiredSample(s) &&
+                    (engine is null || SpeechEngines.ReferenceProblem(engine, s.AudioFormat.DurationMilliseconds) is null))
                 .OrderByDescending(s => s.PresetId == inspection.AppliedPresetId)
                 .ThenByDescending(s => s.CreatedAtUtc)
                 .FirstOrDefault()

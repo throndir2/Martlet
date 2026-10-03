@@ -18,7 +18,7 @@ public partial class MainWindow
     private SoundPlayer? voicePlayer;
     private bool retiredSampleChecked;
 
-    /// <summary>Which self-hosted engine speaks: F5-TTS or XTTS-v2 (<see cref="SpeechEngines"/>). Both use the voices below.
+    /// <summary>Which self-hosted engine speaks: F5-TTS, XTTS-v2 or GPT-SoVITS (<see cref="SpeechEngines"/>). All use the voices below.
     /// Choosing another engine while a computer speaks hands Speaking to that engine on the same computer (installing its
     /// role there first, after showing what it needs and its licence); otherwise the choice is used the next time Speaking
     /// goes to a computer. Readable as <c>SpeakingEngine</c> and <c>SpeakingEngineStatus</c>.</summary>
@@ -47,8 +47,9 @@ public partial class MainWindow
             new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(status, "SpeakingEngineStatus");
         return Card(Heading("Voice engine"),
-            Note("Both engines copy a voice from the same recordings, on an NVIDIA graphics card. XTTS-v2 starts speaking sooner; " +
-                "F5-TTS often sounds closer to the recording. Both models are for non-commercial use only.", new Thickness(0, 0, 0, 8)),
+            Note("Every engine copies a voice from the same recordings, on an NVIDIA graphics card. XTTS-v2 starts speaking sooner; " +
+                "F5-TTS often sounds closer to the recording; GPT-SoVITS suits anime-style voices and needs a 3-10 second recording. " +
+                "The F5-TTS and XTTS-v2 models are for non-commercial use only; GPT-SoVITS's are MIT.", new Thickness(0, 0, 0, 8)),
             choice, status);
     }
 
@@ -81,11 +82,20 @@ public partial class MainWindow
     {
         var f5 = route?.RouteType == SetupRouteType.GatewayF5 ? route : null;
         var destination = f5?.GatewaySnapshot?.DestinationId ?? F5Destination;
+        // The engine that speaks (or will): some clone only recordings of certain lengths (GPT-SoVITS: 3-10 seconds).
+        var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot?.RouteId) ?? SpeakingEngineChoice.Current;
+        string? Cannot(int milliseconds) => SpeechEngines.ReferenceProblem(engine, milliseconds);
+        string Language(string transcript) => engine == SpeechEngines.GptSovits
+            ? SpeechEngines.ReferenceLanguage(transcript) == "ja" ? " Japanese recording." : " English recording."
+            : "";
         var stack = new List<UIElement>
         {
             Heading("Voices"),
-            Note("F5 copies a voice from a short recording. Use an included voice or add your own; recordings stay on this PC and go only " +
-                "to the computer that speaks." + (f5 is null ? " The chosen voice will be used when F5 speaks." : ""),
+            Note($"{engine.Name} copies a voice from a short recording" +
+                (engine.MinimumReferenceMilliseconds > 1_000 || engine.MaximumReferenceMilliseconds < 30_000
+                    ? $" of {engine.MinimumReferenceMilliseconds / 1000}-{engine.MaximumReferenceMilliseconds / 1000} seconds" : "") +
+                ". Use an included voice or add your own; recordings stay on this PC and go only " +
+                "to the computer that speaks." + (f5 is null ? $" The chosen voice will be used when {engine.Name} speaks." : ""),
                 new Thickness(0, 0, 0, 10))
         };
         IReadOnlyList<F5ReferenceSnapshot> voices = [];
@@ -121,9 +131,14 @@ public partial class MainWindow
             {
                 var stored = voices.FirstOrDefault(v => F5Voices.Bundled(v) == bundled);
                 var inUse = stored is not null && stored.PresetId == chosen;
-                stack.Add(VoiceRow(bundled.Name, bundled.Description, inUse, mark, bundled.Key, status: true,
+                int length;
+                try { length = bundled.Check().DurationMilliseconds; }
+                catch (F5Exception) { length = 0; }
+                var cannot = Cannot(length);
+                stack.Add(VoiceRow(bundled.Name, bundled.Description + (cannot is null ? Language(bundled.Transcript) : " " + cannot),
+                    inUse, mark, bundled.Key, status: true,
                     () => PlayVoiceAsync(stored, bundled.Name, bundled), () => UseVoiceAsync(stored, bundled),
-                    stored is null || inUse || stored.PresetId == applied ? null : () => RemoveVoiceAsync(stored)));
+                    stored is null || inUse || stored.PresetId == applied ? null : () => RemoveVoiceAsync(stored), cannot));
             }
         }
 
@@ -131,12 +146,14 @@ public partial class MainWindow
         foreach (var voice in own)
         {
             var inUse = voice.PresetId == chosen;
+            var cannot = Cannot(voice.AudioFormat.DurationMilliseconds);
             var detail = F5Voices.IsRetiredSample(voice)
                 ? "This old sample is no longer included. Switch to another voice, then remove it."
-                : $"{voice.AudioFormat.DurationMilliseconds / 1000d:0.#} second recording, added {voice.CreatedAtUtc.ToLocalTime():d}.";
+                : $"{voice.AudioFormat.DurationMilliseconds / 1000d:0.#} second recording, added {voice.CreatedAtUtc.ToLocalTime():d}." +
+                  (cannot is null ? "" : " " + cannot);
             stack.Add(VoiceRow(voice.PresetName, detail, inUse, mark, voice.PresetId.ToString("N"), status: false,
                 () => PlayVoiceAsync(voice, voice.PresetName), () => UseVoiceAsync(voice),
-                inUse || voice.PresetId == applied ? null : () => RemoveVoiceAsync(voice)));
+                inUse || voice.PresetId == applied ? null : () => RemoveVoiceAsync(voice), cannot));
         }
         stack.Add(Row(PageButton("Add a voice...", () => AddVoiceAsync(destination).Forget(), id: "F5AddVoice")));
         return Card([.. stack]);
@@ -154,13 +171,14 @@ public partial class MainWindow
     }
 
     /// <summary>One voice: its name (with the in-use mark), a detail line, and Play, Use and (when it may go) Remove. Controls
-    /// are identified by <paramref name="key"/>; included voices' titles are also readable status (<c>F5VoiceRow-key</c>).</summary>
+    /// are identified by <paramref name="key"/>; included voices' titles are also readable status (<c>F5VoiceRow-key</c>).
+    /// <paramref name="cannot"/> says why the speaking engine cannot use it (Use is then off).</summary>
     private UIElement VoiceRow(string name, string detail, bool inUse, string mark, string key, bool status, Func<Task> play, Func<Task> use,
-        Func<Task>? remove)
+        Func<Task>? remove, string? cannot = null)
     {
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        var title = new TextBlock { Text = name + (inUse ? $"  \u00b7  {mark}" : ""), FontSize = 15, FontWeight = FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap };
+        var title = new TextBlock { Text = name + (inUse ? $"  \u00b7  {mark}" : "") + (cannot is null ? "" : "  \u00b7  wrong length for this engine"),
+            FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
         if (status) AutomationProperties.SetAutomationId(title, $"F5VoiceRow-{key}");
         text.Children.Add(title);
         text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
@@ -175,7 +193,13 @@ public partial class MainWindow
         }
         buttons.Children.Add(Small("Play", play, "Play"));
         var useButton = Small(inUse ? "In use" : "Use", use, "Use");
-        useButton.IsEnabled = !inUse;
+        useButton.IsEnabled = !inUse && cannot is null;
+        if (cannot is not null)
+        {
+            useButton.ToolTip = cannot;
+            ToolTipService.SetShowOnDisabled(useButton, true);
+            AutomationProperties.SetHelpText(useButton, cannot);
+        }
         buttons.Children.Add(useButton);
         if (remove is not null) buttons.Children.Add(Small("Remove", remove, "Remove"));
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };

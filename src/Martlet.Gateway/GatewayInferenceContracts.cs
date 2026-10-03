@@ -648,13 +648,15 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         string transcript,
         string transcriptRevision,
         byte[] referenceAudio,
-        GatewayF5TextChunk[] chunks)
+        GatewayF5TextChunk[] chunks,
+        string? referenceLanguage = null)
     {
         PresetId = presetId;
         ReferenceRevision = referenceRevision;
         ReferenceAudioSha256 = referenceAudioSha256;
         Transcript = transcript;
         TranscriptRevision = transcriptRevision;
+        ReferenceLanguage = referenceLanguage;
         this.referenceAudio = referenceAudio;
         this.chunks = chunks;
         Chunks = Array.AsReadOnly(this.chunks);
@@ -665,6 +667,8 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
     public string ReferenceAudioSha256 { get; }
     public string Transcript { get; }
     public string TranscriptRevision { get; }
+    /// <summary>The recording's language ("en" or "ja") when the client sent it; GPT-SoVITS reads the transcript in it.</summary>
+    public string? ReferenceLanguage { get; }
     public ReadOnlyMemory<byte> ReferenceAudio => referenceAudio;
     public IReadOnlyList<GatewayF5TextChunk> Chunks { get; }
 

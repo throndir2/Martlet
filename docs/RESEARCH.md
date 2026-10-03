@@ -698,7 +698,9 @@ requires isolated dependencies and its own artifact closure. XTTS-v2 now has
 one: coqui-tts 0.27.5 with hash-locked PyTorch 2.6.0 CUDA 12.4 and
 `coqui/XTTS-v2` revision `6c2b0d75...` (2026-10-02, [XTTS-v2](XTTS_VOICE.md));
 coqui-tts 0.27.5 fixed XTTS for transformers 5, but the role pins the 4.57
-line its streaming code was updated for in 0.27.3.
+line its streaming code was updated for in 0.27.3. GPT-SoVITS has one too:
+release `20250606v2pro` with the v2Pro pair from `lj1995/GPT-SoVITS` revision
+`336b2ec4...` in its own Python 3.11 image (2026-10-02, [GPT-SoVITS](GPT_SOVITS_VOICE.md)).
 
 ## S48: iOS and iPadOS platform research, 2026-09-30
 

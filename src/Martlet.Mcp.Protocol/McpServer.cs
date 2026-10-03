@@ -89,7 +89,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "each clip is checked against its SHA-256 and F5's reference rules) and the default voice; from a data directory's F5 voice " +
             "list, which included voices were added, how many of the owner's own voices there are and which voice is applied; " +
             "which voice the speaking route uses and on which self-hosted engine, host and model; and the voice engines (F5-TTS, " +
-            "XTTS-v2: host role, gateway route, model, weights licence, GPU memory) with the one chosen on this desktop " +
+            "XTTS-v2, GPT-SoVITS: host role, gateway route, model, weights licence, GPU memory, reference length bounds; each " +
+            "included voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -593,7 +594,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 {
                     key = voice.Key, name = voice.Name, female = voice.Female, cute = voice.Cute, description = voice.Description,
                     licence = voice.Licence, transcript = voice.Transcript,
-                    sha256 = voice.AudioSha256, sampleRate = format.SampleRate, durationMs = format.DurationMilliseconds, valid = true
+                    sha256 = voice.AudioSha256, sampleRate = format.SampleRate, durationMs = format.DurationMilliseconds, valid = true,
+                    // The engines that can clone this clip (GPT-SoVITS needs 3-10 s) and the language its transcript is read in.
+                    engines = Martlet.Core.Settings.SpeechEngines.All
+                        .Where(engine => Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, format.DurationMilliseconds) is null)
+                        .Select(engine => engine.Key).ToArray(),
+                    language = Martlet.Core.Settings.SpeechEngines.ReferenceLanguage(voice.Transcript)
                 };
             }
             catch (Martlet.F5.F5Exception error)
@@ -649,7 +655,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         var fallback = Martlet.F5.F5BundledVoices.Default;
-        // The self-hosted voice engines (F5-TTS, XTTS-v2) and the one chosen on this desktop (speaking-engine.txt, the file
+        // The self-hosted voice engines (F5-TTS, XTTS-v2, GPT-SoVITS) and the one chosen on this desktop (speaking-engine.txt, the file
         // Martlet.Desktop's SpeakingEngineChoice keeps; a speaking route on a host's engine wins over it).
         string? chosen = null;
         try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
@@ -658,6 +664,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             key = engine.Key, name = engine.Name, hostRole = engine.HostRoleKind, routeId = engine.RouteId, path = engine.Path,
             model = engine.DefaultModel, weightsLicence = engine.WeightsLicense, minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
+            minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
             summary = engine.Summary
         }).ToArray();
         return new

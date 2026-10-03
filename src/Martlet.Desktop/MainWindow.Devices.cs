@@ -160,7 +160,7 @@ public partial class MainWindow
     {
         "job:Llm" or "role:" + HostRoles.Ollama => "\uE82F",
         "job:Stt" or "role:" + HostRoles.Stt => "\uE720",
-        "job:Tts" or "role:" + HostRoles.F5 or "role:" + HostRoles.Xtts => "\uE767",
+        "job:Tts" or "role:" + HostRoles.F5 or "role:" + HostRoles.Xtts or "role:" + HostRoles.GptSovits => "\uE767",
         DeviceComponent.LipSync or "role:" + HostRoles.Audio2Face => "\uE76E",
         DeviceComponent.Character => "\uE77B",
         DeviceComponent.Audio => "\uE7F6",

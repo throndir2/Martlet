@@ -38,8 +38,14 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         Disclosure = F5Speaking.Disclosure + " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
     };
 
-    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS or XTTS-v2).</summary>
-    internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : F5Speaking;
+    private static readonly HostJob GptSovitsSpeaking = F5Speaking with
+    {
+        HostRoleKind = HostRoles.GptSovits, RouteId = HostRoute.GptSovitsRouteId
+    };
+
+    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS, XTTS-v2 or GPT-SoVITS).</summary>
+    internal static HostJob SpeakingFor(SpeechEngine engine) =>
+        engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : engine.Key == SpeechEngines.GptSovits.Key ? GptSovitsSpeaking : F5Speaking;
 
     internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];
 
@@ -176,7 +182,8 @@ public partial class MainWindow
             // included voice; Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5)
-                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token);
+                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token,
+                    SpeechEngines.ForRoute(job.RouteId));
             var withVoice = voice is null ? "" : $" using \"{voice.PresetName}\"";
             var changeVoice = voice is null ? "" : " You can change voices in Companion > Voice.";
             if (route is null)

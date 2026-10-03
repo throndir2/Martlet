@@ -31,10 +31,30 @@ public sealed partial class Audio2FaceHostConnection
         ids.Validate();
         if (SpeechEngines.ForRoute(route.RouteId) is not { } engine || route.Path != engine.Path)
             throw new ArgumentException("The route is not one of the host's voice engines.", nameof(route));
+        int duration;
+        try { duration = Martlet.Core.Voices.PcmWaveInfo.Inspect(reference.Audio.Span, 4 * 1024 * 1024).DurationMilliseconds; }
+        catch (Exception error) when (error is ContractException or ArgumentException or OverflowException) { duration = 0; }
+        if (SpeechEngines.ReferenceProblem(engine, duration) is { } problem)
+            throw new Audio2FaceHostException("request.invalid", problem + " Choose another voice in Companion > Voice.");
         var now = clock.GetUtcNow();
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
         if (deadline > latest) deadline = latest;
         if (deadline <= now) throw new Audio2FaceHostException("job.deadline", "No time is left for the host's voice.");
+        var payload = new Dictionary<string, object>
+        {
+            ["preset_id"] = reference.PresetId,
+            ["reference_revision"] = reference.ReferenceRevision,
+            ["reference_audio_sha256"] = reference.AudioSha256,
+            ["transcript"] = reference.Transcript,
+            ["transcript_revision"] = reference.TranscriptRevision,
+            ["reference_audio_base64"] = Convert.ToBase64String(reference.Audio.Span),
+            ["chunks"] = new[]
+            {
+                new Dictionary<string, object> { ["index"] = 0, ["chunk_id"] = "segment-0", ["text"] = ChatText(text) }
+            }
+        };
+        // GPT-SoVITS reads the recording's transcript in the recording's language.
+        if (engine == SpeechEngines.GptSovits) payload["reference_language"] = SpeechEngines.ReferenceLanguage(reference.Transcript);
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {
             ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },
@@ -44,19 +64,7 @@ public sealed partial class Audio2FaceHostConnection
             ["artifact_identity_sha256"] = route.ArtifactIdentitySha256,
             ["session_id"] = ids.SessionId, ["turn_id"] = ids.TurnId, ["request_id"] = ids.RequestId, ["epoch"] = epoch,
             ["deadline_utc"] = deadline.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-            ["payload"] = new Dictionary<string, object>
-            {
-                ["preset_id"] = reference.PresetId,
-                ["reference_revision"] = reference.ReferenceRevision,
-                ["reference_audio_sha256"] = reference.AudioSha256,
-                ["transcript"] = reference.Transcript,
-                ["transcript_revision"] = reference.TranscriptRevision,
-                ["reference_audio_base64"] = Convert.ToBase64String(reference.Audio.Span),
-                ["chunks"] = new[]
-                {
-                    new Dictionary<string, object> { ["index"] = 0, ["chunk_id"] = "segment-0", ["text"] = ChatText(text) }
-                }
-            }
+            ["payload"] = payload
         }, ChatJson);
         if (body.Length > route.MaximumRequestBytes)
             throw new Audio2FaceHostException("request.too_large", "The reference recording is too large for the host's voice route.");
