@@ -292,9 +292,9 @@ voice pipeline never waits for a whole reply:
   between sentences. A voice failure on the next sentence surfaces only when
   playback reaches it, so what is already playing finishes; then the voice
   stops for the rest of the reply while its text keeps streaming.
-- **Barge-in.** With always listening, *Let me interrupt Martlet by talking* in
-  Companion › Listening (on by default) keeps the microphone open while
-  Martlet speaks. Talking over a reply stops it: the Thinking request is
+- **Barge-in.** Optional and off by default. With always listening, ticking
+  *Let me interrupt Martlet by talking* in Companion › Listening keeps the
+  microphone open while Martlet speaks. Talking over a reply stops it: the Thinking request is
   canceled, the queued audio is dropped and what you said is answered next,
   with the reply so far kept in context. Only the microphone can do this, and
   only with a sustained voice (`TalkOverDetector`): at least a second of
@@ -308,8 +308,10 @@ voice pipeline never waits for a whole reply:
   reply; restarting a reply because you kept talking applies only before
   Martlet starts saying it. Through speakers this relies on echo reduction (on
   by default); if Martlet still stops itself, use headphones or turn the
-  choice off. With it off, listening holds off while Martlet speaks, and Stop,
-  Esc or the talk button still interrupt.
+  choice off. With it off (the default), listening holds off while Martlet
+  speaks, and Stop, Esc or the talk button still interrupt. Preferences saved
+  before barge-in became opt-in had it on only because it was the old default,
+  so it starts off once after updating; tick it again to use it.
 - **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.

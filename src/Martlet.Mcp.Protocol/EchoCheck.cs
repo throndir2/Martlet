@@ -30,11 +30,12 @@ internal static class EchoCheck
         var delay = delayMs ?? 60;
         if (delay is < 0 or > 300) throw new ArgumentException("delayMs must be 0-300.");
         var (reduceEcho, source) = ReduceEcho(dataDirectory);
+        var (bargeIn, bargeInSource) = BargeIn(dataDirectory);
         string? problem = null;
         try { WebRtcEchoCanceller.Create().Dispose(); }
         catch (Exception error) when (error is not OperationCanceledException) { problem = error.GetType().Name + ": " + error.Message; }
         if (problem is not null)
-            return new { ok = false, reduceEcho, reduceEchoSource = source, canceller = (string?)null, cancellerProblem = problem };
+            return new { ok = false, reduceEcho, reduceEchoSource = source, bargeIn, bargeInSource, canceller = (string?)null, cancellerProblem = problem };
 
         var scene = Scene.Create(delay);
         var watch = Stopwatch.StartNew();
@@ -79,6 +80,8 @@ internal static class EchoCheck
             ok,
             reduceEcho,
             reduceEchoSource = source,
+            bargeIn,
+            bargeInSource,
             canceller = "WebRTC AEC3",
             rehearsal = new
             {
@@ -123,6 +126,22 @@ internal static class EchoCheck
                 ? (value.GetBoolean(), "saved") : (true, "default");
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return (true, "default"); }
+    }
+
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): barge-in is opt-in, off unless saved on; files older than
+    // version 3 had it on only because it was the old default, so they read as off ("reset").
+    private static (bool On, string Source) BargeIn(string directory)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("BargeIn", out var value) || value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                return (false, "default");
+            var version = root.TryGetProperty("Version", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+            return version < 3 ? (false, value.GetBoolean() ? "reset" : "saved") : (value.GetBoolean(), "saved");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return (false, "default"); }
     }
 
     private static async Task<byte[]> RecordAsync(ICaptureDeviceFactory devices, CancellationToken cancellation)

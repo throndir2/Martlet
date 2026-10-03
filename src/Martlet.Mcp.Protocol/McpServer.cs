@@ -363,7 +363,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default) and whether the " +
+        Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default), the saved " +
+            "Let me interrupt Martlet by talking choice (bargeIn, opt-in and off by default) and whether the " +
             "WebRTC echo canceller loads, then a rehearsal of the production microphone path (MicrophoneCapture, EchoReducer, the " +
             "canceller) with fixture devices on a simulated clock: no microphone or speaker is opened and nothing plays. A synthesized " +
             "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
