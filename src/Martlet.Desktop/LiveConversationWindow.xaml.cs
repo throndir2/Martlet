@@ -283,7 +283,8 @@ public partial class LiveConversationWindow : ThemedWindow
         preferences = next;
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
-            before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn)
+            before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
+            before.ReduceEcho != next.ReduceEcho)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -456,7 +457,7 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn);
+        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho);
 
     // ---------- always listening ----------
 

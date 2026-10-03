@@ -396,6 +396,7 @@ public partial class MainWindow
         if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
         if (section == CompanionTab.Listening) page.Children.Add(AudioCard(output: false));
         if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
+        if (section == CompanionTab.Listening) page.Children.Add(EchoCard());
         if (section == CompanionTab.Listening) page.Children.Add(HearVoiceCard());
         if (section == CompanionTab.Listening)
             page.Children.Add(Card(Heading("Who is talking"),

@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Audio;
 using Martlet.Core.Settings;
 using Martlet.Home;
 using Martlet.Providers;
@@ -82,7 +83,8 @@ public partial class MainWindow
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
             children.Add(Note("Martlet keeps listening while it speaks; talking over it stops the reply at once and answers what you say. " +
-                "Use headphones: through speakers Martlet can hear itself and stop. Turn this off if it does.", new Thickness(0, 0, 0, 0)));
+                "With Reduce echo from my speakers on, this works through speakers too. If Martlet still stops itself, use headphones " +
+                "or turn this off.", new Thickness(0, 0, 0, 0)));
         }
 
         var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };
@@ -109,6 +111,37 @@ public partial class MainWindow
         new VoiceIdWindow(voiceIdentity, setupOperations, audioSessionEvents, homeSettings?.Audio?.Input) { Owner = this }.ShowDialog();
         RenderTab();
     }
+
+    // ---------- Listening: echo from the speakers ----------
+
+    /// <summary>Companion › Listening › Reduce echo from my speakers (on by default): while the microphone listens, Martlet also
+    /// reads what this PC plays and removes it from the microphone, so on speakers it doesn't hear its own voice, a video or music
+    /// as you talking. The status line says how the last listen went.</summary>
+    private Border EchoCard()
+    {
+        var reduce = new CheckBox { Content = "Reduce echo from my speakers", IsChecked = Talk.ReduceEcho, Margin = new Thickness(0, 0, 0, 6) };
+        AutomationProperties.SetAutomationId(reduce, "TalkReduceEcho");
+        reduce.Checked += (_, _) => { if (!Talk.ReduceEcho) SaveTalk(Talk with { ReduceEcho = true }, render: true); };
+        reduce.Unchecked += (_, _) => { if (Talk.ReduceEcho) SaveTalk(Talk with { ReduceEcho = false }, render: true); };
+        var (text, problem) = EchoStatus(Talk.ReduceEcho, conversation?.EchoReport);
+        var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
+        AutomationProperties.SetAutomationId(status, "TalkReduceEchoStatus");
+        return Card(Heading("Speakers and echo"), reduce, status,
+            Note("While the microphone listens, Martlet also hears what this PC plays (its own voice, videos, music) and removes " +
+                "that from the microphone first, so it works without headphones. That sound is only used to cancel the echo, on this " +
+                "PC; it is never saved or sent.", new Thickness(0, 0, 0, 0)));
+    }
+
+    internal static (string Text, bool Problem) EchoStatus(bool on, EchoReductionReport? report) => !on
+        ? ("Off. Through speakers, Martlet may hear its own voice and whatever this PC plays. Use headphones, or turn this on.", false)
+        : report switch
+        {
+            { State: EchoReductionState.Active, SpeakerFrames: > 0 } =>
+                ("On. The last time Martlet listened, it removed what your speakers played from the microphone.", false),
+            { State: EchoReductionState.Active } => ("On. The last time Martlet listened, your speakers were quiet.", false),
+            { State: EchoReductionState.NoSpeakerAudio or EchoReductionState.Unavailable, Problem: { } why } => (why, true),
+            _ => ("On. Martlet removes what this PC plays from the microphone whenever it listens.", false)
+        };
 
     // ---------- Listening: let Thinking hear your voice ----------
 

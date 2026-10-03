@@ -147,7 +147,7 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                 if (available == 0) return new(0);
                 if (available < 0 || available > Format.SampleRate / 10)
                     throw new CaptureDeviceException(ErrorCode.PayloadTooLarge);
-                var pointer = capture.GetBuffer(out var frames, out var flags, out var position, out _);
+                var pointer = capture.GetBuffer(out var frames, out var flags, out var position, out var timestamp);
                 try
                 {
                     if (frames < 0 || frames > Format.SampleRate / 10 || frames * Format.BlockAlignment > destination.Length)
@@ -168,7 +168,7 @@ public sealed class WasapiCaptureDeviceFactory : ICaptureDeviceFactory
                         Marshal.Copy(pointer, scratch!, 0, bytes);
                         scratch.AsSpan(0, bytes).CopyTo(destination);
                     }
-                    return new(bytes);
+                    return new(bytes, Timestamp: timestamp);
                 }
                 finally
                 {
