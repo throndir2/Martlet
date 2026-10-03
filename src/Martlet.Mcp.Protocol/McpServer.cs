@@ -100,8 +100,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
         Tool("voice_recording_check", "What Companion > Voice > Add a voice does with an audio or video file (path, read on this PC): " +
-            "whether it is readable, the kind of file, its channels and sample rate, and the mono 16-bit WAV Martlet would keep (sample " +
-            "rate, length, bytes, SHA-256, kept as is or converted), with the line Add a voice shows, or why it can't be used. Uses " +
+            "whether it is readable, the kind of file (Ogg files name their codec: OGG (Vorbis), OGG (Opus)), its channels and sample " +
+            "rate, and the mono 16-bit WAV Martlet would keep and Play plays (sample rate, length, bytes, SHA-256, peak and RMS level " +
+            "in dBFS, kept as is or converted), with the line Add a voice shows, or why it can't be used. Uses " +
             "the production converter; saves, plays and contacts nothing and never returns the path or the audio.", new
         {
             path = new { type = "string" }
@@ -800,12 +801,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             string? aloneProblem = null;
             try { Martlet.F5.F5ReferenceAudioFormat.Parse(ready.Wave); }
             catch (Martlet.F5.F5Exception failure) { aloneProblem = failure.Failure.ToString(); }
+            // How loud the WAV that Play plays is, so a decode is seen to give real sound; never the audio itself.
+            var samples = Martlet.Core.Voices.PcmWaveInfo.Samples(ready.Wave, Martlet.Core.Voices.SpeakingVoiceLibrary.MaximumAudioBytes, out _);
+            double peak = 0, energy = 0;
+            foreach (var sample in samples)
+            {
+                var value = sample / 32768d;
+                peak = Math.Max(peak, Math.Abs(value));
+                energy += value * value;
+            }
+            static double Dbfs(double level) => level <= 0 ? -96 : Math.Round(Math.Max(-96, 20 * Math.Log10(level)), 1);
             return new
             {
                 usable = true, sourceFormat = ready.SourceFormat, sourceChannels = ready.SourceChannels, sourceSampleRate = ready.SourceSampleRate,
                 converted = ready.Converted, sampleRate = ready.SampleRate, channels = BitConverter.ToInt16(ready.Wave, 22),
                 bitsPerSample = BitConverter.ToInt16(ready.Wave, 34), durationMs = ready.DurationMilliseconds, bytes = ready.Wave.Length,
                 sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(ready.Wave)),
+                peakDbfs = Dbfs(peak), rmsDbfs = Dbfs(samples.Length == 0 ? 0 : Math.Sqrt(energy / samples.Length)),
                 voiceAlone = aloneProblem is null, voiceAloneProblem = aloneProblem,
                 engines = Martlet.Core.Settings.SpeechEngines.All
                     .Where(engine => Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, ready.DurationMilliseconds) is null)

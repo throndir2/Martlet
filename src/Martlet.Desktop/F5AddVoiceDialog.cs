@@ -24,7 +24,7 @@ namespace Martlet.Desktop;
 /// to check and correct.</summary>
 internal sealed class F5AddVoiceDialog : ThemedWindow
 {
-    private const string RecordingHint = "MP3, M4A, WAV, FLAC, OGG, the sound of a video and most other audio files work. " +
+    private const string RecordingHint = "MP3, M4A, WAV, FLAC, OGG, Opus, the sound of a video and most other audio files work. " +
         "Martlet converts the recording for you.";
     private readonly string dataDirectory;
     private readonly string destination;
@@ -399,7 +399,7 @@ internal sealed class F5AddVoiceDialog : ThemedWindow
             ErrorLog.Warn("Couldn't read a recording for Add a voice", failure);
             if (token.IsCancellationRequested) return null;
             (row.Failed, row.Reading, row.Found.Text) = (true, false,
-                "Martlet couldn't read this recording. Try an MP3, M4A, WAV or FLAC recording.");
+                "Martlet couldn't read this recording. Try an MP3, M4A, WAV, FLAC or OGG recording.");
             Summarize();
             return null;
         }

@@ -11,12 +11,12 @@
   "applicationGraphs": {
     "Desktop": {
       "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5",       "Martlet.Mcp.Client", "Martlet.Home", "Martlet.Sherpa", "Martlet.EchoCancellation"],
-            "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET", "SoundFlow", "SoundFlow.Extensions.WebRtc.Apm"],
+            "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET", "SoundFlow", "SoundFlow.Extensions.WebRtc.Apm", "NVorbis", "Concentus"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },
     "Doctor": {
       "projects": ["Martlet.Doctor", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio"],
-      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors"],
+      "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "NVorbis", "Concentus"],
       "frameworks": ["Microsoft.NETCore.App"]
     },
     "AvatarRenderer": {
@@ -78,6 +78,24 @@
       "sha512": "b4d9ac15d2ce51a7cf2c97a0f5d4e94ec36dce3038765aed69154b7d277ebd2d9ffcf3f9b42c530b2822a4c9c10f99389f2ca852cdadcb28797821a09290f2ff",
       "runtimeAsset": "lib/net9.0/NAudio.Core.dll",
       "notices": []
+    },
+    {
+      "id": "NVorbis",
+      "version": "0.10.5",
+      "sha512": "385aa2bb177f9ba834ffe4cc6aeac1ef226f56ec76c3a5be4560697e08233800a6fbd623e724203f4f4fd124f9adb04e0a781ce83ef39b56fde22197e4b6cf7a",
+      "runtimeAsset": "lib/netstandard2.0/NVorbis.dll",
+      "notices": [
+        { "source": "LICENSE", "file": "NVorbis-LICENSE.txt", "sha256": "08e4ea5ffe20037cea0f34a424fee6722898cee7f85cd23cbf2b72847c2c36f8" }
+      ]
+    },
+    {
+      "id": "Concentus",
+      "version": "2.2.2",
+      "sha512": "8f44bdd4b71e1a097146b7dd5ca3a2cf642193746af377599f0f6f4e0135e79414256c3c370dfcd6f4e78346206d2b2b540603cd8d4910db0547c9f0a9d4dbfe",
+      "runtimeAsset": "lib/net8.0/Concentus.dll",
+      "notices": [
+        { "source": "LICENSE", "file": "Concentus-LICENSE.txt", "sha256": "c17f3900e66526e46b23839b62e4b507b03a51cc262d925fb8ad5c753afc0026" }
+      ]
     },
     {
       "id": "System.Numerics.Tensors",

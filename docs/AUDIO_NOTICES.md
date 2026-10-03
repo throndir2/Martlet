@@ -10,10 +10,16 @@ target does not reference these packages.
 | NAudio.Wasapi (direct, Windows target) | 3.1.0 | MIT, Mark Heath; official `v3.1.0`, repository commit `0aaef29d04bec9567bdf2f669036fabecc33a2e2` |
 | NAudio.Core (transitive) | 3.1.0 | MIT, Mark Heath; same repository commit |
 | System.Numerics.Tensors (transitive) | 9.0.0 | MIT, Microsoft; runtime repository commit `9d5a6a9aa463d6d10b0b0ba6d5982cc82f363dc3` |
+| NVorbis (direct, Windows target) | 0.10.5 | MIT, Andrew Ward; Ogg Vorbis decoding for *Add a voice* |
+| Concentus (direct, Windows target) | 2.2.2 | BSD-3-Clause, the Opus contributors and Logan Stromberg; managed Ogg Opus decoding for *Add a voice* (its native opus.dll path is never used) |
 
 NuGet metadata: [NAudio.Wasapi](https://api.nuget.org/v3-flatcontainer/naudio.wasapi/3.1.0/naudio.wasapi.nuspec),
 [NAudio.Core](https://api.nuget.org/v3-flatcontainer/naudio.core/3.1.0/naudio.core.nuspec),
-[System.Numerics.Tensors](https://api.nuget.org/v3-flatcontainer/system.numerics.tensors/9.0.0/system.numerics.tensors.nuspec).
+[System.Numerics.Tensors](https://api.nuget.org/v3-flatcontainer/system.numerics.tensors/9.0.0/system.numerics.tensors.nuspec),
+[NVorbis](https://api.nuget.org/v3-flatcontainer/nvorbis/0.10.5/nvorbis.nuspec),
+[Concentus](https://api.nuget.org/v3-flatcontainer/concentus/2.2.2/concentus.nuspec).
+The packaged notices carry each archive's own LICENSE file (`NVorbis-LICENSE.txt`,
+`Concentus-LICENSE.txt`).
 Test-only dependencies retain the foundation pins/notices; no broad upgrades.
 
 ## NAudio MIT notice
