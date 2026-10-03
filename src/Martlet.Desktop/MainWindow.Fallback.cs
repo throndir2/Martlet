@@ -85,7 +85,8 @@ public partial class MainWindow
         model.TextChanged += (_, _) => { if (!model.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => tabEdited = true;
 
-        var save = PageButton("Save fallback", () => SaveFallbackAsync(Selected(), Url(), model.Text.Trim(), key, consent.IsChecked == true).Forget(),
+        // Like a cloud provider for Thinking, a fallback is an explicit commitment (data sent elsewhere, possible costs).
+        var save = PageButton("Use as fallback", () => SaveFallbackAsync(Selected(), Url(), model.Text.Trim(), key, consent.IsChecked == true).Forget(),
             primary: true, id: "FallbackSave");
         var off = saved is null ? null : PageButton("Turn off", () => SaveFallbackAsync(null, "", "", key, true).Forget(), id: "FallbackOff");
 
@@ -114,7 +115,7 @@ public partial class MainWindow
         if (store is null || setupService is null || closing) return;
         if (provider is not null && !consent)
         {
-            ActionText.Text = $"Tick the box to confirm {provider.Name} as the fallback for Thinking, then save.";
+            ActionText.Text = $"Tick the box to confirm {provider.Name} as the fallback for Thinking, then press Use as fallback.";
             return;
         }
         if (savingTab || assigningRole || setupOperations.IsRunning)

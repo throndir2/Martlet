@@ -4,15 +4,30 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{DynamicResource AppWindowStyle}"
         Title="Martlet - Character" Width="900" Height="850" MinWidth="550" MinHeight="450"
-        Loaded="Window_Loaded" Closed="Window_Closed" PreviewKeyDown="Window_KeyDown" WindowStartupLocation="CenterOwner">
+        Loaded="Window_Loaded" Closing="Window_Closing" Closed="Window_Closed" PreviewKeyDown="Window_KeyDown"
+        WindowStartupLocation="CenterOwner" AutomationProperties.AutomationId="AvatarWindow">
     <DockPanel>
-        <Button Content="_Hide character (Esc)" Click="Stop_Click" DockPanel.Dock="Top" Padding="10,8" Margin="12,8"
-                AutomationProperties.AutomationId="StopAvatar" AutomationProperties.Name="Hide the character; voice continues"/>
+        <!-- One show/hide button, always at the top: Esc on this window hides the character too. -->
+        <WrapPanel DockPanel.Dock="Top" Margin="12,8">
+            <Button x:Name="ShowButton" Content="_Show character" Click="Show_Click" Padding="10,8" Margin="0,0,8,0"
+                    Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="ShowCharacter"/>
+            <Button x:Name="HideButton" Content="_Hide character (Esc)" Click="Stop_Click" Padding="10,8"
+                    AutomationProperties.AutomationId="StopAvatar" AutomationProperties.Name="Hide the character; voice continues"/>
+        </WrapPanel>
+        <!-- Always in view: whether the choices are saved, and Done. There is no Save button; choices save and apply on their own. -->
+        <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderBrush}" Padding="20,10">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="_Done" Click="Close_Click" Padding="16,7"
+                        AutomationProperties.AutomationId="AvatarClose"/>
+                <TextBlock x:Name="SaveStateText" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"
+                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AvatarSaveState"/>
+            </DockPanel>
+        </Border>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock Text="Character" FontSize="24" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" Margin="0,8"
-                Text="Choose a desktop character. It idles, follows your cursor and moves while Martlet speaks. Automatic lip-sync uses Audio2Face when available."/>
+                Text="Choose a desktop character. It idles, follows your cursor and moves while Martlet speaks. Your choices save on their own, and a showing character switches right away."/>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                        AutomationProperties.AutomationId="AvatarStatus" Margin="0,8"/>
             <Label Target="{Binding ElementName=CharacterChoice}" Content="_Character"/>
@@ -23,11 +38,12 @@
             </ComboBox>
             <StackPanel x:Name="CustomModelPanel">
                 <Label Target="{Binding ElementName=ModelPathText}" Content="Local _model (.model3.json or .vrm)"/>
-                <DockPanel><Button Content="Browse model" DockPanel.Dock="Right" Click="BrowseModel_Click"/>
+                <DockPanel><Button Content="_Browse..." DockPanel.Dock="Right" Click="BrowseModel_Click" Padding="10,4" Margin="8,0,0,0"
+                                   AutomationProperties.AutomationId="AvatarBrowseModel"/>
                     <TextBox x:Name="ModelPathText" MinHeight="28" TextChanged="Configuration_Changed"
                              AutomationProperties.AutomationId="AvatarModelPath" AutomationProperties.Name="Model file"/></DockPanel>
                 <TextBlock TextWrapping="Wrap" Margin="0,4,0,0" Style="{DynamicResource Muted}"
-                    Text="When you show or save it, Martlet adds a copy to your characters and shares it with your paired Martlet computers."/>
+                    Text="Once it is saved, Martlet adds a copy to your characters and shares it with your paired Martlet computers."/>
             </StackPanel>
             <Label Target="{Binding ElementName=LipSyncChoice}" Content="_Lip-sync"/>
             <ComboBox x:Name="LipSyncChoice" MinHeight="28" SelectionChanged="Selection_Changed"
@@ -36,14 +52,14 @@
                 <ComboBoxItem Content="Voice loudness only"/>
                 <ComboBoxItem Content="Audio2Face only (advanced)"/>
             </ComboBox>
-            <CheckBox x:Name="AutoShowChoice" Content="Show at startup" Margin="0,10"
+            <CheckBox x:Name="AutoShowChoice" Content="Show at s_tartup" Margin="0,10" Checked="AutoShow_Changed" Unchecked="AutoShow_Changed"
                       AutomationProperties.AutomationId="AutoShowCharacter"/>
-            <CheckBox x:Name="SpeechBubbleChoice" Content="Show _speech bubbles"
+            <CheckBox x:Name="SpeechBubbleChoice" Content="Sho_w speech bubbles"
                       Margin="0,0,0,6" Checked="SpeechDisplay_Changed" Unchecked="SpeechDisplay_Changed" AutomationProperties.AutomationId="SpeechBubbleChoice"/>
             <CheckBox x:Name="SubtitleChoice" Content="Show s_ubtitles"
                       Margin="0,0,0,4" Checked="SpeechDisplay_Changed" Unchecked="SpeechDisplay_Changed" AutomationProperties.AutomationId="SubtitleChoice"/>
             <TextBlock x:Name="SpeechDisplayStatus" TextWrapping="Wrap" Margin="0,0,0,10" AutomationProperties.LiveSetting="Polite"
-                       Text="Saved automatically. Subtitles appear on the active screen and are hidden from screen capture."/>
+                       Text="Subtitles appear on the active screen and are hidden from screen capture."/>
             <Expander Header="Audio2Face host" Margin="0,4,0,10"
                       AutomationProperties.AutomationId="RemoteHostSection">
                 <StackPanel Margin="0,8,0,0">
@@ -55,44 +71,45 @@
                                AutomationProperties.AutomationId="HostStatus"/>
                 </StackPanel>
             </Expander>
-            <WrapPanel>
-                <Button Content="_Show character" Click="Show_Click" Padding="10,6" Margin="0,0,8,0"
-                        AutomationProperties.AutomationId="ShowCharacter"/>
-                <Button Content="_Hide character" Click="Stop_Click" Padding="10,6" Margin="0,0,8,0"/>
-                <Button Content="_Save choices" Click="Save_Click" Padding="10,6" AutomationProperties.AutomationId="SaveAvatar"/>
-            </WrapPanel>
+            <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="AvatarResult"/>
             <TextBlock x:Name="CreditText" TextWrapping="Wrap" Margin="0,10" Foreground="{DynamicResource MutedBrush}"
                 Text="Built-in character: This content uses sample data owned and copyrighted by Live2D Inc. The sample data are utilized in accordance with terms and conditions set by Live2D Inc. This content itself is created at the author's sole discretion."/>
-            <TextBlock x:Name="ResultText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.LiveSetting="Polite"/>
 
-            <Expander Header="Advanced lip-sync setup" Margin="0,16,0,0">
+            <Expander Header="Advanced lip-sync setup" Margin="0,16,0,0" AutomationProperties.AutomationId="AvatarAdvanced">
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock TextWrapping="Wrap" Margin="0,8"
                         Text="Review the model controls, map them to Audio2Face, then activate for this session. Only Martlet's generated speech is sent to the displayed service."/>
                     <Label Target="{Binding ElementName=RendererChoice}" Content="_Renderer"/>
-                    <ComboBox x:Name="RendererChoice" MinHeight="28" SelectionChanged="Selection_Changed"/>
+                    <ComboBox x:Name="RendererChoice" MinHeight="28" SelectionChanged="Selection_Changed"
+                              AutomationProperties.AutomationId="AvatarRenderer"/>
                     <Label Target="{Binding ElementName=SdkPathText}" Content="Live2D SDK _override folder"/>
-                    <TextBox x:Name="SdkPathText" MinHeight="28" TextChanged="Configuration_Changed"/>
+                    <TextBox x:Name="SdkPathText" MinHeight="28" TextChanged="Configuration_Changed"
+                             AutomationProperties.AutomationId="AvatarSdkPath"/>
                     <Label Target="{Binding ElementName=EndpointText}" Content="Audio2Face _endpoint"/>
-                    <TextBox x:Name="EndpointText" Text="http://127.0.0.1:52000/" MinHeight="28" TextChanged="Configuration_Changed"/>
-                    <CheckBox x:Name="InspectPermission" Content="Allow local model inspection" Margin="0,10"/>
+                    <TextBox x:Name="EndpointText" Text="http://127.0.0.1:52000/" MinHeight="28" TextChanged="Configuration_Changed"
+                             AutomationProperties.AutomationId="AvatarEndpoint"/>
+                    <CheckBox x:Name="InspectPermission" Content="Allow local model inspection" Margin="0,10"
+                              AutomationProperties.AutomationId="AvatarInspectPermission"/>
                     <WrapPanel>
-                        <Button Content="_Inspect model" Click="Inspect_Click" Padding="10,6" Margin="0,0,8,0"/>
-                        <Button Content="_Reload settings" Click="Reload_Click" Padding="10,6"/>
+                        <Button Content="_Inspect model" Click="Inspect_Click" Padding="10,6" Margin="0,0,8,0"
+                                AutomationProperties.AutomationId="AvatarInspect"/>
                     </WrapPanel>
-                    <Label Target="{Binding ElementName=CapabilityText}" Content="Inspected _controls"/>
+                    <Label Target="{Binding ElementName=CapabilityText}" Content="Inspected controls"/>
                     <TextBox x:Name="CapabilityText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"/>
                     <TextBlock TextWrapping="Wrap" Margin="0,8"
                         Text="Choose a source channel and the matching model control. Acknowledge reduced fidelity if needed."/>
-                    <Label Target="{Binding ElementName=SourceChoice}" Content="Source _channel"/>
+                    <Label Target="{Binding ElementName=SourceChoice}" Content="Source channel"/>
                     <ComboBox x:Name="SourceChoice" MinHeight="28"/>
-                    <Label Target="{Binding ElementName=TargetChoice}" Content="Model con_trol"/>
+                    <Label Target="{Binding ElementName=TargetChoice}" Content="Model co_ntrol"/>
                     <ComboBox x:Name="TargetChoice" DisplayMemberPath="Id" MinHeight="28"/>
                     <CheckBox x:Name="ReducedChoice" Content="Allow reduced lip-sync quality" Margin="0,8"/>
-                    <Button Content="Add mapping" Click="AddMapping_Click" Padding="10,6"/>
+                    <Button Content="Add mapping" Click="AddMapping_Click" Padding="10,6" HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="AvatarAddMapping"/>
                     <Label Target="{Binding ElementName=ConfigurationText}" Content="Avatar configuration JSON"/>
                     <TextBox x:Name="ConfigurationText" AcceptsReturn="True" FontFamily="Consolas" Height="230" TextChanged="Configuration_Changed"
-                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                             AutomationProperties.AutomationId="AvatarConfiguration"/>
                     <WrapPanel Margin="0,8">
                         <Button Content="_Validate compatibility" Click="Validate_Click" Padding="10,6" Margin="0,0,8,0"/>
                         <Button Content="Export avatar settings" Click="Export_Click" Padding="10,6" Margin="0,0,8,0"/>
@@ -107,7 +124,7 @@
                                 AutomationProperties.AutomationId="ActivateAvatar"/>
                     </WrapPanel>
                     <TextBlock Margin="0,12" TextWrapping="Wrap"
-                        Text="Character settings are saved separately. Closing this window keeps the character open; use Hide character to close it."/>
+                        Text="These settings save on their own like the choices above; a mapping applies the next time the character shows. Closing this window keeps the character open; use Hide character to close it."/>
                 </StackPanel>
             </Expander>
         </StackPanel>

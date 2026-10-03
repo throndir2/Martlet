@@ -30,7 +30,7 @@ public sealed class AvatarWindowTests
         window.Show();
         try
         {
-            await Until(() => ((TextBlock)window.FindName("ResultText")).Text.Contains("loaded", StringComparison.Ordinal));
+            await Until(() => ((TextBlock)window.FindName("SaveStateText")).Text == "All changes saved.");
             Assert.Same(window.TryFindResource("CanvasBrush"), window.Background);
             Assert.Same(window.TryFindResource("SurfaceBrush"),
                 ((TextBox)window.FindName("ModelPathText")).Background);
@@ -45,12 +45,15 @@ public sealed class AvatarWindowTests
         reopened.Show();
         try
         {
-            await Until(() => ((TextBlock)reopened.FindName("ResultText")).Text.Contains("loaded", StringComparison.Ordinal));
+            await Until(() => ((TextBlock)reopened.FindName("SaveStateText")).Text == "All changes saved.");
             Assert.True(controller.IsActive);
             Assert.True(controller.Observer.IsEnabled);
             ((TextBox)reopened.FindName("EndpointText")).Text = "http://127.0.0.1:52001/";
             Assert.False(controller.IsActive);
             Assert.False(controller.Observer.IsEnabled);
+            // No Save button: the edited endpoint is written on its own.
+            await Until(() => ((TextBlock)reopened.FindName("SaveStateText")).Text == "All changes saved.");
+            Assert.Equal("http://127.0.0.1:52001/", (await store.LoadAsync(scope.ProfileId)).Profile!.Endpoint);
         }
         finally { reopened.Close(); }
     });
@@ -73,7 +76,7 @@ public sealed class AvatarWindowTests
         try
         {
             var result = (TextBlock)window.FindName("ResultText");
-            await Until(() => result.Text.Contains("loaded", StringComparison.Ordinal));
+            await Until(() => ((TextBlock)window.FindName("SaveStateText")).Text == "All changes saved.");
             ((CheckBox)window.FindName("AnalysisPermission")).IsChecked = true;
             ((Button)window.FindName("ActivateButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await renderer.ConfigureEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -199,9 +202,9 @@ public sealed class AvatarWindowTests
                     window.Show();
                     try
                     {
-                        var result = (TextBlock)window.FindName("ResultText");
+                        var state = (TextBlock)window.FindName("SaveStateText");
                         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                        while (!result.Text.Contains("loaded", StringComparison.Ordinal)) await Task.Delay(10, timeout.Token);
+                        while (state.Text != "All changes saved.") await Task.Delay(10, timeout.Token);
                         Assert.Equal(0, calls);
                         Assert.False(controller.IsActive);
                         Assert.False(controller.Observer.IsEnabled);
