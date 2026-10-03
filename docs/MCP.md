@@ -1421,10 +1421,12 @@ notification area by default, and Martlet started with `--tray` (Start with
 Windows) shows no window, so `ui_connect` also attaches when only the icon's
 window exists (it returns `inTray`). `ui_tray` drives the icon:
 `{"name":"ui_tray"}` (or `"action":"status"`) returns `running`, `trayIcon`
-(the icon is in the notification area), `mainWindowVisible` and `inTray`;
-`"action":"open"` and `"action":"menu"` post the icon exactly what Explorer
+(the icon is in the notification area), `mainWindowVisible`, `inTray` and
+`menuOpen` (the icon's menu is open);
+`"action":"open"` and `"action":"menu"` post the icon what Explorer
 sends for a left click (show Martlet) and a right click (its menu at the mouse
-pointer), so they need no flag; `"action":"close"` presses the main window's
+pointer), and let Martlet take the foreground as Explorer does when the MCP
+server may itself, so they need no flag; `"action":"close"` presses the main window's
 close button, which hides Martlet or (with *Keep running when closed* off) exits
 it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
 `TrayMenu` and its items: `TrayStatus` (status text: *Martlet is running*,

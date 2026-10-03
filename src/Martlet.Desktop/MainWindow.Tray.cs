@@ -175,13 +175,12 @@ public partial class MainWindow
         menu.Items.Add(new Separator());
         menu.Items.Add(TrayItem("TrayExit", "E_xit Martlet", ExitFromTray));
         trayMenu = menu;
-        // Anchored to a Martlet window (the active one, else the talk window or this one) so the menu takes keyboard focus and mouse
-        // capture from it like any context menu; it still opens at the icon.
-        menu.PlacementTarget = Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive) ?? talk ?? (UIElement)this;
+        // The menu belongs to the icon's own window, which always exists (Martlet's window has none until it is first shown, and a
+        // menu anchored there never opens) and takes the foreground first, as Windows expects: the menu then has the keyboard and
+        // the mouse, and a click elsewhere closes it. Activating the menu itself would move the keyboard off it and close it at once.
+        menu.PlacementTarget = tray.MenuAnchor;
         tray.TakeForeground();
         menu.IsOpen = true;
-        // The menu takes the foreground too, or it would stay open after clicking elsewhere.
-        if (PresentationSource.FromVisual(menu) is HwndSource popup) SetForegroundWindow(popup.Handle);
     }
 
     private MenuItem TrayItem(string id, string header, Action? action, bool enabled = true, bool bold = false)
@@ -369,5 +368,4 @@ public partial class MainWindow
     }
 
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(nint window);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetForegroundWindow(nint window);
 }
