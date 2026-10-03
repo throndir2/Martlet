@@ -14,7 +14,8 @@ namespace Martlet.Mcp;
 /// MicrophoneCapture, the capture normalizer and Martlet's voice-activity detector) with a fixture loopback on a simulated
 /// clock: a synthesized video voice plays 0-3 s, the video is paused 3-6 s (the loopback delivers nothing at all, like a real
 /// one), plays again 6-9 s, then nothing plays. It reports whether the stream stayed continuous and whether the pause ended
-/// the first utterance, as it must for always listening to send it.</summary>
+/// the first utterance, as it must for always listening to send it. Its echo cases run PcEcho (how the talk window tells a
+/// microphone line that was only the speakers apart from the user) on fixture transcripts.</summary>
 internal static class PcAudioCheck
 {
     private const int Rate = 48_000;
@@ -40,7 +41,15 @@ internal static class PcAudioCheck
         var continuous = recordedSeconds is >= Seconds - 0.2 and <= Seconds + 0.05;
         var endedInPause = segments.Count > 0 && segments[0].EndedAt is >= 3.0 and <= 4.6;
         var resumed = segments.Count == 2 && segments[1].Start is >= 5.5 and <= 6.4;
-        var ok = continuous && endedInPause && resumed && pauseSpeechFrames == 0 && devices.WithoutMartlet == true;
+        var echoes = EchoCases.Select(test => new
+        {
+            microphone = test.Microphone,
+            pc = test.Pc,
+            expected = test.Echo,
+            leftOut = PcEcho.Of(test.Microphone, [test.Pc])
+        }).ToArray();
+        var echoesOk = echoes.All(test => test.leftOut == test.expected);
+        var ok = continuous && endedInPause && resumed && pauseSpeechFrames == 0 && devices.WithoutMartlet == true && echoesOk;
         return new
         {
             ok,
@@ -69,9 +78,30 @@ internal static class PcAudioCheck
                 endedInPause,
                 resumed,
                 pauseSpeechFrames
+            },
+            echo = new
+            {
+                scene = "fixture transcripts (nothing recorded): what the microphone heard beside what the PC listener heard at " +
+                    "the same time; an echo of the speakers is left out of the talk window and never answered as the user",
+                share = PcEcho.Share,
+                ok = echoesOk,
+                cases = echoes
             }
         };
     }
+
+    private sealed record EchoCase(string Microphone, string Pc, bool Echo);
+
+    // The first two are what the speakers' residual echo made of a video's lines; the rest are the user talking over a video.
+    private static readonly EchoCase[] EchoCases =
+    [
+        new("Why is that the way?", "Why is that the right?", true),
+        new("Hello Jane.", "Hello, Jane.", true),
+        new("and now the weather it's raining all week", "And now the weather: it's going to be raining all week.", true),
+        new("Haha, what is she doing?", "Why is that the right?", false),
+        new("Oh wow, look at that. Why is that the right?", "Why is that the right?", false),
+        new("Can you pause the video?", "And now the weather.", false)
+    ];
 
     private sealed record Choices(bool HearPc, string Source, bool HandsFree, bool ReduceEcho);
 
