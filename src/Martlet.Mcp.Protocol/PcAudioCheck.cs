@@ -29,6 +29,8 @@ internal static class PcAudioCheck
     {
         var saved = Saved(dataDirectory);
         var probe = WasapiPcAudioSourceFactory.Probe(cancellationToken: cancellation);
+        var outputs = WasapiPcAudioSourceFactory.Outputs();
+        var everyApp = probe.WithoutMartlet && outputs.Elsewhere is null;
         var watch = Stopwatch.StartNew();
         var clock = new SimulatedClock();
         var devices = new PcAudioCaptureFactory(new FixtureSources(clock), clock);
@@ -57,6 +59,10 @@ internal static class PcAudioCheck
                 format = probe.Format is { } format ? $"{format.SampleRate} Hz, {format.Channels} ch, {format.BitsPerSample}-bit {format.Encoding}" : null,
                 problem = probe.Problem,
                 recorded = false,
+                output = outputs.Output,
+                elsewhere = outputs.Elsewhere,
+                hears = everyApp ? "every app's sound except Martlet's, on every output"
+                    : $"only what plays on {outputs.Output ?? "the default output"}, Martlet included, so listening to the PC holds off while Martlet speaks",
                 fallback = probe.WithoutMartlet ? null : "the default output's loopback, Martlet included; listening to the PC holds off while Martlet speaks"
             },
             rehearsal = new
