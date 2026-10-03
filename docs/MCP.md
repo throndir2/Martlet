@@ -321,7 +321,7 @@ never returns keys, signatures or host addresses and contacts nothing.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
-volatile credentials, a throwaway certificate) on `127.0.0.1`, two simulated
+volatile credentials, a throwaway certificate) on `127.0.0.1`, simulated
 desktops driving the desktop's own client (`HostNetwork.cs`) and sync engine
 (`NetworkSync.cs`), and a simulated host PC. Like `node_link_check` it runs `src\Martlet.NodeLinkCheck`
 (mode `network`, `NetworkRehearsal.cs`) as its own process, because the gateway
@@ -330,7 +330,10 @@ founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
 number; the host tells B (not yet a member) who is paired with it, A and B,
 each with when it last made a signed request; A allows B, and B pairs with the
-other host by itself; every host announces the Martlet release it runs to A, B
+other host by itself; A, treating the second host as its own host service,
+lets in D (paired with that host) with no second Allow
+(`NetworkSyncEngine.ApproveThrough`) while E, asking through the first host,
+still waits for one; every host announces the Martlet release it runs to A, B
 and B reading only (the gateway's own release), and a desktop that last saw a
 host on 0.0.1 (simulated) takes the announced release as an update that needs
 nothing more, while a host still older than the desktop keeps needing one
@@ -858,10 +861,15 @@ like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
+`Node-pc:<device ID>` for another Martlet computer that runs no host service,
 `Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
-and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
+and `DeviceReachSection` expanders. Each `Node-<id>` also returns the device's
+card as text: its name, subtitle, status and what it runs (for example
+`IMOUTO, desktop-imouto. Active now. Runs: Martlet app, Listening` or
+`DIVA, diva-host · 192.168.50.45. Connected. Runs: Speaking, Lip-sync, Martlet app`),
+so one snapshot shows the whole map. `SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
@@ -877,9 +885,11 @@ already running (...)*, then *Updated to Martlet 0.22.0 (seen at 9:41 PM).* once
 the host announces it, a check finds it current or another route of this
 Martlet updated it). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
-`character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
+`character`, `audio`, `host-service`, `host`, `users`, `member`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
-returns the row's text. A paired host's `users` row (*Computers using it*) lists
+returns the row's text. Another Martlet computer's `member` row (*Martlet app*)
+says where it stands with your network and where it was last active, for
+example `In your Martlet network. Active now on diva-host.`. A paired host's `users` row (*Computers using it*) lists
 the computers paired with it as the host reports them, for example
 `DeviceComponentDetail-users`: `IMOUTO (desktop-imouto), active now; This PC,
 active now.`; on this PC's own host service, `DeviceComponentDetail-host-service`

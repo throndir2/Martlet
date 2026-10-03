@@ -342,6 +342,23 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
         return state with { Roster = roster.AddDesktop(signer, join.DeviceId, join.DisplayName, join.Key, time.GetUtcNow()) };
     }
 
+    /// <summary>Lets in every desktop that asks to join through one of <paramref name="ownHosts"/>, this PC's own host
+    /// services. Every pairing with such a host was approved on this PC (its pairing code, or its Allow in Add a computer, shows
+    /// only here), so for a member PC that approval already covers the network and a second Allow would only repeat it. Returns
+    /// the new state and the requests it let in; nothing changes outside a network.</summary>
+    public (NetworkLocalState State, IReadOnlyList<HostJoinRequest> Approved) ApproveThrough(NetworkLocalState state,
+        IReadOnlyList<HostJoinRequest> joins, IReadOnlyCollection<string> ownHosts)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(joins);
+        ArgumentNullException.ThrowIfNull(ownHosts);
+        if (state.Roster is null || ownHosts.Count == 0) return (state, []);
+        var approved = joins.Where(j => ownHosts.Contains(j.HostId, StringComparer.Ordinal) && j.DeviceId != signer.DeviceId)
+            .DistinctBy(j => j.DeviceId, StringComparer.Ordinal).ToArray();
+        foreach (var join in approved) state = Approve(state, join);
+        return (state, approved);
+    }
+
     /// <summary>Removes a desktop or host from the network (signed by this PC); the next sync shares it, hosts revoke the
     /// removed desktop and a removed host stops trusting the network's desktops.</summary>
     public NetworkLocalState Remove(NetworkLocalState state, string kind, string id)

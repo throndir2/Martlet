@@ -1,12 +1,13 @@
 using System.Net;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
 using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-internal enum NodeKind { ThisPc, Host, Cloud, Missing, Add }
+internal enum NodeKind { ThisPc, Host, Computer, Cloud, Missing, Add }
 internal enum NodeHealth { Ready, Unknown, Off, Attention }
 internal enum NodeAction
 {
@@ -39,6 +40,8 @@ internal static class DeviceComponent
     internal const string Offer = "offer";
     /// <summary>The computers that use a host (paired with it), as the host reports them.</summary>
     internal const string Users = "users";
+    /// <summary>Martlet itself on another of your computers (a member of your Martlet network, or one that uses your hosts).</summary>
+    internal const string Member = "member";
 
     /// <summary>A conversation job (thinking, listening or speaking), wherever it runs.</summary>
     internal static string Job(SetupRole role) => "job:" + role;
@@ -65,11 +68,21 @@ internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, strin
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
-    IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null);
+    IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
+    IReadOnlyList<MartletComputer>? Computers = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
 internal sealed record HostUser(string Text, bool ThisPc);
+
+/// <summary>Where another Martlet computer stands with your Martlet network.</summary>
+internal enum ComputerStanding { Member, Asking, Outside }
+
+/// <summary>Another computer that runs Martlet: a member of your Martlet network, one asking to join it (with its check number
+/// and the host it asked through) or one that uses your hosts outside it. <paramref name="Activity"/> is where it was last
+/// active ("Active now on diva-host."), as your hosts report it.</summary>
+internal sealed record MartletComputer(string DeviceId, string Name, ComputerStanding Standing, string? Activity, bool Active,
+    string? CheckNumber = null, string? Through = null);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -158,10 +171,57 @@ internal static class NetworkMap
     {
         var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
             : route.VoiceId is { } voice ? $"Voice {voice}"
-            : route.Reference is { } reference ? $"Voice {reference.PresetName}" : "Ready";
+            : route.Reference is { } reference ? $"Voice {reference.PresetName}"
+            // The model is what tells two setups of one provider apart (the cloud model every computer uses, say).
+            : route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.OpenAi or SetupRouteType.GatewayOllama or
+                SetupRouteType.GatewayStt or SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet &&
+                route.ModelId is { Length: > 0 } model ? model
+            : "Ready";
         if (route.Enabled == false) text += " (turned off)";
         else if (route.Consent is null) text += " (review in Companion)";
         return text;
+    }
+
+    /// <summary>The cluster job a conversation role is.</summary>
+    internal static string ClusterJob(SetupRole role) => role switch
+    {
+        SetupRole.Llm => ClusterJobs.Thinking,
+        SetupRole.Stt => ClusterJobs.Listening,
+        _ => ClusterJobs.Speaking
+    };
+
+    private static bool IsGatewayRoute(SetupRouteType? type) =>
+        type is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt;
+
+    /// <summary>A shared route that runs on each companion PC itself (a Windows voice, Parakeet, a local server), in words for
+    /// another computer's row; null for a cloud or host route.</summary>
+    private static string? OnEachPc(SetupRoute route) => route.RouteType switch
+    {
+        SetupRouteType.LocalWindowsStt => "Windows speech recognition on that PC",
+        SetupRouteType.LocalWindowsTts => "Windows voice on that PC: " + RouteDetail(route),
+        SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet => "Speech recognition on that PC: " + RouteDetail(route),
+        SetupRouteType.ChatCompletions when Uri.TryCreate(route.Origin, UriKind.Absolute, out var endpoint) && IsLoopback(endpoint.Host) =>
+            "A local server on that PC: " + RouteDetail(route),
+        _ => null
+    };
+
+    /// <summary>A job the shared plan gives a host, in words, with the model that host last reported running for it.</summary>
+    private static string PlannedDetail(ClusterPlan plan, string hostId, SetupRole role)
+    {
+        var roles = plan.Node(hostId)?.Roles ?? [];
+        var runs = role switch
+        {
+            SetupRole.Llm => roles.FirstOrDefault(r => r.Kind == HostRoles.Ollama),
+            SetupRole.Stt => roles.FirstOrDefault(r => r.Kind == HostRoles.Stt),
+            _ => roles.FirstOrDefault(r => HostRoles.Speaks(r.Kind))
+        };
+        var what = role switch
+        {
+            SetupRole.Llm => "Conversation model",
+            SetupRole.Stt => "Speech recognition",
+            _ => runs is not null ? SpeechEngines.ForRoleKind(runs.Kind)?.Name ?? "Voice" : "Voice"
+        };
+        return $"{what}{(runs?.Model is { Length: > 0 } model ? ": " + model : "")}, for your companion PCs";
     }
 
     private static bool IsLoopback(string host) =>
@@ -210,9 +270,46 @@ internal static class NetworkMap
         }
         else thisPc.Roles.Add(new("App", "Martlet companion", "Conversations, your microphone and speakers", DeviceComponent.App));
 
+        // Every computer draws the same picture from what your computers share. A host PC uses no jobs itself, so each job shows
+        // where the shared plan puts it for your companion PCs, not the Setup choice this PC kept from before it became a host.
+        var shared = inputs.Plan;
+        var plan = inputs.Role == DeviceRole.Host ? shared : null;
+        string? Planned(string job) => plan?.For(job) is { HostId: { } id, Off: false } ? id : null;
+        // Jobs that run on each companion PC itself (a Windows voice, Parakeet): shown on your other companion PCs too.
+        var onEachPc = new List<HostedRole>();
+        Draft HostDraft(string hostId)
+        {
+            var paired = Hosts(inputs).FirstOrDefault(h => h.HostId == hostId);
+            var address = paired?.Address ?? (shared?.Node(hostId)?.Origin is { } origin && Uri.TryCreate(origin, UriKind.Absolute, out var uri) ? uri.Host : null);
+            if (address is not null && (address == machine.LanAddress || IsLoopback(address))) return thisPc;
+            var draft = Node("host:" + hostId, NodeKind.Host, hostId, address ?? hostId, ComputerGlyph);
+            if (paired is null && draft.Facts.Count == 0)
+            {
+                if (shared?.Node(hostId)?.Origin is { } planned) draft.Facts.Add(new("Address", planned));
+                draft.Facts.Add(new("Host", hostId));
+                AddHardware(draft, inputs, hostId);
+                draft.Worsen(NodeHealth.Unknown, "Not paired with this PC");
+                draft.Notes.Add("Your other computers use this host. It pairs with this PC by itself once it's in your Martlet network.");
+            }
+            return draft;
+        }
+
         var routes = inputs.Settings?.Setup?.Routes ?? [];
         foreach (var route in routes.OrderBy(r => r.Role))
         {
+            var job = ClusterJob(route.Role);
+            if (plan?.For(job) is { } assignment)
+            {
+                // A host does it (shown on that host below), or this PC's own route is a host's from before it became a host.
+                if (assignment.HostId is not null || IsGatewayRoute(route.RouteType)) continue;
+                if (OnEachPc(route) is { } each)
+                {
+                    onEachPc.Add(new(RoleChip(route.Role), RoleName(route.Role), each, DeviceComponent.Job(route.Role)));
+                    continue;
+                }
+            }
+            else if (shared?.For(job) is { HostId: null } && OnEachPc(route) is { } same)
+                onEachPc.Add(new(RoleChip(route.Role), RoleName(route.Role), same, DeviceComponent.Job(route.Role)));
             var role = new HostedRole(RoleChip(route.Role), RoleName(route.Role), RouteDetail(route), DeviceComponent.Job(route.Role));
             Draft target;
             switch (route.RouteType)
@@ -299,6 +396,17 @@ internal static class NetworkMap
             missing.Commands.Add(new(NodeAction.Advisor, "Get a recommendation", Component: DeviceComponent.Job(SetupRole.Llm)));
         }
 
+        if (plan is not null)
+        {
+            foreach (var setupRole in new[] { SetupRole.Llm, SetupRole.Stt, SetupRole.Tts })
+                if (Planned(ClusterJob(setupRole)) is { } hostId)
+                    HostDraft(hostId).Roles.Add(new(RoleChip(setupRole), RoleName(setupRole), PlannedDetail(plan, hostId, setupRole),
+                        DeviceComponent.Job(setupRole)));
+            // Lip-sync on a paired host shows with that host's roles below.
+            if (Planned(ClusterJobs.LipSync) is { } face && Hosts(inputs).All(h => h.HostId != face))
+                HostDraft(face).Roles.Add(new("Lip-sync", "Lip-sync", "Handles lip-sync for your companion PCs.", DeviceComponent.LipSync));
+        }
+
         var lipSync = LipSync(inputs.Avatar);
         var companion = inputs.Role == DeviceRole.Companion;
         foreach (var paired in Hosts(inputs))
@@ -308,17 +416,24 @@ internal static class NetworkMap
             var target = local ? thisPc : Node("host:" + paired.HostId, NodeKind.Host, paired.HostId, host, ComputerGlyph);
             target.PairedHostId = paired.HostId;
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
-            var inCharge = lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
-            var thinks = ThinkingHost(inputs.Settings) == paired.HostId;
-            var listens = JobHost(inputs.Settings, SetupRole.Stt) == paired.HostId;
-            var speaks = JobHost(inputs.Settings, SetupRole.Tts) == paired.HostId;
+            // A host PC reads who does what from the shared plan; a companion PC from what it uses itself.
+            var inCharge = plan is not null ? Planned(ClusterJobs.LipSync) == paired.HostId
+                : lipSync == LipSyncHandler.Host && inputs.Avatar!.RemoteHost!.HostId == paired.HostId;
+            var thinks = plan is not null ? Planned(ClusterJobs.Thinking) == paired.HostId : ThinkingHost(inputs.Settings) == paired.HostId;
+            var listens = plan is not null ? Planned(ClusterJobs.Listening) == paired.HostId : JobHost(inputs.Settings, SetupRole.Stt) == paired.HostId;
+            var speaks = plan is not null ? Planned(ClusterJobs.Speaking) == paired.HostId : JobHost(inputs.Settings, SetupRole.Tts) == paired.HostId;
+            // The voice engine that speaks: on a host PC the one this host runs (it runs one at a time), else this PC's choice.
+            var speaking = plan is not null
+                ? plan.Node(paired.HostId)?.Roles.FirstOrDefault(r => HostRoles.Speaks(r.Kind))?.Kind ??
+                    check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks) ?? HostRoles.Speaking
+                : HostRoles.Speaking;
             var before = target.Roles.Count;
             // The row a host role shows on: the job it does for this PC, or standing by.
             string RoleComponent(string kind) => kind switch
             {
                 HostRoles.Ollama when thinks => DeviceComponent.Job(SetupRole.Llm),
                 HostRoles.Stt when listens => DeviceComponent.Job(SetupRole.Stt),
-                _ when kind == HostRoles.Speaking && speaks => DeviceComponent.Job(SetupRole.Tts),
+                _ when kind == speaking && speaks => DeviceComponent.Job(SetupRole.Tts),
                 HostRoles.Audio2Face when inCharge => DeviceComponent.LipSync,
                 _ => DeviceComponent.Standby(kind)
             };
@@ -326,11 +441,11 @@ internal static class NetworkMap
             {
                 var model = check?.Offers?.GetValueOrDefault(role.Kind);
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
-                    target.Roles.Add(new(role.Chip, role.Name, "Handles lip-sync. " +
+                    target.Roles.Add(new(role.Chip, role.Name, (plan is not null ? "Handles lip-sync for your companion PCs. " : "Handles lip-sync. ") +
                         (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
-                    !(role.Kind == HostRoles.Speaking && speaks))
+                    !(role.Kind == speaking && speaks))
                     target.Roles.Add(new(role.Chip, role.Name, $"Ready. Assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }
@@ -338,9 +453,14 @@ internal static class NetworkMap
             if (local)
             {
                 var others = users?.Where(u => !u.ThisPc).Select(u => u.Text).ToArray();
-                thisPc.Roles.Add(new("Host", "Martlet host service", $"Paired as {paired.HostId}" + (others is null ? "."
-                        : others.Length == 0 ? ". No other computer uses it yet." : ". Used by " + string.Join("; ", others) + "."),
-                    DeviceComponent.HostService));
+                var detail = $"Paired as {paired.HostId}" + (others is null ? "."
+                    : others.Length == 0 ? ". No other computer uses it yet." : ". Used by " + string.Join("; ", others) + ".");
+                // A host PC already lists its host service: one row says what it is and who uses it.
+                var listed = thisPc.Roles.FindIndex(r => r.Component == DeviceComponent.HostService);
+                var row = new HostedRole("Host", "Martlet host service",
+                    listed >= 0 && !machine.DockerRunning ? $"{thisPc.Roles[listed].Detail}. {detail}" : detail, DeviceComponent.HostService);
+                if (listed >= 0) thisPc.Roles[listed] = row;
+                else thisPc.Roles.Add(row);
             }
             else
             {
@@ -460,6 +580,44 @@ internal static class NetworkMap
                 target.Notes.Add("Set the connection method below to install or remove roles from here.");
             else if (paired.Method == HostSetupMethod.Agent && !local && managed)
                 target.Notes.Add("Martlet on that computer runs what you ask here (updates, roles, status) over the paired connection.");
+        }
+
+        // Your other Martlet computers, so every one of them shows the same computers. One that runs a host service is that
+        // host's node (Martlet names a PC's own host service after the PC: DIVA runs diva-host); the others are companion PCs.
+        foreach (var computer in inputs.Computers ?? [])
+        {
+            var hostId = HostSetupCommands.SuggestedHostId(computer.Name);
+            var hosting = nodes.GetValueOrDefault("host:" + hostId);
+            var node = hosting ?? Node("pc:" + computer.DeviceId, NodeKind.Computer, computer.Name, computer.DeviceId, ThisPcGlyph);
+            var where = computer.Activity is { } activity ? " " + activity : "";
+            var text = computer.Standing switch
+            {
+                ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}). " +
+                    "Allow it under Your Martlet network below.",
+                ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network." + where,
+                _ => (hosting is null ? "In your Martlet network." : "In your Martlet network; Martlet on this computer runs its host service.") + where
+            };
+            node.Roles.Insert(hosting is null ? 0 : node.Roles.Count, new("Martlet", "Martlet app", text, DeviceComponent.Member));
+            if (hosting is not null)
+            {
+                hosting.Title = computer.Name;
+                hosting.Subtitle = $"{hostId} \u00b7 {hosting.Subtitle}";
+                hosting.Facts.Insert(0, new("Computer", $"{computer.Name} ({computer.DeviceId})"));
+                if (computer.Standing == ComputerStanding.Asking) hosting.Worsen(NodeHealth.Attention, "Asks to join");
+                continue;
+            }
+            node.Facts.Add(new("Device", computer.DeviceId));
+            node.Facts.Add(new("Martlet network", computer.Standing switch
+            {
+                ComputerStanding.Member => "Member",
+                ComputerStanding.Asking => $"Asks to join (check number {computer.CheckNumber})",
+                _ => "Not a member"
+            }));
+            if (computer.Standing == ComputerStanding.Asking) node.Worsen(NodeHealth.Attention, "Asks to join");
+            else if (computer.Standing == ComputerStanding.Outside) node.Worsen(NodeHealth.Unknown, "Not in your network");
+            else if (computer.Active) node.HealthText = "Active now";
+            else node.Worsen(NodeHealth.Unknown, "Not active now");
+            if (computer.Standing != ComputerStanding.Asking) node.Roles.AddRange(onEachPc);
         }
 
         if (companion)

@@ -13,6 +13,7 @@ later, without anyone logging in to it or typing a code on the other PCs.
 | Pair your first host (Add a computer: this PC with Docker Desktop, a Linux computer over SSH, or a typed code) | This PC starts your network and adds the host to it |
 | Pair another host on any member PC | It joins the network; every other member pairs with it by itself within a minute |
 | Install Martlet on another PC and choose it under Add a computer › *Martlet on your network* on that PC (or pair it with any one host of the network by code or SSH) | Both screens show a six-digit check number. **Allow** it on the computer with the hosts (*Martlet on your network*, or **Devices › Your Martlet network** for a PC that paired another way; **Turn down** refuses). Allowing it from *Martlet on your network* also lets it into the network, with no second Allow. Then the new PC pairs with every host by itself, including hosts added later |
+| Pair your main PC with a member PC's own host service (*Pair your main PC* on a host PC, or this PC's host service on a companion) | It joins the network by itself: the pairing code (or Allow) showed only on that member PC, so the owner already approved it there and no second Allow is asked. It then pairs with every host by itself |
 | **Remove from network** on another PC | Every host revokes it; it forgets the network's hosts. To come back it asks again (with a new key) |
 | **Remove from network** on a host | It stops trusting the network's PCs and they forget it. Pair it again with Add a computer to bring it back |
 | **Forget** a host on one PC | Only that PC stops using it (and won't pair with it again by itself); the rest of the network keeps it |
@@ -47,6 +48,19 @@ each host (*Computers using it*, or *Used by* on this PC's own host service),
 and **Your Martlet network** lists members with where they were last active and
 computers that use a host but are not members. A host PC's Home lists the
 computers paired with its host service under *Pair your main PC*.
+
+The Devices map draws the same computers on every one of them: this PC in the
+middle, every other member of the network (and every computer asking to join or
+using your hosts outside it) as its own device with where it was last active,
+your hosts, and the cloud services your jobs use. A PC that runs its own host
+service is one device: on the main PC, the host PC's host service shows under
+that PC's name (Martlet names a PC's host service after the PC, so *DIVA* runs
+`diva-host`). A host PC uses no jobs, so its map shows who does what from the
+[shared plan](CLUSTER.md) (a job a host does on that host, a cloud job on its
+cloud service, a job that runs on each companion PC on those PCs) rather than
+the Setup choice it kept from before it became a host. Before this, a host PC's
+map showed only itself and its own old choices, and no computer showed the
+other desktops.
 
 ## A PC set up as a host
 
@@ -104,7 +118,14 @@ over SSH also manages it.
   number (six digits from the network, device ID and key) appears on both
   screens; allow only when they match. A PC the owner just allowed from *Martlet
   on your network* (same device ID, within 15 minutes) is let in by the
-  allowing PC without asking again.
+  allowing PC without asking again. A PC that asks through a member PC's own
+  host service (the host service Martlet runs on that PC's Docker Desktop) is
+  let in by that member PC by itself: every pairing with it was approved on
+  that PC (its pairing code or Allow shows only there), and the host service
+  runs on that same computer, so it vouches for the joining key as that PC
+  itself would. Before this, a main PC paired through *Pair your main PC* on a
+  host PC still waited for an Allow on that same host PC. Requests through any
+  other host still need the check number and an Allow.
 - **Revocation.** Hosts revoke every credential of a removed desktop. A removed
   host revokes every network desktop and keeps the roster, so the PCs learn of
   the removal and forget it.
@@ -128,7 +149,7 @@ Limits, by design for a home network:
 | Roster format and rules | `Martlet.Core.Network` (`NetworkRoster`, `NetworkKey`, `NetworkPairing`) |
 | Host side | `Martlet.Gateway` `GatewayNetwork.cs`: `GET`/`POST /martlet/v1/network` (roster, join requests, the computers paired with the host, the Martlet release it runs), `/network/join`, `/network/deny`, `/pair/member` ([gateway contract](../src/Martlet.Gateway/README.md#martlet-network-member-pairing)); `network.json` on Linux hosts ([Linux gateway](../src/Martlet.Gateway.Host.Linux/README.md)) |
 | Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/HostNetwork.cs` (client calls, pairing by itself) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
-| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
+| Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`); card IDs in [MCP](MCP.md) |
 
@@ -140,9 +161,11 @@ does what plan, and grants nothing in the network itself.
 ## Qualification
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`
-(three real gateways on 127.0.0.1 with two simulated desktops and a simulated
+(three real gateways on 127.0.0.1 with simulated desktops and a simulated
 host PC: founding, binding, joining with a check number, a host telling a paired
-computer outside the network who uses it and when each was last active, a host
+computer outside the network who uses it and when each was last active, a
+member letting in a desktop paired with its own host service without a second
+Allow while one asking through another host still waits, a host
 PC outside the network watching without starting or joining one, pairing by
 itself, refusing forged keys and rosters, removing a host and pairing it back,
 removing a desktop, every host announcing the Martlet release it runs and a
@@ -151,9 +174,15 @@ disposable data folder
 (members listed, a pairing attempt to an unreachable host reported, **Remove
 from network** signed and saved; as a host PC that started the network, the sync
 running and logged; as a host PC in no network, watching only, with no key or
-`network.json` made). The gateway and Linux gateway unit tests pass. **NOT RUN:**
+`network.json` made). The Devices map was checked the same way on disposable
+host-PC and companion data folders with a signed roster and a shared plan: the
+other member computers shown as devices, a member PC that runs a host service
+shown as one device under its name, a host PC's jobs placed from the plan
+(its own host service speaking and doing lip-sync, the cloud model, listening on
+the companion PCs) and one host service row. The gateway and Linux gateway unit tests pass. **NOT RUN:**
 a native or Docker Linux host keeping `network.json`, `martlet-host
 network-reset`, the SSH flow adding a real Linux host to a network, the desktop
-window listing computers reported by a live host or following a live host's
-update (both need a pairing secret in Windows Credential Manager) and two
+window listing computers reported by a live host, letting a computer in through
+its own live host service or following a live host's
+update (all need a pairing secret in Windows Credential Manager) and two
 physical PCs on a real LAN.

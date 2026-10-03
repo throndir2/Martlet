@@ -157,17 +157,34 @@ public partial class MainWindow
             LogNetworkPicture(state);
             ObserveHostReleases(result.Views);
             var messages = result.Events.ToList();
+            IReadOnlyList<HostJoinRequest> pending = result.Joins;
+            // A computer that paired with this PC's own host service was approved here already (the pairing code or Allow shows
+            // only on this PC): it joins without a second Allow.
+            var own = ThisPcHost() is { } mine ? new[] { mine.HostId } : [];
+            if (state.Roster is not null && pending.Any(j => own.Contains(j.HostId, StringComparer.Ordinal)))
+            {
+                var through = pending.Where(j => own.Contains(j.HostId, StringComparer.Ordinal)).ToArray();
+                pending = pending.Except(through).ToArray();
+                networkJoins = networkJoins.Where(j => through.All(t => t.DeviceId != j.DeviceId)).ToArray();
+                foreach (var join in through) networkPreapproved.Remove(join.DeviceId);
+                var names = string.Join(" and ", through.Select(j => j.DisplayName));
+                ChangeNetwork((engine, current) => engine.ApproveThrough(current, through, own).State,
+                    $"{names} joined your Martlet network by itself: it paired with this PC's host service ({through[0].HostId}), which you " +
+                    "approved here, so it needs no second Allow. It pairs with your other hosts automatically.");
+                messages.Clear();
+            }
             foreach (var stale in networkPreapproved.Where(p => p.Value <= DateTimeOffset.Now).Select(p => p.Key).ToArray())
                 networkPreapproved.Remove(stale);
-            if (state.Roster is not null && result.Joins.FirstOrDefault(j => networkPreapproved.ContainsKey(j.DeviceId)) is { } allowed)
+            if (state.Roster is not null && pending.FirstOrDefault(j => networkPreapproved.ContainsKey(j.DeviceId)) is { } allowed)
             {
                 networkPreapproved.Remove(allowed.DeviceId);
+                pending = pending.Where(j => j.DeviceId != allowed.DeviceId).ToArray();
                 networkJoins = networkJoins.Where(j => j.DeviceId != allowed.DeviceId).ToArray();
                 ChangeNetwork((engine, current) => engine.Approve(current, allowed),
                     $"{allowed.DisplayName} joined your Martlet network (you allowed it with check number {allowed.CheckNumber}); it pairs with your other hosts automatically.");
                 messages.Clear();
             }
-            if (result.Joins.FirstOrDefault(j => networkAnnounced.Add(j.DeviceId + "|" + j.Key)) is { } fresh)
+            if (pending.FirstOrDefault(j => networkAnnounced.Add(j.DeviceId + "|" + j.Key)) is { } fresh)
             {
                 ErrorLog.Info($"Martlet network: {fresh.DeviceId} ({fresh.DisplayName}) asks to join (check number {fresh.CheckNumber}).");
                 messages.Add($"{fresh.DisplayName} wants to join your Martlet network (check number {fresh.CheckNumber}). Allow it " +
@@ -280,6 +297,8 @@ public partial class MainWindow
             ActionText.Text = done;
             ErrorLog.Info("Martlet network: " + done);
             RenderNetwork();
+            // A request allowed (or turned into a member) leaves the host dashboard's Allow step at once, not on the next sync.
+            RenderHost();
             QueueNetworkSync();
         }
         catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or ContractException or
@@ -291,6 +310,15 @@ public partial class MainWindow
 
     private void AllowJoin(HostJoinRequest join)
     {
+        if (networkState.Roster?.Trusts(join.DeviceId, join.Key) == true)
+        {
+            // Already let in (on another screen, or by itself through this PC's host service): nothing left to allow.
+            networkJoins = networkJoins.Where(j => j.DeviceId != join.DeviceId).ToArray();
+            ActionText.Text = $"{join.DisplayName} is already in your Martlet network.";
+            RenderNetwork();
+            RenderHost();
+            return;
+        }
         if (!ConfirmationDialog.Confirm(this,
                 $"Let {join.DisplayName} ({join.DeviceId}) into your Martlet network? Only allow it if that computer shows check number " +
                 $"{join.CheckNumber}. It can then use every host in your network and pairs with them by itself; you can remove it here later.",
@@ -373,13 +401,39 @@ public partial class MainWindow
 
     private string? networkDevicesShown;
 
-    /// <summary>Changes when a computer pairs with or leaves a host, or becomes active or idle: then the Devices map is drawn
-    /// again (not on every sync, so the map doesn't animate every 20 seconds).</summary>
+    /// <summary>The other Martlet computers this PC knows of, for the Devices map, so every computer draws the same picture:
+    /// the network's member desktops, computers asking to join it and computers that use one of its hosts outside it, each
+    /// with where it was last active.</summary>
+    private IReadOnlyList<MartletComputer> OtherComputers()
+    {
+        var roster = networkState.Roster;
+        var now = DateTimeOffset.UtcNow;
+        var computers = new List<MartletComputer>();
+        MartletComputer Computer(string id, string name, ComputerStanding standing, string? check = null, string? through = null)
+        {
+            var seen = networkViews.Values.SelectMany(v => v.Devices ?? []).Where(d => d.DeviceId == id)
+                .OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).FirstOrDefault();
+            return new(id, name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through);
+        }
+        if (roster is not null)
+            foreach (var member in roster.ActiveDesktops.Where(d => !IsThisDevice(d.Id)))
+                computers.Add(Computer(member.Id, member.Name, ComputerStanding.Member));
+        foreach (var join in networkJoins.Where(j => !IsThisDevice(j.DeviceId) && computers.All(c => c.DeviceId != j.DeviceId)))
+            computers.Add(Computer(join.DeviceId, join.DisplayName, ComputerStanding.Asking, join.CheckNumber, join.HostId));
+        foreach (var device in OutsideComputers(roster).Where(d => computers.All(c => c.DeviceId != d.DeviceId)))
+            computers.Add(Computer(device.DeviceId, device.DisplayName, ComputerStanding.Outside));
+        return computers;
+    }
+
+    /// <summary>Changes when a computer pairs with or leaves a host, joins or leaves the network, asks to join, or becomes
+    /// active or idle: then the Devices map is drawn again (not on every sync, so the map doesn't animate every 20 seconds).</summary>
     private string NetworkDevicesSignature()
     {
         var now = DateTimeOffset.UtcNow;
         return string.Join(";", networkViews.OrderBy(v => v.Key, StringComparer.Ordinal).Select(v => v.Key + ":" +
-            string.Join(",", (v.Value.Devices ?? []).Select(d => d.DeviceId + (Active(d, now) ? "+" : "-")))));
+            string.Join(",", (v.Value.Devices ?? []).Select(d => d.DeviceId + (Active(d, now) ? "+" : "-"))))) + "|" +
+            string.Join(",", networkState.Roster?.ActiveDesktops.Select(d => d.Id) ?? []) + "|" +
+            string.Join(",", networkJoins.Select(j => j.DeviceId));
     }
 
     /// <summary>What the host dashboard shows about the network: requests to join and the computers paired with this PC's

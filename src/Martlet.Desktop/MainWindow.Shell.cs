@@ -845,7 +845,7 @@ public partial class MainWindow
     private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
-        HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers());
+        HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers());
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -926,7 +926,7 @@ public partial class MainWindow
     private (List<MapElement> Left, List<MapElement> Right) MapSides()
     {
         var left = mapElements.Where(m => m.Node.Kind is NodeKind.Cloud or NodeKind.Missing).ToList();
-        var right = mapElements.Where(m => m.Node.Kind == NodeKind.Host).ToList();
+        var right = mapElements.Where(m => m.Node.Kind is NodeKind.Host or NodeKind.Computer).ToList();
         (left.Count < right.Count ? left : right).AddRange(mapElements.Where(m => m.Node.Kind == NodeKind.Add));
         return (left, right);
     }
