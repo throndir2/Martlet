@@ -16,6 +16,13 @@ public sealed record RendererParameter(string Id, double Minimum, double Maximum
 public sealed record RendererModelSummary(int Textures, int TextureDivisor, string[] EyeBlink, string[] LipSync,
     string[] MotionGroups, int Expressions, bool Physics, bool Animated);
 public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters, RendererModelSummary? Model = null);
+/// <summary>Plays (<paramref name="On"/>) or ends one emote or motion on the showing character: an <c>expression</c> (held until
+/// ended or replaced), a <c>motion</c> group (played once) or a <c>gesture</c> (<c>nod</c> or <c>shake</c>). The reply says
+/// whether the model started it.</summary>
+public sealed record RendererAction(string Kind, string Name, bool On = true)
+{
+    public static IReadOnlyList<string> Kinds { get; } = ["expression", "motion", "gesture"];
+}
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme);
 public sealed record RendererTheme(bool Dark);
 /// <summary>

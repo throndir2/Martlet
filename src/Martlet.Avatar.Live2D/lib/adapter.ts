@@ -1,5 +1,6 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
+import { type Gesture, gestureOffset, isGesture } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 
@@ -154,6 +155,7 @@ export class Live2DAdapter {
   #lipSyncAge = Number.POSITIVE_INFINITY;
   #lookTarget = { x: 0, y: 0 };
   #look = { x: 0, y: 0 };
+  #gesture: { name: Gesture; seconds: number } | undefined;
   #view = { zoom: 1, x: 0, y: 0, frame: 1 };
   #modelTop: number | undefined;
   #eyeBlinkIds: readonly string[] = [];
@@ -232,6 +234,14 @@ export class Live2DAdapter {
   setExpression(name: string | null): boolean {
     this.#ready();
     return this.#resources?.animator?.setExpression(name) ?? false;
+  }
+
+  /** Starts one of Martlet's head gestures ("nod" or "shake"), replacing one already playing. */
+  gesture(name: string): boolean {
+    this.#ready();
+    if (!isGesture(name) || !this.animated) return false;
+    this.#gesture = { name, seconds: 0 };
+    return true;
   }
 
   async load(bundle: LocalModelBundle): Promise<Capabilities> {
@@ -443,7 +453,13 @@ export class Live2DAdapter {
       const follow = Math.min(1, deltaSeconds * 5);
       this.#look = { x: this.#look.x + (this.#lookTarget.x - this.#look.x) * follow,
         y: this.#look.y + (this.#lookTarget.y - this.#look.y) * follow };
-      animator.update(deltaSeconds, { lookX: this.#look.x, lookY: this.#look.y,
+      let gesture = { x: 0, y: 0 };
+      if (this.#gesture) {
+        this.#gesture.seconds += deltaSeconds;
+        const offset = gestureOffset(this.#gesture.name, this.#gesture.seconds);
+        if (offset) gesture = offset; else this.#gesture = undefined;
+      }
+      animator.update(deltaSeconds, { lookX: this.#look.x + gesture.x, lookY: this.#look.y + gesture.y,
         lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply });
     } else {
       // No SDK motion/expression/physics writer runs after these composed parameter writes.
@@ -650,6 +666,7 @@ export class Live2DAdapter {
     this.#lipSyncAge = Number.POSITIVE_INFINITY;
     this.#lookTarget = { x: 0, y: 0 };
     this.#look = { x: 0, y: 0 };
+    this.#gesture = undefined;
     this.#modelTop = undefined;
     this.#eyeBlinkIds = [];
     this.#lipSyncIds = [];

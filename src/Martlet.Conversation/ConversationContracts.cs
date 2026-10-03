@@ -76,13 +76,15 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 // model samples, never what is disclosed, so it is not part of the text authorization (the reply token budget is, through
 // TextLimits). Tools runs the calls a model makes when the input offers tools. ImageOptional: the input's picture is context sent
 // along with the user's own words (their screen while vision is on), so a model that rejects it is asked again without it; a
-// screen glance's picture is the whole point of its request and is never dropped.
+// screen glance's picture is the whole point of its request and is never dropped. CharacterTags are the desktop character's
+// tags (such as {blush}) the model was told about: they are removed from the words shown and spoken and reach the character
+// through the runtime's CharacterCueFeed, timed with the sentence they were written in.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
     GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null,
-    bool imageOptional = false)
+    bool imageOptional = false, IReadOnlyList<string>? characterTags = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -98,11 +100,14 @@ public sealed class ConversationRequest(
     [JsonIgnore] public IConversationToolHost? Tools { get; } = tools;
     public TextFallback? Fallback { get; } = fallback;
     public bool ImageOptional { get; } = imageOptional;
+    [JsonIgnore] public IReadOnlyList<string> CharacterTags { get; } = characterTags ?? [];
 
     internal void Validate()
     {
         ContractRules.Require(SilentReply is null || SilentReply.Length is > 0 and <= 16 && SilentReply.All(char.IsAsciiLetter),
             "The silent reply word must be 1-16 ASCII letters.");
+        ContractRules.Require(CharacterTags.Count <= 128 && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
+            tag[0] == '{' && tag[^1] == '}' && !tag.Any(char.IsControl)), "Character tags must be at most 128 {tags} of 3-64 characters.");
         ArgumentNullException.ThrowIfNull(Input);
         ArgumentNullException.ThrowIfNull(Model);
         ArgumentNullException.ThrowIfNull(TextLimits);
@@ -232,7 +237,8 @@ public sealed record ConversationSnapshot(
     Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
     TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false,
-    ConversationFailure SpeechFailure = ConversationFailure.None, long? InputTokens = null, long? CachedInputTokens = null)
+    ConversationFailure SpeechFailure = ConversationFailure.None, ConversationTimings? Timings = null, long? InputTokens = null,
+    long? CachedInputTokens = null)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
@@ -248,6 +254,17 @@ public sealed record ConversationSnapshot(
 }
 
 public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issue);
+
+/// <summary>When each step of a reply first happened, measured from the turn's start like
+/// <see cref="ConversationSnapshot.FirstTextAfter"/> and <see cref="ConversationSnapshot.FirstAudioAfter"/> (null when it never
+/// happened): the Thinking request sent (after its authorization), the provider's response headers, its first hidden reasoning,
+/// the first speakable piece staged for the voice, the first voice request sent, the voice's first audio received, the first
+/// piece fully synthesized (and how much speech it holds) and the first audio handed to the speakers. Diagnostics only (the
+/// desktop log's reply latency line); nothing depends on them.</summary>
+public sealed record ConversationTimings(
+    TimeSpan? TextRequestAfter = null, TimeSpan? TextResponseAfter = null, TimeSpan? FirstReasoningAfter = null,
+    TimeSpan? FirstSegmentAfter = null, TimeSpan? SpeechRequestAfter = null, TimeSpan? FirstSpeechAudioAfter = null,
+    TimeSpan? FirstPieceSynthesizedAfter = null, TimeSpan? FirstPieceSpeech = null, TimeSpan? PlaybackStartedAfter = null);
 
 public sealed class ConversationContent(string text, string? refusal)
 {

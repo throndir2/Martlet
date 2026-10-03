@@ -1,4 +1,5 @@
 using Martlet.Audio;
+using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
@@ -157,6 +158,18 @@ internal sealed class LiveConversationConfiguration
     private static readonly AudioSettings WindowsDefaultAudio = AudioSettings.Create();
 
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
+
+    /// <summary>Which Thinking model, voice and speech-to-text a reply used, for the desktop log's reply latency line (model IDs
+    /// only), or null when none is set.</summary>
+    internal string? LatencyModels(bool spokenInput)
+    {
+        string? Model(SetupRole role) => Routes.FirstOrDefault(route => route.Role == role && route.Enabled == true)?.ModelId;
+        var parts = new List<string>();
+        if (Model(SetupRole.Llm) is { } llm) parts.Add("Thinking " + llm);
+        if (Model(SetupRole.Tts) is { } tts) parts.Add("voice " + tts);
+        if (spokenInput && Model(SetupRole.Stt) is { } stt) parts.Add("speech-to-text " + stt);
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
 
     private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
     private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
@@ -400,7 +413,8 @@ internal sealed class LiveConversationConfiguration
         out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
         string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false,
-        string? voices = null, string? messageNotes = null)
+        string? voices = null, string? messageNotes = null,
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -410,8 +424,10 @@ internal sealed class LiveConversationConfiguration
         // A persona with one style always has it: it stays with the instructions. Otherwise the picked style is noted.
         var oneStyle = Persona is { } selected && new[] { selected.Styles.Helpful, selected.Styles.Sarcastic, selected.Styles.Silly,
             selected.Styles.Distracted, selected.Styles.PlayfulTeasing }.Count(weight => weight > 0) == 1;
+        // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off.
+        var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
         var instructions = Join(persona, oneStyle ? styleNote : null, tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools),
-            voice ? VoiceTagInstructions() : null, extraInstructions, closingInstructions);
+            voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, closingInstructions);
         if (oneStyle) styleNote = null;
         var facts = memory?.Facts ?? [];
         var hits = lore?.Included ?? [];
@@ -445,7 +461,8 @@ internal sealed class LiveConversationConfiguration
                         voice ? new(SpeechSelection(),
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null);
+                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null,
+                        character?.Tags);
                 }
             }
         }

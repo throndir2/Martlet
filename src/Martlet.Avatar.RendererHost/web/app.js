@@ -2,7 +2,7 @@ import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
 
 const canvas = document.getElementById("avatar");
-let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop;
+let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression;
 let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
 // Percent-encodes every character but A-Z a-z 0-9 - . _ ~ (like .NET's Uri.EscapeDataString), so the host matches the
@@ -46,7 +46,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
         const files = new Map();
         for (const name of data.assets.filter(name => !["core.js", "sdk.js"].includes(name)))
           files.set(name, new Uint8Array(await resource(name)));
-        const capabilities = await adapter.load(new LocalModelBundle(files, data.modelFile));
+        const capabilities = await adapter.load(new LocalModelBundle(files, data.modelFile, data.extras ?? undefined));
         post({ modelId: data.resourceRevision.toLowerCase(), parameters: capabilities.parameters.map(p => ({
           id: p.id, minimum: p.minimum, maximum: p.maximum, neutral: p.neutral,
           aspects: p.groups.includes("LipSync") ? ["Mouth"] : p.groups.includes("EyeBlink") ? ["Expression"] : ["Mouth", "Expression"]
@@ -97,6 +97,20 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       post({});
     } else if (message.kind === "motion") {
       post({ started: renderer === "Live2D" ? adapter.playMotion(String(data.group)) : false });
+    } else if (message.kind === "action") {
+      // An emote (expression, held until ended or replaced), a motion (played once) or a head gesture. Ending an
+      // expression that isn't the one showing changes nothing.
+      const kind = String(data.kind), name = String(data.name), on = data.on !== false;
+      let started = false;
+      if (kind === "gesture") started = on ? (renderer === "Live2D" ? adapter.gesture(name) : adapter.playGesture(name)) : true;
+      else if (kind === "motion") started = on && renderer === "Live2D" ? adapter.playMotion(name) : false;
+      else if (kind === "expression") {
+        if (renderer === "Live2D") {
+          if (on) { started = adapter.setExpression(name); if (started) expression = name; }
+          else if (expression === name) { started = adapter.setExpression(null); expression = undefined; }
+        } else started = adapter.setAction(name, on);
+      }
+      post({ started });
     }
     else throw new Error("Unsupported command.");
   } catch (error) {

@@ -29,6 +29,7 @@ import threading
 import time
 import traceback
 import urllib.request
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -581,6 +582,7 @@ class EngineHost:
         self.identity: dict[str, Any] | None = None
         self.engine_kind: str | None = None
         self.model: Any = None
+        self.fast: FastTurbo | None = None
         self.active: Job | None = None
         self.loading = False
 
@@ -624,9 +626,15 @@ class EngineHost:
                 model = ChatterboxTurboTTS.from_local(model_dir, device)
             else:
                 raise RuntimeError("Unknown Chatterbox engine configuration.")
+            # Faster speech for the same words and sound: kept voice conditionals and CUDA-graph decoding, warmed up now so
+            # the first reply doesn't pay for it.
+            fast = FastTurbo(model, graph=os.environ.get("MARTLET_CHATTERBOX_FAST", "1") != "0") if engine == "chatterbox" else None
+            if fast is not None:
+                fast.warm()
         except Exception as exc:
             with self.lock:
                 self.model = None
+                self.fast = None
                 self.engine_kind = None
                 self.identity = None
                 self.state = "failed"
@@ -637,6 +645,7 @@ class EngineHost:
             return
         with self.lock:
             self.model = model
+            self.fast = fast
             self.engine_kind = engine
             self.identity = identity
             self.state, self.error = "ready", None
@@ -680,13 +689,27 @@ class EngineHost:
                         if not job.emit_pcm(chunk.index, pcm) or not job.chunk_completed(chunk.index):
                             return
                 else:
-                    reference_path = _write_private_reference(job.request.reference.audio)
+                    with self.lock:
+                        fast = self.fast
+                    started = time.monotonic()
+                    cached = False
+                    if fast is not None:
+                        # The reference's conditionals are computed once and kept, not for every sentence.
+                        cached = fast.use_reference(job.request.reference.audio)
+                    else:
+                        reference_path = _write_private_reference(job.request.reference.audio)
+                    samples = 0
                     for chunk in job.request.chunks:
                         if job.cancel_requested:
                             return
                         pcm = _generate_with_memory_retry(engine, chunk.text, reference_path)
+                        samples += len(pcm) // 2
                         if not job.emit_pcm(chunk.index, pcm) or not job.chunk_completed(chunk.index):
                             return
+                    # Timing only, never the text: how long this reply's speech took to make.
+                    _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms "
+                         f"({'kept' if cached else 'new'} voice conditionals, "
+                         f"{'CUDA graph' if fast is not None and fast.graph_ready else 'eager'} decoding).")
                 job.completed()
             finally:
                 if reference_path is not None:
@@ -713,6 +736,7 @@ class EngineHost:
                     self.active = None
                 if failed_engine is not None:
                     self.model = None
+                    self.fast = None
                     self.state = "failed"
                     self.error = f"The Chatterbox engine failed ({failed_engine}); the next reply will reload it."
                 elif self.state == "busy":
@@ -745,7 +769,7 @@ def _free_gpu_memory() -> None:
         pass
 
 
-def _generate_with_memory_retry(model: Any, text: str, reference_path: Path) -> bytes:
+def _generate_with_memory_retry(model: Any, text: str, reference_path: Path | None) -> bytes:
     """One sentence; when the graphics card runs out of memory, free the cache once and try again."""
     try:
         return _real_generate_pcm(model, text, reference_path)
@@ -821,8 +845,9 @@ def _write_private_reference(audio: bytes) -> Path:
         handle.close()
 
 
-def _real_generate_pcm(model: Any, text: str, reference_path: Path) -> bytes:
-    wav = model.generate(text, audio_prompt_path=str(reference_path))
+def _real_generate_pcm(model: Any, text: str, reference_path: Path | None) -> bytes:
+    # Without a path the model speaks with the voice conditionals FastTurbo kept for this reply's reference.
+    wav = model.generate(text, audio_prompt_path=str(reference_path)) if reference_path is not None else model.generate(text)
     sr = int(getattr(model, "sr", 24_000) or 24_000)
     try:
         import torch  # type: ignore
@@ -843,6 +868,212 @@ def _real_generate_pcm(model: Any, text: str, reference_path: Path) -> bytes:
             new = np.linspace(0.0, 1.0, num=new_size, endpoint=False)
             array = np.interp(new, old, array).astype(np.float32)
         return (np.clip(array, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+
+
+class FastTurbo:
+    """Makes Chatterbox Turbo answer sooner without changing what it says or how it sounds.
+
+    - Voice conditionals (speaker embedding, prompt speech tokens, reference mel) are computed once per reference recording,
+      keyed by its SHA-256, instead of for every sentence: about 140 ms a sentence, and several seconds the first time after
+      a start (librosa/numba warm-up), which warm() now pays while the model loads.
+    - T3's token-by-token decoding replays one captured CUDA graph per token over a static KV cache instead of launching
+      hundreds of small kernels each step: about 6 ms a token instead of 17-25 ms on an RTX 5080 under Docker/WSL2, with the
+      same logits and the library's own sampling. A sentence it can't decode that way (no CUDA, a capture failure, a prompt
+      too long for the cache) uses the library's own loop.
+    """
+
+    CACHED_REFERENCES = 2
+
+    def __init__(self, model: Any, *, graph: bool = True) -> None:
+        self.model = model
+        self.conditionals: OrderedDict[str, Any] = OrderedDict()
+        self.graph: _T3Graph | None = None
+        self.graph_error: str | None = None
+        self._original = model.t3.inference_turbo
+        if graph:
+            try:
+                self.graph = _T3Graph(model.t3, model.device)
+            except Exception as exc:  # noqa: BLE001 - any failure only means the library's own decoding
+                self.graph_error = _failure_detail(exc)
+            if self.graph is not None:
+                model.t3.inference_turbo = self._inference_turbo
+
+    @property
+    def graph_ready(self) -> bool:
+        return self.graph is not None and self.graph.captured
+
+    def use_reference(self, audio: bytes) -> bool:
+        """Sets the model's voice conditionals for this reference; True when they were already kept."""
+        key = hashlib.sha256(audio).hexdigest()
+        kept = self.conditionals.get(key)
+        if kept is not None:
+            self.conditionals.move_to_end(key)
+            self.model.conds = kept
+            return True
+        path = _write_private_reference(audio)
+        try:
+            # What model.generate(text, audio_prompt_path=...) does for every sentence, with its defaults.
+            self.model.prepare_conditionals(str(path), exaggeration=0.0, norm_loudness=True)
+        finally:
+            path.unlink(missing_ok=True)
+        self.conditionals[key] = self.model.conds
+        while len(self.conditionals) > self.CACHED_REFERENCES:
+            self.conditionals.popitem(last=False)
+        return False
+
+    def _inference_turbo(self, t3_cond: Any, text_tokens: Any, temperature: float = 0.8, top_k: int = 1000, top_p: float = 0.95,
+                         repetition_penalty: float = 1.2, max_gen_len: int = 1000) -> Any:
+        graph = self.graph
+        if graph is not None:
+            try:
+                tokens = graph.generate(t3_cond, text_tokens, temperature, top_k, top_p, repetition_penalty, max_gen_len)
+                if tokens is not None:
+                    return tokens
+            except Exception as exc:  # noqa: BLE001 - a broken graph is dropped; the library's loop speaks instead
+                if _out_of_memory(exc):
+                    raise
+                self.graph = None
+                self.graph_error = _failure_detail(exc)
+                self.model.t3.inference_turbo = self._original
+                _log(f"CUDA-graph decoding stopped ({self.graph_error}); using the library's own decoding.")
+        return self._original(t3_cond, text_tokens, temperature=temperature, top_k=top_k, top_p=top_p,
+                              repetition_penalty=repetition_penalty, max_gen_len=max_gen_len)
+
+    def warm(self) -> None:
+        """Pays the first reply's one-time costs now: the conditionals' librosa/numba warm-up, the CUDA graph capture and the
+        decoder's first run, on a synthetic signal (FIXTURE - NOT a voice) that is forgotten afterwards. Never raises."""
+        started = time.monotonic()
+        try:
+            import torch  # type: ignore
+
+            key = self._warm_reference()
+            text = self.model.tokenizer("Warm up.", return_tensors="pt").input_ids.to(self.model.device)
+            with torch.inference_mode():
+                tokens = self.model.t3.inference_turbo(t3_cond=self.model.conds.t3, text_tokens=text, max_gen_len=24)
+                tokens = tokens[tokens < 6561]
+                if tokens.numel() > 0:
+                    self.model.s3gen.inference(speech_tokens=tokens.to(self.model.device), ref_dict=self.model.conds.gen,
+                                               n_cfm_timesteps=2)
+            self.conditionals.pop(key, None)
+            self.model.conds = None
+            decoding = "CUDA graph" if self.graph_ready else f"eager ({self.graph_error or 'graph off'})"
+            _log(f"Chatterbox Turbo warmed up in {(time.monotonic() - started) * 1000:.0f} ms; decoding: {decoding}.")
+        except Exception as exc:  # noqa: BLE001 - warming up is best effort
+            _log(f"Warming Chatterbox Turbo up failed ({_failure_detail(exc)}); the first reply may be slower.")
+
+    def _warm_reference(self) -> str:
+        # FIXTURE - NOT a voice: six seconds of a gliding harmonic tone, only to run the conditioning code once.
+        rate, seconds = 24_000, 6.0
+        frames = bytearray()
+        for i in range(int(rate * seconds)):
+            t = i / rate
+            pitch = 140 + 40 * math.sin(2 * math.pi * 0.5 * t)
+            envelope = 0.5 + 0.5 * math.sin(2 * math.pi * 3 * t)
+            value = sum(math.sin(2 * math.pi * pitch * k * t) / k for k in (1, 2, 3)) * 0.2 * envelope
+            frames += struct.pack("<h", int(max(-1.0, min(1.0, value)) * 32767))
+        header = b"RIFF" + struct.pack("<I", 36 + len(frames)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+        audio = header + b"data" + struct.pack("<I", len(frames)) + bytes(frames)
+        self.use_reference(audio)
+        return hashlib.sha256(audio).hexdigest()
+
+
+class _T3Graph:
+    """T3 (GPT-2 medium) decoding as one CUDA graph per token over a static KV cache, sampling exactly as
+    T3.inference_turbo does (temperature, top-k, top-p, repetition penalty, the same stop token)."""
+
+    MAX_TOKENS = int(os.environ.get("MARTLET_CHATTERBOX_GRAPH_TOKENS", "2048"))
+
+    def __init__(self, t3: Any, device: str) -> None:
+        import torch  # type: ignore
+        from transformers import StaticCache  # type: ignore
+
+        if not str(device).startswith("cuda") or not torch.cuda.is_available():
+            raise RuntimeError("CUDA graphs need an NVIDIA GPU")
+        self.torch = torch
+        self.t3 = t3
+        self.device = device
+        self.cache = StaticCache(config=t3.cfg, max_cache_len=self.MAX_TOKENS)
+        weight = t3.speech_emb.weight
+        self.x = torch.zeros(1, 1, weight.shape[1], device=weight.device, dtype=weight.dtype)
+        self.position = torch.zeros(1, dtype=torch.long, device=weight.device)
+        self.out: Any = None
+        self.cuda_graph: Any = None
+
+    @property
+    def captured(self) -> bool:
+        return self.cuda_graph is not None
+
+    def _prefill(self, embeds: Any) -> Any:
+        torch = self.torch
+        self.cache.reset()
+        length = embeds.shape[1]
+        out = self.t3.tfmr(inputs_embeds=embeds, past_key_values=self.cache, use_cache=True,
+                           cache_position=torch.arange(length, device=embeds.device))
+        return self.t3.speech_head(out[0][:, -1:])
+
+    def _step(self) -> Any:
+        out = self.t3.tfmr(inputs_embeds=self.x, past_key_values=self.cache, use_cache=True, cache_position=self.position)
+        return self.t3.speech_head(out[0])
+
+    def _capture(self, length: int) -> None:
+        torch = self.torch
+        self.position.fill_(length)
+        side = torch.cuda.Stream(device=self.x.device)
+        side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(side):
+            for _ in range(3):
+                self.out = self._step()
+        torch.cuda.current_stream().wait_stream(side)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            self.out = self._step()
+        self.cuda_graph = graph
+
+    def generate(self, t3_cond: Any, text_tokens: Any, temperature: float, top_k: int, top_p: float, repetition_penalty: float,
+                 max_gen_len: int) -> Any:
+        """The speech tokens, or None when this prompt doesn't fit the static cache (the caller decodes it as before)."""
+        torch = self.torch
+        import torch.nn.functional as F  # type: ignore
+        from transformers.generation.logits_process import (  # type: ignore
+            LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper)
+
+        t3 = self.t3
+        processors = LogitsProcessorList()
+        if temperature > 0 and temperature != 1.0:
+            processors.append(TemperatureLogitsWarper(temperature))
+        if top_k > 0:
+            processors.append(TopKLogitsWarper(top_k))
+        if top_p < 1.0:
+            processors.append(TopPLogitsWarper(top_p))
+        if repetition_penalty != 1.0:
+            processors.append(RepetitionPenaltyLogitsProcessor(repetition_penalty))
+        with torch.inference_mode():
+            start = t3.hp.start_speech_token * torch.ones_like(text_tokens[:, :1])
+            embeds, _ = t3.prepare_input_embeds(t3_cond=t3_cond, text_tokens=text_tokens, speech_tokens=start, cfg_weight=0.0)
+            length = embeds.shape[1]
+            if embeds.shape[0] != 1 or length + max_gen_len + 1 > self.MAX_TOKENS:
+                return None
+            if self.cuda_graph is None:
+                self._prefill(embeds)
+                self._capture(length)
+            logits = self._prefill(embeds)
+            next_token = torch.multinomial(F.softmax(processors(start, logits[:, -1, :]), dim=-1), num_samples=1)
+            generated = [next_token]
+            for i in range(max_gen_len):
+                self.x.copy_(t3.speech_emb(next_token))
+                self.position.fill_(length + i)
+                self.cuda_graph.replay()
+                processed = processors(torch.cat(generated, dim=1), self.out[:, -1, :])
+                if torch.all(processed == -float("inf")):
+                    break
+                next_token = torch.multinomial(F.softmax(processed, dim=-1), num_samples=1)
+                generated.append(next_token)
+                if torch.all(next_token == t3.hp.stop_speech_token):
+                    break
+            tokens = torch.cat(generated, dim=1)
+            if tokens.size(1) > 0 and tokens[0, -1] == t3.hp.stop_speech_token:
+                tokens = tokens[:, :-1]
+            return tokens
 
 
 WORKER = EngineHost()

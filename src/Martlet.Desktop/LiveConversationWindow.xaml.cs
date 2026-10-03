@@ -99,7 +99,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private int restarts;
     // WhileYouTalked: a line the PC played that was heard while the microphone was still hearing or transcribing you.
     private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
-        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false);
+        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false, ReplyTimeline? Timeline = null);
     // Hearing what this PC plays (Companion › Listening › Hear what this PC plays): a second listener beside the microphone
     // while always listening runs. What it hears waits here, goes with the next thing you say, and on its own is offered to
     // Martlet at most every PcPace (or once the PC goes quiet), so a video never floods Thinking or interrupts you.
@@ -732,7 +732,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
             ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
         lastHeard = clock.GetTimestamp();
-        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null, At: lastHeard));
+        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null, At: lastHeard,
+            Timeline: speech.Timeline));
         saidLately.Add((text, lastHeard));
         LeaveOutYourVoice();
         notice = null;
@@ -846,14 +847,17 @@ public partial class LiveConversationWindow : ThemedWindow
             var recording = preferences.HearVoice && playing.Count == 0 && recordings.All(r => r is not null)
                 ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap,
                     TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
+            // The reply's wait counts from when you last stopped talking (a copy, so a restarted reply counts from there again).
+            var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
             owned = playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
-                    seen: SeenNow())
+                    seen: SeenNow(), timeline: timeline)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
-                    seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null);
+                    seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
+                    timeline: timeline);
             answering = everything;
             yielded = null;
             answeredAt = clock.GetTimestamp();
@@ -951,12 +955,14 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         var code = status.Code;
         var continued = code == "conversation.continued";
-        // Voice latency for every spoken reply, in the desktop log (logs_tail shows it): when the first words arrived and when
-        // the first audio played, measured from the start of the reply.
-        if (done.Turn?.Snapshot is { FirstAudioAfter: { } firstAudio } spoken)
-            ErrorLog.Info($"Reply latency: first words after {spoken.FirstTextAfter?.TotalMilliseconds ?? 0:0} ms, first audio after " +
-                $"{firstAudio.TotalMilliseconds:0} ms, {spoken.CommittedSegments} spoken pieces" +
-                (ReferenceEquals(yielded, done) && code == "conversation.interrupted" ? ", stopped when you talked over it." : "."));
+        // Voice latency for every reply, in the desktop log (logs_tail and MCP's latency_report read it): how long from when you
+        // stopped talking (or sent your message) to the first audio, step by step (ReplyLatency).
+        if (done.Turn?.Snapshot is { } finishedReply &&
+            ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
+                done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
+                interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
+                passed: done.Passed, restarted: continued) is { } latency)
+            ErrorLog.Info(latency);
         if (ReferenceEquals(shown, done) && reply is not null)
         {
             // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it.

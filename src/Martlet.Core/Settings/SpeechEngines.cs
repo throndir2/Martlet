@@ -59,11 +59,19 @@ public sealed record SpeechEngine(
     ];
 }
 
-public enum VoiceTagKind { Sound, Emotion }
+/// <summary>What a tag does: a non-word sound or a tone of voice the engine performs, or (never sent to an engine) a
+/// character tag such as <c>{blush}</c> that makes the desktop character act.</summary>
+public enum VoiceTagKind { Sound, Emotion, Character }
 
 /// <summary>One tag an engine understands, written exactly as the engine expects it (Chatterbox <c>[laugh]</c>, Dia
-/// <c>(laughs)</c>), with one line telling the Thinking model when to use it.</summary>
-public sealed record VoiceTag(string Text, VoiceTagKind Kind, string Usage);
+/// <c>(laughs)</c>), with one line telling the Thinking model when to use it. <see cref="Cue"/> is what it means across
+/// engines (<c>laugh</c> for both of those), so a character emote or motion linked to a cue follows every engine's
+/// spelling of it.</summary>
+public sealed record VoiceTag(string Text, VoiceTagKind Kind, string Usage, string? CueName = null)
+{
+    /// <summary>The engine-independent name of the sound or tone: <see cref="CueName"/>, or the tag without its brackets.</summary>
+    public string Cue => CueName ?? Text.Trim('[', ']', '(', ')', ' ').ToLowerInvariant();
+}
 
 public static class SpeechEngines
 {
@@ -124,20 +132,20 @@ public static class SpeechEngines
     /// artifacts, so the worker passes reply text through unchanged.</summary>
     public static readonly IReadOnlyList<VoiceTag> DiaTags =
     [
-        new("(laughs)", VoiceTagKind.Sound, "a laugh, after something genuinely funny"),
+        new("(laughs)", VoiceTagKind.Sound, "a laugh, after something genuinely funny", "laugh"),
         new("(chuckle)", VoiceTagKind.Sound, "a small amused chuckle"),
-        new("(sighs)", VoiceTagKind.Sound, "a sigh, for relief, tiredness or mild exasperation"),
-        new("(gasps)", VoiceTagKind.Sound, "a gasp of surprise"),
-        new("(coughs)", VoiceTagKind.Sound, "a cough"),
-        new("(clears throat)", VoiceTagKind.Sound, "clearing your throat before saying something"),
-        new("(groans)", VoiceTagKind.Sound, "a groan, for something annoying or painful"),
-        new("(sniffs)", VoiceTagKind.Sound, "a sniff"),
-        new("(inhales)", VoiceTagKind.Sound, "a breath in, before something big"),
-        new("(exhales)", VoiceTagKind.Sound, "a breath out, letting go of tension"),
-        new("(mumbles)", VoiceTagKind.Sound, "mumble the words after it"),
-        new("(humming)", VoiceTagKind.Sound, "a short hum"),
-        new("(sneezes)", VoiceTagKind.Sound, "a sneeze"),
-        new("(whistles)", VoiceTagKind.Sound, "a short whistle, impressed or surprised")
+        new("(sighs)", VoiceTagKind.Sound, "a sigh, for relief, tiredness or mild exasperation", "sigh"),
+        new("(gasps)", VoiceTagKind.Sound, "a gasp of surprise", "gasp"),
+        new("(coughs)", VoiceTagKind.Sound, "a cough", "cough"),
+        new("(clears throat)", VoiceTagKind.Sound, "clearing your throat before saying something", "clear throat"),
+        new("(groans)", VoiceTagKind.Sound, "a groan, for something annoying or painful", "groan"),
+        new("(sniffs)", VoiceTagKind.Sound, "a sniff", "sniff"),
+        new("(inhales)", VoiceTagKind.Sound, "a breath in, before something big", "inhale"),
+        new("(exhales)", VoiceTagKind.Sound, "a breath out, letting go of tension", "exhale"),
+        new("(mumbles)", VoiceTagKind.Sound, "mumble the words after it", "mumble"),
+        new("(humming)", VoiceTagKind.Sound, "a short hum", "hum"),
+        new("(sneezes)", VoiceTagKind.Sound, "a sneeze", "sneeze"),
+        new("(whistles)", VoiceTagKind.Sound, "a short whistle, impressed or surprised", "whistle")
     ];
 
     /// <summary>Nari Labs' Dia: clones the voice from the recording and its transcript and performs the nonverbal cues in
