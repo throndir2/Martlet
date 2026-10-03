@@ -612,7 +612,12 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
-return the selected device's name and status, each row title
+return the selected device's name and status. When a paired host is older
+than this PC, its status *Update available* is a button,
+`SelectedDeviceHealthAction` (returned: its status and what it does, for
+example *Update available: Update to Martlet 0.40.0*); clicking it runs the
+same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. Each
+row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
