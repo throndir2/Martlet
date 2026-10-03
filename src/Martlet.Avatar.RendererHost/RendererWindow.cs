@@ -85,8 +85,8 @@ internal sealed class RendererWindow : Window
 
         // The main Martlet window also shows, hides and resets the character; the overlay shows only the character and its menu.
         AutomationProperties.SetAutomationId(viewport, "MoveAvatar");
-        AutomationProperties.SetName(viewport,
-            "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom, position and hide options.");
+        viewport.MoveTo = MoveOverlayTo;
+        ShowPlacementLock();
         viewport.Children.Add(browser);
         var loading = new TextBlock
         {
@@ -112,14 +112,15 @@ internal sealed class RendererWindow : Window
         PreviewKeyDown += (_, e) =>
         {
             var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
+            // A locked place ignores the arrow keys and Home; only Martlet's window unlocks it.
             switch (e.Key)
             {
                 case Key.Escape: Request("hide"); break;
-                case Key.Left: Left -= step; break;
-                case Key.Right: Left += step; break;
-                case Key.Up: Top -= step; break;
-                case Key.Down: Top += step; break;
-                case Key.Home: ResetToDefault(); break;
+                case Key.Left when !placementLocked: Left -= step; break;
+                case Key.Right when !placementLocked: Left += step; break;
+                case Key.Up when !placementLocked: Top -= step; break;
+                case Key.Down when !placementLocked: Top += step; break;
+                case Key.Home when !placementLocked: ResetToDefault(); break;
                 case Key.OemPlus or Key.Add: Zoom(ZoomStep * ZoomStep, null); break;
                 case Key.OemMinus or Key.Subtract: Zoom(1 / (ZoomStep * ZoomStep), null); break;
                 case Key.D0 or Key.NumPad0: ResetZoom(); break;
@@ -199,17 +200,19 @@ internal sealed class RendererWindow : Window
         }
     }
 
-    private bool CanZoomIn => FrameWidth < MaxFrameWidth - 0.5 || viewZoom < MaxViewZoom;
-    private bool CanZoomOut => viewZoom > 1 || FrameWidth > MinFrameWidth + 0.5;
+    private bool CanZoomIn => (!placementLocked && FrameWidth < MaxFrameWidth - 0.5) || viewZoom < MaxViewZoom;
+    private bool CanZoomOut => viewZoom > 1 || (!placementLocked && FrameWidth > MinFrameWidth + 0.5);
     private bool IsDefaultZoom => viewZoom == 1 && Math.Abs(FrameWidth - Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width)) < 0.5;
+    private bool CanResetZoom => placementLocked ? viewZoom != 1 : !IsDefaultZoom;
 
     /// <summary>
     /// Zooms in by growing the overlay up to its screen-height limit, then by zooming the camera into the
-    /// character (toward <paramref name="anchor"/>, or the face). Zooming out reverses that order.
+    /// character (toward <paramref name="anchor"/>, or the face). Zooming out reverses that order. While the place is locked
+    /// the overlay keeps its size and only the camera zooms.
     /// </summary>
     private void Zoom(double factor, Point? anchor)
     {
-        if (factor > 1 && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
+        if (factor > 1 && !placementLocked && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
         else if (factor > 1 || viewZoom > 1)
         {
             var point = anchor ?? new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3);
@@ -220,7 +223,7 @@ internal sealed class RendererWindow : Window
             var applied = zoom / viewZoom;
             SetView(zoom, cx - (cx - viewX) * applied, cy - (cy - viewY) * applied);
         }
-        else ResizeOverlay(FrameWidth * factor);
+        else if (!placementLocked) ResizeOverlay(FrameWidth * factor);
     }
 
     // Resizes the character's frame (and the room beside it) keeping the overlay's bottom-center anchored, except that
@@ -244,13 +247,81 @@ internal sealed class RendererWindow : Window
     private void ResetZoom()
     {
         SetView(1, 0, 0);
-        ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
+        if (!placementLocked) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
     }
 
     private void ResetToDefault()
     {
+        if (placementLocked) return;
         SetView(1, 0, 0);
         PlaceOnDesktop();
+    }
+
+    // ---------- locked placement ----------
+
+    // Locked, the overlay can't be dragged, nudged, sent home or resized from here; only Martlet's window unlocks it.
+    private bool placementLocked;
+
+    private RendererPlacement Placement() =>
+        new(placementLocked, Math.Round(Left, 2), Math.Round(Top, 2), Math.Round(FrameWidth, 2), Math.Round(Height, 2));
+
+    private void LockPlacement(bool locked)
+    {
+        if (placementLocked == locked) return;
+        placementLocked = locked;
+        EndPan();
+        ShowPlacementLock();
+        ErrorLog.Info(locked ? "The character's position is locked." : "The character's position is unlocked.");
+    }
+
+    private void ShowPlacementLock()
+    {
+        viewport.PlacementLocked = placementLocked;
+        viewport.Cursor = placementLocked ? Cursors.Arrow : Cursors.SizeAll;
+        AutomationProperties.SetName(viewport, placementLocked
+            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom and hide options."
+            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom, position, lock and hide options.");
+    }
+
+    /// <summary>Puts the overlay back where it was locked, at that size, when the character's frame would still be on a screen;
+    /// otherwise it stays at its default spot. Either way it is locked again.</summary>
+    private void RestorePlacement(RendererPlacement placement)
+    {
+        if (placement.IsValid)
+        {
+            var frame = Math.Clamp(placement.Width, MinFrameWidth, MaxFrameWidth);
+            var height = Math.Clamp(placement.Height, MinFrameWidth, Math.Max(MinFrameWidth, SystemParameters.VirtualScreenHeight));
+            var width = OverlayWidth(frame);
+            var center = new Point(placement.Left + FrameOffset(width) + frame / 2, placement.Top + height / 2);
+            if (OnAScreen(center))
+            {
+                Width = width;
+                Height = height;
+                Left = placement.Left;
+                Top = placement.Top;
+            }
+            else ErrorLog.Warn("The character's locked position isn't on a screen now; it shows at its default spot, still locked.");
+        }
+        LockPlacement(true);
+    }
+
+    /// <summary>Whether a point (device-independent pixels, like Left and Top) lies on one of the screens.</summary>
+    private bool OnAScreen(Point point)
+    {
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return true;
+        var device = target.TransformToDevice.Transform(point);
+        return MonitorFromPoint(new CursorPoint { X = (int)Math.Round(device.X), Y = (int)Math.Round(device.Y) }, 0) != IntPtr.Zero;
+    }
+
+    /// <summary>UI Automation's move (Martlet's MCP ui_move): like a drag, it puts the overlay's top-left at a screen point in
+    /// device pixels.</summary>
+    private void MoveOverlayTo(Point screen)
+    {
+        if (placementLocked) throw new InvalidOperationException("The character's position is locked. Unlock it in Martlet.");
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return;
+        var offset = target.TransformFromDevice.Transform(screen - viewport.PointToScreen(new Point(0, 0)));
+        Left += offset.X;
+        Top += offset.Y;
     }
 
     // Pan is clamped so the zoomed view never leaves the character's fitted frame and the top of the head stays in
@@ -276,11 +347,11 @@ internal sealed class RendererWindow : Window
         SetView(viewZoom, viewX, viewY);
     }
 
-    /// <summary>The character frame's size, position and camera, how far the top of the head sits below its top edge, and
-    /// the overlay's full width including the room beside the frame.</summary>
+    /// <summary>The character frame's size, position and camera, how far the top of the head sits below its top edge, the
+    /// overlay's full width including the room beside the frame, and whether its place is locked.</summary>
     private RendererView ViewState() => new(Math.Round(FrameWidth), Math.Round(Height),
         WorkAreaTop() is { } screenTop ? Math.Round(Top - screenTop) : null, Math.Round(viewZoom, 3),
-        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width));
+        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width), placementLocked);
 
     // The camera is in the frame's clip space; frame tells the renderer how much of its canvas width the frame spans.
     private void SendView()
@@ -342,6 +413,8 @@ internal sealed class RendererWindow : Window
         var zoomOut = Item("Zoom _out", "CharacterZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
         var reset = Item("_Reset zoom", "CharacterResetZoom", "0", ResetZoom);
         var home = Item("Reset _position and size", "CharacterResetPosition", "Home", ResetToDefault);
+        // Locking goes through Martlet, which saves the place; a locked character only opens Martlet, where it unlocks.
+        var placeLock = Item("_Lock position", "CharacterLockPosition", null, () => Request(placementLocked ? "settings" : "lock"));
         var onTop = new MenuItem { Header = "_Keep on top", IsCheckable = true, IsChecked = Topmost };
         AutomationProperties.SetAutomationId(onTop, "CharacterOnTop");
         onTop.Checked += (_, _) => Topmost = true;
@@ -350,7 +423,7 @@ internal sealed class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, open, settings, new Separator(), zoomIn, zoomOut, reset, home, onTop, new Separator(), hide }
+            Items = { talk, open, settings, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -358,10 +431,14 @@ internal sealed class RendererWindow : Window
         menu.Opened += (_, _) =>
         {
             // Until Martlet has loaded the character there is no one to ask; Hide still closes the overlay then.
-            talk.IsEnabled = open.IsEnabled = settings.IsEnabled = CanRequest;
+            talk.IsEnabled = open.IsEnabled = settings.IsEnabled = placeLock.IsEnabled = CanRequest;
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
-            reset.IsEnabled = !IsDefaultZoom;
+            reset.IsEnabled = CanResetZoom;
+            home.IsEnabled = !placementLocked;
+            placeLock.Header = placementLocked ? "Position locked: _unlock in Martlet..." : "_Lock position";
+            placeLock.IsChecked = placementLocked;
+            AutomationProperties.SetName(placeLock, placementLocked ? "Position locked: unlock in Martlet" : "Lock position");
             onTop.IsChecked = Topmost;
         };
         return menu;
@@ -404,7 +481,7 @@ internal sealed class RendererWindow : Window
             return;
         }
         e.Handled = true;
-        DragMove();
+        if (!placementLocked) DragMove();
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
@@ -634,6 +711,7 @@ internal sealed class RendererWindow : Window
             activation = message.Activation;
             var load = RendererProtocol.Data<RendererLoad>(message);
             ApplyOverlayTheme(load.DarkTheme);
+            if (load.Placement is { Locked: true } locked) RestorePlacement(locked);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
             foreach (var asset in assets.Assets) resources.Add(RendererResourcePolicy.CanonicalName("asset/" + asset.Name), asset);
@@ -718,12 +796,18 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "home")
                 {
                     ResetToDefault();
                     await ReplyAsync("ok", new { });
+                    continue;
+                }
+                if (message.Kind == "lock")
+                {
+                    LockPlacement(RendererProtocol.Data<RendererLock>(message).Locked);
+                    await ReplyAsync("placement", Placement());
                     continue;
                 }
                 if (message.Kind == "zoom")
@@ -841,6 +925,9 @@ internal sealed class RendererWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(CursorPoint point, uint flags);
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]

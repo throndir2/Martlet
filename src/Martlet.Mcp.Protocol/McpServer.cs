@@ -90,6 +90,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             id = new { type = "string" }
         }, ["id"]),
+        Tool("ui_move", "Move a movable control by dx, dy screen pixels through UI Automation's Transform pattern and report its " +
+            "bounds before and after: the character overlay's MoveAvatar moves the character like a drag. ui_snapshot reports " +
+            "movable for such controls (false while the character's position is locked, when this is refused). Requires " +
+            "--allow-ui-effects.", new
+        {
+            id = new { type = "string" },
+            dx = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove },
+            dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
+        }, ["id", "dx", "dy"]),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen) and whether Martlet still " +
             "runs. \"open\" and \"menu\" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu " +
@@ -339,7 +348,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
             "with no Save button): the personas (name, whether Martlet uses it, response-style weights, instruction length; never the " +
             "instructions), the character model (built-in character name or the own model's file type, never its path; renderer, " +
-            "lip-sync mode, show at startup, the lip-sync host's ID) and the lorebooks (counts only). Read-only.", new
+            "lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on this PC and " +
+            "where (placement) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -489,6 +499,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
+                "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
@@ -1571,7 +1582,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
         };
-        return new { personality, character, lorebooks };
+        return new { personality, character, placement = CharacterPlacement(directory), lorebooks };
+    }
+
+    /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): whether the character's
+    /// position is locked on this PC and where (device-independent pixels). No file means unlocked.</summary>
+    private static object CharacterPlacement(string directory)
+    {
+        var path = Path.Combine(directory, "character-placement.json");
+        if (!File.Exists(path)) return new { state = "none", locked = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return new { state = "unreadable", locked = false, problem = "NotAnObject" };
+            double? Number(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+                value.TryGetDouble(out var number) ? number : null;
+            return new
+            {
+                state = "loaded", locked = root.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
+                left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height")
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", locked = false, problem = error.GetType().Name };
+        }
     }
 
     /// <summary>smart-home.json in a data directory (the file name and fields match Martlet.Desktop's HomePreferences). The

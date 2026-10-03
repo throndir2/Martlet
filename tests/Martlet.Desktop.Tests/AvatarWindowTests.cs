@@ -146,7 +146,7 @@ public sealed class AvatarWindowTests
         internal TaskCompletionSource? ConfigureRelease { get; init; }
         internal TaskCompletionSource ConfigureEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal RendererTheme? LastTheme { get; private set; }
-        public Task StartAsync(AvatarProfile profile, string revision, CancellationToken token)
+        public Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, CancellationToken token)
         {
             Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", 0, 1, 0, ["Mouth"])]);
             return Task.CompletedTask;

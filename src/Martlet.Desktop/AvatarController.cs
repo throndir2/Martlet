@@ -40,7 +40,7 @@ internal sealed class AvatarController : IAsyncDisposable
     internal bool IsShowing => renderer is { HasExited: false } && profile is not null;
     internal RendererCapabilities? Capabilities => renderer?.Capabilities;
     internal AvatarProfile? InspectedProfile => profile;
-    /// <summary>A choice from the showing character's menu ("hide", "open", "talk" or "settings"), raised off the UI thread.</summary>
+    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings" or "lock"), raised off the UI thread.</summary>
     internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
@@ -162,13 +162,51 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    /// <summary>Returns the character overlay to its default spot, size and zoom on the primary screen.</summary>
+    /// <summary>Returns the character overlay to its default spot, size and zoom on the primary screen. A locked character
+    /// stays where it is.</summary>
     internal async Task ResetPositionAsync(CancellationToken token)
     {
+        if (PlacementLocked) throw new InvalidOperationException("The character's position is locked. Unlock it first.");
         await changes.WaitAsync(token);
         try
         {
             if (renderer is { HasExited: false } current) await current.SendAsync("home", new { }, token);
+        }
+        finally { changes.Release(); }
+    }
+
+    private RendererPlacement? lockedPlacement;
+
+    /// <summary>Where the character is locked on this PC's desktop, or null while it moves freely. A newly shown character
+    /// goes back there and stays locked; only Martlet's window unlocks it.</summary>
+    internal RendererPlacement? LockedPlacement
+    {
+        get => Volatile.Read(ref lockedPlacement);
+        set => Volatile.Write(ref lockedPlacement, value is { Locked: true, IsValid: true } ? value : null);
+    }
+
+    internal bool PlacementLocked => LockedPlacement is not null;
+
+    /// <summary>
+    /// Locks the showing character where it is, or unlocks it (also while it is hidden). Returns the locked place, or null once
+    /// unlocked. Locking needs the character showing: its place is wherever it is now.
+    /// </summary>
+    internal async Task<RendererPlacement?> LockPlacementAsync(bool locked, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is { HasExited: false } current && profile is not null)
+            {
+                var reply = await current.SendAsync("lock", new RendererLock(locked), token);
+                var place = reply.Kind == "placement" ? RendererProtocol.Data<RendererPlacement>(reply) : null;
+                if (place is null || place.Locked != locked || !place.IsValid)
+                    throw new InvalidDataException("The character didn't confirm its position.");
+                LockedPlacement = locked ? place : null;
+            }
+            else if (locked) throw new InvalidOperationException("Show the character first, then lock it where you want it.");
+            else LockedPlacement = null;
+            return LockedPlacement;
         }
         finally { changes.Release(); }
     }
@@ -569,7 +607,7 @@ internal sealed class AvatarController : IAsyncDisposable
             var next = createRenderer();
             next.Requested += action => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) Requested?.Invoke(action); };
             renderer = next;
-            await next.StartAsync(selected, snapshot.Revision, attempt.Token);
+            await next.StartAsync(selected, snapshot.Revision, LockedPlacement, attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

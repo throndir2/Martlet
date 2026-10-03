@@ -162,7 +162,19 @@ restores the default size and zoom without moving it. **Companion > Character**
 also has **Zoom in** and **Zoom out** and shows the overlay's current size,
 camera zoom and where the top of the head sits. The overlay does not take
 keyboard focus on opening.
-Position is session-only, and this is not a global click-through or game-injected
+
+**Lock character position** (home screen), **Lock position** (Companion >
+Character) or **Lock position** on the character's right-click menu keeps it
+where it is: it can't be dragged, nudged with the arrow keys, sent home or
+resized from the overlay, and zoom only zooms the camera within its frame.
+Only the main Martlet window unlocks it (**Unlock character position** on the
+home screen, **Unlock position** on Companion > Character, also while the
+character is hidden); on the locked character the menu item only opens
+Companion > Character. The locked place and size are saved on this PC
+(`character-placement.json`, never shared with other computers), so a locked
+character shows there again after it is hidden or Martlet restarts (at the
+default spot, still locked, if that place is no longer on a screen). Unlocked,
+position is session-only. This is not a global click-through or game-injected
 overlay. Exclusive-fullscreen applications may cover it.
 
 **Hide character** in the main window, Alt+F4, or Escape while the overlay has

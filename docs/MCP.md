@@ -804,7 +804,11 @@ user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 instructions), `character` (from `avatar.json`: `model` `built-in` with
 `builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
 `.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
-`lipSyncHost`, the paired host's ID) and `lorebooks` (`books`, `on` and
+`lipSyncHost`, the paired host's ID), `placement` (from
+`character-placement.json`, this PC only: `state` `none` when the character's
+position is unlocked, or `loaded` with `locked`, `left`, `top`, `width` and
+`height` in device-independent pixels; see the character overlay below) and
+`lorebooks` (`books`, `on` and
 `entries` counts). Those editors have no Save button; each change saves on its
 own into the newest saved file, keeping what was saved elsewhere meanwhile
 (another page, or sync from your other computers, such as the lip-sync host).
@@ -1461,13 +1465,39 @@ choice or another `MoveAvatar` click. While it is open, snapshots list
 `TrayOpen`, also from the notification area) and `CharacterSettings`
 (*Character settings*, opens Companion › Character), which are passive clicks;
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
-the default zoom), `CharacterResetPosition`, the checkable `CharacterOnTop`
+the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
 this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
 the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
 carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
+`MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
+`ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
+returns its bounds before and after, and `ui_snapshot` reports `movable` for
+it. **Locking the character's position**: Home's `ToggleCharacterLock`
+(*Lock character position*, shown while the character shows or is locked),
+Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
+menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
+character's menu chose 'lock'.*) lock it where it is; all need
+`--allow-ui-effects` because they save `character-placement.json` (see
+`character_status`'s `placement`). Locked, `movable` is false and `ui_move` is
+refused; the overlay ignores dragging, the arrow keys and Home; its
+`CharacterResetPosition`, Home's `ResetCharacterPosition` and Companion's
+`SetupCharacterResetPosition` are disabled; and zoom (the wheel, the menu or
+`SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
+Only Martlet's window unlocks it: the same `ToggleCharacterLock` and
+`SetupCharacterLock` then read *Unlock character position* and *Unlock
+position* (also while the character is hidden), and the overlay menu's item
+reads *Position locked: unlock in Martlet* and only opens Companion ›
+Character. `SetupCharacterPlacement` says whether the position is locked and
+where (device-independent pixels), and `SetupCharacterView` ends with
+*Position locked.* when the overlay reports it. A locked character shows at
+its locked place again after Hide/Show or a Martlet restart (at its default
+spot, still locked, if that place is no longer on a screen); the desktop log
+records *Character position locked at ...* and *Character position unlocked.*,
+and `avatar-renderer` *The character's position is locked.*
 
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
@@ -1930,7 +1960,9 @@ slow step*), to check the closing panel and Exit now.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
-`ui_select`, plus `ui_set_text` (an empty `text` clears a field) and `ui_toggle`. It does **not** waive the
+`ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`
+and `ui_move` (moves a control that UI Automation can move, such as the
+character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). It does **not** waive the
 desktop's own per-action confirmations, spending/data disclosures, or Stop
 controls. This opt-in can allow the LLM to approve chargeable provider calls,
 audio capture/playback, credential actions and file operations by manipulating
