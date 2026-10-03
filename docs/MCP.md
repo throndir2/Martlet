@@ -443,7 +443,12 @@ its state and detail, or that its stream ended unfinished); and a reply with a
 pause (full-size frames of near-silent audio, whose base64 is full of `+`) is
 spoken whole and the voice keeps working afterwards: the host writes base64
 unescaped, so ordinary audio never exceeds the route's 16 KiB event limit
-(`stream.limit`), which would quarantine the voice until the host restarts. Nothing leaves loopback, the temporary folder is deleted and
+(`stream.limit`), which would quarantine the voice until the host restarts; and
+when the host's clock steps back 1.3 s (as Windows' time sync does, which a
+WSL2/Docker host follows) the voice keeps working with no `auth.clock_invalid`
+in the host's log (the host holds its time through a step of up to 30 s), while
+a 45 s step still closes that host's authority (`auth.clock_invalid`, also after
+the clock is corrected, until the host service restarts). Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 

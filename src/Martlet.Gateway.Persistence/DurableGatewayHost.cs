@@ -28,6 +28,10 @@ public sealed class DurableGatewayHost : IAsyncDisposable
     public GatewayHostIdentity? Identity { get; }
     public bool Enabled => server is not null;
 
+    /// <summary>True once this open host's authority closed while serving (its clock stepped back too far or its store
+    /// failed): every connection is refused until the process reopens the same state, which keeps every pairing.</summary>
+    internal bool AuthorityClosed => server is not null && !closed && server.Credentials.Closed;
+
     public static DurableGatewayHost CreateNewForBinding(string directory, string hostId, GatewayHostBinding binding,
         GatewayStorageBackend storageBackend, IEnumerable<IGatewayWorker> workers, IGatewayAuditSink audit,
         LocalGatewayDecision decision = LocalGatewayDecision.No, CancellationToken cancellationToken = default,

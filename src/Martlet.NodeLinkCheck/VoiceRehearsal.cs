@@ -288,6 +288,26 @@ internal static class VoiceRehearsal
                     $"pause reply: {pause ?? "spoken"} ({samples:N0} of {FixtureVoice.QuietSamples:N0} samples in {FixtureVoice.QuietFrames} frames); " +
                     $"next reply: {next ?? "spoken"}");
             });
+            await Run("The host's clock steps back 1.3 s (as Windows' time sync does, which a WSL2/Docker host follows) and the voice keeps working: the host holds its time instead of closing (no auth.clock_invalid)", async () =>
+            {
+                h1.Clock.Offset -= TimeSpan.FromMilliseconds(1_300);
+                var stepped = await Code(() => a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords));
+                var next = await Code(() => a.SpeakAsync(h1, ownId, token, audio: own, transcript: ownWords));
+                var lines = await a.OwnLogAsync(h1, token);
+                var closed = lines.Any(line => line.Contains("auth.clock_invalid", StringComparison.Ordinal));
+                return (stepped is null && next is null && !closed,
+                    $"reply right after the step: {stepped ?? "spoken"}; next reply: {next ?? "spoken"}; host log mentions auth.clock_invalid: {closed}");
+            });
+            await Run("A step back past the host's 30-second hold (45 s) still closes its authority (auth.clock_invalid), so pruned replay windows can't come back", async () =>
+            {
+                var before = await Code(() => a.SpeakAsync(h2, ownId, token, audio: own, transcript: ownWords));
+                h2.Clock.Offset -= TimeSpan.FromSeconds(45);
+                var after = await Code(() => a.SpeakAsync(h2, ownId, token, audio: own, transcript: ownWords));
+                h2.Clock.Offset += TimeSpan.FromSeconds(45);
+                var corrected = await Code(() => a.SpeakAsync(h2, ownId, token, audio: own, transcript: ownWords));
+                return (before is null && after == "auth.clock_invalid" && corrected == "auth.clock_invalid",
+                    $"before: {before ?? "spoken"}; after the 45 s step: {after ?? "spoken"}; clock corrected, same process: {corrected ?? "spoken"} (the host service restarts to reopen)");
+            });
         }
         finally
         {
@@ -463,6 +483,14 @@ internal static class VoiceRehearsal
         }
     }
 
+    /// <summary>The system clock moved by <see cref="Offset"/>, as Windows' NTP sync (and a WSL2 or Docker VM following it)
+    /// steps the wall clock; monotonic time is untouched.</summary>
+    internal sealed class SteppedClock : TimeProvider
+    {
+        internal TimeSpan Offset { get; set; }
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
+    }
+
     /// <summary>A real gateway on 127.0.0.1 with the reference-voice relay routes of F5-TTS and XTTS-v2 (an engine that learns
     /// from several recordings), each over its own fixture voice service, and an in-memory copy of speaking-voices.json and
     /// the recordings that survives a restart.</summary>
@@ -478,6 +506,8 @@ internal static class VoiceRehearsal
         internal FixtureVoice Xtts { get; private set; } = null!;
         internal string HostId { get; private init; } = "";
         internal string Origin { get; private set; } = "";
+        /// <summary>This host's wall clock, which a step can move back as a time sync does.</summary>
+        internal SteppedClock Clock { get; } = new();
         internal byte[]? SavedLibrary { get; private set; }
         internal Dictionary<string, byte[]> SavedAudio { get; } = new(StringComparer.Ordinal);
 
@@ -508,7 +538,7 @@ internal static class VoiceRehearsal
             xttsWorker = new F5RelayWorker(new Uri("http://127.0.0.1:50081/"), GatewayInferenceRoute.ReferenceSpeechRelay(
                 Martlet.Core.Settings.SpeechEngines.Xtts, F5RelayWorker.DefaultDestinationId, "xtts-relay", FixtureModel, FixtureRevision,
                 FixtureSha256), handler: Xtts);
-            Server = new GatewayServer(Identity, origin, [], this, inferenceWorkers: [worker, xttsWorker]);
+            Server = new GatewayServer(Identity, origin, [], this, Clock, inferenceWorkers: [worker, xttsWorker]);
             // As the Linux host does: a voice service's reason for failing a reply goes into this host's own log.
             worker.Report = Server.RecordActivity;
             xttsWorker.Report = Server.RecordActivity;

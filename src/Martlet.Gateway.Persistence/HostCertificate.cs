@@ -29,7 +29,9 @@ internal static class HostCertificate
             sans.AddIpAddress(privateAddress);
         }
         request.CertificateExtensions.Add(sans.Build());
-        return request.CreateSelfSigned(now, now.AddDays(90));
+        // Valid from a little earlier, so time held through a small clock step back (and a desktop slightly behind) accepts it.
+        var notBefore = now - GatewayCredentialStore.MaximumClockStepBack;
+        return request.CreateSelfSigned(notBefore, notBefore.AddDays(90));
     }
 
     internal static X509Certificate2 Load(byte[] bytes)

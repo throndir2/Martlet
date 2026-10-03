@@ -100,6 +100,24 @@ public sealed class CredentialBoundaryTests
     }
 
     [Fact]
+    public void Small_clock_step_back_holds_observed_time_instead_of_closing()
+    {
+        var clock = Clock();
+        var store = new GatewayCredentialStore(Identity, clock);
+        var credential = Issue(store);
+        var first = Signed(credential, clock);
+        store.Authenticate(first);
+        clock.Advance(TimeSpan.FromMilliseconds(-1_300));
+        store.Authenticate(Signed(credential, clock));
+        AssertCode("auth.replay", () => store.Authenticate(first));
+        clock.Advance(TimeSpan.FromMilliseconds(1_300) - GatewayCredentialStore.MaximumClockStepBack);
+        store.Authenticate(Signed(credential, clock));
+        Assert.Single(store.ListRegistrations());
+        clock.Advance(TimeSpan.FromTicks(-1));
+        AssertCode("auth.clock_invalid", () => store.Authenticate(Signed(credential, clock)));
+    }
+
+    [Fact]
     public void Observed_rotation_cannot_be_reversed_by_clock_rollback()
     {
         var clock = Clock();
