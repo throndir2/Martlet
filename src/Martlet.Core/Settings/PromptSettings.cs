@@ -22,6 +22,7 @@ public static class PromptCatalog
     public const string Listening = "listening";
     public const string Tools = "tools";
     public const string Voices = "voices";
+    public const string HeardVoice = "heard_voice";
     public const string Lorebook = "lorebook";
     public const string MemoryRecall = "memory_recall";
     public const string GlanceScreen = "glance_screen";
@@ -117,6 +118,12 @@ public static class PromptCatalog
             "When something is clearly not meant for you, or needs no answer from you at all, reply with exactly [{silent}] " +
             "and nothing else, and you stay silent. Never pass when you are asked something or addressed by name.",
             ["silent"]),
+        new(HeardVoice, ConversationGroup, "Your recorded voice",
+            "Added to replies when your recording is sent with the transcript (Companion › Listening › Let Thinking hear my voice).",
+            "The user's message was spoken. Their recording is attached along with an automatic transcript, which can contain " +
+            "mistakes: listen to the recording for exactly what was said and how it was said (tone, emotion, emphasis, laughter, " +
+            "hesitation), and trust it over the transcript. Answer in text as usual, without mentioning the recording or transcript.",
+            []),
         new(Tools, ConversationGroup, "Tools", "Added when a reply is offered tools from MCP servers.", DefaultToolInstructions, []),
         new(Voices, ConversationGroup, "Who is talking",
             "Introduces the recognized voices block. {label} is the block's marker; the voices follow it.",

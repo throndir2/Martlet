@@ -410,6 +410,30 @@ only opens the page. The editors `Prompt-<id>`, their `PromptReset-<id>`
 buttons, `PromptsDefaults` and `PromptsSave` (which writes settings) need
 `--allow-ui-effects`; `ui_set_text` with an empty `text` empties a prompt.
 
+`hearing_check` shows whether the Thinking model can hear the user's
+recording (Companion › Listening › **Let Thinking hear my voice**; optional
+absolute `dataDirectory`, default the current user's, and optional
+`modelId` to classify instead of the saved Thinking model): `model`,
+`source` (`argument`, `settings` or `default`), `settings` (`none`,
+`loaded` or `unreadable`), `routeType`, `modelHearing` (the name-based
+`Supported`, `Unsupported` or `Unknown`), `routeHearing` (the saved route's:
+only Chat Completions endpoints other than Ollama take audio; null with
+`modelId`) and `hearVoice` (the saved choice, off by default). Its `fixture`
+rehearses the production Chat Completions adapter against a canned endpoint
+on 127.0.0.1 (NOT AI) with a 1.5 s synthesized speech-like clip (never
+microphone audio, nothing played): `withRecording` (outcome, the user
+message's `contentParts` `text` and `input_audio`, `audioFormat` `wav`,
+`wavValid`, `audioSeconds`, `audioBytes`), `withoutAudioPermission`
+(`ConsentMissing` with `requestsSent` 0: text permission never covers the
+recording) and `transcriptOnly` (the retry without the recording sends a plain
+text message); `ok` is true when all three hold. It reads no credentials and
+nothing leaves loopback. On the Listening page `TalkHearVoiceStatus` reads
+whether the saved Thinking model hears and where the recording goes, or what to
+change; the `TalkHearVoice` check box saves the choice, so it needs
+`--allow-ui-effects`. A real reply with a recording needs a microphone and a
+model that hears; the talk window then notes *Thinking heard your voice.* (or
+that it got the transcript only) under what you said.
+
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
 them (optional absolute `dataDirectory`, default the current user's):
@@ -945,7 +969,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status` and `prompts_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status` and `hearing_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

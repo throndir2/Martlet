@@ -65,7 +65,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
-        "VisionStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
+        "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS or XTTS-v2) and where it speaks with its
         // model licence. Choosing another engine (ui_select SpeakingEngine) may install a host role, so it needs --allow-ui-effects.
         "SpeakingEngine", "SpeakingEngineStatus",

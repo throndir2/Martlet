@@ -186,6 +186,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
         }),
+        Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
+            "directory, or modelId): the model's and the route's hearing support and whether Companion > Listening > Let Thinking hear " +
+            "my voice is on. Then rehearses the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned " +
+            "reply, NOT AI) with a synthesized speech-like clip (never microphone audio, nothing played): the clip goes as an " +
+            "input_audio WAV part beside the transcript, is refused without its own audio permission before any request, and is " +
+            "left out of a transcript-only retry. Loopback only; reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" },
+            modelId = new { type = "string", maxLength = 128 }
+        }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
@@ -287,6 +297,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
+                "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

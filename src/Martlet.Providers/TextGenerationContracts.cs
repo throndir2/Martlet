@@ -76,6 +76,13 @@ public sealed class BoundedTextInput
     /// <summary>Optional image sent with the current user message only; never part of history.</summary>
     [JsonIgnore]
     public BoundedImage? Image { get; }
+    /// <summary>Optional recording of the current user message (a WAV of what they said), for a model that hears; sent with
+    /// the transcript, never part of history.</summary>
+    [JsonIgnore]
+    public BoundedWaveAudio? Audio { get; }
+    public const double HardMaxAudioSeconds = 30;
+    // Local admission reservation per started second of audio (providers count roughly 25-32 tokens a second).
+    public const int AudioTokensPerSecond = 32;
     /// <summary>Functions the model may call. Empty means a plain text request.</summary>
     [JsonIgnore]
     public IReadOnlyList<TextToolDefinition> Tools { get; }
@@ -94,8 +101,10 @@ public sealed class BoundedTextInput
     public int ToolTokenReservation { get; }
 
     public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null,
-        BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null)
+        BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null, BoundedWaveAudio? audio = null)
     {
+        ContractRules.Require(audio is null || audio.Duration.TotalSeconds <= HardMaxAudioSeconds,
+            "The recording exceeds its duration bound.");
         var messages = new List<TextHistoryMessage>();
         int bytes = Count(userText);
         ContractRules.Require(!string.IsNullOrWhiteSpace(userText), "A nonempty user message is required.");
@@ -122,6 +131,7 @@ public sealed class BoundedTextInput
         Personality = personality;
         History = messages.AsReadOnly();
         Image = image;
+        Audio = audio;
         Tools = Array.AsReadOnly(definitions);
         ToolRounds = [];
         ToolCallsAllowed = definitions.Length > 0;
@@ -129,16 +139,17 @@ public sealed class BoundedTextInput
         ToolUtf8Bytes = toolBytes;
         ToolTokenReservation = ToolReservation(toolBytes, definitions.Length, 0);
         InputTokenReservation = bytes + 256 * (messages.Count + (personality is null ? 1 : 2)) +
-            (image is null ? 0 : BoundedImage.TokenReservation) + ToolTokenReservation;
+            (image is null ? 0 : BoundedImage.TokenReservation) + AudioReservation(audio) + ToolTokenReservation;
     }
 
     private BoundedTextInput(BoundedTextInput origin, IReadOnlyList<TextToolDefinition> tools, IReadOnlyList<TextToolRound> rounds,
-        bool callsAllowed)
+        bool callsAllowed, bool keepAudio)
     {
         UserText = origin.UserText;
         Personality = origin.Personality;
         History = origin.History;
         Image = origin.Image;
+        Audio = keepAudio ? origin.Audio : null;
         Origin = origin;
         Tools = tools;
         ToolRounds = rounds;
@@ -149,7 +160,8 @@ public sealed class BoundedTextInput
             "Tool calls and results exceed their bound.");
         ToolUtf8Bytes = tools.Sum(t => t.Utf8Bytes) + exchange;
         ToolTokenReservation = ToolReservation(ToolUtf8Bytes, tools.Count, rounds.Sum(r => r.Calls.Count));
-        InputTokenReservation = origin.InputTokenReservation - origin.ToolTokenReservation + ToolTokenReservation;
+        InputTokenReservation = origin.InputTokenReservation - origin.ToolTokenReservation - AudioReservation(origin.Audio) +
+            AudioReservation(Audio) + ToolTokenReservation;
     }
 
     /// <summary>This reply's input plus the finished tool rounds; <paramref name="callsAllowed"/> false asks for a text answer.</summary>
@@ -157,11 +169,17 @@ public sealed class BoundedTextInput
     {
         ArgumentNullException.ThrowIfNull(rounds);
         var origin = Origin ?? this;
-        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed);
+        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed, Audio is not null);
     }
 
     /// <summary>This reply's input with no tools at all, for a model that rejected them.</summary>
-    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false);
+    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false, Audio is not null);
+
+    /// <summary>This input with only the transcript, for a model that rejected the recording or doesn't hear (a fallback).</summary>
+    public BoundedTextInput WithoutAudio() => Audio is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, false);
+
+    private static int AudioReservation(BoundedWaveAudio? audio) =>
+        audio is null ? 0 : (int)Math.Ceiling(audio.Duration.TotalSeconds) * AudioTokensPerSecond + 64;
 
     /// <summary>Exchange bytes still available to tool rounds after <paramref name="rounds"/>.</summary>
     public static int RemainingToolExchangeBytes(IEnumerable<TextToolRound> rounds) =>
@@ -214,10 +232,12 @@ public sealed record TextGenerationLimits : IContract
 public sealed class TextDisclosureAuthorization(
     ProviderCredentialBinding binding, TextModelSelection model, CorrelationIds ids, long epoch,
     TextGenerationLimits limits, DateTimeOffset expiresAt, bool allowTextDisclosure, bool allowPotentialCharges,
-    bool allowImageDisclosure = false)
+    bool allowImageDisclosure = false, bool allowAudioDisclosure = false)
 {
     /// <summary>Separate permission to send an attached screen image; text permission alone never covers it.</summary>
     public bool AllowImageDisclosure { get; } = allowImageDisclosure;
+    /// <summary>Separate permission to send the user's attached recording; text permission alone never covers it.</summary>
+    public bool AllowAudioDisclosure { get; } = allowAudioDisclosure;
     public ProviderCredentialBinding Binding { get; } = binding;
     public TextModelSelection Model { get; } = model;
     public CorrelationIds Ids { get; } = ids;
