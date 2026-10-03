@@ -1,0 +1,16 @@
+# Direct pins for the Martlet Dia host role image (workers/dia/host/Dockerfile). Dia's own source (nari-labs/dia at a
+# pinned commit) is fetched by hash in the Dockerfile, not from PyPI. Versions follow Dia's uv.lock at that commit,
+# with PyTorch's CUDA 12.4 build (same driver floor as the f5 role). Regenerate requirements.lock with:
+#   uv pip compile workers/dia/host/requirements.in --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --generate-hashes --index-strategy unsafe-best-match --extra-index-url https://download.pytorch.org/whl/cu124 \
+#     -o workers/dia/host/requirements.lock
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+descript-audio-codec==1.0.0
+descript-audiotools==0.7.2
+argbind==0.3.9
+huggingface-hub==0.30.2
+numpy==2.2.5
+pydantic==2.11.3
+safetensors==0.5.3
+soundfile==0.13.1

@@ -34,9 +34,10 @@ RUN useradd --uid 1000 --user-group --create-home --shell /bin/bash martlet 2>/d
  && chmod 0700 /var/lib/martlet/config /var/lib/martlet/private
 COPY --from=build /out /opt/martlet/gateway
 COPY deploy/host /opt/martlet/host
-# Sources that host roles build their images from (f5: workers/f5/host/Dockerfile; audio2face's local engine:
-# workers/audio2face/Dockerfile).
+# Sources that host roles build their images from (f5: workers/f5/host/Dockerfile; dia: workers/dia/host/Dockerfile;
+# audio2face's local engine: workers/audio2face/Dockerfile).
 COPY workers/f5 /opt/martlet/source/workers/f5
+COPY workers/dia /opt/martlet/source/workers/dia
 COPY workers/audio2face /opt/martlet/source/workers/audio2face
 RUN chmod 0755 /opt/martlet/host/martlet-host && ln -s /opt/martlet/host/martlet-host /usr/local/bin/martlet-host
 ENV MARTLET_HOST_MODE=docker TERM=xterm-256color
