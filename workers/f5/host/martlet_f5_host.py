@@ -74,6 +74,7 @@ WORKER_ID = "martlet-f5-host"
 MAX_BODY_BYTES = 6 * 1024 * 1024
 WARMUP_SECONDS = 290
 REQUEST_SECONDS = 90
+BUSY_WAIT_SECONDS = 30
 TERMINAL = {"completed", "canceled", "failed"}
 
 # Pinned model files per selectable model: role -> (artifact ID, URL, revision, bytes, SHA-256, license, path).
@@ -332,27 +333,37 @@ class Worker:
         with self.lock:
             if self.state in {"ready", "busy", "starting", "verifying_runtime", "verifying_artifacts", "loading_model", "warming"}:
                 return
+            if self.state == "cold" and self.running():
+                return
             if not CONFIG.is_file():
                 self.state, self.error = "not_provisioned", "Run the f5 role's provisioning step first."
                 return
             old = self.process
             self.process = None
+            # Claimed under the lock so concurrent callers do not start a second worker.
+            self.state, self.error = "starting", None
         if old is not None and old.poll() is None:
             old.stdin.close()
             try:
                 old.wait(10)
             except subprocess.TimeoutExpired:
                 old.kill()
-        config = json.loads(CONFIG.read_bytes())
-        _prepare_matplotlib()
-        process = subprocess.Popen(
-            [sys.executable, "-m", "martlet_f5_worker", "--config", str(CONFIG)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            cwd="/tmp" if os.path.isdir("/tmp") else None,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-        )
+        try:
+            config = json.loads(CONFIG.read_bytes())
+            _prepare_matplotlib()
+            process = subprocess.Popen(
+                [sys.executable, "-m", "martlet_f5_worker", "--config", str(CONFIG)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                cwd="/tmp" if os.path.isdir("/tmp") else None,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            )
+        except (OSError, ValueError, KeyError):
+            with self.lock:
+                self.state, self.error = "failed", "The F5 worker could not start; run 'martlet-host add f5' again."
+                self.changed.notify_all()
+            return
         with self.lock:
             self.process = process
             self.identity = config["worker"]
@@ -379,6 +390,19 @@ class Worker:
                     break
                 self.changed.wait(remaining)
         return self.status()
+
+    def running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def wait_admissible(self, seconds: float) -> None:
+        """Wait (bounded) until the worker is ready with no reply in flight, or has settled into a non-loading state."""
+        deadline = time.monotonic() + seconds
+        with self.lock:
+            while (self.state != "ready" or self.pending) and self.state not in {"not_provisioned", "failed", "stopped"}:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self.changed.wait(remaining)
 
     def send(self, message: dict[str, Any]) -> bool:
         process = self.process
@@ -557,6 +581,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self._body()
         if body is None:
             return
+        # A stopped or interrupted reply keeps the GPU busy until F5 returns (discard_only), and a crashed worker
+        # stays down: wait for it (restarting a dead worker) instead of failing the next reply with "busy".
+        try:
+            remaining = (parse_utc(body["deadline_utc"], "deadline_utc") - datetime.now(timezone.utc)).total_seconds()
+        except (ContractError, KeyError, TypeError, ValueError):
+            remaining = 0.0
+        with WORKER.lock:
+            restart = WORKER.state in {"failed", "stopped"} or (WORKER.state == "cold" and not WORKER.running())
+        if restart:
+            _log("F5 worker is not running; restarting it for a reply.")
+            WORKER.start()
+        WORKER.wait_admissible(min(BUSY_WAIT_SECONDS, max(0.0, remaining / 2)))
         with WORKER.lock:
             identity = WORKER.identity
             if WORKER.state != "ready" or identity is None or WORKER.pending:
@@ -613,6 +649,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 WORKER.pending.pop(request_id, None)
                 WORKER.started.discard(request_id)
                 WORKER.active = None
+                WORKER.changed.notify_all()
 
 
 def serve() -> None:

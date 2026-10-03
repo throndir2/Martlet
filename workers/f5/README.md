@@ -14,7 +14,11 @@ the runtime inventory generated at build time, and
 listens only on 127.0.0.1:50080 for the gateway relay `Martlet.Gateway.F5`,
 provisions the pinned model files into the role's volume, writes the worker
 config and drives this worker over stdio (warmup, one synthesis at a time,
-cancel). The worker itself still opens no listener and downloads nothing.
+cancel). A reply that arrives while the previous one is still finishing (a
+stopped or interrupted reply keeps the GPU busy until F5 returns) waits up to
+30 seconds, bounded by half its deadline, instead of failing with
+`worker.busy`; a worker process that died is restarted by the next reply.
+The worker itself still opens no listener and downloads nothing.
 Two runtime fixes live in that image: `f5_tts` gets an empty `__init__.py`
 (f5-tts 1.1.22 ships a namespace package; the origin checks need a regular
 one) and urllib3's import-time IPv6 socket probe is replaced with its result
