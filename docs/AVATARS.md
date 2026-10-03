@@ -71,7 +71,14 @@ to deliver, not permission to silently reduce the product scope.
 
 **Show character** / **Hide character** on the main window toggles the saved
 character (Hiyori when nothing is configured; no Setup profile is required).
-**Character settings** chooses the built-in character or a local model file,
+Companion › Character's **Your characters** lists the built-in character and the
+models you added (**Add a character...**: a Live2D `.model3.json`, whose folder
+is copied, or a VRM `.vrm`), each with **Use** and **Remove**. Martlet keeps its
+own copy of each model and shares it with every paired Martlet computer that
+can be the companion, so they all offer the same characters; each computer picks
+which one it shows ([shared character models](CLUSTER.md#the-shared-character-models)).
+**Character settings** chooses the built-in character or a local model file
+(which joins your characters when shown or saved),
 the lip-sync mode (Automatic, voice loudness only, or Audio2Face only) and
 whether the character shows automatically at launch. Settings are saved in the
 avatar-only sidecar; opening Setup temporarily hides the character and restores
