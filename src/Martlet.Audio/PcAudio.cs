@@ -10,6 +10,9 @@ namespace Martlet.Audio;
 public interface IPcAudioSource : IEchoReference
 {
     bool WithoutMartlet { get; }
+    /// <summary>The one output it hears (what plays there, Martlet's own voice included), or null when it hears every app's
+    /// sound except Martlet's.</summary>
+    string? Output => null;
 }
 
 public interface IPcAudioSourceFactory
@@ -26,9 +29,13 @@ public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimePro
 {
     private readonly TimeProvider time = clock ?? TimeProvider.System;
     private int withoutMartlet = -1;
+    private string? output;
 
     /// <summary>Whether the last opened source left Martlet's own sound out; null until one opened.</summary>
     public bool? WithoutMartlet => Volatile.Read(ref withoutMartlet) switch { 0 => false, 1 => true, _ => null };
+
+    /// <summary>The one output the last opened source heard, or null when it heard every app's sound except Martlet's.</summary>
+    public string? Output => Volatile.Read(ref output);
 
     public ICaptureDevice Open(CaptureDeviceAccess access, CancellationToken cancellationToken)
     {
@@ -36,6 +43,7 @@ public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimePro
         access.CheckAuthorization();
         cancellationToken.ThrowIfCancellationRequested();
         var source = sources.Open(cancellationToken);
+        Volatile.Write(ref output, source.Output);
         Volatile.Write(ref withoutMartlet, source.WithoutMartlet ? 1 : 0);
         return new PcAudioDevice(source, time);
     }

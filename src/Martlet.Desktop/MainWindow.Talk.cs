@@ -158,7 +158,11 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(hear, "TalkHearPc");
         hear.Checked += (_, _) => { if (!Talk.HearPc) SaveTalk(Talk with { HearPc = true }, render: true); };
         hear.Unchecked += (_, _) => { if (Talk.HearPc) SaveTalk(Talk with { HearPc = false }, render: true); };
-        var (text, problem) = PcAudioStatus(Talk, conversation?.CanHearPc != false, conversation?.PcWithoutMartlet);
+        // Which outputs are in use now (their sessions only, no sound), until a conversation has heard the PC itself.
+        var outputs = Talk.HearPc ? Martlet.Audio.Windows.WasapiPcAudioSourceFactory.Outputs() : null;
+        var (text, problem) = PcAudioStatus(Talk, conversation?.CanHearPc != false,
+            conversation?.PcWithoutMartlet ?? (outputs is { Elsewhere: not null } ? false : null),
+            conversation?.PcOutput ?? outputs?.Output, outputs?.Elsewhere);
         var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "TalkHearPcStatus");
         return Card(Heading("Watch along"), hear, status,
@@ -166,17 +170,22 @@ public partial class MainWindow
                 "were watching with you. Your Listening choice transcribes it like your microphone (a cloud provider gets that sound " +
                 "when Listening uses one), and it goes to Thinking marked as the PC's, never " +
                 "as you. It is never remembered, never used for Voice ID or to learn voices, never sent to Home Assistant or tools, " +
-                "and never saved. Martlet's own voice is left out where Windows allows it. On its own, what plays goes to Thinking " +
+                "and never saved. Martlet's own voice is left out where Windows allows it. While another output is in use (a voice " +
+                "changer's or microphone app's virtual cable carries your own voice there), Martlet hears only the output you hear " +
+                "and pauses while it speaks. On its own, what plays goes to Thinking " +
                 "about every 20 seconds, and Thinking mostly stays quiet.", new Thickness(0, 0, 0, 0)));
     }
 
-    internal static (string Text, bool Problem) PcAudioStatus(TalkPreferences prefs, bool available, bool? withoutMartlet) =>
+    internal static (string Text, bool Problem) PcAudioStatus(TalkPreferences prefs, bool available, bool? withoutMartlet,
+        string? output = null, string? elsewhere = null) =>
         !prefs.HearPc ? ("Off. Martlet hears only your microphone.", false)
         : !available ? ("Martlet can't hear what this PC plays here.", true)
         : !prefs.HandsFree ? ("On, but it works only with Always listening. Push-to-talk hears only your microphone.", true)
         : !prefs.ReduceEcho ? ("On. Through speakers, keep Reduce echo from my speakers on (or use headphones), or the microphone also " +
             "hears the PC and takes it for you.", true)
-        : withoutMartlet == false ? ("On. This Windows can't leave Martlet's own voice out, so Martlet stops hearing the PC while it speaks.", false)
+        : withoutMartlet == false ? ((elsewhere is null ? "On. This Windows can't leave Martlet's own voice out, so " :
+            $"On. {elsewhere} is in use too (a virtual cable there can carry your own voice), so ") +
+            $"Martlet hears only what plays on {output ?? "your speakers"} and stops hearing it while it speaks.", false)
         : ("On. While Martlet listens it also hears what this PC plays, without its own voice.", false);
 
     // ---------- Listening: let Thinking hear your voice ----------
