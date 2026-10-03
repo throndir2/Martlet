@@ -176,7 +176,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
         // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
         // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
-        "ConfirmationCopy", "HostInputCopy", "ProblemHeading"
+        "ConfirmationCopy", "HostInputCopy", "ProblemHeading",
+        // Exiting: the closing panel's step ("Stopping your tool servers...") and, once closing is slow, what Exit now
+        // interrupts; the questions an exit asks first (what Martlet is still busy with: work kinds, run window titles,
+        // a host ID or an update version, never paths, keys or conversation text) and before Exit now (the step).
+        // ClosingExitNow and the dialogs' ConfirmationYes exit Martlet, so they need --allow-ui-effects.
+        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'

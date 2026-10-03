@@ -1332,7 +1332,7 @@ then *on your desktop* or *hidden*), and `SetupCharacterNowProblem` appears when
 the character's last stop did not finish cleanly (pressing Show or Hide
 character retries; details go to the `desktop` log). Exiting never waits on the
 character: Settings' `ExitMartlet` (needs `--allow-ui-effects`) closes Martlet
-even then, and Windows ends the renderer with it. After a zoom, the `SetupCharacterView` status reports the
+even then, and Windows ends the renderer with it (see **Exiting** below). After a zoom, the `SetupCharacterView` status reports the
 character frame's size (with, in parentheses, the overlay's full width: the
 frame plus the transparent room on each side the model can move into), its
 distance from the top of the screen, the camera zoom and where the
@@ -1749,7 +1749,8 @@ host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
 (like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
 choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
-`TrayExit` shows Martlet instead of exiting. Settings › *Startup and closing* has
+`TrayExit` shows Martlet instead of exiting (the status line names the open
+window to close first). Settings › *Startup and closing* has
 `CloseToTray` (checked by default; saves `background.json`), `StartWithWindows`
 (the per-user Run entry `Martlet`: this executable, the same `--data-directory`
 and `--tray` when `StartInTray` is checked; verify with a disposable data
@@ -1775,6 +1776,32 @@ exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`
 on `scripts\Invoke-MartletMcp.ps1` starts the disposable desktop in the
 notification area.
+
+**Exiting.** `ExitMartlet`, `TrayExit` and (with *Keep running when closed*
+off) `ui_tray` `close` exit Martlet, so they need `--allow-ui-effects`. An exit
+that would cut work short (backup and restore, a setup task other than a reply,
+a troubleshooting report being made or waiting to be exported, an update
+download, a Parakeet download, a host update, a command
+from another computer, a running run window or *Prepare this computer*) waits
+up to 1.5 seconds for quick work to finish, then shows the window and asks in
+an *Exit Martlet* confirmation whose `ExitBusyQuestion` lists what Martlet is
+still busy with: `ConfirmationYes` (*Exit anyway*) interrupts it,
+`ConfirmationNo` (*Keep Martlet open*) keeps Martlet running and logs *Status:
+Martlet stays open...*. Windows signing out never asks. While Martlet closes,
+`ClosingPanel` covers the window (the rest is disabled) and `ClosingStatus`
+names the step (*Stopping your tool servers...*, *Ending the conversation...*,
+*Closing the character...*); the tray icon's tooltip says *Martlet is closing:
+<step>*. After three seconds the window shows even from the notification area
+(clicking the icon, its menu or starting Martlet again shows it at once),
+`ClosingSlow` says what exiting without waiting leaves undone and
+`ClosingExitNow` (or closing the window again, `ui_tray` `close`) opens *Exit
+Martlet now*, whose `ExitNowQuestion` names the step: `ConfirmationYes` exits
+at once (logging *Exited without waiting: Martlet was still <step>*),
+`ConfirmationNo` keeps waiting. A step that fails is logged (*While exiting,
+<step> didn't finish; Martlet exits anyway.*) and closing goes on. Setting
+`MARTLET_SIMULATE_SLOW_EXIT` to a number of seconds (1-600) before launching
+the desktop adds a last step that only waits that long (*Waiting on a simulated
+slow step*), to check the closing panel and Exit now.
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
