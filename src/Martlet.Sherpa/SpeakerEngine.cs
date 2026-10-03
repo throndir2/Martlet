@@ -22,15 +22,17 @@ public sealed class SpeakerEngine : IDisposable
     public const double MinimumWholeSeconds = 1.0;
     public const int MaximumSeconds = 60;
     private const double EdgeTrim = 0.12, MinimumFragment = 1.5, MaximumFragment = 8.0, Consistency = 0.45;
-    private readonly string root;
+    private readonly string? appDirectory;
     private readonly object gate = new();
     private IntPtr extractor, diarizer;
     private bool disposed;
 
-    public SpeakerEngine(string root) => this.root = Path.GetFullPath(root);
+    /// <summary>Uses the runtime and voice models in Martlet's folder (<paramref name="appDirectory"/>, by default the running
+    /// application's).</summary>
+    public SpeakerEngine(string? appDirectory = null) => this.appDirectory = appDirectory is null ? null : Path.GetFullPath(appDirectory);
 
-    public static bool Installed(string root) =>
-        SherpaComponents.IsInstalled(root, SherpaPart.Runtime) && SherpaComponents.IsInstalled(root, SherpaPart.Speakers);
+    /// <summary>The runtime and voice models are part of this Martlet.</summary>
+    public static bool Included(string? appDirectory = null) => SherpaComponents.VoiceRecognitionIncluded(appDirectory);
 
     /// <summary>Who spoke in <paramref name="samples"/> (16 kHz mono, at most a minute).</summary>
     public SpeakerAnalysis Analyze(float[] samples)
@@ -92,12 +94,14 @@ public sealed class SpeakerEngine : IDisposable
     private void Open()
     {
         if (extractor != IntPtr.Zero && diarizer != IntPtr.Zero) return;
-        if (!Installed(root)) throw new SherpaException("The voice recognition engine isn't downloaded yet.");
-        SherpaNative.Load(SherpaComponents.RuntimeDirectory(root));
+        if (!Included(appDirectory) || SherpaComponents.RuntimeDirectory(appDirectory) is not { } runtime)
+            throw new SherpaException("Voice recognition files are missing from Martlet's folder. Reinstall Martlet.");
+        SherpaNative.Load(runtime);
+        var models = SherpaComponents.VoiceModelsDirectory(appDirectory);
         var threads = Math.Clamp(Environment.ProcessorCount / 4, 1, 4);
         if (extractor == IntPtr.Zero)
         {
-            using var config = new NativeConfig(24).Text(0, SherpaComponents.SpeakerModelPath(root)).Int(8, threads).Text(16, "cpu");
+            using var config = new NativeConfig(24).Text(0, SherpaComponents.SpeakerModelPath(models)).Int(8, threads).Text(16, "cpu");
             extractor = SherpaNative.SherpaOnnxCreateSpeakerEmbeddingExtractor(config.Pointer);
             if (extractor == IntPtr.Zero) throw new SherpaException("The voice model could not be loaded.");
             if (SherpaNative.SherpaOnnxSpeakerEmbeddingExtractorDim(extractor) != 256)
@@ -109,8 +113,8 @@ public sealed class SpeakerEngine : IDisposable
             // threads@16, debug@20, provider@24}, embedding{model@32, threads@40, debug@44, provider@48},
             // clustering{num_clusters@56, threshold@60, confidence@64}, min_duration_on@68, min_duration_off@72.
             using var config = new NativeConfig(80)
-                .Text(0, SherpaComponents.SegmentationModelPath(root)).Int(16, threads).Text(24, "cpu")
-                .Text(32, SherpaComponents.SpeakerModelPath(root)).Int(40, threads).Text(48, "cpu")
+                .Text(0, SherpaComponents.SegmentationModelPath(models)).Int(16, threads).Text(24, "cpu")
+                .Text(32, SherpaComponents.SpeakerModelPath(models)).Int(40, threads).Text(48, "cpu")
                 .Int(56, -1).Float(60, 0.5f);
             diarizer = SherpaNative.SherpaOnnxCreateOfflineSpeakerDiarization(config.Pointer);
             if (diarizer == IntPtr.Zero) throw new SherpaException("The speaker segmentation model could not be loaded.");

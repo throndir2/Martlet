@@ -174,18 +174,17 @@ public partial class MainWindow
     private List<UIElement> ParakeetOption(bool inUse)
     {
         var installed = parakeet?.Installed == true;
-        var download = (store is not null && SherpaComponents.IsInstalled(LocalVoices.SpeechRoot(store.DataDirectory), SherpaPart.Runtime)
-            ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Runtime)) + (installed ? 0 : SherpaComponents.DownloadBytes(SherpaPart.Parakeet));
         var button = PageButton(installingParakeet ? "Downloading..." : inUse ? "In use" : installed ? "Use Parakeet" : "Download and use Parakeet",
             () => UseParakeetAsync().Forget(), primary: !inUse, id: "SetupListenParakeet");
-        button.IsEnabled = !inUse && !installingParakeet && parakeet is not null;
+        button.IsEnabled = !inUse && !installingParakeet && parakeet is not null && SherpaComponents.RuntimeDirectory() is not null;
         var title = OptionTitle("Parakeet in Martlet", inUse ? "in use" : installed ? "accurate, no Docker, downloaded" : "accurate, no Docker");
         AutomationProperties.SetAutomationId(title, "ListenParakeetStatus");
         return
         [
             title,
             Note("Accurate local listening with no Docker. It uses about 1 GB of memory while Martlet runs" +
-                (installed ? "." : $" and downloads once: {SherpaComponents.Megabytes(download)}."), new Thickness(0, 2, 0, 6)),
+                (installed ? "." : $" and downloads once: {SherpaComponents.Megabytes(SherpaComponents.ParakeetDownloadBytes)}."),
+                new Thickness(0, 2, 0, 6)),
             Row(button)
         ];
     }
@@ -197,8 +196,7 @@ public partial class MainWindow
         var root = parakeet.Root;
         if (!parakeet.Installed)
         {
-            var parts = new[] { SherpaPart.Runtime, SherpaPart.Parakeet }.Where(p => !SherpaComponents.IsInstalled(root, p)).ToArray();
-            var size = SherpaComponents.Megabytes(parts.Sum(SherpaComponents.DownloadBytes));
+            var size = SherpaComponents.Megabytes(SherpaComponents.ParakeetDownloadBytes);
             if (!ConfirmationDialog.Confirm(this,
                     $"Download Parakeet ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved.",
                     "Download and use"))
@@ -207,10 +205,9 @@ public partial class MainWindow
             RenderTab();
             try
             {
-                foreach (var part in parts)
-                    await SherpaComponents.InstallAsync(root, part, new Progress<SherpaProgress>(p => ActionText.Text =
-                        "Downloading speech recognition: " +
-                        $"{p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}..."), lifetime.Token);
+                await SherpaComponents.InstallParakeetAsync(root, new Progress<SherpaProgress>(p => ActionText.Text =
+                    "Downloading speech recognition: " +
+                    $"{p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}..."), lifetime.Token);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or

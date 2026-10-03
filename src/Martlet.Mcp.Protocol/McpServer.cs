@@ -89,10 +89,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             action = new { type = "string", @enum = DesktopAutomation.TrayActions }
         }),
-        Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices, which downloads " +
-            "are installed and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
+        Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices (recognition is on " +
+            "unless turned off), whether a Martlet folder (optional absolute martletDirectory, default the installed release's Desktop " +
+            "folder) includes the voice recognition runtime and models, whether Parakeet is downloaded and counts of known voices " +
+            "(never names, voiceprints or audio). Read-only; no audio, network or models run.", new
         {
-            dataDirectory = new { type = "string" }
+            dataDirectory = new { type = "string" },
+            martletDirectory = new { type = "string" }
+        }),
+        Tool("voices_engine_check", "Run the voice recognition engine that ships in a Martlet folder (optional absolute " +
+            "martletDirectory, default the installed release's Desktop folder): load its sherpa-onnx runtime and the WeSpeaker and " +
+            "pyannote models, take a voiceprint of a generated test tone and, for optional wavFiles (absolute paths to 16 kHz mono " +
+            "PCM16 WAV files of at most a minute), how many voices each has, their clean seconds and how alike the files' main " +
+            "voices are (cosine; Martlet calls 0.70 the same person). Returns counts and scores only, never audio or voiceprints; no " +
+            "data directory, device or network is used.", new
+        {
+            martletDirectory = new { type = "string" },
+            wavFiles = new { type = "array", items = new { type = "string" } }
         }),
         Tool("f5_voices", "List Martlet's starter voices (key, name, female, cute, licence, transcript, format; each clip is checked " +
             "against its SHA-256 and F5's reference rules; a new voice list starts with them, after which they are ordinary voices) and " +
@@ -438,6 +451,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
                 "voices_status" => VoicesStatus(arguments),
+                "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),
                 "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
             "voice_tags" => VoiceTagsCheck(arguments),
@@ -516,17 +530,91 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         var speech = Path.Combine(directory, "speech");
+        var martlet = MartletDirectory(arguments);
         return new
         {
-            recognition = Choice("voice-recognition.txt") ?? "off (never chosen)",
+            recognition = Choice("voice-recognition.txt") ?? "on (default)",
             sharing = Choice("voice-sharing.txt") ?? "on (default)",
-            installed = new
+            included = new
             {
-                runtime = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Runtime),
-                voiceModels = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Speakers),
-                parakeet = Martlet.Sherpa.SherpaComponents.IsInstalled(speech, Martlet.Sherpa.SherpaPart.Parakeet)
+                found = File.Exists(Path.Combine(martlet, "Martlet.Desktop.exe")),
+                runtime = Martlet.Sherpa.SherpaComponents.RuntimeDirectory(martlet) is not null,
+                voiceModels = Martlet.Sherpa.SherpaComponents.VoiceRecognitionIncluded(martlet)
             },
+            parakeet = Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speech),
             roster
+        };
+    }
+
+    /// <summary>The optional absolute martletDirectory argument (a folder with Martlet.Desktop.exe), or the installed release's.</summary>
+    private static string MartletDirectory(JsonElement arguments)
+    {
+        var martlet = OptionalString(arguments, "martletDirectory") ??
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Martlet", "Desktop");
+        if (!Path.IsPathFullyQualified(martlet)) throw new ArgumentException("martletDirectory must be an absolute path.");
+        return martlet;
+    }
+
+    /// <summary>Runs the voice recognition engine bundled in a Martlet folder the way the desktop does (Martlet.Sherpa's
+    /// SpeakerEngine with that folder's runtime and models): a generated test tone proves both models load and run, and optional
+    /// WAV files show how many voices each has and how alike their main voices are. Scores and counts only.</summary>
+    private static object VoicesEngineCheck(JsonElement arguments)
+    {
+        var martlet = MartletDirectory(arguments);
+        var files = new List<string>();
+        if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("wavFiles", out var given) && given.ValueKind != JsonValueKind.Null)
+        {
+            if (given.ValueKind != JsonValueKind.Array || given.GetArrayLength() > 16) throw new ArgumentException("wavFiles must be at most 16 paths.");
+            foreach (var item in given.EnumerateArray())
+            {
+                var path = item.ValueKind == JsonValueKind.String ? item.GetString()! : throw new ArgumentException("wavFiles must be strings.");
+                if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("Each WAV file must be an absolute path.");
+                files.Add(path);
+            }
+        }
+        if (!Martlet.Sherpa.SherpaComponents.VoiceRecognitionIncluded(martlet))
+            return new { included = false, runtime = Martlet.Sherpa.SherpaComponents.RuntimeDirectory(martlet) is not null };
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        using var engine = new Martlet.Sherpa.SpeakerEngine(martlet);
+        // Three seconds of a gliding harmonic tone: not speech, but enough for both models to load and produce a voiceprint.
+        var tone = new float[3 * Martlet.Sherpa.SpeakerEngine.SampleRate];
+        for (var i = 0; i < tone.Length; i++)
+        {
+            var t = i / (double)Martlet.Sherpa.SpeakerEngine.SampleRate;
+            var f = 140 + 40 * Math.Sin(2 * Math.PI * 0.5 * t);
+            tone[i] = (float)(0.2 * Math.Sin(2 * Math.PI * f * t) + 0.1 * Math.Sin(4 * Math.PI * f * t) + 0.05 * Math.Sin(6 * Math.PI * f * t));
+        }
+        var probe = engine.Voiceprint(tone);
+        var toneAnalysis = engine.Analyze(tone);
+        var loadMs = clock.ElapsedMilliseconds;
+        var prints = new List<float[]?>();
+        var results = new List<object>();
+        foreach (var path in files)
+        {
+            var wave = Martlet.Providers.BoundedWaveAudio.FromWave(File.ReadAllBytes(path));
+            if (wave.Format.SampleRate != Martlet.Sherpa.SpeakerEngine.SampleRate) throw new ArgumentException("Each WAV file must be 16 kHz.");
+            var bytes = File.ReadAllBytes(path).AsSpan(44);
+            var samples = new float[bytes.Length / 2];
+            for (var i = 0; i < samples.Length; i++)
+                samples[i] = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(bytes.Slice(i * 2, 2)) / 32768f;
+            var started = clock.ElapsedMilliseconds;
+            var analysis = engine.Analyze(samples);
+            Array.Clear(samples);
+            prints.Add(analysis.Speakers.FirstOrDefault()?.Voiceprint ?? analysis.Whole);
+            results.Add(new
+            {
+                file = Path.GetFileName(path), seconds = Math.Round(wave.Duration.TotalSeconds, 2), voicesHeard = analysis.Voices,
+                recognizable = analysis.Speakers.Select(s => new { cleanSeconds = s.CleanSeconds, start = s.Start, end = s.End }),
+                overlap = analysis.Overlap, speechSeconds = analysis.SpeechSeconds, wholeVoiceprint = analysis.Whole is not null,
+                ms = clock.ElapsedMilliseconds - started
+            });
+        }
+        static double? Cosine(float[]? a, float[]? b) => a is null || b is null ? null : Math.Round(a.Zip(b, (x, y) => (double)x * y).Sum(), 3);
+        return new
+        {
+            included = true, loaded = true, voiceprintDimensions = probe?.Length, toneVoices = toneAnalysis.Voices, loadMs,
+            files = results,
+            similarity = prints.Select(a => prints.Select(b => Cosine(a, b)).ToArray()).ToArray()
         };
     }
 

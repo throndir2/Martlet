@@ -521,8 +521,8 @@ the data folder.
   Same-person clean speech typically scores 0.80-0.95 and other people
   0.45-0.75; enrollment suggests a threshold from how consistent your phrases were.
 
-**Recognizing who is talking** (Companion › **People**, off until you download
-it) tells several people at the microphone apart with AudioTranscriber's
+**Recognizing who is talking** (Companion › **People**, part of Martlet and on
+by default) tells several people at the microphone apart with AudioTranscriber's
 sherpa-onnx speaker recognition, names the speaker to the Thinking model, labels
 earlier messages with who said them, and learns the names each voice goes by
 from the conversation. The list of voices can follow you to every computer
