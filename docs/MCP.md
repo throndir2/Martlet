@@ -830,6 +830,27 @@ true when the reducer was active, Martlet's echo got at least 20 dB quieter, the
 detector heard it without reduction but not with it, and it still heard the user
 alone (kept within 3 dB) and over Martlet. It contacts nothing.
 
+`pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
+(Companion › Listening › Watch along › **Hear what this PC plays**; optional
+absolute `dataDirectory`, default the current user's): `hearPc` (the saved
+choice, off by default) with `hearPcSource` (`saved` or `default`),
+`handsFree` and `reduceEcho` (it works only with always listening, and through
+speakers wants echo reduction on). `windows` says whether this Windows can hear
+the PC without Martlet's own sound (`withoutMartlet`, with the process
+loopback's `format`, or `problem` and the `fallback`): a process loopback that
+leaves out the MCP server's own process is set up and closed again without
+starting, so `recorded` is always false. Its `rehearsal` runs the production
+path (`PcAudioCaptureFactory`, `MicrophoneCapture`, the capture normalizer and
+the voice-activity detector with the defaults the PC listener uses) on a
+fixture loopback and a simulated clock: a synthesized video voice 0-3 s, the
+video paused 3-6 s with no packets at all (as a real loopback), the voice
+again 6-9 s, then nothing, 12 s in all. It returns `recordedSeconds` (12 when
+the gaps were filled), `segments` (`startS`, `endS`, `endedAtS`),
+`endedInPause` (the pause ended the first utterance, so always listening sends
+it), `resumed` and `pauseSpeechFrames`; `ok` is true when all hold and the
+fixture's Martlet-free source was used. It reads no credentials and contacts
+nothing.
+
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
 them (optional absolute `dataDirectory`, default the current user's):
@@ -1531,7 +1552,20 @@ talking*, on by default; its `checkedState` is the saved choice, and
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
 from the microphone whenever it listens.*, how the last listen went, why echo
 reduction couldn't run, or *Off. ...*); `echo_check` reads the same saved
-choice. Each spoken reply writes a *Reply latency: first words
+choice. The *Watch along* card under it has `TalkHearPc` (*Hear what this PC
+plays*, off by default; `checkedState` is the saved choice and `ui_toggle`
+needs `--allow-ui-effects` because it saves `talk-preferences.json`) and
+`TalkHearPcStatus` (returned: *Off. Martlet hears only your microphone.*, *On.
+While Martlet listens it also hears what this PC plays, without its own
+voice.*, or why it doesn't apply: push-to-talk, echo reduction off, or Martlet's
+voice can't be left out); `pc_audio_check` reads the same choice. With it on
+and always listening chosen, the talk window's `LivePcAudio` line (returned)
+says *Also hears what this PC plays once you start listening.*, *Also hearing
+what this PC plays (not Martlet's own voice).*, *Hearing this PC play
+something…* or why it can't hear the PC; what the PC played shows in
+`LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
+records what the PC plays, so leave it off (or don't start listening) when
+verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words
 after … ms, first audio after … ms* line to the desktop log, which `logs_tail`
 returns.
 
@@ -1637,7 +1671,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
