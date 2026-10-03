@@ -492,7 +492,8 @@ public partial class MainWindow : ThemedWindow
     }
 
     internal static string CharacterViewText(RendererView view) =>
-        $"Character view: {view.Width:0} × {view.Height:0}" + view.ScreenTop switch
+        $"Character view: {view.Width:0} × {view.Height:0}" +
+        (view.DrawWidth is double drawn && drawn > view.Width + 0.5 ? $" ({drawn:0} wide with room to move)" : "") + view.ScreenTop switch
         {
             null => "",
             double below when below >= 0 => ", on screen",
