@@ -53,7 +53,7 @@ public sealed class OllamaChatAdapter : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(limits);
         context.Validate();
         limits.Validate();
-        ContractRules.Require(input.Personality is null && input.History.Count == 0,
+        ContractRules.Require(input.Personality is null && input.Notes is null && input.History.Count == 0,
             "This Ollama adapter accepts only one current user message.", ErrorCode.ProviderCapability);
         lock (gate)
         {

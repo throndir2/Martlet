@@ -76,8 +76,22 @@ public sealed class BoundedTextInput
     public const int HardMaxToolExchangeBytes = 65_536;
     [JsonIgnore]
     public string UserText { get; }
+    /// <summary>The instructions that stay the same from one request to the next (the persona, tools, voice tags), sent
+    /// first so a provider's prompt cache (or Ollama's) can reuse them and the conversation after them.</summary>
     [JsonIgnore]
     public string? Personality { get; }
+    /// <summary>Martlet's notes for the current message only: whatever changes from message to message (triggered lore,
+    /// recalled memory, who is talking, the reply's style and length...). They travel with the current message, after the
+    /// earlier messages, and are never part of history, so the start of every request stays the same.</summary>
+    [JsonIgnore]
+    public string? Notes { get; }
+    /// <summary>The instructions and the notes as one system text, for a route that takes no separate notes (a paired
+    /// host's gateway).</summary>
+    [JsonIgnore]
+    public string? PersonalityWithNotes => Notes is null ? Personality : Personality is null ? Notes : Personality + "\n\n" + Notes;
+    /// <summary>The current message as a Chat Completions request sends it: the user's words, then the notes.</summary>
+    [JsonIgnore]
+    public string SentUserText => Notes is null ? UserText : UserText + "\n\n" + Notes;
     [JsonIgnore]
     public IReadOnlyList<TextHistoryMessage> History { get; }
     /// <summary>Optional image sent with the current user message only; never part of history.</summary>
@@ -108,7 +122,8 @@ public sealed class BoundedTextInput
     public int ToolTokenReservation { get; }
 
     public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null,
-        BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null, BoundedWaveAudio? audio = null)
+        BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null, BoundedWaveAudio? audio = null,
+        string? notes = null)
     {
         ContractRules.Require(audio is null || audio.Duration.TotalSeconds <= HardMaxAudioSeconds,
             "The recording exceeds its duration bound.");
@@ -117,6 +132,8 @@ public sealed class BoundedTextInput
         ContractRules.Require(!string.IsNullOrWhiteSpace(userText), "A nonempty user message is required.");
         if (personality is not null)
             bytes = checked(bytes + Count(personality, HardMaxInputUtf8Bytes));
+        if (notes is not null)
+            bytes = checked(bytes + Count(notes, HardMaxInputUtf8Bytes));
         if (history is not null)
             foreach (var message in history)
             {
@@ -136,6 +153,7 @@ public sealed class BoundedTextInput
         ContractRules.Require(toolBytes <= HardMaxToolDefinitionBytes, "Tool descriptions exceed their byte bound.");
         UserText = userText;
         Personality = personality;
+        Notes = notes;
         History = messages.AsReadOnly();
         Image = image;
         Audio = audio;
@@ -145,7 +163,7 @@ public sealed class BoundedTextInput
         Utf8Bytes = bytes;
         ToolUtf8Bytes = toolBytes;
         ToolTokenReservation = ToolReservation(toolBytes, definitions.Length, 0);
-        InputTokenReservation = TextReservation(bytes, messages.Count + (personality is null ? 1 : 2)) +
+        InputTokenReservation = TextReservation(bytes, messages.Count + PromptMessages(personality, notes)) +
             (image is null ? 0 : BoundedImage.TokenReservation) + AudioReservation(audio) + ToolTokenReservation;
     }
 
@@ -160,6 +178,23 @@ public sealed class BoundedTextInput
     public static int TextTokens(string? text) =>
         string.IsNullOrEmpty(text) ? 0 : TextReservation(Encoding.UTF8.GetByteCount(text), 0);
 
+    // The current message, plus the instructions and the notes when present (the notes close the message; their separators get a
+    // message's room).
+    private static int PromptMessages(string? personality, string? notes) => 1 + (personality is null ? 0 : 1) + (notes is null ? 0 : 1);
+
+    /// <summary>Where the earlier messages a request carries start, kind to prompt caches: the whole history while it fits
+    /// (<paramref name="first"/>, the start <see cref="HistoryStart"/> found, is 0), otherwise a quarter of what still fits
+    /// is let go too, so the start stays put for the next replies instead of moving by one exchange every reply (which
+    /// would change the start of every request and make the provider, or Ollama, process the whole conversation again).
+    /// Always an even index of <paramref name="count"/> history messages.</summary>
+    public static int CacheFriendlyStart(int first, int count)
+    {
+        ContractRules.Require(first >= 0 && first <= count && count >= 0, "The history start is out of range.");
+        if (first == 0) return 0;
+        var kept = (count - first) / 2;
+        return Math.Min(count, first + 2 * (kept / 4));
+    }
+
     /// <summary>Where the earlier messages a request carries start: the first even index of <paramref name="history"/> from which
     /// they fit beside <paramref name="prompt"/> (the same request without earlier messages) within <paramref name="maxBytes"/>,
     /// <paramref name="maxTextTokens"/> (tools excluded), <paramref name="maxTokens"/> and <paramref name="maxMessages"/>, so the
@@ -171,7 +206,7 @@ public sealed class BoundedTextInput
         ArgumentNullException.ThrowIfNull(prompt);
         ArgumentNullException.ThrowIfNull(history);
         ContractRules.Require(prompt.History.Count == 0 && prompt.ToolRounds.Count == 0, "Fit history to a request without any.");
-        var promptMessages = prompt.Personality is null ? 1 : 2;
+        var promptMessages = PromptMessages(prompt.Personality, prompt.Notes);
         // The image, recording and tool reservations stay the same whatever history is sent.
         var others = prompt.InputTokenReservation - TextReservation(prompt.Utf8Bytes, promptMessages);
         var count = history.Count;
@@ -212,6 +247,7 @@ public sealed class BoundedTextInput
     {
         UserText = origin.UserText;
         Personality = origin.Personality;
+        Notes = origin.Notes;
         History = origin.History;
         Image = keepImage ? origin.Image : null;
         Audio = keepAudio ? origin.Audio : null;
@@ -333,7 +369,10 @@ public sealed class TextDisclosureAuthorization(
 
 public enum TextGenerationOutcome { Completed, Refused, Incomplete, OutputTokenLimit, Failed, Canceled, DeadlineExceeded }
 
-public sealed record TextGenerationUsage(long? InputTokens = null, long? OutputTokens = null, long? TotalTokens = null)
+/// <summary>What the provider reported a request used. <see cref="CachedInputTokens"/> is the part of the input it read from
+/// its prompt cache (OpenAI, OpenRouter, Ollama and others report it), null when it said nothing about its cache.</summary>
+public sealed record TextGenerationUsage(long? InputTokens = null, long? OutputTokens = null, long? TotalTokens = null,
+    long? CachedInputTokens = null)
 {
     public static TextGenerationUsage Unknown { get; } = new();
     public decimal? EstimatedCost => null;

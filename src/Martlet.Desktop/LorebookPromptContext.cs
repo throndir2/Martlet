@@ -4,7 +4,8 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Triggered lorebook entries travel in the system instructions as labeled blocks before and/or after the persona.</summary>
+/// <summary>Lore entries travel in a message's notes (see <see cref="LiveConversationConfiguration.Request"/>) as labeled blocks:
+/// the before-persona entries first.</summary>
 internal static class LorebookPromptContext
 {
     internal const string Label = "MARTLET_LOREBOOK";
@@ -29,8 +30,11 @@ internal static class LorebookPromptContext
         for (var index = 0; index < hits.Count; index++)
         {
             if (index > 0) text.Append("\n\n");
-            text.Append(hits[index].Content.Replace(Label, "lorebook", StringComparison.OrdinalIgnoreCase));
+            text.Append(Text(hits[index]));
         }
         return text.Append("\n[/").Append(Label).Append(']').ToString();
     }
+
+    /// <summary>An entry's text as its block carries it.</summary>
+    internal static string Text(LorebookHit hit) => hit.Content.Replace(Label, "lorebook", StringComparison.OrdinalIgnoreCase);
 }

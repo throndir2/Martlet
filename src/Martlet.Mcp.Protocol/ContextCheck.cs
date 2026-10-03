@@ -46,8 +46,155 @@ internal static class ContextCheck
                 described = budget.Describe()
             },
             probe = await ProbeAsync(cancellation),
-            fit = Fit()
+            fit = Fit(),
+            cache = await CacheAsync(cancellation)
         };
+    }
+
+    /// <summary>The request layout that lets a model's prompt cache work, rehearsed with the production Chat Completions
+    /// adapter against a fixture endpoint on 127.0.0.1 (canned reply and usage, NOT AI): two replies in a row whose notes
+    /// differ (as lore, memory and the style do) start the same way, the notes close the user's message, the usage chunk's
+    /// cached tokens are read, and a growing conversation that outgrows a small context keeps the same start for many replies.</summary>
+    private static async Task<object> CacheAsync(CancellationToken cancellation)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
+        var requests = new List<byte[]>();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        var serving = ServeCacheAsync(listener, requests, stop.Token);
+        try
+        {
+            using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
+            const string instructions = "Use the user-selected companion persona below for conversational tone.\n\nCompanion name: Martlet (fixture)";
+            TextHistoryMessage[] earlier =
+            [
+                new(TextHistoryRole.User, "Fixture exchange one (not anything said)."), new(TextHistoryRole.Assistant, "Fixture reply one.")
+            ];
+            var first = new BoundedTextInput("What's the weather like?", instructions, earlier,
+                notes: "[MARTLET_NOTES]\nFixture notes: lore entry A.\n\nDominant style for this reply: helpful.\n[/MARTLET_NOTES]");
+            var firstAnswer = await AskAsync(adapter, baseUrl, first, cancellation);
+            var second = new BoundedTextInput("And tomorrow?", instructions,
+                [.. earlier, new(TextHistoryRole.User, first.UserText), new(TextHistoryRole.Assistant, "Fixture reply (not AI).")],
+                notes: "[MARTLET_NOTES]\nFixture notes: memory fact B.\n\nDominant style for this reply: silly.\n[/MARTLET_NOTES]");
+            var secondAnswer = await AskAsync(adapter, baseUrl, second, cancellation);
+            byte[][] bodies;
+            lock (requests) bodies = [.. requests];
+            if (bodies.Length < 2) return new { ok = false, problem = "the fixture endpoint got fewer than two requests" };
+            var (one, two) = (Messages(bodies[0]), Messages(bodies[1]));
+            // Everything before the first reply's message is sent again, unchanged, at the start of the second.
+            var shared = 0;
+            while (shared < one.Length - 1 && shared < two.Length && one[shared] == two[shared]) shared++;
+            var stableStart = shared == one.Length - 1;
+            var lastUser = JsonDocument.Parse(two[^1]).RootElement.GetProperty("content").GetString() ?? "";
+            var notesCloseMessage = lastUser.StartsWith(second.UserText, StringComparison.Ordinal) && lastUser.EndsWith(second.Notes!, StringComparison.Ordinal);
+            var systemHasNotes = JsonDocument.Parse(two[0]).RootElement.GetProperty("content").GetString()!.Contains("MARTLET_NOTES", StringComparison.Ordinal);
+            var trimming = Trimming();
+            var ok = firstAnswer.Outcome == "Completed" && secondAnswer.Outcome == "Completed" && stableStart && notesCloseMessage &&
+                !systemHasNotes && secondAnswer.Cached == 1_200 && secondAnswer.Input == 1_300 &&
+                GenerationSupport.AsksStreamUsage(GenerationSupport.LocalOllamaChatBaseUrl) && !GenerationSupport.AsksStreamUsage(baseUrl) &&
+                (bool)trimming.GetType().GetProperty("ok")!.GetValue(trimming)!;
+            return new
+            {
+                ok,
+                note = "A fixture endpoint on 127.0.0.1 (canned reply and usage, NOT AI) and a synthetic conversation (NOT anything said).",
+                messagesSentAgainUnchanged = shared, messagesBeforeTheMessage = one.Length - 1, stableStart,
+                notesAt = notesCloseMessage ? "end of the user's message" : "elsewhere", notesInInstructions = systemHasNotes,
+                usage = new { inputTokens = secondAnswer.Input, cachedInputTokens = secondAnswer.Cached },
+                asksUsageFromOllamaOnThisPc = GenerationSupport.AsksStreamUsage(GenerationSupport.LocalOllamaChatBaseUrl),
+                asksUsageFromOtherServers = GenerationSupport.AsksStreamUsage(baseUrl),
+                trimming
+            };
+        }
+        finally
+        {
+            stop.Cancel();
+            listener.Stop();
+            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+        }
+    }
+
+    // Each message of a captured Chat Completions request as its exact JSON.
+    private static string[] Messages(byte[] body)
+    {
+        using var document = JsonDocument.Parse(body);
+        return [.. document.RootElement.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText())];
+    }
+
+    private sealed record Answered(string? Outcome, long? Input, long? Cached);
+
+    private static async Task<Answered> AskAsync(ChatCompletionsTextGenerationAdapter adapter, string baseUrl, BoundedTextInput input,
+        CancellationToken cancellation)
+    {
+        const string model = "fixture-model";
+        var ids = new Martlet.Core.Contracts.CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        var limits = new TextGenerationLimits();
+        var selection = new TextModelSelection(ChatCompletionsSetup.Alias, model);
+        var authorization = new TextDisclosureAuthorization(new(ChatCompletionsSetup.BaseUri(baseUrl), Martlet.Core.Contracts.ProviderRole.Llm, model),
+            selection, ids, 1, limits, deadline, true, true);
+        var stream = adapter.Stream(new() { Ids = ids, Epoch = 1, Deadline = deadline }, selection, input, limits, authorization, cancellation);
+        await foreach (var _ in stream.WithCancellation(cancellation)) { }
+        return new(stream.Result?.Outcome.ToString(), stream.Result?.Usage.InputTokens, stream.Result?.Usage.CachedInputTokens);
+    }
+
+    /// <summary>Sixty replies of a synthetic conversation (NOT anything said) into Ollama on this PC at its smallest context
+    /// (4,096 tokens): how often the request's start moved, letting go of the oldest quarter at once as replies do
+    /// (<see cref="BoundedTextInput.CacheFriendlyStart"/>), against one exchange at a time.</summary>
+    private static object Trimming()
+    {
+        var budget = ContextBudget.For(SetupRouteType.ChatCompletions, GenerationSupport.LocalOllamaChatBaseUrl, null, 4_096);
+        var prompt = new BoundedTextInput("Fixture message.", "Fixture instructions. " + new string('p', 600));
+        int Moves(bool quarter)
+        {
+            var kept = new List<TextHistoryMessage>();
+            int moves = 0;
+            long removed = 0, previous = 0;
+            for (var turn = 0; turn < 60; turn++)
+            {
+                var first = BoundedTextInput.HistoryStart(prompt, kept, BoundedTextInput.HardMaxInputUtf8Bytes, budget.InputTokens,
+                    budget.InputTokens, BoundedTextInput.HardMaxHistoryMessages) ?? kept.Count;
+                var start = quarter ? BoundedTextInput.CacheFriendlyStart(first, kept.Count) : first;
+                // Where this request's history starts in the whole conversation; every move is a request whose start changed.
+                var absolute = removed + start / 2;
+                if (absolute != previous) moves++;
+                previous = absolute;
+                if (quarter && start > 0)
+                {
+                    kept.RemoveRange(0, start);
+                    removed += start / 2;
+                }
+                kept.Add(new(TextHistoryRole.User, $"Fixture message {turn}. " + new string('u', 300)));
+                kept.Add(new(TextHistoryRole.Assistant, $"Fixture reply {turn}. " + new string('a', 400)));
+            }
+            return moves;
+        }
+        var quarterMoves = Moves(true);
+        var slidingMoves = Moves(false);
+        return new { ok = quarterMoves > 0 && quarterMoves * 3 <= slidingMoves, replies = 60, contextTokens = budget.Tokens, startMovedLettingGoAQuarter = quarterMoves, startMovedOneAtATime = slidingMoves };
+    }
+
+    // A minimal HTTP/1.1 endpoint: records each request and streams a canned reply, then a usage chunk with cached tokens.
+    private static async Task ServeCacheAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
+    {
+        while (!cancellation.IsCancellationRequested)
+        {
+            using var client = await listener.AcceptTcpClientAsync(cancellation);
+            await using var stream = client.GetStream();
+            var body = await HearingCheck.ReadRequestAsync(stream, cancellation);
+            lock (requests) requests.Add(body);
+            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",";
+            var events = "data: " + chunk + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Fixture reply (not AI).\"},\"finish_reason\":null}]}\n\n" +
+                "data: " + chunk + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+                "data: " + chunk + "\"choices\":[],\"usage\":{\"prompt_tokens\":1300,\"prompt_tokens_details\":{\"cached_tokens\":1200},\"completion_tokens\":5,\"total_tokens\":1305}}\n\n" +
+                "data: [DONE]\n\n";
+            var payload = Encoding.UTF8.GetBytes(events);
+            var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
+                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
+            await stream.WriteAsync(head, cancellation);
+            await stream.WriteAsync(payload, cancellation);
+            await stream.FlushAsync(cancellation);
+        }
     }
 
     private static async Task<object> ProbeAsync(CancellationToken cancellation)

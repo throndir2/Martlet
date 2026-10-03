@@ -238,7 +238,7 @@ public sealed class GatewayAuthenticatedClient : IDisposable
                 temperature,
                 limits.MaxOutputTokens,
                 limits.MaxContextTokens,
-                input.Personality,
+                input.PersonalityWithNotes,
                 input.History,
                 input.Image is { } image ? [image.ToBase64()] : null,
                 GatewayOllamaSampling.From(sampling))), cancellationToken);
