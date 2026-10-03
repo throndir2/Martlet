@@ -56,7 +56,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // --allow-ui-effects.
         "ProblemClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
-        "CharacterModelAddCancel"
+        "CharacterModelAddCancel",
+        // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
+        // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing and Add voice need --allow-ui-effects.
+        "F5AddVoiceMore"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -67,7 +70,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full. An MCP directory
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
     private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "HealthCheck-", "HealthOpen-",
-        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-"];
+        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -91,8 +94,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
-        // and why Add a voice couldn't add a recording (never the typed name, transcript or file path).
-        "F5VoicesShared", "F5AddVoiceProblem",
+        // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
+        // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words).
+        "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
@@ -157,7 +161,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Home Assistant discovered ("SmartHomeDevice-0" reads "Philips Hue: Hue Bridge") and its waiting updates
     /// ("SmartHomeUpdate-0" reads "Update: Home Assistant Core 2026.9.3 → 2026.9.4");
     /// Companion › Voice's starter voices ("F5VoiceRow-arctic-slt" reads "SLT (US female)", with "· in use" when it is;
-    /// never the names of the owner's own recordings);
+    /// never the names of the owner's own recordings) and every voice's detail line ("F5VoiceDetail-3f2a..." reads
+    /// "3 recordings, 14.5 seconds joined, added 10/2/2026. XTTS-v2 learns from each recording."; never names or words);
     /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
     /// "VoiceEngineFeatures-chatterbox" "NVIDIA GPU, 6 GB+, Docker, Voice cloning, ...", "VoiceEngineState-chatterbox"
     /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
@@ -187,7 +192,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// prompt's state ("PromptState-reply_length" reads "Edited." or, while it saves, "Edited. Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",

@@ -88,12 +88,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("f5_voices", "List Martlet's starter voices (key, name, female, cute, licence, transcript, format; each clip is checked " +
             "against its SHA-256 and F5's reference rules; a new voice list starts with them, after which they are ordinary voices) and " +
             "the default voice; from a data directory, the shared speaking-voice list (speaking-voices.json: live voices, which starter " +
-            "voices are in it or removed, how many of the owner's own, tombstones and the voice chosen on all computers), this PC's " +
+            "voices are in it or removed, how many of the owner's own, tombstones, the voice chosen on all computers and, for each voice " +
+            "made from several recordings, how many, their lengths and which engines learn from each or hear them joined), this PC's " +
             "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
             "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds, tag catalog, summary, languages and the feature chips Companion > Voice > Voice engine shows; each starter " +
-            "voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "length bounds, tag catalog, summary, languages, whether it learns from several recordings and the feature chips Companion > " +
+            "Voice > Voice engine shows; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -811,7 +812,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     removed = shared.Voices.Count(v => v.Removed),
                     removedStarters = shared.Voices.Where(v => v.Removed).Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
                     chosen = shared.ChosenVoice is { } chosenVoice ? KindOfId(chosenVoice.Id) : null,
-                    chosenBy = shared.ChosenVoice is not null ? shared.Chosen!.UpdatedBy : null
+                    chosenBy = shared.ChosenVoice is not null ? shared.Chosen!.UpdatedBy : null,
+                    // Voices made from several recordings, by the key the Voices page uses (the ID's first 16 hex digits): how many
+                    // recordings, each one's length, the joined length, the engines that can clone it and those that learn from each.
+                    severalRecordings = live.Where(v => v.Clips is not null).Select(v => new
+                    {
+                        key = v.Id[..16], recordings = v.Clips!.Count, clipMs = v.ClipMilliseconds, durationMs = v.DurationMilliseconds,
+                        sampleRate = v.SampleRate,
+                        engines = Martlet.Core.Settings.SpeechEngines.All
+                            .Where(engine => Martlet.Core.Settings.SpeechEngines.ReferenceProblem(engine, v.DurationMilliseconds, v.ClipMilliseconds) is null)
+                            .Select(engine => engine.Key).ToArray(),
+                        learnsFromEach = Martlet.Core.Settings.SpeechEngines.All
+                            .Where(engine => Martlet.Core.Settings.SpeechEngines.UsesClips(engine, v.ClipMilliseconds))
+                            .Select(engine => engine.Key).ToArray()
+                    }).ToArray()
                 };
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -878,7 +892,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
             summary = engine.Summary, languages = engine.Languages, streams = engine.StreamsWhileGenerating, features = engine.Features,
             @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
-            supportsTags = engine.SupportsTags,
+            supportsTags = engine.SupportsTags, multipleReferences = engine.MultipleReferences,
             tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
         return new

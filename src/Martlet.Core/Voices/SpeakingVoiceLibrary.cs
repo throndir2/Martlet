@@ -13,7 +13,9 @@ public enum SpeakingVoiceRights { OwnVoice, ExplicitPermission, PublishedSample 
 /// <summary>One voice Martlet can speak with: a name, a short recording (identified by its SHA-256; the bytes travel
 /// separately) and its exact transcript. <see cref="Id"/> is the reference revision, SHA-256 of the recording's SHA-256
 /// followed by the transcript's, so the same recording and words are the same voice on every computer. <see cref="Removed"/>
-/// is a tombstone, so the voice does not return from an older copy.</summary>
+/// is a tombstone, so the voice does not return from an older copy. A voice made from several recordings keeps them joined
+/// with a short pause as its one recording (and their transcripts joined with spaces as its transcript), with
+/// <see cref="Clips"/> saying where each lies, so engines that learn from several recordings get each one.</summary>
 public sealed record SpeakingVoice
 {
     public required string Id { get; init; }
@@ -24,6 +26,10 @@ public sealed record SpeakingVoice
     public SpeakingVoiceRights? Rights { get; init; }
     /// <summary>Where the recording comes from, for voices that say (the starter voices).</summary>
     public string? Note { get; init; }
+    /// <summary>The recordings the voice was made from, in order, when there are several (null for one recording).</summary>
+    public IReadOnlyList<SpeakingVoiceClip>? Clips { get; init; }
+    /// <summary>The joined recording's sample rate, which places <see cref="Clips"/>; only with clips.</summary>
+    public int? SampleRate { get; init; }
     /// <summary>When the voice joined the list; the list shows voices in this order.</summary>
     public DateTimeOffset AddedAt { get; init; }
     public bool Removed { get; init; }
@@ -31,7 +37,22 @@ public sealed record SpeakingVoice
     public required DateTimeOffset UpdatedAt { get; init; }
     public required string UpdatedBy { get; init; }
 
+    /// <summary>How long each of <see cref="Clips"/> is, or null for a voice of one recording.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<int>? ClipMilliseconds => Clips is { } clips && SampleRate is int rate && rate > 0
+        ? clips.Select(c => (int)Math.Ceiling(c.SampleCount * 1000d / rate)).ToArray()
+        : null;
+
     internal string Content => JsonSerializer.Serialize(this with { Revision = 0, UpdatedAt = default, UpdatedBy = "" }, SpeakingVoiceLibrary.Json);
+}
+
+/// <summary>One of the recordings a voice was made from: where it lies in the voice's joined recording, in samples at the
+/// voice's <see cref="SpeakingVoice.SampleRate"/>, and its exact words.</summary>
+public sealed record SpeakingVoiceClip
+{
+    public required string Transcript { get; init; }
+    public required int StartSample { get; init; }
+    public required int SampleCount { get; init; }
 }
 
 /// <summary>The voice Martlet speaks with on every computer, as a last-writer-wins register.</summary>
@@ -64,6 +85,12 @@ public sealed record SpeakingVoiceLibrary
     public const int MaximumDurationMilliseconds = 30_000;
     /// <summary>The largest recording a voice may have (a mono 16-bit PCM WAV).</summary>
     public const int MaximumAudioBytes = 4 * 1024 * 1024;
+    /// <summary>The most recordings one voice may be made from, the shortest each may be, and the pause between them in
+    /// the joined recording.</summary>
+    public const int MaximumClips = 10;
+    public const int MinimumClipMilliseconds = 500;
+    public const int ClipPauseMilliseconds = 500;
+    public static readonly IReadOnlyList<int> SampleRates = [16_000, 22_050, 24_000, 44_100, 48_000];
     /// <summary>The writer and revision of starter entries: every computer writes the same entry, and any change wins.</summary>
     public const string StarterWriter = "martlet";
     public const long StarterRevision = 1;
@@ -112,27 +139,46 @@ public sealed record SpeakingVoiceLibrary
         return Convert.ToHexStringLower(SHA256.HashData(material));
     }
 
-    /// <summary>A live voice ready to add: its ID follows from the recording and transcript.</summary>
+    /// <summary>A live voice ready to add: its ID follows from the recording and transcript. A voice made from several
+    /// recordings passes <paramref name="clips"/> and the joined recording's <paramref name="sampleRate"/>.</summary>
     public static SpeakingVoice Voice(string name, string transcript, string audioSha256, int durationMilliseconds,
-        SpeakingVoiceRights rights, string? note, DateTimeOffset addedAt, long revision, string by, DateTimeOffset updatedAt) => new()
+        SpeakingVoiceRights rights, string? note, DateTimeOffset addedAt, long revision, string by, DateTimeOffset updatedAt,
+        IReadOnlyList<SpeakingVoiceClip>? clips = null, int? sampleRate = null) => new()
     {
         Id = ReferenceId(audioSha256, transcript), Name = name, Transcript = transcript, AudioSha256 = audioSha256.ToLowerInvariant(),
         DurationMilliseconds = durationMilliseconds, Rights = rights, Note = note, AddedAt = addedAt.ToUniversalTime(),
+        Clips = clips is { Count: > 0 } ? clips.ToArray() : null, SampleRate = clips is { Count: > 0 } ? sampleRate : null,
         Revision = revision, UpdatedAt = updatedAt.ToUniversalTime(), UpdatedBy = by
     };
+
+    /// <summary>The transcript of a voice made from several recordings: theirs, in order, joined with spaces.</summary>
+    public static string JoinedTranscript(IEnumerable<SpeakingVoiceClip> clips) => string.Join(" ", clips.Select(c => c.Transcript));
 
     /// <summary>Adds a voice (or renames the live voice it already is). Throws <see cref="ContractException"/> with
     /// <see cref="ErrorCode.PayloadTooLarge"/> when the list already has <see cref="MaximumVoices"/> voices.</summary>
     public SpeakingVoiceLibrary Add(string name, string transcript, string audioSha256, int durationMilliseconds,
-        SpeakingVoiceRights rights, string by, DateTimeOffset now, string? note = null)
+        SpeakingVoiceRights rights, string by, DateTimeOffset now, string? note = null,
+        IReadOnlyList<SpeakingVoiceClip>? clips = null, int? sampleRate = null)
     {
         ContractRules.Require(IsName(name), "Give the voice a name of at most 80 characters on one line.");
         ContractRules.Require(IsTranscript(transcript), "Type exactly what the recording says (at most 4,096 characters).");
         var id = ReferenceId(audioSha256, transcript);
         if (Find(id) is { Removed: false } existing)
-            return existing.Name == name ? this : Put(existing with { Name = name, Revision = NextRevision(now), UpdatedAt = now.ToUniversalTime(), UpdatedBy = by });
+        {
+            // The same recording and words: rename it, and give it its recordings' places if a copy without them (such as
+            // this PC's store joining the list before the places were saved) got there first.
+            var placing = existing.Clips is null && clips is { Count: > 0 };
+            if (existing.Name == name && !placing) return this;
+            var updated = existing with { Name = name, Revision = NextRevision(now), UpdatedAt = now.ToUniversalTime(), UpdatedBy = by };
+            if (placing)
+            {
+                updated = updated with { Clips = clips!.ToArray(), SampleRate = sampleRate };
+                Validate(updated);
+            }
+            return Put(updated);
+        }
         ContractRules.Require(Live.Count < MaximumVoices, "The voice list is full. Remove a voice first.", ErrorCode.PayloadTooLarge);
-        var voice = Voice(name, transcript, audioSha256, durationMilliseconds, rights, note, now, NextRevision(now), by, now);
+        var voice = Voice(name, transcript, audioSha256, durationMilliseconds, rights, note, now, NextRevision(now), by, now, clips, sampleRate);
         Validate(voice);
         return Put(voice);
     }
@@ -230,7 +276,8 @@ public sealed record SpeakingVoiceLibrary
         if (voice.Removed)
         {
             ContractRules.Require(voice.Name is null && voice.Transcript is null && voice.AudioSha256 is null && voice.Rights is null &&
-                voice.Note is null && voice.DurationMilliseconds == 0, "A removed voice still holds data.");
+                voice.Note is null && voice.Clips is null && voice.SampleRate is null && voice.DurationMilliseconds == 0,
+                "A removed voice still holds data.");
             return;
         }
         ContractRules.Require(IsName(voice.Name), "A voice name is invalid.");
@@ -241,6 +288,29 @@ public sealed record SpeakingVoiceLibrary
             "A voice recording must be 1 to 30 seconds long.");
         ContractRules.Require(voice.Rights is { } rights && Enum.IsDefined(rights), "A voice must say why it may be used.");
         ContractRules.Require(voice.Note is null || voice.Note.Length <= MaximumNoteLength && !voice.Note.Any(char.IsControl), "A voice note is invalid.");
+        ValidateClips(voice);
+    }
+
+    // A voice of several recordings: 2 to MaximumClips of them, in order without overlapping, each at least
+    // MinimumClipMilliseconds long and within the joined recording, whose transcript is theirs joined with spaces.
+    private static void ValidateClips(SpeakingVoice voice)
+    {
+        if (voice.Clips is null)
+        {
+            ContractRules.Require(voice.SampleRate is null, "A voice of one recording has no sample rate.");
+            return;
+        }
+        ContractRules.Require(voice.Clips.Count is >= 2 and <= MaximumClips && voice.Clips.All(c => c is not null) &&
+            voice.SampleRate is int rate && SampleRates.Contains(rate), "A voice's recordings are invalid.");
+        var end = 0L;
+        foreach (var clip in voice.Clips)
+        {
+            ContractRules.Require(IsTranscript(clip.Transcript) && clip.StartSample >= end && clip.SampleCount > 0 &&
+                Math.Ceiling(clip.SampleCount * 1000d / voice.SampleRate!.Value) >= MinimumClipMilliseconds, "A voice's recordings are invalid.");
+            end = (long)clip.StartSample + clip.SampleCount;
+        }
+        ContractRules.Require(Math.Ceiling(end * 1000d / voice.SampleRate!.Value) <= voice.DurationMilliseconds &&
+            voice.Transcript == JoinedTranscript(voice.Clips), "A voice's recordings don't match its recording and transcript.");
     }
 
     public void Validate()

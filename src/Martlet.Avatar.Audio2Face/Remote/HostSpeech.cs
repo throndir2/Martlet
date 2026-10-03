@@ -10,9 +10,11 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 
 /// <summary>The reference recording a host's voice engine clones: the applied preset snapshot's exact bytes, transcript and
 /// revisions (see Martlet.F5's reference preset store). Requests name the recording by its SHA-256 and send the transcript;
-/// the bytes go only to a host that does not hold them yet. Never the source path.</summary>
+/// the bytes go only to a host that does not hold them yet. Never the source path. <paramref name="ClipMilliseconds"/> are
+/// the lengths of the recordings a voice was made from (null for one), so an engine that learns from several can be checked
+/// against them; the host finds where each lies in its own copy of the shared voice list.</summary>
 public sealed record HostSpeechReference(Guid PresetId, string ReferenceRevision, string AudioSha256, string Transcript,
-    string TranscriptRevision, ReadOnlyMemory<byte> Audio)
+    string TranscriptRevision, ReadOnlyMemory<byte> Audio, IReadOnlyList<int>? ClipMilliseconds = null)
 {
     public override string ToString() => $"{nameof(HostSpeechReference)} {{ PresetId = {PresetId}, content omitted }}";
 }
@@ -43,7 +45,7 @@ public sealed partial class Audio2FaceHostConnection
         int duration;
         try { duration = Martlet.Core.Voices.PcmWaveInfo.Inspect(reference.Audio.Span, 4 * 1024 * 1024).DurationMilliseconds; }
         catch (Exception error) when (error is ContractException or ArgumentException or OverflowException) { duration = 0; }
-        if (SpeechEngines.ReferenceProblem(engine, duration) is { } problem)
+        if (SpeechEngines.ReferenceProblem(engine, duration, reference.ClipMilliseconds) is { } problem)
             throw new Audio2FaceHostException("request.invalid", problem + " Choose another voice in Companion > Voice.");
         var now = clock.GetUtcNow();
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
