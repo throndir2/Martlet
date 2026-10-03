@@ -88,6 +88,13 @@ internal sealed class GatewaySpeakingVoiceStore
         lock (gate) return audio.TryGetValue(sha256, out var bytes) ? (byte[])bytes.Clone() : null;
     }
 
+    /// <summary>The live voice with this ID (its reference revision), or null: a speaking request finds a voice's recordings
+    /// (<see cref="SpeakingVoice.Clips"/>) here.</summary>
+    internal SpeakingVoice? Voice(string id)
+    {
+        lock (gate) return library.Find(id) is { Removed: false } voice ? voice : null;
+    }
+
     /// <summary>Keeps a recording a speaking request carried when a live voice has it and this host lacked it, so the next
     /// request can name it instead.</summary>
     internal void Remember(string sha256, ReadOnlySpan<byte> bytes)

@@ -45,7 +45,10 @@ is the owner's assertion, not legal clearance.
   `total_ms`; never text or audio), and each reply logs the same line.
 - **Latency path:** the reference's conditioning latents
   (`get_conditioning_latents`) are computed once per reference revision and
-  cached (8 voices); `inference_stream` (20 GPT tokens per piece, text split by
+  cached (8 voices); a voice made from several recordings gives XTTS each of them
+  as its own reference file (cut from the joined recording at the places the
+  shared voice list keeps, `reference.clips`), so the speaker is learned from all
+  of them; `inference_stream` (20 GPT tokens per piece, text split by
   sentence) yields float audio at 24 kHz, which is converted to signed 16-bit
   PCM and sent at once in frames of at most 4,800 samples. Output therefore
   matches Martlet's speech contract (24 kHz mono 16-bit,
