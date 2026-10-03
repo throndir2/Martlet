@@ -52,7 +52,7 @@ public sealed class ConversationTurn
     private Guid? speechRequest;
     private string? refusal;
     private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected,
-        audioRejected;
+        audioRejected, imageRejected;
     private bool speechLimitReached;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
     private string? activeTool, fellBackAfter;
@@ -216,7 +216,7 @@ public sealed class ConversationTurn
         {
             var input = request.Input;
             var rounds = new List<TextToolRound>();
-            bool retried = false, fallback = false, audioDropped = false;
+            bool retried = false, fallback = false, audioDropped = false, imageDropped = false;
             for (var attempt = 0; ; attempt++)
             {
                 int before;
@@ -224,7 +224,8 @@ public sealed class ConversationTurn
                 RoundResult result;
                 try
                 {
-                    result = await RequestAsync(fallback || audioDropped ? input.WithoutAudio() : input,
+                    var sent = fallback || audioDropped ? input.WithoutAudio() : input;
+                    result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
                         attempt == 0 ? TextIds : NewIds(), segmenter, fallback).ConfigureAwait(false);
                 }
                 // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
@@ -250,6 +251,21 @@ public sealed class ConversationTurn
                         }
                         continue;
                     }
+                    // A model that can't take the picture of the user's screen sent along with their words rejects the request
+                    // before answering; ask again with the words only, and drop the picture for the rest of this reply.
+                    if (!imageDropped && request.ImageOptional && input.Image is not null && result.Text.Length == 0 &&
+                        result.Failure is ProviderFailureCode.RequestRejected or ProviderFailureCode.ModelUnsupported or
+                            ProviderFailureCode.FormatRejected or ProviderFailureCode.InputLimit)
+                    {
+                        imageDropped = true;
+                        lock (Sync)
+                        {
+                            CheckActive();
+                            // Only the selected Thinking model is reported as rejecting the picture.
+                            if (!fallback) imageRejected = true;
+                        }
+                        continue;
+                    }
                     // A model without tool support (many local models) rejects the request before answering; ask once more
                     // without tools so the conversation keeps working.
                     if (!retried && rounds.Count == 0 && input.Tools.Count > 0 && result.Text.Length == 0 &&
@@ -261,8 +277,9 @@ public sealed class ConversationTurn
                             CheckActive();
                             // Only the selected Thinking model is remembered as rejecting tools.
                             if (!fallback) toolsRejected = true;
-                            // Rejected again without the recording: the tools were the problem, not the audio.
+                            // Rejected again without the recording or picture: the tools were the problem, not those.
                             if (audioDropped) audioRejected = false;
+                            if (imageDropped) imageRejected = false;
                         }
                         input = request.Input.WithoutTools();
                         continue;
@@ -841,6 +858,6 @@ public sealed class ConversationTurn
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
-            speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter);
+            speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected);
     }
 }

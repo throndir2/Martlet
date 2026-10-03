@@ -31,7 +31,8 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     internal LiveConversationConfiguration Configuration { get; }
     internal bool Voice { get; }
     internal bool Microphone { get; }
-    /// <summary>A screen glance: this action may send its one attached screen image with the text.</summary>
+    /// <summary>This action may send its one attached picture with the text: a screen glance, or the user's screen sent along
+    /// with their words while vision is on.</summary>
     internal bool Screen { get; }
     /// <summary>The user let Thinking hear their voice: this action may send their recording with the transcript.</summary>
     internal bool Hear { get; }
@@ -59,15 +60,16 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     internal void BindWorker(CancellationToken token) => worker = token;
     // A reply that offers tools may make one request per tool round plus the final answer (or one retry without tools when the
     // model rejects them); each continues this exact input.
-    internal void BindInput(BoundedTextInput input, int toolRounds = 0)
+    internal void BindInput(BoundedTextInput input, int toolRounds = 0, bool imageOptional = false)
     {
         lock (gate)
         {
             exactInput = input;
             // A Thinking fallback may ask once more, and once more without tools if it rejects them; a model that rejects the
-            // recording is asked once more with the transcript only.
+            // recording is asked once more with the transcript only, and one that rejects the screen picture sent with the
+            // user's words once more without it.
             maxTextRequests = (input.Tools.Count > 0 ? Math.Max(toolRounds + 1, 2) : 1) +
-                (Configuration.Fallback is null ? 0 : 2) + (input.Audio is null ? 0 : 1);
+                (Configuration.Fallback is null ? 0 : 2) + (input.Audio is null ? 0 : 1) + (imageOptional && input.Image is not null ? 1 : 0);
         }
     }
     internal void Revoke() => Interlocked.Exchange(ref revoked, 1);

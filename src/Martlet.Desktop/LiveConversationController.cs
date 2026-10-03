@@ -26,6 +26,28 @@ internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Ac
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
 }
 
+/// <summary>The newest picture of what vision watches (taken at most a few seconds earlier), sent along with what the user
+/// types or says while vision is on, so the reply sees what they see. <paramref name="Title"/> is the active window's title or
+/// the camera's name (empty for an address).</summary>
+internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource Source)
+{
+    /// <summary>What the picture shows, for the Screen with your message prompt.</summary>
+    internal string Describe()
+    {
+        var title = new string(Title.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
+        return Source.Kind switch
+        {
+            WatchKind.ActiveWindow => title.Length > 0 ? $"the user's active window (\"{title}\")" : "the user's active window",
+            WatchKind.ActiveScreen => "the user's whole screen: every monitor, with the taskbar and any pop-up notifications" +
+                (title.Length > 0 ? $" (active window: \"{title}\")" : ""),
+            WatchKind.Camera => title.Length > 0 ? $"what the user's camera \"{title}\" sees" : "what the user's camera sees",
+            _ => "what the user's phone or network camera sees"
+        };
+    }
+
+    public override string ToString() => nameof(SeenScreen);
+}
+
 internal sealed class LiveConversationOperation
 {
     private readonly object gate = new();
@@ -51,6 +73,10 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal BoundedWaveAudio? Recording { get; set; }
     /// <summary>The reply's request carried the user's recording with the transcript.</summary>
     internal bool VoiceSent { get; set; }
+    /// <summary>The picture of what vision watches that goes with the user's message, when vision is on.</summary>
+    [JsonIgnore] internal SeenScreen? Seen { get; init; }
+    /// <summary>The reply's request carried <see cref="Seen"/>'s picture.</summary>
+    internal bool ScreenSent { get; set; }
     internal Guid? PersonaRevision { get; set; }
     internal ResponseStyle? ResponseStyle { get; set; }
     internal int ContextMessages { get; set; }
@@ -89,6 +115,8 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal HeardVoices? Heard { get; set; }
     /// <summary>An unprompted screen glance rather than a reply to the user.</summary>
     internal bool Commentary { get; init; }
+    /// <summary>A glance taken right away because something wanted the user's attention (a notification, a flashing taskbar button).</summary>
+    [JsonIgnore] internal AttentionSignal? Attention { get; init; }
     /// <summary>The glance ended in silence: the model answered [pass].</summary>
     internal bool Passed { get; set; }
     private double voiceLevel = -100;
@@ -387,7 +415,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal LiveConversationOperation Start(string? text, bool voice, bool microphone, bool approved,
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
-        BoundedWaveAudio? recording = null)
+        BoundedWaveAudio? recording = null, SeenScreen? seen = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -409,14 +437,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");
             long acceptedRevision = revision = checked(revision + 1);
+            // Vision being on is the permission for its pictures; a text-only Thinking model never gets one.
+            if (selected.Vision() == VisionSupport.Unsupported) seen = null;
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
-                hear: microphone ? listening?.Hear == true : recording is not null);
+                screen: seen is not null, hear: microphone ? listening?.Hear == true : recording is not null);
             operation = new(authorization, caller)
             {
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
-                SpokenConfidence = spoken ? confidence : null, Recording = recording
+                SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen
             };
             active = operation;
             var worker = operations.TryStart(async token =>
@@ -667,7 +697,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
     /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, Chattiness chattiness, bool voice,
-        bool screenApproved, WatchSource? source = null, CancellationToken caller = default)
+        bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -684,10 +714,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, false, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller, screen: true);
-            operation = new(authorization, caller) { Commentary = true };
+            operation = new(authorization, caller) { Commentary = true, Attention = attention };
             active = operation;
             var camera = source is { IsScreen: false };
-            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts);
+            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention);
             var worker = operations.TryStart(async token =>
             {
                 await published.Task.ConfigureAwait(false);
@@ -706,15 +736,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return operation;
     }
 
-    private string CommentaryPromptLocked(string windowTitle, bool camera = false, PromptSettings? prompts = null)
+    private string CommentaryPromptLocked(string windowTitle, bool camera = false, PromptSettings? prompts = null,
+        AttentionSignal? attention = null)
     {
         while (remarks.TryPeek(out var oldest) && clock.GetElapsedTime(oldest.At) >= RemarkMemory) remarks.Dequeue();
         var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
         var said = remarks.Count == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.GlanceRemarks,
             ("remarks", string.Join(" | ", remarks.Select(r => $"\"{r.Text}\""))));
-        return PromptSettings.Fill(prompts, camera ? PromptCatalog.GlanceCamera : PromptCatalog.GlanceScreen,
+        return PromptSettings.Fill(prompts, attention is not null ? PromptCatalog.GlanceAttention
+                : camera ? PromptCatalog.GlanceCamera : PromptCatalog.GlanceScreen,
             ("title", title.Length > 0 ? title : "unknown"), ("remarks", said is null ? "" : " " + said),
-            ("silent", LiveConversationConfiguration.SilentReply))!;
+            ("what", attention?.Describe() ?? ""), ("silent", LiveConversationConfiguration.SilentReply))!;
     }
 
     internal static bool IsSilentReply(string text)
@@ -966,16 +998,29 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 // The recording goes only to a Thinking model that hears and hasn't refused one this session.
                 var recording = operation.Authorization.Hear && configured.Hearing() == HearingSupport.Supported &&
                     !deafModels.Contains(configured.ToolModelKey()) ? operation.Recording : null;
-                var request = operation.Authorization.Configuration.Request(
-                    input!, operation.Authorization.Voice, style, history, memoryResult, lore,
-                    out var usedHistory, out var usedMemory, out var usedLore,
-                    extraInstructions: Join(home?.Instructions,
-                        VoicePromptContext.Instructions(operation.Heard, prompts),
-                        operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
-                        recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice)),
-                    silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
-                    closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording);
+                // While vision is on, the newest picture of what it watches goes with the message, so the reply sees it too.
+                // A message too long to fit beside the picture goes without it.
+                var seen = operation.Authorization.Screen ? operation.Seen : null;
+                ConversationRequest Ask(SeenScreen? picture, out int keptHistory, out int keptFacts, out int keptEntries) =>
+                    operation.Authorization.Configuration.Request(
+                        input!, operation.Authorization.Voice, style, history, memoryResult, lore,
+                        out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
+                        extraInstructions: Join(home?.Instructions,
+                            VoicePromptContext.Instructions(operation.Heard, prompts),
+                            operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
+                            recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
+                            picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
+                        silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
+                        closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true);
+                ConversationRequest request;
+                int usedHistory, usedMemory, usedLore;
+                try { request = Ask(seen, out usedHistory, out usedMemory, out usedLore); }
+                catch (LiveActionException error) when (error.Code == "conversation.input_limit" && seen is not null)
+                {
+                    request = Ask(null, out usedHistory, out usedMemory, out usedLore);
+                }
                 operation.VoiceSent = request.Input.Audio is not null;
+                operation.ScreenSent = request.Input.Image is not null;
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -983,7 +1028,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.MemoryFactsUsed = usedMemory;
                 operation.MemoryFactsOmitted = (memoryResult?.Facts.Count ?? 0) - usedMemory;
                 RecordLore(operation, lore, usedLore);
-                operation.Authorization.BindInput(request.Input, request.Limits.MaxToolRounds);
+                operation.Authorization.BindInput(request.Input, request.Limits.MaxToolRounds, request.ImageOptional);
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
@@ -1004,6 +1049,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with your recording; " +
                     "Martlet asked again with the transcript only and sends it only the transcript until it restarts.");
             }
+            if (terminal.ImageRejected)
+                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the picture of your screen sent " +
+                    "with your message; Martlet asked again with your words only.");
             if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.

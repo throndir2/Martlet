@@ -8,23 +8,29 @@ your setup can't.
 ## How it works
 
 1. **Companion › Vision** shows whether your Thinking model can see (see
-   below), what Martlet looks at (**my active window** or **my whole screen**,
-   the monitor your active window is on, or a camera) and **how chatty** it is
-   (Quiet, Normal, Chatty), and says exactly what is captured and where it is
-   sent.
+   below), what Martlet looks at (**my active window**, **my whole screen**:
+   every monitor with the taskbar and pop-up notifications, or a camera) and
+   **how chatty** it is (Quiet, Normal, Chatty), and says exactly what is
+   captured and where it is sent.
 2. Click **Turn vision on** (off by default). From then on, opening **Start
    talking** starts looking; the talk window's **Watching** button and its
    title show it. It keeps going in the background (while you play) until you
    click that button, Stop or Esc, lock Windows or close the talk window.
    **Turn vision off** in Companion stops it for good.
 3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
-   Duplication, falling back to GDI; downscaled to at most 1024 px, kept only
-   in memory) and compares a 16x9 grey thumbnail with the last one to notice
-   change. The **Watching** button's dot blinks on each capture (it twinkles
+   Duplication, falling back to GDI; kept only in memory) and compares a 16x9
+   grey thumbnail with the last one to notice change. The active window is
+   downscaled to at most 1024 px. The whole screen is every monitor side by
+   side as Windows arranges them, each at most 1024 px and the picture at most
+   2048 px, so the taskbar, the notification area and pop-up notifications are
+   in it; it doesn't need a window in front (the desktop counts). The
+   **Watching** button's dot blinks on each capture (it twinkles
    and reads **Looking…** while a look is with the model), and a line under the
-   talk window's status says what it sees, how the last look went (*nothing
-   worth saying*, *said something*), why it is holding off (you're talking,
-   you seem away, the hourly budget is used) and the looks used this hour.
+   talk window's status says what it sees (*Watching your whole screen (2
+   monitors).*), how the last look went (*nothing worth saying*, *said
+   something*), why it is holding off (you're talking, you seem away, the
+   hourly budget is used), what wanted your attention and whether your last
+   message went with the picture.
    Captures are never added to the history; only remarks are.
 4. A **pacer** decides when to take a real look, the way a person would:
    - never while you are talking to Martlet (hands-free speech, typing, a
@@ -41,19 +47,67 @@ your setup can't.
    and recent conversation to the Thinking model. The model is told that real
    friends stay quiet and to answer exactly `[pass]` unless something is worth a
    remark, never to narrate the screen, repeat itself (it is given what it said
-   in the last 30 minutes) or read out private details. `[pass]` is never
+   in the last 30 minutes) or read out private details. A new message, call or
+   reminder is worth a heads-up, naming only who or which app it is from (*Sam
+   just messaged you*), never the message itself. `[pass]` is never
    spoken; a remark is spoken with the selected voice like any reply.
 6. You come first: typing or push-to-talk stops a remark in progress. With
    always listening on, an idle listen (nobody speaking) briefly yields to a
    look and re-arms right after. Remarks appear in the talk window's history.
 
-Never captured: minimized windows, password managers and private/incognito
-browser windows (by window title). When a Martlet window is in front (say, you
-clicked the talk window to read it), Martlet looks at the window you were using
-behind it instead. Martlet's own windows are painted grey in every picture (a
-picture that is almost all Martlet is skipped), so the model never reads its own
-conversation. Protected video reads back black and is skipped. Screenshots are
-never saved, logged, put in local memory or support bundles.
+## Martlet sees what you see when you talk to it
+
+While vision is on, everything you type or say also goes with the **newest
+picture** of what Martlet watches (taken in the last 10 seconds; a skipped
+capture, say a private window in front, sends none), so you can ask *"what do
+you think of this?"*, *"who just messaged me?"* or *"how do I beat this boss?"*.
+The reply is told the picture is what you see right now and to use it only when
+it helps, without describing it unprompted. Your message's bubble says *Martlet
+saw your whole screen.* (or your active window, or the camera), and the vision
+line says *Your message at 10:14 PM went with it.* These pictures don't count
+toward the looks per hour, but they make each reply's request larger, which may
+cost more. If the Thinking model rejects the picture, Martlet asks again with
+your words only and says so on your message; a model Martlet doesn't know can
+see also stops vision with the fix, like a rejected look. Memory never gets the
+picture.
+
+## Notifications and taskbar buttons
+
+With **my whole screen**, Martlet also notices what wants your attention and
+looks **right away**, while it is still on screen, instead of waiting for its
+pacer:
+
+- a **taskbar button that starts flashing** (a chat app's new message, an
+  invite, a finished download), through Windows' documented shell hook
+  (`RegisterShellHookWindow`, `HSHELL_FLASH`). The flashing window's title
+  goes with the screenshot (*the taskbar button of "Sam - Chat" just started
+  flashing*);
+- a **pop-up notification**, noticed when the shell's notification window
+  appears (best effort: a visible `Windows.UI.Core.CoreWindow` of
+  ShellExperienceHost or ShellHost that isn't in front and is smaller than half
+  its monitor). Windows doesn't show pop-ups during Do not disturb or while a
+  full-screen app is in front.
+
+The model is asked for a quick heads-up only when it is a message, call or
+reminder you would want to know about. Such a look still waits for you to
+finish talking (up to a minute), keeps to the hourly budget, isn't taken when
+you seem away and happens at most every 20 seconds; Martlet's own windows,
+windows already in front, private windows and a window that flashed in the
+last two minutes are ignored. Nothing is hooked into other apps and no
+notification text is read; the picture shows what popped up. The vision line
+says *Last look 10:17 PM (a flashing taskbar button): commented.*, or why it
+didn't look (*Noticed a notification at 10:17 PM but didn't look: you seem
+away.*).
+
+Never captured: minimized windows, and a password manager or private/incognito
+browser window in front (by window title). When a Martlet window is in front
+(say, you clicked the talk window to read it), Martlet looks at the window you
+were using behind it instead. Martlet's own windows, and password managers and
+private browser windows anywhere in the picture, are painted grey wherever they
+show (working down the z-order, so a window on top of them stays visible; a
+picture that is almost all Martlet is skipped), so the model never reads its
+own conversation. Protected video reads back black and is skipped. Screenshots
+are never saved, logged, put in local memory or support bundles.
 
 ## Cameras, phones and other video sources
 
@@ -111,11 +165,12 @@ into the game. Martlet deliberately does not do that.)
 | Legacy exclusive full screen (for example DirectX 9, or fullscreen optimizations turned off) | Yes in most cases. While the game switches display mode, Windows resets the duplication; Martlet reopens it on the next look |
 | Protected video (DRM), windows that exclude themselves from capture, UAC prompts | No: Windows returns black and the look is skipped |
 
-The duplication stays open only while watching. Each look copies the newest
-frame on the GPU and downscales it, which takes about 15 ms at 1080p on the
-test machine, every 3 seconds. Unlike a GDI screen read, it does not stall the
-game's rendering. A fresh duplication's first frame can be black on some
-drivers, so Martlet waits for a second frame when it opens the duplication.
+The duplication stays open only while watching (one per monitor for the whole
+screen). Each look copies the newest frame on the GPU and downscales it, which
+takes about 15 ms at 1080p on the test machine, every 3 seconds. Unlike a GDI
+screen read, it does not stall the game's rendering. A fresh duplication's
+first frame can be black on some drivers, so Martlet waits for a second frame
+when it opens the duplication.
 
 When duplication is unavailable, Martlet falls back to GDI, which sees windowed
 and borderless games only. The watch status then says why duplication is off:
@@ -234,6 +289,12 @@ choices once Martlet is free.
   text-only Thinking model has to be swapped for a vision one.
 - Real capture on a game and a real vision model reply were not run in the
   change that added this; see the pull request for what was checked.
+- Pop-up notification detection relies on the shell's window class and was not
+  seen firing on the test machine (Windows held pop-ups back there); taskbar
+  flashes were checked with a test window. Apps that only badge their taskbar
+  icon, without flashing or a pop-up, are seen only when a look happens.
+- Several monitors share one picture of at most 2048 px, so each shows smaller
+  than a single monitor would.
 - Camera capture was checked with a local video file and HTTP snapshot/MJPEG
   test servers, not yet with a physical webcam, Phone Link camera or RTSP
   camera.
