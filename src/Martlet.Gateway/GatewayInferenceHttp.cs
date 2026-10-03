@@ -595,7 +595,7 @@ internal sealed partial class GatewayHttpApplication
             Summary = failure?.Summary,
             Remedy = failure?.Remedy,
             TraceId = traceId
-        }, Json);
+        }, UnescapedJson);
     }
 
     private static async ValueTask WriteInferenceBytesAsync(

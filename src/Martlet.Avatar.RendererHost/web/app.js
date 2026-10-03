@@ -25,7 +25,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   }
   if (message.kind === "view") {
     // Fire-and-forget camera zoom/pan from the host window; never replies and never fails the renderer.
-    try { view = message.data; if (active && !failed) adapter?.setView?.(view.zoom, view.x, view.y); } catch { }
+    try { view = message.data; if (active && !failed) adapter?.setView?.(view.zoom, view.x, view.y, view.frame ?? 1); } catch { }
     return;
   }
   try {
@@ -59,7 +59,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
           !p.name.startsWith("look")).map(p => ({ id: p.name, minimum: 0, maximum: 1, neutral: 0,
           aspects: [mouth.has(p.name) ? "Mouth" : "Expression"] })) });
       } else throw new Error("Unsupported renderer.");
-      try { adapter.setView(view.zoom, view.x, view.y); } catch { }
+      try { adapter.setView(view.zoom, view.x, view.y, view.frame ?? 1); } catch { }
       active = true;
     } else if (message.kind === "configure") {
       revision = data;

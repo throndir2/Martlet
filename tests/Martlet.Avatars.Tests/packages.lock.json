@@ -90,7 +90,7 @@
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.core": {

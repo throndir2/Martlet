@@ -37,11 +37,10 @@ internal sealed class RendererWindow : Window
         AllowsTransparency = true, Placement = PlacementMode.Absolute, Focusable = false, IsHitTestVisible = false,
         PopupAnimation = PopupAnimation.Fade
     };
-    private readonly TextBlock speechText = new()
-    {
-        TextWrapping = TextWrapping.Wrap, MaxWidth = 280, FontSize = 15, LineHeight = 21,
-        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"), TextAlignment = TextAlignment.Left
-    };
+    private readonly TextBlock speechText = SpeechText();
+    // Sizes the bubble. The shown text can't: while the bubble is hidden its closed popup suspends layout, so measuring the
+    // shown text then returns its old size (an empty bubble) and the next speech would overflow a tiny bubble.
+    private readonly TextBlock speechMeasure = SpeechText();
     private readonly System.Windows.Shapes.Path speechShape = new() { StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round };
     private readonly Canvas speechCanvas = new();
     private readonly ScaleTransform speechPop = new(1, 1);
@@ -158,33 +157,51 @@ internal sealed class RendererWindow : Window
             Dispatcher.InvokeAsync(() => { if (!closed) ApplyOverlayTheme(darkTheme); });
     }
 
+    // The character is fitted into a portrait frame centered in the overlay. Each side of the frame has this much of its
+    // width again as transparent room the model can move into (swinging tails, hair, arms), so motion isn't cut off at the
+    // frame's edges. Clicks pass through the transparent room; only the character itself is a drag surface.
+    private const double SideRoom = 0.5, FrameFraction = 1 / (1 + 2 * SideRoom), DefaultFrameWidth = 420;
+
+    /// <summary>Width of the character's frame; the overlay is this plus the side room on each side.</summary>
+    private double FrameWidth => Width * FrameFraction;
+
+    /// <summary>The character's frame within the overlay, in screen coordinates (device-independent pixels).</summary>
+    internal Rect Frame => new(Left + FrameOffset(Width), Top, FrameWidth, Height);
+
+    private static double OverlayWidth(double frameWidth) => frameWidth / FrameFraction;
+
+    /// <summary>Where the frame starts inside an overlay (or viewport) of the given full width.</summary>
+    private static double FrameOffset(double width) => width * FrameFraction * SideRoom;
+
     private void PlaceOnDesktop()
     {
         var area = SystemParameters.WorkArea;
-        Width = Math.Min(420, area.Width);
+        var frame = Math.Min(DefaultFrameWidth, area.Width);
+        Width = OverlayWidth(frame);
         Height = Math.Min(560, area.Height);
-        Left = Math.Max(area.Left, area.Right - Width - 24);
+        // The frame (the character) sits near the lower-right corner; the room beside it may run past the screen's edge.
+        Left = Math.Max(area.Left, area.Right - frame - 24) - FrameOffset(Width);
         Top = Math.Max(area.Top, area.Bottom - Height - 24);
     }
 
-    private const double ZoomStep = 1.1, MaxViewZoom = 16, MinOverlayWidth = 180, HeadMargin = 0.05;
+    private const double ZoomStep = 1.1, MaxViewZoom = 16, MinFrameWidth = 180, HeadMargin = 0.05;
     private double viewZoom = 1, viewX, viewY;
     // Top of the character (top of the head) in the renderer's fitted clip space: 1 is the overlay's top edge unzoomed.
     private double contentTop = double.NaN;
     private Point? panFrom;
 
-    private static double MaxOverlayWidth
+    private static double MaxFrameWidth
     {
         get
         {
             var area = SystemParameters.WorkArea;
-            return Math.Max(MinOverlayWidth, Math.Min(area.Width, area.Height * 0.75));
+            return Math.Max(MinFrameWidth, Math.Min(area.Width, area.Height * 0.75));
         }
     }
 
-    private bool CanZoomIn => Width < MaxOverlayWidth - 0.5 || viewZoom < MaxViewZoom;
-    private bool CanZoomOut => viewZoom > 1 || Width > MinOverlayWidth + 0.5;
-    private bool IsDefaultZoom => viewZoom == 1 && Math.Abs(Width - Math.Min(420, SystemParameters.WorkArea.Width)) < 0.5;
+    private bool CanZoomIn => FrameWidth < MaxFrameWidth - 0.5 || viewZoom < MaxViewZoom;
+    private bool CanZoomOut => viewZoom > 1 || FrameWidth > MinFrameWidth + 0.5;
+    private bool IsDefaultZoom => viewZoom == 1 && Math.Abs(FrameWidth - Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width)) < 0.5;
 
     /// <summary>
     /// Zooms in by growing the overlay up to its screen-height limit, then by zooming the camera into the
@@ -192,25 +209,28 @@ internal sealed class RendererWindow : Window
     /// </summary>
     private void Zoom(double factor, Point? anchor)
     {
-        if (factor > 1 && Width < MaxOverlayWidth - 0.5) ResizeOverlay(Width * factor);
+        if (factor > 1 && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
         else if (factor > 1 || viewZoom > 1)
         {
             var point = anchor ?? new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3);
-            var cx = viewport.ActualWidth > 0 ? point.X / viewport.ActualWidth * 2 - 1 : 0;
+            var frame = viewport.ActualWidth * FrameFraction;
+            var cx = frame > 0 ? (point.X - FrameOffset(viewport.ActualWidth)) / frame * 2 - 1 : 0;
             var cy = viewport.ActualHeight > 0 ? 1 - point.Y / viewport.ActualHeight * 2 : 0;
             var zoom = Math.Clamp(viewZoom * factor, 1, MaxViewZoom);
             var applied = zoom / viewZoom;
             SetView(zoom, cx - (cx - viewX) * applied, cy - (cy - viewY) * applied);
         }
-        else ResizeOverlay(Width * factor);
+        else ResizeOverlay(FrameWidth * factor);
     }
 
-    // Resizes the overlay keeping its bottom-center anchored, except that growing never pushes its top (and so the
-    // character's head) above the top of the screen's work area; it grows downward from there instead.
-    private void ResizeOverlay(double width)
+    // Resizes the character's frame (and the room beside it) keeping the overlay's bottom-center anchored, except that
+    // growing never pushes its top (and so the character's head) above the top of the screen's work area; it grows
+    // downward from there instead.
+    private void ResizeOverlay(double frameWidth)
     {
-        width = Math.Clamp(width, MinOverlayWidth, MaxOverlayWidth);
-        var height = width * 4 / 3;
+        frameWidth = Math.Clamp(frameWidth, MinFrameWidth, MaxFrameWidth);
+        var width = OverlayWidth(frameWidth);
+        var height = frameWidth * 4 / 3;
         var centerX = Left + Width / 2;
         var bottom = Top + Height;
         var top = bottom - height;
@@ -224,7 +244,7 @@ internal sealed class RendererWindow : Window
     private void ResetZoom()
     {
         SetView(1, 0, 0);
-        ResizeOverlay(Math.Min(420, SystemParameters.WorkArea.Width));
+        ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
     }
 
     private void ResetToDefault()
@@ -256,17 +276,19 @@ internal sealed class RendererWindow : Window
         SetView(viewZoom, viewX, viewY);
     }
 
-    /// <summary>The overlay's size, position and camera, and how far the top of the head sits below its top edge.</summary>
-    private RendererView ViewState() => new(Math.Round(Width), Math.Round(Height),
+    /// <summary>The character frame's size, position and camera, how far the top of the head sits below its top edge, and
+    /// the overlay's full width including the room beside the frame.</summary>
+    private RendererView ViewState() => new(Math.Round(FrameWidth), Math.Round(Height),
         WorkAreaTop() is { } screenTop ? Math.Round(Top - screenTop) : null, Math.Round(viewZoom, 3),
-        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null);
+        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width));
 
+    // The camera is in the frame's clip space; frame tells the renderer how much of its canvas width the frame spans.
     private void SendView()
     {
         try
         {
             browser.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(
-                new { kind = "view", data = new { zoom = viewZoom, x = viewX, y = viewY } }, RendererProtocol.Json));
+                new { kind = "view", data = new { zoom = viewZoom, x = viewX, y = viewY, frame = FrameFraction } }, RendererProtocol.Json));
         }
         catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
     }
@@ -283,7 +305,7 @@ internal sealed class RendererWindow : Window
     {
         if (panFrom is not { } from || viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
         panFrom = position;
-        SetView(viewZoom, viewX + (position.X - from.X) * 2 / viewport.ActualWidth,
+        SetView(viewZoom, viewX + (position.X - from.X) * 2 / (viewport.ActualWidth * FrameFraction),
             viewY - (position.Y - from.Y) * 2 / viewport.ActualHeight);
     }
 
@@ -386,7 +408,15 @@ internal sealed class RendererWindow : Window
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
-        BubbleMargin = 18, ScreenMargin = 6;
+        BubbleMargin = 18, ScreenMargin = 6, SpeechWidth = 280, WidestSpeech = 640, SpeechWidthStep = 60;
+    // Beyond the longest sentence Martlet speaks at once (1,536 UTF-8 bytes); only bounds an arbitrary request.
+    private const int MaximumSpeechCharacters = 2000;
+
+    private static TextBlock SpeechText() => new()
+    {
+        TextWrapping = TextWrapping.Wrap, MaxWidth = SpeechWidth, FontSize = 15, LineHeight = 21,
+        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"), TextAlignment = TextAlignment.Left
+    };
 
     // One continuous outline (rounded body unioned with a curved, tapering tail) with a soft shadow, so the bubble reads as
     // a single comic-style shape rather than a box with a triangle stuck on.
@@ -420,7 +450,7 @@ internal sealed class RendererWindow : Window
             speechText.Text = "";
             return speechShown = new("hidden", 0, 0, 0, 0);
         }
-        speechText.Text = say.Text.Length > 600 ? say.Text[..600] + "…" : say.Text;
+        speechText.Text = say.Text.Length > MaximumSpeechCharacters ? say.Text[..MaximumSpeechCharacters] + "…" : say.Text;
         PlaceSpeech();
         speechBubble.IsOpen = true;
         if (SystemParameters.ClientAreaAnimation)
@@ -435,7 +465,13 @@ internal sealed class RendererWindow : Window
             speechPop.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
             speechPop.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
         }
-        return speechShown;
+        // Lay the open bubble out now so the reply says whether the text as shown really lies inside the bubble's body.
+        speechCanvas.UpdateLayout();
+        return speechShown = speechShown with
+        {
+            TextFits = speechText.ActualWidth <= speechShown.Width - BubblePadX * 2 + 1 &&
+                speechText.ActualHeight <= speechShown.Height - BubblePadY * 2 + 1
+        };
     }
 
     // By default the bubble follows the character's head through moves, zoom and pan: beside the head on whichever side has
@@ -444,18 +480,18 @@ internal sealed class RendererWindow : Window
     private void PlaceSpeech()
     {
         if (speechText.Text.Length == 0) return;
-        speechText.Measure(new Size(speechText.MaxWidth, double.PositiveInfinity));
-        var width = Math.Max(48, Math.Ceiling(speechText.DesiredSize.Width) + BubblePadX * 2);
-        var height = Math.Ceiling(speechText.DesiredSize.Height) + BubblePadY * 2;
         var screen = WorkArea() ?? SystemParameters.WorkArea;
         screen.Inflate(-ScreenMargin, -ScreenMargin);
+        var (width, height) = MeasureSpeech(screen);
 
-        // The head in screen coordinates, followed through the camera: screen clip = fitted clip * zoom + pan.
+        // The head in screen coordinates, followed through the camera: screen clip = fitted clip * zoom + pan. X is measured
+        // from the frame's left edge and kept within the overlay (frame plus the room beside it).
         var top = double.IsFinite(contentTop) ? contentTop : 0.6;
+        var frame = FrameWidth;
         double ScreenY(double clip) => Top + Math.Clamp(Height * (1 - (clip * viewZoom + viewY)) / 2, 0, Height);
-        double ScreenX(double fraction) => Left + Math.Clamp(fraction, 0, Width);
-        var faceX = Width * (viewX + 1) / 2;
-        var halfHead = Width * 0.11 * viewZoom;
+        double ScreenX(double fraction) => Left + Math.Clamp(FrameOffset(Width) + fraction, 0, Width);
+        var faceX = frame * (viewX + 1) / 2;
+        var halfHead = frame * 0.11 * viewZoom;
         var faceY = ScreenY(top - 0.2);
         var headTop = ScreenY(top);
         var face = new Point(ScreenX(faceX), faceY);
@@ -517,6 +553,24 @@ internal sealed class RendererWindow : Window
             speechBubble.HorizontalOffset += 0.01;
             speechBubble.HorizontalOffset -= 0.01;
         }
+    }
+
+    // The bubble's body size for the shown text, measured on a stand-in that is never inside the (closable) popup. It keeps a
+    // comfortable reading width, widening only as far as a long speech needs to stay within half the screen's height.
+    private (double Width, double Height) MeasureSpeech(Rect screen)
+    {
+        speechMeasure.Text = speechText.Text;
+        var widest = Math.Max(SpeechWidth, Math.Min(WidestSpeech, screen.Width - BubblePadX * 2 - TailLength));
+        var tallest = Math.Max(screen.Height / 2 - BubblePadY * 2, speechMeasure.LineHeight);
+        for (var wrap = SpeechWidth; ; wrap = Math.Min(widest, wrap + SpeechWidthStep))
+        {
+            speechMeasure.MaxWidth = wrap;
+            speechMeasure.Measure(new Size(wrap, double.PositiveInfinity));
+            if (speechMeasure.DesiredSize.Height <= tallest || wrap >= widest) break;
+        }
+        speechText.MaxWidth = speechMeasure.MaxWidth;
+        return (Math.Max(48, Math.Ceiling(speechMeasure.DesiredSize.Width) + BubblePadX * 2),
+            Math.Ceiling(speechMeasure.DesiredSize.Height) + BubblePadY * 2);
     }
 
     private static double Overflow(Rect body, Rect screen) =>
@@ -745,10 +799,14 @@ internal sealed class RendererWindow : Window
             if (closed || failure.Failed || browser.CoreWebView2 is null) { timer.Stop(); return; }
             if (!GetCursorPos(out var cursor)) return;
             Point face;
-            // The face sits at 30% height when unzoomed; follow it through the camera zoom.
+            // The face sits at 30% height when unzoomed; follow it through the camera zoom, within the character's frame.
             var faceX = (viewX + 1) / 2;
             var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
-            try { face = viewport.PointToScreen(new Point(viewport.ActualWidth * faceX, viewport.ActualHeight * faceY)); }
+            try
+            {
+                face = viewport.PointToScreen(new Point(FrameOffset(viewport.ActualWidth) + viewport.ActualWidth * FrameFraction * faceX,
+                    viewport.ActualHeight * faceY));
+            }
             catch (InvalidOperationException) { return; }
             var x = Math.Clamp((cursor.X - face.X) / 700, -1, 1);
             var y = Math.Clamp((face.Y - cursor.Y) / 700, -1, 1);

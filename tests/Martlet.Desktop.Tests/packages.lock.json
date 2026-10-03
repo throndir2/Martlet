@@ -126,7 +126,7 @@
         "type": "Project",
         "dependencies": {
           "Concentus": "[2.2.2, )",
-          "Martlet.Core": "[0.26.0, )",
+          "Martlet.Core": "[0.27.1, )",
           "NAudio.Wasapi": "[3.1.0, )",
           "NVorbis": "[0.10.5, )"
         }
@@ -136,35 +136,35 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.26.0, )",
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Avatars": "[0.27.1, )",
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.avatar.hosting": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatars": "[0.26.0, )"
+          "Martlet.Avatars": "[0.27.1, )"
         }
       },
       "martlet.avatar.rendererhost": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatar.Hosting": "[0.26.0, )",
+          "Martlet.Avatar.Hosting": "[0.27.1, )",
           "Microsoft.Web.WebView2": "[1.0.4191.47, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.conversation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.26.0, )",
-          "Martlet.Core": "[0.26.0, )",
-          "Martlet.Providers": "[0.26.0, )"
+          "Martlet.Audio": "[0.27.1, )",
+          "Martlet.Core": "[0.27.1, )",
+          "Martlet.Providers": "[0.27.1, )"
         }
       },
       "martlet.core": {
@@ -173,26 +173,26 @@
       "martlet.credentials.windows": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.desktop": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.26.0, )",
-          "Martlet.Avatar.Audio2Face": "[0.26.0, )",
-          "Martlet.Avatar.Hosting": "[0.26.0, )",
-          "Martlet.Conversation": "[0.26.0, )",
-          "Martlet.Credentials.Windows": "[0.26.0, )",
-          "Martlet.Diagnostics": "[0.26.0, )",
-          "Martlet.EchoCancellation": "[0.26.0, )",
-          "Martlet.F5": "[0.26.0, )",
-          "Martlet.Home": "[0.26.0, )",
-          "Martlet.Mcp.Client": "[0.26.0, )",
-          "Martlet.Memory": "[0.26.0, )",
-          "Martlet.Participation": "[0.26.0, )",
-          "Martlet.Sherpa": "[0.26.0, )",
-          "Martlet.Support": "[0.26.0, )",
+          "Martlet.Audio": "[0.27.1, )",
+          "Martlet.Avatar.Audio2Face": "[0.27.1, )",
+          "Martlet.Avatar.Hosting": "[0.27.1, )",
+          "Martlet.Conversation": "[0.27.1, )",
+          "Martlet.Credentials.Windows": "[0.27.1, )",
+          "Martlet.Diagnostics": "[0.27.1, )",
+          "Martlet.EchoCancellation": "[0.27.1, )",
+          "Martlet.F5": "[0.27.1, )",
+          "Martlet.Home": "[0.27.1, )",
+          "Martlet.Mcp.Client": "[0.27.1, )",
+          "Martlet.Memory": "[0.27.1, )",
+          "Martlet.Participation": "[0.27.1, )",
+          "Martlet.Sherpa": "[0.27.1, )",
+          "Martlet.Support": "[0.27.1, )",
           "SSH.NET": "[2024.1.0, )",
           "SoundFlow": "[1.4.0, )"
         }
@@ -200,33 +200,33 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.doctor": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.26.0, )",
-          "Martlet.Diagnostics": "[0.26.0, )"
+          "Martlet.Audio": "[0.27.1, )",
+          "Martlet.Diagnostics": "[0.27.1, )"
         }
       },
       "martlet.echocancellation": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.26.0, )",
+          "Martlet.Audio": "[0.27.1, )",
           "SoundFlow.Extensions.WebRtc.Apm": "[1.4.0, )"
         }
       },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.home": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.mcp.client": {
@@ -235,16 +235,16 @@
       "martlet.mcp.protocol": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatar.Audio2Face": "[0.26.0, )",
-          "Martlet.Avatar.Hosting": "[0.26.0, )",
-          "Martlet.Conversation": "[0.26.0, )",
-          "Martlet.Doctor": "[0.26.0, )",
-          "Martlet.EchoCancellation": "[0.26.0, )",
-          "Martlet.F5": "[0.26.0, )",
-          "Martlet.Home": "[0.26.0, )",
-          "Martlet.Mcp.Client": "[0.26.0, )",
-          "Martlet.Providers": "[0.26.0, )",
-          "Martlet.Sherpa": "[0.26.0, )"
+          "Martlet.Avatar.Audio2Face": "[0.27.1, )",
+          "Martlet.Avatar.Hosting": "[0.27.1, )",
+          "Martlet.Conversation": "[0.27.1, )",
+          "Martlet.Doctor": "[0.27.1, )",
+          "Martlet.EchoCancellation": "[0.27.1, )",
+          "Martlet.F5": "[0.27.1, )",
+          "Martlet.Home": "[0.27.1, )",
+          "Martlet.Mcp.Client": "[0.27.1, )",
+          "Martlet.Providers": "[0.27.1, )",
+          "Martlet.Sherpa": "[0.27.1, )"
         }
       },
       "martlet.memory": {
@@ -256,7 +256,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.26.0, )"
+          "Martlet.Core": "[0.27.1, )"
         }
       },
       "martlet.sherpa": {
@@ -265,7 +265,7 @@
       "martlet.support": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Diagnostics": "[0.26.0, )"
+          "Martlet.Diagnostics": "[0.27.1, )"
         }
       },
       "Concentus": {

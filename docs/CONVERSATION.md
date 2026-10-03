@@ -121,7 +121,11 @@ comment; it needs a Thinking model that can see images. See
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
    sends nothing (the glance messages can't be emptied). Martlet still parses
    the answers to Remembering and Learning names, so their line formats must
-   stay. Reload an open conversation to use saved prompts.
+   stay. Reload an open conversation to use saved prompts. Each prompt shows
+   its estimated tokens and the page shows all prompts together, by Martlet's
+   own request-size estimate (about a token per three UTF-8 bytes, the rule
+   that keeps requests within the model's limit), counted before placeholders
+   are filled in.
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
@@ -387,12 +391,22 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.
+  Echo reduction can still leave enough of a loud video for speech-to-text, so
+  the talk window also compares words: a microphone line whose words are mostly
+  (60%, in order) what the PC listener heard in the last 10 seconds is left
+  out, never shown or answered as you (`PcEcho`). While the PC listener is
+  still transcribing, or hearing sound and its last stretch had words (or there
+  was none yet), the microphone's lines wait for it (at most 4 seconds), and a
+  PC line that arrives later still removes a matching line no reply has taken
+  yet. Music or game sound the PC listener found no words in never delays your
+  words.
 
-The talk window's `LivePcAudio` line says whether Martlet hears the PC now and
-whether its own voice is left out, or why it can't. `pc_audio_check` in
+The talk window's `LivePcAudio` line says whether Martlet hears the PC now,
+whether its own voice is left out and how many microphone lines it left out
+as echoes, or why it can't. `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
-left out without recording anything, and rehearses the production path with a
-fixture loopback.
+left out without recording anything, rehearses the production path with a
+fixture loopback and runs the echo comparison on fixture transcripts.
 
 ## Voice tags
 
