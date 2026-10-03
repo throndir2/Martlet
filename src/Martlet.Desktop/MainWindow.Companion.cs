@@ -1372,7 +1372,12 @@ public partial class MainWindow
         "static" => "in its fixed place",
         "hidden" => "hidden",
         _ => "beside the character"
-    } + (bubble.Width > 0 ? $" at {bubble.Left:0}, {bubble.Top:0} ({bubble.Width:0} × {bubble.Height:0})" : "");
+    } + (bubble.Width > 0 ? $" at {bubble.Left:0}, {bubble.Top:0} ({bubble.Width:0} × {bubble.Height:0})" : "") + (bubble.TextFits switch
+    {
+        true => ", holding all its text",
+        false => ", but its text doesn't fit inside it",
+        null => ""
+    });
 
     // ---------- personality ----------
 
