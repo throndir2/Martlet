@@ -132,6 +132,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeHomeAssistantAsync(context).ConfigureAwait(false);
                 return;
             }
+            if (IsSettingsTarget(rawTarget!))
+            {
+                await InvokeSettingsAsync(context, rawTarget!).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == ApiKeysPath)
             {
                 await InvokeApiKeysAsync(context).ConfigureAwait(false);

@@ -256,6 +256,23 @@ internal sealed class ControlApiKeyStorage(LinuxControlDirectory directory) : IG
     }
 }
 
+/// <summary>Keeps the settings the owner's computers share in shared-settings.json beside host.json (0600, service owner). It
+/// contains their API keys and is not part of the approved configuration.</summary>
+internal sealed class ControlSettingsStorage(LinuxControlDirectory directory) : IGatewaySettingsStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.SharedSettings, LinuxControlDirectory.MaximumSharedSettingsBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteSharedSettings(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -337,6 +354,7 @@ internal static class HostApplication
                     owner.AttachSpeakingVoices(new ControlSpeakingVoiceStorage(directory));
                     owner.AttachCharacterModels(new ControlCharacterModelStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
+                    owner.AttachSettings(new ControlSettingsStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
                     var (networkState, networkId) = owner.NetworkState;
