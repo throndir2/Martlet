@@ -1028,6 +1028,16 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- what the window shows ----------
 
+    /// <summary>Refresh context: Martlet forgets the exchanges it kept in mind (and its recent screen remarks), so the next
+    /// reply starts fresh. Listening, vision and the messages on screen carry on unchanged.</summary>
+    private void RefreshContext_Click(object sender, RoutedEventArgs e)
+    {
+        if (!controller.ForgetContext()) return;
+        AddNote("Context refreshed. Martlet's next reply starts fresh.");
+        RenderActions();
+        InputText.Focus();
+    }
+
     private void Observe()
     {
         if (owned is { } operation) Observe(operation);
@@ -1132,7 +1142,9 @@ public partial class LiveConversationWindow : ThemedWindow
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var turns = controller.ContextTurns;
         ContextText.Text = turns == 1 ? "Keeps the last exchange in mind." : $"Keeps the last {turns} exchanges in mind.";
-        ContextText.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ContextRow.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Not mid-reply or mid-glance: a finishing turn would put its exchange straight back.
+        RefreshContextButton.IsEnabled = owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false };
 
         // Stop quiets Martlet; listening is paused only from its own button.
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||

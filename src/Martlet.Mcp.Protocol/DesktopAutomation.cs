@@ -20,7 +20,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
-        "LiveStop",
+        // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
+        "LiveStop", "LiveRefreshContext",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
         // shows; its Set up, Pair and role buttons do the work.
         "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",

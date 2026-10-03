@@ -618,6 +618,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
         remarks.Clear();
     }
 
+    /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
+    internal bool ForgetContext()
+    {
+        lock (gate)
+        {
+            if (context.Count == 0 && remarks.Count == 0) return false;
+            memory?.Invalidate();
+            ClearContextLocked();
+            return true;
+        }
+    }
+
     internal static TimeSpan RemarkMemory => TimeSpan.FromMinutes(30);
 
     /// <summary>One unprompted screen glance: the image, the window title and recent context go to the Thinking model,
