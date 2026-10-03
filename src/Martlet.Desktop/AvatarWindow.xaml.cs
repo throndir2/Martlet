@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
@@ -11,6 +13,10 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
+/// <summary>The character: which model, how its mouth moves, whether it shows at startup, and advanced Audio2Face mapping.
+/// There is no Save button: each choice saves on its own (a pause after typing a path, at once for a pick) into the newest
+/// avatar document, keeping the lip-sync host chosen elsewhere (the Lip-sync page, the Devices map, or another computer through
+/// who-does-what sync). A showing character switches to a newly chosen model or lip-sync mode right away.</summary>
 public partial class AvatarWindow : ThemedWindow
 {
     private readonly AvatarController controller;
@@ -20,14 +26,24 @@ public partial class AvatarWindow : ThemedWindow
     private readonly SpeechCaptions? captions;
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+    private readonly AutoSave autoSave;
     private Guid profileId;
     private string? revision;
     private bool busy;
+    private bool loaded;
     private bool renderingDraft = true;
+    private bool closeConfirmed;
+    private bool finishing;
+    /// <summary>Why the current choices can't be saved (an invalid path or mapping), or why the last save failed.</summary>
+    private string? problem;
+    private string? saveError;
+    private bool saving;
 
     internal AvatarWindow(AvatarController controller, AvatarProfileStore profiles,
         ISetupService settings, SetupOperationRunner operations, SpeechCaptions? captions = null)
     {
+        autoSave = new AutoSave(SaveChoicesAsync);
+        autoSave.Settled += () => { if (!lifetime.IsCancellationRequested) RenderSaveState(); };
         InitializeComponent();
         this.controller = controller;
         this.profiles = profiles;
@@ -46,12 +62,35 @@ public partial class AvatarWindow : ThemedWindow
         SourceChoice.SelectedItem = "jawOpen";
         ShowRemoteHost();
         ShowConfiguration(AvatarConfiguration.Disabled);
-        timer.Tick += (_, _) => StatusText.Text = controller.Status;
+        timer.Tick += (_, _) => RenderShowing();
         timer.Start();
+        RenderShowing();
+        RenderSaveState();
         renderingDraft = false;
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
+
+    private void RenderShowing()
+    {
+        StatusText.Text = controller.Status;
+        var showing = controller.IsShowing;
+        ShowButton.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
+        HideButton.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RenderSaveState()
+    {
+        var unsaved = problem ?? saveError;
+        SaveStateText.Text = !loaded ? "Loading your choices..."
+            : problem is not null ? "Not saved yet: " + problem
+            : saveError is not null ? "Not saved: " + saveError + " Martlet tries again with your next change."
+            : saving || autoSave.Pending ? "Saving..."
+            : profileId == Guid.Empty ? "Finish Setup once, and your character choices save on their own."
+            : "All changes saved.";
+        SaveStateText.SetResourceReference(TextBlock.ForegroundProperty, unsaved is null ? "MutedBrush" : "WarningBrush");
+    }
+
     private bool showingSpeechDisplay;
     private void ShowSpeechDisplay()
     {
@@ -75,46 +114,113 @@ public partial class AvatarWindow : ThemedWindow
             ? "Saved. Changes apply the next time Martlet speaks."
             : "Changes applied for now, but couldn't be saved. Check your data folder.";
     }
-    private async void Reload_Click(object sender, RoutedEventArgs e) => await ActionAsync(ReloadAsync);
     private void Window_Closed(object? sender, EventArgs e)
     {
         if (captions is not null) captions.Changed -= ShowSpeechDisplay;
         timer.Stop();
+        autoSave.Cancel();
         if (busy && !controller.IsActive) controller.Revoke();
         lifetime.Cancel();
     }
+
+    /// <summary>Closing saves a choice still waiting for its pause first. Only a choice that can't be saved asks first.</summary>
+    private async void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (closeConfirmed || !loaded || !autoSave.Pending && problem is null && saveError is null) return;
+        e.Cancel = true;
+        if (finishing) return;
+        finishing = true;
+        try
+        {
+            for (var tries = 0; tries < 50 && autoSave.Pending && problem is null && saveError is null; tries++)
+            {
+                await autoSave.SaveNowAsync();
+                if (autoSave.Pending) await Task.Delay(100);
+            }
+            var unsaved = problem ?? saveError ?? (autoSave.Pending ? "Another character action is still finishing." : null);
+            if (unsaved is not null && !ConfirmationDialog.Confirm(this,
+                    $"Your latest character choice isn't saved: {unsaved}\n\nClose anyway and lose it?", "Unsaved change"))
+                return;
+            closeConfirmed = true;
+            await Dispatcher.InvokeAsync(Close);
+        }
+        finally { finishing = false; }
+    }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
     private void ShowConfiguration(AvatarConfiguration configuration) =>
         ConfigurationText.Text = Encoding.UTF8.GetString(AvatarJson.WriteConfiguration(configuration));
     private AvatarConfiguration ReadConfiguration() =>
         AvatarJson.ReadConfiguration(Encoding.UTF8.GetBytes(ConfigurationText.Text));
-    private void Configuration_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => DraftChanged();
-    private void Selection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => DraftChanged();
-    private void CharacterChoice_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+
+    /// <summary>A typed field (model path, SDK folder, endpoint, mapping JSON) saves after a short pause.</summary>
+    private void Configuration_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!DraftChanged()) return;
+        if (ReferenceEquals(sender, ModelPathText) && !BuiltInSelected)
+        {
+            // Keep the advanced renderer choice in step with the typed model's file type.
+            renderingDraft = true;
+            try { RendererChoice.SelectedItem = RendererFor(ModelPathText.Text.Trim()); }
+            finally { renderingDraft = false; }
+        }
+        autoSave.Changed();
+        RenderSaveState();
+    }
+
+    /// <summary>A pick (lip-sync mode, renderer) saves at once.</summary>
+    private void Selection_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (DraftChanged()) SaveNow();
+    }
+
+    private void CharacterChoice_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (CustomModelPanel is null) return;
         var builtIn = CharacterChoice.SelectedIndex == 0;
         CustomModelPanel.IsEnabled = !builtIn;
         if (builtIn) RendererChoice.SelectedItem = AvatarRenderer.Live2D;
-        DraftChanged();
+        if (DraftChanged()) SaveNow();
     }
-    private bool BuiltInSelected => CharacterChoice.SelectedIndex == 0;
-    private void DraftChanged()
+
+    /// <summary>Show at startup only takes effect at the next start, so it saves without touching lip-sync.</summary>
+    private void AutoShow_Changed(object sender, RoutedEventArgs e)
     {
-        if (renderingDraft) return;
+        if (!renderingDraft && loaded) SaveNow();
+    }
+
+    private bool BuiltInSelected => CharacterChoice.SelectedIndex == 0;
+
+    /// <summary>A changed choice ends an activated Audio2Face session (it was reviewed for the old choices). Returns whether
+    /// the change came from the user rather than from loading.</summary>
+    private bool DraftChanged()
+    {
+        if (renderingDraft || !loaded) return false;
+        problem = null;
         controller?.Revoke();
         if (AnalysisPermission is not null) AnalysisPermission.IsChecked = false;
+        return true;
+    }
+
+    private void SaveNow()
+    {
+        autoSave.SaveNowAsync().Forget();
+        RenderSaveState();
     }
 
     private async Task ReloadAsync()
     {
-        var loaded = await settings.LoadAsync(lifetime.Token);
-        if (loaded.Settings is null)
+        var loadedSettings = await settings.LoadAsync(lifetime.Token);
+        loaded = true;
+        if (loadedSettings.Settings is null)
         {
             profileId = Guid.Empty;
-            ResultText.Text = "You can show the character now. Finish Setup once to save choices.";
+            ResultText.Text = "You can show the character now. Finish Setup once, and your choices save on their own.";
+            RenderSaveState();
             return;
         }
-        profileId = loaded.Settings.Profile.Id;
+        profileId = loadedSettings.Settings.Profile.Id;
         if (controller.IsActive && controller.InspectedProfile?.ProfileId != profileId) controller.Revoke();
         var saved = await profiles.LoadAsync(profileId, lifetime.Token);
         if (controller.IsActive && controller.InspectedProfile is { } activeProfile &&
@@ -145,19 +251,19 @@ public partial class AvatarWindow : ThemedWindow
             }
         }
         finally { renderingDraft = false; }
+        problem = saveError = null;
         InspectPermission.IsChecked = AnalysisPermission.IsChecked = false;
-        ResultText.Text = BundledLive2D.Available
-            ? "Choices loaded. Press Show character to open the character on your desktop."
-            : "Choices loaded. Choose your own model or select a Live2D SDK folder.";
+        ResultText.Text = BundledLive2D.Available ? "" : "Choose your own model or select a Live2D SDK folder.";
+        RenderSaveState();
     }
 
     private AvatarProfile Selected() => new()
     {
         Version = 1, ProfileId = profileId,
-        Renderer = BuiltInSelected ? AvatarRenderer.Live2D : (AvatarRenderer)RendererChoice.SelectedItem,
-        ModelPath = BuiltInSelected ? BundledLive2D.Prefix + BundledLive2D.DefaultCharacter : ModelPathText.Text,
-        SdkDirectory = string.IsNullOrWhiteSpace(SdkPathText.Text) ? null : SdkPathText.Text,
-        Endpoint = EndpointText.Text, Configuration = AvatarProfile.ConfigurationElement(ReadConfiguration()),
+        Renderer = BuiltInSelected ? AvatarRenderer.Live2D : RendererFor(ModelPathText.Text.Trim()),
+        ModelPath = BuiltInSelected ? BundledLive2D.Prefix + BundledLive2D.DefaultCharacter : ModelPathText.Text.Trim(),
+        SdkDirectory = string.IsNullOrWhiteSpace(SdkPathText.Text) ? null : SdkPathText.Text.Trim(),
+        Endpoint = EndpointText.Text.Trim(), Configuration = AvatarProfile.ConfigurationElement(ReadConfiguration()),
         ResourceRevision = controller.InspectedProfile?.ResourceRevision,
         AutoShow = AutoShowChoice.IsChecked == true,
         LipSync = LipSyncChoice.SelectedIndex switch
@@ -167,14 +273,123 @@ public partial class AvatarWindow : ThemedWindow
         RemoteHost = remoteHost
     };
 
+    /// <summary>The auto-save. Writes the choices into the newest avatar document (its lip-sync host is chosen elsewhere and
+    /// kept), then switches a showing character to a new model, renderer, SDK folder, endpoint or lip-sync mode. Returns false
+    /// to be tried again shortly while another character action runs or another save landed in between.</summary>
+    private async Task<bool> SaveChoicesAsync()
+    {
+        if (!loaded || lifetime.IsCancellationRequested) return true;
+        if (busy) return false;
+        AvatarProfile choice;
+        try
+        {
+            choice = Selected();
+            if (!BuiltInSelected && !IsModelFile(choice.ModelPath))
+                throw new ArgumentException("Choose your model file: an existing .vrm or .model3.json file.");
+            if (profileId != Guid.Empty) choice.Validate();
+        }
+        catch (Exception error) when (error is ContractException or JsonException or ArgumentException or InvalidOperationException or
+            IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            problem = error.Message;
+            RenderSaveState();
+            return true;
+        }
+        if (profileId == Guid.Empty)
+        {
+            RenderSaveState();
+            return true;
+        }
+        busy = true;
+        saving = true;
+        RenderSaveState();
+        AvatarProfile? before;
+        AvatarProfile next;
+        try
+        {
+            var current = await profiles.LoadAsync(profileId, lifetime.Token);
+            next = choice with { RemoteHost = current.Profile?.RemoteHost };
+            before = current.Profile;
+            if (before is null || !Bytes(before).SequenceEqual(Bytes(next)))
+                revision = await profiles.SaveAsync(next, current.Revision, lifetime.Token);
+            else revision = current.Revision;
+            remoteHost = next.RemoteHost;
+            ShowRemoteHost();
+            problem = saveError = null;
+        }
+        catch (ContractException error) when (error.Message.Contains("changed", StringComparison.OrdinalIgnoreCase))
+        {
+            // Another save (such as a lip-sync host chosen on another page) landed between reading and writing.
+            busy = saving = false;
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            busy = saving = false;
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
+            InvalidOperationException or ArgumentException or JsonException)
+        {
+            saveError = error is IOException or UnauthorizedAccessException
+                ? "Martlet couldn't write the character settings file. Check access to your data folder." : error.Message;
+            busy = saving = false;
+            if (!lifetime.IsCancellationRequested) RenderSaveState();
+            return true;
+        }
+        saving = false;
+        try
+        {
+            if (controller.IsShowing && Shown(before) != Shown(next) && !operations.IsRunning)
+            {
+                ResultText.Text = "Switching the character...";
+                RenderSaveState();
+                await controller.ShowAsync(next with { ResourceRevision = null }, lifetime.Token);
+                ResultText.Text = controller.Status;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
+            InvalidOperationException or ArgumentException or JsonException or TimeoutException or Win32Exception)
+        {
+            ResultText.Text = "Saved, but the character couldn't switch: " + error.Message;
+        }
+        finally
+        {
+            busy = false;
+            if (!lifetime.IsCancellationRequested)
+            {
+                RenderShowing();
+                RenderSaveState();
+            }
+        }
+        return true;
+
+        static byte[] Bytes(AvatarProfile profile) => ContractJson.Write(profile, AvatarProfile.MaximumBytes);
+        static (AvatarRenderer, string, string?, string, AvatarLipSync)? Shown(AvatarProfile? profile) => profile is null ? null
+            : (profile.Renderer, profile.ModelPath, profile.SdkDirectory, profile.Endpoint, profile.LipSync);
+    }
+
+    private static bool IsModelFile(string path) =>
+        (path.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase)) &&
+        Path.IsPathFullyQualified(path) && File.Exists(path);
+
+    /// <summary>An own model's renderer follows its file type (.vrm is VRM, .model3.json is Live2D), so a typed path needs no
+    /// renderer choice; any other file keeps the advanced renderer choice.</summary>
+    private AvatarRenderer RendererFor(string path) =>
+        path.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase) ? AvatarRenderer.Vrm
+        : path.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase) ? AvatarRenderer.Live2D
+        : RendererChoice.SelectedItem as AvatarRenderer? ?? AvatarRenderer.Live2D;
+
     private AvatarRemoteHost? remoteHost;
 
     private void ShowRemoteHost() => HostStatusText.Text = remoteHost is { } host
-        ? $"Lip-sync can use host {host.HostId}. Change this on the Devices page."
-        : "No host is selected for lip-sync. Set one up from the Devices page.";
+        ? $"Lip-sync can use host {host.HostId}. Change this on the Lip-sync page or the Devices map."
+        : "No host is selected for lip-sync. Set one up on the Lip-sync page or the Devices map.";
 
     private async void Hosts_Click(object sender, RoutedEventArgs e)
     {
+        await autoSave.SaveNowAsync();
         new HostsWindow(profiles, settings) { Owner = this }.ShowDialog();
         // The hosts window saves the pairing into the same avatar document; pick up its new revision.
         await ActionAsync(ReloadAsync);
@@ -184,28 +399,39 @@ public partial class AvatarWindow : ThemedWindow
     {
         var dialog = new OpenFileDialog { Filter = "Avatar models|*.vrm;*.model3.json", CheckFileExists = true };
         if (dialog.ShowDialog(this) != true) return;
-        ModelPathText.Text = dialog.FileName;
-        RendererChoice.SelectedItem = dialog.FileName.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase)
-            ? AvatarRenderer.Vrm : AvatarRenderer.Live2D;
+        var wasDrafting = renderingDraft;
+        renderingDraft = true;
+        try
+        {
+            ModelPathText.Text = dialog.FileName;
+            RendererChoice.SelectedItem = dialog.FileName.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase)
+                ? AvatarRenderer.Vrm : AvatarRenderer.Live2D;
+        }
+        finally { renderingDraft = wasDrafting; }
+        if (DraftChanged()) SaveNow();
     }
 
-    private async void Show_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Show_Click(object sender, RoutedEventArgs e)
     {
-        if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
-        var selected = Selected() with { ResourceRevision = null };
-        if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
-        else revision = await profiles.SaveAsync(selected, revision, lifetime.Token);
-        ResultText.Text = "Opening the character...";
-        await controller.ShowAsync(selected, lifetime.Token);
-        ResultText.Text = controller.Status;
-        if (controller.Capabilities is { } capabilities)
+        await autoSave.SaveNowAsync();
+        await ActionAsync(async () =>
         {
-            TargetChoice.ItemsSource = capabilities.Parameters;
-            TargetChoice.SelectedIndex = 0;
-            CapabilityText.Text = string.Join(Environment.NewLine, capabilities.Parameters.Select(p =>
-                $"{p.Id}: {p.Minimum} .. {p.Maximum}; neutral {p.Neutral}; {string.Join(", ", p.Aspects)}"));
-        }
-    });
+            if (operations.IsRunning) throw new InvalidOperationException("Wait for the current setup or voice action to finish before changing the character.");
+            var selected = Selected() with { ResourceRevision = null };
+            if (profileId == Guid.Empty) selected = selected with { ProfileId = Guid.NewGuid() };
+            ResultText.Text = "Opening the character...";
+            await controller.ShowAsync(selected, lifetime.Token);
+            ResultText.Text = controller.Status;
+            RenderShowing();
+            if (controller.Capabilities is { } capabilities)
+            {
+                TargetChoice.ItemsSource = capabilities.Parameters;
+                TargetChoice.SelectedIndex = 0;
+                CapabilityText.Text = string.Join(Environment.NewLine, capabilities.Parameters.Select(p =>
+                    $"{p.Id}: {p.Minimum} .. {p.Maximum}; neutral {p.Neutral}; {string.Join(", ", p.Aspects)}"));
+            }
+        });
+    }
 
     private async void Inspect_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
@@ -248,7 +474,7 @@ public partial class AvatarWindow : ThemedWindow
                 Assignments = aspects.Select(a => new AspectAssignment { Aspect = a, SourceId = AvatarController.SourceId,
                     MappingId = "user-mapping", AcceptReduced = ReducedChoice.IsChecked == true }).ToArray()
             });
-            ResultText.Text = "Mapping added. Review and save before activating.";
+            ResultText.Text = "Mapping added. Review it, then activate lip-sync.";
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException) { ResultText.Text = error.Message; }
     }
@@ -281,37 +507,41 @@ public partial class AvatarWindow : ThemedWindow
         { ResultText.Text = error.Message; }
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Export_Click(object sender, RoutedEventArgs e)
     {
-        if (controller.IsActive) throw new InvalidOperationException("Hide the character before saving new settings.");
-        revision = await profiles.SaveAsync(Selected(), revision, lifetime.Token);
-        ResultText.Text = "Avatar settings saved.";
-    });
+        await autoSave.SaveNowAsync();
+        await ActionAsync(async () =>
+        {
+            var dialog = new SaveFileDialog { Filter = "Avatar JSON|*.json", FileName = "avatar-export.json" };
+            if (dialog.ShowDialog(this) != true) return;
+            var bytes = await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token);
+            await using var destination = new FileStream(dialog.FileName, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            await destination.WriteAsync(bytes, lifetime.Token);
+            ResultText.Text = "Avatar settings exported. Model files and activation permission aren't included.";
+        });
+    }
 
-    private async void Export_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Activate_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Filter = "Avatar JSON|*.json", FileName = "avatar-export.json" };
-        if (dialog.ShowDialog(this) != true) return;
-        var bytes = await LocalAvatarFiles.ReadBoundedAsync(profiles.FilePath, AvatarProfile.MaximumBytes, lifetime.Token);
-        await using var destination = new FileStream(dialog.FileName, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        await destination.WriteAsync(bytes, lifetime.Token);
-        ResultText.Text = "Avatar settings exported. Model files and activation permission aren't included.";
-    });
-
-    private async void Activate_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
-    {
-        var currentSettings = await settings.LoadAsync(lifetime.Token);
-        if (currentSettings.Settings?.Profile.Id != profileId)
-            throw new InvalidOperationException("Your profile changed. Reload and inspect again.");
-        var selected = Selected();
-        var saved = await profiles.LoadAsync(profileId, lifetime.Token);
-        if (saved.Profile is null || saved.Revision != revision ||
-            !ContractJson.Write(saved.Profile, AvatarProfile.MaximumBytes).SequenceEqual(ContractJson.Write(selected, AvatarProfile.MaximumBytes)))
-            throw new InvalidOperationException("Save these reviewed choices before activation.");
-        lifetime.Token.ThrowIfCancellationRequested();
-        await controller.ActivateAsync(selected, AnalysisPermission.IsChecked == true, CancellationToken.None);
-        AnalysisPermission.IsChecked = false;
-    });
+        // Activation is for the reviewed choices as saved; save whatever is still waiting first.
+        await autoSave.SaveNowAsync();
+        await ActionAsync(async () =>
+        {
+            var currentSettings = await settings.LoadAsync(lifetime.Token);
+            if (currentSettings.Settings?.Profile.Id != profileId)
+                throw new InvalidOperationException("Your profile changed. Close this window, open it again and inspect again.");
+            if ((problem ?? saveError) is { } unsaved)
+                throw new InvalidOperationException("These choices aren't saved yet: " + unsaved);
+            var selected = Selected();
+            var saved = await profiles.LoadAsync(profileId, lifetime.Token);
+            if (saved.Profile is null || saved.Revision != revision ||
+                !ContractJson.Write(saved.Profile, AvatarProfile.MaximumBytes).SequenceEqual(ContractJson.Write(selected, AvatarProfile.MaximumBytes)))
+                throw new InvalidOperationException("These choices are still saving. Try again in a moment.");
+            lifetime.Token.ThrowIfCancellationRequested();
+            await controller.ActivateAsync(selected, AnalysisPermission.IsChecked == true, CancellationToken.None);
+            AnalysisPermission.IsChecked = false;
+        });
+    }
 
     private async void Restore_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
     {
@@ -326,6 +556,7 @@ public partial class AvatarWindow : ThemedWindow
         if (!ConfirmationDialog.Confirm(this,
             "Restore these avatar settings? Martlet keeps a local backup. Inspect and activate lip-sync again afterward.",
             "Restore avatar settings")) return;
+        autoSave.Cancel();
         await controller.StopAsync();
         await profiles.RestoreAsync(candidate, prior is null ? null : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(prior)), lifetime.Token);
         await ReloadAsync();
@@ -335,6 +566,7 @@ public partial class AvatarWindow : ThemedWindow
     {
         controller.Revoke();
         await ActionAsync(async () => { await controller.StopAsync(); AnalysisPermission.IsChecked = false; }, allowBusy: true);
+        RenderShowing();
     }
 
     private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -346,13 +578,17 @@ public partial class AvatarWindow : ThemedWindow
 
     private async Task ActionAsync(Func<Task> action, bool allowBusy = false)
     {
-        if (busy && !allowBusy) { ResultText.Text = "Another avatar operation is still finishing."; return; }
+        if (busy && !allowBusy) { ResultText.Text = "Another character action is still finishing."; return; }
         busy = true;
         try { await action(); }
-        catch (OperationCanceledException) { ResultText.Text = "Avatar action canceled. Reload if the window looks out of date."; }
+        catch (OperationCanceledException) { ResultText.Text = "Character action canceled."; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
-            InvalidOperationException or ArgumentException or JsonException or TimeoutException or System.ComponentModel.Win32Exception)
+            InvalidOperationException or ArgumentException or JsonException or TimeoutException or Win32Exception)
         { ResultText.Text = error.Message; }
-        finally { busy = false; }
+        finally
+        {
+            busy = false;
+            if (!lifetime.IsCancellationRequested) RenderSaveState();
+        }
     }
 }

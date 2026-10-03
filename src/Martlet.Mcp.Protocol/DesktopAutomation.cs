@@ -46,7 +46,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeFind", "SmartHomeSetupCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
-        "ApiKeyCreateCancel", "ApiKeyCreatedDone"
+        "ApiKeyCreateCancel", "ApiKeyCreatedDone",
+        // Personality, Character, Lorebooks and Memory open their windows (the character itself doesn't show), and Done/Close
+        // closes them. Those windows save each change on their own as it is made (edits need --allow-ui-effects), so closing
+        // never writes anything that wasn't already changed. The Character window's sections only expand.
+        "OpenCompanion", "OpenAvatar", "OpenLorebooks", "OpenMemory", "CompanionClose", "AvatarClose", "LorebookClose", "MemoryClose",
+        "AvatarAdvanced", "RemoteHostSection"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -87,6 +92,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
+        // Editors that save on their own (no Save button): whether every change is saved ("All changes saved.", "Saving...",
+        // "Not saved yet: <why>"), in Personality (the Companion window), the Character window and Lorebooks; and the Character
+        // window's character status ("Character is showing...", "Character hidden. Voice continues.").
+        "CompanionSaveState", "AvatarSaveState", "LorebookSaveState", "AvatarStatus",
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
         // what its key field will do.
         "FallbackNow", "FallbackKeyStatus",
@@ -146,7 +155,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
     /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
-    /// prompt's state ("PromptState-reply_length" reads "Edited. Not saved yet."; never the prompt text).</summary>
+    /// prompt's state ("PromptState-reply_length" reads "Edited." or, while it saves, "Edited. Saving..."; never the prompt text).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",

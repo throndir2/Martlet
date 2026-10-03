@@ -507,11 +507,49 @@ sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
 saved edit or the built-in text), exactly what Martlet fills in and sends.
 On the page, `PromptsNow` reads how many prompts are edited or emptied and
 `PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
-nothing is sent for this prompt.*, plus *Not saved yet.* for unsaved edits);
-neither returns prompt text. `OpenPrompts` (Personality's *Edit prompts*)
-only opens the page. The editors `Prompt-<id>`, their `PromptReset-<id>`
-buttons, `PromptsDefaults` and `PromptsSave` (which writes settings) need
-`--allow-ui-effects`; `ui_set_text` with an empty `text` empties a prompt.
+nothing is sent for this prompt.*, plus *Saving...* while an edit is still
+being saved); neither returns prompt text. `OpenPrompts` (Personality's *Edit
+prompts*) only opens the page. There is no Save button: an edit saves a moment
+after typing stops (or at once when another page opens), into the newest saved
+settings, and `PromptsNow` then reads the new counts. The editors
+`Prompt-<id>`, their `PromptReset-<id>` buttons and `PromptsDefaults` write
+settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
+`text` empties a prompt.
+
+`character_status` reads Companion › Personality and Character as saved in a
+data directory (optional absolute `dataDirectory`, default the current
+user's): `personality` (`state` `none`, `loaded` or `unreadable` with
+`problem`; `active`, the persona Martlet uses; and each persona's `name`,
+`active`, `instructionCharacters` and `styles` weights, never its
+instructions), `character` (from `avatar.json`: `model` `built-in` with
+`builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
+`.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
+`lipSyncHost`, the paired host's ID) and `lorebooks` (`books`, `on` and
+`entries` counts). Those editors have no Save button; each change saves on its
+own into the newest saved file, keeping what was saved elsewhere meanwhile
+(another page, or sync from your other computers, such as the lip-sync host).
+`OpenCompanion` (Personality's *Edit personality*), `OpenAvatar` (Character's
+*Choose and customize*), `OpenLorebooks` and `OpenMemory` open their windows
+(the character itself doesn't show), and their `CompanionClose`,
+`AvatarClose`, `LorebookClose` and `MemoryClose` close them; these are passive
+clicks, as are the character window's `AvatarAdvanced` and
+`RemoteHostSection` expanders. Each editor's footer line, `CompanionSaveState`,
+`AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
+*Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
+response styles at zero, or *Choose your model file: an existing .vrm or
+.model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
+character's state (*Character is showing. ...*, *Character hidden.*). Their
+fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
+`CompanionPersona`, which also makes the chosen persona the one Martlet uses,
+`CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
+`AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
+`MemoryEnable`) save, and `ShowCharacter`/`StopAvatar` show or hide the
+character, so they need `--allow-ui-effects`. Typing a persona name or text and
+closing at once still saves it; closing with a change that can't be saved asks
+with `ConfirmationYes` (close and drop it) or `ConfirmationNo` (stay). With the
+character showing, choosing another model or lip-sync mode switches it right
+away (`AvatarStatus` changes, and `logs_tail` `desktop` records *Avatar renderer
+stopped by Martlet.* for the old one).
 
 `hearing_check` shows whether the Thinking model can hear the user's
 recording (Companion › Listening › **Let Thinking hear my voice**; optional
@@ -603,8 +641,10 @@ for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
-`PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
-`PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
+`PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
+`PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
+its field loses focus, on Enter or two seconds after typing stops, then syncs);
+like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
@@ -665,8 +705,10 @@ never returned, and `ApiKeyCopy` writes the clipboard; `ApiKeyCreatedDone`
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
 (paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
-PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects`),
-`HostReachHint` (status text), `HostReachSsh` and `HostReachSave`. Host
+PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects` and saves at
+once), `HostReachHint` (status text) and `HostReachSsh` (saved when it loses
+focus, on Enter or 1.5 seconds after typing stops; there is no Save button).
+Host
 actions (`NodeAction-UpdateHost`, `NodeAction-HostStatus`, roles) on a host
 reached through Martlet there open a run window (`HostRunStatus`) that sends
 the command through its gateway; on a disposable data directory without a
@@ -1212,7 +1254,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check` and `echo_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check` and `echo_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

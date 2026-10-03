@@ -83,6 +83,9 @@ public partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var boxes = new Dictionary<GenerationSetting, TextBox>();
+        // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, generation => described.Text = DescribeGeneration(generation, route)));
+        tabAutoSave = autoSave;
         foreach (var setting in ReplySettings)
         {
             var use = route is null ? GenerationSettingUse.Used : GenerationSupport.Use(route.RouteType, route.Origin, setting.Setting);
@@ -95,7 +98,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(box, setting.Id);
             var range = RangeText(setting, route);
             AutomationProperties.SetHelpText(box, range + ". " + setting.Help);
-            box.TextChanged += (_, _) => { if (box.IsKeyboardFocusWithin) tabEdited = true; };
+            box.TextChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
             boxes[setting.Setting] = box;
 
             var label = new Label { Content = setting.Label, Target = box, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top };
@@ -127,18 +130,17 @@ public partial class MainWindow
             grid.Children.Add(about);
         }
 
-        var save = PageButton("Save", () => SaveRepliesFrom(boxes), primary: true, id: "RepliesSave");
         var defaults = PageButton("Use model defaults", () =>
         {
             foreach (var box in boxes.Values) box.Text = "";
             tabEdited = true;
-            ActionText.Text = "Reply settings cleared. Save to use the model defaults.";
+            autoSave.SaveNowAsync().Forget();
         }, id: "RepliesDefaults");
         page.Children.Add(Card(Heading("Reply settings"),
-            Note("Leave a field blank to use the model default. Reload an open conversation to use saved changes.",
+            Note("Leave a field blank to use the model default. Changes save as you type; reload an open conversation to use them.",
                 new Thickness(0, 0, 0, 4)),
             grid,
-            Row(save, defaults)));
+            Row(defaults)));
     }
 
     private static string UseText(GenerationSettingUse use, GenerationSetting setting, SetupRoute route, string place) => use switch
@@ -177,7 +179,10 @@ public partial class MainWindow
             (parts.Count == 0 ? ". Other settings use the model default." : ". " + string.Join(", ", parts) + ".");
     }
 
-    private void SaveRepliesFrom(IReadOnlyDictionary<GenerationSetting, TextBox> boxes)
+    /// <summary>The Replies page's auto-save: reads the fields and, when every one is valid, writes them into the newest saved
+    /// settings. A field that isn't a number in range says so (on the status line) and nothing is saved until it is fixed.
+    /// Returns false to be tried again shortly while another change holds the settings.</summary>
+    private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, Action<GenerationSettings?> saved)
     {
         var values = new Dictionary<GenerationSetting, double?>();
         foreach (var setting in ReplySettings)
@@ -188,9 +193,8 @@ public partial class MainWindow
                 !double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ||
                 setting.Whole && (value != Math.Floor(value) || Math.Abs(value) > int.MaxValue))
             {
-                ActionText.Text = $"{setting.Name}: enter {(setting.Whole ? "a whole number" : "a number")} in the shown range, or leave it blank.";
-                boxes[setting.Setting].Focus();
-                return;
+                ActionText.Text = $"Reply settings not saved yet: {setting.Name}: enter {(setting.Whole ? "a whole number" : "a number")} in the shown range, or leave it blank.";
+                return true;
             }
             values[setting.Setting] = value;
         }
@@ -210,46 +214,46 @@ public partial class MainWindow
         try { generation.Validate(); }
         catch (ContractException error)
         {
-            ActionText.Text = error.Message;
-            return;
+            ActionText.Text = "Reply settings not saved yet: " + error.Message;
+            return true;
         }
-        SaveRepliesAsync(GenerationSettings.Normalize(generation)).Forget();
+        return await SaveRepliesAsync(GenerationSettings.Normalize(generation), saved);
     }
 
-    private async Task SaveRepliesAsync(GenerationSettings? generation)
+    private async Task<bool> SaveRepliesAsync(GenerationSettings? generation, Action<GenerationSettings?> saved)
     {
-        if (store is null || setupService is null || closing) return;
-        if (savingTab || assigningRole || setupOperations.IsRunning)
-        {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
-        }
+        if (store is null || setupService is null || closing) return true;
+        if (savingTab || assigningRole || setupOperations.IsRunning) return false;
         savingTab = true;
         var token = lifetime.Token;
         try
         {
             var loaded = await setupService.LoadAsync(token);
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
+            if (Equals(loaded.Settings?.Generation, generation)) return true;
             var updated = SetupSettings.Begin(loaded.Settings) with { Generation = generation };
             updated.Validate();
-            var saved = await setupService.SaveAsync(updated, loaded.Revision, token);
-            if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
+            var result = await setupService.SaveAsync(updated, loaded.Revision, token);
+            if (!result.Save.Saved)
+            {
+                if (result.Save.Error?.Code == ErrorCode.SettingsConflict) return false;
+                throw new InvalidOperationException(result.Summary);
+            }
             homeSettings = updated;
+            saved(generation);
             ActionText.Text = "Reply settings saved. Reload an open conversation to use them.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
         {
-            ActionText.Text = error.Message;
+            ActionText.Text = "Reply settings not saved: " + error.Message;
         }
         finally
         {
             savingTab = false;
-            if (!closing)
-            {
-                tabEdited = false;
-                RenderHome();
-            }
+            // The page stays as typed (tabEdited); only Home and the other summaries refresh.
+            if (!closing) RenderHome();
         }
+        return true;
     }
 }

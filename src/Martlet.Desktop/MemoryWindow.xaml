@@ -29,23 +29,21 @@
             <DockPanel>
                 <Button DockPanel.Dock="Right" x:Name="BrowseDirectoryButton" Content="_Browse" Click="BrowseDirectory_Click"
                         Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseDirectory" />
-                <TextBox x:Name="CustomDirectory" TextChanged="ConfigurationText_Changed"
-                         AutomationProperties.AutomationId="MemoryCustomDirectory" />
+                <TextBox x:Name="CustomDirectory" TextChanged="ConfigurationText_Changed" LostKeyboardFocus="CustomDirectory_LostFocus"
+                         KeyDown="CustomDirectory_KeyDown" AutomationProperties.AutomationId="MemoryCustomDirectory" />
             </DockPanel>
             <TextBlock x:Name="ResolvedDirectoryText" Margin="0,5" TextWrapping="Wrap"
                        AutomationProperties.Name="Memory folder" />
             <CheckBox x:Name="EnableChoice" Content="Remember facts from conversations"
                       Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,8,0,4"
                       AutomationProperties.AutomationId="MemoryEnable" />
-            <Button x:Name="SaveConfigurationButton" Content="_Save settings" Click="SaveConfiguration_Click"
-                    Padding="10,7" Margin="0,6,0,6" HorizontalAlignment="Left"
-                    AutomationProperties.AutomationId="MemorySaveConfiguration" />
-            <TextBox x:Name="ConfigurationStatus" IsReadOnly="True" TextWrapping="Wrap"
+            <!-- No Save button: these choices save as soon as they change (a typed folder when you leave the field or press Enter). -->
+            <TextBox x:Name="ConfigurationStatus" IsReadOnly="True" TextWrapping="Wrap" Margin="0,6,0,0"
                      AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite"
                      AutomationProperties.Name="Memory configuration status" />
 
             <TextBlock Text="Remembered facts" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock Text="Add, edit or delete facts Martlet can remember." TextWrapping="Wrap" />
+            <TextBlock Text="Write a fact and add it, or select one to update or delete it." TextWrapping="Wrap" />
             <WrapPanel>
                 <Button x:Name="RefreshFactsButton" Content="_Refresh facts" Click="RefreshFacts_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryRefreshFacts" />
@@ -58,9 +56,9 @@
             <Label Target="{Binding ElementName=RetentionChoice}" Content="_Retention" />
             <ComboBox x:Name="RetentionChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryRetention" />
             <WrapPanel>
-                <Button x:Name="SaveFactButton" Content="_Save new fact" Click="SaveFact_Click"
+                <Button x:Name="SaveFactButton" Content="_Add fact" Click="SaveFact_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemorySaveFact" />
-                <Button x:Name="EditFactButton" Content="_Edit selected fact" Click="EditFact_Click"
+                <Button x:Name="EditFactButton" Content="_Update selected fact" Click="EditFact_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryEditFact" />
                 <Button x:Name="DeleteFactButton" Content="_Delete selected fact" Click="DeleteFact_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryDeleteFact" />
