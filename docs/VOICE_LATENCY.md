@@ -78,8 +78,8 @@ and the waits above (now logged).
 says it reasons by default (`default_effort: low`) and also accepts `none`
 (`mandatory: false`), but Martlet sent no `reasoning` setting, so every reply
 waited for hidden thinking first. That is most of the 3-8 s to the first word.
-Companion › Replies › **Thinking steps** › *Off* now sends OpenRouter
-`reasoning.effort: none` (see [Conversation](CONVERSATION.md)).
+Companion › Replies › **Thinking steps** is now *Off* by default, which sends
+OpenRouter `reasoning.effort: none` (see [Conversation](CONVERSATION.md)).
 OpenRouter's `provider` block only sets `allow_fallbacks: false`, so it is not
 asked to prefer the lowest-latency provider (grok-4.3 has one, xAI).
 
@@ -123,7 +123,8 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
    on every chunk (details and checks in
    [Chatterbox](CHATTERBOX_VOICE.md#how-it-runs)).
 4. **Thinking steps** (Companion › Replies) turns a reasoning model's hidden
-   thinking off; a model that refuses Off is asked again with its default.
+   thinking off, and is Off by default; a model that refuses Off is asked again
+   with its default.
 
 Two measurements: one process on an idle GPU (graph against the library's own
 decoding), and the running service against this change's service on a side
@@ -211,10 +212,10 @@ backchannel at once would make most of the rest feel instant.
 
 ## Recommendations, biggest win first
 
-1. **Turn hidden reasoning off for conversation**: Companion › Replies ›
-   **Thinking steps** › *Off* (OpenRouter `reasoning.effort: none`, which
-   grok-4.3 accepts). Expected to remove most of the 3-8 s before the first
-   word; *hidden reasoning* disappears from the latency line, which names the
+1. **Hidden reasoning is off for conversation by default**: Companion ›
+   Replies › **Thinking steps** is *Off* unless you choose *On* (OpenRouter
+   `reasoning.effort: none`, which grok-4.3 accepts). Expected to remove most of
+   the 3-8 s before the first word; *hidden reasoning* disappears from the latency line, which names the
    choice next to the model. A model that always thinks refuses Off; Martlet
    then asks again with the model's default, logs it and keeps the default for
    that model, so pick a model that can skip thinking.

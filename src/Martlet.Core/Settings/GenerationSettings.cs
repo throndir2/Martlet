@@ -57,11 +57,17 @@ public sealed record GenerationSettings : IContract
     public int? MaxReplyTokens { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? ContextTokens { get; init; }
-    /// <summary>Companion › Replies › Thinking steps: whether a reasoning model thinks step by step before it answers. False
-    /// skips it, so replies start sooner and spend no tokens on hidden thinking; true asks for it; null keeps the model's own
-    /// default. Each route sends it the way its API takes it (<see cref="GenerationSupport.Reasoning"/>).</summary>
+    /// <summary>Companion › Replies › Thinking steps: whether a reasoning model thinks step by step before it answers. In saved
+    /// settings, null (nothing chosen) and false are Off, the default (<see cref="DefaultReasoning"/>): replies start sooner and
+    /// spend no tokens on hidden thinking; true asks for it. The desktop resolves it before every request
+    /// (<see cref="WithReasoning"/>), so a request always says Off or On; a request without it (after a model refused the
+    /// choice, <see cref="WithoutReasoning"/>) leaves the model's own default. Each route sends it the way its API takes it
+    /// (<see cref="GenerationSupport.Reasoning"/>).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Reasoning { get; init; }
+
+    /// <summary>Thinking steps when none is chosen: Off, so a reasoning model answers straight away.</summary>
+    public const bool DefaultReasoning = false;
 
     [JsonIgnore]
     public bool IsDefault => Temperature is null && TopP is null && TopK is null && MinP is null && RepeatPenalty is null &&
@@ -70,6 +76,13 @@ public sealed record GenerationSettings : IContract
     /// <summary>The reply token budget requested from the model (the default when unset).</summary>
     [JsonIgnore]
     public int ReplyTokens => MaxReplyTokens ?? DefaultMaxReplyTokens;
+
+    /// <summary>Whether Thinking steps is on for <paramref name="settings"/> (unset is Off).</summary>
+    public static bool ThinkingSteps(GenerationSettings? settings) => settings?.Reasoning ?? DefaultReasoning;
+
+    /// <summary>The settings a request sends: <paramref name="settings"/> with Thinking steps resolved (unset is Off).</summary>
+    public static GenerationSettings WithReasoning(GenerationSettings? settings) =>
+        (settings ?? new()) with { Reasoning = ThinkingSteps(settings) };
 
     /// <summary>Null when nothing is set, so untouched settings keep their original saved shape.</summary>
     public static GenerationSettings? Normalize(GenerationSettings? settings) =>

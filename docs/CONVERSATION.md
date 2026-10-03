@@ -93,10 +93,11 @@ comment; it needs a Thinking model that can see images. See
    model's hidden thinking; on a host it stays under half a saved context
    size) is only
    a ceiling against a runaway answer. **Thinking steps** (Companion ›
-   Replies: *Default*, *Off* or *On*) decides whether a reasoning model thinks
-   before it answers; *Off* skips that hidden thinking, so replies start sooner
-   and spend no tokens on it, and *Default* leaves it to the model. It applies
-   to replies, glances and remembering. Ollama on this PC gets
+   Replies: *Off*, the default, or *On*) decides whether a reasoning model
+   thinks before it answers; *Off* skips that hidden thinking, so replies start
+   sooner and spend no tokens on it, and *On* asks for it. Nothing chosen is Off
+   (a saved Off from an earlier version reads the same), so every request says
+   Off or On. It applies to replies, glances and remembering. Ollama on this PC gets
    `reasoning_effort` (`none` turns thinking off), OpenRouter its `reasoning`
    object, a paired host's Ollama its own `think` (a host must run this Martlet
    version or later), and other Chat Completions servers (NVIDIA Build, vLLM,

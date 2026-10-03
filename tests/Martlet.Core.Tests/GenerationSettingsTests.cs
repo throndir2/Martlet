@@ -59,6 +59,21 @@ public sealed class GenerationSettingsTests
     }
 
     [Fact]
+    public void Thinking_steps_are_off_unless_on_is_chosen()
+    {
+        Assert.False(GenerationSettings.ThinkingSteps(null));
+        Assert.False(GenerationSettings.ThinkingSteps(new() { Temperature = 0.7 }));
+        Assert.False(GenerationSettings.ThinkingSteps(new() { Reasoning = false }));
+        Assert.True(GenerationSettings.ThinkingSteps(new() { Reasoning = true }));
+        // Every request says Off or On; only a retry after a refusal leaves the model's own default.
+        Assert.False(GenerationSettings.WithReasoning(null).Reasoning);
+        Assert.Equal(new GenerationSettings { Temperature = 0.7, Reasoning = false },
+            GenerationSettings.WithReasoning(new() { Temperature = 0.7 }));
+        Assert.True(GenerationSettings.WithReasoning(new() { Reasoning = true }).Reasoning);
+        Assert.Null(GenerationSettings.WithoutReasoning(GenerationSettings.WithReasoning(null)));
+    }
+
+    [Fact]
     public void Context_size_defaults_to_100k_within_the_models_limit()
     {
         var cloud = ContextBudget.For(SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, null, null);

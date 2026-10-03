@@ -12,15 +12,17 @@ using Martlet.Providers;
 namespace Martlet.Mcp;
 
 /// <summary>thinking_steps_check: Companion › Replies › Thinking steps as replies use it. From a data directory: the saved
-/// choice, the Thinking route and exactly what its replies send for it (the production <see cref="GenerationSupport"/>), and
-/// what each kind of route sends for Off and On. Then the production Chat Completions adapter against a fixture endpoint on
-/// 127.0.0.1 (canned reply, NOT AI), checking each choice's request; and, only with <c>live</c>, the same adapter against
-/// Ollama on this PC with a fixed question (never anything the owner said), the model's default against Off, beside one plain
-/// request each that shows whether Ollama thought first. Nothing leaves loopback; no credentials are read.</summary>
+/// choice (unset is Off, the default), the Thinking route and exactly what its replies send for it (the production
+/// <see cref="GenerationSupport"/>), and what each kind of route sends for Off and On. Then the production Chat Completions
+/// adapter against a fixture endpoint on 127.0.0.1 (canned reply, NOT AI), checking each choice's request and the model's own
+/// default (what a reply is asked again with after a model refused the choice); and, only with <c>live</c>, the same adapter
+/// against Ollama on this PC with a fixed question (never anything the owner said), the model's default against Off, beside one
+/// plain request each that shows whether Ollama thought first. Nothing leaves loopback; no credentials are read.</summary>
 internal static class ThinkingStepsCheck
 {
     private const string Question = "Is 9.11 bigger than 9.9? Answer in one short sentence.";
-    private static readonly (string Name, bool? Value)[] Choices = [("Default", null), ("Off", false), ("On", true)];
+    // What a request can carry: nothing (the model's own default, only after a refusal), Off or On.
+    private static readonly (string Name, bool? Value)[] Choices = [("Model default", null), ("Off", false), ("On", true)];
 
     internal static async Task<object> RunAsync(string dataDirectory, string? model, bool live, CancellationToken cancellation)
     {
@@ -31,13 +33,15 @@ internal static class ThinkingStepsCheck
         }
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        var saved = loaded.Settings?.Generation?.Reasoning;
+        var chosen = loaded.Settings?.Generation?.Reasoning;
+        var steps = GenerationSettings.ThinkingSteps(loaded.Settings?.Generation);
         var localOllama = thinking is not null && ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin);
         var liveModel = model ?? (localOllama ? thinking!.ModelId : null);
         return new
         {
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
-            thinkingSteps = Name(saved),
+            thinkingSteps = steps ? "On" : "Off",
+            chosen = chosen is not null,
             thinking = thinking is null ? null : new
             {
                 routeType = thinking.RouteType?.ToString() ?? "OpenAi",
@@ -45,7 +49,7 @@ internal static class ThinkingStepsCheck
                 model = thinking.ModelId,
                 control = GenerationSupport.Reasoning(thinking.RouteType, thinking.Origin).ToString(),
                 use = GenerationSupport.Use(thinking.RouteType, thinking.Origin, GenerationSetting.Reasoning).ToString(),
-                sends = GenerationSupport.ReasoningJson(thinking.RouteType, thinking.Origin, saved)
+                sends = GenerationSupport.ReasoningJson(thinking.RouteType, thinking.Origin, steps)
             },
             routes = Routes(),
             fixture = await FixtureAsync(cancellation),
@@ -54,8 +58,6 @@ internal static class ThinkingStepsCheck
                 : await LiveAsync(liveModel, cancellation)
         };
     }
-
-    private static string Name(bool? reasoning) => Choices.First(c => c.Value == reasoning).Name;
 
     private static object NotRun(string why) => new { ran = false, why };
 
