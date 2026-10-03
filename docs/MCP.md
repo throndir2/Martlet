@@ -335,6 +335,45 @@ answers none. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
+`character_models_selftest` (no arguments) rehearses the
+[shared character models](CLUSTER.md#the-shared-character-models) end to end
+with the production code: two real gateways on 127.0.0.1 (pinned TLS, in-memory
+`character-models.json` and pieces) and three simulated desktops that keep their
+character copies in a temporary folder and use the desktop's paired client and
+Martlet.Avatar.Hosting's import and reconcile engine. The fixtures are generated
+bytes in the Live2D folder and VRM file shapes (NOT real models; nothing is
+rendered). It runs `src\Martlet.NodeLinkCheck` (mode `characters`,
+`CharacterRehearsal.cs`) and returns `{exitCode, report}` like
+`network_selftest`. Its steps: adding a Live2D model (its model3.json declares a
+7 MiB file in three pieces, a texture and a motion in subfolders; a readme beside
+it stays behind) and a VRM keeps copies the
+renderer's own file reader reads exactly like the originals; the list and every
+3 MiB piece reach a host, each piece in one signed request; a new, empty desktop
+copies both characters byte for byte; a copy interrupted after three pieces
+continues with only the rest; a desktop passes the characters on to a host the
+first desktop never reached; removing a character deletes its pieces on both
+hosts and the other desktops' copies; a stale copy can't bring it back; a
+computer keeps the copy it shows until another is chosen; a host restart keeps
+the list and pieces; a wrong SHA-256, a piece no character has and a removed
+character's piece are refused; reading a missing piece answers none; a 17th
+character and a Live2D model that refers to a script are refused. Nothing leaves
+loopback, the temporary folder is deleted and Windows Credential Manager is not
+touched; it does not cover the desktop window and its 30-second sync, the Linux
+host's files, rendering a copied model or a real LAN.
+
+`character_models` reads the shared character models from a data directory
+(optional absolute `dataDirectory`, default the current user's): `state`
+(`none`, `loaded` or `unreadable` for `character-models.json`), `live`,
+`tombstones`, `totalBytes`, `revision`, and per live character its `key` (the
+first 16 hex digits of its ID, as in `CharacterModelState-<key>`), `renderer`
+(`live2d` or `vrm`), `files`, `pieces`, `bytes`, `addedBy`, `addedAt`,
+`updatedBy`, `ready` (this PC's copy is complete) and `shown` (`avatar.json`
+shows it); `copies` (folders in `character-models`), `incoming` (copies still
+arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
+`unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
+`model-file-outside-list`). Character names and file paths are never returned.
+Read-only; it contacts nothing.
+
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
 absolute `dataDirectory`, default the current user's): `share` is
@@ -382,7 +421,9 @@ left open) holds `engine.lock` (0600) and records itself in `engine.holder`;
 terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
 `--yes update` with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and
 gives up with 75; a waiting `--yes remove` continues once the holder is killed
-(SIGKILL); the next automatic run is not blocked (no stale lock);
+(SIGKILL), and so does an `update` without a terminal or `--yes` that sets
+`MARTLET_LOCK_WAIT=60` (*Update hosts now*): it waits instead of stopping and
+then runs; the next automatic run is not blocked (no stale lock);
 `logs/engine.log` records the waits; and the desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
@@ -395,6 +436,28 @@ this ran ... Nothing was changed`) while one in the current namespace
 continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
+
+`host_update_check` (no arguments) rehearses how one Martlet keeps its own host
+service updates from colliding, with the desktop's production
+`HostUpdateTracker` and `HostEngineBusy` reader, and returns `{exitCode, report:
+{passed, total, steps: [{name, ok, detail}]}}`. The timeline is the one seen on
+a host PC right after Martlet updated itself: *Update this PC's host service*
+(a run window) claims this PC's host service (`keys`,
+`run-window-claims-host`); the automatic pass then leaves that host to the run,
+both as its local pairing and as this PC's own host service, with no second
+engine run and no "busy" note, while another host still updates
+(`automatic-pass-leaves-host-to-run-window`); overlapping routes (a run window
+and a command from another computer) end separately
+(`overlapping-routes-end-separately`); the engine's real busy line for another
+update is named as *Another update of that host was already running ...* while
+an install keeps *Waiting to update ... busy* (`busy-note-names-another-update`);
+a host found current stops waiting and its stale note becomes *Updated to
+Martlet 0.22.0 (seen at ...)* (once), while other hosts keep theirs
+(`current-host-replaces-stale-note`, `retry-takes-waiting`); and *Update
+hosts now* waits up to 30 minutes for another change, inside an unattended
+run's 45-minute limit (`asked-update-waits`). It contacts nothing and touches no
+Docker, host or data directory; the engine side of waiting is
+`host_engine_check`'s `asked-update-waits-then-runs`.
 
 `audio2face_check` animates a short synthesized speech-like test signal (a vowel
 pulse train generated in the tool, never microphone audio, nothing played) with
@@ -511,11 +574,49 @@ sends to the Thinking model (`id`, `group`, `title`, `placeholders`,
 saved edit or the built-in text), exactly what Martlet fills in and sends.
 On the page, `PromptsNow` reads how many prompts are edited or emptied and
 `PromptState-<id>` each prompt's state (*Built-in text.*, *Edited.*, *Empty:
-nothing is sent for this prompt.*, plus *Not saved yet.* for unsaved edits);
-neither returns prompt text. `OpenPrompts` (Personality's *Edit prompts*)
-only opens the page. The editors `Prompt-<id>`, their `PromptReset-<id>`
-buttons, `PromptsDefaults` and `PromptsSave` (which writes settings) need
-`--allow-ui-effects`; `ui_set_text` with an empty `text` empties a prompt.
+nothing is sent for this prompt.*, plus *Saving...* while an edit is still
+being saved); neither returns prompt text. `OpenPrompts` (Personality's *Edit
+prompts*) only opens the page. There is no Save button: an edit saves a moment
+after typing stops (or at once when another page opens), into the newest saved
+settings, and `PromptsNow` then reads the new counts. The editors
+`Prompt-<id>`, their `PromptReset-<id>` buttons and `PromptsDefaults` write
+settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
+`text` empties a prompt.
+
+`character_status` reads Companion › Personality and Character as saved in a
+data directory (optional absolute `dataDirectory`, default the current
+user's): `personality` (`state` `none`, `loaded` or `unreadable` with
+`problem`; `active`, the persona Martlet uses; and each persona's `name`,
+`active`, `instructionCharacters` and `styles` weights, never its
+instructions), `character` (from `avatar.json`: `model` `built-in` with
+`builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
+`.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
+`lipSyncHost`, the paired host's ID) and `lorebooks` (`books`, `on` and
+`entries` counts). Those editors have no Save button; each change saves on its
+own into the newest saved file, keeping what was saved elsewhere meanwhile
+(another page, or sync from your other computers, such as the lip-sync host).
+`OpenCompanion` (Personality's *Edit personality*), `OpenAvatar` (Character's
+*Choose and customize*), `OpenLorebooks` and `OpenMemory` open their windows
+(the character itself doesn't show), and their `CompanionClose`,
+`AvatarClose`, `LorebookClose` and `MemoryClose` close them; these are passive
+clicks, as are the character window's `AvatarAdvanced` and
+`RemoteHostSection` expanders. Each editor's footer line, `CompanionSaveState`,
+`AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
+*Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
+response styles at zero, or *Choose your model file: an existing .vrm or
+.model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
+character's state (*Character is showing. ...*, *Character hidden.*). Their
+fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
+`CompanionPersona`, which also makes the chosen persona the one Martlet uses,
+`CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
+`AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
+`MemoryEnable`) save, and `ShowCharacter`/`StopAvatar` show or hide the
+character, so they need `--allow-ui-effects`. Typing a persona name or text and
+closing at once still saves it; closing with a change that can't be saved asks
+with `ConfirmationYes` (close and drop it) or `ConfirmationNo` (stay). With the
+character showing, choosing another model or lip-sync mode switches it right
+away (`AvatarStatus` changes, and `logs_tail` `desktop` records *Avatar renderer
+stopped by Martlet.* for the old one).
 
 `hearing_check` shows whether the Thinking model can hear the user's
 recording (Companion › Listening › **Let Thinking hear my voice**; optional
@@ -625,8 +726,10 @@ for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus`, `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
-`PeopleOtherNames-3`, `PeopleSave-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
-`PeopleMerge-3`, `PeopleForget-3`); like `PeopleInstall`, `PeopleRecognize`,
+`PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
+`PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
+its field loses focus, on Enter or two seconds after typing stops, then syncs);
+like `PeopleInstall`, `PeopleRecognize`,
 `PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
@@ -643,8 +746,11 @@ paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
 as this PC knows it, kept current by the release every host announces on each
 network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
 `SelectedDeviceUpdate` the note on what this PC last did to update it (for
-example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, then *Updated to
-Martlet 0.22.0 (seen at 9:41 PM).* once the host announces it). Each row title
+example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, *Waiting to update
+to Martlet 0.22.0: that host is busy (...)* or *Another update of that host was
+already running (...)*, then *Updated to Martlet 0.22.0 (seen at 9:41 PM).* once
+the host announces it, a check finds it current or another route of this
+Martlet updated it). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
@@ -697,8 +803,10 @@ never returned, and `ApiKeyCopy` writes the clipboard; `ApiKeyCreatedDone`
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
 (paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
-PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects`),
-`HostReachHint` (status text), `HostReachSsh` and `HostReachSave`. Host
+PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects` and saves at
+once), `HostReachHint` (status text) and `HostReachSsh` (saved when it loses
+focus, on Enter or 1.5 seconds after typing stops; there is no Save button).
+Host
 actions (`NodeAction-UpdateHost`, `NodeAction-HostStatus`, roles) on a host
 reached through Martlet there open a run window (`HostRunStatus`) that sends
 the command through its gateway; on a disposable data directory without a
@@ -906,13 +1014,9 @@ ParamEyeROpen; mouth moves ParamMouthOpenY; no idle motions; 0 expressions;
 physics on.* (parameter IDs only, never paths); the desktop log records the same
 as *Character model loaded: ...*.
 
-`OpenAvatar` (*Choose and customize*, needs `--allow-ui-effects`) opens the
-character window (*Martlet - Character*). To show your own model there, `ui_select`
-`CharacterChoice` *My own model file*, `ui_set_text` the full path of its
-`.model3.json` or `.vrm` into `AvatarModelPath` (the path itself is never
-returned) and `ui_click` `ShowCharacter`, all with `--allow-ui-effects`.
-`AvatarStatus` returns the window's status line and `AvatarModelInfo` the same
-*Model: ...* description, or *Model not loaded:* and why (for example *The model
+In the character window (`OpenAvatar`, see above), `AvatarModelInfo` gives the
+same *Model: ...* description while the character shows, or *Model not loaded:*
+and why the chosen model couldn't be shared or shown (for example *The model
 refers to x.png, which isn't in its folder.* or, when the renderer rejects it,
 *This model can't be shown: ...*, which `logs_tail` `avatar-renderer` also
 records).
@@ -961,6 +1065,32 @@ measured from the top-left of the character's screen). `ui_select` and
 `BubbleOffsetX`, `BubbleOffsetY`), so they need `--allow-ui-effects`;
 `SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
 isn't a number from -4000 to 4000.
+
+Companion › Character's *Your characters* card lists the built-in character and
+every [shared character](CLUSTER.md#the-shared-character-models) in the order
+they joined. `CharacterModelsStatus` reads how many characters of the owner's
+own there are and what this PC shows ("1 character of your own. This PC shows
+one of your characters." or "... the built-in character.", never a name).
+`CharacterModelsShared` reads whether they are shared with the paired Martlet
+computers ("Characters shared with 2 of 2 computers at 7:15 PM.", characters
+still copying to this PC, hosts to update, or "No other Martlet computers are
+paired yet, so your characters stay on this PC."). Each row's detail line
+`CharacterModelState-<key>` (`builtin`, or the first 16 hex digits of the
+character's ID) returns its renderer, size, where and when it was added,
+"Copying to this PC..." while pieces are missing and "Shown on this PC." for the
+one shown, never its name. Its controls are `CharacterModelUse-<key>` (disabled
+while it is shown or still copying) and, unless shown, `CharacterModelRemove-<key>`
+(asks with `ConfirmationYes`/`ConfirmationNo` and removes it on every computer).
+`CharacterModelAdd` opens *Add a character* (`CharacterModelAddDialog`):
+`CharacterModelAddPath` (the `.model3.json` or `.vrm` full path),
+`CharacterModelAddName`, `CharacterModelAddOk` (adds, shares and shows it on this
+PC) and `CharacterModelAddCancel` (passive); `CharacterModelAddProblem` returns
+why it couldn't (never the typed name or path). Use, Remove and adding need
+`--allow-ui-effects`. In the character settings window (`OpenAvatar`), a model
+typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
+file") joins the shared list as soon as it is saved (once it names an existing model file; there is no Save button) or shown (`ShowCharacter`), and the
+saved profile then shows Martlet's copy. `character_models` reads the same list
+and copies headlessly.
 
 For voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). There are no built-in voices and no groups:
@@ -1266,7 +1396,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `hearing_check` and `echo_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

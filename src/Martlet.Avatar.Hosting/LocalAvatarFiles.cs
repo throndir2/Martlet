@@ -130,6 +130,58 @@ public static class LocalAvatarFiles
         return bytes;
     }
 
+    /// <summary>A model's own files, without the Live2D runtime: a VRM file under its file name, or a Live2D model's
+    /// <c>.model3.json</c> and every file it declares (MOC, textures, physics, pose, user data, display info, expressions,
+    /// motions and their sounds) by its path relative to the model3.json with forward slashes, as written there. Other files
+    /// in the folder (VTube Studio settings, readmes, icons, backups) are never opened. Enforces the renderer's limits;
+    /// scripts, reparse points, paths outside the folder and anything but inert model assets are refused.</summary>
+    public static async Task<IReadOnlyList<AvatarAsset>> ReadModelAsync(AvatarRenderer renderer, string modelPath, CancellationToken token)
+    {
+        var assets = new List<AvatarAsset>();
+        var modelFile = Path.GetFileName(modelPath);
+        if (renderer == AvatarRenderer.Vrm)
+        {
+            ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
+                "Select a local VRM1 .vrm model.");
+            assets.Add(new(modelFile, await ReadBoundedAsync(modelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
+            return assets;
+        }
+        ContractRules.Require(modelFile.EndsWith(".model3.json", StringComparison.Ordinal), "Select a model3.json model.");
+        ContractRules.Require(IsSafeModelName(modelFile),
+            $"Rename {modelFile}: model file names may use letters, digits, spaces and . _ - ( ) [ ] + & ' , ! ~ @ = only.");
+        var root = Path.GetDirectoryName(modelPath)!;
+        var model = await ReadBoundedAsync(modelPath, MaximumModelJsonBytes, token);
+        assets.Add(new(modelFile, model, "application/octet-stream"));
+        long total = model.Length;
+        var seen = new HashSet<string>(StringComparer.Ordinal) { modelFile };
+        foreach (var reference in ModelReferences(model))
+        {
+            token.ThrowIfCancellationRequested();
+            if (!seen.Add(reference)) continue;
+            ContractRules.Require(assets.Count < MaximumModelFiles, "Model bundle exceeds its file limit.");
+            ContractRules.Require(reference.Length <= 240 && reference.Split('/').All(IsSafeModelName),
+                $"The model refers to an unsupported file name ({Shorten(reference)}). Use plain relative names: letters, " +
+                "digits, spaces and . _ - ( ) [ ] + & ' , ! ~ @ = in folders below the model3.json.");
+            var extension = Path.GetExtension(reference).ToLowerInvariant();
+            ContractRules.Require(extension is ".json" or ".moc3" or ".png" or ".wav",
+                $"The model refers to {reference}, which isn't an inert model asset (JSON, MOC3, PNG or WAV). Scripts are never loaded.");
+            var path = Path.GetFullPath(Path.Combine(root, reference.Replace('/', Path.DirectorySeparatorChar)));
+            ContractRules.Require(path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase), "Model assets must stay inside the model's folder.");
+            var file = new FileInfo(path);
+            ContractRules.Require(file.Exists, $"The model refers to {reference}, which isn't in its folder.");
+            var limit = extension == ".json" ? MaximumModelJsonBytes : MaximumModelAssetBytes;
+            ContractRules.Require(file.Length <= limit,
+                $"{reference} is larger than Martlet's {limit / (1024 * 1024)} MB limit for one model file.");
+            var bytes = await ReadBoundedAsync(path, limit, token);
+            total += bytes.Length;
+            ContractRules.Require(total <= MaximumModelBytes,
+                $"The model's files add up to more than Martlet's {MaximumModelBytes / (1024 * 1024)} MB limit.");
+            assets.Add(new(reference, bytes, extension == ".png" ? "image/png" : "application/octet-stream"));
+        }
+        return assets;
+    }
+
     public static async Task<AvatarAssetSnapshot> SnapshotAsync(AvatarProfile profile, CancellationToken token)
     {
         profile.Validate();
@@ -138,48 +190,13 @@ public static class LocalAvatarFiles
         var modelFile = Path.GetFileName(modelPath);
         if (profile.Renderer == AvatarRenderer.Vrm)
         {
-            ContractRules.Require(Path.GetExtension(modelPath).Equals(".vrm", StringComparison.OrdinalIgnoreCase),
-                "Select a local VRM1 .vrm model.");
-            assets.Add(new("model.vrm", await ReadBoundedAsync(modelPath, 32 * 1024 * 1024, token), "application/octet-stream"));
+            var model = await ReadModelAsync(AvatarRenderer.Vrm, modelPath, token);
+            assets.Add(model[0] with { Name = "model.vrm" });
             modelFile = "model.vrm";
         }
         else
         {
-            ContractRules.Require(modelFile.EndsWith(".model3.json", StringComparison.Ordinal), "Select a model3.json model.");
-            ContractRules.Require(IsSafeModelName(modelFile),
-                $"Rename {modelFile}: model file names may use letters, digits, spaces and . _ - ( ) [ ] + & ' , ! ~ @ = only.");
-            var root = Path.GetDirectoryName(modelPath)!;
-            var model = await ReadBoundedAsync(modelPath, MaximumModelJsonBytes, token);
-            assets.Add(new(modelFile, model, "application/octet-stream"));
-            long total = model.Length;
-            // Only what model3.json declares is read. Other files in the folder (VTube Studio settings, readmes, icons,
-            // backups) are never opened, and nothing that isn't an inert JSON, MOC3, PNG or WAV asset is ever loaded.
-            var seen = new HashSet<string>(StringComparer.Ordinal) { modelFile };
-            foreach (var reference in ModelReferences(model))
-            {
-                token.ThrowIfCancellationRequested();
-                if (!seen.Add(reference)) continue;
-                ContractRules.Require(assets.Count < MaximumModelFiles, "Model bundle exceeds its file limit.");
-                ContractRules.Require(reference.Length <= 240 && reference.Split('/').All(IsSafeModelName),
-                    $"The model refers to an unsupported file name ({Shorten(reference)}). Use plain relative names: letters, " +
-                    "digits, spaces and . _ - ( ) [ ] + & ' , ! ~ @ = in folders below the model3.json.");
-                var extension = Path.GetExtension(reference).ToLowerInvariant();
-                ContractRules.Require(extension is ".json" or ".moc3" or ".png" or ".wav",
-                    $"The model refers to {reference}, which isn't an inert model asset (JSON, MOC3, PNG or WAV). Scripts are never loaded.");
-                var path = Path.GetFullPath(Path.Combine(root, reference.Replace('/', Path.DirectorySeparatorChar)));
-                ContractRules.Require(path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase), "Model assets must stay inside the model's folder.");
-                var file = new FileInfo(path);
-                ContractRules.Require(file.Exists, $"The model refers to {reference}, which isn't in its folder.");
-                var limit = extension == ".json" ? MaximumModelJsonBytes : MaximumModelAssetBytes;
-                ContractRules.Require(file.Length <= limit,
-                    $"{reference} is larger than Martlet's {limit / (1024 * 1024)} MB limit for one model file.");
-                var bytes = await ReadBoundedAsync(path, limit, token);
-                total += bytes.Length;
-                ContractRules.Require(total <= MaximumModelBytes,
-                    $"The model's files add up to more than Martlet's {MaximumModelBytes / (1024 * 1024)} MB limit.");
-                assets.Add(new(reference, bytes, extension == ".png" ? "image/png" : "application/octet-stream"));
-            }
+            assets.AddRange(await ReadModelAsync(AvatarRenderer.Live2D, modelPath, token));
             var sdk = profile.SdkDirectory ?? BundledLive2D.SdkDirectory;
             foreach (var name in new[] { "core.js", "sdk.js" })
                 assets.Add(new(name, await ReadBoundedAsync(Path.Combine(sdk, name), 16 * 1024 * 1024, token),

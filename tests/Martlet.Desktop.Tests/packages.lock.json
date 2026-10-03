@@ -234,6 +234,7 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Avatar.Audio2Face": "[0.22.0, )",
+          "Martlet.Avatar.Hosting": "[0.22.0, )",
           "Martlet.Conversation": "[0.22.0, )",
           "Martlet.Doctor": "[0.22.0, )",
           "Martlet.EchoCancellation": "[0.22.0, )",

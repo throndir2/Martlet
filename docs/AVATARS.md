@@ -72,16 +72,29 @@ to deliver, not permission to silently reduce the product scope.
 
 **Show character** / **Hide character** on the main window toggles the saved
 character (Hiyori when nothing is configured; no Setup profile is required).
-**Character settings** chooses the built-in character or a local model file,
+Companion › Character's **Your characters** lists the built-in character and the
+models you added (**Add a character...**: a Live2D `.model3.json`, whose declared
+files are copied, or a VRM `.vrm`), each with **Use** and **Remove**. Martlet keeps its
+own copy of each model and shares it with every paired Martlet computer that
+can be the companion, so they all offer the same characters; each computer picks
+which one it shows ([shared character models](CLUSTER.md#the-shared-character-models)).
+**Character settings** chooses the built-in character or a local model file
+(its renderer follows the file type: `.vrm` is VRM, `.model3.json` is Live2D;
+it joins your characters as soon as it is saved or shown),
 the lip-sync mode (Automatic, voice loudness only, or Audio2Face only) and
-whether the character shows automatically at launch. Settings are saved in the
-avatar-only sidecar; opening Setup temporarily hides the character and restores
-it afterwards.
+whether the character shows automatically at launch. There is no Save button:
+each choice saves on its own in the avatar-only sidecar (a typed path once it
+names an existing model file), keeping the lip-sync host chosen on the
+Lip-sync page, the Devices map or another computer through who-does-what sync,
+and a showing character switches to a new model or lip-sync mode right away.
+The window's footer says *All changes saved.* or why a choice isn't saved yet.
+Opening Setup temporarily hides the character and restores it afterwards.
 
 The **Advanced** section holds the Audio2Face endpoint used by Automatic mode and
 the Audio2Face-only lane: inspect actual targets, use the mapping helper and
-editable shared-configuration JSON, validate compatibility and save (Automatic
-mode also uses a saved mapping for the same model). It is **not a graphical
+editable shared-configuration JSON, and validate compatibility; these save on
+their own like the other choices (Automatic mode also uses a saved mapping for
+the same model, from the next time the character shows). It is **not a graphical
 automatic-rig wizard**. Only Audio2Face mouth and expression aspects can
 activate; gaze/head/body A2F composition and arbitrary blends are unsupported.
 Audio2Face-only activation replaces loudness lip-sync for the session. **Armed,

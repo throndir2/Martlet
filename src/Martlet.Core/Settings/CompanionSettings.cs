@@ -246,6 +246,9 @@ public interface ICompanionSettingsService
 {
     Task<SettingsLoadResult> LoadAsync(CancellationToken token = default);
     Task<SetupSaveResult> SaveAsync(AppSettings settings, string? revision, CancellationToken token = default);
+    /// <summary>Writes these personas into the newest saved settings, keeping everything else as it is now (other pages'
+    /// choices and whatever sync brought in from your other computers), and tries again when another save lands in between.</summary>
+    Task<SetupSaveResult> SaveCompanionAsync(CompanionSettings companion, CancellationToken token = default);
     Task<PersonaTextFileResult> ImportTextAsync(string path, CancellationToken token = default);
     Task<PersonaTextFileResult> ExportTextAsync(string path, string text, CancellationToken token = default);
     /// <summary>Reads a SillyTavern/Chub character card (PNG image, JSON or CHARX). Nothing is saved or sent anywhere.</summary>
@@ -263,6 +266,22 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
     {
         var save = await store.SaveAsync(settings, revision, token);
         return new(save, settings);
+    }
+
+    public async Task<SetupSaveResult> SaveCompanionAsync(CompanionSettings companion, CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(companion);
+        companion.Validate();
+        for (var attempt = 1; ; attempt++)
+        {
+            var loaded = await store.LoadAsync(token);
+            if (loaded.Error is not null)
+                return new(new(false, null, loaded.Error), CompanionSettings.Begin(null) with { Companion = companion });
+            var merged = CompanionSettings.Begin(loaded.Settings) with { Companion = companion };
+            var save = await store.SaveAsync(merged, loaded.Revision, token);
+            if (save.Saved || save.Error?.Code != ErrorCode.SettingsConflict || attempt == 3)
+                return new(save, merged);
+        }
     }
 
     public async Task<PersonaTextFileResult> ImportTextAsync(string path, CancellationToken token = default)
@@ -286,7 +305,7 @@ public sealed class CompanionSettingsService(SettingsStore store) : ICompanionSe
             var text = StrictUtf8.GetString(bytes, offset, length - offset);
             PersonaProfile.ValidateText(text);
             return new(PersonaTextFileOutcome.Imported, text,
-                "Persona text imported. Review it, then save.");
+                "Persona text imported into the editor.");
         }
         catch (DecoderFallbackException) { return Invalid("Persona text must be valid UTF-8."); }
         catch (ContractException error) { return Invalid(error.Message); }

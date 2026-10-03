@@ -1,7 +1,10 @@
+using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Core.Cluster;
+using Martlet.Core.Contracts;
 using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 
@@ -34,7 +37,7 @@ public partial class MainWindow
         DetailContent.Children.Clear();
         AutomationProperties.SetName(DetailContent, $"{node.Title}, {node.Subtitle}");
         DetailContent.Children.Add(DetailHeader(node));
-        if (node.PairedHostId is { } updating && hostUpdateNotes.GetValueOrDefault(updating) is { } update)
+        if (node.PairedHostId is { } updating && hostUpdates.Notes.GetValueOrDefault(updating) is { } update)
             DetailContent.Children.Add(Callout(update, "SelectedDeviceUpdate"));
 
         var rows = node.Roles.Where(r => r.Component != DeviceComponent.App).OrderBy(r => ComponentRank(r.Component)).ToList();
@@ -70,7 +73,7 @@ public partial class MainWindow
         }
 
         var notes = node.Notes.Distinct(StringComparer.Ordinal)
-            .Where(n => node.PairedHostId is null || n != hostUpdateNotes.GetValueOrDefault(node.PairedHostId)).ToList();
+            .Where(n => node.PairedHostId is null || n != hostUpdates.Notes.GetValueOrDefault(node.PairedHostId)).ToList();
         if (node.Facts.Count == 0)
         {
             if (notes.Count > 0) DetailContent.Children.Add(Notes(notes, new Thickness(0, 16, 0, 0)));
@@ -432,26 +435,46 @@ public partial class MainWindow
             ssh.IsEnabled = label.IsEnabled = usesSsh;
             if (usesSsh && ssh.Text.Length == 0) ssh.Text = host.Address;
         }
-        method.SelectionChanged += (_, _) => Toggle();
         Toggle();
-        var save = new Button { Content = "Save connection method", HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetAutomationId(save, "HostReachSave");
-        save.Click += async (_, _) =>
+        // No Save button: choosing a method saves at once; the SSH target saves when you leave the field or press Enter (or
+        // after a pause in typing). The map isn't rebuilt under your typing.
+        var reachSave = new AutoSave(async () =>
         {
-            if (method.SelectedItem is not ComboBoxItem { Tag: HostSetupMethod chosen }) return;
-            await HostTaskAsync(async token =>
+            if (method.SelectedItem is not ComboBoxItem { Tag: HostSetupMethod chosen } || closing || store is null) return true;
+            if (assigningRole) return false;
+            var target = ssh.Text.Trim();
+            if (chosen == host.Method && (chosen is not (HostSetupMethod.SshDocker or HostSetupMethod.SshNative) || target == (host.SshTarget ?? "")))
+                return true;
+            assigningRole = true;
+            try
             {
-                var updated = await Pairings().SetReachAsync(host.HostId, chosen, ssh.Text, Version, token);
+                var updated = await Pairings().SetReachAsync(host.HostId, chosen, target, Version, lifetime.Token);
                 homeHosts = HostRegistry.Upsert(homeHosts, updated);
+                host = updated;
                 now.Text = $"Reached via: {updated.Reach}.";
-                ActionText.Text = $"Saved connection method for {updated.HostId}.";
-            });
+                ActionText.Text = $"Saved how Martlet reaches {updated.HostId}.";
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
+                JsonException or ArgumentException)
+            {
+                ActionText.Text = $"Not saved yet: {error.Message}";
+            }
+            finally { assigningRole = false; }
+            return true;
+        }, TimeSpan.FromSeconds(1.5));
+        method.SelectionChanged += (_, _) =>
+        {
+            Toggle();
+            reachSave.SaveNowAsync().Forget();
         };
+        ssh.TextChanged += (_, _) => reachSave.Changed();
+        ssh.LostKeyboardFocus += (_, _) => { if (reachSave.Pending) reachSave.SaveNowAsync().Forget(); };
+        ssh.KeyDown += (_, args) => { if (args.Key == System.Windows.Input.Key.Enter) reachSave.SaveNowAsync().Forget(); };
         panel.Children.Add(method);
         panel.Children.Add(hint);
         panel.Children.Add(label);
         panel.Children.Add(ssh);
-        panel.Children.Add(save);
         return panel;
     }
 
