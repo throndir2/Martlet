@@ -5,7 +5,7 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
 order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, network_status, nearby_status, logs_tail,
-logs_timeline, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status and prompts_status calls
+logs_timeline, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, prompts_status and hearing_check calls
 without an explicit dataDirectory get a disposable one. -Desktop launches Martlet.Desktop with the
 same disposable data directory (plus any -DesktopArguments, such as --tray) and connects ui_* tools to it first.
 
@@ -142,7 +142,8 @@ try {
         $arguments = $call.arguments
         if ($call.name -like 'doctor_*' -or $call.name -like 'voices_*' -or $call.name -like 'logs_*' -or $call.name -like 'f5_*' -or
             $call.name -like 'cluster_*' -or $call.name -like 'nearby_*' -or $call.name -like 'virtualization_*' -or $call.name -eq 'mcp_servers_status' -or
-            $call.name -eq 'network_status' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'prompts_status') {
+            $call.name -eq 'network_status' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'prompts_status' -or
+            $call.name -eq 'hearing_check') {
             if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
             if ($null -eq $arguments.PSObject.Properties['dataDirectory']) {
                 $arguments | Add-Member -NotePropertyName dataDirectory -NotePropertyValue $data

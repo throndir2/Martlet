@@ -75,6 +75,30 @@ public sealed class BoundedWaveAudio
             "The utterance exceeds the byte or duration limit.", ErrorCode.PayloadTooLarge);
     }
 
+    /// <summary>Several utterances of the same format as one recording, with <paramref name="gap"/> of silence between them, or
+    /// null when there are none, the formats differ or together they are longer than <paramref name="maximum"/>.</summary>
+    public static BoundedWaveAudio? Join(IReadOnlyList<BoundedWaveAudio> parts, TimeSpan gap, TimeSpan maximum)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        if (parts.Count == 0 || parts.Any(p => p.Format != parts[0].Format)) return null;
+        if (parts.Sum(p => p.Duration.TotalSeconds) + gap.TotalSeconds * (parts.Count - 1) > maximum.TotalSeconds) return null;
+        if (parts.Count == 1) return parts[0];
+        var format = parts[0].Format;
+        var silence = (int)(format.SampleRate * gap.TotalSeconds) * format.BlockAlignment;
+        var pcm = new byte[parts.Sum(p => p.wave.Length - 44) + silence * (parts.Count - 1)];
+        var at = 0;
+        foreach (var part in parts)
+        {
+            if (at > 0) at += silence;
+            part.wave.AsSpan(44).CopyTo(pcm.AsSpan(at));
+            at += part.wave.Length - 44;
+        }
+        return FromPcm(format, pcm);
+    }
+
+    /// <summary>The whole WAV file, for a model that hears (Chat Completions <c>input_audio</c>).</summary>
+    public string ToBase64() => Convert.ToBase64String(wave);
+
     internal HttpContent CreateContent() => new ByteArrayContent(wave);
     internal ReadOnlyMemory<byte> Pcm => wave.AsMemory(44);
     public override string ToString() => nameof(BoundedWaveAudio);

@@ -357,7 +357,7 @@ internal sealed class LiveConversationConfiguration
         IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory, LorebookScanResult? lore,
         out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
-        string? closingInstructions = null)
+        string? closingInstructions = null, BoundedWaveAudio? audio = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null;
@@ -373,7 +373,7 @@ internal sealed class LiveConversationConfiguration
         {
             var (before, after) = LorebookPromptContext.Blocks(hits.Take(loreCount).ToArray(), Prompts);
             var instructions = Join(before, persona, after, extraInstructions);
-            if (!Fits(input, Join(instructions, closingInstructions), [], image, tools))
+            if (!Fits(input, Join(instructions, closingInstructions), [], image, tools, audio))
                 continue;
             for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
             {
@@ -383,7 +383,7 @@ internal sealed class LiveConversationConfiguration
                 for (var start = 0; start <= history.Count; start += 2)
                 {
                     var combined = history.Skip(start).ToArray();
-                    if (combined.Length > BoundedTextInput.HardMaxHistoryMessages || Prompt(input, candidateInstructions, combined, image, tools) is not { } prompted)
+                    if (combined.Length > BoundedTextInput.HardMaxHistoryMessages || Prompt(input, candidateInstructions, combined, image, tools, audio) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
                     usedMemoryFacts = memoryCount;
@@ -404,16 +404,16 @@ internal sealed class LiveConversationConfiguration
         parts.Where(part => !string.IsNullOrWhiteSpace(part)).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
 
     private bool Fits(BoundedTextInput input, string? instructions, TextHistoryMessage[] history, BoundedImage? image,
-        DesktopToolset? tools = null) => Prompt(input, instructions, history, image, tools) is not null;
+        DesktopToolset? tools = null, BoundedWaveAudio? audio = null) => Prompt(input, instructions, history, image, tools, audio) is not null;
 
     // Tool descriptions have their own budget on top of the reply's text budget.
     private BoundedTextInput? Prompt(BoundedTextInput input, string? instructions, TextHistoryMessage[] history, BoundedImage? image,
-        DesktopToolset? tools = null)
+        DesktopToolset? tools = null, BoundedWaveAudio? audio = null)
     {
         BoundedTextInput prompted;
         try
         {
-            prompted = new(input.UserText, instructions, history, image, tools?.Definitions);
+            prompted = new(input.UserText, instructions, history, image, tools?.Definitions, audio);
         }
         catch (ContractException)
         {
@@ -473,6 +473,38 @@ internal sealed class LiveConversationConfiguration
                 "Martlet can't tell whether this Thinking model can see images. Try vision, or choose a known vision model in Companion › Thinking."
         };
     }
+
+    /// <summary>Whether the Thinking model can hear the user's recording. Only Chat Completions endpoints take audio (the
+    /// <c>input_audio</c> content part); OpenAI's Responses route, a host's Ollama and Ollama on this PC take none.</summary>
+    internal HearingSupport Hearing() => Hearing(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+
+    internal static HearingSupport Hearing(SetupRoute? thinking) =>
+        thinking is null ? HearingSupport.Unknown
+        : !IsChat(thinking) || MainWindow.IsLocalOllama(thinking) ||
+            ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null ? HearingSupport.Unsupported
+        : HearingModelCatalog.Classify(thinking.ModelId);
+
+    /// <summary>Whether the Thinking model can hear your voice, and what to change when it can't.</summary>
+    internal static string HearingAdvice(SetupRoute? route) => route is null ? "Set up Thinking before letting it hear your voice." :
+        Hearing(route) switch
+        {
+            HearingSupport.Supported => $"This Thinking model can hear. Your recording goes to {LlmDestinationName(route)} with the transcript.",
+            HearingSupport.Unsupported when IsHost(route) || MainWindow.IsLocalOllama(route) =>
+                "Ollama can't take audio, so only the transcript is sent. Choose a model that hears on an OpenAI-compatible endpoint in Companion › Thinking, for example gemini-2.5-flash.",
+            HearingSupport.Unsupported when !IsChat(route) =>
+                "This OpenAI model can't take audio, so only the transcript is sent. Choose an OpenAI-compatible endpoint and a model that hears in Companion › Thinking, for example gpt-4o-audio-preview or gemini-2.5-flash.",
+            HearingSupport.Unsupported =>
+                "This Thinking model can't hear audio, so only the transcript is sent. Choose a model that hears in Companion › Thinking, for example gemini-2.5-flash, gpt-4o-audio-preview, Qwen Omni or Gemma 4 E4B.",
+            _ =>
+                "Martlet can't tell whether this Thinking model can hear audio, so only the transcript is sent. Choose a known model that hears in Companion › Thinking, for example gemini-2.5-flash or gpt-4o-audio-preview."
+        };
+
+    /// <summary>What letting Thinking hear your voice sends, and where: shown in Companion › Listening before it is turned on.</summary>
+    internal static string HearingDisclosure(SetupRoute? route) =>
+        "When this is on and the Thinking model can hear, the recording of what you say (up to " +
+        $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))} " +
+        "with the transcript, so it hears your tone as well as your words. Speech-to-text still runs as before. Recordings are " +
+        "never saved, added to Memory or sent to the Thinking fallback. Audio may use more quota or cost more than text.";
 
     internal string ScreenDisclosure(Chattiness chattiness, WatchSource source) =>
         ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +

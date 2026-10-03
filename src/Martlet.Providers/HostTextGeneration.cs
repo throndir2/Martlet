@@ -171,7 +171,10 @@ public sealed class HostTextGenerationStream : ITextGenerationStream
     private ProviderFailureCode? Authorize()
     {
         if (authorization is null || !authorization.AllowTextDisclosure ||
-            input.Image is not null && !authorization.AllowImageDisclosure) return ProviderFailureCode.ConsentMissing;
+            input.Image is not null && !authorization.AllowImageDisclosure ||
+            input.Audio is not null && !authorization.AllowAudioDisclosure) return ProviderFailureCode.ConsentMissing;
+        // A host's Ollama takes no audio; the caller asks again with the transcript only.
+        if (input.Audio is not null) return ProviderFailureCode.RequestRejected;
         if (authorization.Binding.Origin != new Uri(target.Origin)) return ProviderFailureCode.OriginRejected;
         if (authorization.Binding != Binding(target, model) || authorization.Model != model ||
             authorization.Ids != context.Ids || authorization.Epoch != context.Epoch || authorization.Limits != limits)
