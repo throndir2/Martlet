@@ -132,9 +132,12 @@ public static class LocalAvatarFiles
 
     /// <summary>A model's own files, without the Live2D runtime: a VRM file under its file name, or a Live2D model's
     /// <c>.model3.json</c> and every file it declares (MOC, textures, physics, pose, user data, display info, expressions,
-    /// motions and their sounds) by its path relative to the model3.json with forward slashes, as written there. Other files
-    /// in the folder (VTube Studio settings, readmes, icons, backups) are never opened. Enforces the renderer's limits;
-    /// scripts, reparse points, paths outside the folder and anything but inert model assets are refused.</summary>
+    /// motions and their sounds) by its path relative to the model3.json with forward slashes, as written there. Models made
+    /// for VTube Studio keep their emotes and motions beside the model instead, so its <c>.vtube.json</c> (the one naming this
+    /// model3.json) and the expression and motion files it names, and any other <c>.exp3.json</c> or <c>.motion3.json</c> at the
+    /// top of the folder, come too (<see cref="Live2DExtras"/> says what they are); one of those that breaks the rules is
+    /// skipped. Readmes, icons and backups are never opened. Enforces the renderer's limits; scripts, reparse points, paths
+    /// outside the folder and anything but inert model assets are refused.</summary>
     public static async Task<IReadOnlyList<AvatarAsset>> ReadModelAsync(AvatarRenderer renderer, string modelPath, CancellationToken token)
     {
         var assets = new List<AvatarAsset>();
@@ -179,7 +182,145 @@ public static class LocalAvatarFiles
                 $"The model's files add up to more than Martlet's {MaximumModelBytes / (1024 * 1024)} MB limit.");
             assets.Add(new(reference, bytes, extension == ".png" ? "image/png" : "application/octet-stream"));
         }
+        foreach (var extra in ExtraReferences(root, modelFile))
+        {
+            token.ThrowIfCancellationRequested();
+            if (assets.Count >= MaximumModelFiles || !seen.Add(extra) || seen.Any(s => s != extra && string.Equals(s, extra, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var path = Path.GetFullPath(Path.Combine(root, extra.Replace('/', Path.DirectorySeparatorChar)));
+            if (!path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is 0 or > MaximumModelJsonBytes || total + file.Length > MaximumModelBytes) continue;
+            byte[] bytes;
+            try { bytes = await ReadBoundedAsync(path, MaximumModelJsonBytes, token); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException) { continue; }
+            total += bytes.Length;
+            assets.Add(new(extra, bytes, "application/octet-stream"));
+        }
         return assets;
+    }
+
+    private const int MaximumExtraFiles = 64;
+
+    /// <summary>The VTube Studio settings naming <paramref name="modelFile"/>, the expression and motion files they name (its
+    /// idle animation and hotkeys) and the loose expression and motion files at the top of <paramref name="root"/>, as
+    /// relative paths with forward slashes; at most <see cref="MaximumExtraFiles"/>, only plain safe names.</summary>
+    private static IEnumerable<string> ExtraReferences(string root, string modelFile)
+    {
+        var found = new List<string>();
+        void Add(string? relative)
+        {
+            if (relative is null) return;
+            relative = relative.Replace('\\', '/').TrimStart('/');
+            if (relative.Length is 0 or > 240 || !relative.Split('/').All(IsSafeModelName) || found.Contains(relative, StringComparer.OrdinalIgnoreCase) ||
+                !(relative.EndsWith(".exp3.json", StringComparison.OrdinalIgnoreCase) || relative.EndsWith(".motion3.json", StringComparison.OrdinalIgnoreCase) ||
+                  relative.EndsWith(".vtube.json", StringComparison.OrdinalIgnoreCase)))
+                return;
+            if (found.Count < MaximumExtraFiles) found.Add(relative);
+        }
+        IEnumerable<string> Top(string pattern)
+        {
+            try { return Directory.EnumerateFiles(root, pattern, SearchOption.TopDirectoryOnly).Select(Path.GetFileName).OfType<string>()
+                .Order(StringComparer.Ordinal).Take(MaximumExtraFiles).ToArray(); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return []; }
+        }
+        foreach (var settings in Top("*.vtube.json").Take(4))
+        {
+            var path = Path.Combine(root, settings);
+            try
+            {
+                if (new FileInfo(path).Length > MaximumModelJsonBytes) continue;
+                if (VTubeStudio.Read(File.ReadAllBytes(path)) is not { } vts || !string.Equals(vts.Model, modelFile, StringComparison.Ordinal)) continue;
+                Add(settings);
+                Add(vts.Idle);
+                foreach (var hotkey in vts.Hotkeys) Add(hotkey.File);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+        foreach (var name in Top("*.exp3.json").Concat(Top("*.motion3.json"))) Add(name);
+        return found;
+    }
+
+    /// <summary>What <see cref="ReadModelAsync"/> adds to a Live2D model beyond its model3.json, for the renderer: the
+    /// expressions and motions it doesn't declare, each named by its VTube Studio hotkey or else its file name (made unique
+    /// beside the declared ones), and the motion VTube Studio idles with as an <c>Idle</c> group when the model has none.</summary>
+    public static Live2DExtras Extras(IReadOnlyList<AvatarAsset> assets, string modelFile)
+    {
+        var model = assets.FirstOrDefault(a => a.Name == modelFile);
+        var expressions = new List<Live2DExtraExpression>();
+        var motions = new List<Live2DExtraMotion>();
+        if (model is null) return new(expressions, motions);
+        var declared = Live2DDeclarations(model.Bytes);
+        var vts = assets.Where(a => a.Name.EndsWith(".vtube.json", StringComparison.OrdinalIgnoreCase))
+            .Select(a => VTubeStudio.Read(a.Bytes)).FirstOrDefault(v => v is not null && v.Model == modelFile);
+        string Named(string file, IEnumerable<string> taken, string suffix)
+        {
+            var hotkey = vts?.Hotkeys.FirstOrDefault(h => string.Equals(h.File, file, StringComparison.OrdinalIgnoreCase))?.Name;
+            var stem = Path.GetFileName(file);
+            stem = stem[..^suffix.Length];
+            var name = hotkey is { Length: > 0 and <= 64 } && !hotkey.Any(char.IsControl) ? hotkey.Trim() : stem;
+            if (name.Length == 0) name = stem;
+            var unique = name;
+            for (var n = 2; taken.Contains(unique, StringComparer.Ordinal); n++) unique = $"{name} {n}";
+            return unique;
+        }
+        var usedExpressions = new List<string>(declared.Expressions.Keys);
+        var usedGroups = new List<string>(declared.Motions.Keys);
+        var idleDeclared = usedGroups.Any(g => g.Equals("idle", StringComparison.OrdinalIgnoreCase));
+        foreach (var asset in assets.OrderBy(a => a.Name, StringComparer.Ordinal))
+        {
+            if (asset.Name.EndsWith(".exp3.json", StringComparison.OrdinalIgnoreCase) && !declared.Expressions.Values.Contains(asset.Name, StringComparer.Ordinal))
+            {
+                var name = Named(asset.Name, usedExpressions, ".exp3.json");
+                usedExpressions.Add(name);
+                expressions.Add(new(name, asset.Name));
+            }
+            else if (asset.Name.EndsWith(".motion3.json", StringComparison.OrdinalIgnoreCase) &&
+                !declared.Motions.Values.Any(files => files.Contains(asset.Name, StringComparer.Ordinal)))
+            {
+                if (vts?.Idle is { } idle && string.Equals(idle.Replace('\\', '/'), asset.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!idleDeclared) motions.Add(new(IdleGroup, asset.Name));
+                    idleDeclared = true;
+                    continue;
+                }
+                var group = Named(asset.Name, usedGroups.Append(IdleGroup), ".motion3.json");
+                usedGroups.Add(group);
+                motions.Add(new(group, asset.Name));
+            }
+        }
+        return new(expressions, motions);
+    }
+
+    /// <summary>The idle motion group's name: the renderer idles with the group of that name, whatever its case.</summary>
+    public const string IdleGroup = "Idle";
+
+    /// <summary>A model3.json's declared expressions (name to file) and motion groups (name to files), as written and
+    /// relative to the model3.json; malformed parts are left out.</summary>
+    public static (IReadOnlyDictionary<string, string> Expressions, IReadOnlyDictionary<string, IReadOnlyList<string>> Motions) Live2DDeclarations(byte[] model)
+    {
+        var expressions = new Dictionary<string, string>(StringComparer.Ordinal);
+        var motions = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        try
+        {
+            using var document = JsonDocument.Parse(model, new JsonDocumentOptions { MaxDepth = 16 });
+            if (!document.RootElement.TryGetProperty("FileReferences", out var files) || files.ValueKind != JsonValueKind.Object)
+                return (expressions, motions);
+            if (files.TryGetProperty("Expressions", out var declared) && declared.ValueKind == JsonValueKind.Array)
+                foreach (var expression in declared.EnumerateArray())
+                    if (expression.ValueKind == JsonValueKind.Object && expression.TryGetProperty("Name", out var name) &&
+                        name.ValueKind == JsonValueKind.String && expression.TryGetProperty("File", out var file) && file.ValueKind == JsonValueKind.String)
+                        expressions.TryAdd(name.GetString()!, file.GetString()!);
+            if (files.TryGetProperty("Motions", out var groups) && groups.ValueKind == JsonValueKind.Object)
+                foreach (var group in groups.EnumerateObject())
+                    if (group.Value.ValueKind == JsonValueKind.Array)
+                        motions[group.Name] = group.Value.EnumerateArray()
+                            .Where(m => m.ValueKind == JsonValueKind.Object && m.TryGetProperty("File", out var f) && f.ValueKind == JsonValueKind.String)
+                            .Select(m => m.GetProperty("File").GetString()!).ToArray();
+        }
+        catch (JsonException) { }
+        return (expressions, motions);
     }
 
     public static async Task<AvatarAssetSnapshot> SnapshotAsync(AvatarProfile profile, CancellationToken token)

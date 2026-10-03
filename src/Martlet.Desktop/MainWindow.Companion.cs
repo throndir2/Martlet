@@ -1215,6 +1215,7 @@ public partial class MainWindow
             modelStack.Children.Add(modelNote);
         }
         page.Children.Add(modelCard);
+        page.Children.Add(CharacterActionsCard());
         page.Children.Add(CharacterModelsCard());
         page.Children.Add(SpeechDisplayCard());
         characterViewText = null;

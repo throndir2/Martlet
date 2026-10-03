@@ -32,6 +32,15 @@ group). `Live2DAdapter.modelSummary` reports the resulting blink/mouth IDs,
 textures and any downscale, motion groups, expressions and physics; the desktop
 logs it and shows it in Character settings.
 
+Emotes and motions (docs/AVATARS.md "Emotes and motions"): `LocalModelBundle`
+takes optional `extras` (expressions and motion groups the host found outside
+the model3.json, such as a VTube Studio model's hotkey files and idle
+animation, named by the host). `setExpression(name)` fades an expression in and
+`setExpression(null)` fades it out (an empty expression replaces it);
+`playMotion(group)` plays one motion of a group once at normal priority, then
+idling resumes; `gesture("nod" | "shake")` adds Martlet's own head gesture to the
+look-at angles (`lib/gestures.ts`).
+
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,
 Hiyori under the Free Material License / Sample Data Terms (design unmodified,

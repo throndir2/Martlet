@@ -95,12 +95,19 @@ export function pngDimensions(bytes: Uint8Array): { width: number; height: numbe
   return { width, height };
 }
 
+/** Expressions and motions a model keeps outside its model3.json (VTube Studio's), named by the host, relative to the
+ *  model3.json like its own references. */
+export interface ModelExtras {
+  readonly expressions?: readonly { readonly name: string; readonly file: string }[];
+  readonly motions?: readonly { readonly group: string; readonly file: string }[];
+}
+
 /** Snapshot of user-selected bytes. Never resolves paths against a filesystem or a URL. */
 export class LocalModelBundle {
   readonly description: ModelDescription;
   readonly #files = new Map<string, Uint8Array>();
 
-  constructor(input: ReadonlyMap<string, Uint8Array>, modelFile: string) {
+  constructor(input: ReadonlyMap<string, Uint8Array>, modelFile: string, extras?: ModelExtras | null) {
     boundedInteger(input.size, LIMITS.files, "bundle file count");
     let total = 0;
     const folded = new Set<string>();
@@ -206,6 +213,25 @@ export class LocalModelBundle {
         motionGroups[group] = Object.freeze(entries);
       }
       diagnostics.push({ code: "MOTION_AUDIO_IGNORED", message: "Motion sounds are never played; Martlet's voice drives lip-sync." });
+    }
+    if (extras) {
+      const declared = new Set(expressions.map(e => e.name));
+      for (const value of array(extras.expressions ?? [], 128, "extra expressions")) {
+        const entry = object(value, "extra expression");
+        const name = identifier(entry.name);
+        if (declared.has(name)) continue;
+        declared.add(name);
+        expressions.push({ name, file: resolve(entry.file, ".exp3.json") });
+      }
+      requireCondition(expressions.length <= 128, "RESOURCE_LIMIT", "At most 128 expressions are supported.");
+      let count = Object.values(motionGroups).reduce((sum, entries) => sum + entries.length, 0);
+      for (const value of array(extras.motions ?? [], 64, "extra motions")) {
+        const entry = object(value, "extra motion");
+        const group = identifier(entry.group);
+        boundedInteger(++count, 192, "motions");
+        motionGroups[group] = Object.freeze([...(motionGroups[group] ?? []), Object.freeze({ file: resolve(entry.file, ".motion3.json") })]);
+      }
+      boundedInteger(Object.keys(motionGroups).length, 96, "motion groups");
     }
     const groups = { lipSync: [] as string[], eyeBlink: [] as string[] };
     const seen = new Set<string>();

@@ -114,6 +114,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
+        // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
+        // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
+        // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name).
+        "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -228,7 +232,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "VoiceEngine", "SpeakingHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-",
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",

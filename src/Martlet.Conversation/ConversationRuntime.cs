@@ -17,6 +17,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal TimeProvider Clock { get; }
     internal GeneratedSpeechObserver? GeneratedSpeech { get; private init; }
     internal SpokenTextFeed? SpokenText { get; private init; }
+    internal CharacterCueFeed? CharacterCues { get; private init; }
     private readonly Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory;
     private readonly Dictionary<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter> chatAdapters = [];
     private bool chatClosed;
@@ -45,7 +46,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public static ConversationRuntime Create(IProviderCredentialSource credentials,
         IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null,
         GeneratedSpeechObserver? generatedSpeech = null, IHostTextClient? hostText = null, IHostSpeechClient? hostSpeech = null,
-        SpokenTextFeed? spokenText = null, IWindowsVoiceClient? windowsVoice = null)
+        SpokenTextFeed? spokenText = null, IWindowsVoiceClient? windowsVoice = null, CharacterCueFeed? characterCues = null)
     {
         ArgumentNullException.ThrowIfNull(credentials);
         var time = clock ?? TimeProvider.System;
@@ -54,18 +55,20 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
             devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
             target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText, WindowsVoice = windowsVoice };
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText, WindowsVoice = windowsVoice,
+                CharacterCues = characterCues };
     }
 
     internal static ConversationRuntime ForFixture(OpenAiTextGenerationAdapter text,
         OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
         GeneratedSpeechObserver? generatedSpeech = null,
         Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null, IHostTextClient? hostText = null,
-        IHostSpeechClient? hostSpeech = null, IWindowsVoiceClient? windowsVoice = null, SpokenTextFeed? spokenText = null)
+        IHostSpeechClient? hostSpeech = null, IWindowsVoiceClient? windowsVoice = null, SpokenTextFeed? spokenText = null,
+        CharacterCueFeed? characterCues = null)
     {
         return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
             { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, WindowsVoice = windowsVoice,
-                SpokenText = spokenText };
+                SpokenText = spokenText, CharacterCues = characterCues };
     }
 
     // The saved TTS destination: a paired Martlet host's F5 voice, an installed Windows voice or the OpenAI speech adapter.

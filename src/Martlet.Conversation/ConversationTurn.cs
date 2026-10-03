@@ -24,7 +24,7 @@ public sealed class ConversationTurn
     private readonly TaskCompletionSource stopSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<ConversationSnapshot> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly VoiceTagStripper shown = new();
+    private readonly VoiceTagStripper shown;
     private readonly Channel<SpeechPiece> segments = Channel.CreateBounded<SpeechPiece>(new BoundedChannelOptions(2)
     {
         FullMode = BoundedChannelFullMode.Wait, SingleWriter = true, SingleReader = false, AllowSynchronousContinuations = false
@@ -79,6 +79,9 @@ public sealed class ConversationTurn
         Owner = owner;
         this.request = request;
         this.authorization = authorization;
+        // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive.
+        shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
+            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null);
         Epoch = epoch;
         this.retryOf = retryOf;
         this.earlierSpeech = earlierSpeech;
@@ -255,7 +258,8 @@ public sealed class ConversationTurn
     {
         var segmenter = request.Speech is { } voice
             ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
-                eagerFirstClause: true, tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId)) : null;
+                eagerFirstClause: true, tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId),
+                characterTags: request.CharacterTags) : null;
         try
         {
             var input = request.Input;
@@ -531,17 +535,18 @@ public sealed class ConversationTurn
                 CheckActive();
                 // Reserve capacity before advancing segmentation; serialize its buffer with Stop/Clear.
                 if (!iterator.MoveNext()) return;
-                if (iterator.Current.Text is null)
+                if (iterator.Current is { Text: null, Cues: null or { Count: 0 } })
                 {
                     suppressed++;
                     Emit(ConversationEventKind.SpeechSuppressed);
                 }
                 else
                 {
+                    // A piece with no words but character cues still goes in order, so the character acts after what came before.
                     if (!segments.Writer.TryWrite(iterator.Current))
                         throw new ConversationException(ConversationFailure.InvalidStream);
                     peakQueued = Math.Max(peakQueued, segments.Reader.Count);
-                    Emit(ConversationEventKind.SegmentQueued);
+                    if (iterator.Current.Text is not null) Emit(ConversationEventKind.SegmentQueued);
                 }
             }
         }
@@ -564,6 +569,9 @@ public sealed class ConversationTurn
         internal ExceptionDispatchInfo? Error { get; set; }
         // A sentence written after the voice failed: it is only shown in the captions, in its place after the ones before it.
         internal bool CaptionOnly { get; init; }
+        // Character cues with no words of their own (a tag after the reply's last sentence): acted in their place.
+        internal bool CuesOnly { get; init; }
+        internal IReadOnlyList<SpeechCue>? Cues { get; init; }
         // Its words were posted to the captions (when its playback started).
         internal bool Captioned { get; set; }
     }
@@ -590,19 +598,25 @@ public sealed class ConversationTurn
         {
             await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
+                if (piece.Text is null)
+                {
+                    if (await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false))
+                        ready.TryWrite(new SpeechTake("", 0, NewIds()) { CuesOnly = true, Cues = piece.Cues });
+                    continue;
+                }
                 // Once the speech budget is spent, a sentence failed or the voice stopped, the rest of the reply is text only;
                 // keep draining so the text still finishes. After a voice failure each sentence still reaches the captions.
                 if (broken || speaking.IsCancellationRequested)
                 {
                     if (await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false))
-                        ready.TryWrite(new SpeechTake(piece.Text!, 0, NewIds()) { CaptionOnly = true });
+                        ready.TryWrite(new SpeechTake(piece.Text, 0, NewIds()) { CaptionOnly = true, Cues = piece.Cues });
                     continue;
                 }
                 if (speechLimitReached) continue;
                 if (!await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false)) return;
                 if (speaking.IsCancellationRequested) continue;
                 SpeechTake? take;
-                try { take = Reserve(piece.Text!, voice); }
+                try { take = Reserve(piece.Text, voice, piece.Cues); }
                 catch (ConversationException error)
                 {
                     StopSpeaking(error.Failure);
@@ -636,7 +650,7 @@ public sealed class ConversationTurn
         finally { ready.TryComplete(); }
     }
 
-    private SpeechTake? Reserve(string segment, SpeechOutput voice)
+    private SpeechTake? Reserve(string segment, SpeechOutput voice, IReadOnlyList<SpeechCue>? cues = null)
     {
         var input = new BoundedSpeechInput(segment);
         lock (Sync)
@@ -652,7 +666,7 @@ public sealed class ConversationTurn
                 Emit(ConversationEventKind.SpeechSuppressed);
                 return null;
             }
-            var take = new SpeechTake(segment, ++committed, NewIds());
+            var take = new SpeechTake(segment, ++committed, NewIds()) { Cues = cues };
             reservedBytes += input.Utf8Bytes;
             reservedSamples += voice.Limits.MaxSamples;
             speechRequest ??= take.Ids.RequestId;
@@ -722,11 +736,17 @@ public sealed class ConversationTurn
     {
         await foreach (var take in ready.ReadAllAsync(stop.Token).ConfigureAwait(false))
         {
+            if (take.CuesOnly)
+            {
+                PostCues(take, null, Task.CompletedTask);
+                continue;
+            }
             // Once the voice stopped, a sentence already synthesized is dropped unplayed (its words still show in the captions);
             // keep draining so synthesis never waits.
             if (take.CaptionOnly || speaking.IsCancellationRequested)
             {
                 ShowUnsaid(take.Text);
+                PostCues(take, null, Task.CompletedTask);
                 continue;
             }
             var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
@@ -741,6 +761,18 @@ public sealed class ConversationTurn
             // The voice failed before this sentence started playing: its words still show.
             if (!take.Captioned && speaking.IsCancellationRequested) ShowUnsaid(take.Text);
         }
+    }
+
+    // The character acts on a sentence's cues as it starts playing, each one about where it was written: its share of the
+    // sentence's words, of the sentence's audio length when that is known (otherwise of a natural reading pace).
+    private void PostCues(SpeechTake take, int? sampleRate, Task finished)
+    {
+        if (Owner.CharacterCues is not { } feed || take.Cues is not { Count: > 0 } cues) return;
+        lock (Sync) if (userStopped) return;
+        var length = Math.Max(1, take.Text.Length);
+        var seconds = sampleRate is > 0 && take.FinalSamples is { } samples ? samples / (double)sampleRate.Value : length / 14.0;
+        feed.Post(cues.Select(cue => new CharacterCue(cue.Tag,
+            TimeSpan.FromSeconds(Math.Clamp(seconds * cue.Offset / length, 0, 30)))).ToArray(), finished);
     }
 
     // Captions (speech bubble, subtitles) for words the voice couldn't say, one sentence after another for about as long as
@@ -788,6 +820,7 @@ public sealed class ConversationTurn
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
                         // Captions show the words only; the voice still hears its own tags ([laugh]...).
                         if (VoiceTags.Strip(take.Text).Trim() is { Length: > 0 } caption) Owner.SpokenText?.Post(caption, run.Completion);
+                        PostCues(take, frame.Format.SampleRate, run.Completion);
                         take.Captioned = true;
                     }
                 }

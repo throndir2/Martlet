@@ -30,11 +30,25 @@ public static class VoiceTags
     public static IReadOnlyList<VoiceTag> Known => SpeechEngines.All.SelectMany(engine => engine.Tags)
         .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase).ToArray();
 
+    /// <summary>Every engine-independent cue (<see cref="VoiceTag.Cue"/>) a registered engine speaks, sounds first, each
+    /// once: what a character's emote or motion can follow.</summary>
+    public static IReadOnlyList<string> Cues => SpeechEngines.All.SelectMany(engine => engine.Tags)
+        .OrderBy(tag => tag.Kind).Select(tag => tag.Cue).Distinct(StringComparer.Ordinal).ToArray();
+
+    /// <summary>The cue of the tag of <paramref name="engine"/> written as <paramref name="text"/>, or null.</summary>
+    public static string? CueOf(string text, SpeechEngine? engine = null) =>
+        (engine?.Tags ?? Known).FirstOrDefault(tag => string.Equals(tag.Text, text, StringComparison.OrdinalIgnoreCase))?.Cue;
+
+    /// <summary>Character tags (<c>{blush}</c>) as tags the segmenter and stripper recognize; never sent to an engine.</summary>
+    public static IReadOnlyList<VoiceTag> CharacterTags(IEnumerable<string>? tags) =>
+        tags?.Where(tag => !string.IsNullOrWhiteSpace(tag) && tag == tag.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).Select(tag => new VoiceTag(tag, VoiceTagKind.Character, "")).ToArray() ?? [];
+
     /// <summary>Text for display or a voice without tags: every registered tag removed and spacing kept natural.</summary>
-    public static string Strip(string text)
+    public static string Strip(string text, IEnumerable<string>? characterTags = null)
     {
         ArgumentNullException.ThrowIfNull(text);
-        var stripper = new VoiceTagStripper();
+        var stripper = new VoiceTagStripper(characterTags);
         return stripper.Push(text) + stripper.Finish();
     }
     /// <summary>Whether <paramref name="text"/> is only tags and spacing (nothing left to show once they are stripped).</summary>
@@ -54,12 +68,14 @@ public static class VoiceTags
     }
 }
 
-/// <summary>Strips every registered voice tag from streamed reply text for the chat, keeping spacing natural. Tags may be
-/// split across deltas, so a possible tag's start is held until it completes or stops matching, and spaces wait for the next
-/// word (a space before a removed tag's punctuation is dropped).</summary>
-public sealed class VoiceTagStripper
+/// <summary>Strips every registered voice tag (and the character tags it is given) from streamed reply text for the chat,
+/// keeping spacing natural. Tags may be split across deltas, so a possible tag's start is held until it completes or stops
+/// matching, and spaces wait for the next word (a space before a removed tag's punctuation is dropped). Each character tag
+/// removed is passed to <paramref name="droppedTag"/> as written in the catalog.</summary>
+public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, Action<string>? droppedTag = null)
 {
-    private readonly VoiceTag[] known = [.. VoiceTags.Known];
+    private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(VoiceTags.CharacterTags(characterTags))
+        .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
     private readonly StringBuilder held = new();
     private readonly StringBuilder spaces = new();
     private bool dropped, emitted;
@@ -74,10 +90,11 @@ public sealed class VoiceTagStripper
             {
                 held.Append(c);
                 var text = held.ToString();
-                if (known.Any(tag => string.Equals(tag.Text, text, StringComparison.OrdinalIgnoreCase)))
+                if (known.FirstOrDefault(tag => string.Equals(tag.Text, text, StringComparison.OrdinalIgnoreCase)) is { } whole)
                 {
                     held.Clear();
                     dropped = true;
+                    if (whole.Kind == VoiceTagKind.Character) droppedTag?.Invoke(whole.Text);
                     continue;
                 }
                 if (known.Any(tag => tag.Text.StartsWith(text, StringComparison.OrdinalIgnoreCase))) continue;
