@@ -265,4 +265,10 @@ public static class GenerationSupport
         }
         return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
+
+    /// <summary>Whether a streamed Chat Completions request asks for the closing usage chunk (stream_options.include_usage),
+    /// which says how much of the input came from the prompt cache: only Ollama on this PC, which reports usage only when
+    /// asked. OpenRouter reports it unasked; other servers aren't sent an option they might reject.</summary>
+    public static bool AsksStreamUsage(string? chatBaseUrl) =>
+        string.Equals(chatBaseUrl?.TrimEnd('/'), LocalOllamaChatBaseUrl, StringComparison.Ordinal);
 }

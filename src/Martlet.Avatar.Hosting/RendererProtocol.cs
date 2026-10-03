@@ -23,7 +23,26 @@ public sealed record RendererAction(string Kind, string Name, bool On = true)
 {
     public static IReadOnlyList<string> Kinds { get; } = ["expression", "motion", "gesture"];
 }
-public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme);
+/// <summary>Starts the renderer. A locked <paramref name="Placement"/> puts the overlay back where it was locked (when that
+/// spot is still on a screen) and locks it again.</summary>
+public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme, RendererPlacement? Placement = null);
+/// <summary>
+/// Locks (or unlocks) the character overlay's place. While locked it can't be dragged, nudged with the arrow keys, moved back
+/// to its default spot or resized from the overlay itself; zoom then only zooms the camera within its frame. Only Martlet
+/// unlocks it: the overlay's menu can only ask Martlet to lock it. Replied to with the overlay's <see cref="RendererPlacement"/>.
+/// </summary>
+public sealed record RendererLock(bool Locked);
+/// <summary>Where the character overlay is: its window's top-left corner and the character frame's width and height, in
+/// device-independent pixels, and whether its place is locked.</summary>
+public sealed record RendererPlacement(bool Locked, double Left, double Top, double Width, double Height)
+{
+    private const double Farthest = 100_000;
+
+    /// <summary>Finite, positive size and within any plausible desktop.</summary>
+    [JsonIgnore]
+    public bool IsValid => double.IsFinite(Left) && double.IsFinite(Top) && double.IsFinite(Width) && double.IsFinite(Height) &&
+        Math.Abs(Left) < Farthest && Math.Abs(Top) < Farthest && Width is > 0 and < Farthest && Height is > 0 and < Farthest;
+}
 public sealed record RendererTheme(bool Dark);
 /// <summary>
 /// Shows (or with null text, hides) the speech bubble. By default it follows the character's head through moves, zoom and pan,
@@ -40,19 +59,22 @@ public sealed record RendererZoom(string Action);
 /// <summary>
 /// Something chosen on the character overlay's menu that Martlet itself carries out, sent unprompted on the renderer's
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
-/// window) or show the character's "settings". Zoom, position and keep-on-top stay inside the overlay.
+/// window), show the character's "settings" or "lock" its place where it is (Martlet saves it and sends
+/// <see cref="RendererLock"/>; unlocking is only in Martlet's window). Zoom, position and keep-on-top stay inside the overlay.
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings"];
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock"];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
 /// (negative when it extends above the screen; null if unknown), its camera zoom, how far the top of the character's head
 /// sits below the frame's top edge as a fraction of its height (negative when cut off; null until reported), and the
-/// overlay's full drawing width: the frame plus the transparent room beside it the model can move into (null if unknown).
+/// overlay's full drawing width: the frame plus the transparent room beside it the model can move into (null if unknown), and
+/// whether its place is locked (null if unknown).
 /// </summary>
-public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null);
+public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null,
+    bool? Locked = null);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);

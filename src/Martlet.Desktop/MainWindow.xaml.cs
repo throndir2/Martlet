@@ -85,6 +85,7 @@ public partial class MainWindow : ThemedWindow
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
+        avatar.LockedPlacement = CharacterPlacementStore.Load(store?.DataDirectory);
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         characterActions = new(store?.DataDirectory);
         if (setupService is not null)
@@ -445,10 +446,22 @@ public partial class MainWindow : ThemedWindow
         CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
         ResetCharacterButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
         ResetCharacterZoomButton.Visibility = ResetCharacterButton.Visibility;
+        var locked = avatar.PlacementLocked;
+        ResetCharacterButton.IsEnabled = !locked;
+        ResetCharacterButton.ToolTip = locked ? "The character's position is locked. Unlock it to move it back."
+            : "Move the character back to its default position";
+        // Unlocking also works while the character is hidden: it then shows at its default spot.
+        LockCharacterButton.Visibility = avatar.IsShowing || locked ? Visibility.Visible : Visibility.Collapsed;
+        LockCharacterButton.IsEnabled = !changingCharacterLock;
+        LockCharacterButton.Content = locked ? "Un_lock character position" : "Lock character p_osition";
+        AutomationProperties.SetName(LockCharacterButton, locked ? "Unlock character position" : "Lock character position");
+        LockCharacterButton.ToolTip = locked ? "Let the character be dragged, moved and resized again"
+            : "Keep the character where it is; only Martlet's window unlocks it";
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
-    /// Martlet, talk, or open Companion › Character. The overlay handles its zoom, position and keep-on-top itself.</summary>
+    /// Martlet, talk, open Companion › Character or lock its position. The overlay handles its zoom, position and keep-on-top
+    /// itself; it can't unlock its own position.</summary>
     private void CharacterRequested(string action)
     {
         if (closing) return;
@@ -465,11 +478,60 @@ public partial class MainWindow : ThemedWindow
                 // Another Martlet window waiting for an answer keeps the focus, as from the notification area.
                 if (IsWindowEnabled(WindowHandle)) OpenCompanion(CompanionTab.Character);
                 break;
+            case "lock":
+                if (!avatar.PlacementLocked) SetCharacterLockAsync(true).Forget();
+                break;
         }
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
     private async void ResetCharacterZoom_Click(object sender, RoutedEventArgs e) => await ResetCharacterZoomAsync();
     private Task ResetCharacterZoomAsync() => ZoomCharacterAsync("reset");
+    private void LockCharacter_Click(object sender, RoutedEventArgs e) => SetCharacterLockAsync(!avatar.PlacementLocked).Forget();
+
+    private bool changingCharacterLock;
+
+    /// <summary>Locks the showing character where it is (from here, Companion › Character or the character's own menu) or
+    /// unlocks it (only from this window), and saves that on this PC so a locked character shows in the same place.</summary>
+    private async Task SetCharacterLockAsync(bool locked)
+    {
+        if (closing || changingCharacterLock) return;
+        changingCharacterLock = true;
+        UpdateCharacterButton();
+        try
+        {
+            var place = await avatar.LockPlacementAsync(locked, lifetime.Token);
+            var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
+            if (closing) return;
+            ErrorLog.Info(place is { } at
+                ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})."
+                : "Character position unlocked.");
+            ActionText.Text = (locked
+                ? "Character position locked. Unlock it here or in Companion › Character to move it."
+                : "Character position unlocked. Drag the character to move it.") +
+                (saved ? "" : locked ? " It couldn't be saved on this PC, so it unlocks when the character hides."
+                    : " It couldn't be saved on this PC, so the character may show locked next time.");
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        {
+            if (!closing) ActionText.Text = $"Couldn't {(locked ? "lock" : "unlock")} the character's position: {error.Message}";
+        }
+        finally
+        {
+            changingCharacterLock = false;
+            UpdateCharacterButton();
+            if (!closing) RenderHome();
+        }
+    }
+
+    /// <summary>Companion › Character's line on whether the character's position is locked, and where.</summary>
+    private string CharacterPlacementText() => (avatar.LockedPlacement, avatar.IsShowing) switch
+    {
+        ({ } at, true) => $"Position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it here; zoom still works.",
+        ({ } at, false) => $"Position locked at {at.Left:0}, {at.Top:0}. The character shows there when it opens, until you unlock it here.",
+        (null, true) => "Position unlocked. Drag the character where you want it, then lock it here or from its right-click menu.",
+        _ => "Position unlocked. The character shows at the lower-right; show it to place and lock it."
+    };
 
     /// <summary>The Character page's line describing the overlay's current size, zoom and head framing.</summary>
     private TextBlock? characterViewText;
@@ -506,7 +568,7 @@ public partial class MainWindow : ThemedWindow
             null => "head position not available.",
             double below when below >= 0 => "head is in view.",
             _ => "head may be cropped."
-        };
+        } + (view.Locked == true ? " Position locked." : "");
     private async Task ResetCharacterPositionAsync()
     {
         try

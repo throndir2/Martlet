@@ -44,7 +44,7 @@ internal sealed class HostTextClient : IHostTextClient
         var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.OllamaChatRouteId && r.ModelId == model.UpstreamModelId) ??
             throw Failed("reply", ProviderFailureCode.ModelNotFound, $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();
-        await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.Personality, history, input.UserText,
+        await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.PersonalityWithNotes, history, input.UserText,
             generation?.Temperature ?? HostTextGenerationStream.Temperature, limits.MaxOutputTokens, limits.MaxContextTokens,
             input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);

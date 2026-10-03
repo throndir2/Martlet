@@ -68,6 +68,24 @@ public interface ITextGenerationStream : IAsyncEnumerable<ProviderEvent>
 {
     TextGenerationResult? Result { get; }
     ProviderCapabilities Capabilities { get; }
+    /// <summary>How long after the stream was created the provider's response headers arrived; null until then or when the
+    /// route doesn't report it. Diagnostics only.</summary>
+    TimeSpan? ResponseAfter => null;
+    /// <summary>How long after the stream was created the first hidden reasoning (thinking) arrived; null when none did or the
+    /// route doesn't report it. Diagnostics only.</summary>
+    TimeSpan? FirstReasoningAfter => null;
+}
+
+// When a text stream's response and first reasoning arrived, in ticks of elapsed time from the stream's creation (0 = not yet).
+internal sealed class TextStreamTimings
+{
+    private long response, reasoning;
+    internal TimeSpan? Response => Read(ref response);
+    internal TimeSpan? Reasoning => Read(ref reasoning);
+    internal void MarkResponse(TimeSpan elapsed) => Mark(ref response, elapsed);
+    internal void MarkReasoning(TimeSpan elapsed) => Mark(ref reasoning, elapsed);
+    private static TimeSpan? Read(ref long field) => Interlocked.Read(ref field) is var ticks and > 0 ? TimeSpan.FromTicks(ticks) : null;
+    private static void Mark(ref long field, TimeSpan elapsed) => Interlocked.CompareExchange(ref field, Math.Max(1, elapsed.Ticks), 0);
 }
 
 // One enumeration owns one attempted disclosure; user-visible content lives in events, not metadata.
@@ -89,8 +107,11 @@ public sealed class TextGenerationStream : ITextGenerationStream
     private readonly long startedAt;
     private readonly DateTimeOffset startedUtc;
     private int enumerated;
+    private readonly TextStreamTimings timings = new();
     public TextGenerationResult? Result { get; private set; }
     public ProviderCapabilities Capabilities { get; }
+    public TimeSpan? ResponseAfter => timings.Response;
+    public TimeSpan? FirstReasoningAfter => timings.Reasoning;
 
     internal TextGenerationStream(HttpClient client, IProviderCredentialSource? credentials, TimeProvider clock,
         EvidenceProvenance provenance, CancellationToken shutdown, ProviderRequestContext context, TextModelSelection model,
@@ -128,7 +149,8 @@ public sealed class TextGenerationStream : ITextGenerationStream
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(callerToken, enumerationToken, shutdown);
         using var operation = new TextGenerationOperation(client, credentials, clock, context, model, input,
-            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown, chatBaseUri, generation);
+            limits, authorization, startedAt, startedUtc, stop.Token, callerToken, enumerationToken, shutdown, chatBaseUri, generation,
+            timings);
         long sequence = 0;
         try
         {
@@ -180,7 +202,7 @@ internal sealed class TextGenerationOperation(
     ProviderRequestContext context, TextModelSelection model, BoundedTextInput input, TextGenerationLimits limits,
     TextDisclosureAuthorization? authorization, long startedAt, DateTimeOffset startedUtc, CancellationToken stop,
     CancellationToken caller, CancellationToken enumerator, CancellationToken shutdown, Uri? chatBaseUri = null,
-    GenerationSettings? generation = null) : IDisposable
+    GenerationSettings? generation = null, TextStreamTimings? timings = null) : IDisposable
 {
     private ProviderRequestWindow? window;
     private CancellationTokenSource? progress;
@@ -233,6 +255,7 @@ internal sealed class TextGenerationOperation(
                 if (chatNormalizer is null ? normalizer!.HasContentDelta :
                     chatNormalizer.HasContentDelta || chatNormalizer.HasReasoningDelta)
                     firstDelta = true;
+                if (chatNormalizer is { HasReasoningDelta: true }) timings?.MarkReasoning(clock.GetElapsedTime(startedAt));
                 ArmProgress();
                 EnsureActive();
                 if (step is not null)
@@ -321,6 +344,7 @@ internal sealed class TextGenerationOperation(
         request.Content = new SingleSendContent(CreateJson(), EnsureActive);
         EnsureActive();
         response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, Token).ConfigureAwait(false);
+        timings?.MarkResponse(clock.GetElapsedTime(startedAt));
         EnsureActive();
         if ((int)response.StatusCode is >= 300 and <= 399)
             return Fail(ProviderFailureCode.RedirectRejected);
@@ -405,6 +429,8 @@ internal sealed class TextGenerationOperation(
             writer.WriteEndObject();
             if (input.Personality is not null)
                 writer.WriteString("instructions", input.Personality);
+            // Martlet's notes for this message close it, after the user's words, as in Chat Completions: the instructions and
+            // the conversation before stay the same from request to request, so OpenAI reuses its prompt cache for them.
             writer.WriteStartArray("input");
             foreach (var message in input.History)
                 WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
@@ -415,7 +441,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteStartArray("content");
                 writer.WriteStartObject();
                 writer.WriteString("type", "input_text");
-                writer.WriteString("text", input.UserText);
+                writer.WriteString("text", input.SentUserText);
                 writer.WriteEndObject();
                 writer.WriteStartObject();
                 writer.WriteString("type", "input_image");
@@ -425,7 +451,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }
-            else WriteMessage(writer, "user", input.UserText);
+            else WriteMessage(writer, "user", input.SentUserText);
             foreach (var round in input.ToolRounds)
             {
                 if (round.Text.Trim().Length > 0) WriteMessage(writer, "assistant", round.Text);
@@ -489,6 +515,17 @@ internal sealed class TextGenerationOperation(
                 writer.WriteBoolean("allow_fallbacks", false);
                 writer.WriteEndObject();
             }
+            // Ask for the closing usage chunk where the server is known to take it, so the reply can say how much of the input
+            // came from the prompt cache.
+            if (GenerationSupport.AsksStreamUsage(chatBaseUri!.AbsoluteUri))
+            {
+                writer.WriteStartObject("stream_options");
+                writer.WriteBoolean("include_usage", true);
+                writer.WriteEndObject();
+            }
+            // Martlet's notes for this message close it, after the user's words: the instructions and the conversation
+            // before stay the same from request to request, so the server's prompt cache (or Ollama's) can reuse them.
+            var userText = input.SentUserText;
             writer.WriteStartArray("messages");
             if (input.Personality is not null) WriteMessage(writer, "system", input.Personality);
             foreach (var message in input.History)
@@ -501,7 +538,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteStartArray("content");
                 writer.WriteStartObject();
                 writer.WriteString("type", "text");
-                writer.WriteString("text", input.UserText);
+                writer.WriteString("text", userText);
                 writer.WriteEndObject();
                 if (input.Image is { } image)
                 {
@@ -525,7 +562,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }
-            else WriteMessage(writer, "user", input.UserText);
+            else WriteMessage(writer, "user", userText);
             foreach (var round in input.ToolRounds)
             {
                 writer.WriteStartObject();

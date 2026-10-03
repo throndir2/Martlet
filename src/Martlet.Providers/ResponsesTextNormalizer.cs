@@ -303,9 +303,11 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
         long output = Count(usage, "output_tokens");
         long total = Count(usage, "total_tokens");
         Require(total == input + output && input <= limits.MaxInputTokens && output <= limits.MaxOutputTokens);
+        long? cached = null;
         if (usage.TryGetProperty("input_tokens_details", out var inputDetails))
         {
-            Require(Count(inputDetails, "cached_tokens") <= input);
+            cached = Count(inputDetails, "cached_tokens");
+            Require(cached <= input);
             if (inputDetails.TryGetProperty("cache_write_tokens", out _))
                 Require(Count(inputDetails, "cache_write_tokens") <= input);
         }
@@ -315,7 +317,7 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
             if (reasoning != 0)
                 throw new ResponseProtocolException(ProviderFailureCode.UnsupportedOutput);
         }
-        return new(input, output, total);
+        return new(input, output, total, cached);
     }
 
     private static long Count(JsonElement value, string name)

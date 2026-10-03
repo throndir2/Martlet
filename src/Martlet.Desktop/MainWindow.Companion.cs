@@ -1201,12 +1201,24 @@ public partial class MainWindow
         page.Children.Add(PageNowCard(CharacterModelName() + (homeAvatar is { } profile ? $" ({profile.Renderer})" : "") +
             (showing ? ", on your desktop." : ", hidden."), null, "SetupCharacterNow", characterCleanupProblem));
 
+        var locked = avatar.PlacementLocked;
+        var resetPosition = showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null;
+        if (resetPosition is not null) resetPosition.IsEnabled = !locked;
         var modelCard = Card(Heading("Character model"),
             Note("Choose a character model, then adjust its size, position and motion. Choices save on their own and a showing character switches right away.", new Thickness(0, 0, 0, 8)),
             Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
                 PageButton("Choose and customize", () => RunNodeAction(NodeAction.Character), id: "OpenAvatar"),
-                showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null,
-                showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null));
+                resetPosition,
+                showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null,
+                // Unlocking is only here and on Home, never on the character itself.
+                showing || locked ? PageButton(locked ? "Unlock position" : "Lock position",
+                    () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null));
+        if (modelCard.Child is Panel modelPanel)
+        {
+            var placementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
+            modelPanel.Children.Add(placementNote);
+        }
         // What the showing model drives: textures (and any downscaling), blinking, mouth, motions and physics.
         if (showing && avatar.Capabilities is { } loaded && modelCard.Child is Panel modelStack)
         {

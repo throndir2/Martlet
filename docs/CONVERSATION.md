@@ -82,8 +82,9 @@ comment; it needs a Thinking model that can see images. See
    Martlet's replies as they stream in. A refusal is shown as such and never
    spoken as ordinary speech; a stopped or failed reply keeps its text with a
    *Cut short* note. Replies are kept short by asking, not by cutting: every
-   reply to what you type or say ends its instructions (after persona, lore and
-   memory) with an instruction to answer in one or two short sentences at
+   reply to what you type or say ends its instructions (after the persona and
+   the other instructions; lore and memory go in the message's notes) with an
+   instruction to answer in one or two short sentences at
    most, with no lists, second paragraph or closing offers (longer only when
    you explicitly ask for detail, steps or a list), and to finish its last
    sentence. The max reply length (Companion › Replies; 1,024 tokens by
@@ -118,12 +119,14 @@ comment; it needs a Thinking model that can see images. See
    desktop log records it as `Spoken reply failed (...)` against the Speaking
    route, not as a Thinking failure.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
-   Thinking model: the persona wrapper and each response style, reply length,
-   always listening, tools, who is talking, lorebook and memory introductions,
-   the screen and camera glance instructions, messages (including the one sent
+   Thinking model: the persona wrapper, the style line and each response style,
+   reply length, always listening, tools, who is talking, lorebook and memory
+   introductions, notes with messages, the screen and camera glance
+   instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines, *Screen with your message* (sent with what you type or say while
-   vision is on), the Remembering and Learning names requests, and the smart home notes. Each
+   vision is on), the Remembering and Learning names requests and the prompt
+   that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
    edited). Words in braces such as `{name}`, `{persona}`, `{style}` or
@@ -179,14 +182,58 @@ host's 16 KiB and 16-message request limit). A larger size sends more with
 every reply, which costs more on paid providers; the Thinking fallback gets
 the same request.
 
+## Prompt caching and the request layout
+
+Every Thinking request is laid out so it starts like the one before, because
+providers only reuse what they already read when a request *starts* the same
+way: OpenAI, OpenRouter and others bill cached input for less and answer
+sooner, and Ollama on this PC skips reading it again. A model with
+sliding-window attention there (Gemma and others in Ollama's llama.cpp) can
+only reuse a request that starts with a whole earlier one, so it otherwise
+reads the entire conversation again before every reply (on a 12B model, about
+2 ms a token: seconds for a long conversation).
+
+- **Instructions** (the system message, or OpenAI's `instructions`) hold what
+  doesn't change from message to message: the persona (with its style when it
+  has one), tools, voice tags, the smart home tools prompt, who-is-talking,
+  always-listening, what-this-PC-plays, recording and picture prompts as each
+  message needs them, and the reply length last. A screen glance has its
+  glance instructions there instead.
+- **The conversation so far** follows, each earlier message exactly as it was
+  sent, with its notes (a paired host gets the plain messages and the notes
+  with its instructions, as before).
+- **The message** comes last and ends with Martlet's **notes** between
+  `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
+  remembered facts not already in the notes of an earlier message the request
+  carries, who is talking when that changed, a smart home result, and the
+  picked style when the persona has several and it changed. The first notes
+  start with what notes are (Companion › Prompts › *Notes with messages*).
+  Notes are never shown and never what the user said.
+- When the conversation outgrows the context, Martlet lets go of a quarter
+  more of the oldest exchanges than it must (and forgets them), so the next
+  several replies start at the same exchange instead of moving by one every
+  reply.
+- After a reply, remembering and learning names share one request; on a
+  Thinking model on this PC it continues the reply's own conversation, so the
+  model's cache still holds it for the next reply (see
+  [Memory](MEMORY.md#automatic-recall-and-remembering)).
+
+Each reply, glance and after-reply request writes a desktop log line such as
+*Thinking input (Reply): first words after 2004 ms; 568 input tokens, 525 of
+them (92 %) from the model's prompt cache.* when the provider reports it
+(OpenAI, OpenRouter and others report cached tokens unasked; Martlet asks
+Ollama on this PC for them), and the talk window's context line ends with
+*Last reply: 92% of its 568 input tokens came from the model's cache.*
+
 [Memory](MEMORY.md) is ON by default (Companion › Memory turns it off). When
 on, each explicit typed/PTT/hands-free turn automatically recalls up to twelve
 saved facts (best lexical matches for the current input, then the newest) as one
 labeled background block inside the same input budget; the full store, path and
 consent UUIDs are never uploaded. If the store can't be read, the reply goes
 ahead without memory and the status says why. After a completed reply, the
-exchange is sent once more, as one extra text-only request, to the same Thinking
-model, which picks out lasting facts to save locally (shown under the reply and
+exchange is sent once more, as one extra text-only request (shared with
+learning names when both are due), to the same Thinking model, which picks out
+lasting facts to save locally (shown under the reply and
 listed in Memory). Screen glances are never remembered. The volatile exchange
 buffer itself is still not persisted. TTS receives only eligible
 generated segments. All provider routes have the fixed HTTPS origin
@@ -301,9 +348,9 @@ voice pipeline never waits for a whole reply:
   between sentences. A voice failure on the next sentence surfaces only when
   playback reaches it, so what is already playing finishes; then the voice
   stops for the rest of the reply while its text keeps streaming.
-- **Barge-in.** With always listening, *Let me interrupt Martlet by talking* in
-  Companion › Listening (on by default) keeps the microphone open while
-  Martlet speaks. Talking over a reply stops it: the Thinking request is
+- **Barge-in.** Optional and off by default. With always listening, ticking
+  *Let me interrupt Martlet by talking* in Companion › Listening keeps the
+  microphone open while Martlet speaks. Talking over a reply stops it: the Thinking request is
   canceled, the queued audio is dropped and what you said is answered next,
   with the reply so far kept in context. Only the microphone can do this, and
   only with a sustained voice (`TalkOverDetector`): at least a second of
@@ -317,8 +364,10 @@ voice pipeline never waits for a whole reply:
   reply; restarting a reply because you kept talking applies only before
   Martlet starts saying it. Through speakers this relies on echo reduction (on
   by default); if Martlet still stops itself, use headphones or turn the
-  choice off. With it off, listening holds off while Martlet speaks, and Stop,
-  Esc or the talk button still interrupt.
+  choice off. With it off (the default), listening holds off while Martlet
+  speaks, and Stop, Esc or the talk button still interrupt. Preferences saved
+  before barge-in became opt-in had it on only because it was the old default,
+  so it starts off once after updating; tick it again to use it.
 - **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.

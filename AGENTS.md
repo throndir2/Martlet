@@ -51,6 +51,18 @@ cannot responsibly be resolved from the user's goal and available evidence.
   Distinguish local work, open review and verified integration; completion
   requires a working persistent result, not a proposal or queued merge.
 
+## Never add conversation latency
+
+The time from the end of the user's speech (or Send) to Martlet's first
+audible word must never grow. Treat it as a hard product goal: any change on
+that path (prompt assembly, provider requests, background work after a reply,
+speech and playback) must keep it the same or make it shorter, for local and
+cloud models alike. Keep the start of every Thinking request stable so prompt
+caches (OpenAI, OpenRouter, Ollama) are reused, and never let background work
+evict the conversation from a local model's cache. When verifying such a
+change, compare the desktop log's `Reply latency` and `Thinking input` lines
+before and after, and report the numbers.
+
 ## Branch and worktree ownership
 
 - Use one focused task branch per bounded change, based on freshly fetched
