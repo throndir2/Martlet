@@ -65,15 +65,9 @@ internal static partial class VoiceNaming
     internal static VoiceNamingPrompt Prompt(HeardVoices heard, string? earlierUser, string? earlierReply, string user, string reply,
         PromptSettings? prompts = null)
     {
-        var voices = heard.Known.DistinctBy(v => v.Id).ToDictionary(v => v.Tag, v => v.Id, StringComparer.OrdinalIgnoreCase);
-        var text = new StringBuilder("Voices heard in the latest message:\n");
-        foreach (var voice in heard.Known.DistinctBy(v => v.Id))
-        {
-            text.Append(voice.Tag).Append(": ").Append(voice.Named ? "goes by " + string.Join(", ",
-                new[] { voice.DisplayName }.Concat(voice.OtherNames).Take(5).Select(VoicePromptContext.Sanitize)) : "no name yet");
-            if (ReferenceEquals(voice, heard.Speaker?.Voice)) text.Append(" (the one speaking to Martlet)");
-            text.Append('\n');
-        }
+        var voices = Voices(heard);
+        var text = new StringBuilder();
+        AppendVoices(text, heard);
         if (earlierUser is not null || earlierReply is not null)
         {
             text.Append("\nEarlier in the conversation (context only):\n");
@@ -88,6 +82,26 @@ internal static partial class VoiceNaming
             throw new LiveActionException("conversation.input_limit");
         return new(input, voices);
     }
+
+    /// <summary>The tags of the voices heard in the message (V3) and their voice IDs, which the answer's NAME lines refer to.</summary>
+    internal static IReadOnlyDictionary<string, string> Voices(HeardVoices heard) =>
+        heard.Known.DistinctBy(v => v.Id).ToDictionary(v => v.Tag, v => v.Id, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The voices heard in the message: each tag with the names it goes by, and which one spoke to Martlet.</summary>
+    internal static void AppendVoices(StringBuilder text, HeardVoices heard)
+    {
+        text.Append("Voices heard in the latest message:\n");
+        foreach (var voice in heard.Known.DistinctBy(v => v.Id))
+        {
+            text.Append(voice.Tag).Append(": ").Append(voice.Named ? "goes by " + string.Join(", ",
+                new[] { voice.DisplayName }.Concat(voice.OtherNames).Take(5).Select(VoicePromptContext.Sanitize)) : "no name yet");
+            if (ReferenceEquals(voice, heard.Speaker?.Voice)) text.Append(" (the one speaking to Martlet)");
+            text.Append('\n');
+        }
+    }
+
+    /// <summary>"User (V3): " for the latest message's speaker, "User: " without one.</summary>
+    internal static string UserLabel(HeardVoices heard) => heard.Speaker?.Voice is { } speaker ? $"User ({speaker.Tag}): " : "User: ";
 
     /// <summary>The (voice ID, name) pairs in the model's answer that name a listed voice with a usable name.</summary>
     internal static IReadOnlyList<(string VoiceId, string Name)> Parse(string? answer, IReadOnlyDictionary<string, string> voices,

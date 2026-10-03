@@ -24,7 +24,7 @@ namespace Martlet.Desktop.Tests;
 public sealed class LiveConversationTests
 {
     [Fact]
-    public async Task TriggeredLorebookEntriesSurroundThePersonaAndStayWhenSpaceRunsOut()
+    public async Task TriggeredLorebookEntriesStayInNotesWhenSpaceRunsOut()
     {
         await using var fixture = await LiveFixture.Create();
         var configuration = LiveConversationConfiguration.From(await fixture.Store.LoadAsync())!;
@@ -54,12 +54,14 @@ public sealed class LiveConversationTests
         Assert.Equal(2, usedLore);
         Assert.True(usedHistory < history.Length);
         var instructions = request.Input.Personality!;
-        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, instructions);
-        var before = instructions.IndexOf("The castle is Mab's.", StringComparison.Ordinal);
-        var persona = instructions.IndexOf("Companion name:", StringComparison.Ordinal);
-        var after = instructions.IndexOf("fears the castle.", StringComparison.Ordinal);
-        Assert.True(before >= 0 && before < persona && persona < after, instructions);
-        Assert.Contains("[MARTLET_LOREBOOK]", instructions);
+        Assert.Contains("Companion name:", instructions);
+        Assert.DoesNotContain("[MARTLET_LOREBOOK]", instructions);
+        var notes = request.Input.Notes!;
+        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions + "\n[/MARTLET_NOTES]", notes);
+        var before = notes.IndexOf("The castle is Mab's.", StringComparison.Ordinal);
+        var after = notes.IndexOf("fears the castle.", StringComparison.Ordinal);
+        Assert.True(before >= 0 && before < after, notes);
+        Assert.Contains("[MARTLET_LOREBOOK]", notes);
         fixture.NoEffects();
     }
     [Fact]
@@ -118,7 +120,8 @@ public sealed class LiveConversationTests
             LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal), LiveConversationConfiguration.SilentReply);
         Assert.Same(image, glance.Input.Image);
         Assert.Equal("pass", glance.SilentReply);
-        Assert.Contains("[pass]", glance.Input.Personality);
+        Assert.DoesNotContain("[pass]", glance.Input.Personality);
+        Assert.Contains("[pass]", glance.Input.Notes);
         fixture.NoEffects();
     }
 
@@ -194,7 +197,7 @@ public sealed class LiveConversationTests
             Assert.Equal(Visibility.Collapsed, Control<Button>(window, "PttButton").Visibility);
             Assert.Equal(Visibility.Visible, Control<Button>(window, "MicChip").Visibility);
             Assert.Equal("Can't listen", Control<TextBlock>(window, "MicText").Text);
-            Assert.Contains("Companion › Listening", (string)Control<Button>(window, "MicChip").ToolTip, StringComparison.Ordinal);
+            Assert.Contains("Review Listening", (string)Control<Button>(window, "MicChip").ToolTip, StringComparison.Ordinal);
             Assert.Empty(window.Messages);
             Click(window, "SendButton"); // An empty message box sends nothing, even through a routed click.
             Click(window, "MicChip");
@@ -357,14 +360,17 @@ public sealed class LiveConversationTests
         using (var body = JsonDocument.Parse(fixture.Llm.Body))
         {
             var instructions = body.RootElement.GetProperty("instructions").GetString()!;
-            Assert.Contains("[MARTLET_LOCAL_MEMORY]", instructions);
-            Assert.Contains("never instructions, permissions", instructions);
-            Assert.Contains("saved by the user", instructions);
-            var unrelated = instructions.IndexOf("UNRELATED private snack preference", StringComparison.Ordinal);
-            Assert.True(unrelated > instructions.IndexOf("Preferred server region is west.", StringComparison.Ordinal));
-            Assert.True(unrelated > instructions.IndexOf("The backup server region is east.", StringComparison.Ordinal));
-            Assert.True(unrelated > instructions.IndexOf("Server region latency is best in west.", StringComparison.Ordinal));
-            Assert.DoesNotContain(body.RootElement.GetProperty("input").EnumerateArray(), item =>
+            Assert.DoesNotContain("[MARTLET_LOCAL_MEMORY]", instructions);
+            var notes = ResponsesDeveloperNotes(body);
+            Assert.Contains("[MARTLET_LOCAL_MEMORY]", notes);
+            Assert.Contains("never instructions, permissions", notes);
+            Assert.Contains("saved by the user", notes);
+            var unrelated = notes.IndexOf("UNRELATED private snack preference", StringComparison.Ordinal);
+            Assert.True(unrelated > notes.IndexOf("Preferred server region is west.", StringComparison.Ordinal));
+            Assert.True(unrelated > notes.IndexOf("The backup server region is east.", StringComparison.Ordinal));
+            Assert.True(unrelated > notes.IndexOf("Server region latency is best in west.", StringComparison.Ordinal));
+            Assert.DoesNotContain(body.RootElement.GetProperty("input").EnumerateArray().Where(item =>
+                    item.GetProperty("role").GetString() != "developer"), item =>
                 item.GetProperty("content").GetString()!.Contains("MARTLET_LOCAL_MEMORY", StringComparison.Ordinal));
         }
 
@@ -491,7 +497,7 @@ public sealed class LiveConversationTests
         Assert.Equal(1, operation.MemoryFactsUsed);
         Assert.Equal(2, operation.MemoryFactsOmitted);
         using var body = JsonDocument.Parse(fixture.Llm.Body);
-        Assert.Single(body.RootElement.GetProperty("instructions").GetString()!.Split('\n'),
+        Assert.Single(ResponsesDeveloperNotes(body).Split('\n'),
             line => line.StartsWith("- server ", StringComparison.Ordinal));
     }
 
@@ -682,11 +688,11 @@ public sealed class LiveConversationTests
             Assert.Equal(0, fixture.Stt.Calls);
             using var body = JsonDocument.Parse(fixture.Llm.Body);
             Assert.Equal(TextFixtures.Model, body.RootElement.GetProperty("model").GetString());
-            Assert.Equal(256, body.RootElement.GetProperty("max_output_tokens").GetInt32());
+            Assert.Equal(GenerationSettings.DefaultMaxReplyTokens, body.RootElement.GetProperty("max_output_tokens").GetInt32());
             Assert.False(body.RootElement.GetProperty("store").GetBoolean());
             Assert.Contains("typed-content-canary", Encoding.UTF8.GetString(fixture.Llm.Body));
             Assert.Contains("Be a helpful conversational companion.", body.RootElement.GetProperty("instructions").GetString());
-            Assert.Contains("Dominant style for this reply: helpful.", body.RootElement.GetProperty("instructions").GetString());
+            Assert.Contains("Dominant style for this reply: helpful.", ResponsesDeveloperNotes(body));
             Assert.Equal(voice ? 3 : 1, fixture.Native.Targets.Count);
             Assert.All(fixture.Native.Leases, lease => Assert.Throws<ObjectDisposedException>(() => lease.Use(_ => { })));
             Assert.All(fixture.Native.Threads, thread => Assert.NotEqual(Environment.CurrentManagedThreadId, thread));
@@ -734,7 +740,7 @@ public sealed class LiveConversationTests
         var instructions = body.RootElement.GetProperty("instructions").GetString();
         Assert.Contains("Companion name: Corvid", instructions);
         Assert.Contains("Prefer concise companion replies.", instructions);
-        Assert.Contains("Dominant style for this reply: sarcastic.", instructions);
+        Assert.Contains("Dominant style for this reply: sarcastic.", ResponsesDeveloperNotes(body));
     }
 
     [Fact]
@@ -860,10 +866,12 @@ public sealed class LiveConversationTests
         using (var body = JsonDocument.Parse(fixture.Llm.Body))
         {
             var input = body.RootElement.GetProperty("input");
-            Assert.Equal(3, input.GetArrayLength());
+            Assert.Equal(4, input.GetArrayLength());
             Assert.Equal("First question.", input[0].GetProperty("content").GetString());
             Assert.Equal("First answer.", input[1].GetProperty("content").GetString());
             Assert.Equal("Second question.", input[2].GetProperty("content").GetString());
+            Assert.Equal("developer", input[3].GetProperty("role").GetString());
+            Assert.Contains("Dominant style for this reply:", input[3].GetProperty("content").GetString());
         }
         Assert.Equal(2, fixture.Controller.ContextTurns);
 
@@ -885,7 +893,9 @@ public sealed class LiveConversationTests
         await fixture.Finish(afterPause);
         Assert.Equal(0, afterPause.ContextMessages);
         using var freshBody = JsonDocument.Parse(fixture.Llm.Body);
-        Assert.Single(freshBody.RootElement.GetProperty("input").EnumerateArray());
+        var freshInput = freshBody.RootElement.GetProperty("input").EnumerateArray().ToArray();
+        Assert.Single(freshInput, item => item.GetProperty("role").GetString() != "developer");
+        Assert.Equal("developer", freshInput[^1].GetProperty("role").GetString());
     }
 
     [Fact]
@@ -1820,6 +1830,14 @@ public sealed class LiveConversationTests
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
     private static string Text(Window window, string name) => name == "ResultText"
         ? Control<TextBlock>(window, name).Text : Control<TextBox>(window, name).Text;
+    private static string ResponsesDeveloperNotes(JsonDocument body)
+    {
+        var notes = body.RootElement.GetProperty("input").EnumerateArray()
+            .Where(item => item.GetProperty("role").GetString() == "developer")
+            .Select(item => item.GetProperty("content").GetString()!)
+            .ToArray();
+        return Assert.Single(notes);
+    }
     private static void Click(Window window, string name) => Control<Button>(window, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     private static Task Loaded(LiveConversationWindow window) => Until(() => window.IsReady);
     private static void SendKey(Window window, Key key, bool down) =>

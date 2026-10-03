@@ -426,6 +426,9 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndObject();
             }
             else WriteMessage(writer, "user", input.UserText);
+            // Martlet's notes for this message follow it, so the instructions and the conversation before stay the same
+            // from request to request (OpenAI reuses its prompt cache for them).
+            if (input.Notes is not null) WriteMessage(writer, "developer", input.Notes);
             foreach (var round in input.ToolRounds)
             {
                 if (round.Text.Trim().Length > 0) WriteMessage(writer, "assistant", round.Text);
@@ -486,6 +489,17 @@ internal sealed class TextGenerationOperation(
                 writer.WriteBoolean("allow_fallbacks", false);
                 writer.WriteEndObject();
             }
+            // Ask for the closing usage chunk where the server is known to take it, so the reply can say how much of the input
+            // came from the prompt cache.
+            if (GenerationSupport.AsksStreamUsage(chatBaseUri!.AbsoluteUri))
+            {
+                writer.WriteStartObject("stream_options");
+                writer.WriteBoolean("include_usage", true);
+                writer.WriteEndObject();
+            }
+            // Martlet's notes for this message close it, after the user's words: the instructions and the conversation
+            // before stay the same from request to request, so the server's prompt cache (or Ollama's) can reuse them.
+            var userText = input.SentUserText;
             writer.WriteStartArray("messages");
             if (input.Personality is not null) WriteMessage(writer, "system", input.Personality);
             foreach (var message in input.History)
@@ -498,7 +512,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteStartArray("content");
                 writer.WriteStartObject();
                 writer.WriteString("type", "text");
-                writer.WriteString("text", input.UserText);
+                writer.WriteString("text", userText);
                 writer.WriteEndObject();
                 if (input.Image is { } image)
                 {
@@ -522,7 +536,7 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }
-            else WriteMessage(writer, "user", input.UserText);
+            else WriteMessage(writer, "user", userText);
             foreach (var round in input.ToolRounds)
             {
                 writer.WriteStartObject();

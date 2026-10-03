@@ -67,6 +67,27 @@ public sealed class TextAuthorizationTests
         Assert.DoesNotContain(ProviderFixtures.ContentCanary, input + JsonSerializer.Serialize(input) + JsonSerializer.Serialize(result.Result));
     }
 
+    [Fact]
+    public async Task Responses_notes_are_sent_as_current_message_developer_content()
+    {
+        var handler = new TextRecordingHandler();
+        var context = ProviderFixtures.Context();
+        var limits = new TextGenerationLimits();
+        using var adapter = OpenAiTextGenerationAdapter.CreateForFixture(handler, new FixtureCredentials(), new FixtureClock());
+        var input = new BoundedTextInput("Current message", "Stable instructions", notes: "Per-turn notes");
+
+        var result = await TextFixtures.Collect(adapter.Stream(context, TextFixtures.Selection, input, limits,
+            TextFixtures.Authorize(context, limits)));
+
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        using var json = JsonDocument.Parse(handler.Body);
+        Assert.Equal("Stable instructions", json.RootElement.GetProperty("instructions").GetString());
+        var items = json.RootElement.GetProperty("input").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "user", "developer" }, items.Select(item => item.GetProperty("role").GetString()));
+        Assert.Equal("Current message", items[0].GetProperty("content").GetString());
+        Assert.Equal("Per-turn notes", items[1].GetProperty("content").GetString());
+    }
+
     [Theory]
     [InlineData("missing", ProviderFailureCode.ConsentMissing)]
     [InlineData("no-text", ProviderFailureCode.ConsentMissing)]
