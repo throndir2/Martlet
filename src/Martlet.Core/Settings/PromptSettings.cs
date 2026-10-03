@@ -29,8 +29,10 @@ public static class PromptCatalog
     public const string GlanceScreen = "glance_screen";
     public const string GlanceCamera = "glance_camera";
     public const string GlanceRemarks = "glance_remarks";
+    public const string GlanceAttention = "glance_attention";
     public const string CommentaryScreen = "commentary_screen";
     public const string CommentaryCamera = "commentary_camera";
+    public const string SeenWithMessage = "seen_with_message";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
@@ -158,12 +160,14 @@ public static class PromptCatalog
 
         new(CommentaryScreen, VisionGroup, "Screen glance instructions",
             "Instructions for a look at your screen. The chattiness line follows.",
-            "You can see the user's screen: the attached image is what they are looking at right now. You are hanging out with them " +
-            "like a friend in the room while they play or work.\n" +
+            "You can see the user's screen: the attached image is what they are looking at right now, which may include the " +
+            "taskbar and pop-up notifications. You are hanging out with them like a friend in the room while they play or work.\n" +
             "Real friends stay quiet most of the time. Reply with exactly [{silent}] unless something is genuinely worth a remark " +
-            "right now: a notable moment, a win or a fail, something funny or surprising, a clear change of scene, or a quick tip they would welcome.\n" +
+            "right now: a notable moment, a win or a fail, something funny or surprising, a clear change of scene, a quick tip they " +
+            "would welcome, or a new message, call or reminder they may want to know about.\n" +
             "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
-            "and never ask them to answer. Do not read out private details you can see (names, messages, emails, numbers).\n" +
+            "and never ask them to answer. For a message or notification, say only who or which app it is from, like \"Sam just messaged " +
+            "you\"; never read out the message itself or other private details you can see (messages, emails, numbers).\n" +
             "If you do speak: one short, natural spoken sentence of at most 20 words, plain text, no markdown, lists or emoji.",
             ["silent"]),
         new(CommentaryCamera, VisionGroup, "Camera look instructions",
@@ -194,6 +198,21 @@ public static class PromptCatalog
         new(GlanceRemarks, VisionGroup, "Earlier remarks",
             "Fills {remarks} in a glance message with what Martlet said while watching, oldest first.",
             "What you already said while watching, oldest first: {remarks}.", ["remarks"]),
+        new(GlanceAttention, VisionGroup, "Notification glance message",
+            "The message sent with the screenshot Martlet takes right away when a notification pops up or a taskbar button flashes " +
+            "while it watches your whole screen. {what} says which; {title} is the active window's title; {remarks} is the " +
+            "Earlier remarks line when Martlet already said something.",
+            "(Screen glance: {what}. Active window: \"{title}\".{remarks} If it is a message, call or reminder they would want to " +
+            "know about, give a quick heads-up: who or which app it is from, never the message itself. Otherwise reply [{silent}].)",
+            ["what", "title", "remarks", "silent"]),
+        new(SeenWithMessage, VisionGroup, "Screen with your message",
+            "Added to replies while vision is on: the newest picture of what Martlet watches goes with what you type or say. " +
+            "{source} says what the picture shows.",
+            "When the user's message comes with a picture, it shows {source} right now, so you see what they see. Use it when " +
+            "it helps your answer, especially when they refer to something on it (\"this\", \"look at that\", \"who messaged " +
+            "me?\"); otherwise answer normally. Never describe it unprompted, never mention images or screenshots, and never read " +
+            "out private details from it (messages, emails, numbers) unless they ask about them.",
+            ["source"]),
 
         new(MemoryCapture, BackgroundGroup, "Remembering",
             "Asks the Thinking model what to remember after each reply. Martlet reads the REMEMBER, UPDATE and FORGET lines it answers; " +
@@ -246,7 +265,7 @@ public static class PromptCatalog
     public static PromptDefinition? Find(string id) => ById.GetValueOrDefault(id);
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
-    public static bool Required(string id) => id is GlanceScreen or GlanceCamera;
+    public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

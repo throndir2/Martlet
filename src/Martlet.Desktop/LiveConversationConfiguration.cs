@@ -379,7 +379,7 @@ internal sealed class LiveConversationConfiguration
         IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory, LorebookScanResult? lore,
         out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
-        string? closingInstructions = null, BoundedWaveAudio? audio = null)
+        string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null;
@@ -420,7 +420,7 @@ internal sealed class LiveConversationConfiguration
                         voice ? new(SpeechSelection(),
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback());
+                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null);
                 }
             }
         }
@@ -559,19 +559,27 @@ internal sealed class LiveConversationConfiguration
     {
         var tuning = ScreenCommentaryPacer.For(chattiness);
         var destination = route is null ? "the Thinking model" : LlmDestinationName(route);
+        // What you type or say while vision is on goes with the newest picture.
+        const string withMessages = "While vision is on, what you type or say also goes with the newest picture, so replies see " +
+            "what you see; that makes each reply larger and may cost more. ";
         if (!source.IsScreen)
             return $"When vision is on, Martlet checks {source.Label} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to " +
-                $"{tuning.LooksPerHour} images per hour to {destination}. " +
+                $"{tuning.LooksPerHour} images per hour to {destination}. " + withMessages +
                 (source.Kind == WatchKind.Camera ? "The camera light may turn on. " : "") +
                 "Anyone in view may be seen; tell them. " +
                 "Images are never saved or added to Memory. Provider requests may use quota or cost money. " +
                 (source.Kind == WatchKind.Url ? "Passwords in camera addresses are never saved. " : "") +
                 "Stop, Esc, locking Windows or closing the talk window stops vision.";
-        return "When vision is on, Martlet checks your " +
-            (source.Scope == ScreenScope.ActiveWindow ? "active window" : "screen") +
+        var whole = source.Kind == WatchKind.ActiveScreen;
+        return "When vision is on, Martlet checks " +
+            (whole ? "your whole screen (every monitor, the taskbar and pop-up notifications)" : "your active window") +
             $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to {tuning.LooksPerHour} screenshots per hour to {destination}. " +
+            (whole ? "When a notification pops up or a taskbar button flashes, it looks right away (within the same limit) and sends " +
+                "that window's title with the screenshot. " : "") +
+            withMessages +
             "Screenshots include the window title, persona, matching lorebooks and recent conversation. " +
-            "Martlet skips password managers, private windows, minimized windows and protected video. Screenshots are never saved or added to Memory. " +
+            "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. " +
+            "Screenshots are never saved or added to Memory. " +
             "Provider requests may use quota or cost money. Stop, Esc, locking Windows or closing the talk window stops vision.";
     }
     /// <summary>A screen glance's or camera look's instructions: the look's prompt, then the chattiness line.</summary>

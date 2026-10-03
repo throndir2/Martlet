@@ -49,26 +49,30 @@ internal sealed class ScreenFrame(byte[] pixels, int width, int height, string t
     }
 }
 
+
 /// <summary>How a look was taken: Desktop Duplication (what the monitor shows, full-screen games included) or GDI.
 /// <paramref name="Note"/> says why duplication was not used, for the watch status. <paramref name="BehindMartlet"/>: a
-/// Martlet window was in front, so the picture is of the window behind it.</summary>
+/// Martlet window was in front, so the picture is of the window behind it (or the whole screen around Martlet).
+/// <paramref name="Monitors"/>: how many monitors the picture shows.</summary>
 internal sealed record GlanceResult(ScreenFrame? Frame, GlanceSkip Skip, string? Note = null, bool ProtectedContent = false,
-    bool BehindMartlet = false);
+    bool BehindMartlet = false, int Monitors = 1);
 
 internal interface IScreenGlancer
 {
     GlanceResult Capture(ScreenScope scope);
     TimeSpan UserIdle { get; }
-    /// <summary>Frees the screen capture resources (the open duplication and its frame copy) when watching stops.</summary>
+    /// <summary>Frees the screen capture resources (the open duplications and their frame copies) when watching stops.</summary>
     void Release();
 }
 
-/// <summary>Captures the foreground window (or its whole monitor), downscaled to at most 1024 px. It reads the monitor
-/// through DXGI Desktop Duplication, which also sees full-screen DirectX games, and falls back to GDI when duplication
-/// is unavailable (remote sessions, a refused hybrid-GPU laptop, a rotated monitor). No hooking or injection.
-/// When a Martlet window is in front, it looks at the window behind it. Martlet's own windows are painted over;
-/// minimized windows and password managers / private browsing windows are never captured;
-/// protected video and windows that exclude themselves from capture read back black and are skipped.</summary>
+/// <summary>Captures the foreground window, downscaled to at most 1024 px, or the whole screen: every monitor side by side as
+/// Windows arranges them (taskbars, the notification area and pop-up notifications included), each monitor at most 1024 px
+/// and the picture at most 2048 px. It reads monitors through DXGI Desktop Duplication, which also sees full-screen DirectX
+/// games, and falls back to GDI when duplication is unavailable (remote sessions, a refused hybrid-GPU laptop, a rotated
+/// monitor). No hooking or injection. When a Martlet window is in front, it looks at the window behind it. Martlet's own
+/// windows, password managers and private browsing windows are painted over wherever they show; a minimized window or a
+/// password manager / private window in front is never captured; protected video and windows that exclude themselves from
+/// capture read back black and are skipped.</summary>
 internal sealed class ScreenGlancer : IScreenGlancer
 {
     internal const int MaximumEdge = 1024;
@@ -78,12 +82,19 @@ internal sealed class ScreenGlancer : IScreenGlancer
         "password", "1password", "bitwarden", "keepass", "lastpass", "dashlane", "keeper", "credential manager",
         "inprivate", "incognito", "private browsing", "authenticator", "online banking"
     ];
-    private readonly DesktopDuplication duplication = new();
+    // One duplication per monitor, open while watching.
+    private readonly Dictionary<nint, DesktopDuplication> duplications = [];
     private byte[]? previous;
 
     public void Release()
     {
-        duplication.Release();
+        DesktopDuplication[] open;
+        lock (duplications)
+        {
+            open = [.. duplications.Values];
+            duplications.Clear();
+        }
+        foreach (var duplication in open) duplication.Release();
         previous = null;
     }
 
@@ -96,64 +107,33 @@ internal sealed class ScreenGlancer : IScreenGlancer
         }
     }
 
+    /// <summary>A window title Martlet never looks at: password managers, private browsing, authenticators, banking.</summary>
+    internal static bool IsPrivateTitle(string title)
+    {
+        var lower = title.ToLowerInvariant();
+        return PrivateTitles.Any(lower.Contains);
+    }
+
     public GlanceResult Capture(ScreenScope scope)
     {
         var old = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
         try
         {
-            var window = GetForegroundWindow();
-            if (window == 0 || window == GetShellWindow()) return new(null, GlanceSkip.NoWindow);
             var own = (uint)Environment.ProcessId;
-            GetWindowThreadProcessId(window, out var process);
-            // A Martlet window in front (say, the talk window you clicked to read it): look at the window you were using behind it.
-            var behind = process == own;
-            if (behind && (window = WindowBehind(window, own)) == 0) return new(null, GlanceSkip.MartletInFront);
-            if (IsIconic(window)) return new(null, GlanceSkip.Minimized);
-            if (Cloaked(window)) return new(null, GlanceSkip.NoWindow);
-            var title = Title(window);
-            var lower = title.ToLowerInvariant();
-            if (PrivateTitles.Any(lower.Contains)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
-            var monitorHandle = MonitorFromWindow(window, MonitorDefaultToNearest);
-            var monitor = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
-            if (!GetMonitorInfo(monitorHandle, ref monitor))
-                return new(null, GlanceSkip.CaptureFailed);
-            var area = monitor.rcMonitor;
-            if (scope == ScreenScope.ActiveWindow)
+            var window = GetForegroundWindow();
+            if (window == GetShellWindow()) window = 0;
+            var behind = false;
+            if (window != 0)
             {
-                if (!Bounds(window, out var bounds)) return new(null, GlanceSkip.CaptureFailed);
-                area = NativeRect.Intersect(bounds, monitor.rcMonitor);
+                GetWindowThreadProcessId(window, out var process);
+                // A Martlet window in front (say, the talk window you clicked to read it): look at the window you were using behind it.
+                if (process == own)
+                {
+                    behind = true;
+                    window = WindowBehind(window, own);
+                }
             }
-            if (area.Width < 64 || area.Height < 64) return new(null, GlanceSkip.NoWindow);
-            var scale = Math.Min(1.0, (double)MaximumEdge / Math.Max(area.Width, area.Height));
-            int width = Math.Max(1, (int)Math.Round(area.Width * scale)), height = Math.Max(1, (int)Math.Round(area.Height * scale));
-            // Duplication first: it sees full-screen games and does not stall the game the way a GDI screen read can.
-            var pixels = duplication.Grab(monitorHandle, area, width, height);
-            var protectedContent = pixels is not null && duplication.ProtectedContent;
-            var note = pixels is null ? duplication.Problem : null;
-            var signature = pixels is null ? null : Signature(pixels, width, height);
-            if (pixels is null || signature is null || signature.Max() < 10)
-            {
-                // A still desktop can briefly read black from a fresh duplication; GDI decides then.
-                if (pixels is not null) Array.Clear(pixels);
-                pixels = Grab(area, width, height);
-                if (pixels is null) return new(null, GlanceSkip.CaptureFailed, note);
-                signature = Signature(pixels, width, height);
-            }
-            if (signature.Max() < 10)
-            {
-                Array.Clear(pixels);
-                return new(null, GlanceSkip.Blank, note, protectedContent, behind);
-            }
-            // Martlet's own windows never leave this PC: they are painted over, and a picture that is nearly all Martlet is skipped.
-            if (BlankOwnWindows(pixels, width, height, area, window, own) >= 0.9)
-            {
-                Array.Clear(pixels);
-                return new(null, GlanceSkip.MartletInFront, note, BehindMartlet: behind);
-            }
-            signature = Signature(pixels, width, height);
-            var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
-            previous = signature;
-            return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change), GlanceSkip.None, note, protectedContent, behind);
+            return scope == ScreenScope.ActiveScreen ? CaptureScreen(window, behind, own) : CaptureWindow(window, behind, own);
         }
         catch (Exception error) when (error is ExternalException or OutOfMemoryException or ArgumentException)
         {
@@ -163,6 +143,139 @@ internal sealed class ScreenGlancer : IScreenGlancer
         {
             if (old != 0) SetThreadDpiAwarenessContext(old);
         }
+    }
+
+    private GlanceResult CaptureWindow(nint window, bool behind, uint own)
+    {
+        if (window == 0) return new(null, behind ? GlanceSkip.MartletInFront : GlanceSkip.NoWindow);
+        if (IsIconic(window)) return new(null, GlanceSkip.Minimized);
+        if (Cloaked(window)) return new(null, GlanceSkip.NoWindow);
+        var title = WindowTitle(window);
+        if (IsPrivateTitle(title)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
+        var monitorHandle = MonitorFromWindow(window, MonitorDefaultToNearest);
+        var monitor = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(monitorHandle, ref monitor) || !Bounds(window, out var bounds))
+            return new(null, GlanceSkip.CaptureFailed);
+        var area = NativeRect.Intersect(bounds, monitor.rcMonitor);
+        if (area.Width < 64 || area.Height < 64) return new(null, GlanceSkip.NoWindow);
+        var scale = Math.Min(1.0, (double)MaximumEdge / Math.Max(area.Width, area.Height));
+        int width = Math.Max(1, (int)Math.Round(area.Width * scale)), height = Math.Max(1, (int)Math.Round(area.Height * scale));
+        Keep([monitorHandle]);
+        string? note = null;
+        var protectedContent = false;
+        var pixels = GrabMonitor(monitorHandle, area, width, height, ref note, ref protectedContent);
+        if (pixels is null) return new(null, GlanceSkip.CaptureFailed, note);
+        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, 1);
+    }
+
+    // Every monitor in one picture, laid out as Windows arranges them; areas no monitor covers stay black.
+    private GlanceResult CaptureScreen(nint window, bool behind, uint own)
+    {
+        var title = window == 0 ? "" : WindowTitle(window);
+        // A private window in front (or behind Martlet) means you are busy with something private: no look at all.
+        if (window != 0 && IsPrivateTitle(title)) return new(null, GlanceSkip.Private, BehindMartlet: behind);
+        var monitors = Monitors();
+        if (monitors.Count == 0) return new(null, GlanceSkip.CaptureFailed);
+        var area = monitors[0].Area;
+        foreach (var (_, rect) in monitors)
+            area = new() { Left = Math.Min(area.Left, rect.Left), Top = Math.Min(area.Top, rect.Top),
+                Right = Math.Max(area.Right, rect.Right), Bottom = Math.Max(area.Bottom, rect.Bottom) };
+        var largest = monitors.Max(m => Math.Max(m.Area.Width, m.Area.Height));
+        var scale = Math.Min(1.0, Math.Min((double)MaximumEdge / largest, (double)BoundedImage.HardMaxEdge / Math.Max(area.Width, area.Height)));
+        int width = Math.Max(1, (int)Math.Round(area.Width * scale)), height = Math.Max(1, (int)Math.Round(area.Height * scale));
+        Keep(monitors.Select(m => m.Handle));
+        var pixels = new byte[width * height * 4];
+        string? note = null;
+        bool protectedContent = false, captured = false;
+        foreach (var (handle, rect) in monitors)
+        {
+            int left = Math.Clamp((int)Math.Round((rect.Left - area.Left) * scale), 0, width),
+                top = Math.Clamp((int)Math.Round((rect.Top - area.Top) * scale), 0, height),
+                right = Math.Clamp((int)Math.Round((rect.Right - area.Left) * scale), 0, width),
+                bottom = Math.Clamp((int)Math.Round((rect.Bottom - area.Top) * scale), 0, height);
+            if (right - left < 1 || bottom - top < 1) continue;
+            var part = GrabMonitor(handle, rect, right - left, bottom - top, ref note, ref protectedContent);
+            if (part is null) continue;
+            captured = true;
+            for (var y = 0; y < bottom - top; y++)
+                Buffer.BlockCopy(part, y * (right - left) * 4, pixels, ((top + y) * width + left) * 4, (right - left) * 4);
+            Array.Clear(part);
+        }
+        if (!captured)
+        {
+            Array.Clear(pixels);
+            return new(null, GlanceSkip.CaptureFailed, note, Monitors: monitors.Count);
+        }
+        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, monitors.Count);
+    }
+
+    // The black check, painting over Martlet's own and private windows, and the change score.
+    private GlanceResult Finish(byte[] pixels, int width, int height, NativeRect area, string title, uint own, nint target,
+        string? note, bool protectedContent, bool behind, int monitors)
+    {
+        var signature = Signature(pixels, width, height);
+        if (signature.Max() < 10)
+        {
+            Array.Clear(pixels);
+            return new(null, GlanceSkip.Blank, note, protectedContent, behind, monitors);
+        }
+        // Martlet's own windows never leave this PC: they are painted over, and a picture that is nearly all Martlet is skipped.
+        if (BlankHidden(pixels, width, height, area, own, target) >= 0.9)
+        {
+            Array.Clear(pixels);
+            return new(null, GlanceSkip.MartletInFront, note, BehindMartlet: behind, Monitors: monitors);
+        }
+        signature = Signature(pixels, width, height);
+        var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
+        previous = signature;
+        return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change), GlanceSkip.None, note, protectedContent,
+            behind, monitors);
+    }
+
+    // Duplication first: it sees full-screen games and does not stall the game the way a GDI screen read can. A still desktop
+    // can briefly read black from a fresh duplication; GDI decides then.
+    private byte[]? GrabMonitor(nint monitor, NativeRect area, int width, int height, ref string? note, ref bool protectedContent)
+    {
+        DesktopDuplication duplication;
+        lock (duplications)
+        {
+            if (!duplications.TryGetValue(monitor, out duplication!)) duplications[monitor] = duplication = new();
+        }
+        var pixels = duplication.Grab(monitor, area, width, height);
+        if (pixels is not null && duplication.ProtectedContent) protectedContent = true;
+        if (pixels is null) note ??= duplication.Problem;
+        if (pixels is not null && Signature(pixels, width, height).Max() >= 10) return pixels;
+        var grabbed = Grab(area, width, height);
+        if (grabbed is null) return pixels;
+        if (pixels is not null) Array.Clear(pixels);
+        return grabbed;
+    }
+
+    // Closes the duplications of monitors this look doesn't use (a window moved to another monitor, a monitor unplugged).
+    private void Keep(IEnumerable<nint> monitors)
+    {
+        var used = monitors.ToHashSet();
+        List<DesktopDuplication> unused = [];
+        lock (duplications)
+        {
+            foreach (var monitor in duplications.Keys.Where(m => !used.Contains(m)).ToArray())
+            {
+                unused.Add(duplications[monitor]);
+                duplications.Remove(monitor);
+            }
+        }
+        foreach (var duplication in unused) duplication.Release();
+    }
+
+    private static List<(nint Handle, NativeRect Area)> Monitors()
+    {
+        var found = new List<(nint, NativeRect)>();
+        EnumDisplayMonitors(0, 0, (nint monitor, nint _, ref NativeRect rect, nint _) =>
+        {
+            if (rect.Width > 0 && rect.Height > 0 && found.Count < 16) found.Add((monitor, rect));
+            return true;
+        }, 0);
+        return found;
     }
 
     // The first ordinary window below Martlet's in the z-order: the one you were using before you clicked Martlet.
@@ -182,39 +295,54 @@ internal sealed class ScreenGlancer : IScreenGlancer
         return 0;
     }
 
-    /// <summary>Paints Martlet's own visible windows in <paramref name="area"/> neutral grey and returns the share of the
-    /// picture they covered. Those above <paramref name="target"/> in the z-order cover it; those below it can only show
-    /// beside it (the rest of the monitor). Click-through overlays are left alone: the subtitles keep themselves out of
-    /// capture, and painting a transparent overlay's box would hide what is under it.</summary>
-    private static double BlankOwnWindows(byte[] pixels, int width, int height, NativeRect area, nint target, uint own)
+    /// <summary>Paints neutral grey wherever Martlet's own windows and password manager / private browsing windows show in
+    /// <paramref name="area"/>, working down the z-order so a window only hides what isn't already covered by windows above
+    /// it, and returns the share of the picture Martlet's own windows covered. A hidden window's edge pixels are painted and a
+    /// covering window's edge pixels aren't counted as covering, so nothing of a hidden window bleeds through a downscaled
+    /// edge. Click-through overlays are left alone (the subtitles keep themselves out of capture, and painting a transparent
+    /// overlay's box would hide what is under it), and see-through (layered) windows don't count as covering what is below
+    /// them, except the active window (<paramref name="target"/>).</summary>
+    private static double BlankHidden(byte[] pixels, int width, int height, NativeRect area, uint own, nint target)
     {
         double scaleX = (double)width / area.Width, scaleY = (double)height / area.Height;
-        (int Left, int Top, int Right, int Bottom) Map(NativeRect rect) => (
-            Math.Clamp((int)Math.Floor((rect.Left - area.Left) * scaleX), 0, width),
-            Math.Clamp((int)Math.Floor((rect.Top - area.Top) * scaleY), 0, height),
-            Math.Clamp((int)Math.Ceiling((rect.Right - area.Left) * scaleX), 0, width),
-            Math.Clamp((int)Math.Ceiling((rect.Bottom - area.Top) * scaleY), 0, height));
-        var front = Bounds(target, out var targetBounds) ? Map(NativeRect.Intersect(targetBounds, area)) : (0, 0, 0, 0);
-        bool[]? covered = null;
-        var count = 0;
-        var above = true;
+        // Outward for what is hidden, inward for what covers.
+        (int Left, int Top, int Right, int Bottom) Map(NativeRect rect, bool outward) => (
+            Math.Clamp((int)(outward ? Math.Floor((rect.Left - area.Left) * scaleX) : Math.Ceiling((rect.Left - area.Left) * scaleX)), 0, width),
+            Math.Clamp((int)(outward ? Math.Floor((rect.Top - area.Top) * scaleY) : Math.Ceiling((rect.Top - area.Top) * scaleY)), 0, height),
+            Math.Clamp((int)(outward ? Math.Ceiling((rect.Right - area.Left) * scaleX) : Math.Floor((rect.Right - area.Left) * scaleX)), 0, width),
+            Math.Clamp((int)(outward ? Math.Ceiling((rect.Bottom - area.Top) * scaleY) : Math.Floor((rect.Bottom - area.Top) * scaleY)), 0, height));
+        // Windows that cover what is below them or are hidden, top of the z-order first.
+        var windows = new List<(NativeRect Bounds, bool Hide, bool Own)>();
+        var last = -1;
         var window = GetTopWindow(0);
         for (int i = 0; window != 0 && i < 4096; i++, window = GetWindow(window, GwHwndNext))
         {
-            if (window == target) { above = false; continue; }
+            if (!IsWindowVisible(window) || IsIconic(window) || Cloaked(window)) continue;
+            var style = GetWindowLongPtrW(window, GwlExStyle);
+            if ((style & ExTransparent) != 0 || !Bounds(window, out var bounds) || bounds.Width <= 0 || bounds.Height <= 0) continue;
             GetWindowThreadProcessId(window, out var process);
-            if (process != own || !IsWindowVisible(window) || IsIconic(window) || Cloaked(window) ||
-                (GetWindowLongPtrW(window, GwlExStyle) & ExTransparent) != 0 || !Bounds(window, out var bounds)) continue;
-            var (left, top, right, bottom) = Map(NativeRect.Intersect(bounds, area));
+            var mine = process == own;
+            var hide = mine || IsPrivateTitle(WindowTitle(window));
+            if (!hide && window != target && (style & ExLayered) != 0) continue;
+            windows.Add((bounds, hide, mine));
+            if (hide) last = windows.Count - 1;
+        }
+        if (last < 0) return 0;
+        var covered = new bool[width * height];
+        int taken = 0, count = 0;
+        for (var w = 0; w <= last && taken < covered.Length; w++)
+        {
+            var (bounds, hide, mine) = windows[w];
+            var (left, top, right, bottom) = Map(NativeRect.Intersect(bounds, area), hide);
             for (int y = top; y < bottom; y++)
             for (int x = left; x < right; x++)
             {
-                if (!above && x >= front.Item1 && x < front.Item3 && y >= front.Item2 && y < front.Item4) continue;
                 var index = y * width + x;
-                covered ??= new bool[width * height];
                 if (covered[index]) continue;
                 covered[index] = true;
-                count++;
+                taken++;
+                if (!hide) continue;
+                if (mine) count++;
                 pixels[index * 4] = pixels[index * 4 + 1] = pixels[index * 4 + 2] = 0x30;
             }
         }
@@ -249,7 +377,8 @@ internal sealed class ScreenGlancer : IScreenGlancer
             previousObject = SelectObject(memory, bitmap);
             SetStretchBltMode(memory, Halftone);
             SetBrushOrgEx(memory, 0, 0, 0);
-            if (!StretchBlt(memory, 0, 0, width, height, screen, area.Left, area.Top, area.Width, area.Height, SourceCopy))
+            // CAPTUREBLT includes layered windows such as pop-up notifications.
+            if (!StretchBlt(memory, 0, 0, width, height, screen, area.Left, area.Top, area.Width, area.Height, SourceCopy | CaptureBlt))
                 return null;
             GdiFlush();
             var pixels = new byte[width * height * 4];
@@ -287,7 +416,9 @@ internal sealed class ScreenGlancer : IScreenGlancer
         return result;
     }
 
-    private static string Title(nint window)
+    /// <summary>A window's title without control characters. Another process's title is read without sending it a message,
+    /// so a hung window can't stall a look.</summary>
+    internal static string WindowTitle(nint window)
     {
         var length = GetWindowTextLength(window);
         if (length <= 0) return "";
@@ -299,8 +430,10 @@ internal sealed class ScreenGlancer : IScreenGlancer
     private static readonly nint PerMonitorAwareV2 = -4;
     private const uint MonitorDefaultToNearest = 2, GwHwndNext = 2;
     private const int DwmExtendedFrameBounds = 9, DwmCloaked = 14, Halftone = 4, GwlExStyle = -20;
-    private const long ExTransparent = 0x20, ExToolWindow = 0x80, ExNoActivate = 0x08000000;
-    private const uint SourceCopy = 0x00CC0020;
+    private const long ExTransparent = 0x20, ExToolWindow = 0x80, ExLayered = 0x80000, ExNoActivate = 0x08000000;
+    private const uint SourceCopy = 0x00CC0020, CaptureBlt = 0x40000000;
+
+    private delegate bool MonitorCallback(nint monitor, nint dc, ref NativeRect rect, nint data);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MONITORINFO { public uint cbSize; public NativeRect rcMonitor, rcWork; public uint dwFlags; }
@@ -329,6 +462,8 @@ internal sealed class ScreenGlancer : IScreenGlancer
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(nint window, StringBuilder text, int count);
     [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint window, uint flags);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetMonitorInfo(nint monitor, ref MONITORINFO info);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(nint dc, nint clip, MonitorCallback callback, nint data);
     [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
     [DllImport("user32.dll")] private static extern nint GetDC(nint window);
