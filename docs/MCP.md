@@ -1963,7 +1963,11 @@ talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
 talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
-current choice) and `TrayExit`. On a Martlet host (Settings › *Use as a Martlet
+current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
+menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
+column in *Rose dark*; `ui_snapshot` returns the palette as `AppearanceTheme`
+(*Pink light* or *Rose dark*) and Settings' line about it as `AppearanceStatus`.
+On a Martlet host (Settings › *Use as a Martlet
 host*) the menu has no `TrayTalk`, `TrayStartListening` or `TrayCharacter`: a
 host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
 `OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
