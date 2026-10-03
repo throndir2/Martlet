@@ -133,6 +133,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("host_service_status", "Read this PC's own Martlet host service on Docker Desktop the way the host dashboard does: its stage " +
+            "(DockerMissing, DockerNotRunning, NotSetUp, Stopped, Running), Martlet version, host ID, whether its published address is " +
+            "still this PC's and answers, the installed roles, and the Martlet network it joined (state and the desktops paired " +
+            "with it). Reads Docker and the gateway's nonsecret files only (never its agent token, keys or pairings); returns no " +
+            "addresses and changes nothing.", new { }),
         Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
             "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
@@ -306,6 +311,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
+                "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
@@ -597,6 +603,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 created = note?.Created,
                 startsAtSignIn
             }
+        };
+    }
+
+    /// <summary>This PC's own host service as the desktop's host dashboard reads it (<see cref="LocalHostService"/>). The
+    /// published address itself is not returned, only whether it is still this PC's and answers.</summary>
+    private static async Task<object> HostServiceStatusAsync(CancellationToken cancellation)
+    {
+        var state = await LocalHostService.ProbeAsync(cancellation);
+        return new
+        {
+            stage = state.Stage.ToString(), ready = state.Ready, version = state.Version, hostId = state.HostId,
+            published = state.Address is not null, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
+            roles = state.Roles, network = state.Network,
+            desktops = state.Desktops.Select(d => new { id = d.Id, name = d.Name }).ToArray(),
+            problem = state.Problem
         };
     }
 

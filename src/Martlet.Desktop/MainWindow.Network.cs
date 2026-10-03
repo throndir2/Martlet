@@ -27,6 +27,12 @@ public partial class MainWindow
     private NetworkLocalState networkState = NetworkLocalState.Empty;
     private IReadOnlyList<HostJoinRequest> networkJoins = [];
     private IReadOnlyDictionary<string, string> networkNotes = new Dictionary<string, string>();
+    /// <summary>What each paired host said about the network on the last sync, including the computers paired with it.</summary>
+    private IReadOnlyDictionary<string, HostNetworkView> networkViews = new Dictionary<string, HostNetworkView>();
+    /// <summary>The last network picture written to the desktop log (only changes are logged).</summary>
+    private string? networkLogged;
+    private readonly Dictionary<string, string> networkNotesLogged = new(StringComparer.Ordinal);
+    private bool networkWatchOnly;
     private readonly HashSet<string> networkAnnounced = new(StringComparer.Ordinal);
     /// <summary>Computers the owner allowed from Add a computer › Martlet on your network (device ID → until when): their
     /// request to join the network is approved without a second Allow.</summary>
@@ -61,9 +67,12 @@ public partial class MainWindow
 
     private async Task SyncNetworkAsync()
     {
-        if (networkBusy || closing || store is null || setupService is null || Role != DeviceRole.Companion) return;
+        // A host PC takes part too: it may be the only member that can let your other computers in (it started the network
+        // while it was a companion), and it shows which computers use its host service.
+        if (networkBusy || closing || store is null || setupService is null) return;
         networkBusy = true;
         var hostsChanged = false;
+        var shownBefore = HostDashboardNetworkSignature();
         try
         {
             var directory = store.DataDirectory;
@@ -72,15 +81,31 @@ public partial class MainWindow
             // Nothing to sync (and no key to make) before the first host is paired.
             if (hosts.Count == 0 && before.Roster is null && before.Waiting is null)
             {
+                networkViews = new Dictionary<string, HostNetworkView>();
                 networkCheckedAt = DateTimeOffset.Now;
+                return;
+            }
+            var pairings = hosts.Select(h => GatewayAvatarHostLink.Pairing(h.Pairing)).ToArray();
+            // A host PC outside a network only watches: it never starts or asks to join one by itself, so the network of the
+            // main PC that pairs with its host service takes that host.
+            networkWatchOnly = Role == DeviceRole.Host && before.Roster is null && before.Waiting is null;
+            if (networkWatchOnly)
+            {
+                var watched = await NetworkSyncEngine.ReadOnlyAsync(before, pairings, ConnectToHost, lifetime.Token);
+                if (closing) return;
+                networkProblem = null;
+                networkViews = watched.Views;
+                networkNotes = watched.Notes;
+                networkJoins = [];
+                networkCheckedAt = DateTimeOffset.Now;
+                LogNetworkPicture(before);
                 return;
             }
             NetworkSyncResult result;
             using (var key = NetworkIdentity.LoadOrCreate(directory, NetworkIdentity.DeviceId(hosts)))
             {
                 var engine = new NetworkSyncEngine(key, Environment.MachineName);
-                result = await engine.SyncAsync(before, hosts.Select(h => GatewayAvatarHostLink.Pairing(h.Pairing)).ToArray(),
-                    ConnectToHost, lifetime.Token);
+                result = await engine.SyncAsync(before, pairings, ConnectToHost, lifetime.Token);
             }
             if (closing) return;
             networkProblem = null;
@@ -125,8 +150,10 @@ public partial class MainWindow
             if (result.RetireKey) NetworkIdentity.Retire(directory);
             networkJoins = result.Joins;
             networkNotes = result.Notes;
+            networkViews = result.Views;
             networkCheckedAt = DateTimeOffset.Now;
             foreach (var line in result.Events) ErrorLog.Info("Martlet network: " + line);
+            LogNetworkPicture(state);
             var messages = result.Events.ToList();
             foreach (var stale in networkPreapproved.Where(p => p.Value <= DateTimeOffset.Now).Select(p => p.Key).ToArray())
                 networkPreapproved.Remove(stale);
@@ -141,7 +168,8 @@ public partial class MainWindow
             if (result.Joins.FirstOrDefault(j => networkAnnounced.Add(j.DeviceId + "|" + j.Key)) is { } fresh)
             {
                 ErrorLog.Info($"Martlet network: {fresh.DeviceId} ({fresh.DisplayName}) asks to join (check number {fresh.CheckNumber}).");
-                messages.Add($"{fresh.DisplayName} wants to join your Martlet network (check number {fresh.CheckNumber}). Allow it under Devices, Your Martlet network.");
+                messages.Add($"{fresh.DisplayName} wants to join your Martlet network (check number {fresh.CheckNumber}). Allow it " +
+                    (Role == DeviceRole.Host ? "on Home, or " : "") + "under Devices, Your Martlet network.");
             }
             if (messages.Count > 0) ActionText.Text = string.Join(" ", messages);
         }
@@ -164,6 +192,8 @@ public partial class MainWindow
                     QueueApiKeySync();
                 }
                 RenderNetwork();
+                if (HostDashboardNetworkSignature() != shownBefore) RenderHost();
+                if (DevicesPage.IsVisible && NetworkDevicesSignature() != networkDevicesShown) RenderMap();
                 if (networkQueued)
                 {
                     networkQueued = false;
@@ -305,6 +335,96 @@ public partial class MainWindow
         QueueNetworkSync();
     }
 
+    // ---------- who uses which host ----------
+
+    /// <summary>The computers paired with a host as it said on the last network sync, or null when unknown (not read yet,
+    /// unreachable, or a host older than that list).</summary>
+    private IReadOnlyList<HostPairedDevice>? PairedWith(string hostId) => networkViews.GetValueOrDefault(hostId)?.Devices;
+
+    /// <summary>Whether a device ID is this PC (its network identity or the ID one of its pairings uses).</summary>
+    private bool IsThisDevice(string deviceId) =>
+        deviceId == ClusterDevice || deviceId == NetworkIdentity.DeviceId(homeHosts) || homeHosts.Any(h => h.Pairing.DeviceId == deviceId);
+
+    /// <summary>"active now" (a signed request in the last two minutes), when it was last active, or that the host hasn't
+    /// heard from it since it started.</summary>
+    internal static string Seen(DateTimeOffset? lastSeen, DateTimeOffset now) => lastSeen is not { } at
+        ? "not seen since the host started"
+        : now - at < TimeSpan.FromMinutes(2) ? "active now"
+        : "last active " + at.ToLocalTime().ToString(at.ToLocalTime().Date == now.ToLocalTime().Date ? "t" : "g", System.Globalization.CultureInfo.CurrentCulture);
+
+    private static bool Active(HostPairedDevice device, DateTimeOffset now) => device.LastSeen is { } at && now - at < TimeSpan.FromMinutes(2);
+
+    /// <summary>The computers using each paired host, for the Devices map ("IMOUTO (desktop-imouto), active now").</summary>
+    private IReadOnlyDictionary<string, IReadOnlyList<HostUser>> HostUsers()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var users = new Dictionary<string, IReadOnlyList<HostUser>>(StringComparer.Ordinal);
+        foreach (var (hostId, view) in networkViews)
+            if (view.Devices is { } devices)
+                users[hostId] = devices.OrderBy(d => !IsThisDevice(d.DeviceId)).ThenBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase)
+                    .Select(d => IsThisDevice(d.DeviceId)
+                        ? new HostUser("This PC, " + Seen(d.LastSeen, now), true)
+                        : new HostUser((d.DisplayName == d.DeviceId ? d.DeviceId : $"{d.DisplayName} ({d.DeviceId})") + ", " + Seen(d.LastSeen, now), false))
+                    .ToArray();
+        return users;
+    }
+
+    private string? networkDevicesShown;
+
+    /// <summary>Changes when a computer pairs with or leaves a host, or becomes active or idle: then the Devices map is drawn
+    /// again (not on every sync, so the map doesn't animate every 20 seconds).</summary>
+    private string NetworkDevicesSignature()
+    {
+        var now = DateTimeOffset.UtcNow;
+        return string.Join(";", networkViews.OrderBy(v => v.Key, StringComparer.Ordinal).Select(v => v.Key + ":" +
+            string.Join(",", (v.Value.Devices ?? []).Select(d => d.DeviceId + (Active(d, now) ? "+" : "-")))));
+    }
+
+    /// <summary>What the host dashboard shows about the network: requests to join and the computers paired with this PC's
+    /// host service.</summary>
+    private string HostDashboardNetworkSignature() =>
+        string.Join(",", networkJoins.Select(j => j.DeviceId + j.CheckNumber)) + "|" + NetworkDevicesSignature() + "|" +
+        string.Join(",", networkState.Roster?.ActiveDesktops.Select(d => d.Id) ?? []);
+
+    /// <summary>Writes the network as this PC sees it to the desktop log when it changes (membership, requests to join, the
+    /// computers paired with each host and each host's note), so the Diagnostics page shows why computers do or don't see
+    /// each other.</summary>
+    private void LogNetworkPicture(NetworkLocalState state)
+    {
+        var me = NetworkIdentity.DeviceId(homeHosts);
+        var parts = new List<string>();
+        if (state.Roster is { } roster)
+            parts.Add($"{(Role == DeviceRole.Host ? "this host PC" : "this PC")} ({me}) is in network {roster.NetworkId} with " +
+                string.Join(", ", roster.ActiveDesktops.Select(d => d.Id == me ? $"{d.Name} (this PC)" : $"{d.Name} ({d.Id})")) +
+                "; hosts " + (roster.ActiveHosts.Any() ? string.Join(", ", roster.ActiveHosts.Select(h => h.Id)) : "none"));
+        else if (state.Waiting is { } waiting)
+            parts.Add($"this PC ({me}) waits to join network {waiting.NetworkId} through {waiting.HostId} (check number {waiting.CheckNumber}); " +
+                "a member computer must allow it");
+        else parts.Add(networkWatchOnly
+            ? $"this host PC ({me}) is in no network and only watches its hosts; the main PC's network takes them"
+            : $"this PC ({me}) is in no network");
+        if (networkJoins.Count > 0)
+            parts.Add("waiting to be allowed: " + string.Join(", ", networkJoins.Select(j => $"{j.DisplayName} ({j.DeviceId}, check number {j.CheckNumber}, through {j.HostId})")));
+        foreach (var (hostId, view) in networkViews.OrderBy(v => v.Key, StringComparer.Ordinal))
+            parts.Add($"{hostId} ({view.State}{(view.Bound ? " in " + view.Roster!.NetworkId : "")}) is paired with " + (view.Devices is not { } devices
+                ? "(not reported; it runs an older Martlet)"
+                : devices.Count == 0 ? "nobody"
+                : string.Join(", ", devices.Select(d => IsThisDevice(d.DeviceId) ? $"{d.DeviceId} (this PC)" : $"{d.DeviceId} ({d.DisplayName})"))));
+        var picture = string.Join("; ", parts) + ".";
+        if (picture != networkLogged)
+        {
+            networkLogged = picture;
+            ErrorLog.Info("Martlet network: " + picture);
+        }
+        foreach (var hostId in networkNotesLogged.Keys.Where(id => !networkNotes.ContainsKey(id)).ToArray()) networkNotesLogged.Remove(hostId);
+        foreach (var (hostId, note) in networkNotes)
+            if (networkNotesLogged.GetValueOrDefault(hostId) != note)
+            {
+                networkNotesLogged[hostId] = note;
+                ErrorLog.Info($"Martlet network: {hostId}: {note}");
+            }
+    }
+
     // ---------- presentation ----------
 
     private void RenderNetwork()
@@ -314,10 +434,34 @@ public partial class MainWindow
         NetworkJoinsPanel.Children.Clear();
         foreach (var join in networkJoins) NetworkJoinsPanel.Children.Add(JoinRow(join));
         NetworkMembersPanel.Children.Clear();
-        if (networkState.Roster is not { } roster) return;
-        var me = roster.Desktop(NetworkIdentity.DeviceId(homeHosts));
-        foreach (var member in roster.Members.Where(m => !m.Removed).OrderBy(m => m.IsHost).ThenBy(m => m.Id != me?.Id).ThenBy(m => m.Id, StringComparer.Ordinal))
-            NetworkMembersPanel.Children.Add(MemberRow(roster, member, member.IsDesktop && member.Id == me?.Id));
+        var roster = networkState.Roster;
+        if (roster is not null)
+        {
+            var me = roster.Desktop(NetworkIdentity.DeviceId(homeHosts));
+            foreach (var member in roster.Members.Where(m => !m.Removed).OrderBy(m => m.IsHost).ThenBy(m => m.Id != me?.Id).ThenBy(m => m.Id, StringComparer.Ordinal))
+                NetworkMembersPanel.Children.Add(MemberRow(roster, member, member.IsDesktop && member.Id == me?.Id));
+        }
+        // Computers that use one of these hosts but aren't (yet) in the network still show, so every PC sees who is connected.
+        foreach (var device in OutsideComputers(roster)) NetworkMembersPanel.Children.Add(PairedRow(device));
+    }
+
+    /// <summary>Each computer paired with one of this PC's hosts that is not a member of the network (or of any network, on a
+    /// host PC that only watches), not this PC and not already asking to join: its most recently active pairing.</summary>
+    private IEnumerable<HostPairedDevice> OutsideComputers(NetworkRoster? roster) => networkViews.Values
+        .SelectMany(v => v.Devices ?? [])
+        .Where(d => !IsThisDevice(d.DeviceId) && roster?.Desktop(d.DeviceId) is not { Removed: false } && networkJoins.All(j => j.DeviceId != d.DeviceId))
+        .GroupBy(d => d.DeviceId, StringComparer.Ordinal)
+        .Select(g => g.OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).First())
+        .OrderBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Where a member computer was last active, from its hosts' reports ("active now on diva-host"), or null.</summary>
+    private string? MemberActivity(string deviceId)
+    {
+        var seen = networkViews.Values.SelectMany(v => v.Devices ?? []).Where(d => d.DeviceId == deviceId)
+            .OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).FirstOrDefault();
+        if (seen is null) return null;
+        var text = Seen(seen.LastSeen, DateTimeOffset.UtcNow);
+        return $"{char.ToUpperInvariant(text[0])}{text[1..]} on {seen.HostId}.";
     }
 
     private string NetworkStatusLine()
@@ -339,6 +483,9 @@ public partial class MainWindow
             return "Not in a network yet. Add a computer: the first host you pair starts your Martlet network, and your other computers can join it.";
         if (networkState.RemovedFrom is not null)
             return "This PC was removed from its Martlet network. Pair a host of that network again to ask to join, or pair a new host to start a network.";
+        if (networkWatchOnly)
+            return "This host PC is in no Martlet network of its own: the network of the main PC that pairs with its host service takes it. " +
+                "Computers that use its hosts are listed below as its hosts report them" + (networkCheckedAt is { } seen ? $"; checked {seen:t}." : ".");
         return networkCheckedAt is null ? "Checking your hosts..."
             : "Not in a network: your hosts run an older Martlet or didn't answer. Update them (Update host) to share them with your other computers.";
 
@@ -381,7 +528,8 @@ public partial class MainWindow
         }
         string detail;
         if (member.IsDesktop)
-            detail = (thisPc ? "This PC" : "Computer") + (roster.Founder?.Id == member.Id ? ", started the network" : $", allowed on {member.UpdatedBy}") + ".";
+            detail = (thisPc ? "This PC" : "Computer") + (roster.Founder?.Id == member.Id ? ", started the network" : $", allowed on {member.UpdatedBy}") + "." +
+                (!thisPc && MemberActivity(member.Id) is { } activity ? " " + activity : "");
         else
         {
             var paired = FindHost(member.Id) is not null;
@@ -390,6 +538,20 @@ public partial class MainWindow
         }
         row.Children.Add(NetworkRowText($"NetworkMember-{member.Kind}-{member.Id}",
             member.IsDesktop && member.Name != member.Id ? $"{member.Name} ({member.Id})" : member.Name, detail));
+        return NetworkRowCard(row, warning: false);
+    }
+
+    /// <summary>A computer that uses one of this PC's hosts but is not in the network: it can use the hosts it paired with, but
+    /// isn't paired with the network's other hosts by itself.</summary>
+    private FrameworkElement PairedRow(HostPairedDevice device)
+    {
+        var row = NetworkRowFrame();
+        var hosts = networkViews.Values.Where(v => v.Devices?.Any(d => d.DeviceId == device.DeviceId) == true).Select(v => v.HostId).Order(StringComparer.Ordinal);
+        var detail = $"Uses {string.Join(", ", hosts)}; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " + (networkState.Roster is null
+            ? "It is paired with this PC's host service; this PC is in no Martlet network itself."
+            : "Not in your Martlet network, so it isn't paired with your other hosts by itself. It asks to join when it runs Martlet 0.18 or newer; allow it here then.");
+        row.Children.Add(NetworkRowText("NetworkPaired-" + device.DeviceId,
+            device.DisplayName != device.DeviceId ? $"{device.DisplayName} ({device.DeviceId})" : device.DeviceId, detail));
         return NetworkRowCard(row, warning: false);
     }
 

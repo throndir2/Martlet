@@ -69,6 +69,11 @@ and Qwen3-TTS (Apache-2.0) remain the permissive cloning targets above.
 Every candidate needs the same GPU host and VRAM as F5, so switching engines
 alone would not fix host/Docker/network failures; intermittent F5 silence after
 an interrupted reply was a host admission bug, fixed in the `f5` role service.
+A host runs one voice engine at a time (`exclusive=voice` in each engine's
+`role.conf`): switching engines there stops the previous one, keeping its
+downloads, so its model frees the GPU memory before the new engine loads. Two
+engines resident together could starve the new one (it then failed to load and
+stayed silent); a model that failed to load now loads again on the next reply.
 
 ## Guided experience
 

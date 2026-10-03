@@ -85,6 +85,7 @@ public partial class MainWindow : ThemedWindow
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
+        avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         if (setupService is not null)
         {
             var microphones = new WasapiCaptureDeviceFactory();
@@ -171,8 +172,15 @@ public partial class MainWindow : ThemedWindow
         ReadMachineAsync().Forget();
         await RefreshAsync();
         if (!closing) ContinueSetupAsync().Forget();
-        await ShowSavedCharacterAsync(onlyIfAutoShow: true);
-        if (background.StartCompanion && !closing) await StartCompanionAsync();
+        // A host lends its power to your companion PC: the character, listening and Parakeet stay off here, while their
+        // saved choices are kept for when this PC is your companion PC again.
+        if (Role == DeviceRole.Companion)
+        {
+            await ShowSavedCharacterAsync(onlyIfAutoShow: true);
+            if (background.StartCompanion && !closing) await StartCompanionAsync();
+        }
+        else ErrorLog.Info("Martlet started as a Martlet host: the character and listening stay off on this PC" +
+            (background.StartCompanion ? " (When Martlet starts, show the character and start listening is kept for when it's your companion PC)." : "."));
         StartCluster();
         StartNetwork();
         StartApiKeys();
@@ -181,7 +189,8 @@ public partial class MainWindow : ThemedWindow
         StartNodeAgent();
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
-        if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
+        if (Role == DeviceRole.Companion &&
+            homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
             parakeet?.WarmAsync().Forget();
         if (!closing) await StartUpdatesAsync();
     }
@@ -427,6 +436,27 @@ public partial class MainWindow : ThemedWindow
         ResetCharacterButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
         ResetCharacterZoomButton.Visibility = ResetCharacterButton.Visibility;
     }
+
+    /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
+    /// Martlet, talk, or open Companion › Character. The overlay handles its zoom, position and keep-on-top itself.</summary>
+    private void CharacterRequested(string action)
+    {
+        if (closing) return;
+        ErrorLog.Info($"The character's menu chose '{action}'.");
+        switch (action)
+        {
+            case "hide":
+                if (avatar.IsShowing) Character_Click(this, new RoutedEventArgs());
+                break;
+            case "open": ShowFromTray(); break;
+            case "talk": TrayTalk(); break;
+            case "settings":
+                ShowFromTray();
+                // Another Martlet window waiting for an answer keeps the focus, as from the notification area.
+                if (IsWindowEnabled(WindowHandle)) OpenCompanion(CompanionTab.Character);
+                break;
+        }
+    }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
     private async void ResetCharacterZoom_Click(object sender, RoutedEventArgs e) => await ResetCharacterZoomAsync();
     private Task ResetCharacterZoomAsync() => ZoomCharacterAsync("reset");
@@ -484,6 +514,12 @@ public partial class MainWindow : ThemedWindow
     private async Task ShowSavedCharacterAsync(bool onlyIfAutoShow)
     {
         if (store is null || setupService is null || closing || avatar.IsShowing) return;
+        if (Role == DeviceRole.Host)
+        {
+            if (!onlyIfAutoShow) ActionText.Text = HostHasNoCompanionText;
+            UpdateCharacterButton();
+            return;
+        }
         try
         {
             var loaded = await setupService.LoadAsync(lifetime.Token);
@@ -508,6 +544,11 @@ public partial class MainWindow : ThemedWindow
     private void OpenAvatar(Window owner)
     {
         if (store is null || setupService is null || closing) return;
+        if (Role == DeviceRole.Host)
+        {
+            ActionText.Text = HostHasNoCompanionText;
+            return;
+        }
         new AvatarWindow(avatar, new AvatarProfileStore(store.DataDirectory), setupService, setupOperations, captions)
             { Owner = owner }.ShowDialog();
         UpdateCharacterButton();

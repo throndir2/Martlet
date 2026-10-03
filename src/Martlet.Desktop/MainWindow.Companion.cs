@@ -725,9 +725,12 @@ public partial class MainWindow
             return steps;
         }
         var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(job.HostRoleKind);
-        steps.Add(Note(inUse ? $"In use: {job.Engine} on this PC{(route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
+        var others = job.Role == SetupRole.Tts && !inUse
+            ? HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers, job.HostRoleKind) : [];
+        steps.Add(Note((inUse ? $"In use: {job.Engine} on this PC{(route!.Reference is { } voice ? $", voice {voice.PresetName}" : "")}."
             : model is not null ? $"{job.Engine} is ready on this PC."
-            : $"{job.Engine} isn't ready on this PC yet. Martlet installs it when you choose Use.",
+            : $"{job.Engine} isn't ready on this PC yet. Martlet installs it when you choose Use.") +
+            (others.Count > 0 ? $" Using it stops {HostRoles.Names(others.Select(o => o.Kind))} here to free the graphics card's memory." : ""),
             new Thickness(0, 0, 0, 8)));
         steps.Add(Row(
             inUse ? null : PageButton($"Use {SpeakingEngineChoice.Current.Name} on this PC", () => UseF5HereAsync().Forget(), primary: primary, id: "SetupUseLocal-" + job.Job),
