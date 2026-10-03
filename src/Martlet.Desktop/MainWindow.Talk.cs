@@ -82,7 +82,7 @@ public partial class MainWindow
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
             children.Add(Note("Martlet keeps listening while it speaks; talking over it stops the reply at once and answers what you say. " +
-                "Use headphones, or Martlet hears itself through your speakers and stops.", new Thickness(0, 0, 0, 0)));
+                "Use headphones: through speakers Martlet can hear itself and stop. Turn this off if it does.", new Thickness(0, 0, 0, 0)));
         }
 
         var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };
@@ -108,6 +108,26 @@ public partial class MainWindow
         if (voiceIdentity.DataDirectory is null) { ActionText.Text = "Voice ID needs Martlet's data folder."; return; }
         new VoiceIdWindow(voiceIdentity, setupOperations, audioSessionEvents, homeSettings?.Audio?.Input) { Owner = this }.ShowDialog();
         RenderTab();
+    }
+
+    // ---------- Listening: let Thinking hear your voice ----------
+
+    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said with the
+    /// transcript. Off by default; ticking it is the consent, and the text under it says what is sent and where.</summary>
+    private Border HearVoiceCard()
+    {
+        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var hears = LiveConversationConfiguration.Hearing(thinking) == HearingSupport.Supported;
+        var hear = new CheckBox { Content = "Let Thinking hear my voice", IsChecked = Talk.HearVoice, Margin = new Thickness(0, 0, 0, 6),
+            IsEnabled = Talk.HearVoice || hears };
+        AutomationProperties.SetAutomationId(hear, "TalkHearVoice");
+        hear.Checked += (_, _) => { if (!Talk.HearVoice) SaveTalk(Talk with { HearVoice = true }, render: true); };
+        hear.Unchecked += (_, _) => { if (Talk.HearVoice) SaveTalk(Talk with { HearVoice = false }, render: true); };
+        var advice = LiveConversationConfiguration.HearingAdvice(thinking);
+        var status = hears || !Talk.HearVoice ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
+        AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
+        return Card(Heading("Hear how you say it"), hear, status,
+            Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0)));
     }
 
     // ---------- Voice: speak replies ----------

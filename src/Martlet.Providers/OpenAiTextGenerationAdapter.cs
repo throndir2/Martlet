@@ -270,8 +270,12 @@ internal sealed class TextGenerationOperation(
             return Fail(ProviderFailureCode.ModelUnsupported);
         var binding = new ProviderCredentialBinding(chatBaseUri ?? OpenAiTransport.Origin, ProviderRole.Llm, model.UpstreamModelId);
         if (authorization is null || !authorization.AllowTextDisclosure || !authorization.AllowPotentialCharges ||
-            input.Image is not null && !authorization.AllowImageDisclosure)
+            input.Image is not null && !authorization.AllowImageDisclosure ||
+            input.Audio is not null && !authorization.AllowAudioDisclosure)
             return Fail(ProviderFailureCode.ConsentMissing);
+        // The Responses route's models take no audio; the caller asks again with the transcript only.
+        if (chatBaseUri is null && input.Audio is not null)
+            return Fail(ProviderFailureCode.RequestRejected);
         if (authorization.Binding is null || (chatBaseUri is null
             ? !OpenAiTransport.IsApprovedOrigin(authorization.Binding.Origin)
             : !MatchesChatBase(authorization.Binding.Origin)))
@@ -486,9 +490,9 @@ internal sealed class TextGenerationOperation(
             if (input.Personality is not null) WriteMessage(writer, "system", input.Personality);
             foreach (var message in input.History)
                 WriteMessage(writer, message.Role == TextHistoryRole.User ? "user" : "assistant", message.Text);
-            if (input.Image is { } image)
+            if (input.Image is not null || input.Audio is not null)
             {
-                // OpenAI-compatible multimodal message; servers without vision reject it (surfaced as RequestRejected).
+                // OpenAI-compatible multimodal message; servers without vision or hearing reject it (surfaced as RequestRejected).
                 writer.WriteStartObject();
                 writer.WriteString("role", "user");
                 writer.WriteStartArray("content");
@@ -496,12 +500,25 @@ internal sealed class TextGenerationOperation(
                 writer.WriteString("type", "text");
                 writer.WriteString("text", input.UserText);
                 writer.WriteEndObject();
-                writer.WriteStartObject();
-                writer.WriteString("type", "image_url");
-                writer.WriteStartObject("image_url");
-                writer.WriteString("url", image.ToDataUrl());
-                writer.WriteEndObject();
-                writer.WriteEndObject();
+                if (input.Image is { } image)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "image_url");
+                    writer.WriteStartObject("image_url");
+                    writer.WriteString("url", image.ToDataUrl());
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+                if (input.Audio is { } audio)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", "input_audio");
+                    writer.WriteStartObject("input_audio");
+                    writer.WriteString("data", audio.ToBase64());
+                    writer.WriteString("format", "wav");
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }

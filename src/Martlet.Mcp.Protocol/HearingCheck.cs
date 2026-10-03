@@ -1,0 +1,243 @@
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using Martlet.Core.Audio;
+using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
+using Martlet.Providers;
+
+namespace Martlet.Mcp;
+
+/// <summary>hearing_check: whether the Thinking model (the saved one, or modelId) can hear the user's recording, whether
+/// Companion › Listening › Let Thinking hear my voice is on, and a rehearsal of the production Chat Completions adapter against
+/// a fixture endpoint on 127.0.0.1 (canned reply, NOT AI): a synthesized speech-like clip (never microphone audio, nothing
+/// played) goes out as an input_audio WAV part beside the transcript, is refused without its own audio permission before any
+/// request is sent, and is left out of a transcript-only retry. Nothing leaves loopback.</summary>
+internal static class HearingCheck
+{
+    private const string LocalOllama = "http://127.0.0.1:11434/v1";
+
+    internal static async Task<object> RunAsync(string? modelId, string dataDirectory, CancellationToken cancellation)
+    {
+        if (modelId is not null)
+        {
+            try { ChatCompletionsSetup.ModelId(modelId); }
+            catch (ContractException error) { throw new ArgumentException(error.Message); }
+        }
+        var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
+        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var model = modelId ?? thinking?.ModelId ?? "gemini-2.5-flash";
+        var modelHearing = HearingModelCatalog.Classify(model);
+        // Only Chat Completions endpoints take audio; OpenAI's Responses route and Ollama (a host's or this PC's) don't.
+        var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
+            : thinking.RouteType != SetupRouteType.ChatCompletions || thinking.Origin == LocalOllama ? HearingSupport.Unsupported
+            : modelHearing;
+        return new
+        {
+            model,
+            source = modelId is not null ? "argument" : thinking is not null ? "settings" : "default",
+            settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
+            routeType = modelId is null ? thinking?.RouteType?.ToString() : null,
+            modelHearing = modelHearing.ToString(),
+            routeHearing = routeHearing?.ToString(),
+            hearVoice = HearVoice(dataDirectory),
+            fixture = await FixtureAsync(model, cancellation)
+        };
+    }
+
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearVoice is off unless saved on.
+    private static bool HearVoice(string directory)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
+            return document.RootElement.TryGetProperty("HearVoice", out var value) && value.ValueKind == JsonValueKind.True;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return false; }
+    }
+
+    private static async Task<object> FixtureAsync(string model, CancellationToken cancellation)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var baseUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/v1";
+        var requests = new List<byte[]>();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        var serving = ServeAsync(listener, requests, stop.Token);
+        try
+        {
+            using var adapter = ChatCompletionsTextGenerationAdapter.Create(baseUrl);
+            var clip = Clip();
+            var input = new BoundedTextInput("What did I just say, and how did I sound?", "Fixture check.", audio: clip);
+            var heard = await AskAsync(adapter, baseUrl, model, input, true, cancellation);
+            var sent = Count(requests);
+            var refused = await AskAsync(adapter, baseUrl, model, input, false, cancellation);
+            var sentWithoutConsent = Count(requests) - sent;
+            var transcript = await AskAsync(adapter, baseUrl, model, input.WithoutAudio(), false, cancellation);
+            byte[][] bodies;
+            lock (requests) bodies = [.. requests];
+            var withRecording = bodies.Length > 0 ? Describe(bodies[0]) : null;
+            var transcriptOnly = bodies.Length > 1 ? Describe(bodies[^1]) : null;
+            var ok = heard.Outcome == "Completed" && withRecording is { HasText: true, HasAudio: true, WavValid: true } &&
+                refused.Failure == "ConsentMissing" && sentWithoutConsent == 0 &&
+                transcript.Outcome == "Completed" && transcriptOnly is { HasAudio: false, PlainText: true };
+            return new
+            {
+                ok,
+                endpoint = baseUrl,
+                clipSeconds = Math.Round(clip.Duration.TotalSeconds, 2),
+                withRecording = new
+                {
+                    heard.Outcome, heard.Failure, heard.Reply, contentParts = withRecording?.Parts, audioFormat = withRecording?.Format,
+                    wavValid = withRecording?.WavValid, audioSeconds = withRecording?.Seconds, audioBytes = withRecording?.Bytes,
+                    transcriptIncluded = withRecording?.HasText
+                },
+                withoutAudioPermission = new { refused.Outcome, refused.Failure, requestsSent = sentWithoutConsent },
+                transcriptOnly = new { transcript.Outcome, transcript.Failure, plainText = transcriptOnly?.PlainText, audio = transcriptOnly?.HasAudio },
+                requests = bodies.Length
+            };
+        }
+        finally
+        {
+            stop.Cancel();
+            listener.Stop();
+            try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
+        }
+    }
+
+    private static int Count(List<byte[]> requests) { lock (requests) return requests.Count; }
+
+    private sealed record Asked(string? Outcome, string? Failure, string Reply);
+
+    private static async Task<Asked> AskAsync(ChatCompletionsTextGenerationAdapter adapter, string baseUrl, string model,
+        BoundedTextInput input, bool allowAudio, CancellationToken cancellation)
+    {
+        var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        var limits = new TextGenerationLimits();
+        var selection = new TextModelSelection(ChatCompletionsSetup.Alias, model);
+        var authorization = new TextDisclosureAuthorization(new(ChatCompletionsSetup.BaseUri(baseUrl), ProviderRole.Llm, model),
+            selection, ids, 1, limits, deadline, true, true, allowAudioDisclosure: allowAudio);
+        var stream = adapter.Stream(new() { Ids = ids, Epoch = 1, Deadline = deadline }, selection, input, limits, authorization, cancellation);
+        var reply = new StringBuilder();
+        await foreach (var item in stream.WithCancellation(cancellation))
+            if (item.Kind == ProviderEventKind.TextDelta) reply.Append(item.Text);
+        return new(stream.Result?.Outcome.ToString(), stream.Result?.Failure?.Code.ToString(), reply.ToString());
+    }
+
+    private sealed record Sent(string[] Parts, bool HasText, bool HasAudio, bool PlainText, string? Format, bool WavValid,
+        double? Seconds, int? Bytes);
+
+    // The user message of a captured request: its content parts and the attached WAV's header.
+    private static Sent Describe(byte[] body)
+    {
+        using var document = JsonDocument.Parse(body);
+        var messages = document.RootElement.GetProperty("messages");
+        var content = messages[messages.GetArrayLength() - 1].GetProperty("content");
+        if (content.ValueKind == JsonValueKind.String) return new(["text"], true, false, true, null, false, null, null);
+        var parts = content.EnumerateArray().Select(p => p.GetProperty("type").GetString() ?? "").ToArray();
+        string? format = null;
+        byte[]? wave = null;
+        foreach (var part in content.EnumerateArray())
+            if (part.GetProperty("type").GetString() == "input_audio")
+            {
+                var audio = part.GetProperty("input_audio");
+                format = audio.GetProperty("format").GetString();
+                wave = Convert.FromBase64String(audio.GetProperty("data").GetString() ?? "");
+            }
+        var valid = wave is { Length: > 44 } && wave.AsSpan(0, 4).SequenceEqual("RIFF"u8) && wave.AsSpan(8, 4).SequenceEqual("WAVE"u8);
+        double? seconds = valid ? Math.Round((wave!.Length - 44) / (2.0 * BitConverter.ToInt32(wave, 24)), 2) : null;
+        return new(parts, parts.Contains("text"), wave is not null, false, format, valid, seconds, wave?.Length);
+    }
+
+    // A minimal HTTP/1.1 endpoint: records each request body and streams one canned Chat Completions reply.
+    private static async Task ServeAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
+    {
+        while (!cancellation.IsCancellationRequested)
+        {
+            using var client = await listener.AcceptTcpClientAsync(cancellation);
+            await using var stream = client.GetStream();
+            var body = await ReadRequestAsync(stream, cancellation);
+            lock (requests) requests.Add(body);
+            const string chunk = "{\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,";
+            var events = "data: " + chunk + "\"delta\":{\"role\":\"assistant\",\"content\":\"Fixture reply (not AI).\"},\"finish_reason\":null}]}\n\n" +
+                "data: " + chunk + "\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+            var payload = Encoding.UTF8.GetBytes(events);
+            var head = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n" +
+                $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
+            await stream.WriteAsync(head, cancellation);
+            await stream.WriteAsync(payload, cancellation);
+            await stream.FlushAsync(cancellation);
+        }
+    }
+
+    private static async Task<byte[]> ReadRequestAsync(NetworkStream stream, CancellationToken cancellation)
+    {
+        var buffer = new MemoryStream();
+        var one = new byte[8192];
+        int headerEnd;
+        while ((headerEnd = IndexOf(buffer.GetBuffer().AsSpan(0, (int)buffer.Length), "\r\n\r\n"u8)) < 0)
+        {
+            var read = await stream.ReadAsync(one, cancellation);
+            if (read == 0) throw new IOException("The request ended early.");
+            buffer.Write(one, 0, read);
+        }
+        var headers = Encoding.ASCII.GetString(buffer.GetBuffer(), 0, headerEnd).Split("\r\n");
+        var length = headers.Select(h => h.Split(':', 2)).Where(h => h.Length == 2 &&
+            h[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)).Select(h => int.Parse(h[1].Trim())).FirstOrDefault(-1);
+        var chunked = headers.Any(h => h.StartsWith("Transfer-Encoding:", StringComparison.OrdinalIgnoreCase) && h.Contains("chunked"));
+        var rest = new MemoryStream();
+        rest.Write(buffer.GetBuffer(), headerEnd + 4, (int)buffer.Length - headerEnd - 4);
+        async Task<bool> More()
+        {
+            var read = await stream.ReadAsync(one, cancellation);
+            if (read == 0) return false;
+            rest.Write(one, 0, read);
+            return true;
+        }
+        if (!chunked)
+        {
+            while (rest.Length < length) if (!await More()) break;
+            return rest.ToArray()[..Math.Max(0, Math.Min((int)rest.Length, length))];
+        }
+        // Chunked: size lines and data until the zero-size chunk.
+        var body = new MemoryStream();
+        var at = 0;
+        while (true)
+        {
+            int line;
+            while ((line = IndexOf(rest.GetBuffer().AsSpan(at, (int)rest.Length - at), "\r\n"u8)) < 0) if (!await More()) return body.ToArray();
+            var size = Convert.ToInt32(Encoding.ASCII.GetString(rest.GetBuffer(), at, line).Split(';')[0].Trim(), 16);
+            at += line + 2;
+            if (size == 0) return body.ToArray();
+            while (rest.Length - at < size + 2) if (!await More()) return body.ToArray();
+            body.Write(rest.GetBuffer(), at, size);
+            at += size + 2;
+        }
+    }
+
+    private static int IndexOf(ReadOnlySpan<byte> data, ReadOnlySpan<byte> value) => data.IndexOf(value);
+
+    // 1.5 seconds of a 16 kHz speech-like signal: a 140 Hz pulse train shaped by vowel formants, three "syllables".
+    private static BoundedWaveAudio Clip()
+    {
+        const int rate = 16_000;
+        double[][] vowels = [[730, 1090, 2440], [270, 2290, 3010], [570, 840, 2410]];
+        var pcm = new byte[rate * 3 / 2 * 2];
+        for (var i = 0; i < pcm.Length / 2; i++)
+        {
+            var t = (double)i / rate;
+            var syllable = (int)(t * 2);
+            var phase = t * 2 - syllable;
+            var envelope = phase < 0.8 ? Math.Sin(Math.PI * phase / 0.8) : 0;
+            var vowel = vowels[syllable % vowels.Length];
+            double value = 0;
+            for (var harmonic = 1; harmonic * 140 < 4000; harmonic++)
+                value += vowel.Sum(f => 1 / (1 + Math.Pow((harmonic * 140.0 - f) / 90, 2))) / harmonic * Math.Sin(2 * Math.PI * harmonic * 140 * t);
+            BitConverter.TryWriteBytes(pcm.AsSpan(i * 2), (short)Math.Clamp(value * envelope * 6000, short.MinValue, short.MaxValue));
+        }
+        return BoundedWaveAudio.FromPcm(new PcmFormat { SampleRate = rate, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian }, pcm);
+    }
+}

@@ -95,7 +95,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private readonly List<HeardEntry> heardQueue = [];
     private List<HeardEntry>? answering;
     private int restarts;
-    private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble);
+    private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
+        BoundedWaveAudio? Recording = null);
     // Typed text waits here while an idle listen or a screen remark hands the app slot over.
     private string? pendingText;
     private ChatMessage? pendingMessage;
@@ -282,7 +283,7 @@ public partial class LiveConversationWindow : ThemedWindow
         preferences = next;
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
-            before.VoiceId != next.VoiceId || before.BargeIn != next.BargeIn)
+            before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -455,7 +456,7 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId, preferences.BargeIn);
+        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn);
 
     // ---------- always listening ----------
 
@@ -546,7 +547,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
             ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
-        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble));
+        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null));
         lastHeard = clock.GetTimestamp();
         notice = null;
         pacer?.NoteConversation();
@@ -628,8 +629,13 @@ public partial class LiveConversationWindow : ThemedWindow
         heardQueue.Clear();
         try
         {
+            // Every utterance's recording together, or none when one is missing or they run too long: never half of what was said.
+            var recordings = batch.Select(entry => entry.Recording).ToArray();
+            var recording = preferences.HearVoice && recordings.All(r => r is not null)
+                ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap,
+                    TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
             owned = controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
-                spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence));
+                spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording);
             answering = batch;
             yielded = null;
             Observe();
@@ -647,6 +653,8 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     private const int MaximumMessage = 4096;
+    // Silence between utterances answered together, when their recordings go to a Thinking model that hears.
+    private static readonly TimeSpan HeardGap = TimeSpan.FromMilliseconds(300);
     private static readonly HashSet<string> Continuations = new(StringComparer.OrdinalIgnoreCase)
     {
         "and", "but", "or", "so", "because", "cause", "um", "uh", "er", "erm", "like", "the", "a", "an", "to", "of", "with",
@@ -693,6 +701,12 @@ public partial class LiveConversationWindow : ThemedWindow
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
                 else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the beginning was spoken.");
             }
+        }
+        // Whether Thinking got the recording of what you said with the transcript (Companion › Listening).
+        if (!continued && done.VoiceSent && (done.Spoken ? answering?[^1].Bubble : ReferenceEquals(shown, done) ? heard : null) is { } said)
+        {
+            if (done.Turn?.Snapshot.AudioRejected == true) said.AddNote("Thinking couldn't take your recording, so it got the transcript.");
+            else if (done.Turn?.Snapshot.State == ConversationState.Completed) said.AddNote("Thinking heard your voice.");
         }
         if (done.Spoken && !continued)
         {

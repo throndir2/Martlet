@@ -15,5 +15,7 @@
     <!-- network_status reads the desktop's network.json (NetworkLocalState). network_selftest runs Martlet.NodeLinkCheck, like
          node_link_check, so this server needs no ASP.NET Core runtime. -->
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
+    <!-- hearing_check rehearses the production Chat Completions adapter against a loopback fixture. -->
+    <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
   </ItemGroup>
 </Project>
