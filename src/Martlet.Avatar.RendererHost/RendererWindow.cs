@@ -37,11 +37,10 @@ internal sealed class RendererWindow : Window
         AllowsTransparency = true, Placement = PlacementMode.Absolute, Focusable = false, IsHitTestVisible = false,
         PopupAnimation = PopupAnimation.Fade
     };
-    private readonly TextBlock speechText = new()
-    {
-        TextWrapping = TextWrapping.Wrap, MaxWidth = 280, FontSize = 15, LineHeight = 21,
-        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"), TextAlignment = TextAlignment.Left
-    };
+    private readonly TextBlock speechText = SpeechText();
+    // Sizes the bubble. The shown text can't: while the bubble is hidden its closed popup suspends layout, so measuring the
+    // shown text then returns its old size (an empty bubble) and the next speech would overflow a tiny bubble.
+    private readonly TextBlock speechMeasure = SpeechText();
     private readonly System.Windows.Shapes.Path speechShape = new() { StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round };
     private readonly Canvas speechCanvas = new();
     private readonly ScaleTransform speechPop = new(1, 1);
@@ -386,7 +385,15 @@ internal sealed class RendererWindow : Window
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
-        BubbleMargin = 18, ScreenMargin = 6;
+        BubbleMargin = 18, ScreenMargin = 6, SpeechWidth = 280, WidestSpeech = 640, SpeechWidthStep = 60;
+    // Beyond the longest sentence Martlet speaks at once (1,536 UTF-8 bytes); only bounds an arbitrary request.
+    private const int MaximumSpeechCharacters = 2000;
+
+    private static TextBlock SpeechText() => new()
+    {
+        TextWrapping = TextWrapping.Wrap, MaxWidth = SpeechWidth, FontSize = 15, LineHeight = 21,
+        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"), TextAlignment = TextAlignment.Left
+    };
 
     // One continuous outline (rounded body unioned with a curved, tapering tail) with a soft shadow, so the bubble reads as
     // a single comic-style shape rather than a box with a triangle stuck on.
@@ -420,7 +427,7 @@ internal sealed class RendererWindow : Window
             speechText.Text = "";
             return speechShown = new("hidden", 0, 0, 0, 0);
         }
-        speechText.Text = say.Text.Length > 600 ? say.Text[..600] + "…" : say.Text;
+        speechText.Text = say.Text.Length > MaximumSpeechCharacters ? say.Text[..MaximumSpeechCharacters] + "…" : say.Text;
         PlaceSpeech();
         speechBubble.IsOpen = true;
         if (SystemParameters.ClientAreaAnimation)
@@ -435,7 +442,13 @@ internal sealed class RendererWindow : Window
             speechPop.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
             speechPop.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
         }
-        return speechShown;
+        // Lay the open bubble out now so the reply says whether the text as shown really lies inside the bubble's body.
+        speechCanvas.UpdateLayout();
+        return speechShown = speechShown with
+        {
+            TextFits = speechText.ActualWidth <= speechShown.Width - BubblePadX * 2 + 1 &&
+                speechText.ActualHeight <= speechShown.Height - BubblePadY * 2 + 1
+        };
     }
 
     // By default the bubble follows the character's head through moves, zoom and pan: beside the head on whichever side has
@@ -444,11 +457,9 @@ internal sealed class RendererWindow : Window
     private void PlaceSpeech()
     {
         if (speechText.Text.Length == 0) return;
-        speechText.Measure(new Size(speechText.MaxWidth, double.PositiveInfinity));
-        var width = Math.Max(48, Math.Ceiling(speechText.DesiredSize.Width) + BubblePadX * 2);
-        var height = Math.Ceiling(speechText.DesiredSize.Height) + BubblePadY * 2;
         var screen = WorkArea() ?? SystemParameters.WorkArea;
         screen.Inflate(-ScreenMargin, -ScreenMargin);
+        var (width, height) = MeasureSpeech(screen);
 
         // The head in screen coordinates, followed through the camera: screen clip = fitted clip * zoom + pan.
         var top = double.IsFinite(contentTop) ? contentTop : 0.6;
@@ -517,6 +528,24 @@ internal sealed class RendererWindow : Window
             speechBubble.HorizontalOffset += 0.01;
             speechBubble.HorizontalOffset -= 0.01;
         }
+    }
+
+    // The bubble's body size for the shown text, measured on a stand-in that is never inside the (closable) popup. It keeps a
+    // comfortable reading width, widening only as far as a long speech needs to stay within half the screen's height.
+    private (double Width, double Height) MeasureSpeech(Rect screen)
+    {
+        speechMeasure.Text = speechText.Text;
+        var widest = Math.Max(SpeechWidth, Math.Min(WidestSpeech, screen.Width - BubblePadX * 2 - TailLength));
+        var tallest = Math.Max(screen.Height / 2 - BubblePadY * 2, speechMeasure.LineHeight);
+        for (var wrap = SpeechWidth; ; wrap = Math.Min(widest, wrap + SpeechWidthStep))
+        {
+            speechMeasure.MaxWidth = wrap;
+            speechMeasure.Measure(new Size(wrap, double.PositiveInfinity));
+            if (speechMeasure.DesiredSize.Height <= tallest || wrap >= widest) break;
+        }
+        speechText.MaxWidth = speechMeasure.MaxWidth;
+        return (Math.Max(48, Math.Ceiling(speechMeasure.DesiredSize.Width) + BubblePadX * 2),
+            Math.Ceiling(speechMeasure.DesiredSize.Height) + BubblePadY * 2);
     }
 
     private static double Overflow(Rect body, Rect screen) =>
