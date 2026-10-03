@@ -221,6 +221,10 @@ internal sealed class HostInputDialog : ThemedWindow
     {
         var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
+            (inputs.Stops.Count > 0
+                ? $"\n\nOnly one voice engine runs on a computer, so installing it stops {HostRoles.Names(inputs.Stops)} on {host} first " +
+                  "and frees the graphics card's memory it used. Downloads are kept, so adding one again is quick."
+                : "") +
             (local
                 ? "\n\nMartlet installs it on this PC's host. Secrets stay on this PC."
                 : agent

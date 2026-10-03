@@ -751,6 +751,26 @@ size, its distance from the top of the screen, the camera zoom and where the
 top of the character's head sits relative to the overlay's top edge (it must
 stay in view at every zoom).
 
+The character overlay itself is drawn by Martlet's renderer child process
+(`Martlet.Avatar.RendererHost`); `ui_snapshot` includes its windows (the
+overlay is titled *Martlet character overlay*; another Martlet's renderer is
+never included). Its drag surface `MoveAvatar` supports UI Automation
+expand/collapse, so `ui_click` on it opens (or closes again) the character's
+right-click menu with no flag; opened this way, the menu stays open until a
+choice or another `MoveAvatar` click. While it is open, snapshots list
+`CharacterMenu` and its items: `CharacterTalk` (*Talk to Martlet*, like
+`TrayTalk`), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
+`TrayOpen`, also from the notification area) and `CharacterSettings`
+(*Character settings*, opens Companion › Character), which are passive clicks;
+then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
+the default zoom), `CharacterResetPosition`, the checkable `CharacterOnTop`
+(*Keep on top*, on by default; its `checkedState` is the current choice for
+this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
+the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
+carried out by Martlet itself, so the desktop log records *The character's menu
+chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
+by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
 (off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
@@ -802,7 +822,12 @@ says where it speaks and its model licence and `SpeakingEngineTags` lists the
 engine's sound and tone tags (or says it reads words only). Choosing
 another engine with `ui_select` needs `--allow-ui-effects`: when a computer
 speaks it hands Speaking to that engine there (installing its role after a
-confirmation). `f5_voices` returns the same choice as `chosenEngine`.
+confirmation) and stops the engine it replaces on that computer, since a host
+runs one voice engine at a time. `SpeakingEngineOthers` (shown only then) names
+voice engines the speaking computer still runs besides the one that speaks,
+for example a host set up before that rule; `SpeakingEngineRelease` stops them
+after a confirmation (`martlet-host remove`, downloads kept) and needs
+`--allow-ui-effects`. `f5_voices` returns the same choice as `chosenEngine`.
 
 On Companion › Tools (`CompanionTab-Tools`), each server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
@@ -867,6 +892,9 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
 required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+Adding a voice engine to a host that runs another one says in the dialog's
+message that installing it stops that engine there (`martlet-host describe`
+reports it as `role.stops`).
 
 On Thinking, Voice, Listening and Lip-sync, each "Where it runs" option
 (`Place-<page>-<place>`, for example `Place-Voice-Computer` or
@@ -955,7 +983,8 @@ after … ms, first audio after … ms* line to the desktop log, which `logs_tai
 returns.
 
 Window discovery uses visible top-level native handles filtered to the attached
-process, then verifies ownership around each UI Automation handle lookup.
+process (and its own character renderer child process), then verifies ownership
+around each UI Automation handle lookup.
 This avoids transient omissions from UI Automation's desktop-root enumeration
 when unrelated WPF windows close. The Martlet main-window automation ID is
 still required on every operation, unless the window is hidden in the
@@ -981,7 +1010,9 @@ talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
 talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
-current choice) and `TrayExit`. `TrayOpen`, `TrayTalk` (like
+current choice) and `TrayExit`. On a Martlet host (Settings › *Use as a Martlet
+host*) the menu has no `TrayTalk`, `TrayStartListening` or `TrayCharacter`: a
+host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
 `OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
 (like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
 choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
@@ -996,7 +1027,17 @@ directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
 desktop log records *Martlet started with the character and listening.*) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
-when Windows' own Startup apps switch turned it off). A second start with the
+when Windows' own Startup apps switch turned it off). On a Martlet host
+`StartCompanion` is disabled but keeps its saved state, `BackgroundStatus` says
+the character and listening don't start there, and the log records *Martlet
+started as a Martlet host: the character and listening stay off on this PC*
+instead (the character's *Show at startup* and Parakeet's warm-up are skipped
+too). Choosing `UseAsHost` (Settings › *What this PC is for*; it saves
+`device-role.txt`, so it needs `--allow-ui-effects`) ends a running
+conversation and hides the character, logging *This PC became a Martlet host,
+so Martlet ended the conversation...*; `UseAsCompanion` changes no saved
+companion choice, so they apply again from the next start. `DeviceRoleSummary`
+(*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text. A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only
 exits); a different `--data-directory` runs beside it, so disposable
 verification desktops never reach your own Martlet. `-DesktopArguments '--tray'`

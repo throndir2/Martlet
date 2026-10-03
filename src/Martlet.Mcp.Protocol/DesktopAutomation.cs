@@ -31,6 +31,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // like OpenLiveConversation, Pause Martlet only stops work and End the conversation closes the talk window like CloseLive.
         // Start listening, Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
         "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
+        // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
+        // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
+        // or page, like TrayTalk and TrayOpen. Its zoom, position, Keep on top and Hide character items need --allow-ui-effects.
+        "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
@@ -70,8 +74,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS or Dia) and where it speaks with its
-        // model licence. Choosing another engine (ui_select SpeakingEngine) may install a host role, so it needs --allow-ui-effects.
-        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags",
+        // model licence, and the engines the speaking computer still runs besides it (SpeakingEngineOthers). Choosing another engine
+        // (ui_select SpeakingEngine) may install a host role and stops the one it replaces, and SpeakingEngineRelease stops the others,
+        // so both need --allow-ui-effects.
+        "SpeakingEngine", "SpeakingEngineStatus", "SpeakingEngineTags", "SpeakingEngineOthers",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
@@ -102,6 +108,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching).
         "BackgroundStatus", "TrayStatus",
+        // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
+        "DeviceRoleSummary", "DeviceRoleText",
         // The host dashboard's status under its icon ("Host is running", "Waiting for Docker Desktop", "Not set up yet", ...), its
         // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked).
@@ -424,17 +432,69 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static AutomationElement[] Windows(int pid)
     {
         // UIA's desktop-root traversal can omit live windows while unrelated WPF
-        // windows are closing. Discover HWNDs first, then query only this process.
-        var handles = new List<nint>();
+        // windows are closing. Discover HWNDs first, then query only this process
+        // and its own character renderer (the overlay, its menu and speech bubble).
+        var owners = RendererProcesses(pid).Append(pid).ToHashSet();
+        var handles = new List<(nint Handle, int Owner)>();
         if (!EnumWindows((handle, _) =>
             {
                 GetWindowThreadProcessId(handle, out var owner);
-                if (owner == pid && IsWindowVisible(handle)) handles.Add(handle);
+                if (owners.Contains((int)owner) && IsWindowVisible(handle)) handles.Add((handle, (int)owner));
                 return true;
             }, 0))
             throw new Win32Exception(Marshal.GetLastWin32Error());
-        return handles.Select(handle => WindowForProcess(pid, handle)).ToArray();
+        return handles.Select(window => WindowForProcess(window.Owner, window.Handle)).ToArray();
     }
+
+    private const string RendererExecutable = "Martlet.Avatar.RendererHost.exe";
+
+    /// <summary>The attached desktop's character renderers: its Martlet.Avatar.RendererHost child processes. Another
+    /// Martlet's renderer (your own profile's) is never included.</summary>
+    private static int[] RendererProcesses(int pid)
+    {
+        var children = new List<int>();
+        var snapshot = CreateToolhelp32Snapshot(0x2, 0);
+        if (snapshot == -1) return [];
+        try
+        {
+            var entry = new ProcessEntry { Size = Marshal.SizeOf<ProcessEntry>() };
+            for (var more = Process32FirstW(snapshot, ref entry); more; more = Process32NextW(snapshot, ref entry))
+                if (entry.ParentProcessId == pid && string.Equals(entry.ExeFile, RendererExecutable, StringComparison.OrdinalIgnoreCase))
+                    children.Add((int)entry.ProcessId);
+        }
+        finally { CloseHandle(snapshot); }
+        if (children.Count == 0) return [];
+        // A parent's process ID can be reused; its real children started after it.
+        static DateTime? Started(int id)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(id);
+                return process.StartTime;
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or Win32Exception) { return null; }
+        }
+        return Started(pid) is { } parent ? children.Where(id => Started(id) >= parent).ToArray() : [];
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry
+    {
+        public int Size, Usage;
+        public uint ProcessId;
+        public nint DefaultHeapId;
+        public int ModuleId, Threads;
+        public uint ParentProcessId;
+        public int PriorityBase, Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string ExeFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern nint CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32FirstW(nint snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32NextW(nint snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CloseHandle(nint handle);
 
     internal static AutomationElement WindowForProcess(int pid, nint handle)
     {

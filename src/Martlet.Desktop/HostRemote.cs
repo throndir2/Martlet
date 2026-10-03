@@ -11,13 +11,15 @@ internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, st
 }
 
 /// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe). <paramref name="SecretWhen"/> and
-/// <paramref name="TermsWhen"/> belong to one variant of the role: they apply only when choice <c>Variable</c> is <c>Value</c>.</summary>
+/// <paramref name="TermsWhen"/> belong to one variant of the role: they apply only when choice <c>Variable</c> is <c>Value</c>.
+/// <see cref="Stops"/> names the installed roles adding it stops first (another voice engine: one runs per host).</summary>
 internal sealed record HostRoleInputs(string Title, string Requires, string Terms, bool Installed,
     IReadOnlyList<HostRoleSecret> Secrets, IReadOnlyList<HostRoleChoice> Choices, bool GpuOrCpu = false)
 {
     public IReadOnlyDictionary<string, (string Variable, string Value)> SecretWhen { get; init; } =
         new Dictionary<string, (string, string)>(StringComparer.Ordinal);
     public IReadOnlyList<(string Variable, string Value, string Text)> TermsWhen { get; init; } = [];
+    public IReadOnlyList<string> Stops { get; init; } = [];
 }
 
 internal sealed record HostRoleSecret(string Name, string Prompt, bool Stored);
@@ -190,6 +192,7 @@ internal sealed partial class HostRemote(HostShell shell)
         var choices = new List<HostRoleChoice>();
         var secretWhen = new Dictionary<string, (string, string)>(StringComparer.Ordinal);
         var termsWhen = new List<(string, string, string)>();
+        IReadOnlyList<string> stops = [];
         static (string Variable, string Value)? Condition(string text) =>
             text.Split('=') is [var variable, var value] && variable.Length > 0 && value.Length > 0 ? (variable, value) : null;
         foreach (var line in lines)
@@ -205,6 +208,7 @@ internal sealed partial class HostRemote(HostShell shell)
                 case "role.installed": installed = value == "yes"; break;
                 case "role.accelerator": gpuOrCpu = true; break;
                 case "role.suggested": suggested.Add(value); break;
+                case "role.stops": stops = value.Split(' ', StringSplitOptions.RemoveEmptyEntries); break;
                 case "role.secret" when value.Split('|') is [var name, .. var middle, var state] && middle.Length > 0:
                     secrets.Add(new(name, string.Join('|', middle), state == "stored"));
                     break;
@@ -222,7 +226,7 @@ internal sealed partial class HostRemote(HostShell shell)
         return new(title, requires, terms, installed, secrets,
             choices.Select(c => c with { Suggested = suggested.Contains(c.Variable) }).ToList(), gpuOrCpu)
         {
-            SecretWhen = secretWhen, TermsWhen = termsWhen
+            SecretWhen = secretWhen, TermsWhen = termsWhen, Stops = stops
         };
     }
 }
