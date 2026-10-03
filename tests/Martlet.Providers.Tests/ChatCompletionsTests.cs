@@ -179,11 +179,11 @@ public sealed class ChatCompletionsTests
     }
 
     [Theory]
-    [InlineData("no-usage")]
-    [InlineData("extra-content")]
-    [InlineData("changed-finish")]
-    [InlineData("duplicate-usage")]
-    public async Task Repeated_terminal_chunk_cannot_extend_content_or_duplicate_accounting(string variant)
+    [InlineData("no-usage", true)]
+    [InlineData("extra-content", false)]
+    [InlineData("changed-finish", true)]
+    [InlineData("duplicate-usage", true)]
+    public async Task Repeated_terminal_chunk_cannot_extend_content_but_extra_accounting_is_tolerated(string variant, bool completes)
     {
         var content = variant == "extra-content" ? "late" : "";
         var reason = variant == "changed-finish" ? "length" : "stop";
@@ -199,8 +199,44 @@ public sealed class ChatCompletionsTests
         var trace = Chunk("hello", "stop") + accounting +
             (variant == "duplicate-usage" ? accounting : "") + "data: [DONE]\n\n";
         var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.OpenRouterBaseUrl);
+        if (completes)
+        {
+            Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+            return;
+        }
         Assert.Equal(ProviderFailureCode.ResponseSchema, result.Result.Failure!.Code);
         Assert.NotEqual(TextGenerationOutcome.Completed, result.Result.Outcome);
+    }
+
+    [Fact]
+    public async Task OpenRouter_reasoning_and_provider_extras_do_not_cut_the_reply()
+    {
+        string Raw(object choice, string? model = null) => "data: " + JsonSerializer.Serialize(new
+        {
+            id = "gen-1", provider = "Example", @object = "chat.completion.chunk", model = model ?? "google/gemma-4-26b-a4b-it",
+            created = 1, system_fingerprint = (string?)null, choices = new[] { choice }
+        }) + "\n\n";
+        var thinking = string.Concat(Enumerable.Range(0, 1500).Select(_ => Raw(new
+        {
+            index = 0, delta = new { role = "assistant", content = "", reasoning = "hm", reasoning_details = new[] { new { type = "reasoning.text", text = "hm" } } },
+            finish_reason = (string?)null, native_finish_reason = (string?)null, logprobs = (object?)null
+        })));
+        var trace = ": OPENROUTER PROCESSING\n\n" + thinking +
+            Raw(new { index = 0, delta = new { role = "assistant", content = "Oh, hey there! Of", annotations = new[] { new { type = "x" } } },
+                finish_reason = (string?)null }) +
+            Raw(new { index = 0, delta = new { content = " course I remember.", token_id = 7 }, finish_reason = (string?)null }, "google/gemma-4-26b-a4b-it-0401") +
+            Raw(new { index = 0, delta = new { role = "assistant", content = "" }, finish_reason = "stop" }) +
+            "data: " + JsonSerializer.Serialize(new
+            {
+                id = "gen-1", @object = "chat.completion.chunk", model = "google/gemma-4-26b-a4b-it",
+                choices = new[] { new { index = 0, delta = new { role = "assistant", content = "" }, finish_reason = "stop" } },
+                usage = new { prompt_tokens = 30, completion_tokens = 1510, total_tokens = 1540, cost = 0.0001 }
+            }) + "\n\ndata: [DONE]\n\n";
+        var result = await RunFixture(trace, baseUrl: ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
+            limits: new() { MaxOutputTokens = 4096, MaxContextTokens = 32_768, MaxEvents = 4094, MaxStreamBytes = 4_194_304 });
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        Assert.Equal("Oh, hey there! Of course I remember.", string.Concat(result.Events
+            .Where(item => item.Kind == ProviderEventKind.TextDelta).Select(item => item.Text)));
     }
 
     [Theory]
