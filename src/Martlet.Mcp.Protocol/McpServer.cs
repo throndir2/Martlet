@@ -210,6 +210,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default) and whether the " +
+            "WebRTC echo canceller loads, then a rehearsal of the production microphone path (MicrophoneCapture, EchoReducer, the " +
+            "canceller) with fixture devices on a simulated clock: no microphone or speaker is opened and nothing plays. A synthesized " +
+            "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
+            "default 60), with the user's synthesized voice alone and over it. Returns how much quieter Martlet's echo got, how much " +
+            "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction.", new
+        {
+            dataDirectory = new { type = "string" },
+            delayMs = new { type = "integer", minimum = 0, maximum = 300 }
         })
     ];
 
@@ -308,6 +318,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "smart_home_status" => SmartHomeStatus(arguments),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

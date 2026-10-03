@@ -243,13 +243,46 @@ voice pipeline never waits for a whole reply:
   Companion › Listening (on by default) keeps the microphone open while
   Martlet speaks. Talking over a reply stops it at once: the Thinking request
   is canceled, the queued audio is dropped and what you said is answered next,
-  with the reply so far kept in context. Use headphones: Martlet has no echo
-  cancellation, so through speakers it can hear itself and stop; turn the
-  choice off if it does. With it off, listening holds off while Martlet
-  speaks, and Stop, Esc or the talk button still interrupt.
+  with the reply so far kept in context. Through speakers this relies on
+  [echo reduction](#echo-reduction) (on by default); if Martlet still stops
+  itself, use headphones or turn the choice off. With it off, listening holds
+  off while Martlet speaks, and Stop, Esc or the talk button still interrupt.
 - **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.
+
+## Echo reduction
+
+*Reduce echo from my speakers* (Companion › Listening › Speakers and echo, on
+by default) lets you talk to Martlet without headphones. Whenever the
+microphone listens (always listening or push-to-talk), Martlet also reads what
+this PC plays on the output its own voice uses (the chosen speakers, or
+Windows' default) through a WASAPI loopback, and WebRTC's acoustic echo
+canceller (AEC3, the one AudioTranscriber uses on its microphone track)
+subtracts that sound from the microphone before anything else hears it: voice
+activity, Voice ID, speech-to-text and a Thinking model that hears. So Martlet
+neither hears its own voice as you (barge-in through speakers works) nor a
+video, music or game playing on the PC.
+
+- Both streams are lined up by their devices' timestamps; each 10 ms of
+  microphone audio is cleaned against the speaker audio 40 ms later on that
+  timeline (an echo always arrives after it was played), and the canceller
+  finds the room's actual delay itself. Speaker audio that hasn't arrived 30 ms
+  after it was due counts as silence, so cleaned audio arrives at most about
+  80 ms after it was heard.
+- The room's echo model is kept in memory for a minute between listens, so it
+  doesn't relearn the room every time Martlet listens again; pausing, muting,
+  locking Windows or closing the conversation drops it.
+- The speaker audio is used only to cancel the echo, on this PC, while the
+  microphone listens. It is never saved, logged or sent. A high-pass filter
+  removes rumble; noise suppression and gain control stay off so your voice
+  reaches speech-to-text as it was. The microphone test and Voice ID setup
+  record the microphone unchanged.
+- If the speakers can't be read (none, an unsupported format, a device that
+  changed) or the canceller can't load, Martlet listens without echo
+  reduction, says why under the check box and logs it once (*Echo reduction:
+  …*); otherwise the log notes *Echo reduction is on*. Turning the choice off
+  restarts listening without it.
 
 ## Voice tags
 

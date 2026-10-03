@@ -559,10 +559,16 @@ replay canceled segments, or claim universal idempotency.
 
 ### Feedback protection and device churn
 
-Headsets and half-duplex are the MVP default: automatic speech capture is
+Headsets and half-duplex were the MVP default: automatic speech capture is
 gated during Martlet playback, with a short measured acoustic tail. Manual
 PTT/Stop can interrupt instantly and start a new utterance after playback is
-flushed. This is supported manual barge-in, not full-duplex acoustic AEC.
+flushed. Always listening's barge-in (on by default) keeps listening during
+playback instead, and *Reduce echo from my speakers* (on by default) supplies
+the echo reference: a WASAPI loopback of the output Martlet's voice uses, read
+only while the microphone captures and only to feed WebRTC's AEC3, which
+subtracts it before VAD, Voice ID or STT see the audio
+([Echo reduction](CONVERSATION.md#echo-reduction)). The loopback audio is never
+stored, transcribed or sent.
 
 R23 makes automatic speech barge-in a required future companion capability,
 opt-in and gated on H07 evidence using qualified feedback protection and an
@@ -577,8 +583,8 @@ owned cleanup; interruption cannot resurrect the canceled answer.
 
 Until native privacy and the selected topology qualify, keep automatic barge-in
 unavailable and manual PTT/Stop usable. Do not claim the post-capture VAD library,
-transcript equality, or lowering speaker volume solves echo. Default system
-loopback capture stays disabled; future
+transcript equality, or lowering speaker volume solves echo. System loopback is
+read only as the echo reference above, never captured as a source; future
 app-scoped remote-participant capture must exclude Martlet output or supply
 an appropriate echo reference, with each participant's consent.
 

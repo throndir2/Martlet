@@ -54,6 +54,7 @@ per-user app; no large model download without typing `y` or a model tag.
 | Windows 10 2004+ or Windows 11, x64 (build 19041+) | Everything | Checked by the installer | `MinVersion=10.0.19041`, x64 only. Windows 11 25H2 is the main test target. |
 | .NET 10.0.12 + Windows Desktop runtime | Everything | **Bundled** | Self-contained Desktop, Doctor and avatar renderer; no separate .NET install. |
 | NAudio 3.1.0 (WASAPI), System.Speech 10.0.12, System.Numerics.Tensors | Audio capture/playback, Windows speech adapters | **Bundled** | [DEPENDENCIES](../packaging/windows/DEPENDENCIES.txt). |
+| WebRTC echo canceller (webrtc-apm.dll, via SoundFlow.Extensions.WebRtc.Apm 1.4.0) | Companion › Listening › Reduce echo from my speakers (on by default) | **Bundled** | BSD-3-Clause WebRTC APM with its third-party notices; see [DEPENDENCIES](../packaging/windows/DEPENDENCIES.txt). |
 | gRPC 2.84.0 / Protobuf 3.36.2 | Audio2Face client | **Bundled** | |
 | WebView2 SDK 1.0.4191.47 loader, Windows SDK projection | Avatar renderer process | **Bundled** | The SDK, not the runtime. |
 | Live2D Cubism Core 05.01.0000 + Framework 5-r.4 + Hiyori sample | Default desktop character | **Bundled** | Redistributed under Live2D's terms; see RELEASE.txt. |

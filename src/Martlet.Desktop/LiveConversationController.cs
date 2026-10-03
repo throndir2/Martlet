@@ -17,9 +17,10 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
 
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
 // is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice). BargeIn: keep listening while
-// Martlet speaks, so talking over a reply stops it (needs headphones, or it hears itself).
+// Martlet speaks, so talking over a reply stops it. ReduceEcho: what the PC plays (Martlet's voice included) is removed from the
+// microphone first (Companion › Listening › Reduce echo from my speakers), so speakers work without headphones.
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
-    bool BargeIn = false)
+    bool BargeIn = false, bool ReduceEcho = false)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -157,6 +158,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly ISetupService settings;
     private readonly ICredentialStore vault;
     private readonly ICaptureDeviceFactory captureDevices;
+    private readonly EchoReducer? echoReducer;
+    private int echoState = -1;
     private readonly ConversationRuntime runtime;
     private readonly OpenAiTranscriptionAdapter transcription;
     private readonly HostTranscriptionAdapter hostTranscription;
@@ -225,6 +228,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal SmartHome? Home => smartHome;
     /// <summary>The MCP servers whose tools user-started replies may call.</summary>
     internal McpToolService? Tools => tools;
+    /// <summary>How echo reduction went the last time Martlet listened; null when this controller has none.</summary>
+    internal EchoReductionReport? EchoReport => echoReducer?.Report;
+
+    // Logs each change of state once (on the capture's worker thread), never the audio or device names.
+    private void EchoReported(EchoReductionReport report)
+    {
+        if (Interlocked.Exchange(ref echoState, (int)report.State) == (int)report.State) return;
+        if (report.State == EchoReductionState.Active)
+            ErrorLog.Info("Echo reduction is on: what the speakers play is removed from the microphone (WebRTC AEC3).");
+        else if (report.Problem is not null) ErrorLog.Warn("Echo reduction: " + report.Problem);
+    }
+
     internal LiveConversationController(SetupOperationRunner operations, ISetupService settings, ICredentialStore vault,
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
@@ -234,13 +249,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
         SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null,
-        LocalVoices? voices = null, ILocalTranscriber? localListener = null)
+        LocalVoices? voices = null, ILocalTranscriber? localListener = null, EchoReducer? echoReducer = null)
 
     {
         this.operations = operations;
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
+        this.echoReducer = echoReducer;
+        if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         this.revokeAvatar = revokeAvatar;
@@ -310,6 +327,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         stop?.Cancel(sessionLocked ? "conversation.locked" : pause ? "conversation.paused" : "conversation.muted");
         stopListening?.Worker.RequestCancellation();
+        if (pause || mute || sessionLocked) echoReducer?.Forget();
     }
 
     internal void SetSessionLocked(bool value)
@@ -329,6 +347,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         stop?.Cancel("conversation.locked");
         stopListening?.Worker.RequestCancellation();
+        if (value) echoReducer?.Forget();
     }
 
     internal void Revoke(string code)
@@ -1584,8 +1603,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         var permission = operation.Authorization;
         permission.Check();
-        var selected = permission.Configuration.Audio!.Input;
-        await using var microphone = new MicrophoneCapture(runtime.SessionId, captureDevices,
+        var audio = permission.Configuration.Audio!;
+        var selected = audio.Input;
+        // Echo reduction hears the output Martlet's own voice plays on (the chosen one, or Windows' default).
+        var devices = operation.Listening?.ReduceEcho == true && echoReducer is not null
+            ? echoReducer.For(audio.Output.EndpointId) : captureDevices;
+        await using var microphone = new MicrophoneCapture(runtime.SessionId, devices,
             new() { MaximumDuration = LiveConversationConfiguration.CaptureDuration, MaximumPcmBytes = 800_000 }, clock);
         var request = new CaptureRequest(Ids(), Interlocked.Increment(ref captureEpoch),
             new(selected.EndpointId is null ? InputPolicy.FollowDefaultOnNextPress : InputPolicy.FixedEndpoint, selected.EndpointId),
@@ -1696,6 +1719,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         owned?.Cancel("conversation.closed");
         listening?.Worker.RequestCancellation();
+        echoReducer?.Forget();
         DisposeCaptureRuntimeAsync().Forget();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
