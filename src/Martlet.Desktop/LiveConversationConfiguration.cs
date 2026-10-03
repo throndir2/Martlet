@@ -1,4 +1,5 @@
 using Martlet.Audio;
+using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
@@ -379,7 +380,8 @@ internal sealed class LiveConversationConfiguration
         IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory, LorebookScanResult? lore,
         out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
-        string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false)
+        string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false,
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null;
@@ -388,6 +390,9 @@ internal sealed class LiveConversationConfiguration
                 throw new LiveActionException("conversation.input_limit"));
         if (tools is not null) extraInstructions = Join(extraInstructions, PromptSettings.Fill(Prompts, PromptCatalog.Tools));
         if (voice) extraInstructions = Join(extraInstructions, VoiceTagInstructions());
+        // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off.
+        var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
+        if (character is not null) extraInstructions = Join(extraInstructions, character.Instructions);
         var facts = memory?.Facts ?? [];
         var hits = lore?.Included ?? [];
         // Lorebook entries keep their budget like SillyTavern's World Info: the oldest exchanges go first, then recalled facts
@@ -420,7 +425,8 @@ internal sealed class LiveConversationConfiguration
                         voice ? new(SpeechSelection(),
                             new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
                             SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null);
+                        voice ? WindowsVoiceTarget() : null, ReplyGeneration, tools, TextFallback(), imageOptional && image is not null,
+                        character?.Tags);
                 }
             }
         }

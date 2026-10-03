@@ -86,6 +86,7 @@ public partial class MainWindow : ThemedWindow
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
+        characterActions = new(store?.DataDirectory);
         if (setupService is not null)
         {
             var microphones = new WasapiCaptureDeviceFactory();
@@ -94,12 +95,14 @@ public partial class MainWindow : ThemedWindow
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
                 tools: mcpTools, voices: localVoices, localListener: parakeet,
                 echoReducer: new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
-                pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()));
+                pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
+                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
+        WireCharacterActions();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
-        characterTimer.Tick += (_, _) => { UpdateCharacterButton(); RenderListening(); };
+        characterTimer.Tick += (_, _) => { UpdateCharacterButton(); RenderListening(); if (started) FollowCharacterActions(); };
         characterTimer.Start();
         DataPathText.Text = "Settings are stored on this PC.";
         StatusText.Text = "Loading local status...";

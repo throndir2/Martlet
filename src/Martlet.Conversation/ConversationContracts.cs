@@ -76,13 +76,15 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 // model samples, never what is disclosed, so it is not part of the text authorization (the reply token budget is, through
 // TextLimits). Tools runs the calls a model makes when the input offers tools. ImageOptional: the input's picture is context sent
 // along with the user's own words (their screen while vision is on), so a model that rejects it is asked again without it; a
-// screen glance's picture is the whole point of its request and is never dropped.
+// screen glance's picture is the whole point of its request and is never dropped. CharacterTags are the desktop character's
+// tags (such as {blush}) the model was told about: they are removed from the words shown and spoken and reach the character
+// through the runtime's CharacterCueFeed, timed with the sentence they were written in.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
     GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null,
-    bool imageOptional = false)
+    bool imageOptional = false, IReadOnlyList<string>? characterTags = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -98,11 +100,14 @@ public sealed class ConversationRequest(
     [JsonIgnore] public IConversationToolHost? Tools { get; } = tools;
     public TextFallback? Fallback { get; } = fallback;
     public bool ImageOptional { get; } = imageOptional;
+    [JsonIgnore] public IReadOnlyList<string> CharacterTags { get; } = characterTags ?? [];
 
     internal void Validate()
     {
         ContractRules.Require(SilentReply is null || SilentReply.Length is > 0 and <= 16 && SilentReply.All(char.IsAsciiLetter),
             "The silent reply word must be 1-16 ASCII letters.");
+        ContractRules.Require(CharacterTags.Count <= 128 && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
+            tag[0] == '{' && tag[^1] == '}' && !tag.Any(char.IsControl)), "Character tags must be at most 128 {tags} of 3-64 characters.");
         ArgumentNullException.ThrowIfNull(Input);
         ArgumentNullException.ThrowIfNull(Model);
         ArgumentNullException.ThrowIfNull(TextLimits);

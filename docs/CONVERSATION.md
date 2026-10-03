@@ -445,8 +445,17 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
 - **Chat and captions.** The chat, the saved conversation and the speech
   bubble/captions never show tags: they are stripped as the reply streams, and
   captions strip the spoken piece's tags.
+- **The desktop character.** Each tag also has an engine-independent cue
+  (`VoiceTag.Cue`: `laugh` for both `[laugh]` and Dia's `(laughs)`). While the
+  character shows, an emote or motion linked to a cue plays when the voice
+  speaks that tag, and the others are offered to replies as English
+  [character tags](AVATARS.md#emotes-and-motions) such as `{blush}`, which the
+  segmenter and the chat drop like another engine's tags. Both reach the
+  character through the runtime's `CharacterCueFeed`, timed within the sentence
+  as it starts playing (or at once for a reply that isn't spoken).
 
-`voice_tags` in [Martlet MCP](MCP.md) shows all three for any engine.
+`voice_tags` in [Martlet MCP](MCP.md) shows all of these for any engine (with
+`characterTags`, the character cues too).
 
 ## Hands-free voice activity and Voice ID
 

@@ -118,11 +118,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }, ["path"]),
         Tool("voice_tags", "Show how a reply's voice tags are handled for a self-hosted voice engine (engine key, default the " +
             "default engine Chatterbox Turbo; \"none\" for a voice without tags such as OpenAI or Windows): the engine's tag catalog in " +
-            "its own syntax, the Thinking prompt it adds (Companion > Prompts > Voice sounds and tones, from dataDirectory's settings " +
-            "when given), the pieces the real speech segmenter hands that engine and the text the chat and captions show. " +
-            "Synthesizes and contacts nothing.", new
+            "its own syntax with each tag's engine-independent cue, the Thinking prompt it adds (Companion > Prompts > Voice sounds " +
+            "and tones, from dataDirectory's settings when given), the pieces the real speech segmenter hands that engine, the text " +
+            "the chat and captions show and, with characterTags (the character's tags such as \"{blush}\"), the character cues found " +
+            "in each spoken piece (piece index, -1 for cues after the last words; tag; character offset). Synthesizes and contacts nothing.", new
         {
-            text = new { type = "string" }, engine = new { type = "string" }, dataDirectory = new { type = "string" }
+            text = new { type = "string" }, engine = new { type = "string" }, dataDirectory = new { type = "string" },
+            characterTags = new { type = "array", items = new { type = "string" } }
         }, ["text"]),
         Tool("cluster_status", "Read shared \"who does what\" sync from a data directory: whether sync is on (on by default, " +
             "\"off\" only after the owner turned it off) and this PC's copy of the plan (each job's host, failover and which device " +
@@ -209,6 +211,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "a model file outside the list). Never returns character names or file paths. Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("character_actions", "Read a character model's emotes and motions as Companion > Character > Emotes and motions uses " +
+            "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
+            "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
+            "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
+            "expression, motion group and Martlet gesture (nod, shake) with what it changes, its tag, voice cue, when to use it, whether " +
+            "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
+            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
+            "and the Thinking naming prompt. With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
+            "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
+        {
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
+            answer = new { type = "string" }
         }),
         Tool("character_models_selftest", "Rehearse the shared character models end to end with the production code: two real " +
             "gateways on 127.0.0.1 (pinned TLS, in-memory character-models.json and pieces) and three simulated desktops using the " +
@@ -454,6 +469,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
+                "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
@@ -798,6 +814,85 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>character_actions: a character model's emotes and motions as Companion › Character › Emotes and motions uses
+    /// them (Martlet.Avatar.Hosting's inventory, saved settings and prompts), optionally with a simulated Thinking answer parsed
+    /// by the production naming parser. Model-authored names and model-relative file names only; never the model's path.</summary>
+    private static async Task<object> CharacterActionsCheckAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = OptionalString(arguments, "dataDirectory") is { } given ? given : null;
+        var modelPath = OptionalString(arguments, "modelPath");
+        string? renderer = null;
+        if (modelPath is null && directory is not null)
+        {
+            try
+            {
+                using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
+                modelPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
+                renderer = avatar.RootElement.TryGetProperty("renderer", out var kind) ? kind.ToString() : null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+        }
+        if (modelPath is null) throw new ArgumentException("Give modelPath (a .model3.json or .vrm), or a dataDirectory whose avatar.json shows one.");
+        var vrm = modelPath.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase) || renderer?.Contains("vrm", StringComparison.OrdinalIgnoreCase) == true;
+        var avatarRenderer = vrm ? Martlet.Avatars.AvatarRenderer.Vrm : Martlet.Avatars.AvatarRenderer.Live2D;
+        Martlet.Avatar.Hosting.CharacterActionInventory inventory;
+        IReadOnlyList<Martlet.Avatar.Hosting.AvatarAsset> assets;
+        string path;
+        try
+        {
+            path = Martlet.Avatar.Hosting.BundledLive2D.IsBuiltIn(modelPath) ? Martlet.Avatar.Hosting.BundledLive2D.ModelPath(modelPath) : modelPath;
+            assets = await Martlet.Avatar.Hosting.LocalAvatarFiles.ReadModelAsync(avatarRenderer, path, cancellation);
+            inventory = Martlet.Avatar.Hosting.CharacterActionInventory.From(avatarRenderer, vrm ? assets[0].Name : Path.GetFileName(path), assets);
+        }
+        catch (Martlet.Core.Contracts.ContractException error) { throw new InvalidOperationException("The model can't be read: " + error.Message); }
+        catch (IOException error) { throw new InvalidOperationException("The model can't be read: " + error.Message); }
+        Martlet.Core.Settings.PromptSettings? prompts = null;
+        if (directory is not null && File.Exists(Path.Combine(directory, "settings.json")))
+            prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
+        var saved = directory is null ? null : Martlet.Avatar.Hosting.CharacterActions.Load(directory, inventory.ModelId);
+        var catalog = new Martlet.Avatar.Hosting.CharacterActionCatalog(inventory, Martlet.Avatar.Hosting.CharacterActions.Merge(inventory, saved));
+        var key = OptionalString(arguments, "engine");
+        var engine = key is null or "none" ? null
+            : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
+        object Describe(Martlet.Avatar.Hosting.CharacterActionCatalog of)
+        {
+            var offered = of.Offered(engine).Select(e => e.Source.Id).ToHashSet(StringComparer.Ordinal);
+            return of.Entries.Select((e, n) => new
+            {
+                n, id = e.Source.Id, kind = e.Source.Kind.ToString().ToLowerInvariant(), name = e.Source.Name, detail = e.Source.Detail,
+                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id)
+            }).ToArray();
+        }
+        var reply = catalog.Prompt(engine, prompts);
+        var naming = Martlet.Avatar.Hosting.CharacterActions.NamingPrompt(inventory, prompts);
+        object? parsed = null;
+        if (OptionalString(arguments, "answer") is { } answer)
+        {
+            var named = Martlet.Avatar.Hosting.CharacterActions.Parse(answer, inventory, catalog.Settings, DateTimeOffset.Now);
+            parsed = named is null ? new { read = false } : new
+            {
+                read = true, problem = Martlet.Avatar.Hosting.CharacterActions.Problem(named), actions = Describe(catalog with { Settings = named }),
+                prompt = (catalog with { Settings = named }).Prompt(engine, prompts)?.Instructions
+            };
+        }
+        var extras = vrm ? null : Martlet.Avatar.Hosting.LocalAvatarFiles.Extras(assets, Path.GetFileName(path));
+        return new
+        {
+            renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
+            expressions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Expression),
+            motions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Motion),
+            fromVTubeStudio = extras is null ? null : new
+            {
+                expressions = extras.Expressions.Select(e => new { e.Name, e.File }), motions = extras.Motions.Select(m => new { m.Group, m.File })
+            },
+            saved = saved is not null, detectedBy = catalog.Settings.DetectedBy, detectedAt = catalog.Settings.DetectedAt,
+            engine = engine?.Key, actions = Describe(catalog),
+            replyPrompt = reply?.Instructions, replyTags = reply?.Tags,
+            namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
+            parsed
+        };
+    }
+
     /// <summary>F5's included reference voices, each checked, and the data directory's F5 voice list (the "f5-voices" store
     /// Martlet.Desktop keeps). Own voices are counted, never named; a starter voice is recognized by its clip's SHA-256.</summary>
     private static object VoiceTagsCheck(JsonElement arguments)
@@ -809,13 +904,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Martlet.Core.Settings.PromptSettings? prompts = null;
         if (OptionalString(arguments, "dataDirectory") is { } directory && File.Exists(Path.Combine(directory, "settings.json")))
             prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
-        var preview = Martlet.Conversation.SpeechTextPreview.For(text, engine);
+        var characterTags = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("characterTags", out var listed) &&
+            listed.ValueKind == JsonValueKind.Array
+            ? listed.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!).Take(128).ToArray()
+            : null;
+        var preview = Martlet.Conversation.SpeechTextPreview.For(text, engine, characterTags);
         return new
         {
             engine = engine?.Key, name = engine?.Name, supportsTags = engine?.SupportsTags ?? false,
             tags = (engine?.Tags ?? []).Select(tag => tag.Text).ToArray(),
+            cues = (engine?.Tags ?? []).Select(tag => new { tag = tag.Text, cue = tag.Cue }).ToArray(),
             prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
-            spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown
+            spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown,
+            characterCues = preview.Cues.Select(c => new { piece = c.Piece, tag = c.Tag, offset = c.Offset }).ToArray()
         };
     }
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's

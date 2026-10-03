@@ -21,6 +21,64 @@ normal supported product path. Live2D's Expandable Application review (required
 because users can load their own models) has been applied for by the owner; a
 public release bundling Live2D waits for that approval.
 
+## Emotes and motions
+
+Models don't share a standard for emotes. VRM 1.0 has optional preset emotions
+(`happy`, `angry`, `sad`, `relaxed`, `surprised`) plus freely named custom
+expressions. Live2D names are whatever the artist chose: `F01`, `exp_03`,
+`脸红`. VTube Studio models often leave their `.exp3.json` and `.motion3.json`
+files out of the model3.json and list them as hotkeys in their `.vtube.json`.
+Martlet therefore reads what each model actually has and asks the Thinking model
+what each one is.
+
+- **Discovery** (`Martlet.Avatar.Hosting`, `CharacterActionInventory`): the
+  model3.json's expressions and motion groups (except the idle group), plus,
+  for a VTube Studio model, the `.vtube.json` naming that model3.json, the
+  expression and motion files its hotkeys and idle animation name, and any
+  other `.exp3.json`/`.motion3.json` at the top of the folder. Those are copied
+  with the model (and to paired computers), named by their hotkey or file name,
+  and the VTube Studio idle animation idles the model when it has no `Idle`
+  group. VRM: the preset emotions and every custom expression; mouth, blink,
+  gaze and `neutral` presets stay with lip-sync, blinking and gaze. Every model
+  also gets Martlet's own head gestures, **nod** and **shake**. Each one comes
+  with what it changes: Live2D parameter IDs, their display names from the
+  model's `.cdi3.json` and values, and motion lengths; VRM shape names.
+- **Naming** (Companion › Prompts › *Naming character emotes*): the first time a
+  model shows, and on **Name them with Thinking**, the Thinking model gets that
+  list (names and what they change, never files) and answers one line per item:
+  an English tag (`blush`), a voice cue or none, and when to use it. It can turn
+  off items that aren't feelings or gestures (hand poses, props, gore). Until
+  then, tags come from the model's own names.
+- **English tags, any-language names**: tags are always lower-case English
+  (`a-z`, digits, `_`, `-`), so every Thinking model can write them, while each
+  emote keeps the name its creator gave it (Chinese, Japanese, Korean or any
+  other script) in the settings, the naming list and the renderer. Before the
+  Thinking model names them, a name with English letters becomes its tag
+  (`starEyes` → `star_eyes`), common Chinese, Japanese and Korean emote words are
+  translated (`脸红` → `blush`, `涙` → `tears`, `웃음` → `smile`), and anything
+  else is numbered (`emote_3`, `motion_2`).
+- **Settings**: Companion › Character › **Emotes and motions** lists each one
+  with a check box, its tag, its voice cue and when to use it, a **Try** button
+  (while the character shows) and what it changes. Edits save as you type, per
+  model (by its ID, the same ID as the shared character list), in
+  `character-actions.json` on this PC. **Use the model's own names** goes back to
+  the defaults.
+- **Voice cues**: a voice cue links an emote or motion to a sound or tone the
+  voice engine performs, by meaning across engines (`laugh` is Chatterbox
+  Turbo's `[laugh]` and Dia's `(laughs)`). When the voice speaks that tag, the
+  character plays it at about that point in the sentence (one expression and
+  one motion at random when several share the cue).
+- **Replies**: while the character shows, replies are offered every emote and
+  motion that is on and that the speaking voice doesn't already set off through
+  a cue (Companion › Prompts › *Character emotes and motions*), written as
+  `{tag}`. The tags are removed from the chat, captions and the voice, and the
+  character acts each one where it was written: timed within its sentence as
+  it plays, after the last sentence for a tag at the end, or at once for a reply
+  that isn't spoken. An expression shows for at least 4 seconds and until its
+  sentence ends (at most 12 seconds) unless another replaces it; motions and
+  gestures play once. VRM has no motions of its own (VRMA isn't supported), so
+  it uses its expressions and the gestures.
+
 ## 1. Choose a renderer, analyzer and feature owners separately
 
 A renderer draws a model. An analyzer derives animation from speech. A mapping

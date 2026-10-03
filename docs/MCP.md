@@ -252,11 +252,17 @@ the path or audio, saves nothing, plays nothing and contacts nothing.
 handled: `text` (required) is a reply, `engine` an engine key (default the
 default engine, `chatterbox`; `none` for a voice without tags such as OpenAI or
 Windows) and optional `dataDirectory` whose saved prompt edits are used. It
-returns the engine, `supportsTags`, its `tags`, `prompt` (the *Voice sounds and
-tones* instructions the Thinking model gets, or null), `spoken` (the pieces the
-real speech segmenter hands that engine, its own tags kept), `suppressedPieces`
-and `shown` (the chat and caption text, every tag stripped). It synthesizes and
-contacts nothing.
+returns the engine, `supportsTags`, its `tags`, `cues` (each tag's
+engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
+sounds and tones* instructions the Thinking model gets, or null), `spoken` (the
+pieces the real speech segmenter hands that engine, its own tags kept),
+`suppressedPieces` and `shown` (the chat and caption text, every tag stripped).
+With `characterTags` (the character's [emote and motion
+tags](AVATARS.md#emotes-and-motions), such as `["{blush}"]`), those are stripped
+too and `characterCues` lists the cues the character acts on: each one's
+`piece` (index in `spoken`, or -1 for a tag after the last words), `tag` (a
+character tag or the engine's own voice tag) and character `offset` in the
+piece. It synthesizes and contacts nothing.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
@@ -463,6 +469,27 @@ arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
 `model-file-outside-list`). Character names and file paths are never returned.
 Read-only; it contacts nothing.
+
+`character_actions` reads a character model's
+[emotes and motions](AVATARS.md#emotes-and-motions) the way Companion ›
+Character › Emotes and motions uses them: `modelPath` (a `.model3.json` or
+`.vrm` on this PC) or the model `dataDirectory`'s `avatar.json` shows (with a
+`dataDirectory`, its `character-actions.json` and edited prompts are used too).
+It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
+(what the renderer reads, a VTube Studio model's `.vtube.json` and loose
+`.exp3.json`/`.motion3.json` included), `expressions`, `motions`,
+`fromVTubeStudio` (expressions and motion groups taken from outside the
+model3.json, with their model-relative file names, and the `Idle` group made
+from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
+`thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
+`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled` and whether replies
+are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
+without tags), `replyPrompt` and `replyTags` (what replies get while the
+character shows) and `namingPrompt` (`instructions` and the numbered `list` the
+Thinking model is sent). With `answer`, a simulated Thinking reply such as
+`1: blush | - | when shy`, `parsed` shows what the production parser makes of
+it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
+the model's path; it reads and contacts nothing else.
 
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
@@ -1372,6 +1399,33 @@ file") joins the shared list as soon as it is saved (once it names an existing m
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
 
+Companion › Character's *Emotes and motions* card lists the
+[emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
+shows (or would show). `CharacterActionsStatus` reads how many emotes and
+motions the model has (with Martlet's nod and shake) and whether they were named
+by the Thinking model (and when) or from the model's own files, or why they
+couldn't be read; `CharacterActionsNaming` the Thinking model's naming
+(*Asking the Thinking model...*, *The Thinking model named 10 emotes and motions
+at 3:12 PM and turned off 3 that aren't feelings or gestures.*, or why it
+couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
+tags replies get with the voice chosen now and which follow the voice's cues;
+`CharacterActionsLast` the last one played (*Played the expression "脸红" for
+{blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
+...*), also in `logs_tail` `desktop` as *Character expression '脸红' played for
+{blush}.*; and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
+<why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
+(its name and kind; a status field), `CharacterActionOn-<n>` (check box),
+`CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
+saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
+cue such as `laugh`), `CharacterActionUse-<n>` and `CharacterActionTry-<n>`
+(plays it on the showing character; disabled while it is hidden). Editing a row
+saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
+Thinking*) sends the model's emote and motion names and details to the Thinking
+model, `CharacterActionsReset` goes back to the model's own names, and Try plays
+on the overlay, so all of them need `--allow-ui-effects`. The first time a model
+shows with a Thinking model set up, Martlet names its emotes once on its own.
+`character_actions` reads the same settings headlessly.
+
 For voices, open `CompanionTab-Voice` (the Voices card shows unless the
 voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
@@ -1753,7 +1807,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check` and `character_models` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

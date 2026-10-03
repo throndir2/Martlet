@@ -2,6 +2,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using Martlet.Audio;
+using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
@@ -217,6 +218,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly TimeProvider clock;
     private readonly Func<int, int> nextStyle;
     private readonly Action? revokeAvatar;
+    // The desktop character's emotes and motions a reply may use, for the speaking engine (null: a reply that isn't spoken).
+    private readonly Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions;
     private readonly DesktopMemoryService? memory;
     private readonly LorebookStore? lorebooks;
     private readonly VoiceIdentity? voiceIdentity;
@@ -318,7 +321,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
         SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null,
         LocalVoices? voices = null, ILocalTranscriber? localListener = null, EchoReducer? echoReducer = null,
-        PcAudioCaptureFactory? pcAudio = null)
+        PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null)
 
     {
         this.operations = operations;
@@ -327,6 +331,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.captureDevices = captureDevices;
         this.echoReducer = echoReducer;
         this.pcAudio = pcAudio;
+        this.characterActions = characterActions;
         if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
@@ -346,7 +351,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech,
                 hostText: new HostTextClient(), hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory),
-                spokenText: spokenText, windowsVoice: new WindowsVoiceClient());
+                spokenText: spokenText, windowsVoice: new WindowsVoiceClient(), characterCues: characterCues);
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         var listenCredentials = new ConversationCredentialSource(() => Volatile.Read(ref transcribing)?.Authorization);
@@ -855,7 +860,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var history = context.Snapshot();
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera, configured.Prompts),
-                    LiveConversationConfiguration.SilentReply);
+                    LiveConversationConfiguration.SilentReply, characterActions: characterActions);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -1085,7 +1090,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
-                        closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true);
+                        closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
+                        characterActions: characterActions);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 try { request = Ask(seen, out usedHistory, out usedMemory, out usedLore); }
@@ -1625,6 +1631,25 @@ internal sealed class LiveConversationController : IAsyncDisposable
             InvalidOperationException)
         {
             return null;
+        }
+    }
+
+    /// <summary>One text-only request to the saved Thinking model outside a conversation (naming a character's emotes):
+    /// <paramref name="instructions"/> and <paramref name="text"/> go to it on the background runtime. Returns its answer, or
+    /// null with why not (Thinking isn't set up, or the request failed).</summary>
+    internal async Task<(string? Answer, string? Failure)> AskThinkingAsync(string purpose, string instructions, string text,
+        CancellationToken token)
+    {
+        var loaded = await settings.LoadAsync(token).ConfigureAwait(false);
+        if (LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory)) is not { } configured)
+            return (null, "Thinking isn't set up yet");
+        BoundedTextInput input;
+        try { input = new(text, instructions); }
+        catch (ContractException) { return (null, "the request is too large"); }
+        try { return await AskAsync(purpose, configured, input, token).ConfigureAwait(false); }
+        catch (Exception error) when (error is LiveActionException or ContractException or InvalidOperationException)
+        {
+            return (null, error is LiveActionException live ? live.Code : "the request failed");
         }
     }
 

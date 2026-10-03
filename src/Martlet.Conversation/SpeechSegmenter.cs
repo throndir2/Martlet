@@ -5,7 +5,10 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
-internal sealed record SpeechPiece(string? Text);
+/// <summary>A tag in a piece and where it fell: its index in the piece's text (or 0 for a piece with no words).</summary>
+internal sealed record SpeechCue(string Tag, int Offset);
+
+internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues = null);
 
 // English-oriented plain prose, not a Markdown parser. State survives arbitrary delta boundaries.
 // silentWord: a reply sentence that is just this word (for example "[pass]" or "Pass.") means "say nothing".
@@ -13,14 +16,18 @@ internal sealed record SpeechPiece(string? Text);
 // the first audio starts before the first sentence is finished; later pieces stay whole sentences for natural prosody.
 // tags: the voice engine's own tags (Martlet.Core.Settings.SpeechEngine.Tags), passed through exactly as the engine spells
 // them; every other registered engine's tag is dropped. Neither silences its sentence the way other bracketed text does.
+// characterTags: the desktop character's tags ({blush}): dropped from the words like other engines' tags. Each kept engine
+// tag and each character tag is listed in its piece's Cues with where it fell, so the character acts in time with the voice;
+// a character tag after the last words of a reply arrives in a piece with no text.
 internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false,
-    IReadOnlyList<VoiceTag>? tags = null)
+    IReadOnlyList<VoiceTag>? tags = null, IReadOnlyList<string>? characterTags = null)
 {
     internal const int FirstClauseMinimum = 24;
     private readonly StringBuilder sentence = new();
     private readonly IReadOnlyList<VoiceTag> keep = tags ?? [];
-    private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(tags ?? [])
+    private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(tags ?? []).Concat(VoiceTags.CharacterTags(characterTags))
         .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
+    private readonly List<SpeechCue> cues = [];
     private readonly StringBuilder candidateTag = new();
     private bool droppedTag;
     private bool spoke;
@@ -68,9 +75,14 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         if (keep.FirstOrDefault(k => string.Equals(k.Text, tag.Text, StringComparison.OrdinalIgnoreCase)) is { } kept)
         {
             if (sentence.Length > 0 && !char.IsWhiteSpace(sentence[^1])) sentence.Append(' ');
+            cues.Add(new(kept.Text, sentence.Length));
             sentence.Append(kept.Text);
         }
-        else droppedTag = true;
+        else
+        {
+            if (tag.Kind == VoiceTagKind.Character) cues.Add(new(tag.Text, sentence.Length));
+            droppedTag = true;
+        }
     }
 
     private IEnumerable<SpeechPiece> Accept(char c)
@@ -154,29 +166,65 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
     {
         sentence.Clear();
         candidateTag.Clear();
+        cues.Clear();
     }
 
     private IEnumerable<SpeechPiece> Flush()
     {
-        if (sentence.Length == 0) yield break;
-        string candidate = sentence.ToString().Trim();
+        if (sentence.Length == 0)
+        {
+            if (cues.Count > 0) yield return new(null, TakeCues(0, 0));
+            yield break;
+        }
+        var raw = sentence.ToString();
+        string candidate = raw.Trim();
+        var lead = raw.Length - raw.TrimStart().Length;
         sentence.Clear();
-        if (droppedTag) candidate = VoiceTags.Tidy(candidate);
+        if (droppedTag)
+        {
+            // Tidying only removes spacing; keep each cue at the same word by counting what was removed before it.
+            var tidied = VoiceTags.Tidy(candidate);
+            for (var i = 0; i < cues.Count; i++)
+                cues[i] = cues[i] with { Offset = Math.Min(tidied.Length, Math.Max(0, cues[i].Offset - lead) * tidied.Length / Math.Max(1, candidate.Length)) };
+            candidate = tidied;
+            lead = 0;
+        }
         droppedTag = false;
-        if (candidate.Length == 0) yield break;
+        var pending = TakeCues(lead, candidate.Length);
+        if (candidate.Length == 0)
+        {
+            if (pending.Count > 0) yield return new(null, pending);
+            yield break;
+        }
         // Numeric list markers and bare dotted addresses are deliberately outside the prose subset.
         if (candidate.Length > 1 && candidate[^1] == '.' && candidate.AsSpan(0, candidate.Length - 1).IndexOfAnyExceptInRange('0', '9') < 0)
             suppressLine = true;
         if (fenced || suppressLine || ContainsDottedToken(candidate) || IsSilent(candidate, silentWord))
         {
-            yield return new(null);
+            yield return new(null, pending.Count > 0 ? pending.Select(c => c with { Offset = 0 }).ToArray() : null);
             yield break;
         }
-        foreach (var part in Split(candidate, byteLimit))
+        var start = 0;
+        var parts = Split(candidate, byteLimit).ToArray();
+        for (var index = 0; index < parts.Length; index++)
         {
+            var part = parts[index];
+            var at = candidate.IndexOf(part, start, StringComparison.Ordinal);
+            if (at < 0) at = start;
+            var end = index == parts.Length - 1 ? int.MaxValue : at + part.Length;
+            var own = pending.Where(c => c.Offset >= start && c.Offset < end)
+                .Select(c => c with { Offset = Math.Clamp(c.Offset - at, 0, part.Length) }).ToArray();
+            start = at + part.Length;
             spoke = true;
-            yield return new(part);
+            yield return new(part, own.Length > 0 ? own : null);
         }
+    }
+
+    private List<SpeechCue> TakeCues(int lead, int length)
+    {
+        var taken = cues.Select(c => c with { Offset = Math.Clamp(c.Offset - lead, 0, length) }).ToList();
+        cues.Clear();
+        return taken;
     }
 
     internal static bool IsSilent(string text, string? silentWord) =>
