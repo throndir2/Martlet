@@ -417,7 +417,11 @@ memory, a model that failed to load and answers 503 with its state and why, a
 service that stops mid-reply) gives the desktop `worker.failed` or
 `worker.unavailable` and the host's own log, read by the desktop as the
 Diagnostics page does, says why (the service's error code, stage and summary,
-its state and detail, or that its stream ended unfinished). Nothing leaves loopback, the temporary folder is deleted and
+its state and detail, or that its stream ended unfinished); and a reply with a
+pause (full-size frames of near-silent audio, whose base64 is full of `+`) is
+spoken whole and the voice keeps working afterwards: the host writes base64
+unescaped, so ordinary audio never exceeds the route's 16 KiB event limit
+(`stream.limit`), which would quarantine the voice until the host restarts. Nothing leaves loopback, the temporary folder is deleted and
 Windows Credential Manager is not touched; it does not cover the desktop window
 and its sync, the Linux host's files, a real engine, an older host or a real LAN.
 
@@ -872,12 +876,13 @@ the gaps were filled), `segments` (`startS`, `endS`, `endedAtS`),
 `endedInPause` (the pause ended the first utterance, so always listening sends
 it), `resumed` and `pauseSpeechFrames`. `yourVoice` runs the production matcher
 (`PcEcho`) that leaves out your own voice when this PC plays it back: its
-`rule`, `share` (the share of the PC's words, in order, that must be yours) and
-`samples` (`scene`, `spoken`, `played`, `expected`, `leftOut`: your voice
-played back, transcribed the same or differently or in part, is left out; a
-video playing while you talk or one you quote is kept). `ok` is true when all
-hold, every sample came out as expected and the fixture's Martlet-free source
-was used. It reads no credentials and contacts nothing.
+`rule`, `share` (the share of the PC's words, in order, that must be yours),
+`ok` and `samples` (`scene`, `spoken`, `played`, `expected`, `leftOut`: your
+voice played back, including the two reported pairs, transcribed the same or
+differently or in part, is left out; a video playing while you talk or one you
+quote is kept). `ok` is true when all hold, every sample came out as expected
+and the fixture's Martlet-free source was used. It reads no credentials and
+contacts nothing.
 
 `logs_timeline` reads this PC's logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
@@ -1610,8 +1615,8 @@ and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
 what this PC plays (not Martlet's own voice).*, *Hearing this PC play
 something…* or why it can't hear the PC, followed by *This PC plays your voice
-back too; Martlet leaves it out.* once a line the PC played repeated what you
-said; what the PC played shows in
+back too; Martlet left out N line(s) of it.* once a line the PC played repeated
+what you said; what the PC played shows in
 `LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
 verifying on a desktop whose sound must not be captured. Each spoken reply writes a *Reply latency: first words

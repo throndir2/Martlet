@@ -146,7 +146,8 @@ internal sealed partial class GatewayHttpApplication
 
     internal GatewayCharacterModelStore CharacterModels { get; } = new();
 
-    // A piece's base64 written as is: the default encoder would escape every '+' and could push it past the response limit.
+    // Base64 written as is (character model pieces, voice recordings, inference audio frames): the default encoder escapes
+    // every '+' as \u002B, which can push ordinary data past limits sized for plain base64.
     private static System.Text.Json.JsonSerializerOptions? unescapedJson;
     private static System.Text.Json.JsonSerializerOptions UnescapedJson =>
         unescapedJson ??= new(Json) { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };

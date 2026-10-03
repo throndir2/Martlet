@@ -1266,19 +1266,27 @@ public sealed class LiveConversationTests
             Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
             Assert.DoesNotContain(window.Messages, m => m.IsPcAudio);
             Assert.DoesNotContain("[PC audio]", Encoding.UTF8.GetString(fixture.Llm.Body), StringComparison.Ordinal);
-            Assert.EndsWith("This PC plays your voice back too; Martlet leaves it out.", Control<TextBlock>(window, "PcAudioText").Text);
+            Assert.EndsWith("This PC plays your voice back too; Martlet left out 1 line of it.", Control<TextBlock>(window, "PcAudioText").Text);
         }
         finally { window.Close(); }
     });
 
     [Theory]
+    // The first two are the reports on a PC whose voice changer played the user's voice back (the companion is called Jane).
+    [InlineData("Hello Jane.", "Hello, Jane.", true)]
+    [InlineData("Why is that the way?", "Why is that the right?", true)]
     [InlineData("Do you like being called that?", "Do you like being called that?", true)]
     [InlineData("What's the weather like tomorrow?", "what's the weather like, tomorrow", true)]
+    [InlineData("that's it", "That’s it!", true)]
+    [InlineData("你好吗", "你好吗？", true)]
     [InlineData("Okay, so we could watch the next episode tonight. What do you think?", "we could watch the next episode tonight", true)]
     [InlineData("Did you hear that?", "And now the weather for the weekend.", false)]
+    [InlineData("Haha, what is she doing?", "Why is that the right?", false)]
+    [InlineData("Why is that the right?", "Oh wow, look at that. Why is that the right?", false)]
     [InlineData("Ha, he said rain all week.", "Expect rain all week across the region, with flooding in the north.", false)]
+    [InlineData("Anything.", "", false)]
     public void APcLineThatRepeatsYouIsYourOwnVoice(string spoken, string played, bool repeats) =>
-        Assert.Equal(repeats, PcEcho.Repeats(played, spoken));
+        Assert.Equal(repeats, PcEcho.Repeats(played, [spoken]));
 
     private sealed class PcSourceFixture : IPcAudioSourceFactory, IPcAudioSource
     {

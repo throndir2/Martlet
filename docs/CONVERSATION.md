@@ -366,14 +366,19 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   it never interrupts or restarts a reply. At most the newest 1,500 characters
   go with one message.
 - **Your own voice played back.** When this PC plays your microphone back (a
-  voice changer's or headset app's *hear myself*, Windows' *Listen to this
-  device*, a call that echoes you), the PC listener hears you too. A line the
-  PC played that mostly repeats, in order, what the microphone heard you say
-  (`PcEcho`: at least 60% of its words; heard while you talked or were being
-  transcribed, or up to 15 seconds after) is left out of the history and never
-  goes to Thinking, so Martlet doesn't answer you twice. The `LivePcAudio` line
-  then adds *This PC plays your voice back too; Martlet leaves it out.* and the
-  desktop log says so once.
+  voice changer's or headset app's *hear myself* such as Voicemod or NVIDIA
+  Broadcast, Windows' *Listen to this device*, a call that echoes you), the PC
+  listener hears you too, so the same words came twice: as *You (spoken)* and
+  as *Playing on this PC*, and Martlet answered both. A line the PC played that
+  mostly repeats, in order, what the microphone heard you say (`PcEcho`: at
+  least 60% of its words; heard while you talked or were being transcribed, or
+  up to 15 seconds after) is your own voice: it is left out of the history and
+  never goes to Thinking, and your own line is always kept and answered. While
+  the microphone is still hearing or transcribing you, what the PC played
+  waits for your words (at most 8 seconds) so your voice played back never
+  shows; a line let go before your words came is still removed once they do.
+  The `LivePcAudio` line then adds *This PC plays your voice back too; Martlet
+  left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
   that is only what the PC played gets none of them, and earlier `[PC audio]`
@@ -381,12 +386,17 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.
+  Your microphone's lines are never dropped for matching what the PC played:
+  with both hearing the same words, the reports on this feature were all your
+  own voice played back, and leaving your words out would leave you
+  unanswered.
 
-The talk window's `LivePcAudio` line says whether Martlet hears the PC now and
-whether its own voice is left out, or why it can't. `pc_audio_check` in
+The talk window's `LivePcAudio` line says whether Martlet hears the PC now,
+whether its own voice is left out and how many lines of your own voice played
+back it left out, or why it can't. `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
-left out without recording anything, and rehearses the production path with a
-fixture loopback.
+left out without recording anything, rehearses the production path with a
+fixture loopback and runs the own-voice comparison on fixed samples.
 
 ## Voice tags
 

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Martlet.Core.Contracts;
 
 namespace Martlet.Audio;
@@ -39,61 +41,74 @@ public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimePro
     }
 }
 
-/// <summary>Your own voice played back on this PC (a voice changer's or headset app's "hear myself", Windows' "Listen to this
-/// device", a call that echoes you): what the PC played repeats what the microphone just heard you say. Such a line is left out
-/// of what the PC played, so Martlet never answers you twice.</summary>
+/// <summary>Your own voice played back on this PC: a voice changer's or headset app's "hear myself" (Voicemod, NVIDIA
+/// Broadcast), Windows' "Listen to this device" or a call that echoes you puts what the microphone hears into what the PC plays,
+/// so with Hear what this PC plays on the same words would show twice, once as yours and once as the PC's, and Martlet would
+/// answer them twice. A line the PC played is your own voice when most of its words (<see cref="Share"/>), in order, are among
+/// the words the microphone heard you say at about the same time; it is left out and your own line is kept. Words only (case,
+/// punctuation and apostrophes ignored; each Chinese, Japanese or Korean character is a word); nothing is kept.</summary>
 public static class PcEcho
 {
-    /// <summary>At least this share of what the PC played, in order, is words you just said.</summary>
+    /// <summary>At least this share of a line's words, in order, must be among what was said.</summary>
     public const double Share = 0.6;
-    // Bounds the comparison: what the PC played is at most a few hundred words, and only your newest words matter.
-    private const int MaximumWords = 600;
+    // Bounds the comparison: a line is at most a few hundred words, and only the newest of what was said matters.
+    private const int MaximumLine = 600;
+    private const int MaximumSaid = 1500;
 
-    /// <summary>What the PC played (one transcribed line) mostly repeats, in order, the words of what you just said.</summary>
-    public static bool Repeats(string played, string spoken)
+    /// <summary>The line (what the PC played) mostly repeats, in order, the words of what was said (what the microphone heard
+    /// you say lately).</summary>
+    public static bool Repeats(string line, IEnumerable<string> said)
     {
-        ArgumentNullException.ThrowIfNull(played);
-        ArgumentNullException.ThrowIfNull(spoken);
-        var pc = Words(played);
-        var you = Words(spoken);
-        if (pc.Count == 0 || you.Count == 0) return false;
-        if (pc.Count > MaximumWords) pc = pc.GetRange(pc.Count - MaximumWords, MaximumWords);
-        if (you.Count > MaximumWords) you = you.GetRange(you.Count - MaximumWords, MaximumWords);
-        return Common(pc, you) >= Math.Max(1, (int)Math.Ceiling(pc.Count * Share));
+        ArgumentNullException.ThrowIfNull(line);
+        ArgumentNullException.ThrowIfNull(said);
+        var words = Words(line);
+        if (words.Count == 0) return false;
+        if (words.Count > MaximumLine) words.RemoveRange(0, words.Count - MaximumLine);
+        var reference = new List<string>();
+        foreach (var text in said) reference.AddRange(Words(text));
+        if (reference.Count == 0) return false;
+        if (reference.Count > MaximumSaid) reference.RemoveRange(0, reference.Count - MaximumSaid);
+        return Common(words, reference) >= Math.Ceiling(words.Count * Share);
     }
 
-    // Lowercase words of letters and digits; apostrophes are dropped ("what's" is "whats") and anything else separates words,
-    // so two transcriptions of the same speech compare equal despite punctuation and capitals.
-    private static List<string> Words(string text)
+    internal static List<string> Words(string text)
     {
         var words = new List<string>();
-        var word = new System.Text.StringBuilder();
+        var word = new StringBuilder();
         foreach (var c in text)
         {
-            if (char.IsLetterOrDigit(c)) word.Append(char.ToLowerInvariant(c));
-            else if (c is '\'' or '\u2019') continue;
-            else if (word.Length > 0)
+            if (c >= '\u2E80' && char.GetUnicodeCategory(c) == UnicodeCategory.OtherLetter)
             {
-                words.Add(word.ToString());
-                word.Clear();
+                Flush();
+                words.Add(c.ToString());
             }
+            else if (char.IsLetterOrDigit(c)) word.Append(char.ToLowerInvariant(c));
+            else if (c is not ('\'' or '\u2019') || word.Length == 0) Flush();
         }
-        if (word.Length > 0) words.Add(word.ToString());
+        Flush();
         return words;
+
+        void Flush()
+        {
+            if (word.Length == 0) return;
+            words.Add(word.ToString());
+            word.Clear();
+        }
     }
 
-    // How many words both say in the same order (longest common subsequence).
-    private static int Common(List<string> a, List<string> b)
+    // How many of the line's words are found in order (not necessarily together) among the said ones.
+    private static int Common(List<string> line, List<string> said)
     {
-        var previous = new int[b.Count + 1];
-        var current = new int[b.Count + 1];
-        foreach (var word in a)
+        var previous = new int[said.Count + 1];
+        var current = new int[said.Count + 1];
+        foreach (var word in line)
         {
-            for (var j = 1; j <= b.Count; j++)
-                current[j] = string.Equals(word, b[j - 1], StringComparison.Ordinal) ? previous[j - 1] + 1 : Math.Max(previous[j], current[j - 1]);
+            for (var j = 1; j <= said.Count; j++)
+                current[j] = string.Equals(word, said[j - 1], StringComparison.Ordinal)
+                    ? previous[j - 1] + 1 : Math.Max(previous[j], current[j - 1]);
             (previous, current) = (current, previous);
         }
-        return previous[b.Count];
+        return previous[said.Count];
     }
 }
 
