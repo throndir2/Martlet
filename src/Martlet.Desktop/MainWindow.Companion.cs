@@ -216,7 +216,7 @@ public partial class MainWindow
             var engine = route.RouteType switch
             {
                 SetupRouteType.GatewayOllama => "Ollama",
-                SetupRouteType.GatewayF5 => "F5",
+                SetupRouteType.GatewayF5 => SpeechEngines.ForRoute(route.GatewaySnapshot?.RouteId)?.Name ?? "F5",
                 _ => "speech recognition"
             };
             return $"{engine} on {(ThisPcHost()?.HostId == gateway.HostId ? "this PC" : gateway.HostId)}";
@@ -385,9 +385,12 @@ public partial class MainWindow
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
         // Voices F5 copies from your recordings. They show wherever F5 can speak: this PC or another of your computers.
-        // A cloud provider has its own voices.
+        // A cloud provider has its own voices. Every self-hosted engine (F5-TTS, XTTS-v2) uses the same voice list.
         if (section == CompanionTab.Voice && place != JobPlace.Cloud)
+        {
+            page.Children.Add(SpeakingEngineCard(route));
             page.Children.Add(VoicesCard(route));
+        }
 
         if (section == CompanionTab.Voice) page.Children.Add(AudioCard(output: true));
         if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
@@ -716,7 +719,7 @@ public partial class MainWindow
                     : machine.DockerInstalled ? "Docker Desktop is installed. Martlet can start it when needed. "
                     : "Docker Desktop isn't installed yet. Martlet installs it first. ") +
                 $"Setting this up installs the local voice service and {job.Engine}, then uses it for Martlet's voice.", new Thickness(0, 0, 0, 8)));
-            steps.Add(Row(PageButton("Set up F5 with Docker", () => UseF5HereAsync().Forget(), primary, id: "SetupHostThisPc")));
+            steps.Add(Row(PageButton($"Set up {SpeakingEngineChoice.Current.Name} with Docker", () => UseF5HereAsync().Forget(), primary, id: "SetupHostThisPc")));
             return steps;
         }
         var model = hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers?.GetValueOrDefault(job.HostRoleKind);
@@ -725,7 +728,7 @@ public partial class MainWindow
             : $"{job.Engine} isn't ready on this PC yet. Martlet installs it when you choose Use.",
             new Thickness(0, 0, 0, 8)));
         steps.Add(Row(
-            inUse ? null : PageButton("Use F5 on this PC", () => UseF5HereAsync().Forget(), primary: primary, id: "SetupUseLocal-" + job.Job),
+            inUse ? null : PageButton($"Use {SpeakingEngineChoice.Current.Name} on this PC", () => UseF5HereAsync().Forget(), primary: primary, id: "SetupUseLocal-" + job.Job),
             PageButton("Check it", () => RunNodeAction(NodeAction.CheckHost, thisPc.HostId), id: "SetupCheckLocal-" + job.Job)));
         return steps;
     }
@@ -736,20 +739,21 @@ public partial class MainWindow
     private Border LocalVoiceCard(HostJob job, SetupRoute? route, PairedHost? thisPc)
     {
         var gpu = machine.BestGpu;
-        var f5Fits = gpu is { IsNvidia: true } && (gpu.MemoryGb ?? 0) >= 6;
+        var engine = SpeakingEngineChoice.Current;
+        var f5Fits = gpu is { IsNvidia: true } && (gpu.MemoryGb ?? 0) >= engine.MinimumGpuMemoryGb;
         var f5InUse = route?.RouteType == SetupRouteType.GatewayF5 && thisPc is not null && route.Gateway?.HostId == thisPc.HostId;
         var windowsInUse = route?.RouteType == SetupRouteType.LocalWindowsTts;
         var nothingHere = !f5InUse && !windowsInUse;
 
         var f5About = Note("A natural voice copied from a short recording. Use the included voices or add your own. Recordings stay on this PC " +
-            "and go only to the computer that speaks. The F5 model is for personal, non-commercial use only.", new Thickness(0, 2, 0, 6));
+            $"and go only to the computer that speaks. The {engine.Name} model is for personal, non-commercial use only.", new Thickness(0, 2, 0, 6));
         AutomationProperties.SetAutomationId(f5About, "SetupF5About");
         var f5 = new List<UIElement>
         {
-            OptionTitle("F5 voice, with Docker", f5InUse ? "in use" : nothingHere && f5Fits ? "recommended for this PC" : null),
+            OptionTitle($"{engine.Name} voice, with Docker", f5InUse ? "in use" : nothingHere && f5Fits ? "recommended for this PC" : null),
             f5About,
-            Note(gpu is null ? "No dedicated graphics card was found on this PC; F5 needs an NVIDIA graphics card with 6 GB or more."
-                : $"This PC has {gpu.Describe()}." + (f5Fits ? "" : " F5 needs an NVIDIA graphics card with 6 GB or more, so a Windows voice suits this PC better."),
+            Note(gpu is null ? $"No dedicated graphics card was found on this PC; {engine.Name} needs an NVIDIA graphics card with {engine.MinimumGpuMemoryGb} GB or more."
+                : $"This PC has {gpu.Describe()}." + (f5Fits ? "" : $" {engine.Name} needs an NVIDIA graphics card with {engine.MinimumGpuMemoryGb} GB or more, so a Windows voice suits this PC better."),
                 new Thickness(0, 0, 0, 6))
         };
         f5.AddRange(HostServiceSteps(job, route, thisPc, primary: nothingHere && f5Fits));

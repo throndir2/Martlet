@@ -190,14 +190,15 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Listening runs inside Martlet on this PC (Parakeet), so the utterance is never sent anywhere.</summary>
     internal bool LocalStt() => IsLocalStt(Route(SetupRole.Stt));
 
-    /// <summary>The paired Martlet host whose F5 voice speaks, when Speaking was handed to a host on the Devices page.</summary>
+    /// <summary>The paired Martlet host whose voice engine (F5 or XTTS-v2) speaks, when Speaking was handed to a host on the
+    /// Devices page.</summary>
     internal HostSpeechTarget? HostSpeechTarget()
     {
         var route = Route(SetupRole.Tts);
         return IsHostVoice(route) && route.Gateway is { } gateway && route.GatewayDeviceId is { } device &&
             route.CredentialId is { } credential && route.Reference is { } reference
             ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential, route.ModelId,
-                reference.PresetId, reference.ReferenceRevision)
+                reference.PresetId, reference.ReferenceRevision, route.GatewaySnapshot?.RouteId ?? SelfHostSetup.F5RouteId)
             : null;
     }
 

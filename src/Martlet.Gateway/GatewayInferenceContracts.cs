@@ -250,16 +250,32 @@ public sealed partial class GatewayInferenceRoute
         string workerId,
         string modelId,
         string modelRevision,
+        string modelSha256) =>
+        ReferenceSpeechRelay(Martlet.Core.Settings.SpeechEngines.F5, destinationId, workerId, modelId, modelRevision,
+            modelSha256);
+
+    /// <summary>
+    /// The route of one reference-voice engine (<see cref="Martlet.Core.Settings.SpeechEngines"/>: F5, XTTS-v2...) a host
+    /// relays to its own loopback service. Every engine has its own route ID and path but the same F5 synthesis payload,
+    /// <c>martlet.f5.worker</c> event stream and 24 kHz mono PCM16 output, so the same relay and checks serve all of them.
+    /// </summary>
+    public static GatewayInferenceRoute ReferenceSpeechRelay(
+        Martlet.Core.Settings.SpeechEngine engine,
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
         string modelSha256)
     {
+        ArgumentNullException.ThrowIfNull(engine);
         GatewayRules.Token(modelId, 128);
         GatewayRules.Token(modelRevision, 128);
         GatewayRules.Sha256(modelSha256);
         return new(
             GatewayInferenceKind.F5Synthesis,
             GatewayRole.Voice,
-            "martlet.gateway.f5-synthesis.v1",
-            "/martlet/v1/inference/f5-synthesis",
+            engine.RouteId,
+            engine.Path,
             F5WorkerProtocol.ContractId,
             F5ProtocolVersion.Current.ToString(),
             destinationId,
