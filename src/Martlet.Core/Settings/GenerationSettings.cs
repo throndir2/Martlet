@@ -1,10 +1,12 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
 
 /// <summary>Optional generation (sampling) settings for the Thinking model's replies, set on Companion > Replies and used by
-/// every reply. A null value sends nothing, so the model or server keeps its own default. Each route sends only what its
+/// every reply, including whether a reasoning model thinks before it answers (<see cref="Reasoning"/>). A null value sends
+/// nothing, so the model or server keeps its own default. Each route sends only what its
 /// API accepts (see <see cref="GenerationSupport"/>): OpenAI takes temperature and top P; Chat Completions servers also take
 /// the frequency/presence penalties, plus top K, min P and repetition penalty where the server supports them (OpenRouter,
 /// vLLM, LM Studio, llama.cpp); a paired host's Ollama takes all of them and the context size. The context size bounds every
@@ -55,10 +57,15 @@ public sealed record GenerationSettings : IContract
     public int? MaxReplyTokens { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? ContextTokens { get; init; }
+    /// <summary>Companion › Replies › Thinking steps: whether a reasoning model thinks step by step before it answers. False
+    /// skips it, so replies start sooner and spend no tokens on hidden thinking; true asks for it; null keeps the model's own
+    /// default. Each route sends it the way its API takes it (<see cref="GenerationSupport.Reasoning"/>).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Reasoning { get; init; }
 
     [JsonIgnore]
     public bool IsDefault => Temperature is null && TopP is null && TopK is null && MinP is null && RepeatPenalty is null &&
-        FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null;
+        FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null && Reasoning is null;
 
     /// <summary>The reply token budget requested from the model (the default when unset).</summary>
     [JsonIgnore]
@@ -99,7 +106,24 @@ public sealed record GenerationSettings : IContract
 /// <summary>Which generation settings a Thinking route sends, so the Replies page can mark the others as unused.</summary>
 public enum GenerationSetting
 {
-    MaxReplyTokens, Temperature, TopP, TopK, MinP, RepeatPenalty, FrequencyPenalty, PresencePenalty, ContextTokens
+    MaxReplyTokens, Temperature, TopP, TopK, MinP, RepeatPenalty, FrequencyPenalty, PresencePenalty, ContextTokens, Reasoning
+}
+
+/// <summary>How a route is told whether to think before answering (<see cref="GenerationSettings.Reasoning"/>).</summary>
+public enum ReasoningControl
+{
+    /// <summary>Never sent: the OpenAI route only offers models that don't reason.</summary>
+    None,
+    /// <summary>OpenAI's <c>reasoning_effort</c>: <c>"none"</c> or <c>"medium"</c>. Ollama's OpenAI-compatible endpoint turns
+    /// <c>"none"</c> into <c>think: false</c>; OpenAI and Gemini take it on models that reason.</summary>
+    ReasoningEffort,
+    /// <summary>OpenRouter's <c>reasoning</c> object: <c>{"effort":"none"}</c> or <c>{"enabled":true}</c>.</summary>
+    OpenRouter,
+    /// <summary><c>chat_template_kwargs</c> <c>enable_thinking</c> and <c>thinking</c> (Qwen 3, Gemma 4, DeepSeek and others
+    /// on vLLM, SGLang, llama.cpp and NVIDIA Build); a template without either ignores them.</summary>
+    ChatTemplate,
+    /// <summary>A paired host's Ollama: its native <c>think</c>, carried by the gateway.</summary>
+    OllamaThink
 }
 
 public enum GenerationSettingUse
@@ -123,6 +147,15 @@ public static class GenerationSupport
     /// route: Martlet keeps each request within it (see <see cref="ContextBudget"/>), and a paired host's Ollama also loads it.</summary>
     public static GenerationSettingUse Use(SetupRouteType? routeType, string? chatBaseUrl, GenerationSetting setting)
     {
+        if (setting == GenerationSetting.Reasoning)
+            return Reasoning(routeType, chatBaseUrl) switch
+            {
+                ReasoningControl.None => GenerationSettingUse.Unused,
+                ReasoningControl.OllamaThink or ReasoningControl.OpenRouter => GenerationSettingUse.Used,
+                _ when string.Equals(chatBaseUrl, LocalOllamaChatBaseUrl, StringComparison.Ordinal) => GenerationSettingUse.Used,
+                // Whether the model reasons and which control its server reads depend on the model and server.
+                _ => GenerationSettingUse.ServerDependent
+            };
         if (routeType == SetupRouteType.GatewayOllama) return GenerationSettingUse.Used;
         if (setting is GenerationSetting.ContextTokens or GenerationSetting.MaxReplyTokens or GenerationSetting.Temperature or
             GenerationSetting.TopP)
@@ -164,6 +197,74 @@ public static class GenerationSupport
         Uri.TryCreate(chatBaseUrl, UriKind.Absolute, out var uri) &&
         !string.Equals(uri.Host, OpenAiChatHost, StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(chatBaseUrl, LocalOllamaChatBaseUrl, StringComparison.Ordinal);
+
+    public const string GeminiChatHost = "generativelanguage.googleapis.com";
+    /// <summary>Ollama's own port: its OpenAI-compatible endpoint takes <c>reasoning_effort</c>, not chat template arguments.</summary>
+    public const int OllamaPort = 11434;
+    /// <summary>The <c>reasoning_effort</c> that turns thinking off, and the one that asks for it.</summary>
+    public const string ReasoningEffortOff = "none", ReasoningEffortOn = "medium";
+
+    /// <summary>How a route says whether to think first (Companion › Replies › Thinking steps).</summary>
+    public static ReasoningControl Reasoning(SetupRouteType? routeType, string? chatBaseUrl) => routeType switch
+    {
+        SetupRouteType.GatewayOllama => ReasoningControl.OllamaThink,
+        SetupRouteType.ChatCompletions => ChatReasoning(chatBaseUrl),
+        _ => ReasoningControl.None
+    };
+
+    /// <summary>How a Chat Completions server is told whether to think first: OpenRouter's reasoning object; OpenAI's
+    /// reasoning_effort for OpenAI, Gemini and Ollama (which read it, and may reject unknown arguments); otherwise the chat
+    /// template arguments that vLLM, SGLang, llama.cpp and NVIDIA Build pass to the model's template.</summary>
+    public static ReasoningControl ChatReasoning(string? chatBaseUrl)
+    {
+        if (string.Equals(chatBaseUrl, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, StringComparison.Ordinal))
+            return ReasoningControl.OpenRouter;
+        return Uri.TryCreate(chatBaseUrl, UriKind.Absolute, out var uri) &&
+            (string.Equals(uri.Host, OpenAiChatHost, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(uri.Host, GeminiChatHost, StringComparison.OrdinalIgnoreCase) || uri.Port == OllamaPort)
+            ? ReasoningControl.ReasoningEffort : ReasoningControl.ChatTemplate;
+    }
+
+    /// <summary>Writes the request properties that carry <paramref name="reasoning"/> for <paramref name="control"/> into the
+    /// open request object; <see cref="ReasoningControl.None"/> writes nothing.</summary>
+    public static void WriteReasoning(Utf8JsonWriter writer, ReasoningControl control, bool reasoning)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        switch (control)
+        {
+            case ReasoningControl.ReasoningEffort:
+                writer.WriteString("reasoning_effort", reasoning ? ReasoningEffortOn : ReasoningEffortOff);
+                break;
+            case ReasoningControl.OpenRouter:
+                writer.WriteStartObject("reasoning");
+                if (reasoning) writer.WriteBoolean("enabled", true);
+                else writer.WriteString("effort", ReasoningEffortOff);
+                writer.WriteEndObject();
+                break;
+            case ReasoningControl.ChatTemplate:
+                writer.WriteStartObject("chat_template_kwargs");
+                writer.WriteBoolean("enable_thinking", reasoning);
+                writer.WriteBoolean("thinking", reasoning);
+                writer.WriteEndObject();
+                break;
+            case ReasoningControl.OllamaThink:
+                writer.WriteBoolean("think", reasoning);
+                break;
+        }
+    }
+
+    /// <summary>What a route's requests carry for a Thinking steps choice, as JSON (<c>{}</c> for none), for MCP.</summary>
+    public static string ReasoningJson(SetupRouteType? routeType, string? chatBaseUrl, bool? reasoning)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            if (reasoning is { } value) WriteReasoning(writer, Reasoning(routeType, chatBaseUrl), value);
+            writer.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+    }
 
     /// <summary>Whether a streamed Chat Completions request asks for the closing usage chunk (stream_options.include_usage),
     /// which says how much of the input came from the prompt cache: only Ollama on this PC, which reports usage only when

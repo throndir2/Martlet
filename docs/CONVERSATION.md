@@ -92,7 +92,16 @@ comment; it needs a Thinking model that can see images. See
    Build or on a paired host's Ollama, whose budget also covers a reasoning
    model's hidden thinking; on a host it stays under half a saved context
    size) is only
-   a ceiling against a runaway answer. Chat Completions streams tolerate
+   a ceiling against a runaway answer. **Thinking steps** (Companion ›
+   Replies: *Default*, *Off* or *On*) decides whether a reasoning model thinks
+   before it answers; *Off* skips that hidden thinking, so replies start sooner
+   and spend no tokens on it, and *Default* leaves it to the model. It applies
+   to replies, glances and remembering. Ollama on this PC gets
+   `reasoning_effort` (`none` turns thinking off), OpenRouter its `reasoning`
+   object, a paired host's Ollama its own `think` (a host must run this Martlet
+   version or later), and other Chat Completions servers (NVIDIA Build, vLLM,
+   llama.cpp) the chat template's `enable_thinking`, which works only where the
+   model's template has it; the OpenAI route's models don't reason. Chat Completions streams tolerate
    provider extras (other delta fields, repeated usage or finish chunks,
    changing ids) instead of ending the reply mid-sentence. When a spoken reply
    outgrows the speech budget below, Martlet stops saying it aloud but still
@@ -244,7 +253,7 @@ game/call audio. Capturing other people requires their permission.
 | Overall permission | Original monotonic and absolute expiry within 150 seconds, including scheduling/capture/authorization; never restored or extended |
 | Capture | At most 25 seconds / 800,000 bytes, canonical mono 16 kHz PCM16; original capture permission at most 30 seconds including cleanup and transfer |
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
-| LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it), 16,384 response characters, 45-second request |
+| LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |

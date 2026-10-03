@@ -86,7 +86,8 @@ from the model the host advertises:
    `deadline_utc` within the route's `maximum_duration_milliseconds`, and the
    route's `payload`. For a chat: `{"input": "...", "temperature": 0.7,
    "maximum_output_tokens": 256, "maximum_context_tokens": 4096}` (optional
-   `system` and up to 16 `history` messages `{role, text}`). For
+   `system` and up to 16 `history` messages `{role, text}`, and `think`
+   `false` to answer without thinking first). For
    transcription: `{"sample_rate": 16000, "pcm_base64": "..."}` (mono 16-bit,
    at most 30 s).
 3. Read the `application/x-ndjson` reply: `started`, `text_delta` events with

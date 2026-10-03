@@ -421,6 +421,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "model's default, a 1,000,000-token setting, a paired host and Ollama on this PC. Loopback only; reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("thinking_steps_check", "Companion > Replies > Thinking steps (whether a reasoning model thinks before it answers) as " +
+            "replies use it, from a data directory: the saved choice (Default, Off or On), the Thinking route, how it takes the choice " +
+            "(control, use) and exactly what its replies send (sends), and what every kind of route sends for Off and On. Then the " +
+            "production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned reply, NOT AI) for each choice. With " +
+            "live: true it also asks Ollama on this PC (the saved local Thinking model, or model) a fixed question, never anything the " +
+            "owner said, with the model's default and with Off: the production adapter's reply and first-words time, and one plain " +
+            "request each showing how much Ollama thought first. Loopback only; reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" },
+            model = new { type = "string", maxLength = 128 },
+            live = new { type = "boolean" }
         })
     ];
 
@@ -541,6 +553,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
+                    OptionalBool(arguments, "live") ?? false, cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

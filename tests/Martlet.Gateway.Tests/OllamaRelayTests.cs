@@ -137,13 +137,16 @@ public sealed class OllamaRelayTests
         var sampling = new Martlet.Core.Settings.GenerationSettings
         {
             TopP = 0.9, TopK = 40, MinP = 0.05, RepeatPenalty = 1.15, FrequencyPenalty = 0.2, PresencePenalty = -0.5,
-            ContextTokens = 16_384
+            ContextTokens = 16_384, Reasoning = false
         };
 
         await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
             null, [], "Hello", 1.2, 512, 32_768, null, sampling)) { }
 
-        var options = Assert.Single(ollama.Requests).RootElement.GetProperty("options");
+        var sent = Assert.Single(ollama.Requests).RootElement;
+        // Thinking steps Off is Ollama's own top-level think, not an option.
+        Assert.False(sent.GetProperty("think").GetBoolean());
+        var options = sent.GetProperty("options");
         Assert.Equal(1.2, options.GetProperty("temperature").GetDouble());
         Assert.Equal(512, options.GetProperty("num_predict").GetInt32());
         Assert.Equal(16_384, options.GetProperty("num_ctx").GetInt32());
@@ -180,7 +183,10 @@ public sealed class OllamaRelayTests
             text.Add(delta);
 
         Assert.Equal(["Hi!"], text);
-        var options = Assert.Single(ollama.Requests).RootElement.GetProperty("options");
+        var request = Assert.Single(ollama.Requests).RootElement;
+        // Without a Thinking steps choice the model keeps its own default.
+        Assert.False(request.TryGetProperty("think", out _));
+        var options = request.GetProperty("options");
         Assert.Equal(4_096, options.GetProperty("num_predict").GetInt32());
         Assert.Equal(OllamaRelayWorker.MaximumContextTokens, options.GetProperty("num_ctx").GetInt32());
     }
