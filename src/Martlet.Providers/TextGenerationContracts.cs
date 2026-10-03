@@ -155,6 +155,11 @@ public sealed class BoundedTextInput
     public static int TextReservation(long utf8Bytes, int messages) =>
         checked((int)((utf8Bytes + 2) / 3) + MessageTokens * messages);
 
+    /// <summary>The estimated tokens of <paramref name="text"/> on its own, by <see cref="TextReservation"/>'s rule without any
+    /// message overhead: what a prompt's text adds to a request. A local estimate, not a provider's count.</summary>
+    public static int TextTokens(string? text) =>
+        string.IsNullOrEmpty(text) ? 0 : TextReservation(Encoding.UTF8.GetByteCount(text), 0);
+
     /// <summary>Where the earlier messages a request carries start: the first even index of <paramref name="history"/> from which
     /// they fit beside <paramref name="prompt"/> (the same request without earlier messages) within <paramref name="maxBytes"/>,
     /// <paramref name="maxTextTokens"/> (tools excluded), <paramref name="maxTokens"/> and <paramref name="maxMessages"/>, so the

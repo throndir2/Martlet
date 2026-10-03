@@ -18,13 +18,18 @@ public partial class MainWindow
         var saved = homeSettings?.Prompts;
         var now = Note(DescribePrompts(saved), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(now, "PromptsNow");
-        page.Children.Add(Card(Heading("Now"), now));
+        var total = Note(DescribePromptTokens(PromptCatalog.All.Select(p => PromptSettings.Text(saved, p.Id))), new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(total, "PromptsTokens");
+        page.Children.Add(Card(Heading("Now"), now, total));
 
         page.Children.Add(Card(Heading("How prompts work"),
             Note("Martlet builds each request from these prompts plus your persona, matching lore, remembered facts and the recent " +
                 "conversation. Words in braces, such as {name}, are filled in by Martlet when the prompt is sent; keep them where you " +
                 "want that text. Empty a prompt to send nothing for it. Martlet reads the answers to Remembering and Learning names, so " +
-                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0))));
+                "keep their line formats. Edits save as you type; reload an open conversation to use them.", new Thickness(0, 0, 0, 0)),
+            Note("Token counts are Martlet's own estimate, about one token for every three bytes of text: the same rule it uses to " +
+                "keep requests within the model's limit, so the model itself may count somewhat fewer. They count each prompt as " +
+                "written; the text filled in for words in braces adds to it when sent.", new Thickness(0, 6, 0, 0))));
 
         var boxes = new Dictionary<string, TextBox>(StringComparer.Ordinal);
         var states = new List<Action>();
@@ -58,7 +63,13 @@ public partial class MainWindow
                 void ShowState() => state.Text = PromptState(prompt, box.Text, saved);
                 ShowState();
                 states.Add(ShowState);
-                box.TextChanged += (_, _) => { tabEdited = true; ShowState(); autoSave.Changed(); };
+                box.TextChanged += (_, _) =>
+                {
+                    tabEdited = true;
+                    ShowState();
+                    total.Text = DescribePromptTokens(boxes.Values.Select(b => b.Text));
+                    autoSave.Changed();
+                };
                 boxes[prompt.Id] = box;
                 var reset = PageButton("Use built-in text", () => box.Text = prompt.Default, link: true, id: "PromptReset-" + prompt.Id);
                 children.Add(title);
@@ -81,14 +92,27 @@ public partial class MainWindow
             Row(defaults)));
     }
 
-    /// <summary>A prompt's state in words, against what is saved: built in, edited, empty (sent as nothing), and whether it is
-    /// still saving.</summary>
+    /// <summary>A prompt's state in words, against what is saved: built in, edited, empty (sent as nothing), its estimated tokens,
+    /// and whether it is still saving.</summary>
     private static string PromptState(PromptDefinition prompt, string text, PromptSettings? saved)
     {
+        var sent = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var state = string.IsNullOrWhiteSpace(text) ? "Empty: nothing is sent for this prompt."
-            : text == prompt.Default ? "Built-in text." : "Edited.";
-        return text.Replace("\r\n", "\n", StringComparison.Ordinal) == PromptSettings.Text(saved, prompt.Id) ? state : state + " Saving...";
+            : (text == prompt.Default ? "Built-in text. About " : "Edited. About ") + Tokens(PromptTokens(sent)) + ".";
+        return sent == PromptSettings.Text(saved, prompt.Id) ? state : state + " Saving...";
     }
+
+    /// <summary>The estimated tokens of every prompt together, as typed: what all of them would add if one request sent them all.</summary>
+    internal static string DescribePromptTokens(IEnumerable<string> texts) =>
+        "All prompts together: about " + Tokens(texts.Sum(t => string.IsNullOrWhiteSpace(t) ? 0
+            : PromptTokens(t.Replace("\r\n", "\n", StringComparison.Ordinal)))) +
+        ". Each request sends only the prompts it needs.";
+
+    /// <summary>A prompt's estimated tokens by Martlet's own request-size rule (see <see cref="Martlet.Providers.BoundedTextInput"/>).</summary>
+    internal static int PromptTokens(string text) => Martlet.Providers.BoundedTextInput.TextTokens(text);
+
+    private static string Tokens(int count) =>
+        count.ToString("N0", System.Globalization.CultureInfo.CurrentCulture) + (count == 1 ? " token" : " tokens");
 
     internal static string DescribePrompts(PromptSettings? prompts)
     {
