@@ -1,5 +1,6 @@
 using Martlet.Audio;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Conversation;
@@ -90,20 +91,23 @@ public sealed class ConversationRuntime : IAsyncDisposable
     // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.
     // Input is the request's input or a continuation of it after tool calls.
     internal ITextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
-        BoundedTextInput input, TextDisclosureAuthorization consent, CancellationToken caller, bool fallback = false)
+        BoundedTextInput input, TextDisclosureAuthorization consent, CancellationToken caller, bool fallback = false,
+        bool withoutReasoning = false)
     {
+        // A model or server that refused the Thinking steps choice is asked again with its own default.
+        var generation = withoutReasoning ? GenerationSettings.WithoutReasoning(request.Generation) : request.Generation;
         if (fallback)
         {
             var second = request.Fallback ?? throw new InvalidOperationException("This request has no Thinking fallback.");
-            return ChatAdapter(second.Chat).Stream(context, second.Model, input, request.TextLimits, consent, caller, request.Generation);
+            return ChatAdapter(second.Chat).Stream(context, second.Model, input, request.TextLimits, consent, caller, generation);
         }
         if (request.Host is { } host)
             return new HostTextGenerationStream(HostText ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host text client."), host, context, request.Model,
-                input, request.TextLimits, consent, Clock, caller, request.Generation);
+                input, request.TextLimits, consent, Clock, caller, generation);
         if (request.Chat is not { } target)
-            return Text.Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
-        return ChatAdapter(target).Stream(context, request.Model, input, request.TextLimits, consent, caller, request.Generation);
+            return Text.Stream(context, request.Model, input, request.TextLimits, consent, caller, generation);
+        return ChatAdapter(target).Stream(context, request.Model, input, request.TextLimits, consent, caller, generation);
     }
 
     private ChatCompletionsTextGenerationAdapter ChatAdapter(ChatCompletionsTarget target)

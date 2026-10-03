@@ -381,14 +381,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "latency_report reads it (with voiceFailure none, ok also needs every step and steps adding up to the total). With " +
             "reply, that text is streamed instead, a word at a time like a model's tokens; the reply is broken into pieces with " +
             "speech breaks (dataDirectory's persona by name, else the one Martlet uses, else the defaults; breaks overrides stops) " +
-            "and voice.pieces lists exactly what the voice was asked to say. Loopback only; reads no credentials.", new
+            "and voice.pieces lists exactly what the voice was asked to say. thinkingSteps (off or on) sends Companion > Replies > " +
+            "Thinking steps with the reply; with refuseThinking the fixture endpoint refuses a request that carries it, as a model " +
+            "that always thinks does, and ok needs the reply asked once more without it (thinking.sentControl [true, false], " +
+            "reasoningRejected). Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 },
             reasoningMs = new { type = "integer", minimum = 0, maximum = 5000 },
             voiceDelayMs = new { type = "integer", minimum = 0, maximum = 5000 },
             reply = new { type = "string", maxLength = 1024 }, dataDirectory = new { type = "string" }, persona = new { type = "string" },
-            breaks = BreaksSchema()
+            breaks = BreaksSchema(),
+            thinkingSteps = new { type = "string", @enum = new[] { "off", "on" } },
+            refuseThinking = new { type = "boolean" }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -558,7 +563,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
-                    SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name),
+                    SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name,
+                    OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),

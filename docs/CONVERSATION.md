@@ -101,7 +101,13 @@ comment; it needs a Thinking model that can see images. See
    object, a paired host's Ollama its own `think` (a host must run this Martlet
    version or later), and other Chat Completions servers (NVIDIA Build, vLLM,
    llama.cpp) the chat template's `enable_thinking`, which works only where the
-   model's template has it; the OpenAI route's models don't reason. Chat Completions streams tolerate
+   model's template has it; the OpenAI route's models don't reason. A model
+   that always thinks (OpenRouter lists some as reasoning-mandatory) or a
+   server that doesn't take the control refuses the request before answering:
+   Martlet asks once more with the model's own default, logs *refused Thinking
+   steps Off*, and keeps the default for that model until it restarts, so the
+   reply still comes. The reply latency line names the choice next to the
+   model (*thinking steps off*). Chat Completions streams tolerate
    provider extras (other delta fields, repeated usage or finish chunks,
    changing ids) instead of ending the reply mid-sentence. When a spoken reply
    outgrows the speech budget below, Martlet stops saying it aloud but still

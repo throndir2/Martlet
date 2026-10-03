@@ -84,4 +84,22 @@ public sealed class ToolLoopTests
         Assert.Equal(2, actions.Length);
         Assert.Empty(actions[1].Input.Tools);
     }
+
+    [Fact]
+    public async Task A_model_that_refuses_thinking_steps_off_is_asked_once_more_with_its_default()
+    {
+        await using var harness = new Harness(textOnly: true);
+        harness.Llm.Respond = (_, _) => Task.FromResult(harness.Llm.Calls == 1
+            ? TextRecordingHandler.Sse("""{"error":{"message":"reasoning is mandatory for this model"}}""", 400)
+            : TextRecordingHandler.Sse(Harness.Trace("Hello.")));
+        var request = new ConversationRequest(new BoundedTextInput("Hi"), TextFixtures.Selection, new(), new(),
+            generation: new Martlet.Core.Settings.GenerationSettings { Reasoning = false });
+        var snapshot = await Harness.Finish(harness.Start(request), harness.Clock);
+
+        Assert.Equal(ConversationState.Completed, snapshot.State);
+        Assert.True(snapshot.ReasoningRejected);
+        Assert.False(snapshot.ToolsRejected);
+        Assert.Equal(2, harness.Llm.Calls);
+        Assert.Null(Martlet.Core.Settings.GenerationSettings.WithoutReasoning(request.Generation));
+    }
 }
