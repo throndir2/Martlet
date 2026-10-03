@@ -324,6 +324,7 @@ internal sealed partial class GatewayHttpApplication
         {
             ProtocolVersion = GatewayProtocolVersion.Current,
             HostId = identity.HostId,
+            MartletVersion = MartletVersion,
             State = state,
             Roster = roster is null ? null : JsonSerializer.Deserialize<JsonElement>(roster.Write()),
             Joins = joins.Select(j => new JoinRequestDocument
@@ -373,6 +374,9 @@ internal sealed partial class GatewayHttpApplication
     {
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
+        /// <summary>The Martlet release this host runs, announced to every computer that syncs the network with it, so an
+        /// update made anywhere reaches them all on their next sync. Desktops older than this field ignore it.</summary>
+        public string? MartletVersion { get; init; }
         public required string State { get; init; }
         public JsonElement? Roster { get; init; }
         public required JoinRequestDocument[] Joins { get; init; }

@@ -257,7 +257,11 @@ founds a network that binds it; A adds a second host to the same network; B
 pairs with one host and asks to join with a check number; A sees the same
 number; the host tells B (not yet a member) who is paired with it, A and B,
 each with when it last made a signed request; A allows B, and B pairs with the
-other host by itself; a host PC C outside the network pairs with the first host
+other host by itself; every host announces the Martlet release it runs to A, B
+and B reading only (the gateway's own release), and a desktop that last saw a
+host on 0.0.1 (simulated) takes the announced release as an update that needs
+nothing more, while a host still older than the desktop keeps needing one
+(`HostRelease`); a host PC C outside the network pairs with the first host
 and only watches (`NetworkSyncEngine.ReadOnlyAsync`): it sees A, B and itself
 and starts, joins and asks nothing; A sets up a third
 host and B is paired with it on its next sync; a key outside the network
@@ -612,7 +616,13 @@ selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `CoverageShow-<job>` selects the device doing a job; both only show details, so
 they are passive clicks, as are the `DeviceFactsSection`, `DeviceRolesSection`
 and `DeviceReachSection` expanders. `SelectedDevice` and `SelectedDeviceHealth`
-return the selected device's name and status, each row title
+return the selected device's name and status. For a paired host,
+`SelectedDeviceRelease` (in *Details*) returns its Martlet release as this PC
+knows it, kept current by the release every host announces on each network
+sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
+`SelectedDeviceUpdate` the note on what this PC last did to update it (for
+example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, then *Updated to
+Martlet 0.22.0 (seen at 9:41 PM).* once the host announces it). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`

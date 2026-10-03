@@ -72,6 +72,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupCharacterNow", "SetupCharacterNowProblem",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
+        // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
+        // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
+        "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path).

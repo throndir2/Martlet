@@ -35,6 +35,8 @@ public partial class MainWindow
     private DateTimeOffset? hostRetryAt;
     private static readonly TimeSpan HostRetryDelay = TimeSpan.FromMinutes(3);
     private const string ThisPcHostId = "this-pc";
+    /// <summary>How a host's card note starts once its update is done (here, or seen from its announced release).</summary>
+    private const string HostUpdatedNote = "Updated to Martlet ";
     /// <summary>The status line last set to say what a downloaded automatic update waits for, so it is refreshed only while
     /// nothing else replaced it.</summary>
     private string? installWaitingText;
@@ -614,7 +616,7 @@ public partial class MainWindow
                 return HostUpdateResult.Busy;
             }
             hostUpdateNotes[id] = code == 0
-                ? $"Updated to Martlet {Version} at {DateTime.Now:t}."
+                ? $"{HostUpdatedNote}{Version} at {DateTime.Now:t}."
                 : "The update needs your attention on that computer. Press Update host to finish it.";
             return code == 0 ? HostUpdateResult.Updated : HostUpdateResult.Failed;
         }
