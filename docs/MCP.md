@@ -224,6 +224,24 @@ loads settings, a route or applied voice that was `retired-sample` reads the
 chosen or first voice. It never returns own voices' names, transcripts or audio, plays
 nothing and contacts nothing.
 
+`voice_recording_check` shows what *Add a voice* does with one file: `path`
+(required) is an audio or video file on this PC. It runs the production
+converter (`VoiceRecordingImport`) and F5's reference rules on the result and
+returns `usable`; when usable, `sourceFormat` (the file's extension in capitals,
+for example `MP3`), `sourceChannels`, `sourceSampleRate`, `converted` (false
+when the file is already a mono 16-bit PCM WAV Martlet keeps byte for byte),
+the kept WAV's `sampleRate` (the source rate when it is 16, 22.05, 24, 44.1 or
+48 kHz, else the next one above it, at most 48 kHz), `channels` (1),
+`bitsPerSample` (16), `durationMs`, `bytes`, `sha256`, `voiceAlone` (whether
+it passes F5's reference rules and so can be a voice by itself, with
+`voiceAloneProblem` when not), `engines` (the voice
+engines that can clone a recording that long) and `shown` (the line
+`F5AddVoiceRecording` shows); otherwise `problem` (too long, too short, silent,
+missing or unreadable). Recordings from 0.5 seconds (the shortest one of several
+may be) to 30 seconds are usable; a voice from one recording needs at least 1
+second. Decoding stops just past 30 seconds. It never returns
+the path or audio, saves nothing, plays nothing and contacts nothing.
+
 `voice_tags` shows how a reply's [voice tags](CONVERSATION.md#voice-tags) are
 handled: `text` (required) is a reply, `engine` an engine key (default the
 default engine, `chatterbox`; `none` for a voice without tags such as OpenAI or
@@ -1198,22 +1216,30 @@ its recordings is 3-10 seconds) its title adds
 as its help text; Play and Use are also disabled while its recording is still
 being copied to this PC. Remove asks with `ConfirmationYes`/`ConfirmationNo` and
 removes the voice on every computer. `F5AddVoice` opens *Add a voice*
-(`F5AddVoiceDialog`): `F5AddVoicePath` (the WAV's full path), `F5AddVoiceName`,
+(`F5AddVoiceDialog`): `F5AddVoicePath` (the recording's full path: almost any
+audio or video file), `F5AddVoiceRecording` (read about half a second after the
+path changes: "Reading the recording...", then what Martlet found, for example
+"MP3, 7.5 seconds. Martlet converts it to a mono 16-bit WAV at 44.1 kHz.", or
+why it can't be used, such as "This recording is 45 seconds long. ..."),
+`F5AddVoiceName`,
 `F5AddVoiceTranscript`, `F5AddVoiceBasis` (whose voice), `F5VoiceRights` (the
-rights confirmation) and `F5AddVoiceOk`, which adds the voice, shares it and uses
-it; `F5AddVoiceProblem` returns why it couldn't (the typed name, transcript and
-path are never returned). `F5AddVoiceMore` (passive: it only adds an empty row)
+rights confirmation) and `F5AddVoiceOk`, which adds the voice (from the
+converted WAVs, which are also what Play and Play joined play), shares it and
+uses it; `F5AddVoiceProblem` returns why it couldn't (the typed name, transcript
+and path are never returned). `F5AddVoiceMore` (passive: it only adds an empty row)
 adds another recording of the same voice, whose controls end in its number
-(`F5AddVoicePath-2`, `F5AddVoiceTranscript-2`, `F5AddVoicePlay-2`,
-`F5AddVoiceBrowse-2`); with several, each row has `F5AddVoiceDrop-<n>` (passive)
-and `F5AddVoicePlayJoined` plays them joined. `F5AddVoiceRecordings` returns how
-many recordings there are and, once their files exist, how long they are joined
-with the pauses ("3 recordings make one voice, 10.5 seconds joined with the
-pauses.", more than 30 seconds, or which recording isn't a usable WAV); never
+(`F5AddVoicePath-2`, `F5AddVoiceRecording-2`, `F5AddVoiceTranscript-2`,
+`F5AddVoicePlay-2`, `F5AddVoiceBrowse-2`); with several, each row has
+`F5AddVoiceDrop-<n>` (passive) and `F5AddVoicePlayJoined` plays them joined.
+`F5AddVoiceRecordings` returns how many recordings there are and, once their
+files are read, how long they are joined with the pauses ("3 recordings make one
+voice, 10.5 seconds joined with the pauses.", more than 30 seconds, "Reading the
+recordings...", or which recording Martlet can't use); never
 paths or words. Use, Remove and adding change the voice list and need
 `--allow-ui-effects`; Play plays audio and is not for automated verification.
 Passive navigation writes nothing: the list is shown as it would start until a
-voice is first used, added or removed. `f5_voices` reads the same list headlessly.
+voice is first used, added or removed. `f5_voices` reads the same list headlessly
+and `voice_recording_check` runs the same conversion on a file.
 
 Above the voices, the Voice engine card lists every way Martlet can speak on the
 shown computer as one row each, keyed by engine (`chatterbox`, `f5`, `xtts`,

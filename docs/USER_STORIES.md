@@ -1395,5 +1395,5 @@ Each flow below asks for a step Martlet could do itself.
 | 14 | Memory | Storage choice and enable checkbox (they save on their own; *Save memory configuration* removed) | One switch | `MemoryWindow.xaml(.cs)` |
 | 15 | Updates | Four separate preferences | All on by default | `MainWindow.Updates.cs`, `UpdateCheckPreferences.cs` |
 | 16 | Devices sync and failover | Sync on by default with a toggle; failover opt-in per job | Always on inside a network | `MainWindow.Cluster.cs` |
-| 17 | Add a voice | Done: the passive Voice Library window is gone; *Add a voice...* on *Voices* takes the file, name, exact transcript and whose voice, then uses it | Record in place and fill the transcript from Listening (D3) | `F5AddVoiceDialog.cs` |
+| 17 | Add a voice | Done: the passive Voice Library window is gone; *Add a voice...* on *Voices* takes the file (almost any audio or video format, converted to the WAV Martlet keeps), name, exact transcript and whose voice, then uses it | Record in place and fill the transcript from Listening (D3) | `F5AddVoiceDialog.cs`, `VoiceRecordingImport.cs` |
 | 18 | Setup advisor | Three question pages, then a plan the user still carries out by hand | Hardware-based plan that sets itself up (A1) | `SetupAdvisorWindow.xaml(.cs)` |
