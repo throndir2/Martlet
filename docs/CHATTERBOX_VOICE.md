@@ -47,12 +47,12 @@ clearance.
 - **Service** `workers/chatterbox/martlet_chatterbox_host.py` listens on
   127.0.0.1:50083 only and speaks the f5 role's protocol (`/status`, `/warmup`,
   `/synthesize`, `/cancel`) and `martlet.f5.worker` 1.0 events. Per text chunk it
-  calls `ChatterboxTurboTTS.generate(text)` with the voice conditionals of the
-  reply's reference and sends contiguous 24 kHz mono 16-bit frames (`model.sr`
-  is 24 kHz; anything else is resampled). Like the f5 role after PR #248, a reply waits
+  speaks with the voice conditionals of the reply's reference and sends
+  contiguous 24 kHz mono 16-bit frames as they are made (see **Speed**;
+  `model.sr` is 24 kHz; anything else is resampled). Like the f5 role after PR #248, a reply waits
   for a busy model instead of failing, and a failed model is reloaded for the
   next reply. Cancellation is discard-only.
-- **Speed** (image `martlet-chatterbox:3`, `FastTurbo` in the service). The
+- **Speed** (image `martlet-chatterbox:4`, `FastTurbo` in the service). The
   same words and sound, sooner: the reference's voice conditionals (what
   `generate(text, audio_prompt_path=...)` recomputed for every sentence, about
   140 ms each) are computed once per recording (by its SHA-256, the last two
@@ -63,10 +63,27 @@ clearance.
   library's own sampling, instead of launching hundreds of small kernels per
   token. Measured on the RTX 5080 under Docker Desktop: 6 ms a token instead of
   17-25 ms, with identical logits; a 3.8 s sentence in about 0.85 s instead of
-  2.7-3.5 s in isolation. A sentence too long for the cache, a machine without
-  CUDA or a capture failure uses the library's own decoding;
-  `MARTLET_CHATTERBOX_FAST=0` turns the graph off. Each reply logs how much
-  speech it made and how long it took (`docker logs`), never its text. See
+  2.7-3.5 s in isolation.
+- **Streaming** (on with the CUDA graph; `MARTLET_CHATTERBOX_STREAM=0` turns it
+  off). Each piece is sent as it is made: the first audio after about 12 speech
+  tokens (half a second of speech), then 25, 50 and 100 more at a time. Each
+  chunk decodes every token so far with the same noise and holds back the last
+  3 tokens' frames until their lookahead is known (the library's own
+  `finalize=False` is broken in 0.1.7: it trims the encoder output but not its
+  mask); the vocoder carries its source and an 8-frame mel overlap across
+  chunks and the 160 ms where chunks meet is crossfaded, as CosyVoice 2 (where
+  S3Gen comes from) streams. Every chunk carries the Perth watermark. Measured
+  against a whole-piece decode of the same tokens: the same length, a log-mel
+  difference of 0.1-0.39 where two whole decodes with different noise differ by
+  0.46-0.82, sample jumps at the seams no larger than elsewhere in the speech,
+  and the watermark detected as on the whole piece. Through the service, with
+  the character showing, the first audio of a piece came after 350-400 ms
+  whatever its length (1.2-4.2 s before), and the whole piece finished sooner
+  too (7.7 s of speech in 2.7 s instead of 4.2 s). A piece too long for the
+  cache, a machine without CUDA or a capture failure is spoken whole with the
+  library's own decoding; `MARTLET_CHATTERBOX_FAST=0` turns the graph (and so
+  streaming) off. Each reply logs how much speech it made, how long it took
+  and when its first audio left (`docker logs`), never its text. See
   [Voice latency](VOICE_LATENCY.md).
 - **Gateway** relay `Martlet.Gateway.F5.ChatterboxRelay` serves it on its own
   route `martlet.gateway.chatterbox-synthesis.v1`
@@ -120,8 +137,9 @@ tagged sentences (about 0.7x real time once warm). The PyTorch 2.6.0 CUDA 12.4
 image before it failed there with "no kernel image is available", and every
 reply also failed because the worker user could not create its private
 `requests` folder; image `martlet-chatterbox:2` fixes both, and updating a host
-that already has the role rebuilds it. Image `martlet-chatterbox:3` adds the
-speed-ups above; updating a host rebuilds it the same way.
+that already has the role rebuilds it. Images `martlet-chatterbox:3` and `:4`
+add the speed-ups and streaming above; updating a host rebuilds it the same way.
 
-**NOT RUN:** voice likeness and how the tags sound (nobody listened), VRAM, and
+**NOT RUN:** voice likeness and how the tags sound (nobody listened; streamed
+speech was compared with whole-piece decodes by measurement only), VRAM, and
 cards other than the RTX 5080.
