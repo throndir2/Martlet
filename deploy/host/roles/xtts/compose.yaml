@@ -1,0 +1,25 @@
+# Martlet XTTS-v2 voice host service (the bot's speaking, streamed as it is generated), loopback-only behind the Martlet
+# gateway. The image is built on this host from Martlet's workers/xtts sources (workers/xtts/host/Dockerfile: hash-pinned
+# PyTorch 2.6.0 CUDA 12.4 and coqui-tts 0.27.5). "martlet-host add xtts" adds compose.gpu.yaml (XTTS needs the NVIDIA
+# GPU), then runs "martlet-xtts provision" (downloads and verifies the pinned XTTS-v2 files into the martlet-xtts-models
+# volume) and "martlet-xtts warm". The service listens only on 127.0.0.1:50081 (host loopback natively, the gateway's
+# network namespace in Docker); the Martlet gateway is the single LAN entry point.
+
+services:
+  xtts:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/xtts
+      dockerfile: host/Dockerfile
+    image: martlet-xtts:1
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      XTTS_MODEL: ${XTTS_MODEL:-xtts-v2}
+      XTTS_LANGUAGE: ${XTTS_LANGUAGE:-en}
+    volumes:
+      - models:/opt/martlet-xtts/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-xtts-models

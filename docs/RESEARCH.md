@@ -694,7 +694,11 @@ dependency versions, implicit downloads/preprocessing and license boundaries.
 These are upstream observations, not pinned/installed/qualified Martlet
 runtimes. In particular, XTTS CPML restricts model and output use to
 noncommercial purposes; Chatterbox managed training is unverified. Each engine
-requires isolated dependencies and its own artifact closure.
+requires isolated dependencies and its own artifact closure. XTTS-v2 now has
+one: coqui-tts 0.27.5 with hash-locked PyTorch 2.6.0 CUDA 12.4 and
+`coqui/XTTS-v2` revision `6c2b0d75...` (2026-10-02, [XTTS-v2](XTTS_VOICE.md));
+coqui-tts 0.27.5 fixed XTTS for transformers 5, but the role pins the 4.57
+line its streaming code was updated for in 0.27.3.
 
 ## S48: iOS and iPadOS platform research, 2026-09-30
 

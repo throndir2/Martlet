@@ -61,6 +61,13 @@ internal static class HostRoles
     internal const string Ollama = "ollama";
     internal const string Stt = "stt";
     internal const string F5 = "f5";
+    internal const string Xtts = "xtts";
+
+    /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
+    internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
+
+    /// <summary>Whether <paramref name="kind"/> is a voice engine's role (any of <see cref="SpeechEngines"/>).</summary>
+    internal static bool Speaks(string kind) => SpeechEngines.ForRoleKind(kind) is not null;
 
     internal static readonly IReadOnlyList<HostRoleInfo> All =
     [
@@ -73,9 +80,13 @@ internal static class HostRoles
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
             "Turns speech into text on that host. Your recorded speech goes there and is not stored."),
-        new(F5, "Speaks", "Speaking", "an NVIDIA GPU with at least 6 GB",
+        new(F5, "Speaks", "Speaking (F5-TTS)", "an NVIDIA GPU with at least 6 GB",
             HostRoute.F5RouteId, "speaking",
-            "Speaks replies on that host. Reply text and the selected voice sample go there.")
+            "Speaks replies on that host with F5-TTS. Reply text and the selected voice sample go there."),
+        new(Xtts, "Speaks", "Speaking (XTTS-v2)", "an NVIDIA GPU with at least 4 GB",
+            HostRoute.XttsRouteId, "speaking",
+            "Speaks replies on that host with XTTS-v2, which starts speaking before a sentence is finished. Reply text and the " +
+            "selected voice sample go there. Its model allows noncommercial use only.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

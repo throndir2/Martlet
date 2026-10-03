@@ -25,16 +25,55 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         "Your recorded speech",
         "Your speech goes to that computer for transcription instead of a cloud provider. It is not stored. There is no per-request charge.");
 
-    internal static readonly HostJob Speaking = new(SetupRole.Tts, SetupRouteType.GatewayF5, HostRoles.F5,
+    internal static HostJob Speaking => SpeakingFor(SpeakingEngineChoice.Current);
+
+    private static readonly HostJob F5Speaking = new(SetupRole.Tts, SetupRouteType.GatewayF5, HostRoles.F5,
         HostRoute.F5RouteId, "speaking", "voice service", "speak your replies", "speaking-previous.json",
         "Reply text",
         "Reply text and the selected voice sample go to that computer instead of a cloud voice. There is no per-request charge.");
 
-    internal static readonly IReadOnlyList<HostJob> All = [Thinking, Listening, Speaking];
+    private static readonly HostJob XttsSpeaking = F5Speaking with
+    {
+        HostRoleKind = HostRoles.Xtts, RouteId = HostRoute.XttsRouteId,
+        Disclosure = F5Speaking.Disclosure + " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
+    };
+
+    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS or XTTS-v2).</summary>
+    internal static HostJob SpeakingFor(SpeechEngine engine) => engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : F5Speaking;
+
+    internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];
 
     internal static HostJob? For(SetupRole role) => All.FirstOrDefault(job => job.Role == role);
 
     internal string Title => char.ToUpperInvariant(Job[0]) + Job[1..];
+}
+
+/// <summary>Which self-hosted voice engine (<see cref="SpeechEngines"/>) does the Speaking job, kept in speaking-engine.txt
+/// next to the other local preferences. A speaking route already saved on a host's engine wins over the file, so the choice
+/// always matches what speaks.</summary>
+internal static class SpeakingEngineChoice
+{
+    internal const string FileName = "speaking-engine.txt";
+
+    internal static SpeechEngine Current { get; private set; } = SpeechEngines.F5;
+
+    /// <summary>Reads the saved choice, then follows the engine the TTS route uses when Speaking is on a host.</summary>
+    internal static void Sync(string directory, AppSettings? settings)
+    {
+        try { Current = SpeechEngines.ForKey(File.ReadAllText(Path.Combine(directory, FileName)).Trim()) ?? SpeechEngines.F5; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Current = SpeechEngines.F5; }
+        var route = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
+        if (route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: { } snapshot } &&
+            SpeechEngines.ForRoute(snapshot.RouteId) is { } used && used != Current)
+            Save(directory, used);
+    }
+
+    internal static void Save(string directory, SpeechEngine engine)
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, FileName), engine.Key);
+        Current = engine;
+    }
 }
 
 /// <summary>Who does each job: hands a role's route to a paired host's gateway route, or back to the route chosen in Setup.

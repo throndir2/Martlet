@@ -13,7 +13,8 @@ Voice Library window never reached a voice route, so it was removed. The
 working voice library is F5's: Companion > Voice > Voices adds recordings with
 their transcripts and rights, plays them, switches the active voice in one click
 and removes voices, keeping Martlet's own copy of each recording. Other engines
-add to that one list when they run. The existing OpenAI conversation and F5
+add to that one list when they run: [XTTS-v2](XTTS_VOICE.md) now does, chosen on
+Companion > Voice > Voice engine (`Martlet.Core.Settings.SpeechEngines`). The existing OpenAI conversation and F5
 route retain their current boundaries.
 
 ## Research: implementation, not marketing compatibility
@@ -56,7 +57,7 @@ Repository license/activity was read from GitHub on 2026-10-02:
 | --- | --- | --- | --- |
 | OpenVoice V2 | MIT / MIT | Last push 2025-04 | Fast and permissive, but it is MeloTTS plus a tone-colour converter: timbre only, weaker likeness and prosody than F5. Not added. |
 | F5-TTS | MIT / CC-BY-NC-4.0 | Active | Current engine. |
-| XTTS-v2 | MPL-2.0 (`idiap/coqui-ai-TTS`) / CPML noncommercial | Fork active; Coqui closed | Real incremental streaming (`inference_stream`) would cut time to first audio. Already a VS target. |
+| XTTS-v2 | MPL-2.0 (`idiap/coqui-ai-TTS`) / CPML noncommercial | Fork active; Coqui closed | **Added** as the `xtts` host role ([XTTS-v2](XTTS_VOICE.md)): `inference_stream` sends audio while it generates, with cached conditioning latents. |
 | GPT-SoVITS | MIT / per-release | Active (2026-08) | Strong for anime-style voices and one-minute fine-tunes; 3-10 s reference; much smaller than the "~1 B" sometimes quoted. Already a VS target. |
 | Seed-VC | GPL-3.0 | **Archived** (2025-04) | Voice conversion, not TTS: needs another TTS first and adds latency. Not added. |
 

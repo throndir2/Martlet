@@ -13,8 +13,9 @@ public sealed partial class GatewayInferenceRoute
         {
             GatewayInferenceKind.OllamaChat => ("martlet.gateway.ollama-chat.v1",
                 "/martlet/v1/inference/ollama-chat", OllamaChatAdapter.Protocol, "1.0"),
-            GatewayInferenceKind.F5Synthesis => ("martlet.gateway.f5-synthesis.v1",
-                "/martlet/v1/inference/f5-synthesis", F5WorkerProtocol.ContractId, F5ProtocolVersion.Current.ToString()),
+            // Each reference-voice engine has its own route; all speak F5's worker contract.
+            GatewayInferenceKind.F5Synthesis when Martlet.Core.Settings.SpeechEngines.ForRoute(capability.RouteId) is { } engine =>
+                (engine.RouteId, engine.Path, F5WorkerProtocol.ContractId, F5ProtocolVersion.Current.ToString()),
             GatewayInferenceKind.Audio2Face => (Audio2FaceRouteId, Audio2FacePath,
                 Audio2FaceContractId, Audio2FaceContractVersion),
             GatewayInferenceKind.Transcription => (TranscriptionRouteId, TranscriptionPath,

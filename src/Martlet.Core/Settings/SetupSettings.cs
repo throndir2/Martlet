@@ -214,7 +214,10 @@ public sealed record GatewayRouteSnapshot : IContract
         ContractRules.Require(RegistryId == SelfHostSetup.RegistryId && RegistryVersion == SelfHostSetup.RegistryVersion,
             "The gateway route registry version is unsupported.", ErrorCode.UnsupportedVersion);
         var named = SelfHostSetup.Gateway(RouteType);
-        ContractRules.Require(RouteId == named.RouteId && Path == named.Path && ContractId == named.ContractId,
+        // A TTS gateway route may name any reference-voice engine's route; all of them share F5's worker contract.
+        var engine = RouteType == SetupRouteType.GatewayF5 ? SpeechEngines.ForRoute(RouteId) : null;
+        ContractRules.Require(ContractId == named.ContractId &&
+            (engine is not null ? Path == engine.Path : RouteId == named.RouteId && Path == named.Path),
             "The gateway route discriminator does not match its frozen contract.");
         SelfHostSetup.Token(ContractVersion, 32);
         SelfHostSetup.Identifier(DestinationId);
