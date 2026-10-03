@@ -38,15 +38,21 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         Disclosure = F5Speaking.Disclosure + " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
     };
 
+    private static readonly HostJob GptSovitsSpeaking = F5Speaking with
+    {
+        HostRoleKind = HostRoles.GptSovits, RouteId = HostRoute.GptSovitsRouteId
+    };
+
     private static readonly HostJob DiaSpeaking = F5Speaking with
     {
         HostRoleKind = HostRoles.Dia, RouteId = HostRoute.DiaRouteId,
         Disclosure = F5Speaking.Disclosure + " Dia (Apache-2.0) speaks English only and performs cues such as (laughs) in replies."
     };
 
-    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS, XTTS-v2 or Dia).</summary>
+    /// <summary>The Speaking job done by <paramref name="engine"/>'s host role (F5-TTS, XTTS-v2, GPT-SoVITS or Dia).</summary>
     internal static HostJob SpeakingFor(SpeechEngine engine) =>
-        engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : engine.Key == SpeechEngines.Dia.Key ? DiaSpeaking : F5Speaking;
+        engine.Key == SpeechEngines.Xtts.Key ? XttsSpeaking : engine.Key == SpeechEngines.GptSovits.Key ? GptSovitsSpeaking :
+        engine.Key == SpeechEngines.Dia.Key ? DiaSpeaking : F5Speaking;
 
     internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];
 
@@ -183,7 +189,8 @@ public partial class MainWindow
             // included voice; Companion › Voice › Voices adds voices and switches between them.
             F5ReferenceSnapshot? voice = null;
             if (job.RouteType == SetupRouteType.GatewayF5)
-                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token);
+                voice = await F5Voices.DefaultAsync(store.DataDirectory, route?.DestinationId ?? F5Destination, lifetime.Token,
+                    SpeechEngines.ForRoute(job.RouteId));
             var withVoice = voice is null ? "" : $" using \"{voice.PresetName}\"";
             var changeVoice = voice is null ? "" : " You can change voices in Companion > Voice.";
             if (route is null)

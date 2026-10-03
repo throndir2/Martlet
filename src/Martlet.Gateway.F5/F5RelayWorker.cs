@@ -36,6 +36,7 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
     private readonly HttpClient http;
     private readonly CancellationTokenSource lifetime = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> running = new();
+    private readonly IReadOnlyList<(string Role, string ArtifactId, string Revision, string Sha256)> requiredArtifacts;
 
     public F5RelayWorker(Uri endpoint, string model, string? modelRevision = null, string? modelSha256 = null,
         string destinationId = DefaultDestinationId, string workerId = DefaultWorkerId, HttpMessageHandler? handler = null)
@@ -44,8 +45,11 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
     }
 
     /// <summary>A relay for any reference-voice engine's route (<see cref="GatewayInferenceRoute.ReferenceSpeechRelay"/>):
-    /// the engine's loopback service speaks the same /synthesize and /cancel protocol and event stream as the f5 role.</summary>
-    public F5RelayWorker(Uri endpoint, GatewayInferenceRoute route, HttpMessageHandler? handler = null)
+    /// the engine's loopback service speaks the same /synthesize and /cancel protocol and event stream as the f5 role.
+    /// <paramref name="requiredArtifacts"/> are further artifacts (role, ID, revision, SHA-256) the service's worker must
+    /// report besides the route's model weights, for engines whose model is a pair (GPT-SoVITS: GPT and SoVITS).</summary>
+    public F5RelayWorker(Uri endpoint, GatewayInferenceRoute route, HttpMessageHandler? handler = null,
+        IReadOnlyList<(string Role, string ArtifactId, string Revision, string Sha256)>? requiredArtifacts = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(route);
@@ -57,6 +61,7 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
         synthesize = new Uri(endpoint, "synthesize");
         cancel = new Uri(endpoint, "cancel");
         Route = route;
+        this.requiredArtifacts = requiredArtifacts ?? [];
         http = new HttpClient(handler ?? new SocketsHttpHandler
         {
             UseProxy = false, AllowAutoRedirect = false, UseCookies = false, Credentials = null,
@@ -159,6 +164,7 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
             writer.WriteString("transcript", payload.Transcript);
             writer.WriteString("transcript_revision", payload.TranscriptRevision);
             writer.WriteString("audio_base64", Convert.ToBase64String(payload.ReferenceAudio.Span));
+            if (payload.ReferenceLanguage is { } language) writer.WriteString("language", language);
             writer.WriteEndObject();
             writer.WriteStartArray("chunks");
             foreach (var chunk in payload.Chunks)
@@ -254,15 +260,25 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
         }
     }
 
-    // The worker names the exact model weights it verified; they must be the ones this route advertises.
+    // The worker names the exact model weights it verified; they must be the ones this route advertises, plus any further
+    // artifacts the engine's model needs (GPT-SoVITS's GPT half).
     private bool ModelMatches(JsonElement worker)
     {
+        var model = false;
+        var required = new HashSet<string>(requiredArtifacts.Select(a => a.Role), StringComparer.Ordinal);
         foreach (var artifact in worker.GetProperty("artifacts").EnumerateArray())
-            if (artifact.GetProperty("role").GetString() == "model_weights")
-                return artifact.GetProperty("artifact_id").GetString() == Route.ModelId &&
-                    artifact.GetProperty("revision").GetString() == Route.ModelRevision &&
-                    artifact.GetProperty("sha256").GetString() == Route.ModelSha256;
-        return false;
+        {
+            var role = artifact.GetProperty("role").GetString();
+            var id = artifact.GetProperty("artifact_id").GetString();
+            var revision = artifact.GetProperty("revision").GetString();
+            var sha256 = artifact.GetProperty("sha256").GetString();
+            if (role == "model_weights")
+                model = !model && id == Route.ModelId && revision == Route.ModelRevision && sha256 == Route.ModelSha256;
+            else if (requiredArtifacts.FirstOrDefault(a => a.Role == role) is { Role: not null } pin &&
+                     (pin.ArtifactId != id || pin.Revision != revision || pin.Sha256 != sha256 || !required.Remove(pin.Role)))
+                return false;
+        }
+        return model && required.Count == 0;
     }
 
     public async ValueTask<GatewayInferenceCancellationReceipt> CancelAsync(

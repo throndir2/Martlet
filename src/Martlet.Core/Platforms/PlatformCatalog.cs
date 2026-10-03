@@ -321,6 +321,13 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "XTTS needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "XTTS needs an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("gpt-sovits", ClusterJobs.Speaking, "GPT-SoVITS voice cloning (anime-style voices, 3-10 s sample)",
+        [
+            Works(Linux, Host, "", Nvidia4), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia4),
+            Impossible(Mac, Host, "the GPT-SoVITS worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "GPT-SoVITS needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "GPT-SoVITS needs an NVIDIA GPU; phones and tablets have none")
+        ]),
         new("dia", ClusterJobs.Speaking, "Dia voice cloning that can laugh, sigh and cough (English only)",
         [
             Works(Linux, Host, "", Nvidia8), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia8),
@@ -444,6 +451,7 @@ public static class PlatformCatalog
         "stt" => "whisper",
         "f5" => "f5",
         "xtts" => "xtts",
+        "gpt-sovits" => "gpt-sovits",
         "dia" => "dia",
         "audio2face" => "audio2face",
         _ => null

@@ -25,7 +25,9 @@ from typing import Any, BinaryIO
 
 from martlet_dia import audio, text
 
-GENERATION = {"cfg_scale": 4.0, "temperature": 1.8, "top_p": 0.90, "cfg_filter_top_k": 50}  # Dia's voice_clone example
+# Dia.generate defaults at the pinned commit. The voice_clone example's hotter settings (cfg 4.0, temperature 1.8) ran on
+# for 15 s of noise after a reply that started with "(sighs)"; these spoke it with the sigh.
+GENERATION = {"cfg_scale": 3.0, "temperature": 1.2, "top_p": 0.95, "cfg_filter_top_k": 45}
 PIECE_GAP_SECONDS = 0.12
 
 

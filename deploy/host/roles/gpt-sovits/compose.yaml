@@ -1,0 +1,25 @@
+# Martlet GPT-SoVITS voice host service (the bot's speaking), loopback-only behind the Martlet gateway.
+# The image is built on this host from Martlet's workers/gpt-sovits sources (workers/gpt-sovits/host/Dockerfile:
+# GPT-SoVITS 20250606v2pro with hash-pinned PyTorch 2.6.0 CUDA 12.4, in its own environment because its dependencies
+# conflict with other voice engines). "martlet-host add gpt-sovits" adds compose.gpu.yaml, then runs
+# "martlet-gpt-sovits provision" (downloads and verifies the pinned v2Pro weights pair and auxiliary models into the
+# martlet-gpt-sovits-models volume) and "martlet-gpt-sovits warm". The service listens only on 127.0.0.1:50082 (host
+# loopback natively, the gateway's network namespace in Docker); the Martlet gateway is the single LAN entry point.
+
+services:
+  gpt-sovits:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/gpt-sovits
+      dockerfile: host/Dockerfile
+    image: martlet-gpt-sovits:1
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      GPT_SOVITS_MODEL: ${GPT_SOVITS_MODEL:-gpt-sovits-v2pro}
+    volumes:
+      - models:/opt/gpt-sovits/GPT-SoVITS/GPT_SoVITS/pretrained_models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-gpt-sovits-models

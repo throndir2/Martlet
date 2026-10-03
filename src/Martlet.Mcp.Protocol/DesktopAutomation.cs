@@ -66,10 +66,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         "SelectedDevice", "SelectedDeviceHealth", "ClusterStatus",
         "VisionStatus", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "SetupF5About", "F5VoicesStatus",
-        // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2 or Dia) and where it speaks with its
+        // Companion › Voice › Voice engine: the chosen self-hosted engine (F5-TTS, XTTS-v2, GPT-SoVITS or Dia) and where it speaks with its
         // model licence. Choosing another engine (ui_select SpeakingEngine) may install a host role, so it needs --allow-ui-effects.
         "SpeakingEngine", "SpeakingEngineStatus",
-        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus",
+        "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
         // Companion › Prompts: how many internal prompts are edited or emptied (counts only, never the prompt text).
         "PromptsNow",
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and

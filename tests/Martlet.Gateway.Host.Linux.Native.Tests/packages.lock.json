@@ -164,12 +164,19 @@
           "Martlet.Gateway": "[0.20.0, )"
         }
       },
+      "martlet.gateway.gptsovits": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway.F5": "[0.20.0, )"
+        }
+      },
       "martlet.gateway.host.linux": {
         "type": "Project",
         "dependencies": {
           "Martlet.Gateway.Audio2Face": "[0.20.0, )",
           "Martlet.Gateway.Dia": "[0.20.0, )",
           "Martlet.Gateway.F5": "[0.20.0, )",
+          "Martlet.Gateway.GptSovits": "[0.20.0, )",
           "Martlet.Gateway.Ollama": "[0.20.0, )",
           "Martlet.Gateway.Persistence": "[0.20.0, )",
           "Martlet.Gateway.Stt": "[0.20.0, )",

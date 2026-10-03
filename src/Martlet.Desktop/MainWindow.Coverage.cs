@@ -305,7 +305,7 @@ public partial class MainWindow
     {
         HostRoles.Ollama => ClusterJobs.Thinking,
         HostRoles.Stt => ClusterJobs.Listening,
-        HostRoles.F5 or HostRoles.Xtts or HostRoles.Dia => ClusterJobs.Speaking,
+        HostRoles.F5 or HostRoles.Xtts or HostRoles.GptSovits or HostRoles.Dia => ClusterJobs.Speaking,
         _ => ClusterJobs.LipSync
     };
 

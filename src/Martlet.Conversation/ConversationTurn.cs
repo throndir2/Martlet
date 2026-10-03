@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading.Channels;
 using Martlet.Audio;
@@ -31,7 +32,10 @@ public sealed class ConversationTurn
     private Task callbacks = Task.CompletedTask;
     private CancellationToken originalCaller;
     private CancellationTokenRegistration callerRegistration;
-    private MonotonicWindow? textWindow, speechWindow;
+    private MonotonicWindow? textWindow, speechWindow, playWindow;
+    private readonly long startedAt;
+    private TimeSpan? firstTextAfter, firstAudioAfter;
+    private bool synthesizing;
     private SpeechSegmenter? segmentation;
     private PlaybackRun? playback;
     private GeneratedSpeechObservation? speechObservation;
@@ -73,6 +77,7 @@ public sealed class ConversationTurn
         this.retryOf = retryOf;
         this.earlierSpeech = earlierSpeech;
         whole = new(Clock, request.Limits.TurnTimeout);
+        startedAt = Clock.GetTimestamp();
         TextIds = NewIds();
         events = Channel.CreateBounded<ConversationEvent>(new BoundedChannelOptions(request.Limits.EventCapacity)
         {
@@ -203,7 +208,8 @@ public sealed class ConversationTurn
     private async Task GenerateAsync()
     {
         var segmenter = request.Speech is { } voice
-            ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply) : null;
+            ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
+                eagerFirstClause: true) : null;
         try
         {
             var input = request.Input;
@@ -382,6 +388,7 @@ public sealed class ConversationTurn
                     lock (Sync)
                     {
                         CheckActive();
+                        firstTextAfter ??= Clock.GetElapsedTime(startedAt);
                         text.Append(chunk!.Text);
                         Emit(ConversationEventKind.Text, chunk.Text);
                     }
@@ -461,26 +468,73 @@ public sealed class ConversationTurn
         Check(window);
     }
 
+    // One sentence ready to play: its audio arrives in Frames while it is synthesized, ahead of its turn to play.
+    private sealed class SpeechTake(string text, int number, CorrelationIds ids)
+    {
+        internal string Text { get; } = text;
+        internal int Number { get; } = number;
+        internal CorrelationIds Ids { get; } = ids;
+        internal Channel<PcmFrame> Frames { get; } = Channel.CreateUnbounded<PcmFrame>(new UnboundedChannelOptions
+        {
+            SingleWriter = true, SingleReader = true, AllowSynchronousContinuations = false
+        });
+        internal long? FinalSamples { get; set; }
+        internal bool ProviderFailed { get; set; }
+        internal ProviderFailureCode? Failure { get; set; }
+        internal ExceptionDispatchInfo? Error { get; set; }
+    }
+
+    // Synthesis runs one sentence ahead of playback: while sentence N plays, sentence N+1 is already being synthesized, so
+    // there is no synthesis gap between sentences. A synthesis failure is raised only when playback reaches that sentence,
+    // so what is already playing finishes first, as it did before.
     private async Task SpeakAsync()
     {
         if (request.Speech is not { } voice) return;
-        await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
+        var ready = Channel.CreateBounded<SpeechTake>(new BoundedChannelOptions(1)
         {
-            // Once the speech budget is spent the rest of the reply is text only; keep draining so the text still finishes.
-            if (speechLimitReached) continue;
-            var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
-            lock (Sync) speechWindow = window;
-            try { await SpeakSegmentAsync(piece.Text!, voice, window).ConfigureAwait(false); }
-            finally { lock (Sync) speechWindow = null; }
-        }
+            FullMode = BoundedChannelFullMode.Wait, SingleWriter = true, SingleReader = true, AllowSynchronousContinuations = false
+        });
+        await Task.WhenAll(GuardStageAsync(() => SynthesizeAllAsync(voice, ready.Writer)),
+            GuardStageAsync(() => PlayAllAsync(voice, ready.Reader))).ConfigureAwait(false);
     }
 
-    private async Task SpeakSegmentAsync(string segment, SpeechOutput voice, MonotonicWindow window)
+    private async Task SynthesizeAllAsync(SpeechOutput voice, ChannelWriter<SpeechTake> ready)
     {
-        Check(window);
+        var broken = false;
+        try
+        {
+            await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
+            {
+                // Once the speech budget is spent (or a sentence failed) the rest of the reply is text only; keep draining so
+                // the text still finishes.
+                if (speechLimitReached || broken) continue;
+                if (!await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false)) return;
+                if (Reserve(piece.Text!, voice) is not { } take) continue;
+                if (!ready.TryWrite(take)) throw new ConversationException(ConversationFailure.InvalidStream);
+                var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
+                lock (Sync)
+                {
+                    speechWindow = window;
+                    synthesizing = true;
+                }
+                try { broken = !await SynthesizeAsync(take, voice, window).ConfigureAwait(false); }
+                catch (Exception) { broken = true; }
+                finally
+                {
+                    lock (Sync)
+                    {
+                        speechWindow = null;
+                        synthesizing = false;
+                    }
+                }
+            }
+        }
+        finally { ready.TryComplete(); }
+    }
+
+    private SpeechTake? Reserve(string segment, SpeechOutput voice)
+    {
         var input = new BoundedSpeechInput(segment);
-        var ids = NewIds();
-        int number;
         lock (Sync)
         {
             CheckActive();
@@ -492,70 +546,124 @@ public sealed class ConversationTurn
                 speechLimitReached = true;
                 suppressed++;
                 Emit(ConversationEventKind.SpeechSuppressed);
-                return;
+                return null;
             }
-            number = ++committed;
+            var take = new SpeechTake(segment, ++committed, NewIds());
             reservedBytes += input.Utf8Bytes;
             reservedSamples += voice.Limits.MaxSamples;
-            speechRequest = ids.RequestId;
-            SetState(ConversationState.Authorizing);
+            speechRequest ??= take.Ids.RequestId;
+            if (playback is null) SetState(ConversationState.Authorizing);
             Emit(ConversationEventKind.SegmentStarted);
+            return take;
         }
-        var context = new ProviderRequestContext { Ids = ids, Epoch = Epoch, Deadline = Deadline(window) };
-        var budget = new OperationBudget(ids, Epoch, ProviderRole.Tts, 1, input.Utf8Bytes, 0, 0, voice.Limits.MaxSamples);
-        var action = new SpeechAuthorizationAction(context, number, input, voice.Selection, voice.Limits, budget);
-        var permission = await authorization.AuthorizeSpeechAsync(action, stop.Token).ConfigureAwait(false);
-        Check(window);
-        if (permission?.Authorization is not { } consent)
-            throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
-        window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
-        lock (Sync) speechWindow = window;
-        Check(window);
-        context = context with { Deadline = Deadline(window) };
-        var stream = Owner.StreamSpeech(context, request, input, consent, originalCaller);
-        PlaybackRun? run = null;
-        lock (Sync)
-        {
-            CheckActive();
-            speechProvenance = stream.Capabilities.Provenance;
-            SetState(ConversationState.Synthesizing);
-        }
+    }
+
+    // Authorizes and synthesizes one sentence into its frame buffer. Returns false when the provider failed it.
+    private async Task<bool> SynthesizeAsync(SpeechTake take, SpeechOutput voice, MonotonicWindow window)
+    {
         try
         {
-            await using var enumeration = stream.GetAsyncEnumerator(stop.Token);
-            while (true)
+            Check(window);
+            var input = new BoundedSpeechInput(take.Text);
+            var context = new ProviderRequestContext { Ids = take.Ids, Epoch = Epoch, Deadline = Deadline(window) };
+            var budget = new OperationBudget(take.Ids, Epoch, ProviderRole.Tts, 1, input.Utf8Bytes, 0, 0, voice.Limits.MaxSamples);
+            var action = new SpeechAuthorizationAction(context, take.Number, input, voice.Selection, voice.Limits, budget);
+            var permission = await authorization.AuthorizeSpeechAsync(action, stop.Token).ConfigureAwait(false);
+            Check(window);
+            if (permission?.Authorization is not { } consent)
+                throw new ConversationException(ConversationFailure.AuthorizationUnavailable);
+            window = ValidateReservation(permission.Reservation, budget, consent.ExpiresAt, context.Deadline, window);
+            lock (Sync) speechWindow = window;
+            Check(window);
+            context = context with { Deadline = Deadline(window) };
+            var stream = Owner.StreamSpeech(context, request, input, consent, originalCaller);
+            lock (Sync)
+            {
+                CheckActive();
+                speechProvenance = stream.Capabilities.Provenance;
+                if (playback is null) SetState(ConversationState.Synthesizing);
+            }
+            await using (var enumeration = stream.GetAsyncEnumerator(stop.Token))
+            {
+                while (true)
+                {
+                    Check(window);
+                    bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
+                    Check(window);
+                    if (!moved) break;
+                    if (!take.Frames.Writer.TryWrite(enumeration.Current))
+                        throw new ConversationException(ConversationFailure.InvalidStream);
+                }
+            }
+            Check(window);
+            if (stream.Result is not { Outcome: SpeechSynthesisOutcome.Completed, FinalSampleCount: { } samples })
+            {
+                take.ProviderFailed = true;
+                take.Failure = stream.Result?.Failure?.Code;
+                return false;
+            }
+            take.FinalSamples = samples;
+            return true;
+        }
+        catch (Exception error)
+        {
+            take.Error = ExceptionDispatchInfo.Capture(error);
+            throw;
+        }
+        finally { take.Frames.Writer.TryComplete(); }
+    }
+
+    private async Task PlayAllAsync(SpeechOutput voice, ChannelReader<SpeechTake> ready)
+    {
+        await foreach (var take in ready.ReadAllAsync(stop.Token).ConfigureAwait(false))
+        {
+            var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
+            lock (Sync) playWindow = window;
+            try
+            {
+                if (!await PlayAsync(take, voice, window).ConfigureAwait(false)) return;
+            }
+            finally { lock (Sync) playWindow = null; }
+        }
+    }
+
+    private async Task<bool> PlayAsync(SpeechTake take, SpeechOutput voice, MonotonicWindow window)
+    {
+        PlaybackRun? run = null;
+        try
+        {
+            await foreach (var frame in take.Frames.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
                 Check(window);
-                bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
-                Check(window);
-                if (!moved) break;
-                var frame = enumeration.Current;
                 if (run is null)
                 {
                     lock (Sync)
                     {
                         CheckActive();
-                        run = Owner.StartPlayback(this, ids, voice.Output, Deadline(window), stop.Token);
+                        run = Owner.StartPlayback(this, take.Ids, voice.Output, Deadline(window), stop.Token);
                         playback = run;
+                        speechRequest = take.Ids.RequestId;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
-                        Owner.SpokenText?.Post(segment, run.Completion);
+                        Owner.SpokenText?.Post(take.Text, run.Completion);
                     }
                 }
                 await SubmitAsync(run, frame, window).ConfigureAwait(false);
             }
             Check(window);
-            if (stream.Result is not { Outcome: SpeechSynthesisOutcome.Completed, FinalSampleCount: { } samples })
+            take.Error?.Throw();
+            if (take.ProviderFailed)
             {
-                Fail(ConversationFailure.ProviderFailed, stream.Result?.Failure?.Code, failedRole: ProviderRole.Tts);
-                return;
+                Fail(ConversationFailure.ProviderFailed, take.Failure, failedRole: ProviderRole.Tts);
+                return false;
             }
-            if (run is null || !run.CompleteInput(samples))
+            if (run is null || take.FinalSamples is not { } samples || !run.CompleteInput(samples))
                 throw new ConversationException(ConversationFailure.PlaybackFailed);
             speechObservation?.CompleteInput(samples);
             var terminalPlayback = await run.Completion.WaitAsync(stop.Token).ConfigureAwait(false);
             Check(window);
             if (terminalPlayback.State != PlaybackState.Completed)
                 throw new ConversationException(ConversationFailure.PlaybackFailed);
+            return true;
         }
         finally
         {
@@ -582,7 +690,7 @@ public sealed class ConversationTurn
                     playback = null;
                     speechObservation = null;
                     speechRequest = null;
-                    if (!invalidated && !textComplete) SetState(ConversationState.Generating);
+                    if (!invalidated && !textComplete) SetState(synthesizing ? ConversationState.Synthesizing : ConversationState.Generating);
                 }
             }
         }
@@ -669,12 +777,15 @@ public sealed class ConversationTurn
                 if (playback?.Snapshot is { } progress && progress != observedPlayback)
                 {
                     observedPlayback = progress;
+                    if (progress.MayHavePlayed || progress.State == PlaybackState.Playing)
+                        firstAudioAfter ??= Clock.GetElapsedTime(startedAt);
                     if (!invalidated && progress.State == PlaybackState.Playing) SetState(ConversationState.Playing);
                     Emit(ConversationEventKind.Playback);
                 }
                 if (whole.Expired) Fail(ConversationFailure.DeadlineExceeded);
                 else if (textWindow?.Expired == true) Fail(textWindow.ExpiryFailure);
                 else if (speechWindow?.Expired == true) Fail(speechWindow.ExpiryFailure);
+                else if (playWindow?.Expired == true) Fail(playWindow.ExpiryFailure);
             }
             if (stopSignal.Task.IsCompleted) break;
             await Task.WhenAny(release.Task, stopSignal.Task,
@@ -715,6 +826,6 @@ public sealed class ConversationTurn
             consumed + (currentPlayback?.DeviceConsumedSamples ?? 0), mayHavePlayed || currentPlayback?.MayHavePlayed == true,
             released, quarantined || (currentPlayback is { State: PlaybackState.Failed, DeviceReleased: false }),
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
-            speechLimitReached, failedProvider, fellBackAfter, audioRejected);
+            speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter);
     }
 }

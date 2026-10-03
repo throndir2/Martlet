@@ -271,7 +271,7 @@ internal static class GatewayInferenceJson
                 "reference_audio_base64",
                 "chunks"
             ],
-            []);
+            ["reference_language"]);
         var presetId = Guid(fields, "preset_id");
         GatewayRules.Require(presetId != System.Guid.Empty, "request.invalid");
         var referenceRevision = Text(fields, "reference_revision", 64);
@@ -314,7 +314,16 @@ internal static class GatewayInferenceJson
                 "request.too_large");
             GatewayRules.Require(Convert.ToHexStringLower(SHA256.HashData(audio)) ==
                 audioSha256, "request.invalid");
-            ValidateF5Wave(audio);
+            ValidateF5Wave(audio, Martlet.Core.Settings.SpeechEngines.ForRoute(route.RouteId) ??
+                Martlet.Core.Settings.SpeechEngines.F5);
+            // The recording's language, which GPT-SoVITS needs; other engines ignore it.
+            string? referenceLanguage = null;
+            if (fields.ContainsKey("reference_language"))
+            {
+                referenceLanguage = Text(fields, "reference_language", 8);
+                GatewayRules.Require(Martlet.Core.Settings.SpeechEngines.ReferenceLanguages.Contains(referenceLanguage),
+                    "request.invalid");
+            }
             var chunksElement = fields["chunks"];
             GatewayRules.Require(chunksElement.ValueKind == JsonValueKind.Array,
                 "request.invalid");
@@ -355,7 +364,8 @@ internal static class GatewayInferenceJson
                 transcript,
                 transcriptRevision,
                 audio,
-                chunks.ToArray());
+                chunks.ToArray(),
+                referenceLanguage);
         }
         catch
         {
@@ -532,7 +542,7 @@ internal static class GatewayInferenceJson
         return new(GatewayInferenceRoute.TranscriptionSampleRate, pcm);
     }
 
-    private static void ValidateF5Wave(ReadOnlySpan<byte> bytes)
+    private static void ValidateF5Wave(ReadOnlySpan<byte> bytes, Martlet.Core.Settings.SpeechEngine engine)
     {
         GatewayRules.Require(bytes.Length is >= 44 and <=
             F5ReferenceLimits.MaximumAudioFileBytes &&
@@ -597,9 +607,10 @@ internal static class GatewayInferenceJson
             usableSample, "request.invalid");
         var durationMilliseconds = Math.Ceiling(
             dataBytes!.Value / 2d * 1000d / sampleRate!.Value);
-        GatewayRules.Require(durationMilliseconds is >=
-            F5ReferenceLimits.MinimumDurationMilliseconds and <=
-            F5ReferenceLimits.MaximumDurationMilliseconds, "request.invalid");
+        GatewayRules.Require(durationMilliseconds >=
+            Math.Max(F5ReferenceLimits.MinimumDurationMilliseconds, engine.MinimumReferenceMilliseconds) &&
+            durationMilliseconds <=
+            Math.Min(F5ReferenceLimits.MaximumDurationMilliseconds, engine.MaximumReferenceMilliseconds), "request.invalid");
     }
 
     private static Dictionary<string, JsonElement> Object(

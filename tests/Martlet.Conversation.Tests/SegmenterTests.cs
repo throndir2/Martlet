@@ -37,6 +37,21 @@ public sealed class SegmenterTests
     }
 
     [Theory]
+    [InlineData("Well, that is a really good question, and here is more, still more. Next one, with a comma, here.",
+        "Well, that is a really good question,|and here is more, still more.|Next one, with a comma, here.")]
+    [InlineData("Short, then a full stop. After.", "Short, then a full stop.|After.")]
+    [InlineData("In the sky tonight we counted 1,000,000 stars. Done.", "In the sky tonight we counted 1,000,000 stars.|Done.")]
+    public void Eager_first_clause_breaks_only_the_first_piece_at_a_long_enough_clause(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var segmenter = new SpeechSegmenter(1536, 16_384, eagerFirstClause: true);
+            var pieces = segmenter.Push(input[..split]).Concat(segmenter.Push(input[split..])).Concat(segmenter.Finish()).ToArray();
+            Assert.Equal(expected, string.Join('|', pieces.Where(x => x.Text is not null).Select(x => x.Text)));
+        }
+    }
+
+    [Theory]
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(511)]

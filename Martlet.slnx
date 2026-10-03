@@ -16,6 +16,7 @@
     <Project Path="src/Martlet.Gateway.Ollama/Martlet.Gateway.Ollama.csproj" />
     <Project Path="src/Martlet.Gateway.F5/Martlet.Gateway.F5.csproj" />
     <Project Path="src/Martlet.Gateway.Xtts/Martlet.Gateway.Xtts.csproj" />
+    <Project Path="src/Martlet.Gateway.GptSovits/Martlet.Gateway.GptSovits.csproj" />
     <Project Path="src/Martlet.Gateway.Dia/Martlet.Gateway.Dia.csproj" />
     <Project Path="src/Martlet.Gateway.Stt/Martlet.Gateway.Stt.csproj" />
     <Project Path="src/Martlet.Memory/Martlet.Memory.csproj" />

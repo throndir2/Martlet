@@ -225,7 +225,8 @@ public sealed record ConversationSnapshot(
     long AcceptedSamples, long SubmittedSamples, long DeviceConsumedSamples, bool MayHavePlayed,
     bool OwnershipReleased, bool Quarantined, long DroppedEvents, PlaybackSnapshot? Playback,
     Guid? RetryOf, bool EarlierTurnMayHavePlayed, int ToolCalls = 0, string? ActiveTool = null, bool ToolsRejected = false,
-    bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false)
+    bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
+    TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
