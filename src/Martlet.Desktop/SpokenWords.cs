@@ -39,6 +39,13 @@ internal sealed class SpokenWords(TimeProvider clock)
     internal string? Problem { get; private set; }
     /// <summary>How long speech-to-text took.</summary>
     internal TimeSpan? Took { get; private set; }
+    /// <summary>How much of the utterance was a voice (loud 20 ms frames the speakers don't explain), for the quick check of short
+    /// ones; null when unknown.</summary>
+    internal TimeSpan? Voiced { get; init; }
+
+    /// <summary>Speech-to-text found no words in it: nothing, or only what the word check doesn't count (a cough, mm, laughter).
+    /// False while it isn't ready and when speech-to-text failed (then nobody knows).</summary>
+    internal bool NotWords => IsReady && (Text is not null ? Text.Length == 0 || Ignored is not null : Problem == "stt.NoSpeech");
     internal Task Ready => done.Task;
     internal bool IsReady => done.Task.IsCompleted;
 

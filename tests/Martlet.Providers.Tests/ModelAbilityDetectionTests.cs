@@ -23,6 +23,9 @@ public sealed class ModelAbilityDetectionTests
         Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, Ollama, "gemma4:12b", null));
         Assert.Equal(HearingSupport.Supported,
             HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, Ollama, "gemma4:12b", Found(Ollama, "gemma4:12b", true, true)));
+        // Qwen3.5 and Ministral 3 see but don't hear: their replies get the transcript (the Parakeet cascade).
+        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, Ollama, "qwen3.5:4b", null));
+        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, Ollama, "ministral-3:3b", null));
     }
 
     [Fact]

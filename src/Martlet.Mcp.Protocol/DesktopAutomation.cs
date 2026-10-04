@@ -145,6 +145,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Listening › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
+        // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
+        // Thinking destination the page already shows.
+        "TalkHearVoiceChoice",
         // Companion › Vision › Where the character looks (its VisionGaze-Mouse and VisionGaze-Martlet choices save
         // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
         // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).
@@ -157,6 +161,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
         "TalkVoicePathStatus",
+        // Companion › Thinking › This PC: the suggested local model picked from SetupLocalModelPicks (its size, the card it fits,
+        // whether it hears your voice or gets the transcript, and whether it's the fastest or the smartest that fits; choosing
+        // one with ui_select only fills SetupLocalModel, the model name, so it needs --allow-ui-effects but saves nothing).
+        "SetupLocalModelPicks", "SetupLocalModel",
         // The setup advisor: which step it shows and its plan's summary (the goal's one-line explanation).
         "AdvisorStep", "AdvisorSummary",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,

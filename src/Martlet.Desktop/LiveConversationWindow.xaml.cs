@@ -719,8 +719,13 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
-        Straight: handsFree && preferences.HearVoice && !preferences.TranscribeFirst);
+        preferences.VoiceId, HearsVoice.On, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
+        Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly);
+
+    // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
+    // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
+    private (bool On, bool LocalOnly) HearsVoice =>
+        preferences.HearVoiceFor(controller.Configuration?.Routes.SingleOrDefault(route => route.Role == SetupRole.Llm));
 
     // ---------- always listening ----------
 
@@ -1006,7 +1011,7 @@ public partial class LiveConversationWindow : ThemedWindow
         lastHeard = clock.GetTimestamp();
         activityAt = lastHeard;
         reportHeld = false;
-        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, preferences.HearVoice ? speech.Recording : null, At: lastHeard,
+        heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, HearsVoice.On ? speech.Recording : null, At: lastHeard,
             Timeline: speech.Timeline));
         saidLately.Add((text, lastHeard));
         LeaveOutYourVoice();
@@ -1143,7 +1148,8 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // Every utterance's recording together, or none when one is missing or they run too long: never half of what was said.
         var recordings = batch.Select(entry => entry.Recording).ToArray();
-        var joined = preferences.HearVoice && batch.Count > 0 && recordings.All(r => r is not null)
+        var hearing = HearsVoice;
+        var joined = hearing.On && batch.Count > 0 && recordings.All(r => r is not null)
             ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap, TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds))
             : null;
         // Straight to Thinking only when everything said went that way and nothing the PC played goes with it; otherwise what went
@@ -1177,18 +1183,19 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             // What the PC played has no recording, so a message with it goes as words only.
             var recording = straight ? joined
-                : preferences.HearVoice && playing.Count == 0 && batch.Count > 0 && batch.All(entry => entry.Recording is not null)
+                : hearing.On && playing.Count == 0 && batch.Count > 0 && batch.All(entry => entry.Recording is not null)
                     ? BoundedWaveAudio.Join(batch.Select(entry => entry.Recording!).ToArray(), HeardGap,
                         TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
             // The reply's wait counts from when you last stopped talking (a copy, so a restarted reply counts from there again).
             var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
             owned = straight
                 ? controller.Start(null, Voice, microphone: false, approved: true, spoken: true, heard: batch[^1].Voices,
-                    recording: recording, seen: SeenNow(), timeline: timeline, words: [.. batch.Select(entry => entry.Words!)])
+                    recording: recording, seen: SeenNow(), timeline: timeline, words: [.. batch.Select(entry => entry.Words!)],
+                    hearLocalOnly: hearing.LocalOnly)
                 : playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
-                    seen: SeenNow(), timeline: timeline, chattiness: BackgroundChattiness)
+                    seen: SeenNow(), timeline: timeline, chattiness: BackgroundChattiness, hearLocalOnly: hearing.LocalOnly)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
@@ -1294,10 +1301,13 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         var code = status.Code;
         var continued = code == "conversation.continued";
+        // What went straight to Thinking wasn't words (a cough, mm): its reply was dropped before it played, so it leaves only the
+        // faded "Ignored ..." note, never a reply or a latency line.
+        var notWords = code == LiveConversationController.NotWordsCode;
         // Voice latency for every reply, in the desktop log (logs_tail and MCP's latency_report read it): how long from when you
         // stopped talking (or sent your message) to the first audio, step by step (ReplyLatency). Martlet bringing up its
         // background work on its own isn't a wait of yours, so it has no line.
-        if (!done.Report && done.Turn?.Snapshot is { } finishedReply &&
+        if (!done.Report && !notWords && done.Turn?.Snapshot is { } finishedReply &&
             ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
                 done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
@@ -1305,8 +1315,9 @@ public partial class LiveConversationWindow : ThemedWindow
             ErrorLog.Info(latency);
         if (ReferenceEquals(shown, done) && reply is not null)
         {
-            // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it.
-            if (continued && done.Turn?.Snapshot.MayHavePlayed != true)
+            // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it; one to
+            // something that wasn't words is dropped.
+            if ((continued || notWords) && done.Turn?.Snapshot.MayHavePlayed != true)
             {
                 Messages.Remove(reply);
                 if (ReferenceEquals(lastReply, reply)) lastReply = null;
@@ -1350,6 +1361,13 @@ public partial class LiveConversationWindow : ThemedWindow
                 StopWatching($"The Thinking model rejected the picture. {selected.VisionAdvice()}");
         }
         if (typed is { } finished && ReferenceEquals(finished.Operation, done)) typed = null;
+        if (notWords && done.Spoken && answering is { } dropped)
+            foreach (var entry in dropped.Where(entry => !entry.Pc))
+            {
+                Messages.Remove(entry.Bubble);
+                awaitingWords.RemoveAll(waiting => ReferenceEquals(waiting.Bubble, entry.Bubble));
+                ShowIgnored(entry.Words?.Ignored?.Describe(entry.Words.Text) ?? "Ignored a sound (no speech).");
+            }
         if (done.Spoken && !continued)
         {
             if (done.Passed) answering?.LastOrDefault(entry => !entry.Pc)?.Bubble.AddNote("Martlet stayed quiet.");
@@ -1378,8 +1396,8 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             "runtime.Completed" or "commentary.glance" or "conversation.typing" or "conversation.listening_paused" or
                 "commentary.interrupted" or "conversation.interrupted" or "conversation.closed" or "mic.no_speech" or
-                "listen.passed" or "conversation.continued" or "report.interrupted" => null,
-            "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" when done.HandsFree => null,
+                "listen.passed" or "conversation.continued" or "report.interrupted" or LiveConversationController.NotWordsCode => null,
+            "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" when done.HandsFree || done.Spoken => null,
             var code when code.StartsWith("policy.", StringComparison.Ordinal) && (done.HandsFree || done.Spoken) => null,
             var code => Remedy(code)
         };

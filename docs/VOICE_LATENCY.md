@@ -399,6 +399,42 @@ in both runtimes; llama.cpp's voice started about 100 ms later beside it.
 Thinking model memory with the baseline taken before it loads: Gemma 4 E2B
 3.3 GB in Ollama, 3.5 GB (Q8) in llama.cpp, E4B Q4 4.1 GB.
 
+**Small models in Ollama** (2026-10-04 02:30-03:05, Ollama 0.35.1, Thinking
+steps Off as Martlet sends it (`reasoning_effort: none`), the 16 companion
+prompts as text, two runs; GPU memory is the model's own runner process at the
+8,192-token context Martlet uses; *first audio* is the whole turn into
+Chatterbox Turbo with Parakeet 110M, median and p90):
+
+| Model | Hears | First word | First piece | First audio (p90) | GPU memory | Words per reply (median) | Replies |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **gemma4:e2b** | Yes | 77 | 154 | 841 (974) cascade, 826 (1,004) omni | 3.3 GB | 18 | Short, in character, tags in half, no Markdown |
+| gemma4:e4b | Yes | 117 | 208 | 894-946 (earlier run) | 4.9 GB | 17 | Short, in character |
+| qwen3.5:2b | No | 75 | 225 | 932 (1,120) | 3.3 GB | 45 | Rambles (18 of 32 over three sentences), tags in 84%, some Markdown, ignores "exactly three words" |
+| **qwen3.5:4b** | No | 133 | 328 | 1,105 (1,400) | 4.1 GB | 40 | In character, no Markdown, follows "exactly three words", right sums |
+| qwen3.5:9b | No | 166 | 511 | | 6.6 GB | 34 | Tags in nearly every reply; too slow to the first piece |
+| ministral-3:3b | No | 30 | 109 | | 4.0 GB | 56 | Markdown emphasis and stage directions in 56%, wrong sums; called the weather tool |
+| ministral-3:8b | No | 34 | 242 | (didn't fit beside the voice) | 6.4 GB | 44 | Markdown in 62%, thinks aloud, names its maker; called the weather tool |
+| qwen3-vl:8b | No | 9,355 | 9,702 | | | | Keeps thinking with Thinking steps Off (`think: false` too): no words for seconds |
+
+Thinking steps Off works for Qwen3.5 in Ollama: no reasoning in any of the 32
+replies, and none with the native `think: false`. Asked about the weather with
+a `get_weather` tool offered (once each, with the companion prompt), only
+Ministral 3 called it; Gemma 4 and Qwen3.5 answered in conversation instead.
+None of the new models beats
+Gemma 4 E2B to the first audio while replying as well: Qwen3.5 2B is about
+90 ms slower and rambles; Qwen3.5 4B replies well but is about 260 ms slower;
+Ministral 3 starts fastest but writes Markdown and stage directions a voice
+can't say. Companion › Thinking keeps **gemma4:e2b** as the recommendation and
+now suggests **qwen3.5:4b** in place of `qwen3-vl:8b`: a smarter small model
+that sees and calls tools but doesn't hear, so its replies always take the
+transcript (the Parakeet cascade). Gemma 4 E2B, E4B and 12B are the suggestions
+that hear. The ministral-3:8b turn run is NOT RUN cleanly: another client
+reloaded Gemma 4 E2B into Ollama during it, the card filled and requests timed
+out (with the voice it needs about 11 GB on its own). Results:
+`20261004-023122-think`, `20261004-030232-think` (qwen3-vl),
+`20261004-024436-pipeline` (Gemma 4 E2B), `-024758-` (qwen3.5:2b),
+`-024934-` (qwen3.5:4b) and `small-models-quality.jsonl`.
+
 **The graphics card is the bottleneck on this PC.** Beside a live session (and
 later other GPU experiments) the 90th percentiles reached 12-52 s, and GPU
 speech-to-text slowed the voice five-fold: Gemma, Chatterbox, whisper.cpp,
@@ -483,6 +519,58 @@ end-of-speech pause), the talk window's 100 ms tick (recommendation 8), and the
 cloud model that hears (paid; OpenRouter lists no audio input for the current
 route), Chatterbox or another host voice (a Windows voice spoke), and Parakeet
 110M (not downloaded on this PC).
+
+### Hearing on by default, and the quick check of short non-words
+
+**2026-10-04, DIVA (RTX 4070), Martlet's own pipeline** (same setup as above:
+`gemma4:e2b` in Ollama on this PC, Parakeet TDT 0.6B v3, a Windows voice,
+fixture microphone and speakers). *Let Thinking hear my voice* is now on by
+default while the recording stays on this PC ([how it
+works](CONVERSATION.md#thinking-models-that-hear-and-see)), so this setup
+takes the straight path without ticking anything; before, it transcribed first
+until the box was ticked.
+
+**Real words are not slower.** Something short that went straight (less than
+1 s of voice) now gets Parakeet beside the request, from the moment the request
+has started. Eight short answers (*Yes, please.*, *Stop.*, *Okay, thanks.*,
+*Sure, go on.*, *No thanks.*, *Good morning!*, *Really?*, *Tell me more.*), all
+short enough for the check, each run alternately on `main` (with the box ticked)
+and on this change (never chosen), two runs each after a 30 s settle, medians of
+the *Reply latency* lines without each run's first reply and one reply each where
+another program made Ollama reload the model:
+
+| | Before (main, n=10) | After (n=12) |
+| --- | --- | --- |
+| Request start after you stopped talking | 936 ms (p90 971) | 913 ms (p90 948) |
+| First audio after you stopped talking | 1,888 ms (p90 2,146) | 1,804 ms (p90 1,952) |
+| Thinking connection | 713 | 643 |
+
+Another program shared the graphics card during these runs (Thinking connection
+600-800 ms instead of about 250), equally for both. Headless, MCP's
+`straight_voice_check` (`live: true`, the quick check's `contention`, eight
+rounds of the same short straight request, new each time) measured the model's
+first words at 78 ms alone, 69 ms with Parakeet started at the request's start
+and 75 ms with it started at the first words: no measurable cost. Parakeet
+finished about 320 ms after the request started there, and 90-500 ms in the
+desktop (the desktop trims the silence around the voice first).
+
+**Non-words are dropped before they play.** Twelve fixture clips in one
+conversation (MCP's own synthesized cough and breath, and *Hmm.*, *Mmm.*,
+*Ha ha ha!*, *Uh.*, *Mm-hmm.* said by a Windows voice, between real
+questions): the six non-words that reached a request (two coughs, a breath,
+*Mmm.*, laughter, *Mm-hmm.*) were all dropped before their first audio (the
+check decided 89-497 ms after the request started; *Not words: Martlet dropped
+its reply before it played*), none was recorded or remembered, and the talk
+window showed *Ignored a sound (no speech).* and *Ignored "MMM." (not words).*
+instead. *Hmm.* and *Uh.* never reached a request (shorter than the 0.45 s
+gate). All four real utterances were answered (*Stop.* with `[pass]`), none
+dropped. On `main`, the same *Mmm.* and a hum got a spoken reply. A hum longer
+than 1 s of voice isn't checked; the model stayed quiet about it with
+`[pass]`.
+
+**NOT RUN:** a real microphone, coughs and hums from a person (synthesized ones
+stood in), Chatterbox (its slower first audio leaves the check more time), and
+a quiet graphics card for the desktop comparison (another program used it).
 
 **NOT RUN:**
 - **A cloud Thinking model** (OpenRouter `x-ai/grok-4.3`, the current route):
@@ -575,7 +663,8 @@ backchannel at once would make most of the rest feel instant.
 6. **Omni for the reply, a transcript in parallel.** Done: with a Thinking
    model that hears (Gemma 4 in Ollama on this PC; Martlet detects it), Companion
    › Listening › When Thinking can hear you › **Send my voice straight to
-   Thinking** (the default once Let Thinking hear my voice is on) sends the
+   Thinking** (the default once Let Thinking hear my voice is on, which it is by
+   default while Thinking runs on this PC) sends the
    recording alone and transcribes beside the reply for the talk window, history
    and memory; about 220 ms sooner to the first audio here ([measured](#straight-to-thinking-measured)).
    For a model that can't hear, a smaller

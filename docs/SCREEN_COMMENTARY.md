@@ -325,18 +325,25 @@ changes this list often; build.nvidia.com marks the free ones *Free Endpoint*.
 
 | Ollama tag | GPU memory | Why |
 | --- | --- | --- |
-| `gemma4:e2b` | ~5 GB (also runs on the CPU) | small, talks, sees and uses tools; the default |
+| `gemma4:e2b` | ~5 GB (also runs on the CPU) | small, talks, sees, hears and uses tools; the default |
 | `gemma4:e4b` | ~7 GB | a smarter talker for 12 GB graphics cards |
-| `qwen3-vl:8b` | ~7 GB | best at reading on-screen text and game HUDs at this size |
+| `qwen3.5:4b` | ~4 GB | a smarter small model that sees and uses tools on this PC, but doesn't hear (replies get the transcript) |
 | `gemma4:12b` | ~9 GB | a smarter talker that also sees, for 16 GB graphics cards |
 | `gemma4:26b` | ~19-20 GB | strongest single-GPU option, and quick (4B active parameters) |
+
+`qwen3-vl:8b` is no longer suggested on this PC: in Ollama 0.35 it keeps
+thinking with Thinking steps Off (`reasoning_effort: none` and `think: false`
+alike), so replies start only after seconds of hidden reasoning. The host's
+Ollama role (`ollama/ollama:0.34.4`) still offers it.
 
 These are one model that both talks and sees (and calls tools for Smart home
 and MCP), so a host does not need a second model or more GPU memory for
 vision. Companion › Thinking › This PC, the prerequisites tool and the host's
-Ollama role all suggest them by GPU memory. On this PC the suggestion leaves
-about 5 GB of the card for a game and Martlet's character (a 12 GB card gets
-`gemma4:e4b`, a 16 GB card `gemma4:12b`). Existing hosts keep their model
+Ollama role all suggest them by GPU memory. On this PC Companion › Thinking
+recommends `gemma4:e2b` on every card (the fastest replies) and names the
+largest that fits as the smartest (a 12 GB card `gemma4:e4b`, a 16 GB card
+`gemma4:12b`), each leaving about 5 GB of the card for a game and Martlet's
+character. Existing hosts keep their model
 until you add the Thinking role again (Devices page) and pick one; the host
 must also run this Martlet version so its gateway accepts images.
 

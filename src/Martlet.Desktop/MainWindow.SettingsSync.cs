@@ -285,8 +285,8 @@ public partial class MainWindow
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
             var prefs = Talk;
-            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice, prefs.BargeIn, prefs.ScreenChattiness,
-                prefs.WordCheck, prefs.TranscribeFirst);
+            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice == true, prefs.BargeIn, prefs.ScreenChattiness,
+                prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing);
             var path = Path.Combine(directory, "talk-preferences.json");
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
@@ -295,7 +295,7 @@ public partial class MainWindow
             SaveTalk(Talk with
             {
                 HandsFree = value.HandsFree, PauseIndex = Math.Clamp(value.PauseIndex, 0, TalkPreferences.Pauses.Length - 1),
-                SpeakReplies = value.SpeakReplies, HearVoice = value.HearVoice, BargeIn = value.BargeIn,
+                SpeakReplies = value.SpeakReplies, HearVoice = value.Hearing, BargeIn = value.BargeIn,
                 ScreenChattiness = (int)ChattinessTags.Choice(value.ScreenChattiness),
                 WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal,
                 TranscribeFirst = value.TranscribeFirst
@@ -440,8 +440,15 @@ public partial class MainWindow
     private sealed record SharedUpdates(bool Checks, int IntervalMinutes, bool AutoInstall, bool AutoUpdateHosts);
 
     // TranscribeFirst: Companion › Listening › When Thinking can hear you (an older computer leaves it out: straight, the default).
+    // HearVoice is what an older computer reads (on only when chosen); HearChoice is Let Thinking hear my voice as chosen (null:
+    // never chosen, on only while the recording stays on that computer), sent with HearVersion so a copy from an older computer,
+    // whose off was only its default, leaves it unchosen.
     private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness,
-        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false);
+        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false, bool? HearChoice = null, int HearVersion = 0)
+    {
+        internal const int ThreeWayHearing = 1;
+        internal bool? Hearing => HearVersion >= ThreeWayHearing ? HearChoice : HearVoice ? true : null;
+    }
 
     /// <summary>The character as it travels: which model (a bundled one; one of your characters by its ID, shown from each
     /// computer's own copy; or a model file at the same place on every computer), its renderer, its Audio2Face mapping and

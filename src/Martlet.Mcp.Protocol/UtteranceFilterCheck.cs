@@ -331,7 +331,7 @@ internal static class UtteranceFilterCheck
         return new(false, quick.Count == 0 ? "never enough voice to check" : "no check found words that stop Martlet", gate.Checks, quick, null);
     }
 
-    private static TranscriptionEvidence Evidence(Martlet.Sherpa.ParakeetTranscript heard) => new()
+    internal static TranscriptionEvidence Evidence(Martlet.Sherpa.ParakeetTranscript heard) => new()
     {
         Engine = "parakeet", MeanProbability = heard.Confidence, MinimumProbability = heard.Minimum,
         WordsStart = heard.FirstToken is { } first ? TimeSpan.FromSeconds(first) : null,
@@ -340,7 +340,7 @@ internal static class UtteranceFilterCheck
 
     /// <summary>How much of the fixture was a voice by the production detector (loud 20 ms frames, as always listening counts),
     /// and how long that voice went on (from its first onset to where the silence after it began, as the listener measures).</summary>
-    private static (TimeSpan Voiced, TimeSpan Speech, int Frames, bool[] Loud) Voice(byte[] pcm)
+    internal static (TimeSpan Voiced, TimeSpan Speech, int Frames, bool[] Loud) Voice(byte[] pcm)
     {
         var detector = new EnergyVoiceActivityDetector(new VoiceActivitySettings());
         var frames = pcm.Length / EnergyVoiceActivityDetector.FrameBytes;

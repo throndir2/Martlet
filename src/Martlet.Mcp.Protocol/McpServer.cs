@@ -538,7 +538,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
             "directory, or modelId): the model's name-based hearing, the route's (the production decision: only Chat Completions routes, " +
             "Ollama on this PC included, then what model-abilities.json says, then the name), savedAbility (what Martlet found out about " +
-            "the saved model and where), whether Companion > Listening > Let Thinking hear my voice is on, voicePath (When Thinking can " +
+            "the saved model and where), hearVoice (whether Thinking hears your recording: Companion > Listening > Let Thinking hear my " +
+            "voice as chosen, or never chosen, on only while the recording stays on this PC), hearVoiceChoice (on, off or unset), " +
+            "staysOnThisPc, hearVoiceWhy, voicePath (When Thinking can " +
             "hear you: straight, the default, or transcribeFirst), straightApplies (always listening sends the recording alone right " +
             "away) and lastTurn: which way the newest spoken reply went, from the desktop log's Voice path line, with the background " +
             "transcript's timing (transcriptReadyAfterReplyStartMs, speechToTextMs) and where its words went (never the words). Then " +
@@ -559,11 +561,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "reply (Parakeet on this PC when downloaded in speechDirectory with the sherpa runtime from martletDirectory, else a " +
             "fixture transcriber), its words replace the recording in the conversation and every next request carries them (no " +
             "recordings or stand-ins in history). Then the same utterances transcribed first (the transcript, then both), and a model " +
-            "that refuses the recording: the reply waits for the words and asks again with them. Returns per turn the first-words " +
+            "that refuses the recording: the reply waits for the words and asks again with them. quickCheck: the quick check of " +
+            "something short (less than 1 s of voice) on fixtures (a hum, coughs, Mmm., Yes, please., Stop.): Parakeet's words, the " +
+            "production word check and whether the desktop would drop the reply (never for real words). Returns per turn the first-words " +
             "time, when the transcript was ready after the reply started, speech-to-text time and the prompt cache (input and cached " +
             "tokens), and the medians of both ways. With live=true Thinking is Ollama on this PC (model, default gemma4:e2b, must " +
-            "hear) through a loopback relay that records each request; otherwise a fixture endpoint (canned replies, NOT AI). " +
-            "Nothing leaves this PC; reads no credentials.", new
+            "hear) through a loopback relay that records each request, and contention compares the model's first words for a short " +
+            "straight request alone, with Parakeet started at the request's start and at the first words; otherwise a fixture " +
+            "endpoint (canned replies, NOT AI). Nothing leaves this PC; reads no credentials.", new
         {
             live = new { type = "boolean" },
             model = new { type = "string", maxLength = 128 },
