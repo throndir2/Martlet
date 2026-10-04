@@ -21,7 +21,8 @@ add to that one list when they run: [Chatterbox Turbo](CHATTERBOX_VOICE.md) (the
 default engine, with sound and tone tags), [XTTS-v2](XTTS_VOICE.md),
 [GPT-SoVITS](GPT_SOVITS_VOICE.md) and [Dia](DIA_VOICE.md) now do, chosen on
 Companion > Voice > Voice engine (`Martlet.Core.Settings.SpeechEngines`). The existing OpenAI conversation and F5
-route retain their current boundaries.
+route retain their current boundaries. [Singing](SINGING.md) sings songs in the same voices (ACE-Step 1.5 with
+SoulX-Singer-SVC zero-shot singing voice conversion; Seed-VC and RVC were rejected as below).
 
 ## Research: implementation, not marketing compatibility
 

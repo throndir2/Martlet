@@ -620,6 +620,41 @@ internal static class GatewayClientJson
         return payload;
     }
 
+    private static Dictionary<string, object> SongPayload(GatewaySongPayload song)
+    {
+        var payload = new Dictionary<string, object>();
+        switch (song.Operation)
+        {
+            case GatewaySongOperation.Start:
+                var start = song.Start ?? throw new GatewayProtocolException("request.invalid");
+                payload["operation"] = "start";
+                payload["lyrics"] = start.Lyrics;
+                payload["style"] = start.Style;
+                payload["duration_seconds"] = start.DurationSeconds;
+                payload["language"] = start.Language;
+                payload["quality"] = start.Quality;
+                payload["voice_match"] = start.VoiceMatch;
+                payload["voice_id"] = start.VoiceId;
+                if (start.Bpm is { } bpm) payload["bpm"] = bpm;
+                if (start.Key is { } key) payload["key"] = key;
+                if (start.Seed is { } seed) payload["seed"] = seed;
+                if (!song.ReferenceAudio.IsEmpty) payload["reference_audio_base64"] = Convert.ToBase64String(song.ReferenceAudio.Span);
+                break;
+            case GatewaySongOperation.Result:
+                payload["operation"] = "result";
+                payload["job_id"] = song.JobId!;
+                payload["track"] = song.Track!;
+                payload["offset_frames"] = song.OffsetFrames;
+                payload["maximum_frames"] = song.MaximumFrames;
+                break;
+            default:
+                payload["operation"] = song.Operation == GatewaySongOperation.Status ? "status" : "cancel";
+                if (song.JobId is { } jobId) payload["job_id"] = jobId;
+                break;
+        }
+        return payload;
+    }
+
     internal static byte[] Request(GatewayInferenceRequest request)
     {
         object payload = request.Payload switch
@@ -650,6 +685,7 @@ internal static class GatewayClientJson
                 sample_rate = speech.SampleRate,
                 pcm_base64 = Convert.ToBase64String(speech.Pcm.Span)
             },
+            GatewaySongPayload song => SongPayload(song),
             _ => throw new GatewayProtocolException("request.invalid")
         };
         var document = new Dictionary<string, object?>

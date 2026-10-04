@@ -1,0 +1,19 @@
+Third-party software the Martlet singing host role image fetches and runs (none of it is redistributed in this repository):
+
+ACE-Step 1.5 (https://github.com/ace-step/ACE-Step-1.5, commit ca1e85fe9430179831e6bc6be790c332190a3866), MIT License,
+including nano-vllm (MIT License). Models from https://huggingface.co/ACE-Step (Ace-Step1.5 revision 19671f4,
+acestep-5Hz-lm-0.6B revision 148d8ea, acestep-v15-sft revision c410d24), MIT License; the text encoder is
+Qwen3-Embedding-0.6B as published in Ace-Step1.5.
+
+SoulX-Singer (https://github.com/Soul-AILab/SoulX-Singer, commit 81aeb3ae772c70093c3de74dc23c92d983801ae4), Apache License 2.0,
+with the SoulX-Singer-SVC model (huggingface.co/Soul-AILab/SoulX-Singer revision 40493ad) and the RMVPE pitch model
+(huggingface.co/Soul-AILab/SoulX-Singer-Preprocess revision 83dc502), Apache License 2.0. OpenAI Whisper base
+(huggingface.co/openai/whisper-base revision e37978b), Apache License 2.0.
+
+Demucs 4.0.1 (https://github.com/facebookresearch/demucs) and its htdemucs_ft vocals model 04573f0d-f3cf25b2.th, MIT License.
+
+Optional, only when the owner chooses the VevoSing voice match: Amphion (https://github.com/open-mmlab/Amphion, commit
+26f6883110181f1dbfe95c70a7c7dbaf4de5f42a), MIT License; Vevo1.5 models (huggingface.co/amphion/Vevo1.5 revision f4053ca),
+Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 (personal, non-commercial use only); OpenAI Whisper medium, MIT.
+
+PyTorch and the other Python packages pinned in host/requirements.lock keep their own licenses.

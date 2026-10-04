@@ -834,6 +834,55 @@ loading model can take minutes, so the tool allows six; pass
 service on a host listens only in the host's loopback, so run it there or
 forward the port.
 
+`singing_check` makes one song through the singing role's production path
+([Singing](SINGING.md)): Martlet.NodeLinkCheck's `singing-check` mode starts a
+real gateway on 127.0.0.1 (pinned TLS, pairing) with the role's own relay
+(`SongRelayWorker`, the one the Linux host creates), merges the starter voices
+into the gateway's shared speaking-voice list as a paired desktop does, and makes
+the song through the desktop's paired client (`MakeSongAsync`, what `SongClient`
+runs), sending the voice's recording once when the gateway lacks it. Arguments:
+`endpoint` (`fixture`, the default, starts this checkout's `workers/singing`
+service with the FIXTURE - NOT AI engine using the `python` on `PATH` or
+`MARTLET_PYTHON`; or a numeric loopback address of a live singing service, for
+example `http://127.0.0.1:50085/`), `seconds` (15-180; default 20 for the fixture,
+30 otherwise), `quality` (`fast` or `high_quality`) and `voiceMatch` (`soulx` or
+`vevosing`). It returns `{exitCode, report}` with `ok` (no failure, three
+sample-aligned tracks of the requested length and a beat grid), `stages` (each
+stage the client saw, with its fraction and `atMs`), `elapsedMs`,
+`realTimeFactor`, `song` (`engine` with `Fixture`, `seconds`, `bpm`, `key`,
+`beatsPerBar`, `beats` and `downbeats` counts with the first downbeats, `words`
+with `wordTimingSource` and the first timed words, `lines` with the first timed
+lines and their sections, `stageTimings` from the host plus `Delivering`, and
+`mix`/`vocals`/`backing` with sample rate, channels, seconds, peak and RMS),
+`host` (what the host measured beyond the contract: `wordTiming` with the median
+distance from word starts to vocal onsets before and after snapping,
+`lyricTimingSource`, `vocalBleedDb` (how loud the sound removed outside the sung
+phrases was, relative to the singing), `peakVramMib`, `plannedBpm`, the engine's
+planner and quantization, and the raw stage timings), `saved` (with
+`saveDirectory`, an absolute disposable folder, the check writes `mix.wav`,
+`vocals.wav` and `backing.wav` there), `statusBefore`/`statusAfter` (the service's status through the
+gateway: state, engine, voice matches, queue, whether its worker holds the
+graphics card, the card's used and total memory, and the number, total size and
+licences of its models) and `failure`/`problem` (a `SongException` code such as
+`voice.missing`, `singing.busy` or `singing.unavailable`, or the gateway's).
+Nothing is played. A real song with models still loading can take minutes, so
+the tool allows 20; pass `-TimeoutSeconds 1300` to the script. The .NET 10 runtime
+must be where `Martlet.NodeLinkCheck.exe` finds it (set `DOTNET_ROOT` when it is
+not installed system-wide).
+
+`singing_status` reads a singing service's own `/status` over a numeric loopback
+`endpoint` (default `http://127.0.0.1:50085/`): `answered`, `state`
+(`not_provisioned`, `ready`, `loading`, `busy`), `ready`, `engine` (`song` or
+`fixture`), `qualities`, `voiceMatches`, `queue`, `running`, `workerRunning`
+(whether the worker process holds models), `restarts`, `idleReleaseSeconds`,
+`gpu` (used and total MiB), `evidence`, `sources` (pinned commits) and `models`
+(each pinned file's ID, revision, licence and size) with `modelBytes`, or why it
+could not be read. With a `dataDirectory` (the script passes its disposable one)
+it adds `choices`, the Singing card's saved quality and voice match
+(`singing.json`; the defaults when none are saved). Read-only. As with
+`voice_engine_check`, a role service on a host listens only in the host's
+loopback, so run it there or forward the port.
+
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
 Docker Desktop (optional absolute `dataDirectory`, default the current user's):
@@ -2057,6 +2106,26 @@ that rule; `SpeakingEngineRelease` stops them after a confirmation
 (`martlet-host remove`, downloads kept) and needs `--allow-ui-effects`.
 `f5_voices` returns the chosen engine as `chosenEngine`.
 
+Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a
+voice engine row: `SingingEngine` ("Singing" or "Singing · ready"),
+`SingingFeatures` its chips ("NVIDIA GPU 6 GB+, Docker, Sings in your cloned
+voice, With backing music, About a minute per song, ACE-Step MIT · SoulX-Singer
+Apache-2.0"), `SingingState` where it stands on the shown computer ("Not set up on
+this PC yet.", "Setting up on gpu-pc...", "Ready on gpu-pc.", "Setup failed on
+this PC: ..." or why that computer can't sing, such as "Needs an NVIDIA graphics
+card with 6 GB+; this PC has ...") and `SingingSetUp` its button ("Set up",
+"Setting up...", "Ready"; disabled with the reason as help text when the computer
+can't sing). With another computer paired, the pills `SingingHost-this-pc` and
+`SingingHost-<host ID>` only choose the shown computer (passive). `SingingQuality`
+("Fast (recommended)", "High quality ...") and `SingingVoiceMatch` ("SoulX-Singer
+...", "VevoSing ...") report the saved choices; `ui_select` on them saves
+`singing.json`, so it needs `--allow-ui-effects`, and with VevoSing chosen on a
+ready computer `SingingSetUpVevo` (*Add VevoSing there*) appears. `SingingSetUp`
+asks one confirmation naming the downloads, licences and terms and sets the role
+up (a run window on this PC), so it needs `--allow-ui-effects`. There is no play
+button: songs are only performed by Martlet in conversation, so make and inspect
+real songs headlessly with `singing_check`.
+
 On Companion › Tools (`CompanionTab-Tools`), the Terminal card comes first:
 `ToolsTerminalOn` (*Let Martlet run terminal commands*, off by default) and
 `ToolsTerminalAskFirst` (*Ask before every command*, on by default) report their
@@ -2482,7 +2551,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

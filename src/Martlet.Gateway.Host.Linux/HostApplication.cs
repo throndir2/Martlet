@@ -54,6 +54,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 "gpt-sovits" => Martlet.Gateway.GptSovits.GptSovitsRelay.Create(role.Endpoint, role.Model),
                 "dia" => Martlet.Gateway.Dia.DiaRelay.Create(role.Endpoint, role.Model),
                 "stt" => new Martlet.Gateway.Stt.SttRelayWorker(role.Endpoint, role.Model),
+                "singing" => new Martlet.Gateway.Singing.SongRelayWorker(role.Endpoint, role.Model),
                 _ => throw new HostInputException()
             };
         }
