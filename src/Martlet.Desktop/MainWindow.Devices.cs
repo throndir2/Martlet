@@ -506,13 +506,13 @@ public partial class MainWindow
         var reachSave = new AutoSave(async () =>
         {
             if (method.SelectedItem is not ComboBoxItem { Tag: HostSetupMethod chosen } || closing || store is null) return true;
-            if (assigningRole) return false;
             var target = ssh.Text.Trim();
             if (chosen == host.Method && (chosen is not (HostSetupMethod.SshDocker or HostSetupMethod.SshNative) || target == (host.SshTarget ?? "")))
                 return true;
-            assigningRole = true;
+            ChangeTurns.Turn? turn = null;
             try
             {
+                turn = await ChangeTurnAsync();
                 var updated = await Pairings().SetReachAsync(host.HostId, chosen, target, Version, lifetime.Token);
                 homeHosts = HostRegistry.Upsert(homeHosts, updated);
                 host = updated;
@@ -525,7 +525,7 @@ public partial class MainWindow
             {
                 ActionText.Text = $"Not saved yet: {error.Message}";
             }
-            finally { assigningRole = false; }
+            finally { turn?.Dispose(); }
             return true;
         }, TimeSpan.FromSeconds(1.5));
         method.SelectionChanged += (_, _) =>

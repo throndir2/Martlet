@@ -75,7 +75,6 @@ public partial class MainWindow
     private CompanionTab companionTab = CompanionTab.Thinking;
     private CompanionTab? openTab;
     private bool tabEdited;
-    private bool savingTab;
     /// <summary>The open page's auto-save (Prompts, Replies), saved at once when another page opens.</summary>
     private AutoSave? tabAutoSave;
     private IReadOnlyList<string>? ollamaModels;
@@ -684,7 +683,7 @@ public partial class MainWindow
         {
             await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
             return $"{model} is downloaded. Test it, then choose Use Ollama on this PC.";
-        });
+        }, join: true);
         if (closing) return;
         ActionText.Text = done ?? $"{model} was not downloaded.";
         if (done is not null) await CheckOllamaAsync();
@@ -763,19 +762,16 @@ public partial class MainWindow
             CheckNewModelContextAsync().Forget();
     }
 
-    private bool preparingLocalThinking;
+    /// <summary>The model chosen last with Use Ollama on this PC. Several can download and load side by side; one chosen
+    /// earlier that gets ready after it doesn't switch Thinking.</summary>
+    private string? localThinkingWanted;
 
     /// <summary>Gets <paramref name="model"/> ready in this PC's Ollama before Thinking switches to it: starts Ollama when it
     /// isn't answering, downloads the model when it isn't here (the owner confirms the download), then loads it. Returns
-    /// whether Thinking may switch now; otherwise the status line says why it didn't.</summary>
+    /// whether Thinking may switch now; otherwise the status line says why it didn't. Choosing another model meanwhile
+    /// doesn't wait for this one: the newest choice is the one Thinking switches to.</summary>
     private async Task<bool> PrepareLocalThinkingAsync(string model)
     {
-        if (preparingLocalThinking)
-        {
-            ActionText.Text = "Martlet is already getting a model ready. Wait for it to finish.";
-            return false;
-        }
-        preparingLocalThinking = true;
         try
         {
             var token = lifetime.Token;
@@ -812,14 +808,15 @@ public partial class MainWindow
                     return false;
                 }
             }
+            localThinkingWanted = model;
             var done = await HostRunWindow.RunAsync(this, $"Switch Thinking to {model}", async run =>
             {
                 if (keeps.Length > 0) run.Output.Report(keeps.Trim());
                 if (download) await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
                 var loaded = await LocalOllama.LoadAsync(model, run.Status, run.Output, run.Token);
                 return $"{model} is {(download ? "downloaded and " : "")}loaded{(loaded >= TimeSpan.FromSeconds(1) ? $" ({loaded.TotalSeconds:0.0} s)" : "")}. " +
-                    "Thinking switches to it now.";
-            });
+                    (localThinkingWanted == model ? "Thinking switches to it now." : $"You chose {localThinkingWanted} since, so Thinking doesn't switch to it.");
+            }, join: true);
             if (closing) return false;
             if (download) await CheckOllamaAsync(quiet: true);
             if (done is null)
@@ -827,10 +824,14 @@ public partial class MainWindow
                 ActionText.Text = $"Thinking didn't change: {model} isn't ready. The run window says why.";
                 return false;
             }
+            if (localThinkingWanted != model)
+            {
+                ActionText.Text = $"{model} is ready, but you chose {localThinkingWanted} since; Thinking switches to that one when it's ready.";
+                return false;
+            }
             return true;
         }
         catch (OperationCanceledException) { return false; }
-        finally { preparingLocalThinking = false; }
     }
 
     /// <summary>What Ollama on this PC says about <paramref name="model"/>'s context, kept for replies; loopback only, and the
@@ -914,9 +915,7 @@ public partial class MainWindow
         var saved = await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
             $"Martlet now speaks with the Windows voice {voice} on this PC. Audio stays on this PC.");
         if (!saved || closing || leaving is null) return;
-        assigningRole = true;
-        try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
-        finally { assigningRole = false; }
+        ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
     }
 
     private async Task PreviewWindowsVoiceAsync(string voiceId)
@@ -1210,12 +1209,7 @@ public partial class MainWindow
             if (!closing && role == SetupRole.Llm && provider.Chat &&
                 homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
                 CheckNewModelContextAsync().Forget();
-            if (!closing && leaving is not null)
-            {
-                assigningRole = true;
-                try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
-                finally { assigningRole = false; }
-            }
+            if (!closing && leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
         finally { key?.Dispose(); }
@@ -1242,21 +1236,18 @@ public partial class MainWindow
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
     /// confirmed choice. A key the route no longer uses is set aside (listed for removal in Advanced setup), and a key set aside
     /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
-    /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.</summary>
+    /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.
+    /// A change still saving goes first (<see cref="ChangeTurns"/>); installs, runs and replies in progress don't hold it up.</summary>
     private async Task<bool> SaveSectionRouteAsync(HostJob job, Func<AppSettings, AppSettings> select, SecretLease? key, string done,
         string? missingKey = null)
     {
         if (store is null || setupService is null || closing) return false;
-        if (savingTab || assigningRole || setupOperations.IsRunning)
-        {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return false;
-        }
-        savingTab = true;
+        ChangeTurns.Turn? turn = null;
         var role = job.Role;
         var token = lifetime.Token;
         try
         {
+            turn = await ChangeTurnAsync();
             var loaded = await setupService.LoadAsync(token);
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
             var settings = UseModels(SetupSettings.Begin(loaded.Settings));
@@ -1313,7 +1304,7 @@ public partial class MainWindow
         }
         finally
         {
-            savingTab = false;
+            turn?.Dispose();
             if (!closing)
             {
                 tabEdited = false;

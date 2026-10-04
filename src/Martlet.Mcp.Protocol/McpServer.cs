@@ -93,9 +93,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             layout = new { type = "boolean" }
         }),
-        Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects.", new
+        Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
+            "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
+            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\").", new
         {
-            id = new { type = "string" }
+            id = new { type = "string" }, window = new { type = "string" }
         }, ["id"]),
         Tool("ui_select", "Select a named option from a combo box. Requires --allow-ui-effects.", new
         {
@@ -941,7 +943,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
-                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id")),
+                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),

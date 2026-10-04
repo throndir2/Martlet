@@ -343,16 +343,20 @@ public partial class MainWindow
         if (handBack && HostJob.All.First(j => j.Job == job) is var hostJob &&
             store is not null && JobSavedRoute.Load(store.DataDirectory, hostJob.SavedFile) is { } saved)
         {
-            if (assigningRole) { ActionText.Text = "Another role change is still finishing."; return; }
-            assigningRole = true;
-            try { await HandBackAsync(hostJob, saved); }
+            ChangeTurns.Turn? turn = null;
+            try
+            {
+                turn = await ChangeTurnAsync();
+                await HandBackAsync(hostJob, saved);
+            }
+            catch (OperationCanceledException) { return; }
             catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException or
                 Martlet.Core.Contracts.ContractException or ArgumentException)
             {
                 ActionText.Text = $"{role.Name} stayed on {host.HostId}. {hostJob.Job} couldn't move back first ({error.Message}).";
                 return;
             }
-            finally { assigningRole = false; }
+            finally { turn?.Dispose(); }
         }
         LaunchOnHost(host, role.Remove);
         RenderHome();

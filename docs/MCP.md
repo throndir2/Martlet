@@ -2373,6 +2373,31 @@ role and a *Remove* button for each installed one. `StepDetail-update` reads
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
+Setup runs go **side by side**; nothing refuses a step because another one is
+working. What two runs share is done once: installing Docker Desktop, getting
+Windows ready for it, starting it, building the host image, checking Windows
+Firewall and setting up and pairing this PC's own host service. The second run's
+`HostRunStatus` reads *Waiting: "<other run>" is starting Docker Desktop. This
+continues once that's done...* and carries on afterwards; when the run doing it
+fails, the waiting one stops with the same reason, and when it is canceled, the
+waiting one does the step itself (the host-runs log says *"<run>" was canceled
+before it finished ..., so this run carries on by itself*). Changes to the host
+service itself take turns in its engine lock as before. Pressing a step whose
+run is still working brings that run's window forward instead of starting it
+twice. While runs work, `HostRunsNow` (returned) lists them with their status
+lines (*2 runs working side by side: Start Docker Desktop: Waiting for Docker
+Desktop to start... · Check this PC's host: Waiting: ...*), `StepDetail-docker`
+says which run is installing or starting Docker Desktop (*"Start Docker Desktop"
+is starting Docker Desktop. You don't have to wait: ...*), and, while a host
+service Martlet hasn't seen set up waits for Docker Desktop, `StepDetail-service`
+offers `Step-service-0` *Set up host service* already (its run waits for Docker
+Desktop and continues). The dashboard keeps reading the host service every 30
+seconds while runs work. Several run windows have the same controls, so name the
+one to click: `ui_click` `{"id":"HostRunCancel","window":"Martlet - Start Docker
+Desktop"}`. To exercise it without the real engine, launch the desktop with
+`DOCKER_HOST` pointing at a missing pipe and Docker Desktop already running:
+*Start Docker Desktop* (`Step-docker-0`) then waits for an engine that never
+answers, and `HostStatusConsole` (*Show host status*) waits for it.
 Devices' `AddComputer` (and Settings' `OpenHosts`, and on a new PC Home's
 `HomeConnectComputers` or the `HealthOpen-thinking-setup-network` fix) opens the *Add a computer*
 wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
@@ -3189,7 +3214,8 @@ still required on every operation, unless the window is hidden in the
 notification area and the process still has its icon's (hidden) window;
 closed or changed-owner windows fail rather than falling back to another
 process. Same-process dialogs remain available, and duplicate control IDs
-still fail as ambiguous.
+still fail as ambiguous unless `ui_click` names the window (`window`: its title
+as `ui_snapshot` lists it), as for side-by-side run windows.
 
 **Notification area.** Closing the main window keeps Martlet running in the
 notification area by default, and Martlet started with `--tray` (Start with

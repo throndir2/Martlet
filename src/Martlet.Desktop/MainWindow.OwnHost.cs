@@ -104,7 +104,8 @@ public partial class MainWindow
             else
             {
                 var target = ThisPcTarget();
-                await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(OwnHostRun, "status: " + status), output, lifetime.Token);
+                await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(OwnHostRun, "status: " + status), output, lifetime.Token,
+                    OwnHostRun);
                 exit = await HostLocal.EngineAsync(target, ["update"], output, lifetime.Token, waitForOtherChanges: false);
             }
             HostRunLog.Write(OwnHostRun, $"--- exit {exit}");

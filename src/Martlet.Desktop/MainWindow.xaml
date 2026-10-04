@@ -211,6 +211,9 @@
                                 <TextBlock x:Name="HostStepsSummary" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
                                            AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostStepsSummary"
                                            Text="Checking this PC's host service..."/>
+                                <!-- The setup runs working now (they run side by side), each with its status line. -->
+                                <TextBlock x:Name="HostRunsText" Margin="0,0,0,10" TextWrapping="Wrap" Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunsNow"/>
                                 <StackPanel x:Name="HostStepsPanel" AutomationProperties.Name="Host setup steps"/>
                             </StackPanel>
                         </Border>

@@ -323,22 +323,33 @@ public partial class MainWindow
 
     /// <summary>One run window for a job on this PC: sets up and pairs the host service when needed, installs the job's
     /// engine with <paramref name="answers"/> (the choices already made in Martlet, so the engine asks nothing) and hands
-    /// the job to it. The job keeps working where it is until the new engine answers.</summary>
-    private async Task SetUpJobHereAsync(HostJob job, IReadOnlyDictionary<string, string> answers, string title)
+    /// the job to it. The job keeps working where it is until the new engine answers. Nothing else waits for it: other
+    /// changes go ahead meanwhile (the switch at the end takes its turn like any change), and what it shares with other runs
+    /// (Docker Desktop, the host service) is done once. Something else chosen for the job while it installs wins: the
+    /// engine is then ready but the job keeps that choice. Returns whether the job switched.</summary>
+    private async Task<bool> SetUpJobHereAsync(HostJob job, IReadOnlyDictionary<string, string> answers, string title)
     {
-        if (store is null || setupService is null || closing) return;
-        if (assigningRole || hostBusy) { ActionText.Text = "Another change is still finishing. Try again in a moment."; return; }
+        if (store is null || setupService is null || closing) return false;
+        if (HostRunWindow.IsRunningTitled(title))
+        {
+            // The same setup is still working: its window comes forward, and that run does the switch.
+            await HostRunWindow.RunAsync(this, title, _ => Task.FromResult(""), join: true);
+            return false;
+        }
         var dataDirectory = store.DataDirectory;
         var service = setupService;
-        assigningRole = true;
-        hostBusy = true;
+        // Every other route change for this job clears it (pendingJobHosts), so the switch at the end knows it still stands.
+        var mark = $"this-pc-setup-{Guid.NewGuid():N}";
+        pendingJobHosts[job.Role] = mark;
+        pendingJobVoices.Remove(job.Role);
+        var switched = false;
         try
         {
             async Task<string> Continue(HostRunWindow run, PairedHost host)
             {
                 var target = host.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
+                await HostLocal.EnsureImageAsync(target, run);
                 run.Status($"Installing {job.Engine} on this PC...");
                 var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: answers);
                 if (exit != 0) throw new InvalidOperationException($"Installing {job.Engine} stopped (exit {exit}). {job.Title} didn't change. The output has details.");
@@ -347,7 +358,14 @@ public partial class MainWindow
                 var voice = job.RouteType == SetupRouteType.GatewayF5
                     ? await F5Voices.DefaultAsync(dataDirectory, route.DestinationId ?? F5Destination, run.Token,
                         SpeechEngines.ForRoute(job.RouteId)) : null;
-                await SaveJobHostAsync(job, host, route, voice);
+                using (await changes.TakeAsync(run.Token))
+                {
+                    if (pendingJobHosts.GetValueOrDefault(job.Role) != mark)
+                        return $"{job.Engine} is ready on this PC. {job.Title} keeps what you chose for it meanwhile.";
+                    await SaveJobHostAsync(job, host, route, voice);
+                    pendingJobHosts.Remove(job.Role);
+                    switched = true;
+                }
                 RecordClusterJob(job.Job, new(host.HostId, false));
                 return $"{job.Title} now uses {job.Engine} on this PC" +
                     (voice is null ? "." : $", with the voice \"{voice.PresetName}\".") + OpenConversationFollows;
@@ -376,13 +394,13 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
-            hostBusy = false;
             gpuProbe = null;
+            if (pendingJobHosts.GetValueOrDefault(job.Role) == mark) pendingJobHosts.Remove(job.Role);
         }
-        if (closing) return;
+        if (closing) return switched;
         await RefreshHomeAsync();
         if (openTab is not null) RenderTab();
+        return switched;
     }
 
     /// <summary>Waits (about a minute) for this PC's host service to advertise the job's route after installing it.</summary>

@@ -87,7 +87,7 @@ internal static class Prerequisites
             }
             if (docker)
             {
-                if (!MachineInfo.DockerDesktopInstalled()) await HostLocal.InstallDockerDesktopAsync(run.Status, run.Output, run.Token);
+                if (!MachineInfo.DockerDesktopInstalled()) await HostLocal.InstallDockerDesktopAsync(run);
                 await WindowsVirtualizationSetup.EnsureReadyAsync(run, ContinueSetupKind.Docker);
             }
             var still = items.Where(i => i.Id != Microphone.Id && IsMissing(i)).ToArray();
