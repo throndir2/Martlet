@@ -1019,16 +1019,18 @@ it.*
 #### H6. Let Martlet comment on my screen or camera
 
 - **Entry points**: conversation 🖥 chip; Settings › Privacy.
-- **Flow**: click 🖥 › menu: *My active window* (default), *My whole
-  screen*, *A camera…*, and *How chatty: Quiet / Normal / Chatty*. If the
+- **Flow**: click 🖥 › menu: *My active window*, *My whole
+  screen* (default), *A camera…*, and *How chatty: Quiet / Normal / Chatty*. If the
   permission is off, picking one turns it on (it's the user's explicit
   action) and the chip lights.
 - **Clicks**: 2.
-- **Today**: Companion › Vision chooses the source and chattiness (Quiet,
+- **Today**: Companion › Vision chooses the source (your whole screen by
+  default) and chattiness (Quiet,
   Normal, Chatty or Martlet decides, which lets Martlet switch it itself from
-  what's happening and what you say) and *Turn
-  vision on*; the talk window then looks while it is open, and its *Vision*
-  button pauses and resumes it.
+  what's happening and what you say); vision is on by default and *Turn
+  vision off* stops it. Martlet looks once you press *Start watching* (on
+  Home, in the talk window or the notification-area menu) until *Stop
+  watching*.
 
 #### H7. Memory
 

@@ -147,6 +147,47 @@ public sealed class ScreenCommentaryTests
     }
 
     [Fact]
+    public async Task Vision_is_on_and_looks_at_the_whole_screen_by_default_and_saved_choices_are_kept()
+    {
+        Assert.True(new TalkPreferences().Watch);
+        Assert.Equal(WatchKind.ActiveScreen, (WatchKind)new TalkPreferences().ScreenScope);
+        Assert.True(TalkPreferences.Load(null).Watch);
+        // Before Thinking is set up, Companion › Vision says what it needs rather than asking to turn vision on.
+        Assert.Equal("Set up Thinking so Martlet can see.", LiveConversationConfiguration.VisionAdvice(null));
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Talk.Vision." + Guid.NewGuid().ToString("N"));
+        async Task<System.Text.Json.JsonElement> Status() => System.Text.Json.JsonSerializer.SerializeToElement(
+            await Martlet.Mcp.ChattinessCheck.RunAsync(directory, null, CancellationToken.None));
+        try
+        {
+            // Nothing saved yet: on, at the whole screen; chattiness_status says the same.
+            var fresh = TalkPreferences.Load(directory);
+            Assert.True(fresh.Watch);
+            Assert.Equal(WatchKind.ActiveScreen, (WatchKind)fresh.ScreenScope);
+            var status = await Status();
+            Assert.True(status.GetProperty("visionOn").GetBoolean());
+            Assert.Equal("whole screen", status.GetProperty("visionLooksAt").GetString());
+
+            // A file saved without them (other talk choices only) takes the same defaults.
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "talk-preferences.json"), "{\"HandsFree\":false,\"Version\":4}");
+            var partial = TalkPreferences.Load(directory);
+            Assert.True(partial.Watch);
+            Assert.Equal(WatchKind.ActiveScreen, (WatchKind)partial.ScreenScope);
+            Assert.True((await Status()).GetProperty("visionOn").GetBoolean());
+
+            // Choices saved in the file are kept: vision turned off, looking at the active window.
+            Assert.True((new TalkPreferences() with { Watch = false, ScreenScope = (int)WatchKind.ActiveWindow }).Save(directory));
+            var saved = TalkPreferences.Load(directory);
+            Assert.False(saved.Watch);
+            Assert.Equal(WatchKind.ActiveWindow, (WatchKind)saved.ScreenScope);
+            status = await Status();
+            Assert.False(status.GetProperty("visionOn").GetBoolean());
+            Assert.Equal("active window", status.GetProperty("visionLooksAt").GetString());
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void Duplication_downscale_averages_the_requested_region_into_opaque_pixels()
     {
         // A 40x20 source: the left half blue (B=200), the right half red (R=100); read only the right 20x20.
