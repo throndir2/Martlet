@@ -441,7 +441,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
-            "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
+            "unavailable (it is reloading), stall (no audio until the voice's time runs out), slow (every piece slower than real " +
+            "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
+            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; a fixture " +
+            "speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
@@ -510,13 +513,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "fillers like mm, hmm, uh-huh, laughter, sound tags, punctuation, a lone word, more words than the voice could hold, and " +
             "phrases speech-to-text makes up from noise such as 'Thank you.' when the evidence is weak) and barge-in policy " +
             "(BargeInPolicy: only real words stop a reply; a stop word or Martlet's name at once, a backchannel never; a song only " +
-            "when asked to stop) on samples (text with optional voicedMs, meanProbability, minimumProbability, noSpeechProbability, " +
+            "when asked to stop) on samples (text with optional voicedMs, speechMs, meanProbability, minimumProbability, noSpeechProbability, " +
             "averageLogProbability, afterQuestion, persona, playback reply|song, expectKeep, expectInterrupt; default: a fixed set " +
             "with the outcome Normal must give, including evidence measured from whisper.cpp and Parakeet on this PC). " +
             "With audio (default true) and Parakeet downloaded on this PC (speechDirectory, default the current user's; the sherpa " +
-            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, yes, " +
-            "yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production voice-activity detector, " +
-            "Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
+            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, a quiet " +
+            "phrase over a fan's hum, yes, yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production " +
+            "voice-activity detector, Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
             "decision with its reason, the filter's cost per call, the saved Word check (sensitivity overrides it: relaxed, normal, " +
             "sensitive) and ok. Nothing is recorded or played; nothing leaves this PC.", new
         {
@@ -536,6 +539,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         name = new { type = "string", maxLength = 64 },
                         text = new { type = "string", maxLength = 1000 },
                         voicedMs = new { type = "number", minimum = 0 },
+                        speechMs = new { type = "number", minimum = 0 },
                         meanProbability = new { type = "number", minimum = 0, maximum = 1 },
                         minimumProbability = new { type = "number", minimum = 0, maximum = 1 },
                         noSpeechProbability = new { type = "number", minimum = 0, maximum = 1 },

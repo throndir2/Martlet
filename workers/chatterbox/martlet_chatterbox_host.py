@@ -961,6 +961,9 @@ class FastTurbo:
 
             emitted, cache, first = 0, None, True
             for tokens, last in self.graph.chunks(conds.t3, tokens_in, cancelled):
+                # A stopped reply frees the model now, not after decoding audio nobody will hear.
+                if cancelled is not None and cancelled():
+                    return
                 tokens = tokens[:, tokens[0] < 6561]
                 if last:
                     tokens = torch.cat([tokens, torch.full((1, 3), S3GEN_SIL, device=tokens.device, dtype=tokens.dtype)], dim=1)
@@ -1026,8 +1029,10 @@ class FastTurbo:
                               repetition_penalty=repetition_penalty, max_gen_len=max_gen_len)
 
     def warm(self) -> None:
-        """Pays the first reply's one-time costs now: the conditionals' librosa/numba warm-up, the CUDA graph capture and the
-        decoder's first run, on a synthetic signal (FIXTURE - NOT a voice) that is forgotten afterwards. Never raises."""
+        """Pays the first reply's one-time costs now: the conditionals' librosa/numba warm-up, the CUDA graph capture, the
+        decoder's first run and the Perth watermarker's first call (on the CPU: about 0.8 s the first time, 20 ms after, which
+        the first reply's first audio used to wait for), on a synthetic signal (FIXTURE - NOT a voice) that is forgotten
+        afterwards. Never raises."""
         started = time.monotonic()
         try:
             import torch  # type: ignore
@@ -1040,12 +1045,21 @@ class FastTurbo:
                 if tokens.numel() > 0:
                     self.model.s3gen.inference(speech_tokens=tokens.to(self.model.device), ref_dict=self.model.conds.gen,
                                                n_cfm_timesteps=2)
+            self._warm_watermarker()
             self.conditionals.pop(key, None)
             self.model.conds = None
             decoding = "CUDA graph" if self.graph_ready else f"eager ({self.graph_error or 'graph off'})"
             _log(f"Chatterbox Turbo warmed up in {(time.monotonic() - started) * 1000:.0f} ms; decoding: {decoding}.")
         except Exception as exc:  # noqa: BLE001 - warming up is best effort
             _log(f"Warming Chatterbox Turbo up failed ({_failure_detail(exc)}); the first reply may be slower.")
+
+    def _warm_watermarker(self) -> None:
+        # FIXTURE - NOT a voice: one second of a quiet 220 Hz tone, watermarked once and thrown away.
+        import numpy as np  # type: ignore
+
+        rate = int(self.model.sr)
+        tone = (0.05 * np.sin(2 * np.pi * 220 * np.arange(rate) / rate)).astype(np.float32)
+        self.model.watermarker.apply_watermark(tone, sample_rate=rate)
 
     def _warm_reference(self) -> str:
         # FIXTURE - NOT a voice: six seconds of a gliding harmonic tone, only to run the conditioning code once.
@@ -1188,6 +1202,10 @@ class _T3Graph:
             generated = [next_token]
             target, step = first + 3, 25
             for i in range(budget):
+                # Checked every token: a reply stopped mid-chunk (up to 100 tokens, seconds on a busy card) would otherwise keep
+                # the model busy and the next reply would be refused with worker.busy.
+                if cancelled is not None and cancelled():
+                    return
                 self.x.copy_(t3.speech_emb(next_token))
                 self.position.fill_(length + i)
                 self.cuda_graph.replay()
@@ -1200,8 +1218,6 @@ class _T3Graph:
                 generated.append(next_token)
                 if len(generated) >= target:
                     yield torch.cat(generated, dim=1), False
-                    if cancelled is not None and cancelled():
-                        return
                     target, step = target + step, min(step * 2, largest)
             yield torch.cat(generated, dim=1), True
 
