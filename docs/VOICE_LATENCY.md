@@ -443,7 +443,7 @@ Research summary (sources checked 2026-10-03; vendor claims marked):
 | End of speech | 800 ms | 800 ms (500 ms setting) | 200-300 ms | Smart Turn v3 with a shorter pause |
 | Speech-to-text | not logged | logged | 0-150 ms | Parakeet 110M (about 90 ms) on a short utterance, or none: a Thinking model that hears takes the recording |
 | Desktop prep | about 115 ms | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
-| Thinking to first clause | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
+| Thinking to first sentence | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
 | Voice to first audio | 1.2-4.2 s | 0.35-0.4 s | 0.25-0.3 s | Done: CUDA graph and streaming; a GPU the character doesn't share |
 | Playback | 30-50 ms | 30-50 ms | 30 ms | |
 | **Total** | **5.5-10 s** | **about 1.5-2.5 s** (estimate) | **about 0.7-1.2 s** | |
