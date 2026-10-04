@@ -768,8 +768,10 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         }
     }
 
-    /// <summary>Opens a one-use, five-minute window redeemed with a short typed code (<see cref="GatewayPairingCode"/>)
-    /// instead of a pasted card. Whichever desktop proves the code names itself and receives the approved roles.</summary>
+    /// <summary>Opens a one-use window redeemed with a short typed code (<see cref="GatewayPairingCode"/>) instead of a
+    /// pasted card. Whichever desktop proves the code names itself and receives the approved roles. It has no deadline: it
+    /// stays open until a desktop redeems it, <see cref="MaximumFailedAttempts"/> wrong proofs close it or the host closes
+    /// pairing (the owner withdrew the code).</summary>
     public GatewayCodePairingCard OpenCodeWindow(GatewayCodePairingApproval approval)
     {
         ArgumentNullException.ThrowIfNull(approval);
@@ -781,33 +783,44 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
             GatewayRules.Require(windows.Count < MaximumOpenWindows &&
                 windows.Values.Count(window => window.Code is not null) < MaximumOpenCodeWindows, "pairing.closed");
             var code = GatewayPairingCode.Generate(crypto);
-            var expiresAt = now + windowLifetime;
-            windows.Add(NewPairingIdLocked(), new()
+            var pairingId = NewPairingIdLocked();
+            windows.Add(pairingId, new()
             {
                 Code = Encoding.ASCII.GetBytes(code),
                 Roles = roles,
-                TokenVerifier = [],
-                ExpiresAt = expiresAt,
-                StartedAt = credentials.ObserveTimestamp()
+                TokenVerifier = []
             });
             return new()
             {
+                PairingId = pairingId,
                 HostId = identity.HostId,
                 Origin = origin.CanonicalOrigin,
                 SpkiFingerprint = identity.SpkiFingerprint,
-                Code = new(GatewayPairingCode.Format(code)),
-                ExpiresAt = expiresAt
+                Code = new(GatewayPairingCode.Format(code))
             };
+        }
+    }
+
+    /// <summary>Whether the window <paramref name="pairingId"/> can still be redeemed: false once it was used, expired,
+    /// closed by wrong proofs or withdrawn.</summary>
+    public bool IsOpen(string pairingId)
+    {
+        lock (gate)
+        {
+            RemoveStaleLocked(credentials.ObserveTime(clock));
+            return windows.ContainsKey(pairingId);
         }
     }
 
     private void RemoveStaleLocked(DateTimeOffset now)
     {
-        foreach (var stale in windows.Where(item => item.Value.ExpiresAt <= now ||
-            credentials.BudgetExpired(item.Value.StartedAt, windowLifetime))
-            .Select(item => item.Key).ToArray())
+        foreach (var stale in windows.Where(item => ExpiredLocked(item.Value, now)).Select(item => item.Key).ToArray())
             RemoveWindowLocked(stale);
     }
+
+    /// <summary>A card window ends at its deadline (wall clock or monotonic budget); a code window never expires.</summary>
+    private bool ExpiredLocked(PairingWindow window, DateTimeOffset now) =>
+        window.ExpiresAt is { } expiresAt && (expiresAt <= now || credentials.BudgetExpired(window.StartedAt, windowLifetime));
 
     private string NewPairingIdLocked()
     {
@@ -830,7 +843,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
             var now = credentials.ObserveTime(clock);
             if (!windows.TryGetValue(proof.PairingId, out var window) || window.Code is not null)
                 throw new GatewayProtocolException("pairing.closed");
-            if (window.ExpiresAt <= now || credentials.BudgetExpired(window.StartedAt, windowLifetime))
+            if (ExpiredLocked(window, now))
             {
                 RemoveWindowLocked(proof.PairingId);
                 throw new GatewayProtocolException("pairing.expired");
@@ -854,8 +867,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
 
             var credential = credentials.Issue(window.DeviceId!, window.DisplayName!, window.Roles, cancellationToken);
             RemoveWindowLocked(proof.PairingId);
-            var afterCommit = credentials.ObserveTime(clock);
-            if (window.ExpiresAt <= afterCommit || credentials.BudgetExpired(window.StartedAt, windowLifetime))
+            if (ExpiredLocked(window, credentials.ObserveTime(clock)))
                 throw new GatewayProtocolException("pairing.expired");
             cancellationToken.ThrowIfCancellationRequested();
             return credential;
@@ -876,17 +888,10 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var now = credentials.ObserveTime(clock);
-            var expired = false;
-            foreach (var stale in windows.Where(item => item.Value.Code is not null && (item.Value.ExpiresAt <= now ||
-                credentials.BudgetExpired(item.Value.StartedAt, windowLifetime))).Select(item => item.Key).ToArray())
-            {
-                RemoveWindowLocked(stale);
-                expired = true;
-            }
+            credentials.ObserveTime(clock);
             var open = windows.Where(item => item.Value.Code is not null).ToArray();
             if (open.Length == 0)
-                throw new GatewayProtocolException(expired ? "pairing.expired" : "pairing.closed");
+                throw new GatewayProtocolException("pairing.closed");
 
             string? matchedId = null;
             PairingWindow? matched = null;
@@ -915,9 +920,6 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
             {
                 var credential = credentials.Issue(proof.DeviceId, proof.DisplayName, matched.Roles, cancellationToken);
                 RemoveWindowLocked(matchedId!);
-                var afterCommit = credentials.ObserveTime(clock);
-                if (matched.ExpiresAt <= afterCommit || credentials.BudgetExpired(matched.StartedAt, windowLifetime))
-                    throw new GatewayProtocolException("pairing.expired");
                 cancellationToken.ThrowIfCancellationRequested();
                 var hostProof = GatewayPairingCode.HostProof(key!, identity.HostId, credential.DeviceId, credential.CredentialId,
                     credential.Secret.Reveal(), nonce);
@@ -964,8 +966,9 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         }
     }
 
-    /// <summary>A card window names its device (<see cref="DeviceId"/>, <see cref="DisplayName"/>) and keeps the token's
-    /// verifier; a short-code window keeps the code itself (<see cref="Code"/>, ASCII) and lets the desktop name itself.</summary>
+    /// <summary>A card window names its device (<see cref="DeviceId"/>, <see cref="DisplayName"/>), keeps the token's
+    /// verifier and ends at <see cref="ExpiresAt"/>; a short-code window keeps the code itself (<see cref="Code"/>, ASCII),
+    /// lets the desktop name itself and has no deadline.</summary>
     private sealed class PairingWindow
     {
         internal string? DeviceId { get; init; }
@@ -973,7 +976,7 @@ public sealed class GatewayPairingService : IGatewayPairingExchange
         internal byte[]? Code { get; init; }
         internal required GatewayRole[] Roles { get; init; }
         internal required byte[] TokenVerifier { get; init; }
-        internal required DateTimeOffset ExpiresAt { get; init; }
+        internal DateTimeOffset? ExpiresAt { get; init; }
         internal int FailedAttempts { get; set; }
         internal long? StartedAt { get; init; }
     }
