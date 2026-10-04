@@ -333,8 +333,9 @@ settings, approvals, cost envelopes, timelines or links to other windows.
   listening** (shown with always listening; a primary button until pressed,
   then **Stop listening** with a green dot, an amber dot when the microphone
   can't be opened, or *Can't listen* with the reason while listening isn't set
-  up), **Vision** (shown when vision is on; click to pause or resume), then
-  **Stop (Esc)**.
+  up), **Start watching** (shown when vision is on; then **Stop watching** with
+  a green dot that twinkles while a look is with the model, or *Can't see* with
+  the reason), then **Stop (Esc)**.
 - **History**: chat bubbles for the whole conversation while the window is
   open: what you typed, what you said (the transcript, captioned *You
   (spoken)*), Martlet's replies as they stream in, its remarks about your
@@ -344,15 +345,17 @@ settings, approvals, cost envelopes, timelines or links to other windows.
   With push-to-talk chosen, *Hold to talk* (hold the mouse or Space) sits next
   to *Send*; invoking it starts a recording and invoking it again sends.
 
-Opening the window starts **vision** if Companion turned it on (off by
-default). **Always listening** (the default, with the chosen or Windows
+**Always listening** (the default, with the chosen or Windows
 default microphone; no test needed) starts only when you press *Start
-listening*. Typing while Martlet listens hands the microphone over for the typed
+listening*, and **vision** (once Companion turns it on; off by default) only
+when you press *Start watching*: each has its own button here, on Home (beside
+a listening and a watching indicator) and in the notification-area menu, and
+neither starts or stops the other. Typing while Martlet listens hands the microphone over for the typed
 message, and listening resumes after the reply. **Stop (Esc)** stops the reply,
-any recording and vision at once and keeps the conversation; listening carries
-on (only *Stop listening* ends it). Locking Windows stops listening and vision
+any recording and watching at once and keeps the conversation; listening carries
+on (only *Stop listening* ends it). Locking Windows stops listening and watching
 and starts a fresh conversation (both resume on unlock), and closing the
-window ends it.
+window ends it unless Martlet is listening or watching, which only hides it.
 
 ### 7. Companion and Settings pages
 
@@ -373,12 +376,13 @@ window ends it.
        until *Stop listening*, with sensitivity
        and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
        (*Only respond to my voice* and *Set up Voice ID*).
-    4. *Vision*: whether Martlet may look at your screen or a camera while
-       the talk window is open (off by default): what it looks at (active
+    4. *Vision*: whether Martlet may look at your screen or a camera when you
+       press *Start watching* (off by default): what it looks at (active
        window, whole screen, a camera found with *Find cameras*, a phone or
        network camera address, or a Home Assistant camera once Smart home is
        connected), how chatty it is, what is captured and where it is sent,
-       and *Turn vision on*.
+       and *Turn vision on* (which only allows it; *Start watching* starts
+       looking).
     5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
     6. *Character*: what it looks like now, then the character model (show,

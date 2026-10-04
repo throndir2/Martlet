@@ -56,11 +56,11 @@ public sealed class ChatMessage : INotifyPropertyChanged
 }
 
 /// <summary>The conversation: its history and the message box. It is modeless, so the rest of Martlet stays usable while it is
-/// open, and optional: Home's Start listening runs it hidden, and closing it while Martlet listens or watches only hides it. How
-/// Martlet listens (always or push-to-talk), whether it speaks and whether it may see (Vision) are chosen in Companion
-/// and followed live; always listening starts only when you press Start listening (and stops from the same button), vision runs
-/// while the conversation runs and its button pauses it, and Stop (Esc) stops Martlet's reply, any recording and vision at once
-/// (listening carries on).</summary>
+/// open, and optional: Home's Start listening and Start watching run it hidden, and closing it while Martlet listens or watches
+/// only hides it. How Martlet listens (always or push-to-talk), whether it speaks and whether it may see (Vision) are chosen in
+/// Companion and followed live; always listening starts only when you press Start listening and watching only when you press
+/// Start watching (each stops from its own button, here, on Home or in the notification-area menu), and Stop (Esc) stops
+/// Martlet's reply, any recording and watching at once (listening carries on).</summary>
 public partial class LiveConversationWindow : ThemedWindow
 {
     internal SupportController? Support { get; init; }
@@ -122,9 +122,12 @@ public partial class LiveConversationWindow : ThemedWindow
     // The bubbles the current operation fills in.
     private LiveConversationOperation? shown;
     private ChatMessage? heard, home, reply, lastReply;
-    // Vision: separate from your own turns (owned), so a glance never replaces a reply.
+    // Vision: separate from your own turns (owned), so a glance never replaces a reply. Like listening, watching starts only when
+    // you press Start watching (never just because the window opened or vision is on in Companion) and runs until Stop watching,
+    // Stop (Esc) or Pause; locking Windows or a reload stops it for a moment and it carries on afterwards. Something that keeps
+    // Martlet from seeing (a text-only model, no camera chosen, a failing look) says why and leaves it stopped.
     private WatchSource watchSource = new(WatchKind.ActiveWindow);
-    private bool watching, watchPaused, glancing, lookWanted;
+    private bool watching, watchPaused = true, glancing, lookWanted;
     private ScreenCommentaryPacer? pacer;
     // The newest picture (it also goes with what you type or say while it is fresh) and when it was taken; a skipped capture
     // clears it, so an old picture never stands in for what is on screen now.
@@ -295,7 +298,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool Recording => owned is { OwnershipReleased: false, HandsFree: false } live && live.Authorization.Microphone &&
         live.Turn is null && live.Transcription is null && !live.Status.Finished;
 
-    /// <summary>Starts what was chosen: always listening (once you pressed Start listening and listening is set up) and vision.</summary>
+    /// <summary>Starts what you started: always listening (once you pressed Start listening and listening is set up) and watching
+    /// (once you pressed Start watching and vision is on).</summary>
     private void StartLive()
     {
         if (closed || !Available) return;
@@ -305,7 +309,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     /// <summary>Follows a change made in Companion while this window is open: how you talk, whether replies are spoken and what
     /// Martlet may look at. A running listener or look keeps the options it started with, so either starts again with the new
-    /// ones; turning vision on in Companion starts looking now, and switching to push-to-talk stops always listening.</summary>
+    /// ones; turning vision off in Companion stops watching (turning it on only offers Start watching), and switching to
+    /// push-to-talk stops always listening.</summary>
     internal void UsePreferences(TalkPreferences next, string? address)
     {
         if (closed) return;
@@ -324,17 +329,22 @@ public partial class LiveConversationWindow : ThemedWindow
         if (before.HearPc != next.HearPc) StopPcListening(keepHeard: next.HearPc);
         if (!next.Watch)
         {
-            watchPaused = false;
+            watchPaused = true;
             visionProblem = null;
             if (watching) StopWatching(null);
         }
-        else if (!watchPaused && (addressChanged || !before.Watch || before.ScreenScope != next.ScreenScope ||
-            before.CameraId != next.CameraId || before.VideoAddress != next.VideoAddress || before.ScreenChattiness != next.ScreenChattiness))
+        else if (addressChanged || !before.Watch || before.ScreenScope != next.ScreenScope || before.CameraId != next.CameraId ||
+            before.VideoAddress != next.VideoAddress || before.ScreenChattiness != next.ScreenChattiness)
         {
-            if (watching) StopWatching(null);
-            StartWatching();
-            // Typing a camera address saves on each keystroke: look once it has settled.
-            if (watching) nextGlance = After(ScreenCommentaryPacer.Tick);
+            if (!watchPaused)
+            {
+                if (watching) StopWatching(null);
+                StartWatching();
+                // Typing a camera address saves on each keystroke: look once it has settled.
+                if (watching) nextGlance = After(ScreenCommentaryPacer.Tick);
+            }
+            // What kept Martlet from seeing may be fixed now: Start watching tries again.
+            else visionProblem = null;
         }
         RenderActions();
     }
@@ -1374,13 +1384,14 @@ public partial class LiveConversationWindow : ThemedWindow
             ? $"Martlet can't listen yet. {why} You can still type."
             : "Martlet can't listen yet. Check Companion › Listening. You can still type.";
 
+    // Start watching / Stop watching. Watching that can't start (a text-only model, no camera chosen) says why and stays off.
     private void Vision_Click(object sender, RoutedEventArgs e)
     {
         notice = null;
-        if (watching)
+        if (!watchPaused)
         {
             watchPaused = true;
-            StopWatching(null);
+            if (watching) StopWatching(null);
         }
         else
         {
@@ -1430,6 +1441,38 @@ public partial class LiveConversationWindow : ThemedWindow
 
     /// <summary>Start listening / Stop listening, as the window's own button.</summary>
     internal void ToggleListening() => Mic_Click(this, new RoutedEventArgs());
+
+    /// <summary>Vision is on in Companion (the window's Start watching / Stop watching button shows).</summary>
+    internal bool VisionOn => preferences.Watch;
+    /// <summary>Start watching was pressed and watching hasn't been stopped since (it may still be getting ready).</summary>
+    internal bool WatchingStarted => preferences.Watch && !watchPaused;
+
+    /// <summary>Start watching on Home or in the notification-area menu: as the window's own Start watching button, and once the
+    /// conversation is ready when it is still loading.</summary>
+    internal void WatchWhenReady()
+    {
+        if (!closed && watchPaused) Vision_Click(this, new RoutedEventArgs());
+    }
+
+    /// <summary>Stop watching on Home or in the notification-area menu, as the window's own button.</summary>
+    internal void StopWatchingNow()
+    {
+        if (!closed && !watchPaused) Vision_Click(this, new RoutedEventArgs());
+    }
+
+    /// <summary>Home's watching indicator: what vision is doing now, and whether that is a problem.</summary>
+    internal (string Text, bool Problem) WatchingStatus
+    {
+        get
+        {
+            if (Paused) return ("Paused. Resume Martlet from its notification-area icon.", false);
+            if (watching) return commentary is { OwnershipReleased: false } ? ("Taking a look…", false) : ($"Watching {watchSource.Label}.", false);
+            if (watchPaused) return visionProblem is { } problem ? (problem, true) : ("Not watching", false);
+            if (loading is not null || loadPending || !ready && notice is null) return ("Getting ready to watch…", false);
+            if (locked) return ("Windows is locked. Martlet watches again when you unlock it.", false);
+            return notice is not null ? (notice, true) : ("Getting ready to watch…", false);
+        }
+    }
 
     /// <summary>Pause Martlet: stops a reply, a recording and vision like Stop, and also stops listening, until Resume.</summary>
     internal void Pause()
@@ -1508,9 +1551,9 @@ public partial class LiveConversationWindow : ThemedWindow
         StopAll("conversation.canceled");
     }
 
-    /// <summary>Stop (Esc): Martlet's reply, any recording and vision stop right away, and what was heard but not yet answered
-    /// is dropped. Always listening carries on, so nothing you say next is missed; only the mic button pauses it. The vision
-    /// button turns vision back on; the conversation so far is kept unless the window closes.</summary>
+    /// <summary>Stop (Esc): Martlet's reply, any recording and watching stop right away, and what was heard but not yet answered
+    /// is dropped. Always listening carries on, so nothing you say next is missed; only the mic button pauses it. Start watching
+    /// turns watching back on; the conversation so far is kept unless the window closes.</summary>
     private void StopAll(string reason, bool keepContext = true)
     {
         mouseHeld = keyHeld = false;
@@ -1631,11 +1674,15 @@ public partial class LiveConversationWindow : ThemedWindow
             : ListeningProblem();
         AutomationProperties.SetName(MicChip, micState + ". " + MicChip.ToolTip);
 
+        // Watching starts and stops here too (it is off when the window opens); the dot and the name say how it is going.
         VisionChip.Visibility = available && preferences.Watch ? Visibility.Visible : Visibility.Collapsed;
-        VisionChip.IsEnabled = watching || visionProblem is null;
+        VisionChip.IsEnabled = true;
+        var watchStarted = !watchPaused;
         var looking = watching && commentary is { OwnershipReleased: false };
-        VisionText.Text = looking ? "Looking…" : watching ? "Watching" : visionProblem is not null ? "Can't see" : "Vision paused";
-        VisionDot.SetResourceReference(Shape.FillProperty, watching ? "SuccessBrush" : visionProblem is not null ? "WarningBrush" : "MutedBrush");
+        var visionState = looking ? "Looking" : watching ? "Watching" : visionProblem is not null ? "Can't see" : "Not watching";
+        VisionText.Text = watchStarted ? "Stop watching" : visionProblem is not null ? "Can't see" : "Start watching";
+        VisionDot.SetResourceReference(Shape.FillProperty, watching ? "SuccessBrush"
+            : visionProblem is not null || watchStarted ? "WarningBrush" : "MutedBrush");
         if (looking != twinkling)
         {
             twinkling = looking;
@@ -1651,9 +1698,12 @@ public partial class LiveConversationWindow : ThemedWindow
               "with what you type or say." +
               (noticing ? " It looks right away when a notification pops up or a taskbar button flashes." : "") +
               (lastCheck is { } checkedAt ? $" Last checked at {checkedAt:T}." : "") +
-              (captureNote is { } why ? $" Full-screen capture is unavailable: {why}. Try borderless or windowed mode." : "") + " Click to stop."
-            : visionProblem ?? "Click to let Martlet look again.";
-        AutomationProperties.SetName(VisionChip, VisionText.Text.TrimEnd('…') + ". " + VisionChip.ToolTip);
+              (captureNote is { } why ? $" Full-screen capture is unavailable: {why}. Try borderless or windowed mode." : "") +
+              " Click to stop watching."
+            : watchStarted ? "Martlet watches once it's ready. Click to stop watching."
+            : visionProblem is { } problem ? problem + " Click to try again."
+            : $"Click to have Martlet watch {SavedSource().Label} and now and then say something about it. You can keep using the rest of Martlet.";
+        AutomationProperties.SetName(VisionChip, visionState + ". " + VisionChip.ToolTip);
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1765,16 +1815,22 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private Chattiness SavedChattiness => (Chattiness)Math.Clamp(preferences.ScreenChattiness, 0, 2);
 
+    /// <summary>Starts looking at what Companion › Vision chose. Not ready yet (loading, Windows locked) leaves it for
+    /// <see cref="StartLive"/>; something that keeps Martlet from seeing says why and leaves watching stopped.</summary>
     private void StartWatching()
     {
         visionProblem = null;
         var selected = controller.Configuration;
         if (closed || !Available || selected is null) return;
-        if (selected.Vision() == VisionSupport.Unsupported) { visionProblem = selected.VisionAdvice(); return; }
+        if (selected.Vision() == VisionSupport.Unsupported)
+        {
+            CantWatch(selected.VisionAdvice());
+            return;
+        }
         var source = SavedSource();
         if (!source.IsScreen && source.Id.Length == 0)
         {
-            visionProblem = source.Kind == WatchKind.Camera ? "Choose a camera in Companion › Vision." : "Enter the camera address in Companion › Vision.";
+            CantWatch(source.Kind == WatchKind.Camera ? "Choose a camera in Companion › Vision." : "Enter the camera address in Companion › Vision.");
             return;
         }
         watchSource = source;
@@ -2081,7 +2137,7 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     /// <summary>Stops looking and frees the screen capture, camera or stream. A <paramref name="problem"/> is shown and keeps
-    /// vision off until you turn it back on.</summary>
+    /// watching stopped until you press Start watching again.</summary>
     private void StopWatching(string? problem)
     {
         watching = lookWanted = false;
@@ -2101,10 +2157,17 @@ public partial class LiveConversationWindow : ThemedWindow
         if (commentary is { OwnershipReleased: false } glance) controller.Stop(glance, "commentary.stopped", keepContext: true);
         if (problem is not null)
         {
-            visionProblem = problem;
+            CantWatch(problem);
             notice = problem;
         }
         RenderActions();
+    }
+
+    /// <summary>Martlet can't see: says why, and watching stays stopped until Start watching is pressed again.</summary>
+    private void CantWatch(string problem)
+    {
+        visionProblem = problem;
+        watchPaused = true;
     }
 
     // ---------- Windows lock, memory and closing ----------
@@ -2167,7 +2230,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         // The window only shows the conversation: while Martlet listens or watches, closing it hides it and Martlet carries on.
-        if (!ending && !closed && (!listenPaused || watching))
+        if (!ending && !closed && (!listenPaused || WatchingStarted || watching))
         {
             e.Cancel = true;
             Hide();

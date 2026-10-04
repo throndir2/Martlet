@@ -8,8 +8,8 @@
         PreviewKeyDown="Window_PreviewKeyDown"
         AutomationProperties.Name="Talk with Martlet">
     <!-- The talk window is only the conversation: its history and the message box. It doesn't block the rest of Martlet.
-         How Martlet listens, speaks and sees is chosen in Companion; Start listening turns always listening on here (it is
-         off when the window opens), and the vision button pauses or resumes what is on. -->
+         How Martlet listens, speaks and sees is chosen in Companion; Start listening and Start watching turn always listening and
+         watching on here (both are off when the window opens), and each stops from its own button. -->
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel>
@@ -31,7 +31,7 @@
                     </Button>
                     <Button x:Name="StopButton" Content="S_top (Esc)" Click="Stop_Click" IsEnabled="False" Padding="14,6" MinHeight="34"
                             AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
-                            AutomationProperties.HelpText="Stops the reply, recording and vision. Listening stays on." />
+                            AutomationProperties.HelpText="Stops the reply, recording and watching. Listening stays on." />
                 </StackPanel>
                 <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">

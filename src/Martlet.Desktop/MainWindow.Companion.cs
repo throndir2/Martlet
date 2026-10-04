@@ -170,7 +170,7 @@ public partial class MainWindow
         CompanionTab.DeepThinking => "Thinking answers you. Deep thinking works out hard tasks in the background, ideally on another machine, so Martlet keeps talking.",
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
-        CompanionTab.Vision => "Choose whether Martlet can see your screen or camera while the talk window is open.",
+        CompanionTab.Vision => "Choose whether Martlet can see your screen or camera once you press Start watching.",
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
         CompanionTab.Personality => "Edit Martlet's personas and response style.",

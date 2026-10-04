@@ -127,23 +127,33 @@ internal static class AppUpdateCheck
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>The note Martlet leaves for itself as it closes to install (<see cref="AppUpdateResume"/>), so the restarted
-    /// Martlet shows the character and listens again: read once, only what was on, nothing when nothing was, and ignored once
-    /// it is older than an install takes.</summary>
+    /// Martlet shows the character, listens and watches again: read once, only what was on, nothing when nothing was, a note
+    /// from a Martlet that didn't know about watching still read, and ignored once it is older than an install takes.</summary>
     private static void CheckResume(string updates, Action<string, bool, string> step)
     {
         var now = DateTimeOffset.UtcNow;
         Directory.CreateDirectory(updates);
         var path = Path.Combine(updates, AppUpdateResume.FileName);
 
-        AppUpdateResume.Save(updates, character: true, listening: true, now);
+        AppUpdateResume.Save(updates, character: true, listening: true, now, watching: true);
         var first = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(2));
         var second = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(2));
-        step("resume: picks-up-character-and-listening-once", first == (true, true) && second is null && !File.Exists(path),
+        step("resume: picks-up-character-and-listening-once", first == (true, true, true) && second is null && !File.Exists(path),
             $"two minutes after closing: {Describe(first)}; read again: {Describe(second)}; note left: {File.Exists(path)}");
 
         AppUpdateResume.Save(updates, character: true, listening: false, now);
         var character = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(1));
-        step("resume: only-what-was-on", character == (true, false), $"character showing, not listening: {Describe(character)}");
+        step("resume: only-what-was-on", character == (true, false, false), $"character showing, not listening or watching: {Describe(character)}");
+
+        AppUpdateResume.Save(updates, character: false, listening: false, now, watching: true);
+        var watching = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(1));
+        step("resume: watching-alone", watching == (false, false, true), $"only watching: {Describe(watching)}");
+
+        // The Martlet being replaced may predate watching: its note has no watching field.
+        File.WriteAllText(path, $"1 1 {now.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}");
+        var older = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(1));
+        step("resume: reads-note-without-watching", older == (true, true, false) && !File.Exists(path),
+            $"a note written before watching was saved: {Describe(older)}");
 
         AppUpdateResume.Save(updates, character: false, listening: true, now);
         AppUpdateResume.Save(updates, character: false, listening: false, now);
@@ -157,8 +167,8 @@ internal static class AppUpdateCheck
             $"read {(AppUpdateResume.MaximumAge + TimeSpan.FromMinutes(1)).TotalMinutes:0} minutes later (Martlet started by you, not " +
             $"the update): {Describe(stale)}, note left: {File.Exists(path)}");
 
-        static string Describe((bool Character, bool Listening)? resume) => resume is { } r
-            ? $"character {(r.Character ? "on" : "off")}, listening {(r.Listening ? "on" : "off")}"
+        static string Describe((bool Character, bool Listening, bool Watching)? resume) => resume is { } r
+            ? $"character {(r.Character ? "on" : "off")}, listening {(r.Listening ? "on" : "off")}, watching {(r.Watching ? "on" : "off")}"
             : "nothing to pick up";
     }
 

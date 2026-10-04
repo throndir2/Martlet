@@ -43,8 +43,11 @@ verified connections or spending permission. **Audio setup (local only)** offers
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
 are not device readiness. Always listening runs from **Start listening** on Home (or the notification-area
-menu) until **Stop listening**, with or without the talk window open; Settings ›
-*Startup and closing* can show the character and start listening as Martlet
+menu) until **Stop listening**, and vision (when Companion turns it on) runs from
+**Start watching** until **Stop watching**; each has its own button on Home, in the
+notification-area menu and in the talk window, works without the other and runs
+with or without the talk window open. Settings ›
+*Startup and closing* can show the character and start listening (and watching) as Martlet
 starts, including with Windows. Acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically

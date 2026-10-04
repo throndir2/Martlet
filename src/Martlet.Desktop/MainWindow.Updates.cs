@@ -482,23 +482,31 @@ public partial class MainWindow
         if (readyUpdate is not { } ready || closing) return;
         var version = ready.Update.Version.ToString(3);
         installOnExit = (ready.Path, ready.Update.Version, true, unattended);
-        resumeAfterInstall = (avatar.IsShowing, openConversation is { HandsFree: true, ListeningStarted: true, Paused: false });
+        resumeAfterInstall = (avatar.IsShowing, openConversation is { HandsFree: true, ListeningStarted: true, Paused: false },
+            openConversation is { WatchingStarted: true, Paused: false });
         ErrorLog.Info($"Installing Martlet {version} {(unattended ? "automatically, with no installer window" : "as you confirmed")}. " +
-            "Martlet closes and restarts into it" + (resumeAfterInstall switch
-            {
-                (true, true) => ", showing the character and listening again.",
-                (true, false) => ", showing the character again.",
-                (false, true) => ", listening again.",
-                _ => "."
-            }));
+            "Martlet closes and restarts into it" + (ResumePhrase(resumeAfterInstall) is { } again ? $", {again} again." : "."));
         UpdateStatusText.Text = ActionText.Text = unattended
             ? $"Installing Martlet {version} in the background, with no installer window. Martlet restarts by itself when it's done."
             : $"Installing Martlet {version}. Martlet will restart when it's done.";
         ExitMartlet();
     }
 
-    /// <summary>What to pick up again after the restart into an update: the character showing, always listening.</summary>
-    private (bool Character, bool Listening) resumeAfterInstall;
+    /// <summary>What to pick up again after the restart into an update: the character showing, always listening, watching.</summary>
+    private (bool Character, bool Listening, bool Watching) resumeAfterInstall;
+
+    /// <summary>"showing the character, listening and watching" for what is on; null when nothing is.</summary>
+    private static string? ResumePhrase((bool Character, bool Listening, bool Watching) on)
+    {
+        string[] parts = [.. new[] { (on.Character, "showing the character"), (on.Listening, "listening"), (on.Watching, "watching") }
+            .Where(part => part.Item1).Select(part => part.Item2)];
+        return parts.Length switch
+        {
+            0 => null,
+            1 => parts[0],
+            _ => string.Join(", ", parts[..^1]) + " and " + parts[^1]
+        };
+    }
 
     /// <summary>At exit: runs the requested install, or a downloaded automatic update without restarting Martlet.</summary>
     private void LaunchPendingInstall()
@@ -509,7 +517,8 @@ public partial class MainWindow
         var updates = AppUpdateInstaller.UpdatesDirectory(store.DataDirectory);
         try
         {
-            if (run.Relaunch) AppUpdateResume.Save(updates, resumeAfterInstall.Character, resumeAfterInstall.Listening, DateTimeOffset.UtcNow);
+            if (run.Relaunch) AppUpdateResume.Save(updates, resumeAfterInstall.Character, resumeAfterInstall.Listening, DateTimeOffset.UtcNow,
+                resumeAfterInstall.Watching);
             AppUpdateInstaller.Launch(run.Installer, run.Version, store.DataDirectory, run.Relaunch, run.Unattended,
                 (Application.Current as App)?.DataDirectoryArgument, inTray);
         }
@@ -521,13 +530,13 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>After restarting into an update: shows the character and starts listening again when they were on as Martlet
-    /// closed for it (unless Show at startup or Settings' startup choice already did). A note older than a few minutes, from an
-    /// install that didn't restart Martlet, is ignored.</summary>
+    /// <summary>After restarting into an update: shows the character and starts listening and watching again when they were on as
+    /// Martlet closed for it (unless Show at startup or Settings' startup choice already did). A note older than a few minutes,
+    /// from an install that didn't restart Martlet, is ignored.</summary>
     private async Task ResumeAfterUpdateAsync()
     {
         if (store is null) return;
-        (bool Character, bool Listening)? resume;
+        (bool Character, bool Listening, bool Watching)? resume;
         try { resume = AppUpdateResume.Take(AppUpdateInstaller.UpdatesDirectory(store.DataDirectory), DateTimeOffset.UtcNow); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -537,19 +546,14 @@ public partial class MainWindow
         if (resume is not { } again || closing) return;
         if (Role != DeviceRole.Companion)
         {
-            ErrorLog.Info("Martlet restarted after its update as a Martlet host, so the character and listening stay off on this PC.");
+            ErrorLog.Info("Martlet restarted after its update as a Martlet host, so the character, listening and watching stay off on this PC.");
             return;
         }
         if (again.Character && !avatar.IsShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
         if (closing) return;
         if (again.Listening && Talk.HandsFree && openConversation is not { ListeningStarted: true }) StartListening();
-        var picked = (again.Character, again.Listening) switch
-        {
-            (true, true) => "showing the character and listening",
-            (true, false) => "showing the character",
-            _ => "listening"
-        };
-        ErrorLog.Info($"Martlet restarted after its update and is {picked} again, as before the update.");
+        if (again.Watching && Talk.Watch && openConversation is not { WatchingStarted: true }) StartWatching();
+        ErrorLog.Info($"Martlet restarted after its update and is {ResumePhrase(again) ?? "running"} again, as before the update.");
     }
 
     private void ReviewUpdate_Click(object sender, RoutedEventArgs e)

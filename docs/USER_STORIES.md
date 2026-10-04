@@ -963,8 +963,9 @@ it.*
   re-asked every message.
 - **Today**: the conversation window has no per-message ticks. Listening
   (always or push-to-talk), spoken replies and vision are chosen in Companion
-  (Listening, Voice, Vision); the talk window shows *Start listening* (then
-  *Stop listening*) and a *Vision* toggle while they are on. Avatar inspection and analysis keep their own
+  (Listening, Voice, Vision); the talk window, Home and the notification-area
+  menu show *Start listening* (then *Stop listening*) and *Start watching* (then
+  *Stop watching*) while they are on, each working without the other. Avatar inspection and analysis keep their own
   ticks; a Settings › Privacy page does not exist yet.
 
 #### G4. Stop everything now

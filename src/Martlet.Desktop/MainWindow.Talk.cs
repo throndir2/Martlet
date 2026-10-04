@@ -12,7 +12,8 @@ namespace Martlet.Desktop;
 
 /// <summary>The Companion choices the talk window follows: how you talk (Listening), whether replies are spoken (Voice) and
 /// what Martlet may look at (Vision). They save to talk-preferences.json and an open talk window follows them at once; the
-/// talk window itself shows the conversation, starts and stops listening, and pauses or resumes vision.</summary>
+/// talk window itself shows the conversation, and listening and watching each start and stop from their own buttons there, on
+/// Home and in the notification-area menu.</summary>
 public partial class MainWindow
 {
     private TalkPreferences? talk;
@@ -259,7 +260,7 @@ public partial class MainWindow
         var kind => new(kind)
     };
 
-    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera while the talk window is open, what it
+    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera once you press Start watching, what it
     /// looks at and how chatty it is. Turning it on is the consent; the text above the button says exactly what is captured and
     /// where it is sent.</summary>
     private void RenderVisionPage(Panel page)
@@ -390,7 +391,7 @@ public partial class MainWindow
         {
             var on = !Talk.Watch;
             SaveTalk(Talk with { Watch = on }, render: true);
-            ActionText.Text = !on ? "Vision is off." : openConversation is null ? "Vision is on. Start listening on Home, or open the talk window, to start." : "Vision is on.";
+            ActionText.Text = on ? "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look." : "Vision is off.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
         var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8));
