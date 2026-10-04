@@ -175,10 +175,10 @@ a resumed think continues the latest exchange.
 
 Deep thinking on a second single-slot loopback fixture (Custom server on
 127.0.0.1, so the plan still waits for quiet moments because both share this
-PC): typed messages, warm, *Reply latency* first words 59 and 54 ms with nothing
-running, then 64, 61, 60 and 60 ms during the think (it went to the second
-fixture without tools, about 750 prompt tokens against the reply's 1,000,
-paused 3 times and finished in 53 s; Martlet brought it up from the first). With
+PC): typed messages, warm, *Reply latency* first words 59 and 60 ms with nothing
+running, then 59, 45, 55 and 46 ms during the think, each reply 98-99% from the
+cache (the think went to the second fixture without tools, paused 4 times and
+finished in 57 s; Martlet brought it up from the first, 83% from the cache). With
 a destination of its own (`think_longer_check`'s `parallel` part: the
 production plan says parallel, the think is never stopped) three replies beside
 it answered in 2 ms each, as without it.
