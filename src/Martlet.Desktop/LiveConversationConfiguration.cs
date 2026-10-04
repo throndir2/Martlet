@@ -561,10 +561,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The text-only request that asks the Thinking model what to remember and which names voices go by after a
     /// finished exchange. It keeps the model's default sampling (a picking-out task, not a reply) but the same context size, so
     /// a host's Ollama does not reload the model between the reply and this request, and the same Thinking steps choice.</summary>
-    internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
+    internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input, bool imageOptional = false) =>
         new(input, TextSelection(), TextLimits, Turn(false), null, ChatTarget(), HostTarget(),
             generation: GenerationSettings.Normalize(new() { ContextTokens = ReplyGeneration.ContextTokens, Reasoning = ReplyGeneration.Reasoning }),
-            fallback: TextFallback());
+            fallback: TextFallback(), imageOptional: imageOptional && input.Image is not null);
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
     /// spoken.</summary>

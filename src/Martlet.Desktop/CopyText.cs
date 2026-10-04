@@ -9,6 +9,8 @@ using System.Windows.Input;
 using System.Windows.Threading;
 #if MARTLET_RENDERER
 using Martlet.Avatar.RendererHost.Logging;
+#elif MARTLET_MCP
+using Martlet.Mcp.Logging;
 #endif
 
 // Shared with the character renderer, which compiles Themes\Controls.xaml too.

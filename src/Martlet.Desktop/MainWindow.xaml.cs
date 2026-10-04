@@ -62,7 +62,7 @@ public partial class MainWindow : ThemedWindow
     {
         InitializeComponent();
         this.store = store;
-        ThemeChoice.SelectedIndex = Application.Current is App { SelectedTheme: PinkTheme.Dark } ? 1 : 0;
+        ThemeChoice.SelectedIndex = (int)((Application.Current as App)?.SelectedTheme ?? AppearanceTheme.Light);
         AppearanceStatus.Text = (Application.Current as App)?.AppearanceNotice
             ?? "Choose a palette. Your choice is saved on this PC.";
         InitializeUpdates();
@@ -88,6 +88,7 @@ public partial class MainWindow : ThemedWindow
         avatar.LockedPlacement = CharacterPlacementStore.Load(store?.DataDirectory);
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         characterActions = new(store?.DataDirectory);
+        characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
         {
             var microphones = new WasapiCaptureDeviceFactory();
@@ -101,9 +102,17 @@ public partial class MainWindow : ThemedWindow
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         WireCharacterActions();
+        WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
-        characterTimer.Tick += (_, _) => { UpdateCharacterButton(); RenderListening(); if (started) FollowCharacterActions(); };
+        characterTimer.Tick += (_, _) =>
+        {
+            UpdateCharacterButton();
+            RenderListening();
+            if (!started) return;
+            FollowCharacterActions();
+            FollowCharacterTheme();
+        };
         characterTimer.Start();
         DataPathText.Text = "Settings are stored on this PC.";
         StatusText.Text = "Loading local status...";
@@ -135,33 +144,6 @@ public partial class MainWindow : ThemedWindow
         InitializeNodeAgent();
         InitializeLogs();
         InitializeBackground();
-    }
-
-    private async void Theme_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (!IsLoaded || Application.Current is not App app) return;
-        var theme = ThemeChoice.SelectedIndex == 1 ? PinkTheme.Dark : PinkTheme.Light;
-        app.ApplyTheme(theme);
-        if (store is null)
-        {
-            AppearanceStatus.Text = "Theme applied for this session. Choose a data folder to save it.";
-            return;
-        }
-        try
-        {
-            Appearance.Save(store.DataDirectory, theme);
-            AppearanceStatus.Text = $"{(theme == PinkTheme.Dark ? "Rose dark" : "Pink light")} saved.";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            AppearanceStatus.Text = "Theme applied for this session, but it could not be saved. Check access to Martlet's data folder.";
-        }
-        try { await avatar.UpdateThemeAsync(lifetime.Token); }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
-        {
-            if (!closing)
-                AppearanceStatus.Text += " The character could not update its colors. Restart it to apply the theme.";
-        }
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)

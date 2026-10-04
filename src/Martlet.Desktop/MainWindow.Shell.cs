@@ -147,7 +147,11 @@ public partial class MainWindow
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
         // Windows' own Startup apps switch can change while Martlet runs.
-        if (ReferenceEquals(page, SettingsPage)) RenderBackground();
+        if (ReferenceEquals(page, SettingsPage))
+        {
+            RenderBackground();
+            RenderAppearance();
+        }
         if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
         else LeaveDiagnostics();
     }

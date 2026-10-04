@@ -6,7 +6,7 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
 order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, network_status, nearby_status, logs_tail,
 logs_timeline, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, character_status, hearing_check,
-echo_check, pc_audio_check, context_check, thinking_steps_check, latency_report, character_models, character_actions and
+echo_check, pc_audio_check, context_check, thinking_steps_check, latency_report, character_models, character_actions, character_theme and
 utterance_filter_check calls without an explicit dataDirectory get a disposable one; voices_status, voices_engine_check and
 utterance_filter_check also use this checkout's Desktop build (martletDirectory) when it is built. -Desktop launches Martlet.Desktop with the
 same disposable data directory (plus any -DesktopArguments, such as --tray) and connects ui_* tools to it first.
@@ -148,7 +148,7 @@ try {
             $call.name -like 'cluster_*' -or $call.name -like 'nearby_*' -or $call.name -like 'virtualization_*' -or $call.name -eq 'mcp_servers_status' -or
             $call.name -eq 'network_status' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'prompts_status' -or
             $call.name -eq 'settings_sync_status' -or $call.name -eq 'memory_sync_status' -or $call.name -eq 'hearing_check' -or $call.name -eq 'echo_check' -or $call.name -eq 'pc_audio_check' -or $call.name -eq 'character_status' -or $call.name -eq 'character_models' -or
-            $call.name -eq 'character_actions' -or $call.name -eq 'context_check' -or $call.name -eq 'thinking_steps_check' -or
+            $call.name -eq 'character_actions' -or $call.name -eq 'character_theme' -or $call.name -eq 'context_check' -or $call.name -eq 'thinking_steps_check' -or
             $call.name -eq 'latency_report' -or $call.name -like 'terminal_*' -or $call.name -eq 'utterance_filter_check') {
             if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
             if ($null -eq $arguments.PSObject.Properties['dataDirectory']) {

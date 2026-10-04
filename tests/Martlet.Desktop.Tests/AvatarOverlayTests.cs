@@ -44,7 +44,7 @@ public sealed class AvatarOverlayTests
             window.ApplyOverlayTheme(dark: true);
             window.UpdateLayout();
             Assert.Same(window.TryFindResource("SurfaceBrush"), loading.Background);
-            Assert.Equal(((SolidColorBrush)Appearance.Palette(PinkTheme.Dark, SystemParameters.HighContrast)["SurfaceBrush"]).Color,
+            Assert.Equal(((SolidColorBrush)Appearance.Palette(AppearanceTheme.Dark, SystemParameters.HighContrast)["SurfaceBrush"]).Color,
                 ((SolidColorBrush)loading.Background).Color);
             Assert.Equal(Colors.Transparent, ((SolidColorBrush)window.Background).Color);
             Assert.True(input.Waiting);
