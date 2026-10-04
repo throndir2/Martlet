@@ -279,7 +279,7 @@ public partial class HostsWindow : ThemedWindow
         PairCodeTitle.Text = byCode ? "Enter the code shown on the host" : "Or enter a code from the host";
         PairCodeHelp.Text = byCode
             ? "On a Windows PC with Martlet, choose Show a pairing code on its Home page. " +
-              "Enter the address and code it shows within five minutes."
+              "Enter the address and code it shows; the code works until it's used or canceled there."
             : "If Martlet can't reach the host, show a pairing code on the host and enter its address and code here.";
         if (byCode) PairCommandText.Text = CommandFor(HostAction.Pair);
         if (PairAddressText.Text.Length == 0 && Method != HostSetupMethod.ThisPcDocker) PairAddressText.Text = AddressText.Text.Trim();

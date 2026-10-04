@@ -228,7 +228,7 @@ internal sealed partial class HostRemote(HostShell shell)
 
     /// <summary>Lets another desktop pair with an SSH host: runs "pair" there, which shows the host's address and a short
     /// one-use code; <paramref name="shown"/> receives both (the code never reaches <paramref name="output"/>). The host waits
-    /// up to five minutes for that desktop to redeem it; canceling withdraws the code. Returns the exit code.</summary>
+    /// until that desktop redeems it (the code has no deadline); canceling withdraws the code. Returns the exit code.</summary>
     internal async Task<int> PairOtherAsync(HostSetupTarget target, bool sudo, string? pinnedHostKey, Action<string, string> shown,
         IProgress<string> output, CancellationToken token, string codeNote)
     {

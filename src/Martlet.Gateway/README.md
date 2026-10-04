@@ -236,8 +236,11 @@ windows cannot be revived.
 `GatewayPairingService.OpenCodeWindow` (local host code only, like
 `OpenWindow`) opens a window that a person redeems by typing instead of pasting
 a card: the host shows its address and an 8-character code such as `K7QM-4XPA`
-(32 symbols without `I`, `O`, `0` or `1`: 40 bits), one use, at most five
-minutes, at most two such windows open. The owner approves only the roles; the
+(32 symbols without `I`, `O`, `0` or `1`: 40 bits), one use, at most two such
+windows open. A code window has **no deadline**: it stays open until a desktop
+redeems it, five wrong proofs close it or the host withdraws it (the owner
+cancels, or the pairing run ends and the service closes pairing);
+`GatewayPairingService.IsOpen` tells whether it still works. The owner approves only the roles; the
 desktop that proves the code names itself (device ID and display name) when it
 redeems it. `GatewayPairingCode` defines the exchange, and desktops implement
 the same derivation:
@@ -258,9 +261,12 @@ the same derivation:
 4. The desktop pins the fingerprint only when `host_proof` verifies.
 
 A key swapped in on the network changes `K`, so the real host refuses the proof
-and the impostor cannot answer without the code; one observed attempt leaves
-only an offline search of 2^40 codes at 100,000 PBKDF2 iterations each against
-a five-minute window.
+and the impostor cannot answer without the code. Guessing online stays bounded
+by the five wrong proofs. One observed attempt leaves an offline search of 2^40
+codes at 100,000 PBKDF2 iterations each; because the code has no deadline, that
+search is bounded by the owner instead: the desktop that was answered by an
+impostor reports that the computer could not prove the code, and withdrawing
+that code on the host (and showing a new one) ends the search.
 
 ### Martlet network member pairing
 

@@ -8,7 +8,8 @@
 #                               a voice engine replaces the one already installed (role.conf exclusive=voice)
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
 #   martlet-host pair           pair a Martlet desktop: shows this host's address and a one-use code (like K7QM-4XPA) to
-#                               type in Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes
+#                               type in Martlet (Devices > Add a computer > Enter a pairing code); the code has no
+#                               deadline: it waits until a desktop uses it, you type cancel (or Ctrl+C) or stdin ends
 #   martlet-host pair --device-id <id> --name <name> [--roles voice]
 #                               pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..."
 #                               line, waits up to five minutes for the desktop to redeem it, then restarts the gateway

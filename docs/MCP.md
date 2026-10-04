@@ -593,7 +593,10 @@ host and B is paired with it on its next sync; a key outside the network
 roster entry not signed by a member are refused; A removes a host (it stops
 trusting the network's desktops, and A and B both forget it, B although the
 host no longer answers it); A pairs that host again by a code and it rejoins
-(B pairs with it again by itself); A removes B (every host revokes it, B leaves
+(B pairs with it again by itself); on a fourth host (`lab-host-4`) a typed code
+still pairs 12 hours later on that host's clock (codes have no deadline), stops
+working once used, and five wrong tries close another code so even the right
+one gets `pairing.closed`; A removes B (every host revokes it, B leaves
 and forgets its hosts and needs a new key). Each desktop's state goes through
 `network.json`'s format between syncs. The report has `ok`, `passed`,
 `total`, `seconds`, the `scope` and each step's `ok` and `detail`. Nothing
@@ -2338,7 +2341,12 @@ device secret in Windows Credential Manager, so verification stops at refused
 codes. On the host dashboard, *Show a pairing code* (`Step-pair-0`) shows the
 address (`HostRunPairAddress`, returned) and the one-use code (`HostRunPairCode`,
 never returned) in the run window's `HostRunPairing` panel; the host-runs log
-masks codes. While the host isn't paired, `StepDetail-pair` tells the owner to find this PC from the
+masks codes. The code has no deadline: it works until the other desktop uses it
+or the run is canceled, and `HostRunPairNote` (returned) says so. *Copy code*
+(`HostRunPairCopy`, its label returned: *Copy code*, then *Copied* or *Couldn't
+copy*) puts the code on the clipboard, kept out of Windows clipboard history and
+the cloud clipboard and cleared again when the code stops working if it is still
+there, so clicking it needs `--allow-ui-effects`. While the host isn't paired, `StepDetail-pair` tells the owner to find this PC from the
 main PC (*Martlet on your network*), and when Windows Firewall keeps other
 computers out it says so and `Step-pair-1` (*Let my other computers find this
 PC*, an administrator prompt) appears. While a computer asks to

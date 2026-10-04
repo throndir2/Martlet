@@ -279,7 +279,7 @@ public static class Audio2FaceHostClient
                     "pairing.closed" => new Audio2FaceHostException("pairing.closed",
                         $"The host at {address} isn't waiting for a code. Show a new code on the host (martlet-host pair) and type that."),
                     "pairing.expired" => new Audio2FaceHostException("pairing.expired",
-                        "That code expired (codes last five minutes). Show a new code on the host and type that."),
+                        "That code expired (hosts on an older Martlet end codes after five minutes). Show a new code on the host and type that."),
                     "request.invalid" => new Audio2FaceHostException("pairing.unsupported",
                         $"The host at {address} runs an older Martlet that doesn't take short codes. Update it, or paste the long martlet-pair-v1 code it shows."),
                     _ => Remote(root)
@@ -300,7 +300,8 @@ public static class Audio2FaceHostClient
             if (!TryBase64Url(root.GetProperty("host_proof").GetString(), 32, out var proof) ||
                 !CryptographicOperations.FixedTimeEquals(expected, proof))
                 throw new Audio2FaceHostException("host.pin_mismatch",
-                    $"The computer at {address} could not prove it shows this code, so Martlet did not pair with it. Check the address and try again.");
+                    $"The computer at {address} could not prove it shows this code, so Martlet did not pair with it. Check the address; " +
+                    "if it is right, cancel the code on the host and show a new one, since something else answered there.");
             var pairing = new Audio2FaceHostPairing
             {
                 Origin = canonical, HostId = hostId, SpkiFingerprint = seen, DeviceId = deviceId, CredentialId = credentialId

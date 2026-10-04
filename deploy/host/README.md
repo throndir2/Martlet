@@ -41,7 +41,8 @@ Commands are the same everywhere:
 ```text
 setup               gateway, identity and start at boot (once per host)
 pair                pair a desktop: shows this host's address and a short one-use code (like K7QM-4XPA) to type in
-                    Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes (repeat per desktop)
+                    Martlet (Devices > Add a computer > Enter a pairing code); waits until a desktop uses it or you type
+                    cancel, with no deadline; the host's roles pause meanwhile (repeat per desktop)
 pair --device-id <id> --name <name>
                     pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..." line,
                     waits up to five minutes for it to be redeemed, then restarts the gateway (Martlet uses this itself)
@@ -350,7 +351,9 @@ stops waiting at once.
 **This PC:** **Pair automatically** runs the same unattended pairing on this PC's
 Docker Desktop. To pair *another* desktop with this PC's host, the host
 dashboard's **Show a pairing code** shows this PC's address and a short code in
-large type (never logged); type both on the other desktop.
+large type (never logged) with a **Copy code** button; type both on the other
+desktop. The code doesn't expire: it works until the other desktop uses it or
+you cancel the window, and this PC's host roles pause until then.
 
 **By hand (any host):** on the host run `martlet-host pair`. It shows:
 
@@ -359,8 +362,16 @@ Pair a Martlet desktop with gpu-pc-host
   In Martlet on the desktop: Devices > Add a computer > Enter a pairing code, then type
     Address:  192.168.1.20
     Code:     K7QM-4XPA
-  The code works once and expires in five minutes. Type cancel to withdraw it.
+  The code works once and doesn't expire: it stays valid until a desktop uses it or you type cancel
+  (or press Ctrl+C). Until then this host's jobs are paused.
 ```
+
+Withdraw a code you no longer need with `cancel` or Ctrl+C rather than by
+closing the window. Over SSH or in a local terminal, closing it also withdraws
+the code, but a closed Docker console (`docker run -it`) keeps waiting with the
+host's roles paused, like an abandoned `martlet-host console`: the next
+`martlet-host` command names it as busy and says to stop it with
+`docker stop <name>`.
 
 In Martlet choose **Devices > Add a computer > Enter a pairing code**, type the
 address and code, and press **Pair with host**. The host finishes and restarts

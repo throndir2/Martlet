@@ -26,6 +26,55 @@ public sealed class PairingAuthenticationTests
         Assert.IsType<PairedDeviceLifetime>(pairing.Exchange(proof with { ProtocolVersion = GatewayProtocolVersion.Current }).Lifetime);
     }
 
+    [Fact]
+    public void Short_code_has_no_deadline_and_closes_only_when_used_or_mistyped()
+    {
+        var identity = new GatewayHostIdentity { HostId = "host", SpkiFingerprint = "sha256:" + new string('0', 64) };
+        var clock = new ManualGatewayClock(new DateTimeOffset(2026, 10, 4, 12, 0, 0, TimeSpan.Zero));
+        var store = new GatewayCredentialStore(identity, clock);
+        var pairing = new GatewayPairingService(identity, new("https://127.0.0.1:9443"), store, clock);
+        var card = pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+        // Card windows end after five minutes; a typed code still works days later.
+        var invitation = pairing.OpenWindow(new() { DeviceId = "device", DisplayName = "Device", Roles = [GatewayRole.Voice] });
+        clock.Advance(TimeSpan.FromDays(3));
+        Assert.False(pairing.IsOpen(invitation.PairingId));
+        Assert.True(pairing.IsOpen(card.PairingId));
+
+        var (credential, hostProof) = pairing.Exchange(CodeProof(card.Code.Reveal(), identity.SpkiFingerprint, "fixture-desktop"));
+        Assert.Equal("fixture-desktop", credential.DeviceId);
+        Assert.False(string.IsNullOrEmpty(hostProof));
+        Assert.False(pairing.IsOpen(card.PairingId));
+        Assert.Equal("pairing.closed", Assert.Throws<GatewayProtocolException>(() =>
+            pairing.Exchange(CodeProof(card.Code.Reveal(), identity.SpkiFingerprint, "other-desktop"))).Failure.Code);
+
+        var mistyped = pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+        var code = mistyped.Code.Reveal();
+        var wrong = (code[0] == '2' ? "3" : "2") + code[1..];
+        for (var attempt = 0; attempt < GatewayPairingService.MaximumFailedAttempts; attempt++)
+        {
+            Assert.True(pairing.IsOpen(mistyped.PairingId));
+            Assert.Equal("pairing.invalid", Assert.Throws<GatewayProtocolException>(() =>
+                pairing.Exchange(CodeProof(wrong, identity.SpkiFingerprint, "guessing-desktop"))).Failure.Code);
+        }
+        Assert.False(pairing.IsOpen(mistyped.PairingId));
+        Assert.Equal("pairing.closed", Assert.Throws<GatewayProtocolException>(() =>
+            pairing.Exchange(CodeProof(code, identity.SpkiFingerprint, "fixture-desktop"))).Failure.Code);
+        Assert.Single(store.ListRegistrations());
+    }
+
+    private static GatewayCodePairingProof CodeProof(string code, string spkiFingerprint, string deviceId)
+    {
+        Assert.True(GatewayPairingCode.TryNormalize(code, out var canonical));
+        var nonce = RandomNumberGenerator.GetBytes(16);
+        var key = GatewayPairingCode.DeriveKey(canonical, spkiFingerprint, nonce);
+        return new()
+        {
+            ProtocolVersion = GatewayProtocolVersion.Current, DeviceId = deviceId, DisplayName = "Fixture PC",
+            ClientNonce = System.Buffers.Text.Base64Url.EncodeToString(nonce),
+            Proof = System.Buffers.Text.Base64Url.EncodeToString(GatewayPairingCode.ClientProof(key, deviceId, "Fixture PC", nonce))
+        };
+    }
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"expires_at\":\"2099-01-01T00:00:00Z\"}")]
