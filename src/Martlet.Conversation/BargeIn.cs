@@ -101,7 +101,7 @@ public sealed class BargeInGate(ListeningSensitivity sensitivity)
     private readonly int gateFrames = Frames(BargeInPolicy.VoiceBeforeCheck(sensitivity));
     private static readonly int FirstRecheckFrames = Frames(FirstRecheck), RecheckFrames = Frames(Recheck),
         PauseFrames = Frames(Pause), GapFrames = Frames(Gap);
-    private int voiced, quiet, checkedAt;
+    private int voiced, quiet, checkedAt, heard;
 
     private static int Frames(TimeSpan time) => (int)(time.TotalMilliseconds / FrameMilliseconds);
 
@@ -111,6 +111,9 @@ public sealed class BargeInGate(ListeningSensitivity sensitivity)
     public int StretchStartFrame { get; private set; } = -1;
     /// <summary>Of the current stretch, how much was a voice.</summary>
     public TimeSpan Voice => TimeSpan.FromMilliseconds(voiced * FrameMilliseconds);
+    /// <summary>How long the current stretch has gone on, leaving out frames what this PC plays explains
+    /// (<see cref="UtteranceContext.Speech"/>).</summary>
+    public TimeSpan Speech => TimeSpan.FromMilliseconds(heard * FrameMilliseconds);
     /// <summary>Checks asked for in the current stretch.</summary>
     public int Checks { get; private set; }
 
@@ -126,9 +129,10 @@ public sealed class BargeInGate(ListeningSensitivity sensitivity)
         }
         else if (++quiet > GapFrames && voiced > 0)
         {
-            voiced = checkedAt = Checks = 0;
+            voiced = checkedAt = Checks = heard = 0;
             StretchStartFrame = -1;
         }
+        if (StretchStartFrame >= 0 && !speakers) heard++;
         Processed++;
         if (busy || StretchStartFrame < 0 || Checks >= MaximumChecks) return false;
         // Grown: enough voice for the first check, or more of it since the last. Paused: a short word just ended.
