@@ -291,7 +291,41 @@ private LAN address and port desktops use, creates the host identity, installs a
 systemd user service (`martlet-host-gateway`), optionally enables lingering so it
 runs at boot without a login, and links `martlet-host` into `~/.local/bin`.
 Missing Docker, NVIDIA driver or NVIDIA Container Toolkit are installed only after
-a `yes`.
+a `yes`. On a minimal Ubuntu without ICU (`libicu`), the build and the gateway
+run in .NET's invariant globalization mode.
+
+### Computers without internet
+
+Hosts normally download what they need themselves. A computer that is
+deliberately kept off the internet (or whose DNS or route out is broken) and
+that only this PC reaches over the LAN still gets set up: before **setup** or
+**update** over SSH, Martlet checks whether the host opens a connection to
+GitHub within 8 seconds (`HostCheckout.InternetProbe`). When it can't, Martlet
+falls back to sending the files from this PC (native Ubuntu method):
+
+1. This PC downloads Martlet's source for its version (the `v<version>` tag,
+   else `main`), the .NET SDK the engine pins (`DOTNET_SDK`, checked against
+   the SHA-512 Microsoft publishes) and the NuGet packages in the lock files of
+   the gateway's projects. They are kept in `host-supply` in Martlet's data
+   directory for next time (about 270 MB the first time).
+2. It sends only what the host lacks over the same SSH connection as one tar
+   stream into `~/.cache/martlet/supply`, then checks each file arrived intact
+   (SHA-512), unpacks the source into `~/Martlet` (a previous `~/Martlet` moves
+   to `~/.cache/martlet/source.previous`) and removes what is no longer needed,
+   such as the SDK archive once that SDK is installed.
+3. The engine runs with `MARTLET_SUPPLY`: it installs that SDK into `~/.dotnet`
+   and restores the gateway's packages only from the files sent
+   (`-p:RestoreConfigFile=...`, `-p:NuGetAudit=false`; NuGet still checks them
+   against the lock files), touching neither git nor the network.
+
+Pairing, status and roles run as usual. When the host is online again, the next
+setup or update replaces the copy with a git checkout. Martlet can't send Docker
+images or models yet: on a computer without internet access, **Add a role** and
+the Docker method stop with a plain explanation instead of failing halfway.
+Without internet access, the online command never runs an engine that isn't
+there either: if git can't be installed or Martlet can't be cloned it stops with
+`Stopped: ...`. `host_supply_check` in [Martlet's MCP server](../../docs/MCP.md)
+checks the whole route against a container on an internal network.
 
 ## Pairing
 
@@ -356,6 +390,8 @@ rest from Windows. **Add this computer** in Martlet hosts:
    sudo, OS, architecture and its LAN address.
 4. Runs `setup` and `pair`, then reads the machine report, streaming every line
    into a run window with **Cancel**. The host then appears on the Devices map.
+   A computer that can't reach the internet gets what setup needs from this PC
+   ([Computers without internet](#computers-without-internet)).
 
 Afterwards the map's per-host actions (add or remove a role, show status) run the
 same way. Adding a role first runs `describe <role>` there and shows its

@@ -30,7 +30,12 @@ public sealed class HostSetupCommandsTests
             HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshDocker), "setup", true));
         var remoteNative = HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshNative), "setup", true);
         Assert.EndsWith("MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host --yes setup", remoteNative);
-        Assert.Contains("git clone --depth 1 https://github.com/throndir2/Martlet.git ~/Martlet) </dev/null", remoteNative);
+        Assert.Contains("git clone -q --depth 1 https://github.com/throndir2/Martlet.git ~/.cache/martlet/clone </dev/null", remoteNative);
+        Assert.Contains("Stopped: git is not installed here", remoteNative);
+        var supplied = HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshNative), "setup", true, supplied: true);
+        Assert.DoesNotContain("git ", supplied);
+        Assert.EndsWith("MARTLET_SUPPLY=$HOME/.cache/martlet/supply MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host --yes setup",
+            supplied);
         Assert.EndsWith("martlet-host remove ollama", HostSetupCommands.NativeShell(Target(HostSetupMethod.SshNative), HostAction.Remove(HostRoles.Ollama)));
         Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Add("x; rm -rf ~")));
         foreach (var method in new[] { HostSetupMethod.SshDocker, HostSetupMethod.SshNative })
@@ -82,6 +87,12 @@ public sealed class HostSetupCommandsTests
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
+
+        // A computer without internet access: Martlet sends a native host what setup and update need, and says plainly what it can't send.
+        Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Setup, "me@gpu"));
+        Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Update, "me@gpu"));
+        Assert.Contains("native Ubuntu method", HostRemote.OfflineBlocker(HostSetupMethod.SshDocker, HostVerb.Setup, "me@gpu"));
+        Assert.Contains("Docker images and models", HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Add, "me@gpu"));
     }
 
     // "martlet-host describe audio2face" output: the local engine needs no key; the NIM engine's key and terms belong to it.

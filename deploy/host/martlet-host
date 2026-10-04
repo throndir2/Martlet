@@ -57,6 +57,10 @@ NET="martlet-host-net"
 HOLD_READY="Network holder ready."
 HELPER_IMAGE="busybox:1.36.1"
 DOTNET_SDK="10.0.401"
+# A computer without internet access: the files Martlet downloaded on the desktop and sent over SSH (see "Computers
+# without internet" in README.md): dotnet-sdk-<version>-linux-x64.tar.gz and the gateway's NuGet packages in nuget/.
+# Empty when this computer downloads them itself.
+SUPPLY="${MARTLET_SUPPLY:-}"
 
 if [[ "${MODE}" == docker ]]; then
   CONF=/var/lib/martlet/config
@@ -76,6 +80,11 @@ else
   GW_APP="${DATA}/gateway"
   PROJECTS="${DATA}/roles"
   DOTNET="${HOME}/.dotnet/dotnet"
+  # .NET reads culture data from ICU. A minimal Ubuntu without libicu (and without internet access to install it) builds
+  # and runs the gateway in invariant globalization mode; the gateway uses no culture-specific behavior.
+  if ! { PATH="${PATH}:/usr/sbin:/sbin" ldconfig -p 2>/dev/null | grep -q 'libicuuc\.so' || compgen -G '/usr/lib/*/libicuuc.so.*' >/dev/null; }; then
+    export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+  fi
 fi
 GW_CONF_DIR="${CONF}/gateway"
 GW_CONFIG="${GW_CONF_DIR}/host.json"
@@ -441,10 +450,59 @@ detect_nvidia() {
 
 require_dotnet() {
   if [[ -x "${DOTNET}" ]] && "${DOTNET}" --list-sdks | grep -q "^${DOTNET_SDK} "; then return; fi
+  if [[ -n "${SUPPLY}" ]]; then
+    local sdk="${SUPPLY}/dotnet-sdk-${DOTNET_SDK}-linux-x64.tar.gz"
+    [[ -f "${sdk}" ]] || fail "Martlet did not send the .NET SDK ${DOTNET_SDK} this computer needs. Set it up again from Martlet."
+    ask "Install the .NET SDK ${DOTNET_SDK} that Martlet sent from your PC into ~/.dotnet (no sudo)?" ||
+      fail "The .NET SDK is required to build the Martlet gateway."
+    mkdir -p "${HOME}/.dotnet"
+    tar -xzf "${sdk}" -C "${HOME}/.dotnet"
+    "${DOTNET}" --list-sdks | grep -q "^${DOTNET_SDK} " || fail "The .NET SDK ${DOTNET_SDK} from your PC did not install."
+    return
+  fi
   ask "Install the .NET SDK ${DOTNET_SDK} into ~/.dotnet with Microsoft's dotnet-install script (no sudo)?" ||
     fail "The .NET SDK is required to build the Martlet gateway."
   curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/martlet-dotnet-install.sh
   bash /tmp/martlet-dotnet-install.sh --version "${DOTNET_SDK}" --install-dir "${HOME}/.dotnet"
+}
+
+# The gateway keeps its keys only under folders no one else can change: every folder above its state must be without
+# group and other write access. Ubuntu's default umask (002, with a private group per user) leaves ~/.local and
+# ~/.local/share group-writable, so take that off this account's own folders between ${HOME} and ${DATA}.
+secure_data_parents() {
+  local dir="${DATA}"
+  while [[ "${dir}" == "${HOME}" || "${dir}" == "${HOME}/"* ]]; do
+    if [[ -d "${dir}" && -O "${dir}" && -n "$(find "${dir}" -maxdepth 0 -perm /022 2>/dev/null)" ]]; then
+      chmod go-w "${dir}"
+      note "Removed group and other write access from ${dir}: the gateway keeps its keys only under folders no one else can change."
+    fi
+    [[ "${dir}" != "${HOME}" ]] || break
+    dir="$(dirname "${dir}")"
+  done
+}
+
+# Builds the native gateway into $1. With supplied files the packages come only from ${SUPPLY}/nuget (no network).
+# No build servers or reusable MSBuild nodes outlive the build: they would keep the SSH session's output open (so Martlet's
+# run never ends) and, through 9>&-, must not inherit the engine lock either.
+publish_gateway() {
+  local offline=()
+  if [[ -n "${SUPPLY}" ]]; then
+    [[ -d "${SUPPLY}/nuget" ]] || fail "Martlet did not send the gateway's packages. Set this computer up again from Martlet."
+    cat > "${SUPPLY}/NuGet.config" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="martlet-supply" value="${SUPPLY}/nuget" />
+  </packageSources>
+</configuration>
+XML
+    offline=("-p:RestoreConfigFile=${SUPPLY}/NuGet.config" -p:NuGetAudit=false)
+  fi
+  DOTNET_ROOT="${HOME}/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1 \
+    DOTNET_CLI_USE_MSBUILD_SERVER=0 MSBUILDDISABLENODEREUSE=1 \
+    "${DOTNET}" publish "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" \
+    -c Release -o "$1" -p:UseAppHost=false -nodeReuse:false -p:UseSharedCompilation=false "${offline[@]}" 9>&-
 }
 
 # ------------------------------------------------------------------ gateway and its service (per method)
@@ -1137,10 +1195,9 @@ cmd_setup() {
     [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
     say "1/4 Martlet gateway"
     require_dotnet
-    DOTNET_ROOT="${HOME}/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-      "${DOTNET}" publish "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" \
-      -c Release -o "${GW_APP}" -p:UseAppHost=false 9>&-
+    publish_gateway "${GW_APP}"
     mkdir -p "${DATA}/private"; chmod 700 "${DATA}" "${DATA}/private"
+    secure_data_parents
   else
     say "1/4 Martlet gateway (container image ${IMAGE})"
   fi
@@ -1185,6 +1242,7 @@ After=network-online.target
 
 [Service]
 Environment=DOTNET_ROOT=${HOME}/.dotnet
+Environment=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=${DOTNET_SYSTEM_GLOBALIZATION_INVARIANT:-0}
 ExecStart=${DOTNET} ${GW_APP}/Martlet.Gateway.Host.Linux.dll serve --config ${GW_CONFIG}
 Restart=on-failure
 RestartSec=10
@@ -1685,11 +1743,9 @@ cmd_update() {
     [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
     say "Updating the gateway from ${REPO} ($(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source checkout'))"
     require_dotnet
+    secure_data_parents
     rm -rf "${GW_APP}.next"
-    # 9>&-: the build servers dotnet leaves running must not inherit (and keep holding) the engine lock.
-    DOTNET_ROOT="${HOME}/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-      "${DOTNET}" publish "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" \
-      -c Release -o "${GW_APP}.next" -p:UseAppHost=false 9>&-
+    publish_gateway "${GW_APP}.next"
     service_stop
     rm -rf "${GW_APP}.previous"
     mv "${GW_APP}" "${GW_APP}.previous"

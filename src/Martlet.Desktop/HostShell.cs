@@ -49,6 +49,9 @@ internal sealed record HostShellCommand
     /// <summary>When set, stdin stays open after <see cref="Input"/> until this completes; its text (if any) is written
     /// last, then stdin is closed. Without it stdin closes right after <see cref="Input"/>.</summary>
     public Task<string?>? MoreInput { get; init; }
+    /// <summary>Streams raw bytes to stdin after <see cref="Input"/> (for example a tar of files for <c>tar -xf -</c>),
+    /// then stdin is closed.</summary>
+    public Func<Stream, CancellationToken, Task>? Write { get; init; }
     /// <summary>Make plain <c>sudo</c> work inside <see cref="Command"/>: Martlet asks for the sudo password in the
     /// desktop when the account needs one (optionally remembered in Windows Credential Manager), checks it with
     /// <c>sudo -S</c>, and hands it to the command over the SSH channel through a private one-run askpass helper.</summary>
@@ -391,6 +394,11 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
                 await input.WriteAsync(bytes, token);
                 await input.FlushAsync(token);
                 CryptographicOperations.ZeroMemory(bytes);
+            }
+            if (command.Write is { } write)
+            {
+                await write(input, token);
+                await input.FlushAsync(token);
             }
             if (command.MoreInput is { } more)
             {

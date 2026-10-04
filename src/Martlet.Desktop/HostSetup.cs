@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
+using Martlet.Core.Nodes;
 
 namespace Martlet.Desktop;
 
@@ -31,7 +32,7 @@ internal sealed record HostSetupTarget(HostSetupMethod Method, string SshTarget,
 /// <summary>Builds the exact commands each installation method runs; nothing here executes them.</summary>
 internal static partial class HostSetupCommands
 {
-    internal const string Repository = "https://github.com/throndir2/Martlet.git";
+    internal const string Repository = HostCheckout.Repository;
     internal const string DockerSocket = "/var/run/docker.sock:/var/run/docker.sock";
 
     [GeneratedRegex(@"\A(?:[A-Za-z0-9._-]{1,64}@)?[A-Za-z0-9][A-Za-z0-9.-]{0,252}(?::[0-9]{1,5})?\z")]
@@ -88,41 +89,37 @@ internal static partial class HostSetupCommands
             $"$D run --rm{run} -u 0 -v {DockerSocket}{Environment(target, setup)}{LockWait(lockWaitSeconds)} {image} {(assumeYes ? "--yes " : "")}{engine}";
     }
 
-    /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine. An update
-    /// checks out this desktop's release tag (falling back to main) before rebuilding the gateway from it.</summary>
+    /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine
+    /// (<see cref="HostCheckout.Command"/>). An update checks out this desktop's release tag (falling back to main) before
+    /// rebuilding the gateway from it. <paramref name="supplied"/>: the host has no internet access and Martlet sent it
+    /// what it needs (<see cref="HostSupplier"/>).</summary>
     internal static string NativeShell(HostSetupTarget target, HostAction action) =>
         NativeShell(target, Engine(action), action == HostAction.Setup, ShellMode.Console, false);
 
-    private static string NativeShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes, int lockWaitSeconds = 0)
+    private static string NativeShell(HostSetupTarget target, string engine, bool setup, ShellMode mode, bool assumeYes, int lockWaitSeconds = 0,
+        bool supplied = false)
     {
-        var prefix = (setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "") +
+        var environment = (setup ? $"MARTLET_HOST_ADDRESS={target.Address} " : "") +
             (lockWaitSeconds > 0 ? $"MARTLET_LOCK_WAIT={lockWaitSeconds} " : "");
+        var verb = engine.Split(' ')[0];
         // The runner keeps stdin for martlet-host's answers, so nothing before it may read it.
-        var quiet = mode == ShellMode.Runner ? " </dev/null" : "";
-        var refresh = engine == "update"
-            ? $"{{ git -C ~/Martlet fetch -q --depth 1 origin tag v{target.Version}{quiet} && " +
-              $"git -C ~/Martlet -c advice.detachedHead=false checkout -q v{target.Version}; }} || " +
-              $"{{ git -C ~/Martlet checkout -q main && git -C ~/Martlet pull --ff-only -q{quiet}; }} || true; "
-            : $"git -C ~/Martlet pull --ff-only -q{quiet} || true; ";
-        var bootstrap = mode == ShellMode.Runner
-            ? $"(command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git)){quiet}; " +
-              $"(test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet){quiet}; "
-            : "command -v git >/dev/null 2>&1 || (sudo apt-get update -q && sudo apt-get install -y git); " +
-              $"test -d ~/Martlet/.git || git clone --depth 1 {Repository} ~/Martlet; ";
-        return bootstrap + refresh + $"{prefix}~/Martlet/deploy/host/martlet-host {(assumeYes ? "--yes " : "")}{engine}";
+        return HostCheckout.Command((assumeYes ? "--yes " : "") + engine, environment, target.Version,
+            refresh: verb is "setup" or "update", update: verb == "update", supplied, closeStdin: mode == ShellMode.Runner);
     }
 
     /// <summary>The POSIX shell Martlet's SSH runner (<see cref="HostShell"/>) executes for one martlet-host command
     /// (for example "status", "add audio2face" or "pair --device-id ... --name ..."): unattended (--yes, no terminal),
     /// with answers read from stdin. The owner's click in Martlet is the confirmation. <paramref name="lockWaitSeconds"/>
-    /// above 0 lets a run without --yes wait that long for another change on the host (MARTLET_LOCK_WAIT).</summary>
-    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup, bool assumeYes = true, int lockWaitSeconds = 0)
+    /// above 0 lets a run without --yes wait that long for another change on the host (MARTLET_LOCK_WAIT).
+    /// <paramref name="supplied"/>: a native host without internet access that Martlet sent its files to.</summary>
+    internal static string RemoteShell(HostSetupTarget target, string engine, bool setup, bool assumeYes = true, int lockWaitSeconds = 0,
+        bool supplied = false)
     {
         Validate(target, setup ? HostAction.Setup : HostAction.Status);
         return target.Method switch
         {
             HostSetupMethod.SshDocker => DockerShell(target, engine, setup, ShellMode.Runner, assumeYes, lockWaitSeconds),
-            HostSetupMethod.SshNative => NativeShell(target, engine, setup, ShellMode.Runner, assumeYes, lockWaitSeconds),
+            HostSetupMethod.SshNative => NativeShell(target, engine, setup, ShellMode.Runner, assumeYes, lockWaitSeconds, supplied),
             _ => throw new InvalidOperationException("Only SSH hosts run through Martlet's SSH runner.")
         };
     }
@@ -255,11 +252,13 @@ internal static partial class HostSetupCommands
         limit.CancelAfter(TimeSpan.FromMinutes(45));
         try
         {
-            var result = await new HostShell(dataDirectory, NoHostShellPrompts.Instance).RunAsync(HostShellTarget.Parse(target.SshTarget),
+            var shell = new HostShell(dataDirectory, NoHostShellPrompts.Instance);
+            var supplied = await new HostRemote(shell).SupplyIfOfflineAsync(target, action.Verb, dataDirectory, pinnedHostKey, sink, limit.Token);
+            var result = await shell.RunAsync(HostShellTarget.Parse(target.SshTarget),
                 new()
                 {
-                    Command = RemoteShell(target, Engine(action), action == HostAction.Setup, assumeYes: false, lockWaitSeconds), Input = "end\n",
-                    Sudo = true, PinnedHostKey = pinnedHostKey
+                    Command = RemoteShell(target, Engine(action), action == HostAction.Setup, assumeYes: false, lockWaitSeconds, supplied),
+                    Input = "end\n", Sudo = true, PinnedHostKey = pinnedHostKey
                 }, sink, limit.Token);
             return result.ExitCode;
         }

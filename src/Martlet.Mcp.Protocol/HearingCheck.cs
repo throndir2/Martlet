@@ -37,7 +37,11 @@ internal static partial class HearingCheck
         var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
             : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
                 thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
-        var hearVoice = TalkChoice(dataDirectory, "HearVoice");
+        var choice = HearVoiceChoice(dataDirectory);
+        var staysOnThisPc = modelId is null && thinking is not null && HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);
+        // Let Thinking hear my voice as replies use it (Martlet.Desktop's TalkPreferences.HearVoiceFor): your own choice wins;
+        // never chosen, it is on only while the recording stays on this PC.
+        var hearVoice = choice ?? staysOnThisPc;
         var transcribeFirst = TalkChoice(dataDirectory, "TranscribeFirst");
         return new
         {
@@ -50,6 +54,15 @@ internal static partial class HearingCheck
             routeHearing = routeHearing?.ToString(),
             savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Source, saved.CheckedAt },
             hearVoice,
+            hearVoiceChoice = choice switch { true => "on", false => "off", _ => "unset" },
+            staysOnThisPc,
+            hearVoiceWhy = choice switch
+            {
+                true => "you turned it on",
+                false => "you turned it off",
+                _ when staysOnThisPc => "never chosen: on because the recording stays on this PC",
+                _ => "never chosen: off because Thinking isn't Ollama on this PC, so the recording would or could leave it (tick it to allow)"
+            },
             // Companion › Listening › When Thinking can hear you (shown while Thinking hears): straight (the default) or transcribe
             // first. Straight applies to always listening when the route hears; push-to-talk and messages with what the PC
             // played, said over Martlet or for Home Assistant's Assist are transcribed first.
@@ -60,7 +73,7 @@ internal static partial class HearingCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearVoice and TranscribeFirst are off unless saved on.
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): TranscribeFirst is off unless saved on.
     private static bool TalkChoice(string directory, string name)
     {
         try
@@ -69,6 +82,26 @@ internal static partial class HearingCheck
             return document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return false; }
+    }
+
+    // talk-preferences.json's HearVoice as TalkPreferences.Load reads it: true or false as chosen, null when never chosen (missing,
+    // null, or a false saved before version 4, when off was only the default).
+    private static bool? HearVoiceChoice(string directory)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
+            var root = document.RootElement;
+            var version = root.TryGetProperty("Version", out var v) && v.TryGetInt32(out var number) ? number : 0;
+            if (!root.TryGetProperty("HearVoice", out var value)) return null;
+            return value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False when version >= 4 => false,
+                _ => null
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
     /// <summary>Which way the newest spoken reply's message went to Thinking, from the desktop log (never what was said): its
@@ -85,6 +118,8 @@ internal static partial class HearingCheck
         var after = lines.Where(r => r.At >= path.At).ToArray();
         var transcript = after.FirstOrDefault(r => r.Message.StartsWith("Background transcript", StringComparison.Ordinal));
         var kept = after.FirstOrDefault(r => r.Message.StartsWith("Straight to Thinking: ", StringComparison.Ordinal));
+        // The quick check of something short (Not words: the reply was dropped before it played; Not words, too late: labeled).
+        var quick = after.FirstOrDefault(r => r.Message.StartsWith("Not words", StringComparison.Ordinal));
         var timing = transcript is null ? null : TranscriptTiming().Match(transcript.Message);
         double? Ms(string group) => timing is { Success: true } && timing.Groups[group].Success &&
             double.TryParse(timing.Groups[group].Value, System.Globalization.CultureInfo.InvariantCulture, out var ms) ? ms : null;
@@ -97,7 +132,9 @@ internal static partial class HearingCheck
             transcriptReadyAfterReplyStartMs = Ms("after") is { } readyMs ? before ? -readyMs : readyMs : (double?)null,
             speechToTextMs = Ms("stt"),
             transcriptLine = transcript?.Message,
-            wordsLine = kept?.Message
+            wordsLine = kept?.Message,
+            notWords = quick is null ? null : quick.Message.StartsWith("Not words, too late", StringComparison.Ordinal) ? "tooLate" : "dropped",
+            notWordsLine = quick?.Message
         };
     }
 
