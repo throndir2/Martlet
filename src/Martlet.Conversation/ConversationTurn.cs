@@ -46,6 +46,9 @@ public sealed class ConversationTurn
     private long? inputTokens, cachedInputTokens;
     private TimeSpan? textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
         firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter;
+    // Finished pieces' waits for the voice's next audio (playback underruns).
+    private int voiceWaits;
+    private TimeSpan voiceWaited;
     private bool synthesizing;
     private SpeechSegmenter? segmentation;
     private PlaybackRun? playback;
@@ -929,6 +932,8 @@ public sealed class ConversationTurn
                     accepted += final.AcceptedSamples;
                     submitted += final.SubmittedSamples;
                     consumed += final.DeviceConsumedSamples;
+                    voiceWaits += final.Underruns;
+                    voiceWaited += final.UnderrunTime;
                     mayHavePlayed |= final.MayHavePlayed;
                     quarantined |= !final.DeviceReleased || final.Error?.Code == ErrorCode.AudioPlaybackFailed;
                     lastPlayback = final;
@@ -1081,7 +1086,9 @@ public sealed class ConversationTurn
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
             speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
-                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter), inputTokens, cachedInputTokens,
+                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter,
+                voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero)),
+            inputTokens, cachedInputTokens,
             reasoningRejected);
     }
 }
