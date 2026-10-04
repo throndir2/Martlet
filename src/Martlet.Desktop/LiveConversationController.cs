@@ -147,6 +147,9 @@ internal sealed class LiveConversationOperation
     private TalkOverResult? talkOver;
     /// <summary>What this utterance's sound was: how much was a voice (loud 20 ms frames the speakers don't explain).</summary>
     internal TimeSpan? Voiced { get; set; }
+    /// <summary>How long the utterance's voice went on, from its onset to where the silence began, leaving out frames the
+    /// speakers explain (<see cref="UtteranceContext.Speech"/>).</summary>
+    internal TimeSpan? Speech { get; set; }
     /// <summary>The controller-clock timestamp the utterance's voice began at (0 when unknown).</summary>
     internal long SpeechStartedAt { get; set; }
     /// <summary>Always listening dropped this utterance (it wasn't words); the transcript is kept only to show it as ignored.</summary>
@@ -393,12 +396,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>What the utterance filter and barge-in policy know besides the words: the voice, the engine's evidence, whether
     /// Martlet just asked something, and the persona's name (which, like "Martlet", addresses it).</summary>
-    private UtteranceContext WordsContext(LiveConversationOperation operation, TimeSpan? voiced, TranscriptionEvidence? evidence)
+    private UtteranceContext WordsContext(LiveConversationOperation operation, TimeSpan? voiced, TranscriptionEvidence? evidence,
+        TimeSpan? speech = null)
     {
         var asked = Interlocked.Read(ref askedAt);
         return new()
         {
-            Voiced = voiced, Evidence = evidence,
+            Voiced = voiced, Speech = speech, Evidence = evidence,
             AfterQuestion = asked != 0 && clock.GetElapsedTime(asked) < AnswerWindow,
             Names = operation.Authorization.Configuration.Persona?.Name is { Length: > 0 } name ? [name] : []
         };
@@ -875,13 +879,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
             // What isn't words (mm, a cough, "Thank you." made up from noise) never becomes a turn or stops Martlet. Local and
             // instant: it adds nothing to the time until Martlet answers.
             var options = listening.Options;
-            var words = WordsContext(utterance, utterance.Voiced, result.Evidence);
+            var words = WordsContext(utterance, utterance.Voiced, result.Evidence, utterance.Speech);
             if (UtteranceFilter.Check(result.Text, words, options.WordCheck) is { Keep: false } ignored)
             {
                 utterance.Ignored = ignored;
                 if (!pc)
                     ErrorLog.Info($"Always listening ignored what it heard: {ignored.Reason} ({ignored.Kind}" +
                         (utterance.Voiced is { } voiced ? $", {voiced.TotalMilliseconds:0} ms of voice" : "") +
+                        (utterance.Speech is { } spoken ? $" in {spoken.TotalMilliseconds:0} ms of speech" : "") +
                         (result.Evidence is { } evidence ? ", " + Describe(evidence) : "") + $", word check {options.WordCheck}).");
                 utterance.Publish(new("listen.ignored", Finished: true));
                 return;
@@ -2210,9 +2215,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
         var echo = operation.Echo;
         var minimumFrames = (int)(ListeningOptions.MinimumUtterance.TotalMilliseconds / 20);
         var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
-        // Running counts of loud frames that were a voice the speakers don't explain, and that were the speakers' sound.
+        // Running counts of loud frames that were a voice the speakers don't explain, of those that were the speakers' sound, and
+        // of all frames (loud or not) the speakers explain.
         var userSum = new List<int> { 0 };
         var speakerSum = new List<int> { 0 };
+        var explainedSum = new List<int> { 0 };
         var started = clock.GetTimestamp();
         int index = 0, accepted = -1;
         try
@@ -2232,6 +2239,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     var loud = detector.LastFrameLoud;
                     userSum.Add(userSum[^1] + (loud && !speakers ? 1 : 0));
                     speakerSum.Add(speakerSum[^1] + (loud && speakers ? 1 : 0));
+                    explainedSum.Add(explainedSum[^1] + (speakers ? 1 : 0));
                     talkOver?.Process(loud, speakers);
                     // Talking over Martlet: once the voice has gone on long enough (or a short word just ended), what was said so
                     // far is checked for words without waiting for the pause.
@@ -2316,11 +2324,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
         int Onset() => SpeakersMostly(detector.SpeechStartFrame) && talkOver is { StretchStartFrame: >= 0 } over
             ? Math.Max(detector.SpeechStartFrame, over.StretchStartFrame) : detector.SpeechStartFrame;
 
-        // What is sent, and how much of it was the user's voice (loud frames the speakers don't explain).
+        // What is sent, how much of it was the user's voice (loud frames the speakers don't explain) and how long that voice went
+        // on (every frame from its onset to the silence that the speakers don't explain).
         SpeechRange Range(int startFrame, int endFrame)
         {
             var last = Math.Clamp(endFrame <= startFrame ? userSum.Count - 1 : endFrame, 0, userSum.Count - 1);
-            operation.Voiced = TimeSpan.FromMilliseconds((userSum[last] - userSum[Math.Clamp(startFrame, 0, last)]) * 20);
+            var first = Math.Clamp(startFrame, 0, last);
+            operation.Voiced = TimeSpan.FromMilliseconds((userSum[last] - userSum[first]) * 20);
+            operation.Speech = TimeSpan.FromMilliseconds((last - first - (explainedSum[last] - explainedSum[first])) * 20);
             return new(
                 Math.Max(0, startFrame * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll)),
                 endFrame * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail));
@@ -2353,6 +2364,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (!run.TryCopyMonoFrame(frame, pcm.AsSpan(frames * EnergyVoiceActivityDetector.FrameBytes, EnergyVoiceActivityDetector.FrameBytes)))
                 break;
         var voice = gate.Voice;
+        var speech = gate.Speech;
         var checks = gate.Checks;
         var startedAt = clock.GetTimestamp() - (long)((index - gate.StretchStartFrame) * 0.02 * clock.TimestampFrequency);
         return Task.Run(async () =>
@@ -2361,7 +2373,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 if (frames == 0) return;
                 var heard = await check(pcm.AsMemory(0, frames * EnergyVoiceActivityDetector.FrameBytes), operation.OriginalCaller).ConfigureAwait(false);
-                var decision = BargeInPolicy.Decide(heard.Text, WordsContext(operation, voice, heard.Evidence), options.WordCheck, mode);
+                var decision = BargeInPolicy.Decide(heard.Text, WordsContext(operation, voice, heard.Evidence, speech), options.WordCheck, mode);
                 if (!decision.Interrupt || run.Completion.IsCompleted || operation.Authorization.IsCanceled) return;
                 operation.TalkOver = new(decision, clock.GetElapsedTime(startedAt), checks, startedAt);
                 operation.TalkingOver = true;
