@@ -414,17 +414,19 @@ internal sealed class LiveConversationConfiguration
     /// <paramref name="extraInstructions"/> and <paramref name="closingInstructions"/> last, where models weigh them most. Then
     /// the conversation so far, each earlier message as it was sent (with its notes), then the message with its notes
     /// (<see cref="BoundedTextInput.Notes"/>): only what is new since the notes in the conversation sent, that is lore entries
-    /// and remembered facts not already there, <paramref name="voices"/> and the style when they changed, and
-    /// <paramref name="messageNotes"/> (such as a smart home result). When the conversation outgrows the context, a quarter more
+    /// and remembered facts not already there, <paramref name="voices"/>, the style and <paramref name="chattiness"/> when they
+    /// changed, and <paramref name="messageNotes"/> (such as a smart home result). When the conversation outgrows the context, a quarter more
     /// of the oldest exchanges is left out than needed (<see cref="BoundedTextInput.CacheFriendlyStart"/>), so the next replies
-    /// can start at the same exchange.</summary>
+    /// can start at the same exchange. <paramref name="controlTags"/> are the tags the reply may write to tell Martlet something
+    /// (such as <see cref="ChattinessTags"/>), never shown or spoken.</summary>
     internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
         IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory, LorebookScanResult? lore,
         out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
         string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false,
         string? voices = null, string? messageNotes = null,
-        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false)
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
+        string? chattiness = null, IReadOnlyList<string>? controlTags = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -446,13 +448,13 @@ internal sealed class LiveConversationConfiguration
         for (var loreCount = hits.Count; loreCount >= 0; loreCount--)
         {
             var entries = hits.Take(loreCount).ToArray();
-            if (!Fits(input, instructions, Notes([], entries, [], voices, messageNotes, styleNote), [], image, tools, audio))
+            if (!Fits(input, instructions, Notes([], entries, [], voices, messageNotes, styleNote, chattiness), [], image, tools, audio))
                 continue;
             for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
             {
                 var recalled = facts.Take(memoryCount).ToArray();
                 // The window is found with every note (none yet in the conversation); dropping repeats only makes it smaller.
-                if (Prompt(input, instructions, Notes([], entries, recalled, voices, messageNotes, styleNote), [], image, tools, audio) is not { } bare ||
+                if (Prompt(input, instructions, Notes([], entries, recalled, voices, messageNotes, styleNote, chattiness), [], image, tools, audio) is not { } bare ||
                     BoundedTextInput.HistoryStart(bare, history, TextLimits.MaxInputBytes, TextInputTokens, TextLimits.MaxInputTokens,
                         TextLimits.MaxHistoryMessages) is not { } first)
                     continue;
@@ -460,7 +462,7 @@ internal sealed class LiveConversationConfiguration
                 for (var start = BoundedTextInput.CacheFriendlyStart(first, history.Count); start <= history.Count; start += 2)
                 {
                     var sent = history.Skip(start).ToArray();
-                    var notes = Notes(sent, entries, recalled, voices, messageNotes, styleNote);
+                    var notes = Notes(sent, entries, recalled, voices, messageNotes, styleNote, chattiness);
                     if (Prompt(input, instructions, notes, sent, image, tools, audio) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
@@ -475,7 +477,7 @@ internal sealed class LiveConversationConfiguration
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
-                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default);
+                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags);
                 }
             }
         }
@@ -497,10 +499,10 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>Martlet's notes on one message, between <see cref="NotesLabel"/> labels; null when nothing is new. Lore entries
     /// and remembered facts already in the notes of <paramref name="sent"/> (the earlier messages this request carries) are left
-    /// out, and so are the voices and the style when the latest ones there are the same: notes on earlier messages still hold.
-    /// <paramref name="message"/> (such as a smart home result) is about this message only, so it is always noted.</summary>
+    /// out, and so are the voices, the style and the chattiness level when the latest ones there are the same: notes on earlier
+    /// messages still hold. <paramref name="message"/> (such as a smart home result) is about this message only, so it is always noted.</summary>
     private string? Notes(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
-        string? voices, string? message, string? style)
+        string? voices, string? message, string? style, string? chattiness = null)
     {
         var earlier = string.Join("\n", sent.Where(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
             .Select(m => m.Text));
@@ -510,7 +512,8 @@ internal sealed class LiveConversationConfiguration
         var (before, after) = newLore.Length == 0 ? (null, null) : LorebookPromptContext.Blocks(newLore, Prompts);
         var body = Join(before, after, newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts),
             voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices,
-            message, style is not null && LatestStyle(earlier) == Clean(style) ? null : style);
+            message, style is not null && LatestStyle(earlier) == Clean(style) ? null : style,
+            chattiness is not null && LatestChattiness(earlier) == Clean(chattiness) ? null : chattiness);
         if (body is null) return null;
         // What notes are is said once, in the first notes of the conversation sent: the instructions never change for it.
         var explained = earlier.Length > 0 ? null : PromptSettings.Fill(Prompts, PromptCatalog.Notes, ("label", NotesLabel));
@@ -531,6 +534,12 @@ internal sealed class LiveConversationConfiguration
     // The style noted last in the earlier notes: whichever style prompt appears latest.
     private string? LatestStyle(string earlier) =>
         Enum.GetValues<ResponseStyle>().Select(style => PromptSettings.Fill(Prompts, PromptCatalog.Style, ("style", StyleText(Prompts, style))))
+            .Where(text => text is not null).Select(text => (Text: Clean(text!), At: earlier.LastIndexOf(Clean(text!), StringComparison.Ordinal)))
+            .Where(found => found.At >= 0).OrderByDescending(found => found.At).Select(found => found.Text).FirstOrDefault();
+
+    // The chattiness level noted last in the earlier notes: whichever level's note appears latest.
+    private string? LatestChattiness(string earlier) =>
+        Enum.GetValues<Chattiness>().Select(ChattinessNote)
             .Where(text => text is not null).Select(text => (Text: Clean(text!), At: earlier.LastIndexOf(Clean(text!), StringComparison.Ordinal)))
             .Where(found => found.At >= 0).OrderByDescending(found => found.At).Select(found => found.Text).FirstOrDefault();
 
@@ -702,14 +711,15 @@ internal sealed class LiveConversationConfiguration
         "with the transcript, so it hears your tone as well as your words. Speech-to-text still runs as before. Recordings are " +
         "never saved, added to Memory or sent to the Thinking fallback. Audio may use more quota or cost more than text.";
 
-    internal string ScreenDisclosure(Chattiness chattiness, WatchSource source) =>
+    internal string ScreenDisclosure(ChattinessChoice chattiness, WatchSource source) =>
         ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +
         (Fallback is { } fallback ? $" If Thinking fails, images go to the fallback, {FallbackName(fallback)}, instead." : "");
 
-    /// <summary>What vision captures and sends, and where: shown in Companion › Vision before it is turned on.</summary>
-    internal static string ScreenDisclosure(SetupRoute? route, Chattiness chattiness, WatchSource source)
+    /// <summary>What vision captures and sends, and where: shown in Companion › Vision before it is turned on. While Martlet
+    /// decides how chatty it is, the budget is the most it may pick (Chatty's).</summary>
+    internal static string ScreenDisclosure(SetupRoute? route, ChattinessChoice chattiness, WatchSource source)
     {
-        var tuning = ScreenCommentaryPacer.For(chattiness);
+        var tuning = ScreenCommentaryPacer.AtMost(chattiness);
         var destination = route is null ? "the Thinking model" : LlmDestinationName(route);
         // What you type or say while vision is on goes with the newest picture.
         const string withMessages = "While vision is on, what you type or say also goes with the newest picture, so replies see " +
@@ -734,12 +744,16 @@ internal sealed class LiveConversationConfiguration
             "Screenshots are never saved or added to Memory. " +
             "Provider requests may use quota or cost money. Stop, Esc, locking Windows or closing the talk window stops vision.";
     }
-    /// <summary>A screen glance's or camera look's instructions: the look's prompt, then the chattiness line.</summary>
-    internal static string? CommentaryInstructions(Chattiness chattiness, bool camera = false, PromptSettings? prompts = null)
+    /// <summary>A screen glance's or camera look's instructions: the look's prompt, then the chattiness line, or, while Martlet
+    /// decides how chatty it is (<paramref name="decides"/>), what the levels are and how to switch them
+    /// (<see cref="ChattinessDecides"/>), the same at every level so the instructions stay the same when it switches; the level
+    /// itself goes in the notes (<see cref="ChattinessNote"/>).</summary>
+    internal static string? CommentaryInstructions(Chattiness chattiness, bool camera = false, PromptSettings? prompts = null,
+        bool decides = false)
     {
         var silent = ("silent", SilentReply);
         var look = PromptSettings.Fill(prompts, camera ? PromptCatalog.CommentaryCamera : PromptCatalog.CommentaryScreen, silent);
-        var mood = PromptSettings.Fill(prompts, chattiness switch
+        var mood = decides ? ChattinessDecides(prompts) : PromptSettings.Fill(prompts, chattiness switch
         {
             Chattiness.Quiet => PromptCatalog.ChattinessQuiet,
             Chattiness.Chatty => PromptCatalog.ChattinessChatty,
@@ -747,6 +761,12 @@ internal sealed class LiveConversationConfiguration
         }, silent);
         return look is null ? mood : mood is null ? look : look + "\n" + mood;
     }
+
+    /// <summary>Companion › Prompts › Chattiness: Martlet decides: the levels, when to switch and the tags that switch them.</summary>
+    internal static string? ChattinessDecides(PromptSettings? prompts) => ChattinessTags.Instructions(prompts, SilentReply);
+
+    /// <summary>The note that says the level while Martlet decides how chatty it is (Companion › Prompts › Chattiness right now).</summary>
+    internal string? ChattinessNote(Chattiness level) => ChattinessTags.Note(Prompts, level);
 
     /// <summary>The persona's instructions and the style note for this reply. The style goes in the notes (Companion › Prompts ›
     /// Style for this message), so the persona stays the same from reply to reply; a persona prompt edited before that still

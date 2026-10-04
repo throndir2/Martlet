@@ -131,7 +131,7 @@ comment; it needs a Thinking model that can see images. See
    lorebook and memory introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
-   lines, *Screen with your message* (sent with what you type or say while
+   lines (including *Martlet decides* and *Chattiness right now*), *Screen with your message* (sent with what you type or say while
    vision is on), the background work notes and the Thinking longer task, the
    Remembering and Learning names requests and the prompt
    that joins them, and the smart home notes. Each
@@ -755,8 +755,12 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   seconds after Martlet last answered (sooner once the PC has been quiet for 4
   seconds, but never within 20 seconds of an answer, so it never makes a second
   reply right after Martlet answered you), only while you aren't talking, and
-  it never interrupts or restarts a reply. At most the newest 1,500 characters
-  go with one message.
+  it never interrupts or restarts a reply. Those 20 seconds follow how chatty
+  Martlet is (Companion › Vision › *How often it comments*, also shown under
+  *Watch along*): 45 seconds when Quiet, 12 when Chatty, and with [Martlet
+  decides](SCREEN_COMMENTARY.md#martlet-decides-how-chatty-it-is) the level it
+  picked, which a reply to what plays may switch. At most the newest 1,500
+  characters go with one message.
 - **Your own voice played back.** Hearing only the output you hear (above)
   keeps virtual cables out. Your voice can still reach the PC's sound when it
   is actually played back (a voice changer's or headset app's *hear myself*,

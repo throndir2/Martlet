@@ -19,12 +19,14 @@ internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues 
 // characterTags: the desktop character's tags ({blush}): dropped from the words like other engines' tags. Each kept engine
 // tag and each character tag is listed in its piece's Cues with where it fell, so the character acts in time with the voice;
 // a character tag after the last words of a reply arrives in a piece with no text.
+// controlTags: tags that tell Martlet something about the reply ([chattiness:quiet]): dropped from the words, never a cue.
 // breaks: the persona's stops (Martlet.Core.Settings.SpeechBreaks). A stop that is off never ends a piece until the piece is
 // LongPiece characters long; then any stop ends it, so a piece stays short enough for the voice to say at once. A piece of at
 // most ShortEndingWords words (", cutie.") joins the piece before it: each piece waits until more words than that follow it
 // (or a line, the reply or a piece with nothing to say ends). Null breaks at every sentence end and never joins pieces.
 internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false,
-    IReadOnlyList<VoiceTag>? tags = null, IReadOnlyList<string>? characterTags = null, SpeechBreaks? breaks = null)
+    IReadOnlyList<VoiceTag>? tags = null, IReadOnlyList<string>? characterTags = null, SpeechBreaks? breaks = null,
+    IReadOnlyList<string>? controlTags = null)
 {
     internal const int FirstClauseMinimum = 24;
     internal const int LongPiece = 100;
@@ -37,7 +39,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
     private readonly StringBuilder sentence = new();
     private readonly IReadOnlyList<VoiceTag> keep = tags ?? [];
     private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(tags ?? []).Concat(VoiceTags.CharacterTags(characterTags))
-        .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
+        .Concat(VoiceTags.ControlTags(controlTags)).DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
     private readonly List<SpeechCue> cues = [];
     private readonly StringBuilder candidateTag = new();
     private bool droppedTag;
@@ -64,7 +66,20 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
                     foreach (var piece in AcceptTag(whole)) yield return piece;
                     continue;
                 }
-                if (known.Any(tag => tag.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))) continue;
+                if (known.Any(tag => tag.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Only a control tag starts like this ("[cha..."): it adds no words and closes the reply, so a finished
+                    // sentence waiting for more words goes to the voice now, not after the tag's last token.
+                    if ((held is not null || pendingBoundary) && known.Where(tag => tag.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        .All(tag => tag.Kind == VoiceTagKind.Control))
+                    {
+                        if (pendingBoundary)
+                            foreach (var piece in Flush()) yield return piece;
+                        pendingBoundary = false;
+                        foreach (var piece in Release()) yield return piece;
+                    }
+                    continue;
+                }
                 candidateTag.Clear();
                 foreach (var replayed in prefix)
                     foreach (var piece in Accept(replayed)) yield return piece;
@@ -93,6 +108,13 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         {
             if (tag.Kind == VoiceTagKind.Character) cues.Add(new(tag.Text, sentence.Length));
             droppedTag = true;
+            // A control tag closes the reply (the model is told to write it last): what came before it goes to the voice now,
+            // instead of waiting for words that won't follow or for the tag's own tokens and the end of the stream.
+            if (tag.Kind == VoiceTagKind.Control)
+            {
+                foreach (var piece in Flush()) yield return piece;
+                foreach (var piece in Release()) yield return piece;
+            }
         }
     }
 

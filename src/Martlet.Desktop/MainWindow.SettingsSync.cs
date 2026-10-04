@@ -296,7 +296,7 @@ public partial class MainWindow
             {
                 HandsFree = value.HandsFree, PauseIndex = Math.Clamp(value.PauseIndex, 0, TalkPreferences.Pauses.Length - 1),
                 SpeakReplies = value.SpeakReplies, HearVoice = value.HearVoice, BargeIn = value.BargeIn,
-                ScreenChattiness = Math.Clamp(value.ScreenChattiness, 0, 2),
+                ScreenChattiness = (int)ChattinessTags.Choice(value.ScreenChattiness),
                 WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal
             });
             return Task.FromResult(SharedApply.Done);

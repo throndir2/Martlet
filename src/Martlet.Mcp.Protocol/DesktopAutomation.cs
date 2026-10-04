@@ -152,6 +152,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
+        // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
+        // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and
+        // the talk window's line while Martlet decides and vision is on or it hears this PC (the level it picked and since when).
+        "VisionChattiness", "VisionChattinessStatus", "TalkPcChattiness", "TalkPcChattinessStatus", "LiveChattiness",
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects) and, under Another
         // of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads through the

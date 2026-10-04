@@ -100,6 +100,7 @@ public partial class MainWindow : ThemedWindow
                 pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
+            conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
         }
         WireCharacterActions();
         WireCharacterThemes();
