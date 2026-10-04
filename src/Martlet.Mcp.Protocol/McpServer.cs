@@ -427,7 +427,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
-            "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
+            "unavailable (it is reloading), stall (no audio until the voice's time runs out), slow (every piece slower than real " +
+            "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
+            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; a fixture " +
+            "speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
