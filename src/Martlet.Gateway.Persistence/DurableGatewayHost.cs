@@ -280,10 +280,15 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         Local(() => server!.Pairing.OpenWindow(approval), cancellationToken);
 
-    /// <summary>Opens a short-code pairing window (the host shows its address and an XXXX-XXXX code to type on a desktop).</summary>
+    /// <summary>Opens a short-code pairing window (the host shows its address and an XXXX-XXXX code to type on a desktop).
+    /// It has no deadline; <see cref="IsPairingOpen"/> tells whether it still works, and disposing the host withdraws it.</summary>
     public GatewayCodePairingCard OpenCodePairing(GatewayCodePairingApproval approval,
         CancellationToken cancellationToken = default) =>
         Local(() => server!.Pairing.OpenCodeWindow(approval), cancellationToken);
+
+    /// <summary>Whether the pairing window <paramref name="pairingId"/> can still be redeemed.</summary>
+    public bool IsPairingOpen(string pairingId, CancellationToken cancellationToken = default) =>
+        Local(() => server!.Pairing.IsOpen(pairingId), cancellationToken);
 
     public IssuedDeviceCredential Rotate(string credentialId, TimeSpan overlap,
         CancellationToken cancellationToken = default) =>

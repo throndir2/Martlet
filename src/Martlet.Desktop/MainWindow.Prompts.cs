@@ -126,8 +126,9 @@ public partial class MainWindow
         return string.Join(", ", parts) + ". The rest use Martlet's built-in text.";
     }
 
-    /// <summary>The Prompts page's auto-save: validates the edits and writes them into the newest saved settings. Returns false
-    /// to be tried again shortly while another change holds the settings; a prompt that can't be saved says why.</summary>
+    /// <summary>The Prompts page's auto-save: validates the edits and writes them into the newest saved settings, after any change
+    /// still saving. Returns false to be tried again shortly when another window saved the settings meanwhile; a prompt that
+    /// can't be saved says why.</summary>
     private async Task<bool> SavePromptsFromAsync(IReadOnlyDictionary<string, TextBox> boxes, Action<PromptSettings?> saved)
     {
         PromptSettings? prompts;
@@ -143,11 +144,11 @@ public partial class MainWindow
             return true;
         }
         if (store is null || setupService is null || closing) return true;
-        if (savingTab || assigningRole || setupOperations.IsRunning) return false;
-        savingTab = true;
+        ChangeTurns.Turn? turn = null;
         var token = lifetime.Token;
         try
         {
+            turn = await ChangeTurnAsync();
             var loaded = await setupService.LoadAsync(token);
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
             var updated = SetupSettings.Begin(loaded.Settings) with { Prompts = prompts };
@@ -169,7 +170,7 @@ public partial class MainWindow
         }
         finally
         {
-            savingTab = false;
+            turn?.Dispose();
             // The page stays as typed (tabEdited); only Home and the other summaries refresh.
             if (!closing) RenderHome();
         }

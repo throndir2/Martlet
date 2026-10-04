@@ -10,10 +10,21 @@
     <DockPanel Margin="24">
         <TextBlock x:Name="HeadingText" DockPanel.Dock="Top" Style="{DynamicResource SectionHeading}"/>
         <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="_Cancel" Click="Cancel_Click" MinWidth="100" IsCancel="True"
+            <!-- Hide (Esc, or the window's close button) only hides a running task: it keeps going in Background tasks.
+                 Cancel task asks first. Once it has finished, Hide becomes Close. -->
+            <Button x:Name="HideButton" DockPanel.Dock="Right" Content="_Hide" Click="Hide_Click" MinWidth="100" IsCancel="True"
+                    ToolTip="Hides this window. The task keeps running in Background tasks."
+                    AutomationProperties.AutomationId="HostRunHide"/>
+            <Button x:Name="CancelButton" DockPanel.Dock="Left" Content="Cancel _task..." Click="Cancel_Click" VerticalAlignment="Center"
+                    Margin="0,0,16,0" ToolTip="Stops this task. Martlet asks first."
                     AutomationProperties.AutomationId="HostRunCancel"/>
-            <TextBlock x:Name="StatusText" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0"
-                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunStatus"/>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunStatus"/>
+                <TextBlock x:Name="HideHint" Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Hide keeps it running. Find it again in Background tasks in Martlet's main window."
+                           AutomationProperties.AutomationId="HostRunHideHint"/>
+            </StackPanel>
         </DockPanel>
         <Border x:Name="PairingPanel" DockPanel.Dock="Top" Visibility="Collapsed" Style="{DynamicResource CardStyle}" Margin="0,12,0,0"
                 AutomationProperties.AutomationId="HostRunPairing">
@@ -32,11 +43,17 @@
                     <TextBlock x:Name="PairingAddressText" Grid.Column="1" FontSize="28" FontWeight="SemiBold" FontFamily="Consolas"
                                AutomationProperties.AutomationId="HostRunPairAddress"/>
                     <TextBlock Grid.Row="1" Text="Code" Style="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,24,0"/>
-                    <TextBlock x:Name="PairingCodeText" Grid.Row="1" Grid.Column="1" FontSize="40" FontWeight="Bold" FontFamily="Consolas"
-                               AutomationProperties.AutomationId="HostRunPairCode"/>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock x:Name="PairingCodeText" FontSize="40" FontWeight="Bold" FontFamily="Consolas" VerticalAlignment="Center"
+                                   AutomationProperties.AutomationId="HostRunPairCode"/>
+                        <Button x:Name="PairingCopyButton" Content="Copy code" Style="{DynamicResource CopyButton}" Click="CopyPairingCode_Click"
+                                VerticalAlignment="Center" Margin="16,0,0,0" ToolTip="Copy the code to paste it on your main PC"
+                                AutomationProperties.Name="Copy the pairing code" AutomationProperties.AutomationId="HostRunPairCopy"/>
+                    </StackPanel>
                 </Grid>
-                <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
-                           Text="The code works once and expires in five minutes."/>
+                <TextBlock x:Name="PairingNoteText" Style="{DynamicResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
+                           AutomationProperties.AutomationId="HostRunPairNote"
+                           Text="The code works once and doesn't expire: it stays valid until your main PC uses it or you cancel here. This PC's host jobs pause until then."/>
             </StackPanel>
         </Border>
         <TextBox x:Name="OutputText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"

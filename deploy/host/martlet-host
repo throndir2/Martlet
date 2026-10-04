@@ -8,7 +8,8 @@
 #                               a voice engine replaces the one already installed (role.conf exclusive=voice)
 #   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
 #   martlet-host pair           pair a Martlet desktop: shows this host's address and a one-use code (like K7QM-4XPA) to
-#                               type in Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes
+#                               type in Martlet (Devices > Add a computer > Enter a pairing code); the code has no
+#                               deadline: it waits until a desktop uses it, you type cancel (or Ctrl+C) or stdin ends
 #   martlet-host pair --device-id <id> --name <name> [--roles voice]
 #                               pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..."
 #                               line, waits up to five minutes for the desktop to redeem it, then restarts the gateway
@@ -291,27 +292,39 @@ record_change() {
 }
 
 # Takes flock $2 (-s shared, -x exclusive) on fd $1. While other changes hold it, waits with this run's patience (or stops
-# at once with MARTLET-BUSY) and says what it waits for: the changes holder_text $3 names.
+# at once with MARTLET-BUSY) and says what it waits for: the changes holder_text $3 names. With $4 = changed, this run has
+# already changed the host (an add or remove waiting to publish what it did), so stopping now would leave a role running
+# but unpublished, or stopped but still published, and MARTLET-BUSY ("nothing was changed") would be untrue: it waits as
+# long as it takes instead, saying so every minute.
 acquire() {
-  local fd="$1" mode="$2" filter="$3" patience step what status=0
+  local fd="$1" mode="$2" filter="$3" changed="${4:-}" patience step what status=0
   flock -n "${mode}" -E ${BUSY_EXIT} "${fd}" || status=$?
   [[ ${status} != 0 ]] || return 0
   if (( status != BUSY_EXIT )); then journal "flock failed (${status}); running without that lock"; return 0; fi
   patience="$(lock_patience)"
   what="$(holder_text "${filter}")"
-  (( LOCK_WAITED < patience )) || busy_stop "${what}"
+  [[ -n "${changed}" ]] || (( LOCK_WAITED < patience )) || busy_stop "${what}"
   journal "busy, waiting: ${what}"
-  note "This host is busy: ${what}. Waiting for it to finish before ${CHANGE}..."
+  if [[ -n "${changed}" ]]; then
+    note "This host is busy: ${what}. The rest of ${CHANGE} (publishing it through the gateway) waits for it to finish, however long it takes..."
+  else
+    note "This host is busy: ${what}. Waiting for it to finish before ${CHANGE}..."
+  fi
   holder_hint
   while :; do
-    step=$(( patience - LOCK_WAITED )); (( step <= 60 )) || step=60
+    step=60
+    [[ -n "${changed}" ]] || { step=$(( patience - LOCK_WAITED )); (( step <= 60 )) || step=60; }
     status=0
     flock -w "${step}" "${mode}" -E ${BUSY_EXIT} "${fd}" || status=$?
     [[ ${status} != 0 ]] || break
-    (( status == BUSY_EXIT )) || { journal "flock failed (${status}) while waiting"; busy_stop "$(holder_text "${filter}")"; }
+    if (( status != BUSY_EXIT )); then
+      journal "flock failed (${status}) while waiting"
+      [[ -n "${changed}" ]] && return 0
+      busy_stop "$(holder_text "${filter}")"
+    fi
     LOCK_WAITED=$(( LOCK_WAITED + step ))
     what="$(holder_text "${filter}")"
-    (( LOCK_WAITED < patience )) || busy_stop "${what}"
+    [[ -n "${changed}" ]] || (( LOCK_WAITED < patience )) || busy_stop "${what}"
     note "Still waiting: ${what}. Waited $(( LOCK_WAITED / 60 )) min."
     holder_hint
   done
@@ -359,12 +372,13 @@ hold_engine_locks() {
 }
 
 # Runs "$@" holding locks/gateway.lock: one change at a time writes the role records, the machine report and host.json and
-# renews or restarts the gateway. pair, console, network-reset and machine hold it for their whole run already.
+# renews or restarts the gateway. pair, console, network-reset and machine hold it for their whole run already. An add or
+# remove gets here after it changed the host, so it waits for the lock without giving up (acquire ... changed).
 with_gateway() {
   if [[ ${LOCKING} != 1 || ${GATEWAY_HELD} == 1 ]]; then "$@"; return; fi
   ( umask 077; : >> "${LOCKS}/gateway.lock" ) 2>/dev/null || true
   exec 5>>"${LOCKS}/gateway.lock" || fail "Could not open ${LOCKS}/gateway.lock."
-  acquire 5 -x gateway
+  acquire 5 -x gateway changed
   GATEWAY_HELD=1
   record_change "${CHANGE_SCOPE} gateway" running
   "$@"
@@ -1870,15 +1884,16 @@ cmd_add() {
       fail "Preparing ${role} failed; the running one is unchanged. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
   done 3< <(conf_values "${conf}" prepare)
 
+  local start_failed="Building or starting ${role} failed (the output above shows why). Check the host's disk space and network, then run 'martlet-host add ${role}' again: the build steps it finished are reused."
   if [[ ${#stops[@]} -gt 0 ]]; then
     # Build (or pull) this role's image while the engine it replaces still works, then free the graphics card for it.
     say "Preparing ${role} while ${stops[*]} still runs"
-    role_compose "${role}" up --no-start
+    role_compose "${role}" up --no-start || fail "${start_failed}"
     release_roles "${role}" "${stops[@]}"
   fi
 
   say "Starting ${role}"
-  role_compose "${role}" up -d
+  role_compose "${role}" up -d || fail "${start_failed}"
   ready_address="$(role_ready_address "${role_network}")"
   note "Waiting for ${role} on ${ready_address}:${port} (up to ${minutes:-10} minutes; first starts can be slow)..."
   local ready=0 attempt

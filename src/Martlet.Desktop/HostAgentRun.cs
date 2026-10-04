@@ -80,7 +80,7 @@ internal static class HostAgentRun
             if (command.State != NodeCommandState.Succeeded)
                 throw new InvalidOperationException(command.Summary ?? $"Martlet on {name} could not finish it.");
             return command.Summary ?? $"Finished on {name}.";
-        }));
+        }), join: true);
     }
 
     /// <summary>Who runs this host's commands, in words.</summary>

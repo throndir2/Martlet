@@ -13,8 +13,9 @@ namespace Martlet.Mcp;
 /// once with exit 75 and MARTLET-BUSY, an attended run waits and gives up after MARTLET_LOCK_WAIT, adds of different roles
 /// run side by side while the same role or exclusive group waits, setup and update wait for every change and hold back
 /// later ones, a waiting run continues when the holder dies (SIGKILL), so does a run without a terminal or --yes that was
-/// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it. The desktop's own
-/// reader (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
+/// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it, and an add whose
+/// image build fails says to run it again. The desktop's own reader (<see cref="HostEngineBusy"/>) then reads the engine's
+/// real busy line.</summary>
 internal static class HostEngineCheck
 {
     internal const string Image = "ubuntu:24.04";
@@ -77,7 +78,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 24;
+        const int expected = 26;
         if (steps.Count < expected)
         {
             passed = false;
@@ -193,6 +194,19 @@ internal static class HostEngineCheck
           ok=1 || ok=0
         step role-change-runs-alongside "$ok" "--yes remove of a role while network-reset runs: did not wait, exit $rc after ${took} s (unknown role)"
 
+        # A change that already changed the host (a remove that stopped its role) and still has to publish that through the
+        # gateway never gives up with MARTLET-BUSY ("nothing was changed"), even past MARTLET_LOCK_WAIT: it keeps waiting.
+        mkdir -p "${E%/*}/roles/fixture-pub" /tmp/c/roles /tmp/d/roles/fixture-pub /tmp/nativebin
+        printf '#!/bin/sh\nexit 0\n' > /tmp/nativebin/docker; chmod 755 /tmp/nativebin/docker
+        printf 'title=Fixture pub (FIXTURE, installs nothing)\nrequires=docker\n' > "${E%/*}/roles/fixture-pub/role.conf"
+        printf 'kind=fixture\nendpoint=http://127.0.0.1:50998/\nmodel=fixture-pub\n' > /tmp/c/roles/fixture-pub.role
+        : > /tmp/d/roles/fixture-pub/.env
+        ( export PATH="/tmp/nativebin:$PATH"; MARTLET_LOCK_WAIT=2 exec timeout 70 "$E" --yes remove fixture-pub </dev/null >/tmp/pub.out 2>&1 ) &
+        PUB=$!
+        for _ in $(seq 1 50); do has /tmp/pub.out "publishing it through the gateway" && break; sleep 0.1; done
+        sleep 4
+        pubwaiting=0; kill -0 "$PUB" 2>/dev/null && has /tmp/pub.out "publishing it through the gateway" && ! grep -q '^MARTLET-BUSY' /tmp/pub.out && pubwaiting=1
+
         MARTLET_LOCK_WAIT=60 timeout 70 "$E" --yes machine </dev/null >/tmp/wait.out 2>&1 &
         WAITER=$!
         for _ in $(seq 1 50); do has /tmp/wait.out "Waiting for it to finish" && break; sleep 0.1; done
@@ -205,7 +219,11 @@ internal static class HostEngineCheck
         asked=0; has /tmp/asked.out "Waiting for it to finish before updating this host" && asked=1
         kill -9 "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
         wait "$WAITER"; rc=$?
+        wait "$PUB"; prc=$?
         wait "$ASKED"; arc=$?
+        [[ $pubwaiting == 1 && $prc != 75 && ! -e /tmp/c/roles/fixture-pub.role ]] && has /tmp/pub.out "That finished. Continuing with removing fixture-pub." &&
+          ! grep -q '^MARTLET-BUSY' /tmp/pub.out && ok=1 || ok=0
+        step changed-host-never-claims-nothing-changed "$ok" "a remove that stopped its role waited past MARTLET_LOCK_WAIT=2 to publish (still waiting after 4 s, no MARTLET-BUSY), then unpublished it (exit $prc at the fixture's missing gateway)"
         [[ $waiting == 1 && $rc == 0 ]] && has /tmp/wait.out "That finished. Continuing with collecting the hardware report." && ok=1 || ok=0
         step gateway-change-waits-then-runs "$ok" "machine (restarts the gateway) waited for network-reset's gateway lock; holder killed (SIGKILL), it continued and ended exit $rc"
         [[ $asked == 1 && $arc == 1 ]] && has /tmp/asked.out "That finished. Continuing with updating this host." &&
@@ -335,5 +353,23 @@ internal static class HostEngineCheck
         D MARTLET_ENGINE=inner MARTLET_ENGINE_NAME=martlet-host-remove-check timeout 15 "$E" --yes remove fixture-role </dev/null >/tmp/attached.out 2>&1; rc=$?
         [[ $rc == 1 ]] && ! has /tmp/attached.out "was replaced" && has /tmp/attached.out "Run 'martlet-host setup' first." && ok=1 || ok=0
         step attached-engine-continues "$ok" "engine in the current holder's namespace passed the check (exit $rc at the fixture's missing setup)"
+
+        # A role whose image build fails (a fake docker whose compose up fails like a pip download that timed out) stops
+        # with what to do next instead of only Compose's exit code.
+        mkdir -p /tmp/buildfail "${E%/*}/roles/fixture-build"
+        printf 'title=Fixture build (FIXTURE, builds nothing)\nrequires=docker\nport=50999\n' > "${E%/*}/roles/fixture-build/role.conf"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-build/compose.yaml"
+        cat > /tmp/buildfail/docker <<'FAKE'
+        #!/bin/bash
+        [[ "$1" == run ]] && { cat > /dev/null; exit 0; }
+        [[ "$1" == compose && " $* " == *" up "* ]] || exit 0
+        echo "pip._vendor.urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='pypi.nvidia.com', port=443): Read timed out." >&2
+        exit 17
+        FAKE
+        chmod 755 /tmp/buildfail/docker
+        PATH="/tmp/buildfail:$PATH" timeout 30 "$E" --yes add fixture-build </dev/null >/tmp/buildfail.out 2>&1; rc=$?
+        [[ $rc == 1 ]] && has /tmp/buildfail.out "Stopped: Building or starting fixture-build failed" &&
+          has /tmp/buildfail.out "run 'martlet-host add fixture-build' again" && has "$log" "stopped: Building or starting fixture-build failed" && ok=1 || ok=0
+        step build-failure-says-run-again "$ok" "add whose compose up fails (exit 17): exit $rc, $(grep -m1 -oE 'Stopped: Building or starting [^.]*' /tmp/buildfail.out || tail -n1 /tmp/buildfail.out)"
         """;
 }

@@ -295,11 +295,6 @@ public partial class MainWindow
     private async Task UseVoiceEngineAsync(SpeechEngine engine, PairedHost? host)
     {
         if (store is null || setupService is null || closing) return;
-        if (savingTab || assigningRole || hostBusy || setupOperations.IsRunning)
-        {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
-        }
         var before = SpeakingEngineChoice.Current;
         try
         {
@@ -322,10 +317,11 @@ public partial class MainWindow
     }
 
     /// <summary>The choice stays with <paramref name="engine"/> when it speaks or is being set up for Speaking; otherwise it
-    /// goes back to <paramref name="before"/>, or to the engine a host speaks with.</summary>
+    /// goes back to <paramref name="before"/>, or to the engine a host speaks with. A choice made since (another engine
+    /// switched to meanwhile) is left alone.</summary>
     private void KeepEngineChoice(SpeechEngine engine, SpeechEngine before)
     {
-        if (store is null) return;
+        if (store is null || SpeakingEngineChoice.Current != engine) return;
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         if (pendingJobHosts.ContainsKey(SetupRole.Tts) ||
             route?.RouteType == SetupRouteType.GatewayF5 && SpeechEngines.ForRoute(route.GatewaySnapshot?.RouteId) == engine)
@@ -372,11 +368,9 @@ public partial class MainWindow
                 LeavingNote(leaving) + "\n\n" + EngineTerms(engine) + " Reply text and your voice sample stay on this PC.",
                 $"Set up {engine.Name}"))
             return;
-        await SetUpJobHereAsync(job, new Dictionary<string, string>(StringComparer.Ordinal), $"Speak with {engine.Name} on this PC");
-        if (closing || leaving is null) return;
-        assigningRole = true;
-        try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
-        finally { assigningRole = false; }
+        var switched = await SetUpJobHereAsync(job, new Dictionary<string, string>(StringComparer.Ordinal), $"Speak with {engine.Name} on this PC");
+        if (!switched || closing || leaving is null) return;
+        ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
     }
 
     /// <summary>The model's terms in a sentence or two: its licence, any restriction, and the voice-rights reminder.</summary>
@@ -423,11 +417,10 @@ public partial class MainWindow
     }
 
     /// <summary>Stops the voice engines <paramref name="hostId"/> runs besides the one that speaks there, after saying what
-    /// that does, so their models leave its graphics card's memory.</summary>
+    /// that does, so their models leave its graphics card's memory. Host runs: other changes go ahead meanwhile.</summary>
     private async Task StopIdleVoiceEnginesAsync(string hostId, SpeechEngine speaking)
     {
         if (store is null || closing) return;
-        if (assigningRole) { ActionText.Text = "Another change is still finishing."; return; }
         if (FindHost(hostId) is not { } host) return;
         var others = HostRoles.OtherVoiceEngines(hostChecks.GetValueOrDefault(hostId)?.Offers, speaking.HostRoleKind);
         if (others.Count == 0) return;
@@ -437,11 +430,9 @@ public partial class MainWindow
                 "switching back is quick. Any other computer that still speaks with them there stops speaking until it chooses another engine.",
                 "Stop them"))
             return;
-        assigningRole = true;
         try { ActionText.Text = (await ReleaseVoiceEnginesAsync(host, others)).TrimStart(); }
         finally
         {
-            assigningRole = false;
             if (!closing) RenderHome();
         }
     }

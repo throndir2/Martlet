@@ -123,10 +123,9 @@ public partial class MainWindow
                     networkProblem = $"Couldn't keep the pairing with {pairing.HostId}: {error.Message}";
                 }
             }
-            if (result.Forget.Count > 0 && !assigningRole)
+            if (result.Forget.Count > 0 && changes.TryTake() is { } turn)
             {
-                assigningRole = true;
-                try
+                using (turn)
                 {
                     foreach (var id in result.Forget)
                         if (FindHost(id) is { } host)
@@ -135,7 +134,6 @@ public partial class MainWindow
                             hostsChanged = true;
                         }
                 }
-                finally { assigningRole = false; }
             }
             // Keep what changed here while this sync ran: hosts paired on purpose, hosts forgotten, roster changes.
             var latest = NetworkIdentity.Load(directory);
@@ -237,8 +235,8 @@ public partial class MainWindow
     private async Task KeepNetworkPairingAsync(Audio2FaceHostPairing pairing, string secret)
     {
         var pairings = Pairings();
-        // Fails before anything is stored when Setup was never completed (hosts.json needs its profile).
-        await pairings.LoadProfileAsync(lifetime.Token);
+        // Fails before anything is stored when this PC's settings can't be read. A PC with no settings yet pairs fine.
+        await pairings.CheckCanKeepAsync(lifetime.Token);
         var vault = new WindowsCredentialStore();
         using (var lease = new SecretLease(secret))
         {

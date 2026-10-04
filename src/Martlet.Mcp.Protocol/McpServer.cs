@@ -93,9 +93,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             layout = new { type = "boolean" }
         }),
-        Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects.", new
+        Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
+            "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
+            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\").", new
         {
-            id = new { type = "string" }
+            id = new { type = "string" }, window = new { type = "string" }
         }, ["id"]),
         Tool("ui_select", "Select a named option from a combo box. Requires --allow-ui-effects.", new
         {
@@ -288,7 +290,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "update tracker and busy reader: an Update host run window claims its host so the automatic pass leaves it to that run " +
             "(no second engine run that finds the host locked by Martlet's own update and reports it busy, for its pairing or as this " +
             "PC's own host service); overlapping routes end separately; an update started elsewhere is named as another update; a " +
-            "host found current stops waiting and its stale note says it is updated; Update hosts now waits for another change. Pure logic: contacts " +
+            "host found current stops waiting and its stale note says it is updated; Update hosts now waits for another change; this " +
+            "PC's own host service follows the app's version after an update by itself (in the background, giving way to another " +
+            "route, this PC's own pending update and the conversation, retried when busy, settled once current). Pure logic: contacts " +
             "nothing and touches no Docker, host or data directory.", new { }),
         Tool("app_update_check", "Rehearse how Martlet installs its own update end to end with the desktop's production update " +
             "helper (the same script and hidden start) in a disposable folder: a stand-in for Martlet that exits, and a FIXTURE " +
@@ -756,7 +760,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
-            "whether vision and hearing the PC are on (replies are told about Martlet decides only while one is), the level Martlet " +
+            "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
+            "what vision looks at (the whole screen by default), the level Martlet " +
             "decides starts at, the tags a reply switches the level with, what Martlet decides tells the Thinking model and the " +
             "note that says the level (Companion > Prompts, from settings.json's edits), then a rehearsal: sample replies (or reply) " +
             "through the production speech segmenter and chat stripper with those tags offered, returning what is spoken and shown, " +
@@ -942,7 +947,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
-                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id")),
+                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),

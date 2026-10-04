@@ -34,6 +34,18 @@
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCompanion"/>
                     <RadioButton x:Name="NavCreations" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE790;" Content="Creations"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCreations"/>
+                    <!-- Background tasks: its count shows how many run now (MainWindow.Tasks.cs). -->
+                    <RadioButton x:Name="NavTasks" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE916;"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavTasks" AutomationProperties.Name="Background tasks">
+                        <DockPanel>
+                            <Border x:Name="NavTasksBadge" DockPanel.Dock="Right" Visibility="Collapsed" Background="{DynamicResource AccentBrush}"
+                                    CornerRadius="9" MinWidth="20" Height="18" Padding="6,0" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="NavTasksCount" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource OnAccentBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.AutomationId="NavTasksCount"/>
+                            </Border>
+                            <TextBlock Text="Background tasks" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </RadioButton>
                     <RadioButton x:Name="NavDiagnostics" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE9D9;" Content="Diagnostics"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDiagnostics"/>
                     <RadioButton x:Name="NavSettings" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE713;" Content="Settings"
@@ -66,6 +78,10 @@
                                         <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Set up thinking"
                                                 Click="PrimaryStage_Click" Padding="22,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="PrimaryStageAction"/>
+                                        <!-- A new PC: join your other computers first and use their hosts (MainWindow.Health.cs) -->
+                                        <Button x:Name="ConnectComputersButton" Content="Connect to your other computers" Click="ConnectComputers_Click"
+                                                Padding="20,12" FontSize="15" Margin="0,0,12,8" Visibility="Collapsed"
+                                                AutomationProperties.AutomationId="HomeConnectComputers"/>
                                         <Button x:Name="ListenButton" Content="Start _listening" Click="Listen_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="HomeListen"
                                                 AutomationProperties.Name="Start listening"/>
@@ -207,6 +223,9 @@
                                 <TextBlock x:Name="HostStepsSummary" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
                                            AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostStepsSummary"
                                            Text="Checking this PC's host service..."/>
+                                <!-- The setup runs working now (they run side by side), each with its status line. -->
+                                <TextBlock x:Name="HostRunsText" Margin="0,0,0,10" TextWrapping="Wrap" Visibility="Collapsed"
+                                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunsNow"/>
                                 <StackPanel x:Name="HostStepsPanel" AutomationProperties.Name="Host setup steps"/>
                             </StackPanel>
                         </Border>
@@ -390,6 +409,36 @@
                             <StackPanel x:Name="CreationDetail" AutomationProperties.Name="Selected creation" AutomationProperties.LiveSetting="Polite"/>
                         </Border>
                     </Grid>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Background tasks: the long steps Martlet runs in a run window (setting up or updating a computer, a download, pairing),
+                 running or finished this session. Hiding a run window keeps it running here; Show brings it back and Cancel asks
+                 first (MainWindow.Tasks.cs, BackgroundTasks.cs). -->
+            <ScrollViewer x:Name="TasksPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,30,36,24" MaxWidth="1000" AutomationProperties.AutomationId="TasksPage">
+                    <DockPanel Margin="0,0,0,14">
+                        <Button x:Name="TasksClearButton" DockPanel.Dock="Right" VerticalAlignment="Top" Content="C_lear finished"
+                                Click="TasksClear_Click" AutomationProperties.AutomationId="TasksClear"
+                                AutomationProperties.Name="Clear finished tasks from the list"/>
+                        <StackPanel>
+                            <TextBlock Text="Background tasks" Style="{DynamicResource PageTitle}"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
+                                       Text="Setting up your computers, downloads and other long steps. Hiding their window keeps them running here."/>
+                        </StackPanel>
+                    </DockPanel>
+                    <TextBlock x:Name="TasksSummaryText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,14"
+                               AutomationProperties.AutomationId="TasksSummary" AutomationProperties.LiveSetting="Polite"/>
+                    <Border x:Name="TasksEmptyCard" Style="{DynamicResource CardStyle}" Padding="26,22">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Center">
+                                <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE916;" Foreground="{DynamicResource AccentBrush}"/>
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" FontSize="15" AutomationProperties.AutomationId="TasksEmpty"
+                                       Text="Long steps, like setting up a computer or a download, show here while they run."/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel x:Name="TasksList" AutomationProperties.Name="Background tasks, newest first" AutomationProperties.AutomationId="TasksList"/>
                 </StackPanel>
             </ScrollViewer>
 
@@ -608,6 +657,8 @@
                             </WrapPanel>
                             <TextBlock x:Name="UpdateStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AppUpdateStatus"/>
+                            <TextBlock x:Name="OwnHostUpdateText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OwnHostUpdateStatus"/>
                         </StackPanel>
                     </Border>
 

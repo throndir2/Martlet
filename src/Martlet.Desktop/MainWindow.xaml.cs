@@ -160,11 +160,13 @@ public partial class MainWindow : ThemedWindow
         InitializeNodeAgent();
         InitializeLogs();
         InitializeBackground();
+        InitializeTasks();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         StartAmbientMotion();
+        StartSimulatedTask();
         await StartRunningAsync();
     }
 
@@ -206,6 +208,8 @@ public partial class MainWindow : ThemedWindow
         if (Role == DeviceRole.Companion &&
             homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt) is { RouteType: SetupRouteType.LocalParakeet } listening)
             parakeet?.WarmAsync(listening.ModelId).Forget();
+        // Martlet is usable now; this PC's own host service follows its version in the background (after an update, right away).
+        FollowOwnHostAsync().Forget();
         if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();

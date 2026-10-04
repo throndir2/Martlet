@@ -41,7 +41,8 @@ Commands are the same everywhere:
 ```text
 setup               gateway, identity and start at boot (once per host)
 pair                pair a desktop: shows this host's address and a short one-use code (like K7QM-4XPA) to type in
-                    Martlet (Devices > Add a computer > Enter a pairing code); waits up to five minutes (repeat per desktop)
+                    Martlet (Devices > Add a computer > Enter a pairing code); waits until a desktop uses it or you type
+                    cancel, with no deadline; the host's roles pause meanwhile (repeat per desktop)
 pair --device-id <id> --name <name>
                     pair that desktop without a console: prints one "pairing-code: martlet-pair-v1..." line,
                     waits up to five minutes for it to be redeemed, then restarts the gateway (Martlet uses this itself)
@@ -84,8 +85,9 @@ as every other command:
   desktop sends a `martlet.update` command through the host's gateway; Martlet
   there updates itself from its GitHub Release when it is older, then runs
   `update` on its own Docker Desktop, and its output streams into the desktop's
-  run window. Martlet on a host PC also keeps its own host service on its
-  version by itself. See [Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
+  run window. Martlet on a host PC (or any PC running its own host service)
+  also keeps that host service on its version by itself, in the background
+  right after Martlet updates itself. See [Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
 
 `update` asks nothing unless the new version changes `host.json`; that renews
 the service approval (in the gateway console, or with `--yes` through
@@ -99,7 +101,9 @@ With *Keep my Martlet hosts on this PC's version* (Settings > App updates) the
 desktop runs `update` in the background for older hosts every check interval,
 without asking anything: for SSH hosts through Martlet's SSH runner (its own key,
 the pinned host key and a sudo password only if you chose to remember one; no
-`--yes`), for this PC in Docker Desktop. A host that needs a password, a new host
+`--yes`), for this PC in Docker Desktop. This PC's own host service doesn't need
+that setting: Martlet always brings it to its own version in the background
+after it updates itself. A host that needs a password, a new host
 key, sudo or an approval fails that run without changing anything and keeps
 *Update host*. A host busy with other changes (below) is not interrupted: the
 background `update` stops at once without changing anything, its Devices card
@@ -146,7 +150,11 @@ another role's change may read the same one. Read-only commands (`roles`,
   setup or update waiting its turn shows as `updating this host (waiting for
   the changes running now; ...)`. Martlet's run windows (and, for commands
   between computers, the computer that sent the command) show these lines. It
-  waits up to `MARTLET_LOCK_WAIT` seconds in all (default 7200).
+  waits up to `MARTLET_LOCK_WAIT` seconds in all (default 7200). An add or
+  remove that already changed its role and only waits to publish that (a
+  pairing or console holds the gateway) keeps waiting however long it takes:
+  stopping then would leave a role running but unpublished, or stopped but
+  still published, so it never claims "nothing was changed".
 - A **background** run that nobody confirmed and nobody watches (no terminal
   and no `--yes`, as Martlet's automatic host updates run) does not queue
   behind a long install: it stops at once, changes nothing and exits **75**
@@ -370,7 +378,9 @@ stops waiting at once.
 **This PC:** **Pair automatically** runs the same unattended pairing on this PC's
 Docker Desktop. To pair *another* desktop with this PC's host, the host
 dashboard's **Show a pairing code** shows this PC's address and a short code in
-large type (never logged); type both on the other desktop.
+large type (never logged) with a **Copy code** button; type both on the other
+desktop. The code doesn't expire: it works until the other desktop uses it or
+you cancel the window, and this PC's host roles pause until then.
 
 **By hand (any host):** on the host run `martlet-host pair`. It shows:
 
@@ -379,8 +389,16 @@ Pair a Martlet desktop with gpu-pc-host
   In Martlet on the desktop: Devices > Add a computer > Enter a pairing code, then type
     Address:  192.168.1.20
     Code:     K7QM-4XPA
-  The code works once and expires in five minutes. Type cancel to withdraw it.
+  The code works once and doesn't expire: it stays valid until a desktop uses it or you type cancel
+  (or press Ctrl+C). Until then this host's jobs are paused.
 ```
+
+Withdraw a code you no longer need with `cancel` or Ctrl+C rather than by
+closing the window. Over SSH or in a local terminal, closing it also withdraws
+the code, but a closed Docker console (`docker run -it`) keeps waiting with the
+host's roles paused, like an abandoned `martlet-host console`: the next
+`martlet-host` command names it as busy and says to stop it with
+`docker stop <name>`.
 
 In Martlet choose **Devices > Add a computer > Enter a pairing code**, type the
 address and code, and press **Pair with host**. The host finishes and restarts
@@ -460,7 +478,7 @@ Trust model:
 | Loopback | `rewrite=path\|sed`, `expect=path\|text` | Rewrite configs to 127.0.0.1 and verify it |
 | Prepare | `prepare=<service>` | Before the service is (re)created, runs that service once with `MARTLET_PREPARE=1` (`docker compose run --rm --no-deps`) so it fetches what the chosen options need and exits, while the running one keeps serving. `stt` uses it to download a newly chosen whisper model, so changing the model (or GPU and CPU) only restarts the server instead of leaving the host deaf for the download |
 | One per host | `exclusive=<group>` | Roles in the same group replace each other: the voice engines (`chatterbox`, `f5`, `xtts`, `gpt-sovits`, `dia`) declare `exclusive=voice` because each keeps its model in the graphics card's memory. `describe` lists the installed ones adding this role stops as `role.stops` (Martlet's Install dialog names them). `add` asks once (or Martlet already did), builds the new role's image while the old engine still works (`docker compose up --no-start`), then stops the others (`docker compose down`, keeping their volumes and images), removes their records and republishes the gateway without them before the new role starts, so its model never competes with theirs. Re-adding one later reuses its downloads |
-| Service | `compose.yaml`, `network=host` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker), unless the role declares `network=host` and its Compose file intentionally uses the host network on both methods; a role can build its image from Martlet's sources under `${MARTLET_SOURCE}` (the checkout natively, `/opt/martlet/source` in the host image, so a role that builds from `workers/<role>` needs its `COPY workers/<role>` line in `deploy/host/Dockerfile`; bump the role image's tag in `compose.yaml` when those sources change, so `martlet-host update` rebuilds it) |
+| Service | `compose.yaml`, `network=host` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker), unless the role declares `network=host` and its Compose file intentionally uses the host network on both methods; a role can build its image from Martlet's sources under `${MARTLET_SOURCE}` (the checkout natively, `/opt/martlet/source` in the host image, so a role that builds from `workers/<role>` needs its `COPY workers/<role>` line in `deploy/host/Dockerfile`; bump the role image's tag in `compose.yaml` when those sources change, so `martlet-host update` rebuilds it). The Python role images first install a hash-pinned pip 26.2.1 with a 60-second timeout, so a package download that stalls or drops resumes (up to 10 times) instead of failing the build; if building or starting still fails, `add` stops and says to run it again, which reuses the build steps already finished |
 | Readiness | `port`, `ready_timeout_minutes` | Wait until the service accepts connections (127.0.0.1:`port`, or the host LAN address for Docker `network=host` roles) |
 | Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model; its progress streams to Martlet's run window |
 | Publish | `gateway_kind`, `model_from`, `feature` | Route roles add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; when `host.json` changed, renew the service approval (gateway console, or `owner-approve` with `--yes`) and restart. Route-less roles declare `feature=<token>` instead, write an installed role record with `feature`, `port` and `network=host`, collect `machine.json` and restart the gateway without changing `host.json`. Either way the gateway restarts only when something it opens changed (below) |

@@ -39,7 +39,11 @@ public class ThemedWindow : Window
     {
         base.OnSourceInitialized(e);
         ScreenFit.Attach(this);
+        (Owner as ThemedWindow)?.OwnedWindowShowing(this);
     }
+
+    /// <summary>A window this one owns is about to show, such as a question asked over it.</summary>
+    private protected virtual void OwnedWindowShowing(Window owned) { }
 
     private void SystemAppearanceChanged(object? sender, PropertyChangedEventArgs e)
     {

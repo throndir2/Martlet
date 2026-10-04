@@ -24,8 +24,7 @@ internal static partial class HostRunLog
     internal static void Write(string run, string line)
     {
         if (Path is not { } path) return;
-        var text = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [{run}] " +
-            ShortCodePattern().Replace(PairingCodePattern().Replace(line, "martlet-pair-v1.(hidden)"), "(code hidden)") + Environment.NewLine;
+        var text = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [{run}] " + Mask(line) + Environment.NewLine;
         lock (gate)
         {
             try
@@ -38,4 +37,8 @@ internal static partial class HostRunLog
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
         }
     }
+
+    /// <summary><paramref name="text"/> with any pairing code hidden, as this log and a finished background task keep it.</summary>
+    internal static string Mask(string text) =>
+        ShortCodePattern().Replace(PairingCodePattern().Replace(text, "martlet-pair-v1.(hidden)"), "(code hidden)");
 }

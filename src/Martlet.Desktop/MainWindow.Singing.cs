@@ -278,9 +278,11 @@ public partial class MainWindow
     private async Task SetUpSingingAsync(PairedHost? host, bool vevosing)
     {
         if (store is null || setupService is null || closing) return;
-        if (assigningRole || hostBusy || singingPendingHost is not null)
+        // The Singing card follows one setup at a time (what it shows while setting up); everything else goes ahead meanwhile.
+        if (singingPendingHost is not null)
         {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
+            ActionText.Text = $"Singing is still being set up on {(singingPendingHost == SingingThisPc ? "this PC" : singingPendingHost)}. " +
+                "Its window shows progress; set up the next one when it's done.";
             return;
         }
         var where = host is null ? "this PC" : host.HostId;
@@ -341,8 +343,6 @@ public partial class MainWindow
         }
         var dataDirectory = store.DataDirectory;
         var service = setupService;
-        assigningRole = true;
-        hostBusy = true;
         try
         {
             // Why martlet-host stopped ("Stopped: ..."), for the card when the run fails.
@@ -351,7 +351,7 @@ public partial class MainWindow
             {
                 var target = pc.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
+                await HostLocal.EnsureImageAsync(target, run);
                 run.Status(vevosing ? "Adding VevoSing on this PC (about 4.5 GB)..." : "Installing Singing on this PC (a large download)...");
                 var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Singing], SetupProgress(run, what, why => stopped ??= why),
                     run.Token, answers: answers);
@@ -392,8 +392,6 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
-            hostBusy = false;
             singingPendingHost = null;
             singingPendingVevo = false;
         }

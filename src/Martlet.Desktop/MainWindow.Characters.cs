@@ -155,18 +155,21 @@ public partial class MainWindow
     private async Task UseCharacterAsync(CharacterModel? model)
     {
         if (store is null || setupService is null || closing) return;
-        if (savingTab || assigningRole || setupOperations.IsRunning || avatarWindowOpen)
+        // The character settings window edits this PC's character itself while it is open; saving one here meanwhile would
+        // be overwritten by it.
+        if (avatarWindowOpen)
         {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
+            ActionText.Text = "The character settings window is open. Choose the character there, or close it first.";
             return;
         }
-        assigningRole = true;
+        ChangeTurns.Turn? turn = null;
         try
         {
+            turn = await ChangeTurnAsync();
             if (model is not null && !SharedCharacterModels.IsComplete(store.DataDirectory, model))
                 throw new InvalidOperationException("That character is still being copied to this PC. Try again in a moment.");
             var pairings = Pairings();
-            var (profile, revision) = await pairings.LoadProfileAsync(lifetime.Token);
+            var (profile, revision) = await pairings.EnsureProfileAsync(lifetime.Token);
             var next = profile with
             {
                 Renderer = model is null ? AvatarRenderer.Live2D : SharedCharacterModels.Renderer(model),
@@ -188,7 +191,7 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
+            turn?.Dispose();
             if (!closing)
             {
                 UpdateCharacterButton();
@@ -252,15 +255,15 @@ public partial class MainWindow
     /// joins the shared list once, and this PC then shows Martlet's copy (the same files, so nothing visible changes).</summary>
     private async Task ShareShownCharacterAsync(CancellationToken token)
     {
-        if (store is null || setupService is null || avatarWindowOpen || assigningRole) return;
-        AvatarProfile profile;
+        if (store is null || setupService is null || avatarWindowOpen || changes.Busy) return;
+        AvatarProfile? profile;
         string? revision;
         try { (profile, revision) = await Pairings().LoadProfileAsync(token); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
         {
             return;
         }
-        if (BundledLive2D.IsBuiltIn(profile.ModelPath) || SharedCharacterModels.KeyOfPath(store.DataDirectory, profile.ModelPath) is not null ||
+        if (profile is null || BundledLive2D.IsBuiltIn(profile.ModelPath) || SharedCharacterModels.KeyOfPath(store.DataDirectory, profile.ModelPath) is not null ||
             unsharedCharacterPaths.Contains(profile.ModelPath) || !File.Exists(profile.ModelPath))
             return;
         var (shared, note) = await ShareCharacterAsync(profile, token);
@@ -270,13 +273,14 @@ public partial class MainWindow
             if (note is not null) ErrorLog.Info("This PC's character model wasn't added to the shared characters. " + note);
             return;
         }
-        if (avatarWindowOpen || assigningRole) return;
+        if (avatarWindowOpen || changes.TryTake() is not { } turn) return;
         try
         {
             await new AvatarProfileStore(store.DataDirectory).SaveAsync(shared, revision, token);
             homeAvatar = shared;
         }
         catch (ContractException) { }
+        finally { turn.Dispose(); }
     }
 
     /// <summary>Shares the character models through every paired host: merges each host's copy of the list here, copies the

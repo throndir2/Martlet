@@ -101,10 +101,10 @@ public partial class MainWindow
         if (!asked)
             foreach (var command in NodeCommandsRunning)
                 busy.Add($"A command from another computer: {NodeCommandAgent.Describe(command)}");
-        foreach (var window in Application.Current.Windows.OfType<Window>())
+        foreach (var window in Application.Current?.Windows.OfType<Window>() ?? [])
         {
             if (window is HostRunWindow { IsRunning: true } run)
-                busy.Add($"{run.Heading} (in its run window)");
+                busy.Add($"{run.Heading} (in Background tasks)");
             else if (window is PrepareHostWindow { IsBusy: true } prepare)
                 busy.Add(prepare.Heading);
         }
@@ -157,7 +157,7 @@ public partial class MainWindow
         updateDownloadCancellation?.Cancel();
         if (recovery?.HasResources == true) recovery.StopObserving();
         if (support.HasResources) support.CancelAndClose();
-        foreach (var window in Application.Current.Windows.OfType<Window>())
+        foreach (var window in Application.Current?.Windows.OfType<Window>() ?? [])
         {
             if (window is HostRunWindow run) run.Interrupt();
             else if (window is PrepareHostWindow prepare) prepare.Interrupt();

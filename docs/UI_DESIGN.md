@@ -49,7 +49,7 @@ obvious next step at every stage, and a living map of the user's computers.
 ```text
 first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Home (what needs attention ─> ready)
                                 └── "Lend this PC to Martlet"     ──> Host dashboard (host service)
-Every mode: Home · Devices (map) · Companion* · Settings      (* companion mode only)
+Every mode: Home · Devices (map) · Companion* · Creations · Background tasks · Diagnostics · Settings      (* companion mode only)
 ```
 
 Each page answers one question, so no two pages do the same thing:
@@ -59,6 +59,7 @@ Each page answers one question, so no two pages do the same thing:
 | **Home** | Is anything wrong or missing, and can I talk to it? | No. It shows problems with their fixes and links to where each thing changes. |
 | **Companion** | How does Martlet think, sound, listen, look and remember? | Yes: the one place each of those choices is made. |
 | **Devices** | Which computer does what? | Machines and handing jobs between them. |
+| **Background tasks** | What is Martlet working on, and how did it go? | No. It lists long steps (setup, updates, pairing, downloads) running or finished this session, shows their window again and cancels them after asking. |
 | **Settings** | How does the app itself behave? | Appearance, this PC's role, updates, tools. |
 
 ### 1. Welcome tour (first launch)
@@ -111,7 +112,12 @@ The hero card says how Martlet is doing overall:
 
 *Show character* sits next to the primary action at every stage; *Not sure
 what you need? Get a recommendation* (the advisor) shows while thinking isn't
-set up.
+set up. On a new PC (nothing saved yet and no other computer paired), *Connect
+to your other computers* sits next to *Set up thinking* and in that item's
+fixes: it opens *Add a computer* on *Martlet on your network*, so a PC that
+joins your other computers uses your hosts and the setup they share without
+setting anything up itself. Pairing never waits for Setup: hosts are paired,
+and who does what is followed, before this PC saves any settings.
 
 Below the hero, **Needs attention** (*All good* when nothing does) lists every
 item with what it means and its fixes, most serious first:
@@ -214,8 +220,10 @@ to bottom: the **map**, the **selected device** with what it does, and
     *Forget this host*; *Prerequisites* for This PC. Install, remove, update
     and status run the same `martlet-host` engine on that computer the way
     Martlet reaches it (SSH with Docker, SSH native Ubuntu, or this PC's Docker
-    Desktop), in a Martlet run window with live output and *Cancel* (never a
-    console window); the owner's click is the confirmation. On this PC, roles
+    Desktop), in a Martlet run window with live output, *Hide* and *Cancel task*
+    (never a console window; see
+    [Run windows and Background tasks](#run-windows-and-background-tasks)); the
+    owner's click is the confirmation. On this PC, roles
     with a GPU-or-CPU choice preselect the suggestion from the graphics card's
     free memory. The desktop never gets a shell, Docker socket or admin rights
     on the host.
@@ -279,6 +287,8 @@ service on this PC:
      *Remove* for each installed one.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
+     Martlet does this by itself in the background after it updates (the
+     step then says it is updating); *Update host service* does it now.
 - The steps' heading reads *This host is ready* once Docker Desktop, the host
   service and pairing are done, and the line under it says what is left.
 - **Check again** repeats the read at once and says what it found.
@@ -302,8 +312,8 @@ The long form became a four-step wizard with a step rail:
    that is already set up (straight to Pair).
 2. **Install**: only the fields that method needs, *Set up host* (*Add this
    computer* for SSH: connect, check Docker, set up, pair and read the machine
-   report in a run window with live output and *Cancel*), and the exact command
-   in a *Show the command* expander.
+   report in a run window with live output, *Hide* and *Cancel task*), and the
+   exact command in a *Show the command* expander.
 3. **Pair**: *Pair automatically* (*Pair over SSH* for SSH hosts) when Martlet
    can reach the host; otherwise (or as the alternative) the host's address and
    the short code it shows, then *Pair with host*. The command to run on the
@@ -347,7 +357,8 @@ settings, approvals, cost envelopes, timelines or links to other windows.
 
 **Always listening** (the default, with the chosen or Windows
 default microphone; no test needed) starts only when you press *Start
-listening*, and **vision** (once Companion turns it on; off by default) only
+listening*, and **vision** (on by default, looking at your whole screen; Companion
+turns it off) only
 when you press *Start watching*: each has its own button here, on Home (beside
 a listening and a watching indicator) and in the notification-area menu, and
 neither starts or stops the other. Typing while Martlet listens hands the microphone over for the typed
@@ -377,12 +388,13 @@ window ends it unless Martlet is listening or watching, which only hides it.
        and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
        (*Only respond to my voice* and *Set up Voice ID*).
     4. *Vision*: whether Martlet may look at your screen or a camera when you
-       press *Start watching* (off by default): what it looks at (active
-       window, whole screen, a camera found with *Find cameras*, a phone or
+       press *Start watching* (on by default, looking at your whole screen):
+       what it looks at (whole screen, active
+       window, a camera found with *Find cameras*, a phone or
        network camera address, or a Home Assistant camera once Smart home is
        connected), how chatty it is, what is captured and where it is sent,
-       and *Turn vision on* (which only allows it; *Start watching* starts
-       looking).
+       and *Turn vision off* / *Turn vision on* (which only allows it; *Start
+       watching* starts looking).
     5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
     6. *Character*: what it looks like now, then the character model (show,
@@ -495,7 +507,9 @@ window ends it unless Martlet is listening or watching, which only hides it.
 - **Settings**: palette (Martlet's own or one made from the character, see
   [Character palettes](#character-palettes)), this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
-  version, *Check for updates now*, *Install*, *Update hosts now*), *Your
+  version, *Check for updates now*, *Install*, *Update hosts now*, and a line
+  on this PC's own host service, which always follows this app's version in
+  the background), *Your
   other computers* (whether they may send this PC commands, and **Let my
   other computers find this PC and ask to use its hosts**: ON by default,
   unticking it saves `off` in `nearby.txt`; when this PC runs a host or
@@ -518,6 +532,27 @@ Companion job tab, which opens it on the matching job. Consent and credential
 behavior did not change. The broader redesign
 (jobs, placement on hosts, audio separation and queued local model hosting) is
 in [COMPONENTS.md](COMPONENTS.md).
+
+### Run windows and Background tasks
+
+Long steps (setting up, updating or pairing a computer, adding or removing a
+role, downloads, Docker Desktop and Windows features) run in a *run window*:
+live output, a status line, *Hide* and *Cancel task...*. *Hide*, Esc and the
+window's close button only hide it while it runs, so a stray click never stops
+the work; *Cancel task...* sits apart on the left and always asks first (*Keep
+running* is the default). A question the run asks (a password, a role's
+choices) brings its window back with it, and a run outlives the window that
+started it. Once it ends, *Hide* becomes *Close*; a run that ends while hidden
+closes its window.
+
+**Background tasks** in the navigation rail (its count shows how many run now)
+lists every run since Martlet started, newest first, with how long it has run
+and its status, or when and how it ended. *Show* brings a running task's window
+back, *Show output* reopens a finished task's output (kept in memory, pairing
+codes hidden), *Cancel...* asks the same question as *Cancel task...*, and
+*Clear finished* drops the finished ones. Every run's output also stays in
+`host-runs.log` (Diagnostics). Exiting Martlet while a task runs names it
+(*<run> (in Background tasks)*) and asks first.
 
 ## Character palettes
 

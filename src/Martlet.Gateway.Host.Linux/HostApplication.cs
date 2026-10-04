@@ -635,9 +635,11 @@ internal static class HostApplication
         if (ReadApproval(directory) != approval) throw new HostApprovalException();
     }
 
-    /// <summary>One-shot pairing for owner-pair: start the listener, print the invitation as one machine-readable line,
-    /// wait until the named device registers (or the five-minute invitation expires, or a "cancel" line arrives on
-    /// stdin), then return so the caller can restart the service.</summary>
+    /// <summary>One-shot pairing for owner-pair: start the listener, show the invitation, wait until a desktop registers,
+    /// then return so the caller can restart the service. A short code has no deadline: it ends when a desktop redeems it,
+    /// five wrong tries close it, or it is withdrawn (a "cancel" line, or the end of stdin, so it never outlives the pipe or
+    /// session that showed it; a Docker TTY whose console closed never ends, which martlet-host reports as busy). A
+    /// --device-id invitation (Martlet redeems it by itself) still ends after five minutes or "cancel".</summary>
     private static async Task<int> PairOnceAsync(DurableGatewayHost owner, HostConfiguration config,
         LinuxControlDirectory directory, HostOptions options, TextReader input, TextWriter output, CancellationToken cancellation)
     {
@@ -647,11 +649,12 @@ internal static class HostApplication
         config.Recheck(directory);
         await owner.StartAsync(cancellation);
         config.Recheck(directory);
-        DateTimeOffset expiresAt;
+        DateTimeOffset? expiresAt = null;
+        string? codeWindow = null;
         if (device is null)
         {
             var code = owner.OpenCodePairing(new() { Roles = roles }, cancellation);
-            expiresAt = code.ExpiresAt;
+            codeWindow = code.PairingId;
             output.WriteLine(PairingCode.Describe(code));
         }
         else
@@ -663,9 +666,11 @@ internal static class HostApplication
         }
         output.Flush();
         // Console.In reads synchronously, so the watcher runs on its own thread; it is abandoned when pairing ends.
-        var canceled = Task.Run(() => WatchForCancel(input), CancellationToken.None);
+        var canceled = Task.Run(() => WatchForCancel(input, endOfInputCancels: codeWindow is not null), CancellationToken.None);
         while (true)
         {
+            // Read before the registrations, so a code redeemed in between is seen as paired on the next pass.
+            var open = codeWindow is null || owner.IsPairingOpen(codeWindow, cancellation);
             var registered = owner.ListRegistrations(cancellation)
                 .FirstOrDefault(r => (device is null || r.DeviceId == device) && !r.Revoked && !known.Contains(r.CredentialId));
             if (registered is not null)
@@ -678,18 +683,22 @@ internal static class HostApplication
                 output.WriteLine("pairing.canceled: the invitation was withdrawn before a desktop redeemed it.");
                 return 3;
             }
-            if (DateTimeOffset.UtcNow >= expiresAt)
+            if (!open)
             {
-                output.WriteLine(device is null
-                    ? "pairing.expired: no desktop typed the code within five minutes (or it was mistyped five times). Run pair again for a new code."
-                    : "pairing.expired: no desktop redeemed the invitation within five minutes.");
+                output.WriteLine("pairing.closed: the code was typed wrong five times, so it no longer works. Run pair again for a new code.");
+                return 3;
+            }
+            if (expiresAt is { } deadline && DateTimeOffset.UtcNow >= deadline)
+            {
+                output.WriteLine("pairing.expired: no desktop redeemed the invitation within five minutes.");
                 return 3;
             }
             await Task.Delay(500, cancellation);
         }
     }
 
-    private static bool WatchForCancel(TextReader input)
+    /// <summary>True once a "cancel" line arrives; the end of input counts too when <paramref name="endOfInputCancels"/>.</summary>
+    private static bool WatchForCancel(TextReader input, bool endOfInputCancels)
     {
         try
         {
@@ -697,7 +706,7 @@ internal static class HostApplication
                 if (line.Trim() == "cancel") return true;
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException) { }
-        return false;
+        return endOfInputCancels;
     }
 
     private static async Task<int> AdminAsync(DurableGatewayHost owner, HostConfiguration config,
