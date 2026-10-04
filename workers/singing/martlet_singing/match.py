@@ -2,13 +2,15 @@
 
 Both converters were written against Transformers 4.4x (SoulX-Singer's Llama decoder predates the rotary
 "position_embeddings" argument that ACE-Step's Transformers 4.57 requires), so the worker runs this stage with its own
-Transformers overlay (MARTLET_SINGING_MATCH_SITE, Transformers 4.46.3) or interpreter (MARTLET_SINGING_MATCH_PYTHON). The
-process exits after the song, which also returns all of its memory.
+Transformers overlay (MARTLET_SINGING_MATCH_SITE, Transformers 4.46.3) or interpreter (MARTLET_SINGING_MATCH_PYTHON).
 
-    python -m martlet_singing.match --engine soulx --models DIR --device cuda:0 --vocals in.wav --reference ref.wav --out out.wav
+    python -m martlet_singing.match --engine soulx --models DIR --device cuda:0
 
-The vocals are mono 48 kHz; the reference is the voice's recording at its own rate; the result is mono 48 kHz, as long as the
-vocals. The last stdout line is a JSON summary.
+reads one JSON job per stdin line ({"vocals": in.wav, "reference": ref.wav, "out": out.wav}: mono 48 kHz vocals, the voice's
+recording at its own rate, mono 48 kHz result as long as the vocals) and answers each with one JSON line on stdout (its
+summary, or {"error": {code, summary}}). SoulX-Singer stays loaded in system memory between songs and uses the graphics card
+only while it converts; the worker keeps this process while memory allows and ends it otherwise. VevoSing (about 6 GB on the
+card) converts one song per process. Everything else the converters print goes to stderr.
 """
 
 from __future__ import annotations
@@ -59,48 +61,65 @@ def _f0(extractor: Any, samples, rate: int):
     return np.asarray(f0, dtype=np.float32)
 
 
-def soulx(models: Path, device: str, vocals48, reference, reference_rate: int) -> tuple[Any, dict[str, Any]]:
-    import numpy as np
-    import torch
+class SoulX:
+    """SoulX-Singer-SVC (cfg 3, 32 steps, fp16) with RMVPE pitch, loaded once and moved onto the card per song."""
 
-    _soulx_path()
-    from preprocess.tools.f0_extraction import F0Extractor
-    from soulxsinger.utils.file_utils import load_config
+    def __init__(self, models: Path, device: str) -> None:
+        import time as clock
 
-    root = _soulx_root()
-    config = load_config(str(root / "soulxsinger/config/soulxsinger.yaml"))
-    rate = config.audio.sample_rate  # 24 kHz
-    target = _resample(vocals48, audio.OUTPUT_RATE, rate)
-    prompt = _resample(reference, reference_rate, rate)
-    extractor = F0Extractor(model_path=str(models / "soulx/rmvpe/rmvpe.pt"), device=device, verbose=False)
-    gt_f0 = _f0(extractor, target, rate)
-    pt_f0 = _f0(extractor, prompt, rate)
-    del extractor
-    _free()
-    started = time.perf_counter()
-    model = _soulx_build_model()(str(models / "soulx/model-svc.pt"), config, device="cpu", use_fp16=False)
-    model.half()
-    model.mel.float()
-    loaded = time.perf_counter() - started
-    voiced_gt, voiced_pt = gt_f0[gt_f0 > 0], pt_f0[pt_f0 > 0]
-    shift = 0
-    if voiced_gt.size and voiced_pt.size:
-        shift = octave_shift(float(np.median(voiced_pt)), float(np.median(voiced_gt)))
-    torch.manual_seed(42)
-    started = time.perf_counter()
-    with torch.no_grad():
-        model.to(device)
-        pt = torch.from_numpy(prompt).float()[None].to(device)
-        gt = torch.from_numpy(target).float()[None].to(device)
-        generated, _ = model.infer(pt_wav=pt, gt_wav=gt, pt_f0=torch.from_numpy(pt_f0)[None].to(device),
-                                   gt_f0=torch.from_numpy(gt_f0)[None].to(device), auto_shift=False, pitch_shift=shift,
-                                   n_steps=32, cfg=3.0, use_fp16=device.startswith("cuda"))
-        converted = generated.squeeze().float().cpu().numpy()
-    converting = time.perf_counter() - started
-    return _fit(_resample(converted, rate, audio.OUTPUT_RATE), vocals48.shape[-1]), {
-        "shift_semitones": shift, "load_seconds": round(loaded, 2), "convert_seconds": round(converting, 2),
-        "singer_hz": round(float(np.median(voiced_gt)), 1) if voiced_gt.size else None,
-        "voice_hz": round(float(np.median(voiced_pt)), 1) if voiced_pt.size else None}
+        _soulx_path()
+        from soulxsinger.utils.file_utils import load_config
+
+        started = clock.perf_counter()
+        self.models, self.device = models, device
+        self.config = load_config(str(_soulx_root() / "soulxsinger/config/soulxsinger.yaml"))
+        self.rate = self.config.audio.sample_rate  # 24 kHz
+        self.model = _soulx_build_model()(str(models / "soulx/model-svc.pt"), self.config, device="cpu", use_fp16=False)
+        self.model.half()
+        self.model.mel.float()
+        self.model.whisper_encoder.model.to("cpu")
+        self.load_seconds = round(clock.perf_counter() - started, 2)
+
+    def convert(self, vocals48, reference, reference_rate: int) -> tuple[Any, dict[str, Any]]:
+        import numpy as np
+        import torch
+        from preprocess.tools.f0_extraction import F0Extractor
+
+        target = _resample(vocals48, audio.OUTPUT_RATE, self.rate)
+        prompt = _resample(reference, reference_rate, self.rate)
+        started = time.perf_counter()
+        extractor = F0Extractor(model_path=str(self.models / "soulx/rmvpe/rmvpe.pt"), device=self.device, verbose=False)
+        gt_f0 = _f0(extractor, target, self.rate)
+        pt_f0 = _f0(extractor, prompt, self.rate)
+        del extractor
+        _free()
+        pitch = time.perf_counter() - started
+        voiced_gt, voiced_pt = gt_f0[gt_f0 > 0], pt_f0[pt_f0 > 0]
+        shift = 0
+        if voiced_gt.size and voiced_pt.size:
+            shift = octave_shift(float(np.median(voiced_pt)), float(np.median(voiced_gt)))
+        torch.manual_seed(42)
+        started = time.perf_counter()
+        model, device = self.model, self.device
+        try:
+            with torch.no_grad():
+                model.to(device)
+                pt = torch.from_numpy(prompt).float()[None].to(device)
+                gt = torch.from_numpy(target).float()[None].to(device)
+                generated, _ = model.infer(pt_wav=pt, gt_wav=gt, pt_f0=torch.from_numpy(pt_f0)[None].to(device),
+                                           gt_f0=torch.from_numpy(gt_f0)[None].to(device), auto_shift=False,
+                                           pitch_shift=shift, n_steps=32, cfg=3.0, use_fp16=device.startswith("cuda"))
+                converted = generated.squeeze().float().cpu().numpy()
+                del generated, pt, gt
+        finally:
+            model.to("cpu")
+            model.whisper_encoder.model.to("cpu")
+            _free()
+        converting = time.perf_counter() - started
+        return _fit(_resample(converted, self.rate, audio.OUTPUT_RATE), vocals48.shape[-1]), {
+            "shift_semitones": shift, "pitch_seconds": round(pitch, 2), "convert_seconds": round(converting, 2),
+            "singer_hz": round(float(np.median(voiced_gt)), 1) if voiced_gt.size else None,
+            "voice_hz": round(float(np.median(voiced_pt)), 1) if voiced_pt.size else None}
 
 
 def vevosing(models: Path, device: str, vocals48, reference, reference_rate: int) -> tuple[Any, dict[str, Any]]:
@@ -169,30 +188,48 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--engine", choices=("soulx", "vevosing"), required=True)
     parser.add_argument("--models", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--vocals", type=Path, required=True)
-    parser.add_argument("--reference", type=Path, required=True)
-    parser.add_argument("--out", type=Path, required=True)
     arguments = parser.parse_args(argv)
+    # The answers own stdout; whatever the converters print goes to stderr.
+    answers = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8")
+    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
 
     import numpy as np
     import soundfile
     import torch
 
-    vocals, rate = soundfile.read(str(arguments.vocals), dtype="float32", always_2d=True)
-    if rate != audio.OUTPUT_RATE:
-        raise SystemExit("vocals must be 48 kHz")
-    reference, reference_rate = soundfile.read(str(arguments.reference), dtype="float32", always_2d=True)
-    convert = soulx if arguments.engine == "soulx" else vevosing
-    try:
-        converted, summary = convert(arguments.models, arguments.device, vocals.mean(axis=1), reference.mean(axis=1),
-                                     reference_rate)
-    except SongError as error:
-        print(json.dumps({"error": {"code": error.code, "summary": error.summary}}), flush=True)
-        return 2
-    soundfile.write(str(arguments.out), np.asarray(converted, dtype=np.float32), audio.OUTPUT_RATE, subtype="FLOAT")
-    summary["peak_vram_mib"] = round(torch.cuda.max_memory_reserved() / 2**20) if torch.cuda.is_available() else 0
-    summary["transformers"] = __import__("transformers").__version__
-    print(json.dumps(summary), flush=True)
+    from martlet_singing.worker import _lines
+
+    started = time.perf_counter()
+    converter = SoulX(arguments.models, arguments.device) if arguments.engine == "soulx" else None
+    load = converter.load_seconds if converter else None
+    for line in _lines(sys.stdin.buffer):
+        if not line.strip():
+            continue
+        try:
+            job = json.loads(line)
+            vocals, rate = soundfile.read(job["vocals"], dtype="float32", always_2d=True)
+            if rate != audio.OUTPUT_RATE:
+                raise SongError("song.failed", "The vocals must be 48 kHz.")
+            reference, reference_rate = soundfile.read(job["reference"], dtype="float32", always_2d=True)
+            torch.cuda.reset_peak_memory_stats() if torch.cuda.is_available() else None
+            if converter is not None:
+                converted, summary = converter.convert(vocals.mean(axis=1), reference.mean(axis=1), reference_rate)
+                summary["load_seconds"] = load
+                load = 0.0  # warm from the second song on
+            else:
+                converted, summary = vevosing(arguments.models, arguments.device, vocals.mean(axis=1), reference.mean(axis=1),
+                                              reference_rate)
+            soundfile.write(job["out"], np.asarray(converted, dtype=np.float32), audio.OUTPUT_RATE, subtype="FLOAT")
+            summary["peak_vram_mib"] = round(torch.cuda.max_memory_reserved() / 2**20) if torch.cuda.is_available() else 0
+            summary["transformers"] = __import__("transformers").__version__
+            summary["process_seconds"] = round(time.perf_counter() - started, 2)
+            answers.write(json.dumps(summary) + "\n")
+        except SongError as error:
+            answers.write(json.dumps({"error": {"code": error.code, "summary": error.summary}}) + "\n")
+        answers.flush()
+        started = time.perf_counter()
+        if converter is None:
+            break  # VevoSing: one song per process
     return 0
 
 

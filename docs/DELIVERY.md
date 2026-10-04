@@ -10,7 +10,7 @@ must not be confused with the broader planned milestones below.
 
 **Current validation policy, 2026-10-03:** follow the
 [repository policy](../README.md#local-only-validation-policy): every change
-passes its affected tests and MCP verification locally before merge
+passes its targeted tests and MCP verification locally before merge
 ([Validating changes](VALIDATION.md)); never remote validation. Earlier
 hosted-CI plans are superseded. Package-integrity and qualification gates below
 are future release gates, not required per change; unrun gates are reported as
@@ -344,8 +344,9 @@ against current repository instructions and coordinate ownership of shared
 files. Use established decisions for routine work; decide consequential unresolved
 questions autonomously where evidence allows rather than reopening accepted
 choices. A PR needs a short description of the change and its validation
-([Validating changes](VALIDATION.md)): the affected tests pass through
-`scripts\Test-Martlet.ps1` with no new failures, feature and behavior changes
+([Validating changes](VALIDATION.md)): the targeted tests (those the change adds
+or modifies and the suite directly covering it, not every affected suite) pass
+through `scripts\Test-Martlet.ps1 -Project`, feature and behavior changes
 are exercised on the dev machine through `Martlet.Mcp` where possible, and the
 MCP server is extended in the same change to reach them (see
 [Verifying changes with Martlet MCP](MCP.md#verifying-changes-with-martlet-mcp)).
@@ -630,7 +631,7 @@ owner changes the shared settings schema; H08c consumes it after merge.
 Disabled role configuration can be retained without authorizing its execution.
 
 **Per-PR completion and merge protocol:** keep one bounded change per branch.
-Validate it before merge ([Validating changes](VALIDATION.md)): affected tests
+Validate it before merge ([Validating changes](VALIDATION.md)): targeted tests
 through `scripts\Test-Martlet.ps1` and behavior through Martlet MCP; independent
 review is optional. Check workflow triggers before every push/PR/merge so publishing cannot
 start remote validation. Merge one eligible PR at a time; if main advanced,
@@ -792,8 +793,9 @@ measurement conditions hidden from the user.
 Use the existing pinned .NET/xUnit runner consistently, through
 `scripts\Test-Martlet.ps1` ([Validating changes](VALIDATION.md)). Python worker
 tests use each worker's `unittest` suite. No expensive model pulls in ordinary
-local validation. Run narrow related tests first, then the full affected suites
-and applicable local build/package/smoke gates. Keep
+local validation. Run only the narrow related tests
+([targeted tests](VALIDATION.md#targeted-tests-only)), not every affected suite,
+plus the applicable local build/package/smoke gates. Keep
 environment, exact revision, results and known limitations with the evidence.
 Unavailable environments remain explicit qualification blockers. Do not use
 remote validation runners to fill the gap. Installing VM/WSL/Docker/driver

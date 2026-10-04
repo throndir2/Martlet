@@ -172,9 +172,14 @@ class SongEngine:
         self.voice_matches = voice_matches
         self.ace: dict[str, Any] = {}
         self.demucs: Any = None
-        self.planner = os.environ.get("MARTLET_SINGING_PLANNER", "lm")  # "lm" or "none"
+        self.matcher: _Matcher | None = None
+        # ACE-Step's 5 Hz planner rewrites the caption and plans tempo, key and audio codes before the music. Martlet's own
+        # model already writes the lyrics, style, tempo and key, and the planner costs 35-320 s on the PyTorch backend, so it
+        # runs only for a request with neither: "auto" (default), "none" or "lm" (always).
+        self.planner = os.environ.get("MARTLET_SINGING_PLANNER", "auto")
         self.lm_backend = os.environ.get("MARTLET_SINGING_LM_BACKEND", "pt")  # "pt" or "vllm"
         self.quantized: str | None = None
+        self.dit_resident = False
         # Keep models in system memory between songs (faster next song) unless memory is short; "release" frees each
         # stage's models as soon as it is done. MARTLET_SINGING_KEEP_MODELS: auto, keep or release.
         self.keep_models = os.environ.get("MARTLET_SINGING_KEEP_MODELS", "auto")
@@ -184,15 +189,23 @@ class SongEngine:
     def release(self) -> None:
         self.ace.clear()
         self.demucs = None
+        if self.matcher is not None:
+            self.matcher.close()
+            self.matcher = None
         self._free()
 
-    def _keep(self) -> bool:
+    def _plans(self, job: dict[str, Any]) -> bool:
+        return self.planner == "lm" or self.planner == "auto" and not job.get("bpm") and not job.get("key")
+
+    def _keep(self, minimum_gb: float = 16.0) -> bool:
+        """Whether models may stay in system memory for the next song: MARTLET_SINGING_KEEP_MODELS keep or release, or (auto)
+        while more than minimum_gb of system memory is available."""
         if self.keep_models in ("keep", "release"):
             return self.keep_models == "keep"
         try:
             import psutil
 
-            return psutil.virtual_memory().available > 16 * 2**30
+            return psutil.virtual_memory().available > minimum_gb * 2**30
         except ImportError:
             return True
 
@@ -221,11 +234,17 @@ class SongEngine:
 
         report("writing_music", 0.0)
         mix48, plan, lrc_raw, sentences = self._write_music(job, seed, timer, report, canceled)
+        resident = self.dit_resident
         _check(canceled)
 
-        if not self._keep():
-            self.ace.clear()
-            self._free()
+        # The music model stays warm on the card while separating and matching leave room; otherwise it waits in system
+        # memory when there is plenty, or is released.
+        if not (self.dit_resident and _card_free_mib() >= 3_072):
+            if self._keep(8.0):
+                self._park_ace()
+            else:
+                self.ace.clear()
+        self._free()
         report("separating", 0.45)
         started = time.perf_counter()
         vocals48, backing48 = self._separate(mix48)
@@ -262,7 +281,7 @@ class SongEngine:
 
         report("aligning", 0.92)
         started = time.perf_counter()
-        bpm_planned = _number(plan.get("bpm"))
+        bpm_planned = _number(plan.get("bpm")) or _number(job.get("bpm"))
         beats_per_bar = int(_number(plan.get("timesignature")) or 4)
         if beats_per_bar not in (2, 3, 4, 6):
             beats_per_bar = 4
@@ -270,17 +289,27 @@ class SongEngine:
         lines = timing.lyric_times(audio.lyric_lines(job["lyrics"]), lrc_raw, converted48, audio.OUTPUT_RATE, grid["downbeats"])
         words, word_source, word_metric = timing.word_times(audio.lyric_lines(job["lyrics"]), sentences, lines, converted48,
                                                             audio.OUTPUT_RATE)
+        if lrc_raw and (word_metric.get("median_onset_offset_ms_raw") or 0) > 1_000:
+            # ACE-Step's alignment missed the singing (its words sit over a second from any vocal onset, as when a short song
+            # crams its lines): time the lines and words from the vocals' phrases instead.
+            lrc_raw, sentences = "", []
+            lines = timing.lyric_times(audio.lyric_lines(job["lyrics"]), "", converted48, audio.OUTPUT_RATE, grid["downbeats"])
+            words, word_source, word_metric = timing.word_times(audio.lyric_lines(job["lyrics"]), [], lines, converted48,
+                                                                audio.OUTPUT_RATE)
         timer.add("aligning", started)
 
         peak_vram = round(torch.cuda.max_memory_reserved() / 2**20) if torch.cuda.is_available() else 0
+        self._free()  # what stays on the card between songs is the warm music model, not the allocator's cache
         peak_vram = max(peak_vram, int(matched.get("peak_vram_mib") or 0))
         return {
             "engine": {"generator": pins.GENERATOR_IDS[job["quality"]], "separator": pins.SEPARATOR_ID,
                        "converter": pins.CONVERTER_IDS[job["voice_match"]], "quality": job["quality"],
                        "voice_match": job["voice_match"], "fixture": False,
-                       "planner": self.planner, "lm_backend": self.lm_backend if self.planner == "lm" else None,
+                       "planner": "lm" if self._plans(job) else "none", "lm_backend": self.lm_backend if self._plans(job) else None,
+                       "dit_resident": resident, "dit_warm_after": bool(self.ace) and self.dit_resident,
                        "quantization": self.quantized, "match": {k: matched.get(k) for k in (
-                           "shift_semitones", "singer_hz", "voice_hz", "load_seconds", "convert_seconds", "peak_vram_mib", "transformers")}},
+                           "shift_semitones", "singer_hz", "voice_hz", "load_seconds", "pitch_seconds", "convert_seconds",
+                           "process_seconds", "peak_vram_mib", "transformers", "warm")}},
             "frames": frames, "seed": seed, "bpm": grid["bpm"] or bpm_planned, "planned_bpm": bpm_planned,
             "key": plan.get("keyscale") or job.get("key"), "beats_per_bar": beats_per_bar,
             "beats": grid["beats"], "downbeats": grid["downbeats"], "lyrics": lines,
@@ -291,9 +320,39 @@ class SongEngine:
 
     # ---- stage 1: ACE-Step
 
+    def _dit_fits(self, dit: Any) -> bool:
+        """Whether the music model can stay on the card for this song: it already is, or the card (nvidia-smi: every
+        process) has room for it plus about 4.5 GB for the text encoder, the decoder and their work (an int8 song peaked at
+        6-7.2 GB with the model staying on the card)."""
+        try:
+            on_card = next(dit.model.parameters()).device.type == "cuda"
+        except (AttributeError, StopIteration):
+            on_card = False
+        if on_card:
+            self.dit_resident = True
+            return True
+        card = card_memory()
+        needed_mib = (2_700 if self.quantized else 5_000) + 4_500
+        self.dit_resident = card is not None and card["total_mib"] - card["used_mib"] >= needed_mib
+        return self.dit_resident
+
+    def _park_ace(self) -> None:
+        """Moves the music model from the card to system memory."""
+        for name, dit in self.ace.items():
+            if name.startswith("dit:") and getattr(dit, "model", None) is not None:
+                try:
+                    if next(dit.model.parameters()).device.type == "cuda":
+                        dit._recursive_to_device(dit.model, "cpu")
+                        if hasattr(dit, "silence_latent"):
+                            dit.silence_latent = dit.silence_latent.to("cpu")
+                except StopIteration:
+                    pass
+        self.dit_resident = False
+
     def _quantization(self) -> str | None:
-        """int8 weights for the music model (about half its 4.8 GB) when the graphics card has less than 7 GB free, as on a
-        card the speaking and listening roles share; full precision otherwise. MARTLET_SINGING_QUANTIZATION overrides
+        """int8 weights for the music model (about half its 4.8 GB) when the graphics card has less than 11 GB free (in full
+        precision a song peaked at 9.6-10.7 GB, int8 at about 5 GB), as on a card the speaking and listening roles share;
+        full precision otherwise. MARTLET_SINGING_QUANTIZATION overrides
         (none, int8_weight_only)."""
         choice = os.environ.get("MARTLET_SINGING_QUANTIZATION", "auto")
         if choice != "auto":
@@ -307,13 +366,13 @@ class SongEngine:
         card = card_memory()
         if card:
             free = min(free, (card["total_mib"] - card["used_mib"]) / 1024)
-        self.quantized = "int8_weight_only" if free < 7.0 else None
+        self.quantized = "int8_weight_only" if free < 11.0 else None
         return self.quantized
 
-    def _ace_handlers(self, quality: str, timer: Timer, report: Report) -> tuple[Any, Any]:
+    def _ace_handlers(self, quality: str, plans: bool, timer: Timer, report: Report) -> tuple[Any, Any]:
         config = pins.ACE_SFT if quality == "high_quality" else pins.ACE_TURBO
         key = f"dit:{config}"
-        if key not in self.ace or (self.planner == "lm" and "lm" not in self.ace):
+        if key not in self.ace or (plans and "lm" not in self.ace):
             report("loading", 0.02)
             started = time.perf_counter()
             _prepare_ace(self.models)
@@ -331,7 +390,7 @@ class SongEngine:
                 if not ok:
                     raise SongError("song.failed", f"The music model could not load: {status}"[:300])
                 self.ace[key] = dit
-            if self.planner == "lm" and "lm" not in self.ace:
+            if plans and "lm" not in self.ace:
                 llm = LLMHandler()
                 status, ok = llm.initialize(checkpoint_dir=str(self.models / "ace-step"), lm_model_path=pins.ACE_LM,
                                             backend=self.lm_backend, device=self.device, offload_to_cpu=True)
@@ -341,21 +400,26 @@ class SongEngine:
             timer.add("loading", started)
         from acestep.llm_inference import LLMHandler
 
-        return self.ace[key], self.ace.get("lm") or LLMHandler()
+        return self.ace[key], (self.ace.get("lm") if plans else None) or LLMHandler()
 
     def _write_music(self, job: dict[str, Any], seed: int, timer: Timer, report: Report, canceled: Canceled):
         import numpy as np
         import soundfile
         import torch
 
-        dit, llm = self._ace_handlers(job["quality"], timer, report)
+        plans = self._plans(job)
+        dit, llm = self._ace_handlers(job["quality"], plans, timer, report)
         from acestep.inference import GenerationConfig, GenerationParams, generate_music
 
         started = time.perf_counter()
         report("writing_music", 0.05)
+        # The music model stays on the card from the music through the lyric timestamps when the card has room, instead of
+        # moving there and back for each (which costs more than the work itself where system memory is short).
+        dit.offload_dit_to_cpu = not self._dit_fits(dit)
         steps = 50 if job["quality"] == "high_quality" else 8
         params = GenerationParams(caption=job["style"], lyrics=job["lyrics"], duration=float(job["duration_seconds"]),
-                                  vocal_language=job["language"], seed=seed, thinking=self.planner == "lm",
+                                  vocal_language=job["language"], seed=seed, thinking=plans, use_cot_metas=plans,
+                                  use_cot_caption=plans, use_cot_language=plans,
                                   bpm=job.get("bpm"), keyscale=job.get("key") or "", inference_steps=steps)
         config = GenerationConfig(batch_size=1, use_random_seed=False, seeds=[seed], audio_format="wav")
 
@@ -399,7 +463,7 @@ class SongEngine:
                                  for s in timestamps.get("sentence_timestamps") or []]
         except Exception as error:  # noqa: BLE001 - timing falls back to the vocals' phrases
             print(f"Lyric timestamps failed: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
-        timer.add("aligning", started)
+        timer.add("lyric_timestamps", started)
         for item in output.glob("*"):
             item.unlink(missing_ok=True)
         del result, extra
@@ -448,57 +512,137 @@ class SongEngine:
 
     def _match(self, vocals48, reference, reference_rate: int, voice_match: str, directory: Path,
                canceled: Canceled) -> tuple[Any, dict[str, Any]]:
-        """Runs martlet_singing.match in its own process (the converters need an older Transformers than ACE-Step)."""
+        """Converts the vocals in martlet_singing.match, a child process with the converters' own Transformers. SoulX-Singer's
+        process stays (model in system memory) for the next song while memory allows; VevoSing's ends after each song."""
         import json
-        import subprocess
 
         import numpy as np
         import soundfile
 
         if voice_match == "vevosing" and "vevosing" not in self.voice_matches:
             raise SongError("singing.voice_match_unavailable", "VevoSing is not set up on this computer.")
+        engine = "vevosing" if voice_match == "vevosing" else "soulx"
         vocals_path, reference_path, out_path = (directory / "match-vocals.wav", directory / "match-reference.wav",
                                                  directory / "match-out.wav")
         soundfile.write(str(vocals_path), vocals48.mean(axis=0).astype(np.float32), audio.OUTPUT_RATE, subtype="FLOAT")
         soundfile.write(str(reference_path), reference.astype(np.float32), reference_rate, subtype="FLOAT")
+        if self.matcher is not None and (self.matcher.engine != engine or self.matcher.process.poll() is not None):
+            self.matcher.close()
+            self.matcher = None
+        warm = self.matcher is not None
+        if self.matcher is None:
+            self.matcher = _Matcher(engine, self.models, self.device, directory)
+        try:
+            summary = self.matcher.ask({"vocals": str(vocals_path), "reference": str(reference_path), "out": str(out_path)},
+                                       canceled)
+        except JobCanceled:
+            self.matcher.close()
+            self.matcher = None
+            raise
+        except SongError:
+            self.matcher.close()
+            self.matcher = None
+            raise
+        if engine != "soulx" or not self._keep(4.0):
+            self.matcher.close()
+            self.matcher = None
+        if isinstance(summary.get("error"), dict):
+            raise SongError(summary["error"].get("code", "song.failed"), summary["error"].get("summary", "Voice matching failed."))
+        converted, _ = soundfile.read(str(out_path), dtype="float32")
+        for path in (vocals_path, reference_path, out_path):
+            path.unlink(missing_ok=True)
+        summary["warm"] = warm
+        return _fit(converted, vocals48.shape[1]), summary
+
+
+class _Matcher:
+    """A running martlet_singing.match process: one JSON line per song in, one out, read without blocking so a cancel or the
+    process dying is noticed (and, on Windows, without a thread blocked on a pipe)."""
+
+    def __init__(self, engine: str, models: Path, device: str, directory: Path) -> None:
+        import subprocess
+
+        self.engine = engine
         environment = dict(os.environ)
         paths = [str(Path(__file__).resolve().parent.parent)]
         overlay = os.environ.get("MARTLET_SINGING_MATCH_SITE")
         if overlay:
             paths.insert(0, overlay)
         environment["PYTHONPATH"] = os.pathsep.join(paths + [p for p in environment.get("PYTHONPATH", "").split(os.pathsep) if p])
-        command = [os.environ.get("MARTLET_SINGING_MATCH_PYTHON") or sys.executable, "-m", "martlet_singing.match",
-                   "--engine", "vevosing" if voice_match == "vevosing" else "soulx", "--models", str(self.models),
-                   "--device", self.device, "--vocals", str(vocals_path), "--reference", str(reference_path),
-                   "--out", str(out_path)]
-        log, result = directory / "match.log", directory / "match.json"
-        with open(log, "wb") as errors, open(result, "wb") as output:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
-                                       env=environment, cwd=str(directory))
+        self.log = (Path(os.environ.get("MARTLET_SINGING_JOBS", str(directory.parent))) / f"match-{engine}.log")
+        self.errors = open(self.log, "ab")
+        self.process = subprocess.Popen(
+            [os.environ.get("MARTLET_SINGING_MATCH_PYTHON") or sys.executable, "-m", "martlet_singing.match", "--engine", engine,
+             "--models", str(models), "--device", device],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors, env=environment, cwd=str(directory.parent))
+        self.pending = b""
+
+    def ask(self, job: dict[str, Any], canceled: Canceled) -> dict[str, Any]:
+        import json
+
+        assert self.process.stdin is not None and self.process.stdout is not None
+        try:
+            self.process.stdin.write((json.dumps(job) + "\n").encode("utf-8"))
+            self.process.stdin.flush()
+        except OSError as error:
+            raise SongError("song.failed", "Matching the voice failed.") from error
+        descriptor = self.process.stdout.fileno()
+        while b"\n" not in self.pending:
+            if canceled():
+                raise JobCanceled()
+            ready = _readable(descriptor)
+            if ready:
+                chunk = os.read(descriptor, ready)
+                if not chunk:
+                    self._failed()
+                self.pending += chunk
+            elif self.process.poll() is not None:
+                self._failed()
+        line, self.pending = self.pending.split(b"\n", 1)
+        return json.loads(line)
+
+    def _failed(self) -> None:
+        self.process.wait()
+        tail = self.log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-1:] if self.log.exists() else []
+        print(f"voice matching failed ({self.process.returncode}): {tail}", file=sys.stderr, flush=True)
+        raise SongError("song.failed", "Matching the voice failed.")
+
+    def close(self) -> None:
+        if self.process.poll() is None:
             try:
-                while process.poll() is None:
-                    if canceled():
-                        process.kill()
-                        process.wait()
-                        raise JobCanceled()
-                    time.sleep(0.2)
-            finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.wait()
-        stdout = result.read_text(encoding="utf-8", errors="replace")
-        lines = [line for line in stdout.splitlines() if line.strip().startswith("{")]
-        summary = json.loads(lines[-1]) if lines else {}
-        if isinstance(summary.get("error"), dict):
-            raise SongError(summary["error"].get("code", "song.failed"), summary["error"].get("summary", "Voice matching failed."))
-        if process.returncode != 0 or not out_path.exists():
-            tail = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-1:] if log.exists() else []
-            print(f"voice matching failed ({process.returncode}): {tail}", file=sys.stderr, flush=True)
-            raise SongError("song.failed", "Matching the voice failed.")
-        converted, _ = soundfile.read(str(out_path), dtype="float32")
-        for path in (vocals_path, reference_path, out_path, result):
-            path.unlink(missing_ok=True)
-        return _fit(converted, vocals48.shape[1]), summary
+                assert self.process.stdin is not None
+                self.process.stdin.close()
+                self.process.wait(timeout=10)
+            except Exception:  # noqa: BLE001 - it is ended below
+                pass
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait()
+        self.errors.close()
+
+
+def _readable(descriptor: int) -> int:
+    """How many bytes a pipe holds now (waiting up to 0.2 s for some)."""
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        available = wintypes.DWORD()
+        if not ctypes.windll.kernel32.PeekNamedPipe(wintypes.HANDLE(msvcrt.get_osfhandle(descriptor)), None, 0, None,
+                                                    ctypes.byref(available), None):
+            return 1  # broken pipe: let the read see the end
+        if available.value == 0:
+            time.sleep(0.2)
+        return available.value
+    import select
+
+    return 65536 if select.select([descriptor], [], [], 0.2)[0] else 0
+
+
+def _card_free_mib() -> int:
+    card = card_memory()
+    return card["total_mib"] - card["used_mib"] if card else 1 << 20
 
 
 def card_memory() -> dict[str, int] | None:

@@ -47,7 +47,8 @@ public partial class MainWindow
 
     internal const string LocalOllamaBaseUrl = "http://127.0.0.1:11434/v1";
 
-    // Every suggestion also sees (screen watching) and calls tools; the last one a card fits is recommended. Each leaves about
+    // Every suggestion also sees (screen watching) and calls tools. The smallest is recommended: it gives the fastest replies
+    // (latency is king in conversation) and hears recordings itself; the larger ones are smarter but slower. Each leaves about
     // 5 GB of the card for the game, Martlet's character and Windows: a model that overfills the card is paged out to system
     // memory and stalls, and its Gemma 4 draft model can't load (see OllamaDraftHead).
     internal static readonly IReadOnlyList<LocalChatModel> LocalChatModels =
@@ -185,8 +186,14 @@ public partial class MainWindow
         _ => ""
     };
 
-    /// <summary>Recommended local model: the largest in the list this PC's graphics card fits (a "12 GB" card reports a little less).</summary>
-    internal static LocalChatModel RecommendedLocalModel(double? vramGb) =>
+    /// <summary>Recommended local model: the fastest, gemma4:e2b, on every PC. It starts a spoken reply soonest (about 150 ms to
+    /// its first sentence on an RTX 4070, against 100-200 ms more for E4B and 12B; docs/VOICE_LATENCY.md) and hears recordings
+    /// itself. A larger model the card fits is smarter but slower (<see cref="LargestLocalModel"/>).</summary>
+    internal static LocalChatModel RecommendedLocalModel(double? vramGb) => LocalChatModels[0];
+
+    /// <summary>The largest suggested model this PC's graphics card fits (a "12 GB" card reports a little less): the smartest
+    /// local choice, offered beside the fastest.</summary>
+    internal static LocalChatModel LargestLocalModel(double? vramGb) =>
         LocalChatModels.Where(m => m.MinimumVramGb <= (vramGb ?? 0) + 0.5).OrderBy(m => m.MinimumVramGb).LastOrDefault() ?? LocalChatModels[0];
 
     /// <summary>The largest suggested model at least 1 GB smaller than <paramref name="model"/>, or null when none is.</summary>
@@ -531,7 +538,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(model, "SetupLocalModel");
         model.TextChanged += (_, _) => tabEdited = true;
         var picks = new ComboBox { Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
-            ItemsSource = LocalChatModels.Select(m => $"{m.Id}  ({m.Size}, fits {m.Fits}{(m == recommended ? ", recommended here" : "")})")
+            ItemsSource = LocalChatModels.Select(m => $"{m.Id}  ({m.Size}, fits {m.Fits}{(m == recommended ? ", fastest, recommended" : m == LargestLocalModel(machine.BestGpu?.MemoryGb) ? ", smartest that fits here" : "")})")
                 .Concat((ollamaModels ?? []).Where(id => LocalChatModels.All(m => m.Id != id)).Select(id => $"{id}  (downloaded)")).ToArray() };
         AutomationProperties.SetName(picks, "Suggested local models");
         AutomationProperties.SetAutomationId(picks, "SetupLocalModelPicks");
@@ -574,8 +581,12 @@ public partial class MainWindow
                 test,
                 PageButton("Use Ollama on this PC", () => SaveLocalThinkingAsync(ModelId()).Forget(), id: "SetupUseLocalThinking"));
 
-        var suggestion = Note($"Recommended here: {recommended.Id} ({recommended.Size}). It leaves room on the graphics card for a game and Martlet's character.",
-            new Thickness(0, 6, 0, 0));
+        var smartest = LargestLocalModel(machine.BestGpu?.MemoryGb);
+        var suggestion = Note($"Recommended: {recommended.Id} ({recommended.Size}), the fastest: replies start soonest, and it hears your voice. " +
+            (smartest.Id != recommended.Id
+                ? $"Bigger models are smarter but slower; this PC's graphics card fits up to {smartest.Id} ({smartest.Size}). "
+                : "Bigger models are smarter but slower. ") +
+            "Each leaves room on the graphics card for a game and Martlet's character.", new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
 
         return Card(Heading("Ollama on this PC"),
