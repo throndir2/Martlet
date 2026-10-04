@@ -93,8 +93,12 @@ administrator, asking before each one unless you change that. See [MCP](docs/MCP
 away, and when a task really needs thought (song lyrics, a story, a plan, tricky
 math or code) Martlet says it'll think it over, works it out in the background
 with Thinking steps on while you keep talking, then brings it up when it's done.
-**Deep thinking** can do that thinking on another of your computers, Ollama on
-this PC or a cloud provider, so it runs in parallel while Thinking keeps talking.
+**Deep thinking** always does that thinking in parallel, so it needs a model of
+its own: another of your computers, a cloud provider, a second model in Ollama on
+this PC (when both fit on the graphics card), or Thinking's own model when its
+provider answers several requests at once. Without one (say, a single PC whose
+Thinking model is local) Martlet doesn't offer to think things over, and *Where
+it thinks* › *Off* turns it off.
 See [Thinking longer](docs/CONVERSATION.md#thinking-longer-and-background-work).
 
 **Voices (F5)**: add your own voice recordings on **Companion > Voice >

@@ -49,8 +49,12 @@ The Chat Completions providers accept any exact model ID (for example
 `openai/gpt-4o-mini` or a `:free` variant on OpenRouter); there is no model
 catalog or discovery. Martlet appends `/chat/completions`. HTTP is allowed only for a
 literal loopback IP (`localhost` is rejected). Keys are bound to the exact base
-URL. Switching the LLM to another destination detaches the previous key and
-lists it for explicit removal on **Credentials**. Each reply is capped at 256
+URL. Switching the LLM to another destination sets the previous key aside: it
+stays in Windows Credential Manager, listed for explicit removal under Thinking ›
+*Advanced* (**Credentials**), and is never deleted on its own. Keys set aside
+never block a switch, and switching back to a destination uses its set-aside key
+again (when it is still in Credential Manager), so it need not be pasted twice.
+Each reply is capped at 256
 tokens; reasoning/thinking models spend part of that on hidden thinking (never
 spoken or shown), so prefer instruct/chat models; **Thinking steps** on
 Companion › Replies is **Off** by default, which skips it where the model allows.

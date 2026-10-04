@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Voices;
@@ -9,8 +10,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Fills in what a voice recording says, so adding a voice only needs its words checked. It uses speech-to-text the
 /// owner already has: Listening's own model when it is Parakeet on this PC (nothing is sent anywhere) or a paired Martlet
-/// host's whisper (the recording goes only to that computer, which gets the voice anyway), otherwise Parakeet when it is
-/// downloaded. A cloud Listening route is never used, since it would upload the recording and may cost money.</summary>
+/// host's whisper (the recording goes only to that computer, which gets the voice anyway), otherwise a Parakeet model that is
+/// downloaded (the most accurate for Windows' display language). A cloud Listening route is never used, since it would upload
+/// the recording and may cost money.</summary>
 internal sealed class RecordingTranscriber : IDisposable
 {
     private const int SampleRate = 16_000;
@@ -32,28 +34,46 @@ internal sealed class RecordingTranscriber : IDisposable
     /// <summary>The longest recording it can transcribe at once.</summary>
     internal int MaximumMilliseconds { get; }
 
+    /// <summary>The Parakeet model this uses, when it is Parakeet.</summary>
+    internal string? ParakeetModel { get; private init; }
+
     /// <summary>The speech-to-text to fill in a recording's words with, or null when none is available without the cloud.
     /// <paramref name="listener"/> is the conversation's Parakeet (already loaded when Listening uses it); otherwise a
     /// downloaded Parakeet in <paramref name="speechRoot"/> loads just for this and unloads when this is disposed.</summary>
-    internal static RecordingTranscriber? Choose(IEnumerable<SetupRoute>? routes, ParakeetListener? listener, string? speechRoot)
+    internal static RecordingTranscriber? Choose(IEnumerable<SetupRoute>? routes, ParakeetListener? listener, string? speechRoot,
+        CultureInfo? displayLanguage = null)
     {
         var stt = routes?.FirstOrDefault(r => r.Role == SetupRole.Stt);
-        if (stt?.RouteType == SetupRouteType.LocalParakeet && listener is { Installed: true })
-            return Parakeet(listener, owned: null);
+        if (stt?.RouteType == SetupRouteType.LocalParakeet && listener is not null && listener.Installed(stt.ModelId))
+            return Parakeet(listener, stt.ModelId, owned: null);
         if (stt is { RouteType: SetupRouteType.GatewayStt, Enabled: true, GatewaySnapshot: not null } && stt.Consent == stt.Selection() &&
             LiveConversationConfiguration.Target(stt, SetupRouteType.GatewayStt) is { } host)
             return Host(host, stt.ModelId);
-        if (speechRoot is not null && ParakeetEngine.Installed(speechRoot))
+        if (speechRoot is not null && SherpaComponents.RuntimeDirectory() is not null &&
+            ForRecordings(SherpaComponents.InstalledParakeetModels(speechRoot), displayLanguage ?? CultureInfo.CurrentUICulture) is { } model)
         {
             var own = new ParakeetListener(speechRoot);
-            return Parakeet(own, own);
+            return Parakeet(own, model.Id, own);
         }
         return null;
     }
 
-    private static RecordingTranscriber Parakeet(ParakeetListener listener, IDisposable? owned) =>
+    /// <summary>The downloaded Parakeet model that fills in a recording's words best: accuracy matters more than speed here, so
+    /// v2 for an English display language, otherwise v3 (25 languages); 110M only when it is the one downloaded.</summary>
+    internal static ParakeetModel? ForRecordings(IReadOnlyList<ParakeetModel> installed, CultureInfo displayLanguage)
+    {
+        ParakeetModel[] order = displayLanguage.TwoLetterISOLanguageName == "en"
+            ? [ParakeetModels.V2English, ParakeetModels.V3, ParakeetModels.Tdt110mEnglish]
+            : [ParakeetModels.V3, ParakeetModels.V2English, ParakeetModels.Tdt110mEnglish];
+        return order.FirstOrDefault(installed.Contains);
+    }
+
+    private static RecordingTranscriber Parakeet(ParakeetListener listener, string modelId, IDisposable? owned) =>
         new("Parakeet on this PC", ParakeetEngine.MaximumSeconds * 1000,
-            async (pcm, token) => (await listener.TranscribeAsync(SherpaComponents.ParakeetModelId, pcm, token).ConfigureAwait(false)).Text, owned);
+            async (pcm, token) => (await listener.TranscribeAsync(modelId, pcm, token).ConfigureAwait(false)).Text, owned)
+        {
+            ParakeetModel = modelId
+        };
 
     private static RecordingTranscriber Host(HostTextTarget target, string modelId)
     {

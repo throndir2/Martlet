@@ -418,11 +418,16 @@ window ends it unless Martlet is listening or watching, which only hides it.
 
   - *This PC*: thinking uses Ollama at `http://127.0.0.1:11434/v1` (*Install
     Ollama and use it* installs Ollama with the suggested model sized to the
-    graphics card, switches to it and tests it; *Download model* shows Ollama's progress
-    in a run window, *Check Ollama* over loopback on request, *Test model* loads
-    the chosen model and asks it for a short streamed reply the way replies do,
-    in a run window, and shows the result under the buttons; *Use Ollama on this
-    PC*). Voice offers two one-click choices, the one in use (or the one this
+    graphics card, switches to it and tests it; the tab reads which models
+    Ollama already has when it opens (loopback only) and *Check Ollama* reads it
+    again; *Download model* shows Ollama's progress in a run window, *Test model*
+    loads the chosen model and asks it for a short streamed reply the way replies
+    do, in a run window, and shows the result under the buttons; *Use Ollama on
+    this PC* gets the model ready first in a run window, downloading it after one
+    confirmation when Ollama doesn't have it and then loading it, and switches
+    Thinking only once it is loaded, so the current Thinking answers until then
+    and the first reply doesn't wait; a model that can't download or load leaves
+    Thinking unchanged). Voice offers two one-click choices, the one in use (or the one this
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC
     also becomes one of your hosts, installs F5 and switches over with the first

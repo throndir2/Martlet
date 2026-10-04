@@ -46,8 +46,9 @@ public sealed record SharedRoute
             (WindowsStt, SetupRole.Stt) => Route(SetupRouteType.LocalWindowsStt, role, WindowsSpeechSetup.SttAlias, SelfHostSetup.LocalOrigin, Model, null),
             (WindowsTts, SetupRole.Tts) => Route(SetupRouteType.LocalWindowsTts, role, WindowsSpeechSetup.TtsAlias, SelfHostSetup.LocalOrigin,
                 WindowsSpeechSetup.TtsModelId, Voice),
-            (Parakeet, SetupRole.Stt) => Route(SetupRouteType.LocalParakeet, role, LocalSpeechSetup.ParakeetAlias, SelfHostSetup.LocalOrigin,
-                LocalSpeechSetup.ParakeetModelId, null),
+            // A Parakeet model a newer Martlet added waits for this PC's update, like any route this Martlet doesn't know.
+            (Parakeet, SetupRole.Stt) when LocalSpeechSetup.IsParakeetModel(Model) =>
+                Route(SetupRouteType.LocalParakeet, role, LocalSpeechSetup.ParakeetAlias, SelfHostSetup.LocalOrigin, Model, null),
             _ => throw new ContractException(ErrorCode.UnsupportedVersion, "It was chosen on a newer Martlet. Update this PC to use it.")
         };
         route.Validate();

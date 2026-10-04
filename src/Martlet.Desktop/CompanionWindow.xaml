@@ -82,13 +82,8 @@
                     </Grid>
                     <TextBlock Text="Where the voice pauses" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,14,0,4"/>
                     <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
-                               Text="Martlet speaks a reply a piece at a time while it's written, so the voice starts sooner. Each piece is said on its own, so a break in the wrong place can sound awkward. Choose where this persona's voice may break."/>
-                    <CheckBox x:Name="BreakCommas" Margin="0,8,0,0" Checked="Break_Changed" Unchecked="Break_Changed"
-                              AutomationProperties.AutomationId="CompanionBreakCommas"
-                              AutomationProperties.Name="Commas, semicolons and dashes (only the first piece, to start speaking sooner)">
-                        <AccessText TextWrapping="Wrap" Text="C_ommas, semicolons and dashes (only the first piece, to start speaking sooner)"/>
-                    </CheckBox>
-                    <CheckBox x:Name="BreakPeriods" Content="Pe_riods" Margin="0,6,0,0" Checked="Break_Changed" Unchecked="Break_Changed"
+                               Text="Martlet speaks a reply a piece at a time while it's written, so the voice starts sooner. Each piece is said on its own, so a break in the wrong place can sound awkward. Choose which sentence ends this persona's voice may break at; commas, semicolons and dashes never break it."/>
+                    <CheckBox x:Name="BreakPeriods" Content="Pe_riods" Margin="0,8,0,0" Checked="Break_Changed" Unchecked="Break_Changed"
                               AutomationProperties.AutomationId="CompanionBreakPeriods"/>
                     <CheckBox x:Name="BreakQuestions" Content="_Question marks" Margin="0,6,0,0" Checked="Break_Changed" Unchecked="Break_Changed"
                               AutomationProperties.AutomationId="CompanionBreakQuestions"/>
@@ -105,7 +100,7 @@
                         <ComboBoxItem Content="Up to 5 words"/>
                     </ComboBox>
                     <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}" Margin="0,6,0,0"
-                               Text="For example, &quot;I'm so glad you're here, cutie.&quot; is said in one go instead of pausing before &quot;cutie.&quot; A piece that has grown long still breaks at the next comma or sentence end, so the voice can say it."/>
+                               Text="For example, &quot;That was a wonderful idea. Cutie!&quot; is said in one go instead of pausing before &quot;Cutie!&quot; A piece that has grown long still breaks at the next sentence end, so the voice can say it."/>
                 </StackPanel>
                 <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="60" Margin="0,14,0,0"
                          AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="CompanionResult"/>

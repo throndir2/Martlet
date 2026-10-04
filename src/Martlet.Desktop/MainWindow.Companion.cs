@@ -75,6 +75,7 @@ public partial class MainWindow
     /// <summary>The open page's auto-save (Prompts, Replies), saved at once when another page opens.</summary>
     private AutoSave? tabAutoSave;
     private IReadOnlyList<string>? ollamaModels;
+    private bool ollamaAutoChecked;
     private LocalModelTestOutcome? localModelTest;
     private Action? showLocalTest;
     private bool testingLocalModel;
@@ -425,7 +426,8 @@ public partial class MainWindow
     {
         var problem = coverage.FirstOrDefault(c => c.Job == job.Job && c.IsProblem);
         var routeName = route is null ? "" : route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice on this PC"
-            : route.RouteType is SetupRouteType.LocalParakeet or SetupRouteType.LocalWhisper ? PlaceName(route)
+            : route.RouteType == SetupRouteType.LocalParakeet ? $"{PlaceName(route)}: {ParakeetName(route.ModelId)}"
+            : route.RouteType == SetupRouteType.LocalWhisper ? PlaceName(route)
             : $"{PlaceName(route)}: {route.ModelId}";
         var status = route is null
             ? section == CompanionTab.Voice
@@ -436,7 +438,9 @@ public partial class MainWindow
                 (route.Enabled == false ? " (turned off)" : route.Consent is null ? " (not confirmed yet)" : "");
         var now = new StackPanel();
         now.Children.Add(Heading("Now"));
-        now.Children.Add(new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap });
+        var nowText = new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(nowText, "SetupJobNow-" + section);
+        now.Children.Add(nowText);
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Needs attention: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
@@ -511,6 +515,12 @@ public partial class MainWindow
     private Border LocalThinkingCard(SetupRoute? route)
     {
         var installed = !Prerequisites.IsMissing(Prerequisites.Ollama);
+        // What Ollama already has decides whether switching needs a download, so look once without being asked (loopback only).
+        if (installed && ollamaModels is null && !ollamaAutoChecked)
+        {
+            ollamaAutoChecked = true;
+            CheckOllamaAsync(quiet: true).Forget();
+        }
         var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
         var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
             Text = IsLocalOllama(route) ? route!.ModelId : recommended.Id };
@@ -526,10 +536,11 @@ public partial class MainWindow
 
         var gpu = machine.BestGpu is { } best ? $"This PC has {best.Describe()}." : "No dedicated graphics card was found; small models still run on the processor.";
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
-            Text = !installed ? "Ollama isn't installed on this PC yet."
+            Text = (!installed ? "Ollama isn't installed on this PC yet."
                 : ollamaModels is null ? "Ollama is installed. Check it to see which models are downloaded."
                 : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
-                : $"Ollama is running with: {string.Join(", ", ollamaModels)}." };
+                : $"Ollama is running with: {string.Join(", ", ollamaModels)}.") +
+                (IsLocalOllama(route) ? $" Thinking uses {route!.ModelId}." : "") };
         AutomationProperties.SetAutomationId(status, "SetupOllamaStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
@@ -680,8 +691,9 @@ public partial class MainWindow
         if (!closing) await TestLocalModelAsync(model);
     }
 
-    /// <summary>Asks the local Ollama (loopback only, on request) which models it has.</summary>
-    private async Task CheckOllamaAsync()
+    /// <summary>Asks the local Ollama (loopback only) which models it has. <paramref name="quiet"/>: the Thinking tab's own
+    /// check when it opens, which leaves the status line and a model being typed alone.</summary>
+    private async Task CheckOllamaAsync(bool quiet = false)
     {
         try
         {
@@ -693,29 +705,109 @@ public partial class MainWindow
                 ? models.EnumerateArray().Select(m => m.TryGetProperty("name", out var name) ? name.GetString() : null)
                     .OfType<string>().Where(name => name.Length is > 0 and <= 128).Take(50).ToArray()
                 : [];
-            ActionText.Text = ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
-                : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.";
+            if (!quiet)
+                ActionText.Text = ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
+                    : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.";
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException)
         {
             ollamaModels = null;
-            ActionText.Text = Prerequisites.IsMissing(Prerequisites.Ollama)
-                ? "Ollama isn't installed on this PC yet. Install it first."
-                : "Ollama didn't answer on this PC. Start Ollama from the Start menu, then check again.";
+            if (!quiet)
+                ActionText.Text = Prerequisites.IsMissing(Prerequisites.Ollama)
+                    ? "Ollama isn't installed on this PC yet. Install it first."
+                    : "Ollama didn't answer on this PC. Start Ollama from the Start menu, then check again.";
         }
-        if (!closing && openTab == CompanionTab.Thinking) RenderTab();
+        if (!closing && openTab == CompanionTab.Thinking && !(quiet && tabEdited)) RenderTab();
     }
 
+    /// <summary>Use Ollama on this PC. With Ollama installed, the model in the box is downloaded first when it isn't here yet
+    /// (after one confirmation) and loaded, in a run window, and only then does Thinking switch to it: the current Thinking
+    /// keeps answering until then, the first reply doesn't wait for the load, and a model that won't download or load leaves
+    /// Thinking as it was.</summary>
     private async Task SaveLocalThinkingAsync(string model)
     {
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        if (!Prerequisites.IsMissing(Prerequisites.Ollama) && !await PrepareLocalThinkingAsync(model)) return;
+        if (closing) return;
         await SaveSectionRouteAsync(HostJob.Thinking,
             settings => ChatCompletionsSetup.SelectRoute(settings, LocalOllamaBaseUrl, model), key: null,
             $"Martlet now uses {model} in Ollama on this PC." +
-            (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" Download {model} to use it." : ""));
+            (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : ""));
         // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
         if (!closing && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))
             CheckNewModelContextAsync().Forget();
+    }
+
+    private bool preparingLocalThinking;
+
+    /// <summary>Gets <paramref name="model"/> ready in this PC's Ollama before Thinking switches to it: starts Ollama when it
+    /// isn't answering, downloads the model when it isn't here (the owner confirms the download), then loads it. Returns
+    /// whether Thinking may switch now; otherwise the status line says why it didn't.</summary>
+    private async Task<bool> PrepareLocalThinkingAsync(string model)
+    {
+        if (preparingLocalThinking)
+        {
+            ActionText.Text = "Martlet is already getting a model ready. Wait for it to finish.";
+            return false;
+        }
+        preparingLocalThinking = true;
+        try
+        {
+            var token = lifetime.Token;
+            var models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(3), token);
+            if (models is null && LocalOllama.Start())
+            {
+                ActionText.Text = "Starting Ollama on this PC...";
+                for (var attempt = 0; models is null && attempt < 15 && !closing; attempt++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), token);
+                    models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(2), token);
+                }
+            }
+            if (closing) return false;
+            if (models is null)
+            {
+                ActionText.Text = "Ollama didn't answer on this PC. Start Ollama from the Start menu, then try again. Thinking didn't change.";
+                return false;
+            }
+            ollamaModels = models;
+            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var keeps = thinking is null || IsLocalOllama(thinking) && thinking.ModelId == model ? ""
+                : $" Thinking keeps using {(IsLocalOllama(thinking) ? thinking.ModelId : NetworkMap.ProviderName(thinking))} until it's ready.";
+            var download = !LocalOllama.Serves(models, model);
+            if (download)
+            {
+                var size = LocalChatModels.FirstOrDefault(m => m.Id == model)?.Size;
+                if (!ConfirmationDialog.Confirm(this,
+                        $"{model} isn't downloaded on this PC yet. Download it with Ollama{(size is null ? "" : $" ({size})")}, load it and then " +
+                        $"switch Thinking to it?{keeps} The model's own license applies.",
+                        "Download and switch", questionId: "LocalModelDownloadQuestion"))
+                {
+                    ActionText.Text = "Thinking didn't change.";
+                    return false;
+                }
+            }
+            var done = await HostRunWindow.RunAsync(this, $"Switch Thinking to {model}", async run =>
+            {
+                if (keeps.Length > 0) run.Output.Report(keeps.Trim());
+                if (download) await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
+                var loaded = await LocalOllama.LoadAsync(model, run.Status, run.Output, run.Token);
+                return $"{model} is {(download ? "downloaded and " : "")}loaded{(loaded >= TimeSpan.FromSeconds(1) ? $" ({loaded.TotalSeconds:0.0} s)" : "")}. " +
+                    "Thinking switches to it now.";
+            });
+            if (closing) return false;
+            if (download) await CheckOllamaAsync(quiet: true);
+            if (done is null)
+            {
+                ActionText.Text = $"Thinking didn't change: {model} isn't ready. The run window says why.";
+                return false;
+            }
+            return true;
+        }
+        catch (OperationCanceledException) { return false; }
+        finally { preparingLocalThinking = false; }
     }
 
     /// <summary>What Ollama on this PC says about <paramref name="model"/>'s context, kept for replies; loopback only, and the
@@ -796,9 +888,9 @@ public partial class MainWindow
         if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Speak with the Windows voice {voice} on this PC?" + LeavingNote(leaving),
                 "Use a Windows voice"))
             return;
-        await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
+        var saved = await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
             $"Martlet now speaks with the Windows voice {voice} on this PC. Audio stays on this PC.");
-        if (closing || leaving is null) return;
+        if (!saved || closing || leaving is null) return;
         assigningRole = true;
         try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
         finally { assigningRole = false; }
@@ -939,6 +1031,7 @@ public partial class MainWindow
             keySavedMark.Visibility = keySaved && entered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
         var hint = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
@@ -947,9 +1040,14 @@ public partial class MainWindow
         consent.Content = consentText;
 
         CloudProvider Selected() => provider.SelectedItem as CloudProvider ?? OpenAiCloud;
+        string? ChatUrl(CloudProvider p) => p.Chat ? p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim() : null;
         bool SameAsSaved(CloudProvider p) => cloudRoute is not null && (p.Chat
-            ? cloudRoute.RouteType == SetupRouteType.ChatCompletions && cloudRoute.Origin == (p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim())
+            ? cloudRoute.RouteType == SetupRouteType.ChatCompletions && cloudRoute.Origin == ChatUrl(p)
             : cloudRoute.RouteType is null or SetupRouteType.OpenAi);
+        // A key this job used with the provider before, set aside when it switched away, is used again.
+        bool SetAside(CloudProvider p) => !(SameAsSaved(p) && cloudRoute!.CredentialId is not null) &&
+            SetupSettings.SetAsideCredentials(homeSettings, role, ChatUrl(p)).Count > 0;
+        bool HasKey(CloudProvider p) => SameAsSaved(p) && cloudRoute!.CredentialId is not null || SetAside(p);
         string? Default(CloudProvider p) => p.Chat ? p.DefaultModel : role switch
         {
             SetupRole.Llm => OpenAiTextGenerationCatalog.DefaultModelId,
@@ -976,10 +1074,11 @@ public partial class MainWindow
                 if (p.Chat) modelText.Text = value;
                 else model.SelectedItem = Catalog(p).Contains(value, StringComparer.Ordinal) ? value : Default(p);
             }
-            var saved = SameAsSaved(p) && cloudRoute!.CredentialId is not null;
+            var saved = HasKey(p);
             keySaved = saved;
             RefreshKeyMark();
-            keyStatus.Text = saved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+            keyStatus.Text = SetAside(p) ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."
+                : saved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
                 : "Add a key only if your server needs one.";
             var retired = SameAsSaved(p) && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
@@ -1000,7 +1099,7 @@ public partial class MainWindow
         baseUrl.TextChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
         voice.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => { tabEdited = true; RefreshKeyMark(); };
-        baseUrl.TextChanged += (_, _) => { keySaved = SameAsSaved(Selected()) && cloudRoute!.CredentialId is not null; RefreshKeyMark(); };
+        baseUrl.TextChanged += (_, _) => { keySaved = HasKey(Selected()); RefreshKeyMark(); };
 
         // A cloud provider is a commitment (a key, data sent elsewhere, possible costs), so it stays an explicit action named for
         // what it does rather than an automatic save.
@@ -1074,13 +1173,16 @@ public partial class MainWindow
             var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role);
             var keySaved = route?.CredentialId is not null && (provider.Chat
                 ? route.RouteType == SetupRouteType.ChatCompletions && route.Origin == url
-                : route.RouteType is null or SetupRouteType.OpenAi);
+                : route.RouteType is null or SetupRouteType.OpenAi) || SetupSettings.SetAsideCredentials(homeSettings, role, url).Count > 0;
+            var missingKey = $"Paste your {provider.Name} API key first.";
             if (key is null && provider.NeedsKey && !keySaved)
-                throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
-            await SaveSectionRouteAsync(job, settings => provider.Chat
+                throw new ContractException(ErrorCode.InvalidContract, missingKey);
+            if (!await SaveSectionRouteAsync(job, settings => provider.Chat
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
-                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.");
+                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.",
+                provider.NeedsKey ? missingKey : null))
+                return;
             // A new Thinking model: ask its server how much context it takes, so replies stay within it.
             if (!closing && role == SetupRole.Llm && provider.Chat &&
                 homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
@@ -1115,14 +1217,17 @@ public partial class MainWindow
     }
 
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
-    /// confirmed choice. A key the route no longer uses is listed for explicit removal in Setup, as there.</summary>
-    private async Task SaveSectionRouteAsync(HostJob job, Func<AppSettings, AppSettings> select, SecretLease? key, string done)
+    /// confirmed choice. A key the route no longer uses is set aside (listed for removal in Advanced setup), and a key set aside
+    /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
+    /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.</summary>
+    private async Task<bool> SaveSectionRouteAsync(HostJob job, Func<AppSettings, AppSettings> select, SecretLease? key, string done,
+        string? missingKey = null)
     {
-        if (store is null || setupService is null || closing) return;
+        if (store is null || setupService is null || closing) return false;
         if (savingTab || assigningRole || setupOperations.IsRunning)
         {
             ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
+            return false;
         }
         savingTab = true;
         var role = job.Role;
@@ -1136,9 +1241,23 @@ public partial class MainWindow
             var old = settings.Setup!.Routes.SingleOrDefault(r => r.Role == role);
             var updated = select(settings);
             var chosen = updated.Setup!.Routes.Single(r => r.Role == role);
-            if (old is not null && (old.RouteType != chosen.RouteType || old.Origin != chosen.Origin) &&
-                settings.Setup.PendingRemovals.Any(removal => removal.Role == role && !SelfHostSetup.IsGateway(removal.Scope?.RouteType)))
-                throw new InvalidOperationException($"Remove {job.Job}'s detached key in Advanced setup (Credentials) before switching it to another provider.");
+            var reused = false;
+            if (key is null && chosen is { CredentialId: null, RouteType: SetupRouteType.OpenAi or SetupRouteType.ChatCompletions })
+            {
+                var service = setupService;
+                foreach (var setAside in SetupSettings.SetAsideCredentials(updated, role,
+                             chosen.RouteType == SetupRouteType.ChatCompletions ? chosen.Origin : null))
+                {
+                    // Only a key still in Windows Credential Manager is used again; it is read on a worker and never shown.
+                    var candidate = SetupSettings.ReattachSetAsideCredential(updated, setAside);
+                    if (await Task.Run(() => service.CheckCredential(candidate, role), token) != CredentialError.None) continue;
+                    updated = candidate;
+                    reused = true;
+                    break;
+                }
+            }
+            if (key is null && missingKey is not null && updated.Setup!.Routes.Single(r => r.Role == role).CredentialId is null)
+                throw new InvalidOperationException(missingKey);
             updated = SetupSettings.QueueReplacedCredential(updated, old);
             if (key is not null)
             {
@@ -1155,16 +1274,19 @@ public partial class MainWindow
             var saved = await setupService.SaveAsync(confirmed, revision, token);
             if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
             homeSettings = confirmed;
+            FollowSavedSetup(saved.Save.Revision);
             pendingJobHosts.Remove(role);
             pendingJobVoices.Remove(role);
             RecordClusterJob(job.Job, new(null, false));
-            ActionText.Text = done + " Reload any open conversation to use it.";
+            ActionText.Text = done + (reused ? " It uses the key you saved for it before." : "") + OpenConversationFollows;
             tabPlace.Remove(openTab ?? CompanionTab.Thinking);
+            return true;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { return false; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
         {
             ActionText.Text = error.Message;
+            return false;
         }
         finally
         {
@@ -1614,6 +1736,53 @@ public partial class MainWindow
                 : "Martlet doesn't remember or recall anything between conversations. Turn memory on in Manage memory.",
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
+        if (conversationHistory is { } record) page.Children.Add(HistoryCard(record, on));
+    }
+
+    /// <summary>Companion › Memory › Conversation history: whether Martlet keeps a record of conversations on this PC (on by
+    /// default while memory is on) and may search it on its own (search_conversations, off by default), what it holds and the
+    /// window to read, search and delete it. Each choice saves at once (conversation-history.json).</summary>
+    private Border HistoryCard(DesktopConversationHistory record, bool memoryOn)
+    {
+        var prefs = record.Preferences;
+        var status = Note(record.Describe(homeSettings?.Memory), new Thickness(0, 2, 0, 8));
+        AutomationProperties.SetAutomationId(status, "HistoryStatus");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+        var keep = new CheckBox { Content = "Keep a record of my conversations", IsChecked = prefs.Keep, IsEnabled = memoryOn };
+        AutomationProperties.SetAutomationId(keep, "HistoryKeep");
+        var search = new CheckBox
+        {
+            Content = "Let Martlet search the record on its own", IsChecked = prefs.Search, IsEnabled = memoryOn && prefs.Keep,
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(search, "HistorySearch");
+        void Save()
+        {
+            var next = new ConversationHistoryPreferences(keep.IsChecked == true, search.IsChecked == true);
+            if (next == record.Preferences) return;
+            if (!record.SetPreferences(next))
+                ErrorLog.Warn("Couldn't save the conversation history choice on this PC; it applies until Martlet restarts.");
+            search.IsEnabled = memoryOn && next.Keep;
+            status.Text = record.Describe(homeSettings?.Memory);
+        }
+        foreach (var choice in new[] { keep, search })
+        {
+            choice.Checked += (_, _) => Save();
+            choice.Unchecked += (_, _) => Save();
+        }
+        // The counts appear once the record has been read (in the background, the first time).
+        if (!record.Store.Loaded)
+            _ = record.Store.LoadAsync().ContinueWith(_ => Dispatcher.InvokeAsync(() => status.Text = record.Describe(homeSettings?.Memory)),
+                TaskScheduler.Default);
+        return Card(Heading("Conversation history"), status, keep,
+            Note("Each exchange (what you typed or said and Martlet's reply) is kept on this PC. When you mention an earlier " +
+                "conversation, like \"remember when...\" or \"what did we talk about yesterday?\", Martlet brings back what was said. " +
+                "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0)),
+            search,
+            Note("With a Thinking model that uses tools, Martlet can also look things up in the record whenever it thinks that " +
+                "helps. Its search tool makes every request a little longer, so the first reply of a conversation may start a " +
+                "little later.", new Thickness(24, 2, 0, 0)),
+            Row(PageButton("Open conversation history", History_Click, id: "OpenHistory")));
     }
 
     // ---------- small builders ----------

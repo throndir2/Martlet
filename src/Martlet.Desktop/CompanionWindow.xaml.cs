@@ -187,7 +187,6 @@ public partial class CompanionWindow : ThemedWindow
         TeasingWeight.Value = persona?.Styles.PlayfulTeasing ?? 0;
         RenderWeightValues();
         var breaks = persona?.SpokenBreaks ?? SpeechBreaks.Default;
-        BreakCommas.IsChecked = breaks.Commas;
         BreakPeriods.IsChecked = breaks.Periods;
         BreakQuestions.IsChecked = breaks.QuestionMarks;
         BreakExclamations.IsChecked = breaks.ExclamationMarks;
@@ -240,7 +239,6 @@ public partial class CompanionWindow : ThemedWindow
     /// <summary>The stops the editor shows for the persona's voice.</summary>
     private SpeechBreaks Breaks() => new()
     {
-        Commas = BreakCommas.IsChecked == true,
         Periods = BreakPeriods.IsChecked == true,
         QuestionMarks = BreakQuestions.IsChecked == true,
         ExclamationMarks = BreakExclamations.IsChecked == true,

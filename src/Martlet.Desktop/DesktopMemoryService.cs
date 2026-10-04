@@ -15,9 +15,12 @@ internal sealed class DesktopMemoryException(string code, string message) : Exce
 }
 
 internal sealed record MemoryConfigurationSaveResult(SetupSaveResult Save, AppSettings Settings);
-/// <summary>Facts recalled for one turn: the best lexical matches first, then the most recently changed facts.</summary>
-internal sealed record DesktopMemoryRecall(long? StoreRevision, IReadOnlyList<MemoryFact> Facts);
-internal sealed record MemoryCaptureChange(MemoryCaptureKind Kind, string Content);
+/// <summary>Facts recalled for one turn: the best lexical matches first, then the most recently changed facts (the speaker's own
+/// and those about no one in particular before other people's). <paramref name="People"/> labels the voices the facts belong to.</summary>
+internal sealed record DesktopMemoryRecall(long? StoreRevision, IReadOnlyList<MemoryFact> Facts,
+    IReadOnlyDictionary<string, string>? People = null);
+/// <summary>One change remembering made: <paramref name="VoiceId"/> is whose fact it is, <paramref name="Person"/> its label.</summary>
+internal sealed record MemoryCaptureChange(MemoryCaptureKind Kind, string Content, string? VoiceId = null, string? Person = null);
 
 internal sealed class DesktopMemoryService : IDisposable
 {
@@ -88,10 +91,12 @@ internal sealed class DesktopMemoryService : IDisposable
         WithStoreAsync(expectedConfigurationRevision,
             (store, operationToken) => store.InspectAsync(operationToken), token);
 
+    /// <param name="voiceId">Whose fact it is (a voice list ID), or null for no one in particular.</param>
     internal Task<MemoryMutationReceipt> SaveFactAsync(
         Guid expectedConfigurationRevision,
         string content,
         MemoryRetention retention,
+        string? voiceId = null,
         CancellationToken token = default)
     {
         Invalidate();
@@ -100,15 +105,18 @@ internal sealed class DesktopMemoryService : IDisposable
             {
                 Content = content,
                 Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), CurrentUtc()),
-                Retention = retention
+                Retention = retention,
+                VoiceId = voiceId
             }, operationToken), token);
     }
 
+    /// <param name="voiceId">Whose fact it is after the edit; pass the fact's own to keep it.</param>
     internal Task<MemoryMutationReceipt> EditFactAsync(
         Guid expectedConfigurationRevision,
         MemoryFact fact,
         string content,
         MemoryRetention retention,
+        string? voiceId,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(fact);
@@ -120,7 +128,8 @@ internal sealed class DesktopMemoryService : IDisposable
                 ExpectedRevision = fact.Revision,
                 Content = content,
                 Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), CurrentUtc()),
-                Retention = retention
+                Retention = retention,
+                VoiceId = voiceId
             }, operationToken), token);
     }
 
@@ -165,10 +174,13 @@ internal sealed class DesktopMemoryService : IDisposable
             (store, operationToken) => store.ExportAsync(
                 preview, authorization, destination, operationToken), token);
 
+    /// <param name="speaker">The voice IDs of the person speaking (<see cref="MemoryPeople.Ids"/>), whose facts and those about no
+    /// one in particular fill the recall before other people's; null when nobody was recognized.</param>
     internal async Task<DesktopMemoryRecall> RecallAsync(
         MemorySettings expected,
         string query,
         int maximum = MaximumRecalledFacts,
+        IReadOnlySet<string>? speaker = null,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(expected);
@@ -179,7 +191,7 @@ internal sealed class DesktopMemoryService : IDisposable
         try
         {
             result = await WithStoreAsync(expected.ConfigurationRevision,
-                (store, operationToken) => RecallAsync(store, query, maximum, operationToken),
+                (store, operationToken) => RecallAsync(store, query, maximum, speaker, operationToken),
                 linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (snapshot.Token.IsCancellationRequested && !token.IsCancellationRequested)
@@ -200,16 +212,16 @@ internal sealed class DesktopMemoryService : IDisposable
     /// <summary>Related facts shown to the model while remembering. Unlike a turn's recall it is not invalidated by Stop;
     /// <see cref="RememberAsync"/> rechecks every fact revision it acts on.</summary>
     internal Task<DesktopMemoryRecall> KnownFactsAsync(MemorySettings expected, string query, int maximum,
-        CancellationToken token = default)
+        IReadOnlySet<string>? speaker = null, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(expected);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximum, 1);
         return WithStoreAsync(expected.ConfigurationRevision,
-            (store, operationToken) => RecallAsync(store, query, maximum, operationToken), token);
+            (store, operationToken) => RecallAsync(store, query, maximum, speaker, operationToken), token);
     }
 
     private static async Task<DesktopMemoryRecall> RecallAsync(MemoryStore store, string query, int maximum,
-        CancellationToken token)
+        IReadOnlySet<string>? speaker, CancellationToken token)
     {
         var facts = new List<MemoryFact>(maximum);
         var included = new HashSet<Guid>();
@@ -218,7 +230,11 @@ internal sealed class DesktopMemoryService : IDisposable
                 if (included.Add(hit.Fact.Id))
                     facts.Add(hit.Fact);
         var inspection = await store.InspectAsync(token).ConfigureAwait(false);
-        foreach (var fact in inspection.Facts.OrderByDescending(fact => fact.UpdatedAtUtc).ThenBy(fact => fact.Id))
+        // Someone else's facts come after the speaker's own and those about no one in particular (all by recency when nobody
+        // was recognized); the best matches above already include anyone's.
+        foreach (var fact in inspection.Facts
+            .OrderByDescending(fact => speaker is null || fact.VoiceId is null || speaker.Contains(fact.VoiceId))
+            .ThenByDescending(fact => fact.UpdatedAtUtc).ThenBy(fact => fact.Id))
         {
             if (facts.Count >= maximum)
                 break;
@@ -228,17 +244,26 @@ internal sealed class DesktopMemoryService : IDisposable
         return new(inspection.StoreRevision, facts);
     }
 
-    /// <summary>Applies what the model picked out of a conversation. Near-duplicates are skipped, updates and forgets only
-    /// touch the exact fact revisions that were shown to the model, and a full store makes room by dropping the oldest
-    /// conversation fact (never one the user typed).</summary>
+    /// <summary>Applies what the model picked out of a conversation. New facts belong to the voice each operation names (the
+    /// speaker's, unless the model named another voice heard). Near-duplicates of the same person's facts (or of facts about no
+    /// one in particular) are skipped, updates keep whose fact it is, updates and forgets only touch the exact fact revisions
+    /// that were shown to the model, and a full store makes room by dropping the oldest conversation fact (never one the user
+    /// typed).</summary>
+    /// <param name="person">Maps a voice ID to the voice it stands for now (<see cref="MemoryPeople.Canonical"/>), so merged
+    /// voices count as one person; IDs compare as they are without it.</param>
     internal Task<IReadOnlyList<MemoryCaptureChange>> RememberAsync(
         Guid expectedConfigurationRevision,
         IReadOnlyList<MemoryFact> shown,
         IReadOnlyList<MemoryCaptureOperation> operations,
+        Func<string?, string?>? person = null,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(shown);
         ArgumentNullException.ThrowIfNull(operations);
+        person ??= id => id;
+        // A fact about no one in particular already covers anyone's same fact, and an unattributed one anyone's.
+        bool SamePerson(string? left, string? right) =>
+            left is null || right is null || string.Equals(person(left), person(right), StringComparison.Ordinal);
         return WithStoreAsync(expectedConfigurationRevision, async (store, operationToken) =>
         {
             var changes = new List<MemoryCaptureChange>();
@@ -251,7 +276,7 @@ internal sealed class DesktopMemoryService : IDisposable
                 switch (operation.Kind)
                 {
                     case MemoryCaptureKind.Remember when operation.Content is { } content:
-                        if (current.Any(fact => MemoryCapture.SameFact(fact.Content, content)))
+                        if (current.Any(fact => MemoryCapture.SameFact(fact.Content, content) && SamePerson(fact.VoiceId, operation.VoiceId)))
                             continue;
                         if (current.Count >= MemoryLimits.MaximumFacts)
                         {
@@ -269,23 +294,25 @@ internal sealed class DesktopMemoryService : IDisposable
                         {
                             Content = content,
                             Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
-                            Retention = MemoryRetention.UntilDeleted()
+                            Retention = MemoryRetention.UntilDeleted(),
+                            VoiceId = operation.VoiceId
                         }, operationToken).ConfigureAwait(false);
                         current.Add(saved.Fact);
-                        changes.Add(new(MemoryCaptureKind.Remember, saved.Fact.Content));
+                        changes.Add(new(MemoryCaptureKind.Remember, saved.Fact.Content, saved.Fact.VoiceId));
                         break;
                     case MemoryCaptureKind.Update when target is not null && operation.Content is { } content:
                         if (MemoryCapture.SameFact(target.Content, content) ||
-                            current.Any(fact => fact.Id != target.Id && MemoryCapture.SameFact(fact.Content, content)))
+                            current.Any(fact => fact.Id != target.Id && MemoryCapture.SameFact(fact.Content, content) &&
+                                SamePerson(fact.VoiceId, target.VoiceId)))
                             continue;
                         var edited = await store.EditAsync(new()
                         {
                             Id = target.Id, ExpectedRevision = target.Revision, Content = content,
                             Provenance = MemoryProvenance.Conversation(Guid.NewGuid(), CurrentUtc()),
-                            Retention = target.Retention
+                            Retention = target.Retention, VoiceId = target.VoiceId
                         }, operationToken).ConfigureAwait(false);
                         current[current.IndexOf(target)] = edited.Fact;
-                        changes.Add(new(MemoryCaptureKind.Update, edited.Fact.Content));
+                        changes.Add(new(MemoryCaptureKind.Update, edited.Fact.Content, edited.Fact.VoiceId));
                         break;
                     case MemoryCaptureKind.Forget when target is not null:
                         await store.DeleteAsync(new()
@@ -293,7 +320,7 @@ internal sealed class DesktopMemoryService : IDisposable
                             Id = target.Id, ExpectedRevision = target.Revision, ConsentId = Guid.NewGuid()
                         }, operationToken).ConfigureAwait(false);
                         current.Remove(target);
-                        changes.Add(new(MemoryCaptureKind.Forget, target.Content));
+                        changes.Add(new(MemoryCaptureKind.Forget, target.Content, target.VoiceId));
                         break;
                 }
             }

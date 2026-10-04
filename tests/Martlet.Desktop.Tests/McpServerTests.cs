@@ -48,6 +48,76 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Equal(2, messages[1].GetProperty("id").GetInt32());
     }
 
+    [Fact]
+    public async Task MemoryStatusCountsWhoseFactsAreWithoutTheirTextNamesOrIds()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Memory." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var none = ToolResult((await SendAsync(Call("memory_status", directory)))[0]);
+            Assert.Equal("not set up", none.GetProperty("memory").GetString());
+            Assert.Equal("none", none.GetProperty("state").GetString());
+
+            var now = DateTimeOffset.UtcNow;
+            static float[] Print(int seed)
+            {
+                var random = new Random(seed);
+                return Martlet.Core.Speakers.VoicePrints.Normalize(Enumerable.Range(0, Martlet.Core.Speakers.VoicePrints.Dimension)
+                    .Select(_ => (float)(random.NextDouble() - 0.5)).ToArray());
+            }
+            var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
+            (roster, var sam) = roster.Add(Print(1), 3, "desk", now);
+            (roster, var other) = roster.Add(Print(2), 3, "desk", now);
+            roster = roster.SetNames(sam!.Id, "Samantha", [], "desk", now).SetOwner(sam.Id, true, "desk", now);
+            var settings = new Martlet.Core.Settings.SettingsStore(directory);
+            var initial = Martlet.Core.Settings.SetupSettings.Begin(null);
+            var saved = await settings.SaveAsync(initial, null);
+            File.WriteAllBytes(Path.Combine(directory, "voices.json"), roster.Write());
+            using (var memory = new DesktopMemoryService(settings))
+            {
+                var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true,
+                    Martlet.Core.Settings.MemoryStoragePolicy.AppLocalData, null);
+                var revision = configured.Settings.Memory!.ConfigurationRevision;
+                var forever = Martlet.Memory.MemoryRetention.UntilDeleted();
+                await memory.SaveFactAsync(revision, "Samantha keeps canary-1 private.", forever, sam.Id);
+                await memory.SaveFactAsync(revision, "canary-2 expires.", Martlet.Memory.MemoryRetention.ExpiringAt(now.AddDays(1)), sam.Id);
+                await memory.SaveFactAsync(revision, "canary-3 belongs to the other voice.", forever, other!.Id);
+                await memory.SaveFactAsync(revision, "canary-4 is everyone's.", forever);
+                await memory.SaveFactAsync(revision, "canary-5 belongs to a forgotten voice.", forever, "0123456789abcdef");
+            }
+
+            var message = (await SendAsync(Call("memory_status", directory)))[0];
+            var raw = message.GetRawText();
+            foreach (var secret in new[] { "canary", "Samantha", sam.Id, other.Id, "0123456789abcdef", Path.GetFileName(directory) })
+                Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
+            var result = ToolResult(message);
+            Assert.Equal("on", result.GetProperty("memory").GetString());
+            Assert.Equal("Martlet folder", result.GetProperty("storage").GetString());
+            Assert.Equal("loaded", result.GetProperty("state").GetString());
+            Assert.Equal("loaded", result.GetProperty("voiceList").GetString());
+            Assert.Equal(5, result.GetProperty("facts").GetInt32());
+            Assert.Equal(5, result.GetProperty("typed").GetInt32());
+            Assert.Equal(0, result.GetProperty("fromConversation").GetInt32());
+            Assert.Equal(1, result.GetProperty("expiring").GetInt32());
+            var whose = result.GetProperty("whose");
+            Assert.Equal(1, whose.GetProperty("everyone").GetInt32());
+            Assert.Equal(1, whose.GetProperty("forgottenVoices").GetInt32());
+            Assert.Equal(
+                new[] { (sam.Tag, true, true, 2), (other.Tag, false, false, 1) },
+                whose.GetProperty("voices").EnumerateArray().Select(v => (v.GetProperty("voice").GetString()!, v.GetProperty("named").GetBoolean(),
+                    v.GetProperty("owner").GetBoolean(), v.GetProperty("facts").GetInt32())).ToArray());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+
+        static string Call(string tool, string dataDirectory) => JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = tool, arguments = new { dataDirectory } }
+        });
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

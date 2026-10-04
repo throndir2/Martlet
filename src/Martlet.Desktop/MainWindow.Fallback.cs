@@ -162,6 +162,7 @@ public partial class MainWindow
             var result = await setupService.SaveAsync(updated, loaded.Revision, token);
             if (!result.Save.Saved) throw new InvalidOperationException(result.Summary);
             written = null;
+            FollowSavedSetup(result.Save.Revision);
             if (old?.CredentialId is { } oldKey && oldKey != chosen?.CredentialId)
             {
                 var oldBinding = old.Binding(settings.Profile.Id, oldKey);
@@ -170,7 +171,7 @@ public partial class MainWindow
             homeSettings = updated;
             ActionText.Text = chosen is null
                 ? "The Thinking fallback is off."
-                : $"If Thinking fails, Martlet now asks {provider!.Name} ({model}).{(key is null ? "" : " Its API key is saved in Windows Credential Manager.")} Reload any open conversation to use it.";
+                : $"If Thinking fails, Martlet now asks {provider!.Name} ({model}).{(key is null ? "" : " Its API key is saved in Windows Credential Manager.")}{OpenConversationFollows}";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
