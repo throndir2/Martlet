@@ -121,7 +121,9 @@ There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
-| [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, prototype-speed policy (no required local gates), and normal merge into `main`; explicit holds and safety boundaries remain binding |
+| [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, validation before merge (affected tests and MCP verification), and normal merge into `main`; explicit holds and safety boundaries remain binding |
+| [Validating changes](docs/VALIDATION.md) | The validation flow for every change: the change-aware parallel test runner, validation hosts and the developer profile, known failures, MCP verification and writing tests |
+| [Contributing](CONTRIBUTING.md) | Setup, branches, validation and pull requests for developers joining the project |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
 | [Desktop UI design](docs/UI_DESIGN.md) | Per-stage design: welcome tour, companion home and setup checklist, host dashboard, Devices hardware map, add-a-computer wizard, chat-first conversation and motion system |
 | [User stories and target flows](docs/USER_STORIES.md) | UX specification: audit of today's paths, flow rules, target navigation, interaction patterns, and every user story with all entry points, screens, click counts, edge cases and acceptance criteria (first run, joining a network, Thinking, Voice, Listening, Character, permissions, talking, devices, maintenance) |
@@ -237,24 +239,25 @@ push, PR, tag or scheduled trigger.
 
 ## Local-only validation policy
 
-**Current owner policy, 2026-09-26: prototype speed, never remote validation.**
-This supersedes earlier plans for hosted CI and the 2026-09-13 local-gate
-requirement. Do not create, enable, dispatch or retry remote test/validation
-pipelines, including GitHub Actions with self-hosted runners. Do not restore
-Actions billing, increase spending limits or use another hosted service to
-obtain validation evidence.
+**Current owner policy, 2026-10-03: every change is validated locally before it
+merges; never remote validation.** This supersedes the 2026-09-26
+prototype-speed policy, which made tests optional, and earlier plans for hosted
+CI. Do not create, enable, dispatch or retry remote test/validation pipelines,
+including GitHub Actions with self-hosted runners. Do not restore Actions
+billing, increase spending limits or use another hosted service to obtain
+validation evidence.
 
-Martlet is a prototype. The one required local check is functional: every new
-feature or behavior change is verified working on the dev machine through
-Martlet's own MCP server where that machine can exercise it, and the MCP
-server is extended in the same change so it can reach and observe the feature
-(see [Verifying changes with Martlet MCP](docs/MCP.md#verifying-changes-with-martlet-mcp)).
-Otherwise, local test suites, build/package/smoke gates and independent review
-are **not required** before commit, PR or merge and should not be run by
-default. Run at most a quick targeted build or test when it directly helps
-finish or debug a change. Existing tests and scripts remain available for
-manual use. `CI=true` remains a local MSBuild setting for locked
-restore and deterministic build metadata; it does not require a remote runner.
+Before merge, every change except documentation passes the tests it affects,
+selected and run in parallel by `scripts\Test-Martlet.ps1` on the developer's
+PC and on the validation hosts they have set up (their local developer profile,
+`~\.martlet-dev\validation.json`). Every feature or behavior change is also
+verified working through Martlet's own MCP server, which is extended in the
+same change so it can reach and observe the feature. A new failing test blocks
+the merge; tests that already fail on `main` are listed in
+`tests\known-failures.txt` until they are fixed. The flow, the runner and the
+hosts are described in [Validating changes](docs/VALIDATION.md). `CI=true`
+remains a local MSBuild setting for locked restore and deterministic build
+metadata; it does not require a remote runner.
 
 The only permitted remote workflow is a **minimal build/package/release**:
 restore necessary build dependencies, compile/package the deliverable and
@@ -273,18 +276,19 @@ inventing successful statuses or relying on skip markers.
 
 Historical failed or blocked hosted results remain historical, not local passes.
 Real Windows/Linux, native-device, model/GPU and clean-machine qualifications
-still require actual execution before being claimed. Unrun qualification is
-reported as **NOT RUN**, never as passed; it does not block prototype work.
-
+still require actual execution before being claimed. What an environment cannot
+run is reported as **NOT RUN**, never as passed.
 ## Developer quick start
 
 For **development**, use Windows with .NET SDK **10.0.401** (the exact .NET 10
-LTS SDK in `global.json`). PowerShell 7 is needed only for the smoke scripts.
-Desktop/solution builds also require Node.js and npm to build the real bundled
+LTS SDK in `global.json`) and PowerShell 7 (for the test runner and smoke
+scripts). Desktop/solution builds also require Node.js and npm to build the real bundled
 avatar shell (locally exercised with Node **20.11.1**, npm **10.2.4** and locked
-esbuild **0.25.12**). Initial NuGet/npm restores need internet; no provider keys,
-microphone, GPU, Docker, Python, administrator rights or model downloads are
-needed for building. End users need no Node/npm/dev server: the shell is bundled.
+esbuild **0.25.12**). Worker tests use Python 3.12 (`py -3.12`), and Docker
+Desktop in Linux container mode runs the Linux-only tests on a Windows PC.
+Initial NuGet/npm restores need internet; no provider keys, microphone, GPU,
+Docker, Python, administrator rights or model downloads are needed for building.
+End users need no Node/npm/dev server: the shell is bundled.
 Actual avatar activation has separate user-owned runtime/model prerequisites;
 see the [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md).
 
@@ -292,11 +296,15 @@ see the [Desktop avatar guide](src/Martlet.Avatar.Hosting/README.md).
 npm ci --prefix src\Martlet.Avatar.Vrm --no-audit --no-fund
 dotnet restore Martlet.slnx --locked-mode
 dotnet build Martlet.slnx --no-restore -c Release "-p:NodeExecutable=$((Get-Command node).Source)"
-dotnet test Martlet.slnx --no-build -c Release
+.\scripts\Test-Martlet.ps1 -InitProfile   # once: your local developer profile and validation hosts
+.\scripts\Test-Martlet.ps1                # the tests your change affects, in parallel
+.\scripts\Test-Martlet.ps1 -All           # every suite
 .\scripts\Smoke-Doctor.ps1
 .\scripts\Smoke-Desktop.ps1
 ```
 
+`Martlet.slnx` lists the main projects for the IDE; `Test-Martlet.ps1` finds every
+test project under `tests\` itself (see [Validating changes](docs/VALIDATION.md)).
 The desktop smoke needs an interactive Windows desktop and exits the app after
 reading its accessible status. Both smoke scripts use unique temporary data
 paths, never the real user profile.

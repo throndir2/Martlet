@@ -2,6 +2,8 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- scripts\Test-Martlet.ps1 runs these on a Linux validation host (see docs\VALIDATION.md). -->
+    <MartletTestHosts>linux</MartletTestHosts>
     <OutputType>Exe</OutputType>
     <StartupObject>Martlet.Gateway.Persistence.Linux.Tests.Program</StartupObject>
   </PropertyGroup>

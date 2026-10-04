@@ -50,13 +50,15 @@ foreach ($call in $requested) {
 }
 
 if ($Build) {
+    . (Join-Path $PSScriptRoot 'MartletDev.ps1')
+    $dotnet = Find-MartletDotnet $root (Get-MartletDevProfile)
     $projects = @('src\Martlet.Mcp\Martlet.Mcp.csproj')
     if ($Desktop) { $projects += 'src\Martlet.Desktop\Martlet.Desktop.csproj' }
     $node = (Get-Command node -ErrorAction SilentlyContinue).Source
     foreach ($project in $projects) {
         $arguments = @('build', (Join-Path $root $project), '-c', $Configuration, '--nologo', '-v', 'q')
         if ($node) { $arguments += "-p:NodeExecutable=$node" }
-        & dotnet @arguments | Out-Host
+        & $dotnet @arguments | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "Build failed: $project" }
     }
 }
