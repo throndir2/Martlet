@@ -289,6 +289,7 @@ public partial class MainWindow
         hostChecks[probe.HostId] = new(true, previous?.Reachable == true && previous.Offers?.Count == offers.Count &&
                 offers.All(o => previous.Offers.GetValueOrDefault(o.Key) == o.Value) ? previous.Text : HostControl.Describe(offers),
             offers, release, probe.Routes);
+        NoteSingingHost();
     }
 
     /// <summary>Moves each job whose host missed <see cref="ClusterSync.FailAfter"/> checks, when its failover is on, to

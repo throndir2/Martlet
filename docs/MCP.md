@@ -1073,7 +1073,9 @@ not installed system-wide).
 (each pinned file's ID, revision, licence and size) with `modelBytes`, or why it
 could not be read. With a `dataDirectory` (the script passes its disposable one)
 it adds `choices`, the Singing card's saved quality and voice match
-(`singing.json`; the defaults when none are saved). Read-only. As with
+(`singing.json`; the defaults when none are saved), `host` (the computer the
+desktop last saw running Singing) and `setUp` (that computer is still paired:
+what `SongClient.IsSetUp` answers without the fixture). Read-only. As with
 `voice_engine_check`, a role service on a host listens only in the host's
 loopback, so run it there or forward the port.
 

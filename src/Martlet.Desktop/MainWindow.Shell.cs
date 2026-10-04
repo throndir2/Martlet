@@ -1220,6 +1220,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
         if (closing) return;
+        NoteSingingHost();
         foreach (var host in hosts)
             if (hostChecks.GetValueOrDefault(host.HostId) is { Reachable: true } found) HostFoundCurrent(UpdateKey(host), found.MartletVersion);
         ActionText.Text = results.Length == 1 ? $"{results[0].Id}: {results[0].Check.Text}"

@@ -138,8 +138,12 @@ For other code (the conversation's `sing_song` tool), `Martlet.Core.Singing` hol
 (`GetAvailabilityAsync`, `GenerateAsync(request, progress, cancellationToken)`), `SongRequest`, `SongProgress`,
 `SongResult` (mix, vocals and backing tracks, `LyricTimestamps` with sections, `Words` with `WordTimingSource`, `Bpm`,
 `BeatsPerBar`, `Beats`, `Downbeats`, `StageTimings`), `SongLyrics.Parse`, `SongException` codes and the FIXTURE - NOT AI
-`FixtureSongMaker`. The
-desktop's implementation is `SongClient` (`MainWindow.SongMaker`); `MARTLET_SINGING_FIXTURE=1` makes it the fixture.
+`FixtureSongMaker`. The desktop's implementation is `SongClient` (`SongClient.For(dataDirectory)`, also
+`MainWindow.SongMaker`); `MARTLET_SINGING_FIXTURE=1` makes it the fixture. `SongClient.IsSetUp(dataDirectory)` answers
+without the network whether singing is set up (the fixture is on, or a computer still paired with this PC ran Singing when
+the desktop last checked its computers: `host` in `singing.json`, kept while that computer is unreachable and cleared once
+it answers without Singing), `SongClient.SpeakingVoiceId(dataDirectory)` is the voice Martlet speaks with, and
+`SingingPreferences.Load(dataDirectory)` holds the card's choices.
 
 ## Verification
 

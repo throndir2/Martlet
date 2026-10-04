@@ -137,8 +137,11 @@ public partial class MainWindow
             if (store is null) return;
             try
             {
-                new SingingPreferences(quality.SelectedIndex == 1 ? SongQuality.HighQuality : SongQuality.Fast,
-                    match.SelectedIndex == 1 ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX).Save(store.DataDirectory);
+                (SingingPreferences.Load(store.DataDirectory) with
+                {
+                    Quality = quality.SelectedIndex == 1 ? SongQuality.HighQuality : SongQuality.Fast,
+                    VoiceMatch = match.SelectedIndex == 1 ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
+                }).Save(store.DataDirectory);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
@@ -157,6 +160,28 @@ public partial class MainWindow
     }
 
     private bool Offers(PairedHost host, string kind) => hostChecks.GetValueOrDefault(host.HostId)?.Offers?.ContainsKey(kind) == true;
+
+    /// <summary>Remembers in singing.json which computer runs Singing after a check of the paired computers (kept while that
+    /// computer can't be reached, cleared once it answers without Singing), for <see cref="SongClient.IsSetUp"/>.</summary>
+    private void NoteSingingHost()
+    {
+        if (store is null) return;
+        try
+        {
+            var saved = SingingPreferences.Load(store.DataDirectory);
+            var running = hostChecks.Where(c => c.Value.Reachable == true && c.Value.Offers?.ContainsKey(HostRoles.Singing) == true)
+                .Select(c => c.Key).ToList();
+            var next = saved.Host is { } host && (running.Contains(host) ||
+                hostChecks.GetValueOrDefault(host)?.Reachable != true && running.Count == 0)
+                ? host
+                : running.FirstOrDefault();
+            if (next != saved.Host) (saved with { Host = next }).Save(store.DataDirectory);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn($"Couldn't remember the singing computer: {error.Message}");
+        }
+    }
 
     /// <summary>Why this PC can't sing: no NVIDIA graphics card, or one with less than 6 GB; null when it can or Martlet
     /// hasn't read this PC's hardware yet.</summary>
@@ -231,6 +256,7 @@ public partial class MainWindow
                 {
                     var check = await HostControl.CheckAsync(pc.Pairing, HardwareStore, run.Token);
                     hostChecks[pc.HostId] = check;
+                    NoteSingingHost();
                     if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) == true) break;
                     if (attempt >= 12)
                         throw new InvalidOperationException($"Setup finished, but Martlet can't see Singing yet ({check.Text}). Check this PC in a minute.");
@@ -282,6 +308,7 @@ public partial class MainWindow
                 await Task.Delay(TimeSpan.FromSeconds(15), lifetime.Token);
                 var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
                 hostChecks[host.HostId] = check;
+                NoteSingingHost();
                 if (check.Routes?.Any(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) == true)
                 {
                     ActionText.Text = $"Singing is ready on {host.HostId}.";

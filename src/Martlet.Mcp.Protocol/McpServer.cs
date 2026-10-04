@@ -1210,10 +1210,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             try
             {
                 using var saved = JsonDocument.Parse(File.ReadAllBytes(path));
+                var host = saved.RootElement.TryGetProperty("host", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null;
                 choices = new
                 {
                     quality = saved.RootElement.TryGetProperty("quality", out var q) ? q.GetString() : null,
-                    voiceMatch = saved.RootElement.TryGetProperty("voiceMatch", out var m) ? m.GetString() : null
+                    voiceMatch = saved.RootElement.TryGetProperty("voiceMatch", out var m) ? m.GetString() : null,
+                    // The computer the desktop last saw running Singing; set up (SongClient.IsSetUp) while it is still paired.
+                    host,
+                    setUp = host is not null && PairedHostIds(directory).Contains(host)
                 };
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
@@ -1222,6 +1226,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
             }
         }
         return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices };
+    }
+
+    /// <summary>The host IDs in a data directory's hosts.json (nothing secret: pairing secrets stay in Credential Manager).</summary>
+    private static HashSet<string> PairedHostIds(string directory)
+    {
+        try
+        {
+            using var hosts = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "hosts.json")));
+            return hosts.RootElement.TryGetProperty("hosts", out var list) && list.ValueKind == JsonValueKind.Array
+                ? list.EnumerateArray().Select(h => h.TryGetProperty("pairing", out var pairing) && pairing.TryGetProperty("hostId", out var id)
+                    ? id.GetString() : null).OfType<string>().ToHashSet(StringComparer.Ordinal)
+                : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return []; }
     }
 
     /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) with <paramref name="arguments"/>
