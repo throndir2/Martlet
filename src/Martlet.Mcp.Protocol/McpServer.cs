@@ -100,12 +100,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
         }, ["id", "dx", "dy"]),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
-            "window is visible or hidden in the notification area, whether its menu is open (menuOpen) and whether Martlet still " +
-            "runs. \"open\" and \"menu\" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu " +
-            "at the mouse pointer; ui_snapshot then lists the Tray* items). \"close\" presses the main window's close button, which " +
-            "hides Martlet in the notification area by default or exits it, so it requires --allow-ui-effects.", new
+            "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
+            "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
+            "what Explorer sends for a left click (show Martlet) and a right click (its menu, which opens beside the click; " +
+            "ui_snapshot then lists the Tray* items), at the mouse pointer or at optional x, y (physical screen pixels, as Explorer " +
+            "reports them). \"close\" presses the main window's close button, which hides Martlet in the notification area by " +
+            "default or exits it, so it requires --allow-ui-effects.", new
         {
-            action = new { type = "string", @enum = DesktopAutomation.TrayActions }
+            action = new { type = "string", @enum = DesktopAutomation.TrayActions },
+            x = new { type = "integer", minimum = short.MinValue, maximum = short.MaxValue },
+            y = new { type = "integer", minimum = short.MinValue, maximum = short.MaxValue }
         }),
         Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices (recognition is on " +
             "unless turned off), whether a Martlet folder (optional absolute martletDirectory, default the installed release's Desktop " +
@@ -529,7 +533,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
-                "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
+                "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),

@@ -1978,12 +1978,20 @@ notification area by default, and Martlet started with `--tray` (Start with
 Windows) shows no window, so `ui_connect` also attaches when only the icon's
 window exists (it returns `inTray`). `ui_tray` drives the icon:
 `{"name":"ui_tray"}` (or `"action":"status"`) returns `running`, `trayIcon`
-(the icon is in the notification area), `mainWindowVisible`, `inTray` and
-`menuOpen` (the icon's menu is open);
+(the icon is in the notification area), `mainWindowVisible`, `inTray`,
+`menuOpen` (the icon's menu is open) and `menuBounds` (the open menu's
+`[x, y, width, height]` in physical screen pixels, null when closed);
 `"action":"open"` and `"action":"menu"` post the icon what Explorer
-sends for a left click (show Martlet) and a right click (its menu at the mouse
-pointer), and let Martlet take the foreground as Explorer does when the MCP
-server may itself, so they need no flag; `"action":"close"` presses the main window's
+sends for a left click (show Martlet) and a right click (its menu), at the
+mouse pointer or at optional `x`, `y`, in physical screen pixels as Explorer
+reports them whatever Martlet's display scale, and let Martlet take the
+foreground as Explorer does when the MCP server may itself, so they need no
+flag. The menu opens beside that point (its corner on it, flipped to stay on
+the screen) even when Martlet's display scale differs from the monitor's (the
+scale changed after Martlet started, or a monitor with another scale): to
+check that here, launch the desktop with `__COMPAT_LAYER=DPIUNAWARE` set on a
+display scaled above 100% and compare `menuBounds` with `x`, `y`.
+`"action":"close"` presses the main window's
 close button, which hides Martlet or (with *Keep running when closed* off) exits
 it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
 `TrayMenu` and its items: `TrayStatus` (status text: *Martlet is running*,

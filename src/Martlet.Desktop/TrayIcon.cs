@@ -119,10 +119,8 @@ internal sealed class TrayIcon : IDisposable
                     break;
                 case WM_CONTEXTMENU:
                     handled = true;
-                    // Version 4 passes where to open the menu, in screen pixels.
-                    var x = (short)(wParam.ToInt64() & 0xFFFF);
-                    var y = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
-                    var point = new Point(x, y);
+                    var at = MenuPoint(wParam);
+                    var point = new Point(at.X, at.Y);
                     if (source.CompositionTarget is { } target) point = target.TransformFromDevice.Transform(point);
                     MenuRequested?.Invoke(point);
                     break;
@@ -134,6 +132,37 @@ internal sealed class TrayIcon : IDisposable
             Add();
         }
         return 0;
+    }
+
+    /// <summary>Where to open the icon's menu, in this process's screen coordinates. Version 4 passes the pointer (or, from the
+    /// keyboard, the icon's corner) in physical pixels, as Explorer sees them; Windows doesn't scale them for Martlet, which is
+    /// system DPI aware and works in scaled pixels whenever a display's scale differs from Martlet's (the display scale changed
+    /// after Martlet started, or a monitor with another scale). Taken as they were, the menu opened far from the icon or pinned
+    /// to a corner of the screen. The point keeps its place on its monitor, whose rectangle is read in both kinds of pixels;
+    /// off every monitor, the pointer is used.</summary>
+    private NativePoint MenuPoint(nint wParam)
+    {
+        var physical = new NativePoint { X = (short)(wParam.ToInt64() & 0xFFFF), Y = (short)((wParam.ToInt64() >> 16) & 0xFFFF) };
+        var device = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        var own = device;
+        nint monitor = 0;
+        var previous = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+        if (previous != 0)
+        {
+            try
+            {
+                monitor = MonitorFromPoint(physical, MONITOR_DEFAULTTONULL);
+                if (monitor != 0 && !GetMonitorInfo(monitor, ref device)) monitor = 0;
+            }
+            finally { SetThreadDpiAwarenessContext(previous); }
+        }
+        if (monitor != 0 && GetMonitorInfo(monitor, ref own) && device.Monitor.Width > 0 && device.Monitor.Height > 0)
+            return new NativePoint
+            {
+                X = own.Monitor.Left + (int)Math.Round((physical.X - device.Monitor.Left) * (double)own.Monitor.Width / device.Monitor.Width),
+                Y = own.Monitor.Top + (int)Math.Round((physical.Y - device.Monitor.Top) * (double)own.Monitor.Height / device.Monitor.Height)
+            };
+        return GetCursorPos(out var pointer) ? pointer : physical;
     }
 
     /// <summary>The image in Martlet.ico closest to (and not smaller than, when there is one) the notification area's size.</summary>
@@ -221,4 +250,31 @@ internal sealed class TrayIcon : IDisposable
     private static extern bool SetProp(nint window, string name, nint value);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern nint RemoveProp(nint window, string name);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetForegroundWindow(nint window);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left, Top, Right, Bottom;
+        public readonly int Width => Right - Left;
+        public readonly int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor, Work;
+        public uint Flags;
+    }
+
+    private static readonly nint PerMonitorAwareV2 = -4;
+    private const uint MONITOR_DEFAULTTONULL = 0;
+
+    [DllImport("user32.dll")] private static extern nint SetThreadDpiAwarenessContext(nint context);
+    [DllImport("user32.dll")] private static extern nint MonitorFromPoint(NativePoint point, uint flags);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetCursorPos(out NativePoint point);
 }
