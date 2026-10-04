@@ -255,12 +255,11 @@ public static class SetupAdvisor
                     answers.CustomVoice ? "Cloning a voice needs a self-hosted GPU engine."
                         : goal == AdvisorGoal.Fastest ? "It streams its first audio in about 0.4 s, in a cloned voice that can laugh and sigh."
                         : "Natural speech without sending reply text anywhere.",
-                    AdvisorAvailability.Planned,
-                    answers.CustomVoice
-                        ? "Use an OpenAI voice until the engine runs."
-                        : "OpenAI voices work today in Setup / resume.",
-                    Local,
-                    answers.CustomVoice ? "Add voice recordings and transcripts in Companion > Voice > Voices." : null));
+                    AdvisorAvailability.Available, null, Local,
+                    (voiceMachine == pc
+                        ? $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.Default.Name} on this PC. It sets up in Docker Desktop."
+                        : $"Add {voiceMachine.Name} in Devices, then choose {Settings.SpeechEngines.Default.Name} for it in Companion > Voice > Voice engine.") +
+                    (answers.CustomVoice ? " Add voice recordings and transcripts in Companion > Voice > Voices." : "")));
             }
             else if (goal is AdvisorGoal.Fastest or AdvisorGoal.Private)
             {
@@ -270,7 +269,8 @@ public static class SetupAdvisor
                     goal == AdvisorGoal.Fastest
                         ? "Starts speaking almost instantly but sounds robotic. OpenAI voices sound better but need an internet connection."
                         : "Free and offline, but sounds robotic. An NVIDIA GPU with more free memory would allow a natural local voice.",
-                    AdvisorAvailability.Planned, "OpenAI voices work today.", "Stays on this PC."));
+                    AdvisorAvailability.Available, null, "Stays on this PC.",
+                    "In Companion > Voice > Voice engine, choose Windows voices on this PC."));
             }
             else
             {

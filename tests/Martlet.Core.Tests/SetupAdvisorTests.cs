@@ -31,6 +31,9 @@ public sealed class SetupAdvisorTests
         Assert.Contains("smarter but slower", Role(advice, "Thinking").Why, StringComparison.Ordinal);
         Assert.Equal("This PC (GPU)", Role(advice, "Voice").Where);
         Assert.Contains(Settings.SpeechEngines.Default.Name, Role(advice, "Voice").Choice, StringComparison.Ordinal);
+        // Chatterbox Turbo runs today: the plan says how to set it up, never "Planned".
+        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Voice").Availability);
+        Assert.Contains("Voice engine", Role(advice, "Voice").HowTo, StringComparison.Ordinal);
         Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Speech-to-text").Availability);
     }

@@ -7,6 +7,8 @@ public sealed class LatencyFirstDefaultsTests
     [Fact]
     public void TheRecommendedLocalModelIsTheFastestOnEveryCardAndTheLargestThatFitsIsOfferedBeside()
     {
+        // MainWindow's statics include pack:// resources: register the scheme as a WPF app would before using them.
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
         foreach (var vram in new double?[] { null, 8, 11.6, 16, 24 })
             Assert.Equal("gemma4:e2b", MainWindow.RecommendedLocalModel(vram).Id);
         Assert.Equal("gemma4:e2b", MainWindow.LargestLocalModel(8).Id);
