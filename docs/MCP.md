@@ -1039,10 +1039,14 @@ recording (Companion › Listening › **Let Thinking hear my voice**; optional
 absolute `dataDirectory`, default the current user's, and optional
 `modelId` to classify instead of the saved Thinking model): `model`,
 `source` (`argument`, `settings` or `default`), `settings` (`none`,
-`loaded` or `unreadable`), `routeType`, `modelHearing` (the name-based
-`Supported`, `Unsupported` or `Unknown`), `routeHearing` (the saved route's:
-only Chat Completions endpoints other than Ollama take audio; null with
-`modelId`) and `hearVoice` (the saved choice, off by default). Its `fixture`
+`loaded` or `unreadable`), `routeType`, `localOllama`, `modelHearing` (the
+name-based `Supported`, `Unsupported` or `Unknown`), `routeHearing` (the saved
+route's, the production decision `HearingModelCatalog.ForRoute`: only Chat
+Completions endpoints take audio, Ollama on this PC included, then what
+`model-abilities.json` says about the model, then its name; null with
+`modelId`), `savedAbility` (what Martlet found out about the saved model:
+`Hears`, `Sees`, `Source` and `CheckedAt`, or null) and `hearVoice` (the saved
+choice, off by default). Its `fixture`
 rehearses the production Chat Completions adapter against a canned endpoint
 on 127.0.0.1 (NOT AI) with a 1.5 s synthesized speech-like clip (never
 microphone audio, nothing played): `withRecording` (outcome, the user
@@ -1057,6 +1061,43 @@ change; the `TalkHearVoice` check box saves the choice, so it needs
 `--allow-ui-effects`. A real reply with a recording needs a microphone and a
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
+
+`model_ability_check` shows what Thinking models were found to hear (recorded
+audio) and see (pictures), and rehearses how Martlet finds out (optional
+absolute `dataDirectory`, default the current user's). `saved` lists
+`model-abilities.json` (`file` `none` or `loaded`, `count`, and per model
+`Origin`, `ModelId`, `Hears`, `Sees`, `Source` and `CheckedAt`); the same list
+travels to the owner's other computers as the `model-abilities` shared setting
+(`settings_sync_status` shows its value). `fixture` runs the production
+detection against servers on 127.0.0.1 shaped like OpenRouter's model list
+(`architecture.input_modalities`: `openRouterOmni` hears and sees,
+`openRouterSight` only sees, `openRouterUnlisted` unknown), llama.cpp
+(`/props` `modalities`: `llamaCpp` hears, doesn't see) and Ollama
+(`/api/show` `capabilities`: `ollamaGemma4E2b` hears and sees, `ollamaQwen3`
+neither), each with `Hears`, `Sees` and `AbilitySource`. Then Test hearing
+(`ModelHearingTest`) against a fixture Chat Completions endpoint that answers
+the test word only when the request carries the recording (it is told the
+word: NOT AI): `testHears` true, `testDropsAudio` (answers something else) and
+`testRefusesAudio` (error 400 about audio) false, `testWrongKey` (401) null;
+`testRequest` checks the request: `text` and `input_audio` parts, a valid WAV,
+not streamed, Thinking steps off and the word only in the recording
+(`wordInRequestText` false). `decisions` are the hearing and vision decisions
+replies use (Gemma 4 E2B in Ollama on this PC hears by name, Gemma 4 12B only
+once Ollama says so, OpenRouter's grok-4.3 doesn't when its list says so, a
+host's Ollama and OpenAI's Responses route never, a retired model never), and
+`shared` checks the shared value's round trip (`roundTrip`, `keptBoth`: a list
+that says only what a model sees doesn't erase a test's answer,
+`newerRefused`). Each has `ok`. With `baseUrl` (an `http://` server on this PC
+only, for example `http://127.0.0.1:11434/v1` or a llama.cpp server) and
+`modelId`, `real.metadata` asks that real server what the model takes, and
+`test: true` also sends it the real Test hearing request (`real.hearingTest`:
+the `word`, `Hears`, `Reply` and `Milliseconds`), a word said by an English
+Windows voice; nothing leaves this PC, no credentials are read and nothing is
+saved. On Companion › Listening, `TalkHearVoiceTestStatus` reads what Test
+hearing does (and whether it stays on this PC) or the last result (the model's
+one-word answer and how long it took). The `TalkHearVoiceTest` button sends the
+Thinking model a test recording (a provider request; a cloud model asks first,
+with `ConfirmationYes`/`ConfirmationNo`), so it needs `--allow-ui-effects`.
 
 `spoken_reply_check` rehearses a spoken reply whose voice fails partway, end to
 end with the production conversation runtime (`ConversationRuntime`, the Chat
@@ -2441,7 +2482,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

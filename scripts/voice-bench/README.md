@@ -41,7 +41,14 @@ vb models    # every engine and model the bench knows
 | `prompts-sapi` | `vb clips synth` | The 16 companion prompts in `data/prompts.json`, said by Windows' voices |
 | `prompts-voice` | `vb clips synth --engine voice` | The same prompts said by a Martlet voice worker (Chatterbox Turbo) in the starter voices |
 | `prompts-mine` | `vb clips record` | You saying each prompt into the default microphone (the most realistic; used first when present) |
+| `ami-headset` | `vb clips fetch ami-headset` | 32 real spontaneous meeting turns (2-6.5 s, 4+ words, about a dozen native and non-native English speakers) from the AMI Meeting Corpus test split, each speaker's headset microphone. CC BY 4.0, via [edinburghcstr/ami](https://huggingface.co/datasets/edinburghcstr/ami); only the chosen clips download |
+| `ami-room` | `vb clips fetch ami-room` | The same kind of turns from AMI's single distant microphone in the meeting room (reverberant, overlapping talk) |
+| `prompts-voice-deskmic` | `vb clips degrade prompts-voice --name prompts-voice-deskmic` | The companion prompts as if said into a desk microphone across a room: synthetic reverb (RT60 0.25-0.6 s), fan, hum and room noise at 10-20 dB SNR, a 120 Hz-7 kHz microphone band, levels from -14 to +2 dB and 0.3-1 s of room tone around the words (deterministic per `--seed`) |
 | any | `vb clips import FOLDER --name SET` | Your own WAV/FLAC/MP3 files, each with a same-name `.txt` reference |
+
+Downloads and generated audio are staged in the bench folder's `sources`
+and imported from there; each set keeps a `SOURCE.txt` naming its origin and
+licence. Nothing is written to the repository.
 
 ## Benchmarks
 

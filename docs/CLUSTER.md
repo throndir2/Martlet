@@ -182,6 +182,7 @@ NVIDIA Build and its old key.
 | `voice-id` | Voice ID on or off and the owner's voiceprint (numbers only, never audio; Companion › Listening) | |
 | `smart-home` | What Martlet may do with Home Assistant: use it when asked, locks, doors and alarms, flexible requests | |
 | `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
+| `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 
 Conversations are not shared.

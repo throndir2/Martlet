@@ -292,9 +292,11 @@ whisper.cpp role from a host whose desktop uses Parakeet (about 2 GB back),
 and choose E2B (3.3 GB) over E4B.
 
 **For Martlet.** Ollama 0.35 takes `input_audio` for Gemma 4 E2B, E4B and 12B
-(a 12B request transcribed and answered a test clip). Martlet still treats
-Ollama on this PC as unable to hear (`LiveConversationConfiguration.Hearing`),
-so enabling it is the first step toward the omni flow. The Qwen, Voxtral,
+(a 12B request transcribed and answered a test clip). Martlet now lets Ollama
+on this PC hear for models it says hear, and finds out what any Thinking model
+hears and sees from its server's metadata or a test word
+([Thinking models that hear and see](CONVERSATION.md#thinking-models-that-hear-and-see)),
+the first step toward the omni flow. The Qwen, Voxtral,
 Phi-4 and MiniCPM-o models are in the bench only: Martlet's local selector
 runs Ollama, which serves none of them, and none beat Gemma 4 E2B here.
 
