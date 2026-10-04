@@ -496,13 +496,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "fillers like mm, hmm, uh-huh, laughter, sound tags, punctuation, a lone word, more words than the voice could hold, and " +
             "phrases speech-to-text makes up from noise such as 'Thank you.' when the evidence is weak) and barge-in policy " +
             "(BargeInPolicy: only real words stop a reply; a stop word or Martlet's name at once, a backchannel never; a song only " +
-            "when asked to stop) on samples (text with optional voicedMs, meanProbability, minimumProbability, noSpeechProbability, " +
+            "when asked to stop) on samples (text with optional voicedMs, speechMs, meanProbability, minimumProbability, noSpeechProbability, " +
             "averageLogProbability, afterQuestion, persona, playback reply|song, expectKeep, expectInterrupt; default: a fixed set " +
             "with the outcome Normal must give, including evidence measured from whisper.cpp and Parakeet on this PC). " +
             "With audio (default true) and Parakeet downloaded on this PC (speechDirectory, default the current user's; the sherpa " +
-            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, yes, " +
-            "yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production voice-activity detector, " +
-            "Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
+            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, a quiet " +
+            "phrase over a fan's hum, yes, yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production " +
+            "voice-activity detector, Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
             "decision with its reason, the filter's cost per call, the saved Word check (sensitivity overrides it: relaxed, normal, " +
             "sensitive) and ok. Nothing is recorded or played; nothing leaves this PC.", new
         {
@@ -522,6 +522,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         name = new { type = "string", maxLength = 64 },
                         text = new { type = "string", maxLength = 1000 },
                         voicedMs = new { type = "number", minimum = 0 },
+                        speechMs = new { type = "number", minimum = 0 },
                         meanProbability = new { type = "number", minimum = 0, maximum = 1 },
                         minimumProbability = new { type = "number", minimum = 0, maximum = 1 },
                         noSpeechProbability = new { type = "number", minimum = 0, maximum = 1 },

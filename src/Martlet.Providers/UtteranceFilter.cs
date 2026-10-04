@@ -45,11 +45,16 @@ public sealed record UtteranceDecision(bool Keep, UtteranceKind Kind, string Rea
 }
 
 /// <summary>What is known about an utterance besides its transcript: how much of it was a voice (loud 20 ms frames the speakers
-/// don't explain), what the speech-to-text engine said about it, whether Martlet had just asked something, and the names that
-/// address Martlet.</summary>
+/// don't explain), how long that voice went on, what the speech-to-text engine said about it, whether Martlet had just asked
+/// something, and the names that address Martlet.</summary>
 public sealed record UtteranceContext
 {
+    /// <summary>The loudest part of the voice: 20 ms frames as loud as speech must be to start, which the speakers don't explain.
+    /// Fluent speech is only partly this loud (its consonants and short words are quieter).</summary>
     public TimeSpan? Voiced { get; init; }
+    /// <summary>How long the voice went on: from where it began to where it ended, short pauses included, leaving out frames
+    /// the speakers explain. What bounds how many words the utterance can hold (<see cref="Voiced"/> when unknown).</summary>
+    public TimeSpan? Speech { get; init; }
     public TranscriptionEvidence? Evidence { get; init; }
     /// <summary>Martlet's last reply asked something a moment ago, so a short answer ("yes", "mm-hmm") is expected.</summary>
     public bool AfterQuestion { get; init; }
@@ -70,12 +75,12 @@ public static class UtteranceFilter
     /// <summary>The limits one sensitivity applies. A short utterance whose mean token probability is below
     /// <paramref name="MinimumProbability"/> is dropped as unsure; for whisper, a no-speech probability above
     /// <paramref name="MaximumNoSpeech"/> with an average log probability below <paramref name="MinimumLogProbability"/> means
-    /// nothing was said; an utterance holds at most <paramref name="WordsPerVoicedSecond"/> words per second of voice plus
-    /// <paramref name="SpareWords"/>; a lone word (not a short answer) needs <paramref name="LoneWordVoice"/> of voice; and a
-    /// phrase speech-to-text makes up from noise needs <paramref name="MadeUpPhraseVoice"/> of voice when the engine says
-    /// nothing about it.</summary>
+    /// nothing was said; an utterance holds at most <paramref name="WordsPerSecond"/> words per second of speech
+    /// (<see cref="UtteranceContext.Speech"/>) plus <paramref name="SpareWords"/>; a lone word (not a short answer) needs
+    /// <paramref name="LoneWordVoice"/> of voice; and a phrase speech-to-text makes up from noise needs
+    /// <paramref name="MadeUpPhraseVoice"/> of voice when the engine says nothing about it.</summary>
     public sealed record Limits(double MinimumProbability, double MaximumNoSpeech, double MinimumLogProbability,
-        double WordsPerVoicedSecond, int SpareWords, TimeSpan LoneWordVoice, TimeSpan MadeUpPhraseVoice);
+        double WordsPerSecond, int SpareWords, TimeSpan LoneWordVoice, TimeSpan MadeUpPhraseVoice);
 
     public static Limits For(ListeningSensitivity sensitivity) => sensitivity switch
     {
@@ -239,8 +244,11 @@ public static class UtteranceFilter
         // whisper repeating itself ("Thank you. Thank you. Thank you. ...") is a decoding loop, not speech.
         if (spoken.Length >= 40 && CompressionRatio(spoken) > 2.4)
             return new(false, UtteranceKind.Hallucination, "it repeats itself like a speech-to-text glitch", 0);
-        if (context.Voiced is { } voiced && count > voiced.TotalSeconds * limits.WordsPerVoicedSecond + limits.SpareWords)
-            return new(false, UtteranceKind.Unlikely, $"{count} words from {voiced.TotalMilliseconds:0} ms of voice", 0);
+        // Measured against how long the voice went on, not only its loudest frames: "I'm gonna make it public." is about a second
+        // of speech but may be under half a second of loud voice.
+        var bySpeech = context.Speech is { } spoke && !(context.Voiced > spoke);
+        if ((bySpeech ? context.Speech : context.Voiced) is { } span && count > span.TotalSeconds * limits.WordsPerSecond + limits.SpareWords)
+            return new(false, UtteranceKind.Unlikely, $"{count} words from {span.TotalMilliseconds:0} ms of {(bySpeech ? "speech" : "voice")}", 0);
         if (evidence is { NoSpeechProbability: { } noSpeech, AverageLogProbability: { } logProbability } &&
             noSpeech > limits.MaximumNoSpeech && logProbability < limits.MinimumLogProbability)
             return new(false, UtteranceKind.Unsure, "speech-to-text heard no speech", 0);
