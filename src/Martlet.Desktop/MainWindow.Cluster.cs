@@ -167,7 +167,7 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Runs a sync once the current role change has finished (it holds <see cref="assigningRole"/>).</summary>
+    /// <summary>Runs a sync once the current role change has finished (it holds its <see cref="ChangeTurns"/> turn).</summary>
     private void QueueClusterSync()
     {
         if (clusterEnabled && !closing) Dispatcher.InvokeAsync(() => SyncClusterAsync().Forget(), DispatcherPriority.ContextIdle);
@@ -214,7 +214,8 @@ public partial class MainWindow
                 }
             clusterPlan = host ? plan : Failover(plan, probes, now, events);
             if (clusterPlan.Digest() != before) SaveClusterPlan();
-            if (!host && !assigningRole && !setupOperations.IsRunning && homeSettings?.Setup is not null) followed = await FollowClusterAsync(events);
+            if (!host && !setupOperations.IsRunning && homeSettings?.Setup is not null && changes.TryTake() is { } turn)
+                using (turn) followed = await FollowClusterAsync(events);
             await PushClusterAsync(probes);
         }
         catch (OperationCanceledException) { }
@@ -289,52 +290,47 @@ public partial class MainWindow
         return plan;
     }
 
-    /// <summary>Makes this PC do what the shared plan says for each job. A job it cannot follow keeps its current route
-    /// and shows why on its tile; the plan itself is not changed for that.</summary>
+    /// <summary>Makes this PC do what the shared plan says for each job (the caller holds the <see cref="ChangeTurns"/> turn). A
+    /// job it cannot follow keeps its current route and shows why on its tile; the plan itself is not changed for that.</summary>
     private async Task<bool> FollowClusterAsync(List<string> events)
     {
         var changed = false;
-        assigningRole = true;
-        try
+        foreach (var job in ClusterJobs.All)
         {
-            foreach (var job in ClusterJobs.All)
+            if (closing || clusterPlan.For(job) is not { } desired) continue;
+            var before = ClusterSync.Local(job, homeSettings, homeAvatar);
+            if (ClusterSync.Matches(desired, before) && !SpeakingEngineMoved(job, desired))
             {
-                if (closing || clusterPlan.For(job) is not { } desired) continue;
-                var before = ClusterSync.Local(job, homeSettings, homeAvatar);
-                if (ClusterSync.Matches(desired, before) && !SpeakingEngineMoved(job, desired))
-                {
-                    clusterFollow.Remove(job);
-                    continue;
-                }
-                string? problem;
-                try
-                {
-                    problem = job == ClusterJobs.LipSync ? await FollowLipSyncAsync(desired)
-                        : await FollowJobAsync(HostJob.All.First(j => j.Job == job), desired);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (F5Exception error) { problem = F5Voices.Describe(error); }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
-                    ContractException or JsonException or ArgumentException or Audio2FaceHostException)
-                {
-                    problem = error.Message;
-                }
-                var after = ClusterSync.Local(job, homeSettings, homeAvatar);
-                clusterObserved[job] = after;
-                if (problem is not null)
-                {
-                    clusterFollow[job] = problem;
-                    continue;
-                }
                 clusterFollow.Remove(job);
-                changed = true;
-                var title = ClusterSync.Title(job);
-                if (!events.Any(e => e.StartsWith(title, StringComparison.Ordinal)))
-                    events.Add($"{title} now uses {ClusterSync.Who(job, after.HostId, after.Off)}" +
-                        (desired.UpdatedBy == ClusterDevice ? "." : $", as chosen on {desired.UpdatedBy}."));
+                continue;
             }
+            string? problem;
+            try
+            {
+                problem = job == ClusterJobs.LipSync ? await FollowLipSyncAsync(desired)
+                    : await FollowJobAsync(HostJob.All.First(j => j.Job == job), desired);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (F5Exception error) { problem = F5Voices.Describe(error); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
+                ContractException or JsonException or ArgumentException or Audio2FaceHostException)
+            {
+                problem = error.Message;
+            }
+            var after = ClusterSync.Local(job, homeSettings, homeAvatar);
+            clusterObserved[job] = after;
+            if (problem is not null)
+            {
+                clusterFollow[job] = problem;
+                continue;
+            }
+            clusterFollow.Remove(job);
+            changed = true;
+            var title = ClusterSync.Title(job);
+            if (!events.Any(e => e.StartsWith(title, StringComparison.Ordinal)))
+                events.Add($"{title} now uses {ClusterSync.Who(job, after.HostId, after.Off)}" +
+                    (desired.UpdatedBy == ClusterDevice ? "." : $", as chosen on {desired.UpdatedBy}."));
         }
-        finally { assigningRole = false; }
         if (changed) openConversation?.ReloadWhenIdle("Device choices changed.");
         return changed;
     }

@@ -118,18 +118,14 @@ public partial class MainWindow
             ActionText.Text = $"Tick the box to confirm {provider.Name} as the fallback for Thinking, then press Use as fallback.";
             return;
         }
-        if (savingTab || assigningRole || setupOperations.IsRunning)
-        {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
-        }
-        savingTab = true;
+        ChangeTurns.Turn? turn = null;
         var token = lifetime.Token;
         var vault = new WindowsCredentialStore();
         SecretLease? key = null;
         CredentialBinding? written = null;
         try
         {
+            turn = await ChangeTurnAsync();
             using (var entered = keyBox.SecurePassword)
                 if (entered.Length > 0 && provider is not null) key = TakeKey(keyBox);
             var loaded = await setupService.LoadAsync(token);
@@ -182,7 +178,7 @@ public partial class MainWindow
         {
             key?.Dispose();
             if (written is { } orphan) vault.Delete(orphan);
-            savingTab = false;
+            turn?.Dispose();
             if (!closing)
             {
                 tabEdited = false;

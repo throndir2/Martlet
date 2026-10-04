@@ -297,9 +297,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
-        // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
-        // the next one, or "All set", and when Martlet last checked).
-        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
+        // steps' heading ("This host is ready" or "Get this host running"), the line under it (how many steps are left and
+        // the next one, or "All set", and when Martlet last checked) and the setup runs working now, side by side, each with
+        // its status line ("Start Docker Desktop: Waiting for Docker Desktop to start..."; run titles and status lines only,
+        // never output or pairing codes).
+        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary", "HostRunsNow",
         // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
         // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
         "ConfirmationCopy", "HostInputCopy", "ProblemHeading",
@@ -544,11 +546,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
     }
 
-    internal async Task<object> ClickAsync(string id)
+    internal async Task<object> ClickAsync(string id, string? window = null)
     {
         if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
-        var element = Find(id);
+        var element = Find(id, window);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
         // Navigation items select a page and sections expand or collapse; neither starts work.
         if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
@@ -644,17 +646,25 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { moved = id, from = Box(before), to = Box(element.Current.BoundingRectangle) };
     }
 
-    private AutomationElement Find(string id)
+    /// <summary>The control with automation ID <paramref name="id"/>, in the window titled <paramref name="window"/> when given
+    /// (several run windows can be open side by side, each with the same controls).</summary>
+    private AutomationElement Find(string id, string? window = null)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A control automation ID is required.");
-        var matches = Controls(ConnectedWindows()).Select(control => control.Element)
+        var windows = ConnectedWindows();
+        if (window is not null)
+        {
+            windows = windows.Where(candidate => string.Equals(candidate.Current.Name, window, StringComparison.Ordinal)).ToArray();
+            if (windows.Length == 0) throw new ArgumentException($"Window '{window}' is not open. Refresh the UI snapshot.");
+        }
+        var matches = Controls(windows).Select(control => control.Element)
             .Where(element => element.Current.AutomationId == id)
             .Take(2).ToArray();
         return matches.Length switch
         {
             1 => matches[0],
             0 => throw new ArgumentException($"Control '{id}' was not found. Refresh the UI snapshot."),
-            _ => throw new ArgumentException($"Control '{id}' is ambiguous across open windows.")
+            _ => throw new ArgumentException($"Control '{id}' is ambiguous across open windows; name the window.")
         };
     }
 

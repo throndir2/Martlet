@@ -11,7 +11,9 @@ namespace Martlet.Desktop;
 public partial class HostRunWindow : ThemedWindow
 {
     private const int MaximumCharacters = 400_000;
+    private static readonly List<HostRunWindow> runs = [];
     private readonly CancellationTokenSource cancel = new();
+    private readonly TaskCompletionSource<string?> finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool running;
 
     private HostRunWindow(string title)
@@ -31,6 +33,19 @@ public partial class HostRunWindow : ThemedWindow
 
     /// <summary>The run is still working (exiting Martlet would interrupt it).</summary>
     internal bool IsRunning => running;
+
+    /// <summary>The runs still working, oldest first (UI thread). Several run side by side: setup steps they share wait for
+    /// each other (<see cref="SharedSteps"/>) and changes to one host take turns in its engine lock.</summary>
+    internal static IReadOnlyList<HostRunWindow> Running => runs.ToArray();
+
+    /// <summary>Whether a run titled <paramref name="title"/> is still working.</summary>
+    internal static bool IsRunningTitled(string title) => runs.Any(run => run.title == title);
+
+    /// <summary>A run started or ended, or a running run's status changed (UI thread).</summary>
+    internal static event Action? RunsChanged;
+
+    /// <summary>The status line as it reads now.</summary>
+    internal string CurrentStatus => StatusText.Text;
 
     /// <summary>Martlet is exiting: the run stops (its window closes with Martlet).</summary>
     internal void Interrupt()
@@ -52,25 +67,43 @@ public partial class HostRunWindow : ThemedWindow
         if (StatusText.Text == text) return;
         StatusText.Text = text;
         HostRunLog.Write(title, "status: " + text);
+        if (running) RunsChanged?.Invoke();
     }
 
     /// <summary>Opens a run window over <paramref name="owner"/> and runs <paramref name="job"/> (on the UI thread; await
-    /// the runner). Returns the job's summary, or null when it failed or was canceled (the reason is shown).</summary>
-    internal static async Task<string?> RunAsync(Window owner, string title, Func<HostRunWindow, Task<string>> job)
+    /// the runner). Returns the job's summary, or null when it failed or was canceled (the reason is shown). With
+    /// <paramref name="join"/>, a run with the same title that is still working is brought forward and waited for instead
+    /// of starting the same work a second time (a second click on the same step); its summary is returned.</summary>
+    internal static async Task<string?> RunAsync(Window owner, string title, Func<HostRunWindow, Task<string>> job, bool join = false)
     {
+        if (join && runs.FirstOrDefault(run => run.title == title) is { } same)
+        {
+            ErrorLog.Info($"Host run already working, waiting for it: {title}");
+            same.BringForward();
+            return await same.finished.Task;
+        }
         var window = new HostRunWindow(title) { Owner = owner };
         window.Show();
         return await window.RunAsync(job);
     }
 
+    private void BringForward()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
     private async Task<string?> RunAsync(Func<HostRunWindow, Task<string>> job)
     {
         running = true;
+        runs.Add(this);
+        RunsChanged?.Invoke();
         ErrorLog.Info($"Host run started: {title} (output: {HostRunLog.Path ?? "unavailable"})");
         HostRunLog.Write(title, "--- started");
+        string? summary = null;
         try
         {
-            var summary = await job(this);
+            summary = await job(this);
             Status(summary);
             Append("Finished. " + summary);
             ErrorLog.Info($"Host run finished: {title}: {summary}");
@@ -100,7 +133,10 @@ public partial class HostRunWindow : ThemedWindow
         finally
         {
             running = false;
+            runs.Remove(this);
             CancelButton.Content = "_Close";
+            finished.TrySetResult(summary);
+            RunsChanged?.Invoke();
         }
     }
 
@@ -147,6 +183,9 @@ public partial class HostRunWindow : ThemedWindow
 /// sent over its paired gateway, <see cref="HostAgentRun"/>). Never in a console window.</summary>
 internal static class HostActions
 {
+    /// <summary>The run that sets up this PC's own host service (from the host dashboard, the Devices map or Add a computer).</summary>
+    internal const string ThisPcSetupTitle = "Set up this PC as a host";
+
     /// <summary>Runs <paramref name="action"/>. <paramref name="answers"/> are role answers the owner already chose in Martlet
     /// (then no role dialog is shown); otherwise adding a role asks for its secrets and choices, preselecting
     /// <paramref name="recommended"/>. <paramref name="pairing"/> is the host's pairing, which the Martlet-on-that-computer
@@ -218,7 +257,7 @@ internal static class HostActions
             return role is null ? $"Finished on {ssh}."
                 : add ? $"{role} is ready on {ssh}."
                 : $"{role} was removed from {ssh}.";
-        });
+        }, join: true);
     }
 
     private static Task<string?> RunOnThisPcAsync(Window owner, HostSetupTarget target, HostAction action,
@@ -229,7 +268,7 @@ internal static class HostActions
         {
             HostVerb.Add => $"Add {role} to this PC",
             HostVerb.Remove => $"Remove {role} from this PC",
-            HostVerb.Setup => "Set up this PC as a host",
+            HostVerb.Setup => ThisPcSetupTitle,
             HostVerb.Update => "Update this PC's host",
             HostVerb.Status => "Check this PC's host",
             _ => "Work on this PC's host"
@@ -243,7 +282,7 @@ internal static class HostActions
                     "Remove role"))
                 throw new OperationCanceledException();
             await HostLocal.EnsureDockerAsync(run, action.Verb == HostVerb.Setup ? ContinueSetupKind.HostService : ContinueSetupKind.Docker);
-            await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
+            await HostLocal.EnsureImageAsync(target, run);
             if (role is not null && add && input is null)
             {
                 run.Status($"Checking what {role} needs...");
@@ -271,7 +310,7 @@ internal static class HostActions
                 HostVerb.Update => "This PC's host is up to date.",
                 _ => "Finished on this PC."
             };
-        });
+        }, join: true);
     }
 
     /// <summary>Lets another desktop pair with this PC's host service: shows this PC's address and a short one-use code
@@ -280,7 +319,7 @@ internal static class HostActions
         HostRunWindow.RunAsync(owner, "Pair your main PC", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
-            await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
+            await HostLocal.EnsureImageAsync(target, run);
             run.Status("Getting a pairing code...");
             var shown = false;
             int exit;
@@ -297,5 +336,5 @@ internal static class HostActions
             if (!shown) throw new InvalidOperationException($"Couldn't get a pairing code (exit {exit}). Check the output for details.");
             if (exit != 0) throw new InvalidOperationException($"Pairing didn't finish (exit {exit}). Show a new code and enter it within five minutes.");
             return "Your main PC is paired with this host.";
-        });
+        }, join: true);
 }

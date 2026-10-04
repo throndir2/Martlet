@@ -86,6 +86,9 @@ public partial class MainWindow
     private const string F5Destination = "f5-host";
     private readonly Dictionary<SetupRole, string> pendingJobHosts = [];
     private readonly Dictionary<SetupRole, F5ReferenceSnapshot> pendingJobVoices = [];
+    /// <summary>Voice engines being stopped on a host right now (Speaking left them), by host and role kind. Speaking can't
+    /// move to one until its stop finished: it then comes back through an install.</summary>
+    private readonly Dictionary<(string HostId, string Kind), Task> releasingEngines = [];
 
     private Task AssignThinkingAsync(string key) => AssignJobAsync(HostJob.Thinking, key);
 
@@ -149,16 +152,25 @@ public partial class MainWindow
     private async Task AssignJobAsync(HostJob job, string key)
     {
         if (store is null || setupService is null || closing) return;
-        if (assigningRole) { ActionText.Text = "Another change is still finishing."; RenderMap(); return; }
-        assigningRole = true;
+        ChangeTurns.Turn? turn = null;
         try
         {
+            turn = await ChangeTurnAsync();
             if (key == "saved")
             {
-                await JobBackAsync(job);
+                await JobBackAsync(job, turn);
                 return;
             }
             var host = FindHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
+            // A voice engine still being stopped there (Speaking just left it) can't take Speaking yet: wait for the stop
+            // without holding up other changes, then hand Speaking over through an install as for any engine it doesn't run.
+            while (job.Role == SetupRole.Tts && releasingEngines.TryGetValue((host.HostId, job.HostRoleKind), out var stopping))
+            {
+                turn.Dispose();
+                ActionText.Text = $"Waiting for {job.Engine} to finish stopping on {host.HostId}...";
+                await stopping;
+                turn = await ChangeTurnAsync();
+            }
             ActionText.Text = $"Checking {host.HostId}...";
             var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
             hostChecks[host.HostId] = check;
@@ -239,6 +251,8 @@ public partial class MainWindow
             pendingJobHosts.Remove(job.Role);
             await SaveJobHostAsync(job, host, route, voice);
             RecordClusterJob(job.Job, new(host.HostId, false));
+            // Saved. Stopping the voice engines Speaking left are host runs: other changes go ahead meanwhile.
+            turn.Dispose();
             var moved = $"{job.Title} now uses {host.HostId}{withVoice}.{OpenConversationFollows}";
             ActionText.Text = moved;
             if (others.Count > 0) ActionText.Text = moved + await ReleaseVoiceEnginesAsync(host, others);
@@ -253,7 +267,7 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
+            turn?.Dispose();
             if (!closing)
             {
                 RenderHome();
@@ -296,7 +310,9 @@ public partial class MainWindow
         FollowSavedSetup(saved.Save.Revision);
     }
 
-    private async Task JobBackAsync(HostJob job)
+    /// <summary>Puts the job back on its Setup choice after one confirmation. <paramref name="turn"/> is the caller's
+    /// <see cref="ChangeTurns"/> turn, let go once saved: stopping the voice engine Speaking left is a host run.</summary>
+    private async Task JobBackAsync(HostJob job, ChangeTurns.Turn turn)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
         if (loaded.Settings is not { Setup: not null } settings) throw new InvalidOperationException("Complete Setup first.");
@@ -322,6 +338,7 @@ public partial class MainWindow
                 "Use the Setup choice"))
             return;
         await HandBackAsync(job, saved);
+        turn.Dispose();
         if (leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
     }
 
@@ -361,14 +378,17 @@ public partial class MainWindow
             if (check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId) is not { } route) continue;
             hostChecks[host.HostId] = check;
             if (pendingJobHosts.GetValueOrDefault(job.Role) != host.HostId || closing) return;
-            if (assigningRole) continue;
-            assigningRole = true;
+            ChangeTurns.Turn? turn = null;
             try
             {
+                // The install is done; the switch waits only for a change that is saving right now.
+                turn = await changes.TakeAsync(lifetime.Token);
+                if (pendingJobHosts.GetValueOrDefault(job.Role) != host.HostId || closing) return;
                 await SaveJobHostAsync(job, host, route, pendingJobVoices.GetValueOrDefault(job.Role));
                 RecordClusterJob(job.Job, new(host.HostId, false));
                 pendingJobHosts.Remove(job.Role);
                 pendingJobVoices.Remove(job.Role);
+                turn.Dispose();
                 ActionText.Text = $"{host.HostId} now handles {job.Job}.";
                 // A host whose martlet-host predates one voice engine per computer still runs the replaced engine.
                 if (job.Role == SetupRole.Tts && HostRoles.OtherVoiceEngines(check.Offers, job.HostRoleKind) is { Count: > 0 } leftovers)
@@ -391,7 +411,7 @@ public partial class MainWindow
             }
             finally
             {
-                assigningRole = false;
+                turn?.Dispose();
                 if (!closing)
                 {
                     RenderHome();
@@ -409,8 +429,9 @@ public partial class MainWindow
 
     /// <summary>Stops voice engines a host no longer needs because Speaking uses another engine there (the owner already
     /// agreed), one run window each, so their models leave its graphics card's memory; their downloads stay on the host.
-    /// The engine that speaks reloads by itself if it couldn't load while they held the memory. Returns the outcome in
-    /// words, starting with a space.</summary>
+    /// The engine that speaks reloads by itself if it couldn't load while they held the memory. One Speaking moved back to
+    /// meanwhile is left running; while one is being stopped, Speaking waits for that before it moves to it
+    /// (<see cref="releasingEngines"/>). Returns the outcome in words, starting with a space.</summary>
     private async Task<string> ReleaseVoiceEnginesAsync(PairedHost host, IReadOnlyList<HostRoleInfo> engines)
     {
         var stopped = new List<string>();
@@ -418,7 +439,19 @@ public partial class MainWindow
         foreach (var engine in engines)
         {
             if (closing) return "";
-            (await RunHostActionAsync(host, engine.Remove, confirmed: true) is null ? running : stopped).Add(engine.Kind);
+            var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
+            if (route is { RouteType: SetupRouteType.GatewayF5 } && route.Gateway?.HostId == host.HostId &&
+                SpeechEngines.ForRoute(route.GatewaySnapshot?.RouteId)?.HostRoleKind == engine.Kind)
+                continue;
+            var key = (host.HostId, engine.Kind);
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            releasingEngines[key] = done.Task;
+            try { (await RunHostActionAsync(host, engine.Remove, confirmed: true) is null ? running : stopped).Add(engine.Kind); }
+            finally
+            {
+                if (releasingEngines.TryGetValue(key, out var mine) && ReferenceEquals(mine, done.Task)) releasingEngines.Remove(key);
+                done.TrySetResult();
+            }
         }
         return (stopped.Count > 0 ? $" Stopped {HostRoles.Names(stopped)} on {host.HostId} to free its graphics card's memory." : "") +
             (running.Count > 0 ? $" {HostRoles.Names(running)} still {(running.Count == 1 ? "runs" : "run")} on {host.HostId} and " +

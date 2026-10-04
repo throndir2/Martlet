@@ -20,7 +20,9 @@ public partial class HostsWindow : ThemedWindow
     private readonly CancellationTokenSource lifetime = new();
     private readonly string version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
     private PairedHost? paired;
-    private bool busy;
+    /// <summary>The wizard's own actions still working (load, check, pair, ...): a second click on the same one is ignored
+    /// while it works; different actions and run windows go side by side.</summary>
+    private readonly HashSet<string> acting = new(StringComparer.Ordinal);
     private bool choosingCode;
     private int step;
 
@@ -61,7 +63,7 @@ public partial class HostsWindow : ThemedWindow
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (step == 0) FindNearbyAsync().Forget();
-        await ActionAsync(async () =>
+        await ActionAsync("load", async () =>
         {
             var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
             paired = paired is { } manage ? hosts.FirstOrDefault(h => h.HostId == manage.HostId) ?? manage
@@ -127,7 +129,7 @@ public partial class HostsWindow : ThemedWindow
         {
             var (martlet, hosts) = listed[i];
             var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
-            var connect = new Button { Content = "Connect", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0), IsEnabled = !busy };
+            var connect = new Button { Content = "Connect", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0), IsEnabled = nearbyRequest is null };
             connect.SetResourceReference(StyleProperty, "PrimaryButton");
             System.Windows.Automation.AutomationProperties.SetAutomationId(connect, $"NearbyConnect-{i}");
             System.Windows.Automation.AutomationProperties.SetName(connect, $"Connect to {martlet.Name}");
@@ -157,8 +159,7 @@ public partial class HostsWindow : ThemedWindow
     /// and its owner allows the request there; this PC then pairs with each host using the one-use code it sends.</summary>
     private async Task ConnectNearbyAsync(NearbyMartlet martlet, IReadOnlyList<string> hosts)
     {
-        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
-        busy = true;
+        if (nearbyRequest is not null) { NearbyStatusText.Text = "Martlet is still asking another computer. Stop that first, then connect."; return; }
         using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         nearbyRequest = request;
         SetNearbyEnabled(false);
@@ -224,7 +225,6 @@ public partial class HostsWindow : ThemedWindow
         finally
         {
             nearbyRequest = null;
-            busy = false;
             if (!lifetime.IsCancellationRequested)
             {
                 NearbyCheckPanel.Visibility = Visibility.Collapsed;
@@ -379,8 +379,6 @@ public partial class HostsWindow : ThemedWindow
 
     private async Task RunThroughAgentAsync(PairedHost host, HostAction action)
     {
-        if (busy) { StatusText.Text = "Another host action is still finishing."; return; }
-        busy = true;
         using var updating = action.Verb == HostVerb.Update ? MainWindow.BeginHostUpdateElsewhere(host.HostId, onThisPc: false) : null;
         try
         {
@@ -390,17 +388,14 @@ public partial class HostsWindow : ThemedWindow
             StatusText.Text = done ?? "Stopped. The run window shows why.";
         }
         catch (InvalidOperationException error) { StatusText.Text = error.Message; }
-        finally { busy = false; }
     }
 
     /// <summary>SSH hosts and this PC run in Martlet: setup and pairing as one flow, other actions in a run window.
     /// Nothing opens a console window.</summary>
     private async Task RunInMartletAsync(HostAction action)
     {
-        if (busy) { StatusText.Text = "Another host action is still running."; return; }
         if (!Ssh)
         {
-            busy = true;
             using var updating = action.Verb == HostVerb.Update ? MainWindow.BeginHostUpdateElsewhere("", onThisPc: true) : null;
             try
             {
@@ -413,19 +408,17 @@ public partial class HostsWindow : ThemedWindow
                 }
             }
             catch (InvalidOperationException error) { StatusText.Text = error.Message; }
-            finally { busy = false; }
             return;
         }
         HostShellTarget ssh;
         try { ssh = HostShellTarget.Parse(SshTargetText.Text); }
         catch (InvalidOperationException error) { StatusText.Text = error.Message; return; }
-        busy = true;
         try
         {
             if (action.Verb is HostVerb.Setup or HostVerb.Pair)
             {
                 var summary = await HostRunWindow.RunAsync(this, action.Verb == HostVerb.Setup ? $"Add {ssh} to Martlet" : $"Pair with {ssh}",
-                    run => AddLinuxAsync(run, ssh, Method, pair: true, setup: action.Verb == HostVerb.Setup));
+                    run => AddLinuxAsync(run, ssh, Method, pair: true, setup: action.Verb == HostVerb.Setup), join: true);
                 if (summary is not null)
                 {
                     StatusText.Text = summary;
@@ -443,7 +436,6 @@ public partial class HostsWindow : ThemedWindow
             StatusText.Text = done ?? "Stopped. Check the run window for details.";
         }
         catch (InvalidOperationException error) { StatusText.Text = error.Message; }
-        finally { busy = false; }
     }
 
     /// <summary>Pairs this desktop with this PC's host service (already set up) without a console: the host shows a one-use
@@ -456,12 +448,12 @@ public partial class HostsWindow : ThemedWindow
         var summary = await HostRunWindow.RunAsync(this, "Pair with this PC's host", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
-            await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
+            await HostLocal.EnsureImageAsync(target, run);
             run.Status("Pairing this PC with its host...");
             var (pairing, secret) = await HostLocal.PairAsync(target, device, Environment.MachineName, run.Output, run.Token);
             host = (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
             return $"Paired with {host.HostId}.";
-        });
+        }, join: true);
         if (host is not null)
         {
             paired = host;
@@ -510,7 +502,7 @@ public partial class HostsWindow : ThemedWindow
         return $"{host.HostId} is set up and paired. {check} Assign jobs on the Devices map. Your other computers pair with it automatically.";
     }
 
-    private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void ResetSshTrust_Click(object sender, RoutedEventArgs e) => await ActionAsync("trust", async () =>
     {
         var ssh = HostShellTarget.Parse(SshTargetText.Text);
         if (!ConfirmationDialog.Confirm(this, $"Reset saved SSH trust for {ssh.Host} and forget any remembered sudo password? " +
@@ -527,7 +519,7 @@ public partial class HostsWindow : ThemedWindow
     {
         if (Method == HostSetupMethod.ThisPcDocker)
         {
-            await ActionAsync(async () =>
+            await ActionAsync("setup", async () =>
             {
                 var (host, status) = await SetUpThisPcAsync(this, pairings, text => StatusText.Text = text, lifetime.Token);
                 if (host is not null)
@@ -545,8 +537,14 @@ public partial class HostsWindow : ThemedWindow
     }
 
     /// <summary>Lets other PCs on the private network reach this PC's host port and find this PC (<see cref="Nearby"/>): one
-    /// UAC prompt, only when needed.</summary>
-    internal static async Task<string?> OpenFirewallAsync(Window owner, string address, Action<string> progress, CancellationToken token)
+    /// UAC prompt, only when needed. A caller that asks while another one checks the firewall waits for that one
+    /// (<paramref name="by"/> names this caller for the next).</summary>
+    internal static Task<string?> OpenFirewallAsync(Window owner, string address, Action<string> progress, CancellationToken token,
+        string by) =>
+        SharedSteps.RunAsync(SharedSteps.Firewall, by, "checking Windows Firewall", () => ApplyFirewallAsync(owner, address, progress, token),
+            progress, null, token);
+
+    private static async Task<string?> ApplyFirewallAsync(Window owner, string address, Action<string> progress, CancellationToken token)
     {
         progress("Checking Windows Firewall...");
         var state = await WindowsFirewall.ProbeAsync(address, token);
@@ -619,35 +617,35 @@ public partial class HostsWindow : ThemedWindow
 
     private async void InstallDocker_Click(object sender, RoutedEventArgs e)
     {
-        if (busy) { StatusText.Text = "Another host action is still running."; return; }
-        busy = true;
-        try
-        {
-            if ((await InstallDockerDesktopAsync(this)).Status is { } status) StatusText.Text = status;
-        }
-        finally { busy = false; }
+        if ((await InstallDockerDesktopAsync(this)).Status is { } status) StatusText.Text = status;
     }
+
+    internal const string InstallDockerTitle = "Install Docker Desktop";
+
+    /// <summary>Whether Docker Desktop is being installed now (by Install Docker Desktop or the prerequisites installer).</summary>
+    internal static bool InstallingDocker => SharedSteps.IsRunning(SharedSteps.DockerInstall) || HostRunWindow.IsRunningTitled(InstallDockerTitle);
 
     /// <summary>Installs Docker Desktop with winget in a run window (no console) after the user accepts the listed terms,
     /// turns on what it needs from Windows (virtualization features and WSL; a restart, when needed, continues with
     /// <paramref name="resume"/> after the next sign-in), then starts it. Status is null when declined; Ready is true once
-    /// Docker Desktop is installed and starting.</summary>
+    /// Docker Desktop is installed and starting. While it is being installed already, this waits for that install (its
+    /// window comes forward) instead of asking again.</summary>
     internal static async Task<(string? Status, bool Ready)> InstallDockerDesktopAsync(Window owner,
         ContinueSetupKind resume = ContinueSetupKind.Docker)
     {
-        if (!ConfirmationDialog.Confirm(owner,
+        if (!InstallingDocker && !ConfirmationDialog.Confirm(owner,
                 "Install Docker Desktop now? Martlet uses Windows' package installer and may turn on WSL 2 and virtualization features. " +
                 "Windows may ask for administrator approval and a restart. After you sign in, Martlet continues setup.\n\n" +
                 "By continuing, you accept Docker's Subscription Service Agreement (free for personal use).", "Install Docker Desktop"))
             return (null, false);
-        var summary = await HostRunWindow.RunAsync(owner, "Install Docker Desktop", async run =>
+        var summary = await HostRunWindow.RunAsync(owner, InstallDockerTitle, async run =>
         {
-            await HostLocal.InstallDockerDesktopAsync(run.Status, run.Output, run.Token);
+            await HostLocal.InstallDockerDesktopAsync(run);
             await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume);
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose(); }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException) { run.Output.Report("Start Docker Desktop yourself: " + error.Message); }
             return "Docker Desktop is installed and starting. Follow Docker Desktop if it asks you to finish setup.";
-        });
+        }, join: true);
         if (summary is not null) return (summary, true);
         return (MachineInfo.DockerDesktopInstalled()
             ? "Docker Desktop is installed, but Windows isn't ready to start it yet. Check the run window for details."
@@ -680,7 +678,7 @@ public partial class HostsWindow : ThemedWindow
 
     /// <summary>Pairs with the address and short code a host shows, or with an older host's whole pasted
     /// martlet-pair-v1 card.</summary>
-    private async void Pair_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Pair_Click(object sender, RoutedEventArgs e) => await ActionAsync("pair", async () =>
     {
         var text = PairingCodeBox.Text;
         var device = DeviceIdText.Text.Trim();
@@ -772,8 +770,9 @@ public partial class HostsWindow : ThemedWindow
         var address = HostSetupCommands.ThisPcAddress();
         if (!HostSetupCommands.IsPrivate(address))
             return (null, "This PC is not on a private network. Connect it to your home network first.");
+        var heading = title ?? HostActions.ThisPcSetupTitle;
         string? firewall;
-        try { firewall = await OpenFirewallAsync(owner, address!, progress, token); }
+        try { firewall = await OpenFirewallAsync(owner, address!, progress, token, heading); }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         { firewall = $"Couldn't update Windows Firewall: {error.Message}. Other PCs may not reach this host."; }
         var version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
@@ -783,16 +782,21 @@ public partial class HostsWindow : ThemedWindow
         var deviceId = hosts.FirstOrDefault()?.Pairing.DeviceId ?? HostSetupCommands.SuggestedDeviceId();
         PairedHost? host = null;
         progress("Setting up this PC as a host...");
-        var summary = await HostRunWindow.RunAsync(owner, title ?? "Set up this PC as a host", async run =>
+        var summary = await HostRunWindow.RunAsync(owner, heading, async run =>
         {
-            await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.ThisPc);
-            await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
-            run.Status("Setting up this PC as a host...");
-            var exit = await HostLocal.EngineAsync(target, ["setup"], run.Output, run.Token);
-            if (exit != 0) throw new InvalidOperationException($"Setup stopped (exit {exit}). Check the output for details.");
-            run.Status("Pairing this PC with the host...");
-            var (pairing, secret) = await HostLocal.PairAsync(target, deviceId, Environment.MachineName, run.Output, run.Token);
-            host = (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
+            // Several flows can set this PC up at once (the Devices map, Listening or Speaking on this PC, Singing): one sets
+            // up and pairs the host service, the others wait for it and carry on with their own next step.
+            host = await SharedSteps.RunAsync(SharedSteps.ThisPcHost, run.Heading, "setting up and pairing this PC's host service", async () =>
+            {
+                await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.ThisPc);
+                await HostLocal.EnsureImageAsync(target, run);
+                run.Status("Setting up this PC as a host...");
+                var exit = await HostLocal.EngineAsync(target, ["setup"], run.Output, run.Token);
+                if (exit != 0) throw new InvalidOperationException($"Setup stopped (exit {exit}). Check the output for details.");
+                run.Status("Pairing this PC with the host...");
+                var (pairing, secret) = await HostLocal.PairAsync(target, deviceId, Environment.MachineName, run.Output, run.Token);
+                return (await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.ThisPcDocker, null, null, run.Token)).Host;
+            }, run.Status, run.Output, run.Token);
             run.Status("Checking this PC's hardware...");
             string check;
             try { check = await CheckAsync(host.Pairing, new HostHardwareStore(pairings.DataDirectory), run.Status, run.Token); }
@@ -847,13 +851,13 @@ public partial class HostsWindow : ThemedWindow
 
     private HostHardwareStore Hardware => new(pairings.DataDirectory);
 
-    private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Check_Click(object sender, RoutedEventArgs e) => await ActionAsync("check", async () =>
     {
         if (paired is not { } host) { ShowPaired(0); return; }
         StatusText.Text = $"Host {host.HostId}: " + await CheckAsync(host.Pairing, Hardware, text => StatusText.Text = text, lifetime.Token);
     });
 
-    private async void Forget_Click(object sender, RoutedEventArgs e) => await ActionAsync(async () =>
+    private async void Forget_Click(object sender, RoutedEventArgs e) => await ActionAsync("forget", async () =>
     {
         if (paired is not { } host) { ShowPaired(0); return; }
         await pairings.ForgetAsync(host.HostId, lifetime.Token);
@@ -863,16 +867,15 @@ public partial class HostsWindow : ThemedWindow
         StatusText.Text = $"Forgot {host.HostId} on this PC. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.";
     });
 
-    private async Task ActionAsync(Func<Task> action)
+    private async Task ActionAsync(string what, Func<Task> action)
     {
-        if (busy) { StatusText.Text = "Another host action is still running."; return; }
-        busy = true;
+        if (!acting.Add(what)) { StatusText.Text = "That is still running."; return; }
         try { await action(); }
         catch (OperationCanceledException) { }
         catch (Audio2FaceHostException error) { StatusText.Text = error.Message; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException)
         { StatusText.Text = error.Message; }
-        finally { busy = false; }
+        finally { acting.Remove(what); }
     }
 }

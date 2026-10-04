@@ -243,7 +243,7 @@ public partial class MainWindow
         try
         {
             var target = ThisPcTarget();
-            await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(title, "status: " + status), output, lifetime.Token);
+            await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(title, "status: " + status), output, lifetime.Token, title);
             // Automatic: it doesn't queue behind a change already running on this host (an install, for example).
             var exit = await HostLocal.EngineAsync(target, ["update"], output, lifetime.Token, waitForOtherChanges: false);
             HostRunLog.Write(title, $"--- exit {exit}");
@@ -277,6 +277,9 @@ public partial class MainWindow
             hostUpdatesRunning = false;
         }
     }
+
+    /// <summary>How a command from another computer names itself to runs on this PC that wait for the same step.</summary>
+    private const string NodeCommandRunTitle = "A command from your other computer";
 
     /// <summary>Runs commands on the UI thread, where Martlet's update and host-service state lives.</summary>
     private sealed class LocalCommandRunner(MainWindow window) : INodeCommandRunner
@@ -316,7 +319,7 @@ public partial class MainWindow
                 return new(false, $"{role} can't be installed on {here}: {cannot}");
             await EnsureLocalEngineAsync(output, token);
             var target = ThisPcTarget();
-            await HostLocal.EnsureImageAsync(target, output.Report, output, token);
+            await HostLocal.EnsureImageAsync(target, output.Report, output, token, NodeCommandRunTitle);
             Dictionary<string, string>? answers = null;
             if (command.Kind == NodeCommandKinds.AddRole)
             {
@@ -424,7 +427,7 @@ public partial class MainWindow
             output.Report($"Updating {here}'s host service from {current ?? "an unknown version"} to {Version}. Its pairings and roles stay; " +
                 "it restarts at the end, so it stops answering for a moment.");
             var target = ThisPcTarget();
-            await HostLocal.EnsureImageAsync(target, output.Report, output, token);
+            await HostLocal.EnsureImageAsync(target, output.Report, output, token, NodeCommandRunTitle);
             // A change already running on this host (an install, for example) finishes first; the output says so.
             var engineOutput = new EngineOutput(output);
             var exit = await HostLocal.EngineAsync(target, ["update"], engineOutput, token);

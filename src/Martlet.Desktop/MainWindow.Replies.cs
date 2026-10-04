@@ -327,17 +327,17 @@ public partial class MainWindow
             "Reply settings saved. Reload an open conversation to use them.");
     }
 
-    /// <summary>Saves the reply settings <paramref name="update"/> makes of the newest saved ones. Returns false to be tried again
-    /// shortly while another change holds the settings.</summary>
+    /// <summary>Saves the reply settings <paramref name="update"/> makes of the newest saved ones, after any change still saving.
+    /// Returns false to be tried again shortly when another window saved the settings meanwhile.</summary>
     private async Task<bool> SaveRepliesAsync(Func<GenerationSettings?, GenerationSettings?> update, Action<GenerationSettings?> saved,
         string done)
     {
         if (store is null || setupService is null || closing) return true;
-        if (savingTab || assigningRole || setupOperations.IsRunning) return false;
-        savingTab = true;
+        ChangeTurns.Turn? turn = null;
         var token = lifetime.Token;
         try
         {
+            turn = await ChangeTurnAsync();
             var loaded = await setupService.LoadAsync(token);
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
             var generation = update(loaded.Settings?.Generation);
@@ -361,7 +361,7 @@ public partial class MainWindow
         }
         finally
         {
-            savingTab = false;
+            turn?.Dispose();
             // The page stays as typed (tabEdited); only Home and the other summaries refresh.
             if (!closing) RenderHome();
         }
