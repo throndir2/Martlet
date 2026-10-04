@@ -1,0 +1,5 @@
+# Optional: Whisper large through PyTorch (Hugging Face transformers), the reference implementation, on an NVIDIA GPU.
+# Installed with: Install-VoiceBench.ps1 -Torch (torch comes from PyTorch's CUDA 12.8 index).
+torch
+transformers
+accelerate
