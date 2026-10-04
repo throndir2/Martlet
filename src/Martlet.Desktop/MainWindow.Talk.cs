@@ -42,6 +42,7 @@ public partial class MainWindow
         talk = next;
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
+        avatar.Gaze.Decides = next.DecideGaze;
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
         if (spoke != next.SpeakReplies) FollowVoice(next.SpeakReplies);
@@ -422,6 +423,7 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("How often it comments"),
             Note("Most looks end silently. Martlet won't interrupt while you're talking.", new Thickness(0, 0, 0, 8)),
             chatty));
+        page.Children.Add(GazeCard(prefs));
 
         toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
         {
@@ -433,6 +435,34 @@ public partial class MainWindow
         var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"), disclosure, Row(toggle)));
+    }
+
+    /// <summary>Companion › Vision › Where the character looks: at your mouse (the default), or Martlet decides with each new
+    /// screenshot of your screen whether to look at your mouse or at something on the screen.</summary>
+    private Border GazeCard(TalkPreferences prefs)
+    {
+        var mouse = Choice("VisionGaze", "At your mouse", "The character's head and eyes follow your mouse pointer.",
+            !prefs.DecideGaze, "VisionGaze-Mouse");
+        var decide = Choice("VisionGaze", "Martlet decides",
+            "With each new screenshot of your screen, Martlet looks at your mouse or at something interesting on the screen: " +
+            "something that just popped up or moved, or what it is about to remark on.",
+            prefs.DecideGaze, "VisionGaze-Martlet");
+        mouse.Checked += (_, _) => { if (Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = false }, render: true); };
+        decide.Checked += (_, _) => { if (!Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = true }, render: true); };
+        var status = Note(GazeStatus(prefs), new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(status, "VisionGazeStatus");
+        return Card(Heading("Where the character looks"), mouse, decide, status,
+            Note("It decides while vision watches your active window or whole screen and the character shows. Screenshots are " +
+                "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
+                "is sent.", new Thickness(0, 6, 0, 0)));
+    }
+
+    private string GazeStatus(TalkPreferences prefs)
+    {
+        if (!prefs.DecideGaze) return "The character follows your mouse.";
+        if (!prefs.Watch) return "Vision is off, so the character follows your mouse. Turn vision on below.";
+        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character follows your mouse.";
+        return avatar.Gaze.Status;
     }
 
     /// <summary>Lists the cameras Windows offers to desktop apps, on request only; nothing is opened.</summary>

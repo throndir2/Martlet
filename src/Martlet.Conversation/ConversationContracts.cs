@@ -107,11 +107,14 @@ public sealed class ConversationRequest(
     [JsonIgnore] public IReadOnlyList<string> CharacterTags { get; } = characterTags ?? [];
     [JsonIgnore] public SpeechBreaks? SpeechBreaks { get; } = speechBreaks;
 
+    /// <summary>The most character tags one request may carry.</summary>
+    public const int MaximumCharacterTags = 128;
+
     internal void Validate()
     {
         ContractRules.Require(SilentReply is null || SilentReply.Length is > 0 and <= 16 && SilentReply.All(char.IsAsciiLetter),
             "The silent reply word must be 1-16 ASCII letters.");
-        ContractRules.Require(CharacterTags.Count <= 128 && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
+        ContractRules.Require(CharacterTags.Count <= MaximumCharacterTags && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
             tag[0] == '{' && tag[^1] == '}' && !tag.Any(char.IsControl)), "Character tags must be at most 128 {tags} of 3-64 characters.");
         SpeechBreaks?.Validate();
         ArgumentNullException.ThrowIfNull(Input);

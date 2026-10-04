@@ -70,6 +70,18 @@ public sealed record RendererBubble(string Placement, double Left, double Top, d
 /// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed camera) or "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
 /// <summary>
+/// Turns the character's head and eyes toward a point on the desktop (<paramref name="X"/>, <paramref name="Y"/> in physical
+/// screen pixels, as Martlet's screenshots measure it) for <paramref name="Seconds"/> (0.5 to 30), after which they follow the
+/// mouse again; without a point they follow the mouse at once. Replied to with <see cref="RendererLook"/>.
+/// </summary>
+public sealed record RendererGaze(double? X = null, double? Y = null, double Seconds = 0)
+{
+    public const double MinimumSeconds = 0.5, MaximumSeconds = 30;
+}
+/// <summary>What the character looks at: "mouse" or "point" (where Martlet asked), and the head and eye direction the
+/// character was last given, from -1 to 1 (+x right, +y up).</summary>
+public sealed record RendererLook(string Target, double X, double Y);
+/// <summary>
 /// Something chosen on the character overlay's menu that Martlet itself carries out, sent unprompted on the renderer's
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
 /// window), show the character's "settings", "lock" its place where it is (Martlet saves it and sends

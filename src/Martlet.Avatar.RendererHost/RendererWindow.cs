@@ -821,8 +821,13 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "snapshot"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "snapshot" or "gaze"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "gaze")
+                {
+                    await ReplyAsync("look", Gaze(RendererProtocol.Data<RendererGaze>(message)));
+                    continue;
+                }
                 if (message.Kind == "home")
                 {
                     ResetToDefault();
@@ -906,40 +911,95 @@ internal sealed class RendererWindow : Window
         lifetime.Cancel();
     }
 
-    // The character's head and eyes follow the mouse cursor; messages are fire-and-forget and never replied to.
+    // The character's head and eyes follow the mouse cursor, or for a while a point on the desktop Martlet asked it to look at
+    // ("gaze"); messages to the browser are fire-and-forget and never replied to.
     private void StartLookTracking()
     {
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        double lastX = double.NaN, lastY = double.NaN;
         timer.Tick += (_, _) =>
         {
-            if (closed || failure.Failed || browser.CoreWebView2 is null) { timer.Stop(); return; }
-            if (!GetCursorPos(out var cursor)) return;
-            Point face;
-            // The face sits at 30% height when unzoomed; follow it through the camera zoom, within the character's frame.
-            var faceX = (viewX + 1) / 2;
-            var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
-            try
-            {
-                face = viewport.PointToScreen(new Point(FrameOffset(viewport.ActualWidth) + viewport.ActualWidth * FrameFraction * faceX,
-                    viewport.ActualHeight * faceY));
-            }
-            catch (InvalidOperationException) { return; }
-            var x = Math.Clamp((cursor.X - face.X) / 700, -1, 1);
-            var y = Math.Clamp((face.Y - cursor.Y) / 700, -1, 1);
-            if (Math.Abs(x - lastX) < 0.01 && Math.Abs(y - lastY) < 0.01) return;
-            lastX = x;
-            lastY = y;
-            try
-            {
-                browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "look", data = new { x, y } },
-                    RendererProtocol.Json));
-            }
-            catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException)
-            { timer.Stop(); }
+            if (closed || failure.Failed || browser.CoreWebView2 is null || !Look()) timer.Stop();
         };
         Closed += (_, _) => timer.Stop();
         timer.Start();
+    }
+
+    // Where Martlet asked the character to look (physical screen pixels, like its screenshots) and until when; the direction
+    // the browser was last given (+x right, +y up, -1 to 1) and whether that was toward the point.
+    private Point? gazePoint;
+    private long gazeUntil;
+    private double lookX = double.NaN, lookY = double.NaN;
+    private bool lookingAtPoint;
+
+    /// <summary>Turns the head and eyes toward the mouse, or toward the asked-for point while it holds. False once the browser
+    /// can't take messages any more.</summary>
+    private bool Look(bool always = false)
+    {
+        if (LookDirection() is not { } look) return true;
+        if (!always && Math.Abs(look.X - lookX) < 0.01 && Math.Abs(look.Y - lookY) < 0.01) return true;
+        lookX = look.X;
+        lookY = look.Y;
+        if (browser.CoreWebView2 is null || failure.Failed) return true;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "look", data = new { x = look.X, y = look.Y } },
+                RendererProtocol.Json));
+            return true;
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { return false; }
+    }
+
+    private (double X, double Y)? LookDirection()
+    {
+        Point face;
+        // The face sits at 30% height when unzoomed; follow it through the camera zoom, within the character's frame.
+        var faceX = (viewX + 1) / 2;
+        var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
+        try
+        {
+            face = viewport.PointToScreen(new Point(FrameOffset(viewport.ActualWidth) + viewport.ActualWidth * FrameFraction * faceX,
+                viewport.ActualHeight * faceY));
+        }
+        catch (InvalidOperationException) { return null; }
+        Point target;
+        lookingAtPoint = gazePoint is not null && Environment.TickCount64 < gazeUntil;
+        if (lookingAtPoint)
+        {
+            target = gazePoint!.Value;
+            face = Physical(face);
+        }
+        else
+        {
+            gazePoint = null;
+            if (!GetCursorPos(out var cursor)) return null;
+            target = new(cursor.X, cursor.Y);
+        }
+        return (Math.Clamp((target.X - face.X) / 700, -1, 1), Math.Clamp((face.Y - target.Y) / 700, -1, 1));
+    }
+
+    /// <summary>A screen point as this window's process sees it, in physical pixels (unchanged where Windows doesn't scale it).</summary>
+    private Point Physical(Point point)
+    {
+        var native = new CursorPoint { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) };
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        return handle != IntPtr.Zero && LogicalToPhysicalPointForPerMonitorDPI(handle, ref native) ? new(native.X, native.Y) : point;
+    }
+
+    /// <summary>Looks at the asked-for point for a while (or the mouse again without one) and says what the character looks at.</summary>
+    internal RendererLook Gaze(RendererGaze gaze)
+    {
+        if (gaze.X is null && gaze.Y is null) gazePoint = null;
+        else if (gaze.X is { } x && gaze.Y is { } y && double.IsFinite(x) && double.IsFinite(y) && Math.Abs(x) < 1_000_000 &&
+            Math.Abs(y) < 1_000_000 && double.IsFinite(gaze.Seconds))
+        {
+            gazePoint = new(x, y);
+            gazeUntil = Environment.TickCount64 +
+                (long)(Math.Clamp(gaze.Seconds, RendererGaze.MinimumSeconds, RendererGaze.MaximumSeconds) * 1000);
+        }
+        else throw new InvalidDataException("Gaze is invalid.");
+        Look(always: true);
+        return new(lookingAtPoint ? "point" : "mouse", double.IsFinite(lookX) ? Math.Round(lookX, 3) : 0,
+            double.IsFinite(lookY) ? Math.Round(lookY, 3) : 0);
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -948,6 +1008,10 @@ internal sealed class RendererWindow : Window
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out CursorPoint point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool LogicalToPhysicalPointForPerMonitorDPI(IntPtr window, ref CursorPoint point);
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct NativeRect { public int Left, Top, Right, Bottom; }

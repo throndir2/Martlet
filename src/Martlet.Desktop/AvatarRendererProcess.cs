@@ -22,6 +22,8 @@ internal interface IAvatarRenderer : IAsyncDisposable
     /// Martlet's voice as <paramref name="voiceMuted"/> says.</summary>
     Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted, CancellationToken token);
     Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null);
+    /// <summary>The renderer's process while it runs (its windows are the character's own on screen), or null.</summary>
+    int? ProcessId => null;
 }
 
 internal sealed class AvatarRendererProcess : IAvatarRenderer
@@ -50,6 +52,15 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     }
     public Task Exited { get; private set; } = Task.CompletedTask;
     public event Action<string>? Requested;
+
+    public int? ProcessId
+    {
+        get
+        {
+            try { return disposed || process is not { HasExited: false } running ? null : running.Id; }
+            catch (InvalidOperationException) { return null; }
+        }
+    }
 
     public async Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted,
         CancellationToken token)

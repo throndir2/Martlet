@@ -22,7 +22,7 @@ public partial class MainWindow
         if (conversation is null || closing || saving || model?.IsRunning == true || Role == DeviceRole.Host) return null;
         var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
-            { Owner = this, Support = support };
+            { Owner = this, Support = support, Gaze = avatar.Gaze };
         if (!IsVisible) window.UseOwnTaskbarButton();
         window.Closed += async (_, _) =>
         {
