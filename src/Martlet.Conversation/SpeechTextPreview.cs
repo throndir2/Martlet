@@ -16,7 +16,7 @@ public static class SpeechTextPreview
         SpeechBreaks? breaks = null, string? silentWord = null)
     {
         ArgumentNullException.ThrowIfNull(reply);
-        var segmenter = new SpeechSegmenter(1536, 16_384, silentWord, eagerFirstClause: true, tags: engine?.Tags, characterTags: characterTags,
+        var segmenter = new SpeechSegmenter(1536, 16_384, silentWord, tags: engine?.Tags, characterTags: characterTags,
             breaks: breaks ?? SpeechBreaks.Default);
         var pieces = segmenter.Push(reply).Concat(segmenter.Finish()).ToArray();
         var spoken = new List<string>();

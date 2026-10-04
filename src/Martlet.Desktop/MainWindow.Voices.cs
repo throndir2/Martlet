@@ -235,7 +235,7 @@ public partial class MainWindow
             F5Voices.Choose(store.DataDirectory, voiceId);
             QueueSpeakingVoiceSync();
             ActionText.Text = saved
-                ? $"Martlet now uses the voice '{voice.PresetName}' on all your computers. Reload any open conversation to use it."
+                ? $"Martlet now uses the voice '{voice.PresetName}' on all your computers.{OpenConversationFollows}"
                 : $"'{voice.PresetName}' is your voice on all your computers.";
         }
         catch (OperationCanceledException) { }
@@ -265,6 +265,7 @@ public partial class MainWindow
         var saved = await setupService!.SaveAsync(next, loaded.Revision, token);
         if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
         homeSettings = next;
+        FollowSavedSetup(saved.Save.Revision, "Martlet's voice changed.");
         return true;
     }
 
@@ -527,7 +528,7 @@ public partial class MainWindow
         assigningRole = true;
         try
         {
-            if (await ApplyVoiceAsync(loaded, snapshot, token)) openConversation?.ReloadWhenIdle("Martlet's voice changed.");
+            await ApplyVoiceAsync(loaded, snapshot, token);
             if (chosen.UpdatedBy != ClusterDevice) ActionText.Text = $"Martlet now speaks with '{voice.Name}', as chosen on {chosen.UpdatedBy}.";
             return true;
         }
