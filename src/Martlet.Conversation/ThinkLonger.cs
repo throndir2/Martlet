@@ -29,7 +29,7 @@ public static class ThinkLonger
     /// and loads at most <see cref="GenerationSettings.MaximumHostContextTokens"/> of context, which the output shares.</summary>
     public static ThinkBounds HostBounds(ThinkEffort effort) => new(BoundedTextInput.HardMaxUtf8Bytes,
         TextGenerationLimits.DefaultMaxHistoryMessages, GenerationSettings.MaximumHostContextTokens - OutputTokens(effort), Tools: false);
-    /// <summary>The least time left worth starting (or resuming) a background request with.</summary>
+    /// <summary>The least time left worth starting a background request with.</summary>
     public static TimeSpan MinimumAttempt => TimeSpan.FromSeconds(5);
 
     public const string ParametersJson =
@@ -116,7 +116,11 @@ public static class ThinkLonger
     };
 
     public const string TurnedOff =
-        "Not started: the user turned Thinking longer off in Companion › Replies. Answer as well as you can right away instead.";
+        "Not started: the user turned Deep thinking off (Companion › Deep thinking). Answer as well as you can right away instead.";
+
+    /// <summary>What the model is told when Deep thinking can't run where it is set to think (<see cref="DeepThinkingPlan"/>).</summary>
+    public static string Unavailable(string why) =>
+        $"Not started: Deep thinking can't run right now. {why} Answer as well as you can right away instead.";
 
     /// <summary>What the model is told after cancel_thinking.</summary>
     public static string Canceled(BackgroundJob? job) => job is null
@@ -124,11 +128,10 @@ public static class ThinkLonger
         : JsonSerializer.Serialize(new { status = "stopped", id = job.Id }) + "\nIt won't come back. Tell the user briefly if they asked.";
 
     /// <summary>The background think's message: a reply's request exactly as it was sent (instructions, tools, earlier
-    /// messages, the message with its notes) and what that reply said, then the task, so the model's prompt cache (or
-    /// Ollama's) reuses the conversation instead of reading it again or pushing it out. That is the reply that called
-    /// think_longer, or, when a think on a model on this PC starts again after pausing, the latest exchange, so the next reply
-    /// still finds everything said meanwhile in the cache. Without a request (or when it can't be continued) the task goes alone
-    /// with <paramref name="personality"/>. The picture or recording the message went with isn't sent again.</summary>
+    /// messages, the message with its notes) and what that reply said (the reply that called think_longer), then the task, so
+    /// the model's prompt cache reuses the conversation instead of reading it again. Without a request (or when it can't be
+    /// continued) the task goes alone with <paramref name="personality"/>. The picture or recording the message went with
+    /// isn't sent again.</summary>
     public static BoundedTextInput Input(BoundedTextInput? conversation, string? reply, string task, string? reason, PromptSettings? prompts,
         string? personality = null)
     {
@@ -248,120 +251,47 @@ public static class ThinkLonger
 /// carries the reply's tools (only on the Thinking model, to share its prompt cache).</summary>
 public sealed record ThinkBounds(int MaxInputBytes, int MaxHistoryMessages, int MaxInputTokens, bool Tools);
 
-/// <summary>One background think's attempts at its request on its own runtime, beside the conversation. When it shares the
-/// conversation's hardware (<see cref="DeepThinkingPlan"/>: the Thinking model on this PC, a server on this PC while Thinking or
-/// the voice runs here, or a paired computer that does one of the conversation's jobs), <see cref="Busy"/> says when the
-/// conversation needs it: the think waits for a quiet moment, and when the user talks or Martlet replies it stops
-/// (<see cref="Yield"/>, at once) and starts again once it's quiet, so a reply never waits behind it. On another machine (a
-/// paired computer or a provider of its own) it simply runs, in parallel with the conversation.</summary>
+/// <summary>One background think's request on its own runtime, beside the conversation. Deep thinking is parallel thinking: it
+/// runs only where it has a model of its own (<see cref="DeepThinkingPlan"/>), so it simply runs alongside the conversation,
+/// never waiting for it or stopping for it, until it is done, canceled or out of time.</summary>
 public sealed class BackgroundThink
 {
-    private readonly object gate = new();
-    private ConversationTurn? turn;
-    private bool yielded;
-
-    /// <param name="prepare">Builds one attempt's request and its authorization with the time left.</param>
-    /// <param name="busy">Null on a route that serves several requests at once; otherwise true while the conversation needs
-    /// the model.</param>
+    /// <param name="prepare">Builds the request and its authorization with the time left.</param>
     public BackgroundThink(ConversationRuntime runtime, Func<TimeSpan, (ConversationRequest Request, IConversationAuthorizationSource Authorization)> prepare,
-        Func<bool>? busy, TimeProvider? clock = null)
+        TimeProvider? clock = null)
     {
         Runtime = runtime;
         Prepare = prepare;
-        Busy = busy;
         Clock = clock ?? TimeProvider.System;
     }
 
     public ConversationRuntime Runtime { get; }
     public Func<TimeSpan, (ConversationRequest Request, IConversationAuthorizationSource Authorization)> Prepare { get; }
-    public Func<bool>? Busy { get; }
     public TimeProvider Clock { get; }
-    /// <summary>Raised after each attempt's request ended (for the desktop log's Thinking input line).</summary>
+    /// <summary>Raised after the request ended (for the desktop log's Thinking input line).</summary>
     public Action<ConversationSnapshot>? AttemptFinished { get; init; }
-    /// <summary>What the job chip says while a request runs ("Writing the lyrics"); null says nothing.</summary>
+    /// <summary>What the job chip says while the request runs ("Writing the lyrics"); null says nothing.</summary>
     public string? Doing { get; init; }
-    /// <summary>How many times it stopped for the conversation and started again.</summary>
-    public int Pauses { get; private set; }
-    /// <summary>How many requests it sent.</summary>
+    /// <summary>How many requests it sent (one, once it started).</summary>
     public int Attempts { get; private set; }
-    internal static TimeSpan Poll => TimeSpan.FromMilliseconds(50);
 
-    /// <summary>The conversation needs the model now: stop the running attempt at once; it starts again when it's quiet. Does
-    /// nothing on a route without <see cref="Busy"/>.</summary>
-    public void Yield()
-    {
-        if (Busy is null) return;
-        ConversationTurn? running;
-        lock (gate)
-        {
-            running = turn;
-            if (running is null) return;
-            yielded = true;
-        }
-        _ = running.StopAsync();
-    }
-
-    /// <summary>Works <paramref name="job"/> out until <paramref name="token"/> is canceled (the job list's cancel or time limit).</summary>
+    /// <summary>Works <paramref name="job"/> out until <paramref name="token"/> is canceled (the job list's cancel or time limit),
+    /// with the time the job has left (anything done before it, such as checking a model fits, counts).</summary>
     public async Task<BackgroundJobOutcome> RunAsync(BackgroundJob job, CancellationToken token)
     {
-        var deadline = Clock.GetTimestamp() + (long)(job.Kind.TimeLimit.TotalSeconds * Clock.TimestampFrequency);
-        while (true)
-        {
-            token.ThrowIfCancellationRequested();
-            if (Busy?.Invoke() == true)
-            {
-                job.Report(Attempts == 0 ? BackgroundJobState.Waiting : BackgroundJobState.Paused,
-                    Attempts == 0 ? "waiting for a quiet moment" : "paused while you talk");
-                while (Busy() && !token.IsCancellationRequested) await Task.Delay(Poll, Clock, token).ConfigureAwait(false);
-                continue;
-            }
-            var left = TimeSpan.FromSeconds((double)(deadline - Clock.GetTimestamp()) / Clock.TimestampFrequency);
-            // Too little time left to be worth asking: the job's time limit ends it.
-            if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
-            job.Report(BackgroundJobState.Running, Attempts == 0 ? Doing : Doing is null ? "picked up where it paused" : Doing + " (picked up where it paused)");
-            var (request, authorization) = Prepare(left);
-            ConversationTurn started;
-            lock (gate)
-            {
-                yielded = false;
-                started = turn = Runtime.Start(request, authorization, token);
-            }
-            Attempts++;
-            using var watching = CancellationTokenSource.CreateLinkedTokenSource(token);
-            var watch = Busy is null ? Task.CompletedTask : WatchAsync(watching.Token);
-            ConversationSnapshot terminal;
-            try
-            {
-                terminal = await started.Completion.ConfigureAwait(false);
-                await started.OwnershipRelease.ConfigureAwait(false);
-            }
-            finally
-            {
-                watching.Cancel();
-                await watch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-                lock (gate) turn = null;
-            }
-            AttemptFinished?.Invoke(terminal);
-            token.ThrowIfCancellationRequested();
-            bool stopped;
-            lock (gate) stopped = yielded;
-            if (stopped && terminal.State != ConversationState.Completed)
-            {
-                Pauses++;
-                job.Report(BackgroundJobState.Paused, "paused while you talk");
-                continue;
-            }
-            return ThinkLonger.Outcome(terminal, started.Content.Text);
-        }
-    }
-
-    // A route that serves one request at a time: the conversation needing the model stops this attempt.
-    private async Task WatchAsync(CancellationToken token)
-    {
-        while (!token.IsCancellationRequested)
-        {
-            if (Busy!()) Yield();
-            await Task.Delay(Poll, Clock, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        }
+        ArgumentNullException.ThrowIfNull(job);
+        token.ThrowIfCancellationRequested();
+        var left = job.Kind.TimeLimit - job.Elapsed;
+        // Too little time left to be worth asking: the job's time limit ends it.
+        if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
+        job.Report(BackgroundJobState.Running, Doing);
+        var (request, authorization) = Prepare(left);
+        var started = Runtime.Start(request, authorization, token);
+        Attempts++;
+        var terminal = await started.Completion.ConfigureAwait(false);
+        await started.OwnershipRelease.ConfigureAwait(false);
+        AttemptFinished?.Invoke(terminal);
+        token.ThrowIfCancellationRequested();
+        return ThinkLonger.Outcome(terminal, started.Content.Text);
     }
 }

@@ -87,7 +87,8 @@ public sealed class RetrievalTests
             ExpectedRevision = laterId.Revision,
             Content = laterId.Content,
             Provenance = MemoryFixtures.Provenance(clock),
-            Retention = MemoryRetention.UntilDeleted()
+            Retention = MemoryRetention.UntilDeleted(),
+            VoiceId = null
         });
 
         var single = await store.RetrieveAsync(new() { Text = "rankingmarker", MaximumResults = 1 });

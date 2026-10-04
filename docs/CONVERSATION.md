@@ -66,7 +66,8 @@ comment; it needs a Thinking model that can see images. See
    chosen in Companion, so the window asks nothing more: pressing **Send**
    (or Enter), holding the talk button, or speaking while always listening is
    on is the action. Replies are spoken when a voice is set up and *Speak
-   Martlet's replies aloud* is on (Companion › Voice); otherwise they are text
+   Martlet's replies aloud* is on (Companion › Voice, or **Mute voice** /
+   **Unmute voice** on the character's right-click menu); otherwise they are text
    only, with no TTS request and no output device.
 5. Type and press Enter (Shift+Enter for a new line). With **Always listening**
    (Companion › Listening, the default once the microphone is tested) press
@@ -125,10 +126,17 @@ comment; it needs a Thinking model that can see images. See
    next reply or *Stop*. The
    desktop log records it as `Spoken reply failed (...)` against the Speaking
    route, not as a Thinking failure.
+   **Mute voice** on the character's right-click menu (**Unmute voice** while
+   muted) turns *Speak Martlet's replies aloud* off (or on) from there: a reply
+   Martlet is saying stops being said at once, with no failure and a *Muted
+   partway* note when some of it was heard, and its words still stream in and
+   go to the speech bubble the same way. A reply that isn't spoken shows each
+   sentence in the speech bubble and subtitles too, without a voice request or
+   an output device.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper, the style line and each response style,
    reply length, always listening, tools, Thinking longer, who is talking,
-   lorebook and memory introductions, notes with messages, the screen and
+   lorebook, memory and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines, *Screen with your message* (sent with what you type or say while
@@ -214,7 +222,9 @@ reads the entire conversation again before every reply (on a 12B model, about
 - **The message** comes last and ends with Martlet's **notes** between
   `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
   remembered facts not already in the notes of an earlier message the request
-  carries, who is talking when that changed, a smart home result, and the
+  carries, what was said in earlier conversations when the message refers to
+  one ([Memory › Conversation history](MEMORY.md#conversation-history)), who is
+  talking when that changed, a smart home result, and the
   picked style when the persona has several and it changed. The first notes
   start with what notes are (Companion › Prompts › *Notes with messages*).
   Notes are never shown and never what the user said.
@@ -226,13 +236,14 @@ reads the entire conversation again before every reply (on a 12B model, about
   Thinking model on this PC it continues the reply's own conversation (its
   tools described again, never run), so the model's cache still holds it for
   the next reply (see [Memory](MEMORY.md#automatic-recall-and-remembering)).
-- While **Thinking longer** is on (the default), every reply on a route that
-  does function calling is offered `think_longer` and `cancel_thinking`, always
-  both, first and in the same order, with the *Thinking longer* prompt after
-  the tools prompt, so the start never changes from reply to reply. A
-  background think continues a reply's request (instructions, tools and
-  messages unchanged, then what Martlet said, then the task), so it reuses the
-  cache instead of pushing the conversation out ([Thinking longer](#thinking-longer-and-background-work)).
+- While **Thinking longer** is on (the default) and Deep thinking can run where
+  it is set to think, every reply on a route that does function calling is
+  offered `think_longer` and `cancel_thinking`, always both, first and in the
+  same order, with the *Thinking longer* prompt after the tools prompt, so the
+  start never changes from reply to reply. A background think with the Thinking
+  model continues a reply's request (instructions, tools and messages
+  unchanged, then what Martlet said, then the task), so it reuses the cache
+  ([Thinking longer](#thinking-longer-and-background-work)).
 
 Each reply, glance and after-reply request writes a desktop log line such as
 *Thinking input (Reply): first words after 2004 ms; 568 input tokens, 525 of
@@ -244,14 +255,16 @@ Ollama on this PC for them), and the talk window's context line ends with
 ## Thinking longer and background work
 
 Replies answer right away (Thinking steps are Off by default). **Thinking
-longer** (Companion › Deep thinking; on by default) lets Martlet decide,
-sparingly, that a task needs real thought and hand it to **Deep thinking**,
-which works it out in the background while Thinking keeps talking with you:
-parallel thinking, ideally on another machine.
+longer** (Companion › Deep thinking; on by default, and *Where it thinks* ›
+*Off* turns it off on all your computers) lets Martlet decide, sparingly, that a
+task needs real thought and hand it to **Deep thinking**, which works it out in
+the background while Thinking keeps talking with you: parallel thinking, so it
+needs a model of its own.
 
 **How it goes.** Replies on a Thinking route that does function calling (OpenAI
 or a Chat Completions endpoint, Ollama on this PC included; not a paired host's
-gateway, not a model that turned tools down) get `think_longer(task, reason)`:
+gateway, not a model that turned tools down), while Deep thinking can run where
+it is set to think, get `think_longer(task, reason)`:
 `task` is a complete, self-contained instruction (what to work out and exactly
 what the result must contain), `reason` a few words on why. The tool
 description and the *Thinking longer* prompt say to use it rarely (real
@@ -278,54 +291,72 @@ isn't sent again.
 own choice, `deep-thinking.json` in the data folder, never shared, because
 which machine is free to think depends on the computer you talk to):
 
+- *Off*: Martlet answers everything right away and never offers to think
+  something over (Thinking longer off; saved with the reply settings, so all
+  your computers share it). Choosing any place below turns it back on.
 - *Same as Thinking* (default): Thinking's own model, with its tools described
   so the request starts like the reply's and shares its prompt cache, and the
-  Thinking fallback.
+  Thinking fallback. Only when Thinking's provider answers several requests at
+  once (a cloud provider), never Thinking's model on this PC or a paired
+  computer.
 - *Another of your computers*: a paired computer's Ollama (its Thinking role)
   through its pinned gateway with this PC's pairing. The conversation's newest
   exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
   tools), and the computer loads 32,768 tokens of context for it. A computer's
   Martlet must be this version or later for thinks over a minute: an older one
   takes at most 60 seconds and 4,096 tokens a request (Martlet holds a think
-  there to that and logs that the computer should be updated).
-- *Ollama on this PC*: a model of its own here (a larger one can think while a
-  small, fast one answers you).
+  there to that and logs that the computer should be updated). Not a computer
+  that also does Thinking for the conversation.
+- *Ollama on this PC*: a second model of its own here, beside Thinking's (a
+  larger one can think while a small, fast one answers you), never Thinking's
+  own model. The page shows whether it fits beside Thinking's on the graphics
+  card (`DeepThinkingLocalFit`).
 - *A cloud provider or server*: OpenRouter, NVIDIA Build, OpenAI or any
   OpenAI-compatible server (HTTPS, or a server on this PC), with its own key in
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
 
-**Parallel or in quiet moments** (`DeepThinkingPlan`, shown on the page as
-`DeepThinkingParallel`). A think runs alongside the conversation unless it would
-share the hardware the conversation needs: Thinking's own server on this PC
-(Ollama or LM Studio answer one request at a time and keep one conversation in
-their prompt cache), any server on this PC while Thinking or the voice runs on
-this PC (one graphics card), or a paired computer that also does Thinking, the
-voice or listening (its gateway serves one request per job, and its graphics
-card is shared). Ollama on this PC runs with `OLLAMA_NUM_PARALLEL` 1 by default;
-more slots split its context and still share the graphics card, so a second
-request on the same machine always slows the first words of a reply. In the
-waiting case a think works only while the conversation is quiet (see below);
-otherwise it is never paused, and replies keep their own latency.
+**Always in parallel** (`DeepThinkingPlan`, shown on the page as
+`DeepThinkingParallel`). A think always runs alongside the conversation and is
+never paused, so it needs a model that can answer while Thinking answers you.
+Thinking's own model on this PC or a paired computer can't: Ollama or LM Studio
+answer one request at a time per model (Ollama on this PC runs with
+`OLLAMA_NUM_PARALLEL` 1 by default) and keep one conversation in their prompt
+cache, and a paired computer's gateway serves one request per job. There, Deep
+thinking isn't available: `think_longer` isn't offered, the page says why, and a
+single PC whose Thinking model is local simply doesn't think in the background
+until another place is chosen.
+
+**A second model on this PC.** Ollama runs each loaded model in a process of its
+own, so a second model answers at the same time as Thinking's, without touching
+its prompt cache, but only while both fit on the graphics card: otherwise Ollama
+unloads one (Thinking's, when idle) or makes a request wait until one finishes,
+either of which would hold up a reply. So before each think Martlet has Ollama
+load Thinking's model if it isn't loaded (as the talk window's warm-up does),
+then compares what both take (Ollama's own figure from `/api/ps` for a loaded
+model, what it reported earlier in the session, else the download size from
+`/api/tags` times 1.2 plus 0.5 GB for context and buffers) with the graphics
+card's memory less what other programs use (nvidia-smi; else Windows' total for
+the card less Ollama's other models) and 0.75 GB kept free (`OllamaSideBySide`).
+When they don't fit, the think doesn't start and its result says why (*gemma4:12b
+(about 9.5 GB) doesn't fit beside gemma4:e4b ...: choose a smaller model*). While
+its model loads, Martlet watches `/api/ps`; if Ollama unloaded Thinking's model
+or pushed part of it off the card after all, it stops the think, unloads the
+think's model and loads Thinking's again. The two share the graphics card's
+compute, so replies may start a little later while a think runs there; another
+computer or a cloud provider leaves the conversation's hardware alone. Running
+Thinking's own model twice needs a second server (for example another `ollama
+serve` on its own port, chosen as a server on this PC under *A cloud provider or
+server*), which holds a second copy of the model in graphics memory.
 
 **While it runs** you keep talking and Martlet keeps replying. The talk window
 shows a chip per job (*Thinking about: …* with its time and *Cancel*) and the
-line above it (`LiveJobs`); the desktop log notes each start, pause and end
+line above it (`LiveJobs`); the desktop log notes each start, fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
 Stop (Esc) ends a reply, never a think; the chip's Cancel, `cancel_thinking`,
 closing the conversation, quitting Martlet or the time limit do. At most one
 think runs at a time (a second call is refused and Martlet is told to wait or
 cancel the first) and at most 3, 6 (default) or 12 start in any hour.
-
-**In quiet moments.** When a think shares the conversation's hardware, a request
-with another start would push the conversation out of a local model's cache, or
-make a reply wait behind it. So it works only while the conversation is quiet:
-it waits until nothing is being said, answered or remembered, and the moment you start talking, type, hold to talk or Martlet
-starts a reply, glance or after-reply request, it stops its request at once and
-starts it again from the latest exchange once it's quiet (the conversation since
-stays in the cache). A reply never waits behind it. On another machine, none of
-this is needed: the think just runs.
-
 **Delivery.** When a job finishes (or fails, or runs out of time) its result is
 added at the end of the conversation as a new message, never by rewriting
 anything before it:
@@ -373,10 +404,12 @@ think_longer is the first kind and a song is next. A kind is a
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
-4. If the work needs hardware the conversation also uses, pass the runner a
-   `Busy` check (as `BackgroundThink` does from `DeepThinkingPlan`) and stop
-   when it says so; work on its own machine (a song made by a host role on a
-   computer that isn't speaking) just runs, in parallel.
+4. Background work runs in parallel with the conversation, never in turns with
+   it: run it where it doesn't hold up a reply (a song made by a host role on a
+   computer that isn't speaking, a provider of its own), and check first that
+   it fits beside the conversation when it shares a machine with it (as a
+   think on a second model in Ollama on this PC does with `OllamaSideBySide`),
+   refusing with `BackgroundJobOutcome.Failed` when it doesn't.
 
 The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
 the chip and `LiveJobs`, `background-jobs.json` (kinds, states and times only),
@@ -516,8 +549,11 @@ ahead without memory and the status says why. After a completed reply, the
 exchange is sent once more, as one extra text-only request (shared with
 learning names when both are due), to the same Thinking model, which picks out
 lasting facts to save locally (shown under the reply and
-listed in Memory). Screen glances are never remembered. The volatile exchange
-buffer itself is still not persisted. TTS receives only eligible
+listed in Memory). Screen glances are never remembered. The exchanges kept in
+mind for the next replies stay in memory only; separately, while memory and
+*Keep a record of my conversations* are on, each finished exchange is added to
+the [record of conversations](MEMORY.md#conversation-history) on this PC, which
+a later message that mentions an earlier conversation brings back. TTS receives only eligible
 generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
 fallback provider, retry loop or hidden continuation.
@@ -539,7 +575,7 @@ game/call audio. Capturing other people requires their permission.
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
 | Background think (think_longer) | One at a time, 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
-| Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |
+| Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio files or ordinary content logs; finished exchanges (the user's own words and the reply, never audio, glances or what the PC plays) go to the [record of conversations](MEMORY.md#conversation-history) on this PC only while memory and *Keep a record of my conversations* are on |
 
 These are admission and request limits, **not a measured latency promise or a
 currency/invoice ceiling**. Input-token reservations are conservative local
@@ -609,6 +645,17 @@ requests cancellation without releasing the shared ownership slot early.
 Partial response text remains available; stopped speech is not replayed.
 The shortcut is local to this conversation window, not a system-wide hotkey.
 
+A job changed while the talk window is open (Thinking's model or provider, the
+Listening or Speaking engine, the computer that does a job, the voice or the
+Thinking fallback, saved in Companion or on the Devices map) needs no reopening:
+the window takes the saved setup once no reply or turn is running, keeps what
+was said so far as context and says *Your setup changed. Martlet picked it up
+and carries on.* (logged as *The open conversation follows the changed setup
+between replies: ...*). It doesn't stop a reply to switch.
+Switching to an engine first gets it ready where that is possible (a host role is
+installed and answering, a local Ollama model is downloaded and loaded) and only
+then saves the change, so the old one keeps answering until the switch.
+
 The STT adapter's backwards-compatible two-token overload retains the original
 caller and app-operation tokens independently through credentials, serialization,
 send and result acceptance. A blocking newer cancellation callback cannot hide
@@ -622,19 +669,20 @@ Time to first audio is what makes a spoken reply feel conversational, so the
 voice pipeline never waits for a whole reply:
 
 - **Pipelined chunking.** Text is spoken as it streams from the Thinking model:
-  each finished sentence goes to the voice right away. The first piece of a
-  reply is cut even earlier, at a comma, semicolon or dash once it is at least
-  24 characters long, so audio starts before the first sentence is finished;
-  later pieces stay whole sentences, which sound more natural.
+  each finished sentence goes to the voice right away. Only sentence ends
+  (`.`, `?`, `!` followed by a space), a new line and the end of the reply
+  break a reply into pieces; commas, semicolons and dashes never do, so each
+  piece is one or more whole sentences, which sounds more natural.
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
-  break in the wrong place sounds awkward ("I'm so glad you're here, | cutie.").
-  Personality › **Where the voice pauses** sets, per persona, which stops may
-  break a reply: commas, semicolons and dashes (first piece only), periods,
-  question marks and exclamation marks, all on by default. A stop that is off
-  doesn't break until the piece has grown long (100 characters); then any stop
-  does, so a piece never runs past what the voice can say at once. **Say a
+  break in the wrong place sounds awkward ("That was a wonderful idea. |
+  Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
+  sentence ends may break a reply: periods, question marks and exclamation
+  marks, all on by default. A stop that is off doesn't break until the piece
+  has grown long (100 characters); then any sentence end does, so a piece
+  rarely runs past what the voice can say at once (past the voice's byte limit
+  it is cut there). **Say a
   short ending with the words before it** (up to two words by default; *Never*
-  turns it off) keeps an ending such as ", cutie." or ". Cutie!" with the piece
+  turns it off) keeps an ending such as ". Cutie!" with the piece
   before it: each piece waits until a few more words have streamed in (or the
   line or reply ends) before it goes to the voice.
 - **Overlapped synthesis.** While one sentence plays, the next is already being
@@ -664,7 +712,15 @@ voice pipeline never waits for a whole reply:
   `utterance_filter_check`, Windows-voice fixtures, Normal) "Stop!" stopped a
   reply 440-590 ms after the voice began, "Wait, hold on a second." about
   590 ms and "Can you tell me more about that?" about 440 ms; each check took
-  about 100-250 ms of Parakeet on the processor. With a host's or a cloud
+  about 100-250 ms of Parakeet on the processor. The check uses Listening's
+  own Parakeet model; a few words it was far from sure of (its mean and its
+  least sure token probability both low: under 0.65 and 0.36 on Normal) don't
+  stop a reply on their count alone, since Parakeet's English models write
+  "Come on." or "Cosmos was" for a laugh, and a word said over and over
+  counts once (v2 wrote "One, one, one." for "ha ha ha"), while a stop word or
+  Martlet's name still does. With each of the three Parakeet models, `utterance_filter_check`
+  stopped for "Stop!", "Wait, ..." and the question and never for laughter, a
+  hum or noise. With a host's or a cloud
   speech-to-text there is no quick check (it would be a second upload): the
   utterance's own transcript decides once you pause, so Martlet stops after
   your pause and the transcription. Each stop writes *Barge-in: Martlet stopped
@@ -721,7 +777,10 @@ cache are untouched.
   the participation policy's confidence) and, for any engine that gives them,
   whisper's no-speech and average log probabilities. And always how much of
   the utterance was a voice: the loud 20 ms frames the speakers don't explain
-  (`LiveConversationOperation.Voiced`). Measured on this PC: Parakeet's
+  (`LiveConversationOperation.Voiced`), and how long that voice went on, from
+  its onset to the silence after it with short pauses included and the frames
+  the speakers explain left out (`LiveConversationOperation.Speech`;
+  `BargeInGate.Speech` for a quick check). Measured on this PC: Parakeet's
   "Yeah." for a cough had a mean of 0.67-0.70 but a lowest token of
   0.20-0.32, a Windows voice saying it 0.79 and 0.51; whisper.cpp's "Yeah."
   for two coughs had a word probability of 0.07. A paired host's whisper and
@@ -729,8 +788,12 @@ cache are untouched.
   probabilities) took about 65 ms longer per utterance on this PC (190 against
   255 ms), so Martlet doesn't ask for it, and there the voice decides (a phrase
   speech-to-text makes up needs 400 ms of voice on Normal).
-- **Too many words for the voice.** More than about seven words per second of
-  voice plus one ("I think the second one is better." from 250 ms of voice).
+- **Too many words for the speech.** More than about seven words per second of
+  speech plus one ("I think the second one is better." from 300 ms of
+  speech). It counts how long the voice went on, not only its loudest frames:
+  fluent speech is often under half that loud, so "I'm gonna make it public."
+  (460 ms of loud voice in about a second of speech, Parakeet sure of every
+  word) was once dropped as *5 words from 460 ms of voice*.
 - **Unsure and lone words.** A short utterance the engine was unsure of, a
   lone word that says nothing on its own ("the", "so", "you"), or a lone word
   shorter than 200 ms of voice. Short answers and commands ("yes", "no",
@@ -745,7 +808,7 @@ cache are untouched.
 - **What you see.** An ignored utterance shows as a faded note in the talk
   window, *Ignored "Mmm" (not words).*, several in a row sharing one note, and
   the desktop log records *Always listening ignored what it heard: reason
-  (kind, voice, evidence, word check)*, never the words. What the PC plays
+  (kind, voice in speech, evidence, word check)*, never the words. What the PC plays
   that isn't words is simply let go.
 - **Martlet stays quiet.** What passes the filter but isn't meant for Martlet
   (people talking in the room, a muttered word) still goes to the Thinking

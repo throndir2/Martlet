@@ -67,7 +67,9 @@ public sealed class ReplyTimeline
 /// happen are left out; their numbers add up to the total):
 /// <c>Reply latency: first audio 6620 ms after you stopped talking (end of speech 800, recording 12, ..., speakers 31). First
 /// words after 3300 ms and first audio after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of speech made
-/// in 1069 ms. Models: Thinking x-ai/grok-4.3, voice chatterbox-turbo, speech-to-text parakeet-tdt-0.6b-v3-int8.</c>
+/// in 1069 ms. The voice paused 2 times for 3120 ms in all, waiting for its next audio. Models: Thinking x-ai/grok-4.3, voice
+/// chatterbox-turbo, speech-to-text parakeet-tdt-0.6b-v3-int8.</c>
+/// The pauses are said only when the speakers ran dry mid-reply because the voice was made slower than real time.
 /// MCP's latency_report reads these lines; the models are the desktop's list of model IDs.</summary>
 public static class ReplyLatency
 {
@@ -84,6 +86,8 @@ public static class ReplyLatency
     public const string VoiceSynthesis = "voice synthesis";
     public const string PlaybackStart = "playback start";
     public const string Speakers = "speakers";
+    // Shorter waits for the voice's next audio (the moment between a piece's last audio and its end) aren't heard as a pause.
+    private static readonly TimeSpan NoticeablePause = TimeSpan.FromMilliseconds(100);
 
     /// <summary>The line for a finished reply, or null when nothing of it arrived (no words, no audio).</summary>
     /// <param name="timeline">What happened before the reply started; its last step is the reply's start
@@ -143,6 +147,10 @@ public static class ReplyLatency
         if (timings.FirstPieceSpeech is { } speech && timings.FirstPieceSynthesizedAfter is { } made && timings.SpeechRequestAfter is { } asked)
             text.Append(CultureInfo.InvariantCulture,
                 $" First piece: {speech.TotalSeconds:0.00} s of speech made in {Math.Max(0, (made - asked).TotalMilliseconds):0} ms.");
+        if (timings.VoiceWaits > 0 && timings.VoiceWaited >= NoticeablePause)
+            text.Append(CultureInfo.InvariantCulture,
+                $" The voice paused {timings.VoiceWaits} time{(timings.VoiceWaits == 1 ? "" : "s")} for " +
+                $"{timings.VoiceWaited.TotalMilliseconds:0} ms in all, waiting for its next audio.");
         if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
         if (!string.IsNullOrWhiteSpace(models)) text.Append(" Models: ").Append(models.Trim()).Append('.');
         return text.ToString();

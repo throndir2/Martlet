@@ -402,11 +402,40 @@ Trust model:
 | Registry | `registry=host\|user\|secret` | `docker login` with the stored secret |
 | Assets | `asset=url\|path` | Pinned HTTPS downloads (`{VAR}` uses a choice), copied into the role's `martlet-<role>-configs` volume |
 | Loopback | `rewrite=path\|sed`, `expect=path\|text` | Rewrite configs to 127.0.0.1 and verify it |
+| Prepare | `prepare=<service>` | Before the service is (re)created, runs that service once with `MARTLET_PREPARE=1` (`docker compose run --rm --no-deps`) so it fetches what the chosen options need and exits, while the running one keeps serving. `stt` uses it to download a newly chosen whisper model, so changing the model (or GPU and CPU) only restarts the server instead of leaving the host deaf for the download |
 | One per host | `exclusive=<group>` | Roles in the same group replace each other: the voice engines (`chatterbox`, `f5`, `xtts`, `gpt-sovits`, `dia`) declare `exclusive=voice` because each keeps its model in the graphics card's memory. `describe` lists the installed ones adding this role stops as `role.stops` (Martlet's Install dialog names them). `add` asks once (or Martlet already did), builds the new role's image while the old engine still works (`docker compose up --no-start`), then stops the others (`docker compose down`, keeping their volumes and images), removes their records and republishes the gateway without them before the new role starts, so its model never competes with theirs. Re-adding one later reuses its downloads |
 | Service | `compose.yaml`, `network=host` | `docker compose up -d` with `network_mode: ${MARTLET_ROLE_NETWORK}` (host natively, the gateway's namespace in Docker), unless the role declares `network=host` and its Compose file intentionally uses the host network on both methods; a role can build its image from Martlet's sources under `${MARTLET_SOURCE}` (the checkout natively, `/opt/martlet/source` in the host image) |
 | Readiness | `port`, `ready_timeout_minutes` | Wait until the service accepts connections (127.0.0.1:`port`, or the host LAN address for Docker `network=host` roles) |
 | Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model; its progress streams to Martlet's run window |
-| Publish | `gateway_kind`, `model_from`, `feature` | Route roles add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; renew the service approval (gateway console, or `owner-approve` with `--yes`); restart. Route-less roles declare `feature=<token>` instead, write an installed role record with `feature`, `port` and `network=host`, collect `machine.json` and restart the gateway without changing `host.json` |
+| Publish | `gateway_kind`, `model_from`, `feature` | Route roles add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list; when `host.json` changed, renew the service approval (gateway console, or `owner-approve` with `--yes`) and restart. Route-less roles declare `feature=<token>` instead, write an installed role record with `feature`, `port` and `network=host`, collect `machine.json` and restart the gateway without changing `host.json`. Either way the gateway restarts only when something it opens changed (below) |
+| Retire | `retire=<service>\|<command>` | Once the gateway relays a newly chosen model, runs the command inside that service for the model it replaced (`{PREVIOUS}`); `ollama` uses `ollama stop {PREVIOUS}` so the old model leaves the graphics card's memory (it stays downloaded). A failure is only noted |
+
+### Reusing what is already there
+
+Adding a role that is already installed is a reconfiguration, not a reinstall:
+
+- Images, downloads and data volumes are kept (also by `remove` and by an
+  `exclusive` replacement), so adding a role again, or switching back to one,
+  downloads nothing new. Compose recreates a container only when its
+  configuration changed; an unchanged one keeps running.
+- The gateway (the single entry point every role on the host goes through)
+  restarts only when something it opens changed: `host.json`, the machine report
+  (apart from when it was collected) or the gateway itself (the engine image in
+  Docker, the published assemblies natively). After each healthy start
+  `martlet-host` records a stamp of them in `gateway.served` in the host config;
+  when it still matches, the approval matches and the gateway answers its health
+  check, `add`, `remove` and `setup` leave it running, so the other roles' traffic
+  is never interrupted by a change that doesn't concern it (adding a role again,
+  moving one between the GPU and the CPU, running setup again). `machine` always
+  collects a fresh report and restarts it.
+- Switching a role's model keeps the old one answering until the new one is
+  ready: Ollama pulls and loads the new model while the gateway still relays the
+  old one, then the gateway switches and the old model is unloaded (`retire`);
+  whisper downloads the new model in a one-off container (`prepare`) before its
+  server is replaced. Only the voice engines (`exclusive=voice`) stop the old one
+  before the new one starts, because both models would not fit in the graphics
+  card's memory; the new engine's image is built first, so that gap is only its
+  start and warm-up.
 
 ## Adding a new role
 
@@ -471,6 +500,10 @@ what* shows which computer handles each job:
   `character-model-chunk-<sha256>.bin` beside `host.json`), only so each of your Martlet
   desktops can copy them; a host shows no character. See
   [shared character models](../../docs/CLUSTER.md#the-shared-character-models).
+- Hosts keep a copy of everything Martlet makes, such as songs (`creations.json` and
+  `creation-chunk-<sha256>.bin` beside `host.json`), so each of your Martlet desktops can copy
+  them, including one that was off when it was made; a host performs nothing. See
+  [Creations](../../docs/CREATIONS.md).
 - Handing a job to a host detaches the replaced cloud key (it is listed for removal
   in Setup, never silently deleted); handing the job back reattaches it. Jobs on the
   same host share that host's one pairing.

@@ -37,10 +37,11 @@ public static class FixtureCreations
     };
 
     /// <summary>A test-tone creation: <paramref name="seconds"/> of a sine at <paramref name="frequencyHz"/> (stereo, 48 kHz,
-    /// with a quiet second half so FLAC has silence to save), as FLAC, and its notes.</summary>
-    public static CreationDraft Draft(CreationAuthor author, string title, double seconds, int frequencyHz = 440, int channels = 2)
+    /// with a quiet second half so FLAC has silence to save, and <paramref name="noise"/> of hiss so it compresses less), as
+    /// FLAC, and its notes.</summary>
+    public static CreationDraft Draft(CreationAuthor author, string title, double seconds, int frequencyHz = 440, int channels = 2, int noise = 0)
     {
-        var pcm = Tone(seconds, frequencyHz, channels);
+        var pcm = Tone(seconds, frequencyHz, channels, noise);
         var notes = JsonSerializer.SerializeToUtf8Bytes(new { kind = "fixture", frequency_hz = frequencyHz, note = "FIXTURE - NOT AI" });
         return new()
         {
@@ -55,14 +56,18 @@ public static class FixtureCreations
         };
     }
 
-    /// <summary>Interleaved 16-bit PCM of a sine for the first half and silence for the second.</summary>
-    public static byte[] Tone(double seconds, int frequencyHz, int channels)
+    /// <summary>Interleaved 16-bit PCM of a sine (with <paramref name="noise"/> of hiss) for the first half and silence for
+    /// the second.</summary>
+    public static byte[] Tone(double seconds, int frequencyHz, int channels, int noise = 0)
     {
         var frames = (int)(seconds * SampleRate);
+        var random = new Random(frequencyHz);
         var pcm = new byte[frames * 2 * channels];
         for (var i = 0; i < frames; i++)
         {
-            var value = i < frames / 2 ? (short)(Math.Sin(2 * Math.PI * frequencyHz * i / SampleRate) * 8_000) : (short)0;
+            var value = i < frames / 2
+                ? (short)(Math.Sin(2 * Math.PI * frequencyHz * i / SampleRate) * 8_000 + (noise > 0 ? random.Next(-noise, noise) : 0))
+                : (short)0;
             for (var c = 0; c < channels; c++)
                 BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan((i * channels + c) * 2), c == 1 ? (short)(value / 2) : value);
         }

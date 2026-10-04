@@ -87,8 +87,9 @@ public sealed class StreamingTests
         await using var h = new Harness(new ControlledDevice { AutoConsume = false });
         h.Answer("First sentence. ", "Second sentence.");
         var turn = h.Start();
-        // The first sentence never finishes playing, yet the second is already synthesized and waiting.
-        await Harness.Until(() => h.Tts.Calls == 2, h.Clock);
+        // The first sentence never finishes playing, yet the second is already synthesized and waiting. (The second can be
+        // synthesized a moment before the first one's playback opens the speakers.)
+        await Harness.Until(() => h.Tts.Calls == 2 && h.Device.Opens == 1, h.Clock);
         Assert.Equal(0, h.Device.Disposals);
         Assert.Equal(1, h.Device.Opens);
         Assert.Equal(["First sentence.", "Second sentence."], h.Permissions.SpeechActions.Select(a => a.Input.Text));

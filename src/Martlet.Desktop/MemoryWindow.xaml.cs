@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Core.Speakers;
 using Martlet.Memory;
 using Microsoft.Win32;
 
@@ -17,6 +18,20 @@ public partial class MemoryWindow : ThemedWindow
         public override string ToString() => Label;
     }
 
+    private enum PersonKind { All, Everyone, Voice, Forgotten }
+
+    /// <summary>A choice of whose facts: <see cref="VoiceId"/> for one voice (or the forgotten voice a fact keeps).</summary>
+    private sealed record PersonOption(string Label, PersonKind Kind, string? VoiceId = null)
+    {
+        public override string ToString() => Label;
+    }
+
+    /// <summary>One fact in the list, with whose it is (null for everyone's).</summary>
+    internal sealed record FactItem(MemoryFact Fact, string? Person)
+    {
+        public override string ToString() => Person is null ? Fact.Content : $"{Person} · {Fact.Content}";
+    }
+
     private static readonly RetentionOption[] NewRetentionOptions =
     [
         new("Until I delete it", null),
@@ -25,11 +40,17 @@ public partial class MemoryWindow : ThemedWindow
         new("Delete after 1 year", TimeSpan.FromDays(365))
     ];
 
+    private const string EveryoneLabel = "Everyone";
+
     private readonly DesktopMemoryService service;
     private readonly SetupOperationRunner operations;
     private readonly Func<string?> chooseDirectory;
     private readonly Func<string?> chooseExport;
     private readonly Func<Window, string, string, bool> confirm;
+    private readonly Func<VoiceRoster> voices;
+    private string? showPerson;
+    private VoiceRoster roster = VoiceRoster.Empty;
+    private IReadOnlyList<MemoryFact> facts = [];
     private AppSettings? loadedSettings;
     private string? loadedRevision;
     private Guid configurationRevision;
@@ -39,21 +60,28 @@ public partial class MemoryWindow : ThemedWindow
     private bool closed;
     private bool rendering;
 
+    /// <param name="voices">The voices Martlet knows (People), whose facts the window can show and choose.</param>
+    /// <param name="person">A voice ID whose facts to show first (People's "What Martlet remembers").</param>
     internal MemoryWindow(
         DesktopMemoryService service,
         SetupOperationRunner operations,
         Func<string?>? chooseDirectory = null,
         Func<string?>? chooseExport = null,
-        Func<Window, string, string, bool>? confirm = null)
+        Func<Window, string, string, bool>? confirm = null,
+        Func<VoiceRoster>? voices = null,
+        string? person = null)
     {
         this.service = service;
         this.operations = operations;
         this.chooseDirectory = chooseDirectory ?? PickDirectory;
         this.chooseExport = chooseExport ?? PickExport;
         this.confirm = confirm ?? Confirm;
+        this.voices = voices ?? (() => VoiceRoster.Empty);
+        showPerson = person;
         autoSave = new AutoSave(SaveConfigurationAsync);
         InitializeComponent();
         RetentionChoice.ItemsSource = NewRetentionOptions;
+        RenderPeople();
         RenderActions();
     }
 
@@ -101,9 +129,11 @@ public partial class MemoryWindow : ThemedWindow
         rendering = false;
         DisposeExportPreview();
         FactsList.ItemsSource = null;
+        facts = [];
         FactContent.Clear();
         FactDetails.Clear();
         RetentionChoice.SelectedIndex = -1;
+        RenderPeople();
         ConfigurationStatus.Text = memory is null
             ? "Updating older memory settings..."
             : $"Memory is {(memory.Enabled ? "on" : "off")}.";
@@ -165,6 +195,7 @@ public partial class MemoryWindow : ThemedWindow
         configurationRevision = result.Settings.Memory!.ConfigurationRevision;
         DisposeExportPreview();
         FactsList.ItemsSource = null;
+        facts = [];
         ConfigurationStatus.Text = result.Settings.Memory.Enabled
             ? "Saved. Memory is on: Martlet will remember and recall lasting facts."
             : "Saved. Memory is off: saved facts stay on this PC; turn memory on to review or delete them.";
@@ -187,10 +218,97 @@ public partial class MemoryWindow : ThemedWindow
             "Couldn't refresh facts.");
         if (closed || inspection is null)
             return;
-        FactsList.ItemsSource = inspection.Facts.OrderByDescending(fact => fact.UpdatedAtUtc).ToArray();
-        FactStatus.Text = inspection.Facts.Count == 1 ? "1 fact remembered." : $"{inspection.Facts.Count} facts remembered.";
+        facts = inspection.Facts;
+        RenderPeople();
+        RenderFacts();
         RenderActions();
     }
+
+    /// <summary>The Show and Belongs to choices: everyone, each voice Martlet knows (yours first, then named ones), and the
+    /// forgotten voices facts still belong to.</summary>
+    private void RenderPeople()
+    {
+        roster = voices();
+        var live = roster.Live.OrderByDescending(v => v.Owner).ThenByDescending(v => v.Named).ThenBy(v => v.Number)
+            .Select(v => new PersonOption(PersonName(v), PersonKind.Voice, v.Id)).ToArray();
+        var forgotten = facts.Any(f => f.VoiceId is { } id && roster.Resolve(id) is null);
+        // Keep what was shown; a voice merged meanwhile shows the voice it joined.
+        var wanted = PersonFilter.SelectedItem as PersonOption;
+        var wantedVoice = MemoryPeople.Canonical(wanted?.VoiceId, roster);
+        var show = showPerson is { } person ? MemoryPeople.Canonical(person, roster) : null;
+        PersonOption[] filters =
+        [
+            new("All facts", PersonKind.All), new("Everyone's (not tied to a voice)", PersonKind.Everyone), .. live,
+            .. forgotten ? new[] { new PersonOption("Forgotten voices", PersonKind.Forgotten) } : Array.Empty<PersonOption>()
+        ];
+        rendering = true;
+        PersonFilter.ItemsSource = filters;
+        PersonFilter.SelectedItem = show is not null ? filters.FirstOrDefault(o => o.VoiceId == show) ?? filters[0]
+            : filters.FirstOrDefault(o => o.Kind == wanted?.Kind && o.VoiceId == wantedVoice) ?? filters[0];
+        rendering = false;
+        showPerson = null;
+        ResetPersonChoice(null);
+    }
+
+    /// <summary>The Belongs to options; a fact whose voice was forgotten keeps that voice as an option.</summary>
+    private void ResetPersonChoice(MemoryFact? fact)
+    {
+        var options = new List<PersonOption> { new(EveryoneLabel, PersonKind.Everyone) };
+        options.AddRange(((IEnumerable<PersonOption>?)PersonFilter.ItemsSource ?? []).Where(o => o.Kind == PersonKind.Voice));
+        if (fact?.VoiceId is { } id && roster.Resolve(id) is null)
+            options.Add(new("A forgotten voice", PersonKind.Forgotten, id));
+        PersonChoice.ItemsSource = options;
+        var voice = fact is not null ? MemoryPeople.Canonical(fact.VoiceId, roster) is { } canonical && roster.Resolve(canonical) is not null
+                ? canonical : fact.VoiceId
+            // A new fact belongs to the voice shown, else to yours: you typed it.
+            : PersonFilter.SelectedItem is PersonOption { Kind: PersonKind.Voice } shown ? shown.VoiceId
+            : roster.Live.FirstOrDefault(v => v.Owner)?.Id;
+        PersonChoice.SelectedItem = options.FirstOrDefault(o => o.VoiceId == voice) ?? options[0];
+    }
+
+    private void RenderFacts()
+    {
+        var filter = PersonFilter.SelectedItem as PersonOption;
+        var shown = facts.Where(fact => filter?.Kind switch
+            {
+                PersonKind.Everyone => fact.VoiceId is null,
+                PersonKind.Voice => MemoryPeople.Canonical(fact.VoiceId, roster) == filter.VoiceId,
+                PersonKind.Forgotten => fact.VoiceId is { } id && roster.Resolve(id) is null,
+                _ => true
+            })
+            .OrderByDescending(fact => fact.UpdatedAtUtc).Select(fact => new FactItem(fact, PersonName(fact.VoiceId))).ToArray();
+        FactsList.ItemsSource = shown;
+        FactStatus.Text = Summary(shown.Length, filter?.Kind is null or PersonKind.All);
+    }
+
+    /// <summary>How many facts and whose (counts only, never a name or a fact).</summary>
+    private string Summary(int shown, bool all)
+    {
+        var text = facts.Count == 1 ? "1 fact remembered" : $"{facts.Count} facts remembered";
+        var people = facts.Select(f => f.VoiceId is { } id ? roster.Resolve(id)?.Id : null).OfType<string>().Distinct().Count();
+        var owned = facts.Count(f => f.VoiceId is { } id && roster.Resolve(id) is not null);
+        var forgotten = facts.Count(f => f.VoiceId is { } id && roster.Resolve(id) is null);
+        if (owned > 0) text += $": {owned} belong{(owned == 1 ? "s" : "")} to {(people == 1 ? "1 person" : $"{people} people")} Martlet knows by voice";
+        if (forgotten > 0) text += $"{(owned > 0 ? "," : ":")} {forgotten} to a forgotten voice";
+        return text + (all ? "." : $". Showing {shown}.");
+    }
+
+    private void PersonFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (rendering || closed) return;
+        RenderFacts();
+        if (FactsList.SelectedItem is null) ResetPersonChoice(null);
+        RenderActions();
+    }
+
+    /// <summary>A voice as the window names it: its name (and "you" for yours), else "Voice 3".</summary>
+    private static string PersonName(KnownVoice voice) =>
+        (voice.Named ? voice.DisplayName : $"Voice {voice.Number}") + (voice.Owner ? " (you)" : "");
+
+    private string? PersonName(string? voiceId) =>
+        voiceId is null ? null : roster.Resolve(voiceId) is { } voice ? PersonName(voice) : "A forgotten voice";
+
+    private string? SelectedVoice() => (PersonChoice.SelectedItem as PersonOption)?.VoiceId;
 
     private async void SaveFact_Click(object sender, RoutedEventArgs e)
     {
@@ -199,6 +317,7 @@ public partial class MemoryWindow : ThemedWindow
         MemoryMutationReceipt? receipt = null;
         var retention = SelectedRetention(existing: null);
         var content = FactContent.Text;
+        var voice = SelectedVoice();
         if (retention is null)
         {
             FactStatus.Text = "Choose how long to keep it first.";
@@ -206,7 +325,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         await RunAsync(async token =>
             receipt = await service.SaveFactAsync(
-                configurationRevision, content, retention, token).ConfigureAwait(false),
+                configurationRevision, content, retention, voice, token).ConfigureAwait(false),
             "Couldn't add the fact.");
         if (closed || receipt is null)
             return;
@@ -214,18 +333,19 @@ public partial class MemoryWindow : ThemedWindow
         FactContent.Clear();
         RetentionChoice.SelectedIndex = -1;
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact added.";
+        FactStatus.Text = "Fact added. " + FactStatus.Text;
     }
 
     private async void EditFact_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireCurrentEnabledConfiguration(FactStatus))
             return;
-        if (FactsList.SelectedItem is not MemoryFact fact)
+        if (FactsList.SelectedItem is not FactItem { Fact: var fact })
             return;
         MemoryMutationReceipt? receipt = null;
         var retention = SelectedRetention(fact);
         var content = FactContent.Text;
+        var voice = SelectedVoice();
         if (retention is null)
         {
             FactStatus.Text = "Choose how long to keep it first.";
@@ -233,20 +353,20 @@ public partial class MemoryWindow : ThemedWindow
         }
         await RunAsync(async token =>
             receipt = await service.EditFactAsync(
-                configurationRevision, fact, content, retention, token).ConfigureAwait(false),
+                configurationRevision, fact, content, retention, voice, token).ConfigureAwait(false),
             "Couldn't edit the fact. Reload and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact updated.";
+        FactStatus.Text = "Fact updated. " + FactStatus.Text;
     }
 
     private async void DeleteFact_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireCurrentEnabledConfiguration(FactStatus))
             return;
-        if (FactsList.SelectedItem is not MemoryFact fact ||
+        if (FactsList.SelectedItem is not FactItem { Fact: var fact } ||
             !confirm(this,
                 $"Delete this remembered fact?\n\n\"{PreviewFact(fact.Content)}\"",
                 "Delete remembered fact"))
@@ -259,7 +379,7 @@ public partial class MemoryWindow : ThemedWindow
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact deleted.";
+        FactStatus.Text = "Fact deleted. " + FactStatus.Text;
     }
 
     private async void PurgeExpired_Click(object sender, RoutedEventArgs e)
@@ -274,7 +394,7 @@ public partial class MemoryWindow : ThemedWindow
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = receipt.DeletedFacts == 1 ? "Deleted 1 expired fact." : $"Deleted {receipt.DeletedFacts} expired facts.";
+        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 expired fact. " : $"Deleted {receipt.DeletedFacts} expired facts. ") + FactStatus.Text;
     }
 
     private async void CreateExportPreview_Click(object sender, RoutedEventArgs e)
@@ -332,17 +452,19 @@ public partial class MemoryWindow : ThemedWindow
 
     private void FactsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (FactsList.SelectedItem is not MemoryFact fact)
+        if (FactsList.SelectedItem is not FactItem { Fact: var fact })
         {
             FactDetails.Clear();
             RenderActions();
             return;
         }
         FactContent.Text = fact.Content;
+        ResetPersonChoice(fact);
         RetentionChoice.ItemsSource = NewRetentionOptions.Append(
             new RetentionOption("Keep current retention", null, KeepCurrent: true));
         RetentionChoice.SelectedIndex = NewRetentionOptions.Length;
         FactDetails.Text =
+            $"Belongs to: {PersonName(fact.VoiceId) ?? "everyone (not tied to a voice)"}\n" +
             $"Created: {When(fact.CreatedAtUtc)} ({MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)})\n" +
             $"Updated: {When(fact.UpdatedAtUtc)} ({MemoryPromptContext.Source(fact.LastModifiedBy.SourceKind)})\n" +
             $"Retention: {RetentionText(fact.Retention)}";
@@ -510,7 +632,7 @@ public partial class MemoryWindow : ThemedWindow
             CreateExportPreviewButton.IsEnabled = enabled && !busy;
         SaveFactButton.IsEnabled = enabled && !busy;
         EditFactButton.IsEnabled = DeleteFactButton.IsEnabled =
-            enabled && !busy && FactsList.SelectedItem is MemoryFact;
+            enabled && !busy && FactsList.SelectedItem is FactItem;
         BrowseExportButton.IsEnabled = !busy;
         ExportButton.IsEnabled = enabled && !busy && exportPreview is not null &&
             AcceptExport.IsChecked == true && !string.IsNullOrWhiteSpace(ExportDestination.Text);
@@ -559,6 +681,7 @@ public partial class MemoryWindow : ThemedWindow
         if (ConfigurationMatchesPersisted())
             return;
         FactsList.ItemsSource = null;
+        facts = [];
         FactContent.Clear();
         FactDetails.Clear();
         RetentionChoice.ItemsSource = NewRetentionOptions;

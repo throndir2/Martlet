@@ -36,6 +36,9 @@ services:
           mv "$$model.part" "$$model"
           echo "$$sum" > "$$model.sha256"
         fi
+        # martlet-host add runs this once with MARTLET_PREPARE=1 first (role.conf prepare=stt): it downloads a newly chosen
+        # model while the running server keeps hearing, then the switch only restarts the server.
+        if [ "$${MARTLET_PREPARE:-}" = 1 ]; then echo "The whisper $$STT_MODEL model is ready."; exit 0; fi
         threads=$$(nproc); if [ "$$threads" -gt 8 ]; then threads=8; fi
         exec /app/build/bin/whisper-server --host 127.0.0.1 --port 8178 -m "$$model" -l auto -t "$$threads" --suppress-nst
 

@@ -10,11 +10,11 @@ public enum DeepThinkingPlace { SameAsThinking, Endpoint, Host }
 
 /// <summary>Companion › Deep thinking › Where it thinks, on this PC (deep-thinking.json in the data folder; never part of the
 /// settings your computers share, because which machine is free to think depends on the computer you talk to). Thinking
-/// answers you; Deep thinking works out what Martlet hands it in the background (think_longer). On another machine (a paired
-/// computer or a cloud provider) it runs in parallel with the conversation; on the hardware the conversation uses it waits for
-/// quiet moments (<see cref="DeepThinkingPlan"/>). An endpoint's own key is in Windows Credential Manager
-/// (<see cref="CredentialId"/>, a reference); a paired computer is reached with this PC's pairing, whose secret stays where pairing
-/// saved it.</summary>
+/// answers you; Deep thinking works out what Martlet hands it in the background (think_longer), always in parallel with the
+/// conversation, so it needs a model of its own (<see cref="DeepThinkingPlan"/>): another computer, a cloud provider, a second
+/// model on this PC, or Thinking's own model when its provider answers several requests at once. An endpoint's own key is in
+/// Windows Credential Manager (<see cref="CredentialId"/>, a reference); a paired computer is reached with this PC's pairing,
+/// whose secret stays where pairing saved it.</summary>
 public sealed record DeepThinkingSettings
 {
     public const string FileName = "deep-thinking.json";
@@ -143,38 +143,50 @@ public sealed record DeepThinkingSettings
         thinking.ModelId == ModelId;
 }
 
-/// <summary>Whether a background think runs in parallel with the conversation or waits for quiet moments, and why. It waits
-/// only when it would share hardware with what the conversation needs right now: the Thinking model's own server when that is
-/// on this PC (a local server answers one request at a time and keeps one conversation in its prompt cache), this PC's
-/// graphics card while Thinking or the voice uses it, or a paired computer that does one of the conversation's jobs
-/// (Thinking, the voice or listening; its gateway serves one request per job and its graphics card is shared).</summary>
-public sealed record DeepThinkingPlan(bool Parallel, string Why)
+/// <summary>Whether Deep thinking can work where it is set to think, and why. Deep thinking is parallel thinking: a think always
+/// runs alongside the conversation, never in turns with it, so it needs a model of its own. The Thinking model itself can't
+/// think something over while it answers you when it runs on this PC or a paired computer (such a server answers one request
+/// at a time and keeps one conversation in its prompt cache), so there it isn't <see cref="Available"/> and think_longer isn't
+/// offered. A second model in the same Ollama on this PC runs in a process of its own and answers at the same time, but only
+/// while both fit on the graphics card (Ollama unloads one or makes a request wait otherwise): <see cref="ChecksFit"/> says
+/// Martlet checks that before each think.</summary>
+public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit = false)
 {
     public static DeepThinkingPlan For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes)
     {
         ArgumentNullException.ThrowIfNull(deep);
         ArgumentNullException.ThrowIfNull(routes);
         var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        var thinkingHere = thinking is not null && IsThisPc(thinking);
         if (deep.SameAs(thinking))
-            return thinking is null ? new(true, "Thinking isn't set up yet.")
-                : thinkingHere
-                ? new(false, "Thinking runs on this PC and its server answers one request at a time, so a think waits for quiet moments.")
-                : thinking?.RouteType == SetupRouteType.GatewayOllama
-                    ? new(false, $"Thinking runs on {thinking.Gateway?.HostId ?? "a paired computer"}, which answers one request at a time, so a think waits for quiet moments.")
+            return thinking is null ? new(false, "Set up Thinking first.")
+                : IsThisPc(thinking)
+                ? new(false, $"Thinking's model ({thinking.ModelId}) runs on this PC and can't think something over while it answers you. " +
+                    "Choose another model in Ollama on this PC, another of your computers or a cloud provider.")
+                : thinking.RouteType == SetupRouteType.GatewayOllama
+                    ? new(false, $"Thinking's model runs on {thinking.Gateway?.HostId ?? "a paired computer"} and can't think something over " +
+                        "while it answers you. Choose another place for Deep thinking.")
                     : new(true, "Thinking's provider answers several requests at once, so a think runs alongside the conversation.");
         if (deep.OnThisPc)
         {
-            var busy = routes.Where(r => r.Enabled != false && IsThisPc(r) && r.Role is SetupRole.Llm or SetupRole.Tts).ToArray();
-            return busy.Length > 0
-                ? new(false, $"It runs on this PC, where {Jobs(busy)} also runs{(busy.Any(r => r.Role == SetupRole.Llm) && SameServer(deep, thinking) ? " on the same server" : "")}, so a think waits for quiet moments.")
+            if (thinking is not null && IsThisPc(thinking) && SameServer(deep, thinking))
+                return new(true, $"It runs as a second model beside Thinking's {thinking.ModelId} on this PC, so a think runs alongside the " +
+                    "conversation. Before each think Martlet checks both fit on the graphics card together, and replies may start a " +
+                    "little later while it thinks.", ContextBudget.IsLocalOllama(SetupRouteType.ChatCompletions, deep.Origin) &&
+                    ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin));
+            var shared = routes.Where(r => r.Enabled != false && IsThisPc(r) && r.Role is SetupRole.Llm or SetupRole.Tts).ToArray();
+            return shared.Length > 0
+                ? new(true, $"It runs on this PC alongside the conversation and shares the graphics card with {Jobs(shared)}, so replies " +
+                    "may start a little later while it thinks.")
                 : new(true, "It runs on this PC while the conversation's models run elsewhere, so a think runs alongside the conversation.");
         }
         if (deep.Place == DeepThinkingPlace.Host)
         {
             var shared = routes.Where(r => r.Enabled != false && SelfHostSetup.IsGateway(r.RouteType) && r.Gateway?.HostId == deep.HostId).ToArray();
+            if (shared.Any(r => r.Role == SetupRole.Llm))
+                return new(false, $"{deep.HostId} also does Thinking for the conversation, and its model can't think something over while " +
+                    "it answers you. Choose another place for Deep thinking.");
             return shared.Length > 0
-                ? new(false, $"{deep.HostId} also does {Jobs(shared)} for the conversation, so a think waits for quiet moments there.")
+                ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.")
                 : new(true, $"{deep.HostId} does none of the conversation's jobs, so a think runs there alongside the conversation.");
         }
         return new(true, "It runs on its own provider, so a think runs alongside the conversation.");

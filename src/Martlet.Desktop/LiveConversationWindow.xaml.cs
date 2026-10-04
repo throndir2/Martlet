@@ -64,6 +64,8 @@ public sealed class ChatMessage : INotifyPropertyChanged
 public partial class LiveConversationWindow : ThemedWindow
 {
     internal SupportController? Support { get; init; }
+    /// <summary>Where the character looks: each new screenshot of your screen goes to it while Martlet decides.</summary>
+    internal CharacterGazeService? Gaze { get; init; }
     private readonly LiveSupportProjection supportProjection = new();
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
@@ -117,6 +119,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private string? pendingText;
     private ChatMessage? pendingMessage;
     private string? reloadReason;
+    // The load that runs now takes a changed setup in an open conversation (said once in the log).
+    private bool following;
     // What the status line says after something finished or went wrong; the next thing you do clears it.
     private string? notice;
     // The bubbles the current operation fills in.
@@ -267,6 +271,10 @@ public partial class LiveConversationWindow : ThemedWindow
             ready = loaded.Error is null;
             notice = loaded.Error?.Summary ?? (controller.Configuration is null
                 ? "Set up Thinking in Companion, then come back to talk." : null);
+            if (following && controller.Configuration is { } now)
+                ErrorLog.Info("The open conversation follows the changed setup between replies: " +
+                    string.Join(", ", now.Routes.Select(r => $"{r.Role} {r.RouteType}{(r.ModelId is { Length: > 0 } id ? " " + id : "")}")) + ".");
+            following = false;
             Warm();
             StartLive();
             if (listenWhenReady && preferences.HandsFree && listenPaused && Available) Mic_Click(this, new RoutedEventArgs());
@@ -322,6 +330,9 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // Hearing what this PC plays starts or stops beside the microphone, which carries on.
         if (before.HearPc != next.HearPc) StopPcListening(keepHeard: next.HearPc);
+        // Muting Martlet's voice (Speak Martlet's replies aloud off, or Mute voice on the character's menu) silences what it is
+        // saying now; the reply's words still show. The next reply starts without a voice.
+        if (before.SpeakReplies && !next.SpeakReplies) controller.MuteVoice();
         if (!next.Watch)
         {
             watchPaused = false;
@@ -404,8 +415,6 @@ public partial class LiveConversationWindow : ThemedWindow
         if (closed) return;
         Settle();
         Collect();
-        // A background think on a model on this PC gives way as soon as you talk or a turn is about to start.
-        controller.NoteUserBusy(UserBusy);
         if (loading is not null || locked) return;
         KeepListening();
         Interrupt();
@@ -427,6 +436,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             reloadReason = null;
             if (Messages.Count > 0) AddNote(reason + " Martlet picked it up and carries on.");
+            following = true;
             LoadAsync().Forget();
             return;
         }
@@ -560,8 +570,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var parts = jobs.Select(job => job.State switch
         {
             BackgroundJobState.Running => $"{job.Id} running for {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.Waiting => $"{job.Id} waiting for a quiet moment",
-            BackgroundJobState.Paused => $"{job.Id} paused while you talk ({BackgroundJobs.Clockface(job.Elapsed)})",
+            BackgroundJobState.Waiting => job.Progress is { } note ? $"{job.Id} {note}" : $"{job.Id} waiting to start",
+            BackgroundJobState.Paused => $"{job.Id} paused ({BackgroundJobs.Clockface(job.Elapsed)})",
             BackgroundJobState.Succeeded => $"{job.Id} done after {BackgroundJobs.Clockface(job.Elapsed)}",
             BackgroundJobState.TimedOut => $"{job.Id} ran out of time",
             BackgroundJobState.Canceled => $"{job.Id} stopped",
@@ -1232,6 +1242,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 else if (done.Turn?.Snapshot is { SpeechFailed: true } voiceless)
                     reply.AddNote(voiceless.MayHavePlayed ? "The voice stopped partway, so only the beginning was spoken."
                         : "The voice failed, so this wasn't spoken.");
+                else if (done.Turn?.Snapshot is { VoiceMuted: true, MayHavePlayed: true })
+                    reply.AddNote("Muted partway, so only the beginning was spoken.");
                 else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the beginning was spoken.");
             }
         }
@@ -1732,6 +1744,10 @@ public partial class LiveConversationWindow : ThemedWindow
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // While Martlet decides where the character looks: what its eyes are on now.
+        var gazeShown = watching && watchSource.IsScreen && Gaze is { Decides: true };
+        GazeStatusText.Text = gazeShown ? Gaze!.Status : "";
+        GazeStatusText.Visibility = gazeShown && VisionStatusText.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         var pcLine = PcAudioLine();
         PcAudioText.Text = pcLine;
         PcAudioText.Visibility = available && preferences.HandsFree && pcLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1989,6 +2005,8 @@ public partial class LiveConversationWindow : ThemedWindow
             DropLatest();
             latestFrame = frame;
             latestAt = clock.GetTimestamp();
+            // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
+            if (source.IsScreen) Gaze?.Observe(frame);
             var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
             var idle = source.IsScreen ? glancer.UserIdle : TimeSpan.Zero;
@@ -2081,7 +2099,7 @@ public partial class LiveConversationWindow : ThemedWindow
             var image = frame.Encode();
             // An address's host is not useful to the model; a camera's or window's name is.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChattiness,
-                Voice, screenApproved: true, watchSource, attention: about);
+                Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true);
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
@@ -2163,6 +2181,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         watching = lookWanted = false;
         pacer = null;
+        Gaze?.Stop();
         DropAttentionFrame();
         DropLatest();
         attention = lookAttention = null;
@@ -2227,16 +2246,16 @@ public partial class LiveConversationWindow : ThemedWindow
                 MemoryCaptureKind.Remember => "Remembered: ",
                 MemoryCaptureKind.Update => "Updated memory: ",
                 _ => "Forgot: "
-            } + change.Content));
+            } + change.Content + (change.Person is { } person ? $" ({person})" : "")));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });
 
-    // Raised off the dispatcher once names were picked up for voices from an exchange.
-    private void VoicesNamed(IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)> learned) => Dispatcher.BeginInvoke(() =>
+    // Raised off the dispatcher once learning names changed voices from an exchange.
+    private void VoicesNamed(IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult> learned) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
-        var text = string.Join("  ", learned.Select(l => $"Learned {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
+        var text = string.Join("  ", learned.Select(l => l.Text));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });
@@ -2259,6 +2278,7 @@ public partial class LiveConversationWindow : ThemedWindow
         attentionWatcher.Stop();
         Task.Run(glancer.Release).Forget();
         Task.Run(video.Release).Forget();
+        Gaze?.Stop();
         closed = true;
         generation++;
         timer.Stop();

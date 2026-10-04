@@ -373,5 +373,9 @@ public sealed record CreationLibrary
     /// <summary>Identifies the list's content, to tell whether a copy is current.</summary>
     public string Digest() => Convert.ToHexStringLower(SHA256.HashData(Write()));
 
+    /// <summary>Identifies a set of pieces (a host's <c>present</c>): SHA-256 of their sorted hashes, one per line.</summary>
+    public static string PresentDigest(IEnumerable<string> present) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.ASCII.GetBytes(string.Join('\n', present.Order(StringComparer.Ordinal)))));
+
     public override string ToString() => $"Creation library r{Revision} ({Live.Count} creations)";
 }

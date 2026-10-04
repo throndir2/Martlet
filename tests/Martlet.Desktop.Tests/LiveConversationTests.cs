@@ -1826,6 +1826,39 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task MutingTheVoiceSilencesTheReplyBeingSpokenAndKeepsItsText() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Retained response.");
+        var spoken = new TalkPreferences(HandsFree: false, SpeakReplies: true);
+        var window = fixture.Open(spoken);
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "test";
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            // Mute voice on the character's menu (or Speak Martlet's replies aloud off) while Martlet speaks.
+            window.UsePreferences(spoken with { SpeakReplies = false }, null);
+            await fixture.Finish();
+            var muted = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => muted.OwnershipReleased && window.Messages.Any(m => m.Role == ChatRole.Martlet && m.HasNote));
+            var reply = Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.Contains("Retained response.", reply.Text);
+            Assert.Contains("Muted partway", reply.Note);
+            // Not canceled and not a voice failure: the reply completed, only what was said aloud ended.
+            Assert.Equal("runtime.Completed", muted.Status.Code);
+            Assert.Equal(ConversationState.Completed, muted.Turn!.Snapshot.State);
+            Assert.True(muted.Turn.Snapshot.VoiceMuted);
+            Assert.False(muted.Turn.Snapshot.SpeechFailed);
+            Assert.Equal(1, fixture.Output.Opens);
+            Assert.Equal(1, fixture.Output.Stops);
+            Assert.Equal(1, fixture.Tts.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task EscapeDuringSettingsLoadRetainsOwnershipUntilWorkerReturns() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -1935,12 +1968,19 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
     internal DesktopMemoryService Memory { get; }
+    internal DesktopConversationHistory? History { get; }
+    internal McpToolService? ToolService { get; }
+    /// <summary>The voices Martlet knows (voices.json in the fixture's folder), when the test asked for them.</summary>
+    internal LocalVoices? Voices { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
-        IPcAudioSourceFactory? pcAudio = null)
+        IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
+        Voices = voices ? new LocalVoices(DirectoryPath, "desk-test") : null;
+        History = history ? new(DirectoryPath, Clock, TimeZoneInfo.Utc) : null;
+        ToolService = tools ? new(DirectoryPath, Clock) : null;
         Output = output ?? new();
         var vault = new WindowsCredentialStore(Native);
         Settings = new(new SetupService(Store, vault));
@@ -1952,8 +1992,8 @@ internal sealed class LiveFixture : IAsyncDisposable
                     target.Keyless ? null : credentials, clock)),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
-            memory: Memory, voiceIdentity: voiceIdentity,
-            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock));
+            memory: Memory, voiceIdentity: voiceIdentity, voices: Voices,
+            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -1962,9 +2002,10 @@ internal sealed class LiveFixture : IAsyncDisposable
         };
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
-        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null)
+        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
+        bool history = false, bool tools = false)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -2023,11 +2064,11 @@ internal sealed class LiveFixture : IAsyncDisposable
         }
         await idle;
     }
-    internal async Task<Martlet.Memory.MemoryMutationReceipt> SaveMemoryFact(string content)
+    internal async Task<Martlet.Memory.MemoryMutationReceipt> SaveMemoryFact(string content, string? voiceId = null)
     {
         var loaded = await Store.LoadAsync();
         return await Memory.SaveFactAsync(loaded.Settings!.Memory!.ConfigurationRevision,
-            content, Martlet.Memory.MemoryRetention.UntilDeleted());
+            content, Martlet.Memory.MemoryRetention.UntilDeleted(), voiceId);
     }
     /// <summary>Opens the talk window; by default with push-to-talk and text-only replies, so nothing listens or speaks
     /// unless a test asks for it.</summary>
@@ -2076,7 +2117,10 @@ internal sealed class LiveFixture : IAsyncDisposable
         Capture.ReadBlock?.Set();
         Capture.DisposeBlock?.Set();
         await Controller.DisposeAsync();
+        if (ToolService is not null) await ToolService.DisposeAsync();
+        if (History is not null) await History.Idle;
         Memory.Dispose();
+        Voices?.Dispose();
         if (System.IO.Directory.Exists(DirectoryPath)) System.IO.Directory.Delete(DirectoryPath, true);
     }
     internal sealed class NativeFixture : ICredentialNative

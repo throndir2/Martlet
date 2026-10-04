@@ -47,7 +47,9 @@ public sealed record PlaybackOptions
     public int MaximumQueuedFrames { get; init; } = 256;
     public TimeSpan Prebuffer { get; init; } = TimeSpan.FromMilliseconds(150);
     public TimeSpan FirstAudioTimeout { get; init; } = TimeSpan.FromSeconds(20);
-    public TimeSpan UnderrunTimeout { get; init; } = TimeSpan.FromSeconds(1);
+    // A voice made slower than real time (a self-hosted engine on a busy graphics card streams in bursts) pauses between
+    // bursts instead of being cut short; only a stream that stops arriving for this long ends.
+    public TimeSpan UnderrunTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(2);
 
     internal void Validate()
@@ -58,8 +60,8 @@ public sealed record PlaybackOptions
         ContractRules.Require(Prebuffer >= TimeSpan.Zero && Prebuffer <= Capacity, "Prebuffer must fit the playback capacity.");
         ContractRules.Require(FirstAudioTimeout > TimeSpan.Zero && FirstAudioTimeout <= TimeSpan.FromSeconds(20),
             "First audio timeout must be positive and at most 20 seconds.");
-        ContractRules.Require(UnderrunTimeout > TimeSpan.Zero && UnderrunTimeout <= TimeSpan.FromSeconds(1),
-            "Underrun recovery must be positive and at most 1 second.");
+        ContractRules.Require(UnderrunTimeout > TimeSpan.Zero && UnderrunTimeout <= TimeSpan.FromSeconds(20),
+            "Underrun recovery must be positive and at most 20 seconds.");
         ContractRules.Require(ShutdownTimeout > TimeSpan.Zero && ShutdownTimeout <= TimeSpan.FromSeconds(2),
             "Shutdown timeout must be positive and at most 2 seconds.");
     }
@@ -82,6 +84,10 @@ public sealed record PlaybackSnapshot(
 {
     public bool MayHavePlayed => ReadSamples > 0;
     public long? AudibleSamples => null;
+    /// <summary>How many times the output ran dry after it started and waited for more audio (an underrun).</summary>
+    public int Underruns { get; init; }
+    /// <summary>How long those waits lasted in all, including one still going on.</summary>
+    public TimeSpan UnderrunTime { get; init; }
 }
 
 public sealed record PlaybackEvent(long Sequence, DateTimeOffset Timestamp, TimeSpan Elapsed,

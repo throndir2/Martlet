@@ -37,10 +37,13 @@
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
 # requirements (including docker-engine for Linux-only host networking) -> GPU or CPU -> choices -> terms -> secrets ->
-# registry login -> pinned assets -> stop the roles it replaces (exclusive=<group>) -> compose service (loopback behind the
-# gateway, or network=host for route-less LAN features) -> readiness -> post-start steps -> gateway route or machine
-# feature. role.conf entries between
+# registry login -> pinned assets -> prepare steps (prepare=<service>, while the running service keeps serving) -> stop the
+# roles it replaces (exclusive=<group>) -> compose service (loopback behind the gateway, or network=host for route-less LAN
+# features) -> readiness -> post-start steps -> gateway route or machine feature -> retire the replaced model
+# (retire=<service>|<command>). role.conf entries between
 # "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the Audio2Face engine).
+# Adding a role that is already installed reuses what is there: images, downloads and data volumes are kept, unchanged
+# containers keep running, and the gateway keeps running unless what it serves changed (gateway_current).
 # Each system change is confirmed first (typed "yes", or --yes when Martlet desktop already asked the owner).
 set -euo pipefail
 
@@ -587,7 +590,11 @@ service_start() {
     fi
     for attempt in 1 2 3 4 5 6; do
       sleep 2
-      if gateway health --config "${GW_CONFIG}" >/dev/null 2>&1; then note "Gateway healthy."; return; fi
+      if gateway health --config "${GW_CONFIG}" >/dev/null 2>&1; then
+        ( umask 077; served_stamp > "${SERVED_FILE}" )
+        note "Gateway healthy."
+        return
+      fi
     done
     # An abandoned session that holds the gateway state keeps the service from opening it.
     [[ ${round} == 1 ]] && release_gateway_state || break
@@ -615,6 +622,42 @@ TEXT
 }
 
 approval_matches() { [[ "$(gateway status --config "${GW_CONFIG}" 2>/dev/null || true)" == *'"serviceApproval":"matching"'* ]]; }
+
+# What a gateway opens: host.json, the machine report (without the time it was collected) and the gateway itself (the engine
+# image in Docker, the published Martlet assemblies natively). service_start records it once the gateway is healthy.
+SERVED_FILE="${CONF}/gateway.served"
+served_stamp() {
+  {
+    cat "${GW_CONFIG}" 2>/dev/null || true
+    sed 's/"collected_at":"[^"]*",//' "${MACHINE_FILE}" 2>/dev/null || true
+    if [[ "${MODE}" == docker ]]; then docker image inspect -f '{{.Id}}' "${IMAGE}" 2>/dev/null || true
+    else cat "${GW_APP}"/Martlet.*.dll 2>/dev/null || true; fi
+  } | sha256sum | cut -d' ' -f1
+}
+
+# Whether the running gateway already serves exactly what is on disk: approved, healthy and started from the same host.json,
+# machine report and gateway. Then a change that touches none of them (adding a role again with the same model, moving one
+# between the GPU and the CPU, running setup again) leaves it running, so the other roles it relays never drop out.
+gateway_current() {
+  [[ -s "${SERVED_FILE}" && "$(cat "${SERVED_FILE}")" == "$(served_stamp)" ]] || return 1
+  if [[ "${MODE}" == docker ]]; then
+    # Still in the current network holder's namespace (setup may have replaced the holder; see role_detached).
+    local holder mode
+    holder="$(docker container inspect -f '{{.Id}}' "${NET}" 2>/dev/null)" || return 1
+    mode="$(docker container inspect -f '{{.HostConfig.NetworkMode}}' "${SERVICE}" 2>/dev/null)" || return 1
+    [[ "${mode}" == "container:${holder}" || "${mode}" == "container:${NET}" ]] || return 1
+  fi
+  approval_matches || return 1
+  gateway health --config "${GW_CONFIG}" >/dev/null 2>&1
+}
+
+# Brings the gateway in line with what is on disk: renews its approval when host.json changed (CONFIG_CHANGED from
+# write_config), restarts it when anything else it opens changed, and otherwise leaves it running.
+refresh_gateway() {
+  if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove
+  elif gateway_current; then note "The gateway already serves this; it keeps running (no interruption for the other roles)."
+  else service_start; fi
+}
 
 # ------------------------------------------------------------------ machine report (what this host is like)
 # Written next to host.json (not inside it, so hardware changes never invalidate the service approval) and served
@@ -884,7 +927,15 @@ collect_machine() {
     printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s],"features":[%s]}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_opt "${arch}")" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
       "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" "${features_joined}" \
-      > "${MACHINE_FILE}.tmp" && mv -f "${MACHINE_FILE}.tmp" "${MACHINE_FILE}" )
+      > "${MACHINE_FILE}.tmp" )
+  # The same machine as last time keeps its report (and the time it was collected), so the gateway serving it needn't restart;
+  # "fresh" (martlet-host machine) always takes the new one.
+  if [[ "${1:-}" != fresh && -f "${MACHINE_FILE}" ]] &&
+     [[ "$(sed 's/"collected_at":"[^"]*",//' "${MACHINE_FILE}")" == "$(sed 's/"collected_at":"[^"]*",//' "${MACHINE_FILE}.tmp")" ]]; then
+    rm -f "${MACHINE_FILE}.tmp"
+  else
+    mv -f "${MACHINE_FILE}.tmp" "${MACHINE_FILE}"
+  fi
 }
 
 show_machine() {
@@ -895,12 +946,18 @@ show_machine() {
 
 apply_config() {
   write_config
-  if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
+  refresh_gateway
 }
 
 restart_gateway_for_machine_report() {
   note "Restarting the gateway so paired desktops see this host's machine report."
   if approval_matches; then service_start; else note "The gateway needs approval first; run: martlet-host setup"; fi
+}
+
+# After a route-less role changed: the gateway restarts only when the machine report it serves changed.
+publish_machine_report() {
+  if approval_matches && gateway_current; then note "Paired desktops already see this machine report; the gateway keeps running."
+  else restart_gateway_for_machine_report; fi
 }
 
 require_setup() {
@@ -1147,7 +1204,7 @@ UNIT
   note "Collecting this machine's hardware for paired desktops..."
   collect_machine
   show_machine
-  if [[ ${CONFIG_CHANGED} == 1 ]] || ! approval_matches; then reapprove; else service_start; fi
+  refresh_gateway
   reconnect_roles
   say "Host ready. Next: 'pair' to connect a desktop, and 'add <role>' (see 'roles')."
 }
@@ -1309,6 +1366,22 @@ refresh_installed_role_files() {
       role_compose "${role}" up -d
     fi
   done < <(installed_roles)
+}
+
+# Retire steps: once the gateway relays a newly chosen model, retire=<service>|<command> runs inside that service for the
+# model it replaced ({PREVIOUS}), for example unloading it from the graphics card's memory. Its download is kept, and a
+# step that fails only leaves the old model as it was.
+retire_previous() {
+  local role="$1" conf="$2" previous="$3" model="$4" line service step words safe='^[A-Za-z0-9 ._:/=-]+$'
+  [[ -n "${previous}" && "${previous}" != "${model}" && "${previous}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] || return 0
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    service="${line%%|*}"; step="${line#*|}"; step="${step//\{PREVIOUS\}/${previous}}"
+    [[ "${service}" =~ ^[a-z0-9][a-z0-9_-]*$ && "${step}" =~ ${safe} ]] || fail "Unsafe retire entry in role.conf."
+    read -r -a words <<< "${step}"
+    say "Running in ${service}: ${step}"
+    role_compose "${role}" exec -T "${service}" "${words[@]}" || note "'${step}' didn't finish; ${previous} is left as it was."
+  done 3< <(conf_values "${conf}" retire)
 }
 
 # Stops the roles that role $1 replaces (exclusive_others) and unpublishes them at once, so desktops never hand a job to
@@ -1513,6 +1586,16 @@ cmd_add() {
     fi
   fi
 
+  # Prepare steps: prepare=<service> runs that service once with MARTLET_PREPARE=1, so it fetches what the chosen options need
+  # (such as a newly chosen model) and exits, while the role's running service keeps serving. Switching then only restarts it.
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    [[ "${line}" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "Invalid prepare entry in role.conf."
+    say "Preparing ${role} (${line})$(role_container_running "${role}" && printf ' while the running one keeps working')"
+    role_compose "${role}" run --rm --no-deps -T -e MARTLET_PREPARE=1 "${line}" ||
+      fail "Preparing ${role} failed; the running one is unchanged. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
+  done 3< <(conf_values "${conf}" prepare)
+
   if [[ ${#stops[@]} -gt 0 ]]; then
     # Build (or pull) this role's image while the engine it replaces still works, then free the graphics card for it.
     say "Preparing ${role} while ${stops[*]} still runs"
@@ -1545,20 +1628,22 @@ cmd_add() {
       fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
   done 3< <(conf_values "${conf}" post_start)
 
-  local model_from model="${role}"
+  local model_from model="${role}" previous=""
   model_from="$(conf_value "${conf}" model_from)"
   if [[ -n "${kind}" ]]; then
     if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
+    if [[ -f "$(installed_file "${role}")" ]]; then previous="$(conf_value "$(installed_file "${role}")" model)"; fi
     ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
     collect_machine
     apply_config
+    retire_previous "${role}" "${conf}" "${previous}" "${model}"
     say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
   else
     [[ -n "${role_feature}" ]] || fail "role.conf declares no gateway_kind or feature."
     [[ "${role_network}" == host ]] || fail "Route-less roles must declare network=host."
     ( umask 077; printf 'feature=%s\nport=%s\nnetwork=host\n' "${role_feature}" "${port}" > "$(installed_file "${role}")" )
     collect_machine
-    restart_gateway_for_machine_report
+    publish_machine_report
     say "Role ${role} is running. Paired desktops see its ${role_feature} feature on Check connection."
   fi
 }
@@ -1575,14 +1660,14 @@ cmd_remove() {
   role_compose "${role}" down || true
   rm -f "${record}"
   collect_machine
-  if [[ -n "${had_kind}" ]]; then apply_config; else restart_gateway_for_machine_report; fi
+  if [[ -n "${had_kind}" ]]; then apply_config; else publish_machine_report; fi
   say "Role ${role} removed."
 }
 
 cmd_machine() {
   require_setup
   say "Collecting this machine's hardware for paired desktops"
-  collect_machine
+  collect_machine fresh
   show_machine
   restart_gateway_for_machine_report
 }
