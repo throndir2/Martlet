@@ -68,6 +68,7 @@ internal sealed class LiveConversationOperation
     private LiveConversationStatus status = new("conversation.authorizing");
     private CaptureRun? capture;
     private ConversationTurn? turn;
+    private bool voiceMuted;
     private int releasedPress;
     private int executionFinished;
     private string? cancellationReason;
@@ -215,8 +216,26 @@ internal sealed class LiveConversationOperation
     }
     internal void Attach(ConversationTurn run)
     {
-        Volatile.Write(ref turn, run);
+        bool mute;
+        lock (gate)
+        {
+            Volatile.Write(ref turn, run);
+            mute = voiceMuted;
+        }
         if (Authorization.IsCanceled) run.StopAsync().Forget();
+        else if (mute) run.MuteVoice();
+    }
+    /// <summary>Martlet's voice was muted while this reply ran: its turn (now, or once it starts) stops saying it aloud, and the
+    /// rest shows as text.</summary>
+    internal void MuteVoice()
+    {
+        ConversationTurn? attached;
+        lock (gate)
+        {
+            voiceMuted = true;
+            attached = Volatile.Read(ref turn);
+        }
+        attached?.MuteVoice();
     }
     internal void ReleasePress()
     {
@@ -1146,6 +1165,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         // Exact handle, never a delayed sink-wide Stop or cancellation of the next setup/turn.
         operation.Cancel(reason);
+    }
+
+    /// <summary>Martlet's voice was muted (Speak Martlet's replies aloud turned off): the reply or comment running now stops
+    /// saying it aloud and finishes as text, with the rest in the captions. Nothing is canceled or forgotten, and what comes
+    /// next is text only because it starts without a voice.</summary>
+    internal void MuteVoice()
+    {
+        LiveConversationOperation? running;
+        lock (gate) running = active is { OwnershipReleased: false } ? active : null;
+        running?.MuteVoice();
     }
 
     private async Task SuperviseAsync(LiveConversationOperation operation)

@@ -66,7 +66,8 @@ comment; it needs a Thinking model that can see images. See
    chosen in Companion, so the window asks nothing more: pressing **Send**
    (or Enter), holding the talk button, or speaking while always listening is
    on is the action. Replies are spoken when a voice is set up and *Speak
-   Martlet's replies aloud* is on (Companion › Voice); otherwise they are text
+   Martlet's replies aloud* is on (Companion › Voice, or **Mute voice** /
+   **Unmute voice** on the character's right-click menu); otherwise they are text
    only, with no TTS request and no output device.
 5. Type and press Enter (Shift+Enter for a new line). With **Always listening**
    (Companion › Listening, the default once the microphone is tested) press
@@ -125,6 +126,13 @@ comment; it needs a Thinking model that can see images. See
    next reply or *Stop*. The
    desktop log records it as `Spoken reply failed (...)` against the Speaking
    route, not as a Thinking failure.
+   **Mute voice** on the character's right-click menu (**Unmute voice** while
+   muted) turns *Speak Martlet's replies aloud* off (or on) from there: a reply
+   Martlet is saying stops being said at once, with no failure and a *Muted
+   partway* note when some of it was heard, and its words still stream in and
+   go to the speech bubble the same way. A reply that isn't spoken shows each
+   sentence in the speech bubble and subtitles too, without a voice request or
+   an output device.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper, the style line and each response style,
    reply length, always listening, tools, Thinking longer, who is talking,

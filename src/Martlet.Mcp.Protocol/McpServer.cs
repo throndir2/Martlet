@@ -442,7 +442,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "with no Save button): the personas (name, whether Martlet uses it, response-style weights, speech breaks, instruction " +
             "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
             "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
-            "this PC and where (placement) and the lorebooks (counts only). Read-only.", new
+            "this PC and where (placement), whether Martlet's voice is muted (voice: Speak Martlet's replies aloud, which the " +
+            "character's Mute voice / Unmute voice menu item changes) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -480,8 +481,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
             "unavailable (it is reloading), stall (no audio until the voice's time runs out), slow (every piece slower than real " +
             "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
-            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; a fixture " +
-            "speaker opens no " +
+            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; muted " +
+            "instead has the user mute Martlet's voice (the character's Mute voice) as the failAt-th piece is asked, which ends " +
+            "only what is said aloud and is not a failure (voice.muted); text-only sends the reply with no voice at all (Speak " +
+            "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
@@ -2054,7 +2057,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
         };
-        return new { personality, character, placement = CharacterPlacement(directory), lorebooks };
+        return new { personality, character, placement = CharacterPlacement(directory), voice = CharacterVoice(directory), lorebooks };
+    }
+
+    /// <summary>Whether Martlet's voice is muted, from talk-preferences.json in a data directory (Martlet.Desktop's
+    /// TalkPreferences): SpeakReplies (Companion › Voice's Speak Martlet's replies aloud) is on unless saved off, and Mute
+    /// voice / Unmute voice on the character's right-click menu change the same choice.</summary>
+    private static object CharacterVoice(string directory)
+    {
+        var path = Path.Combine(directory, "talk-preferences.json");
+        if (!File.Exists(path)) return new { state = "none", speakReplies = true, muted = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return new { state = "unreadable", speakReplies = true, muted = false, problem = "NotAnObject" };
+            var speak = !(document.RootElement.TryGetProperty("SpeakReplies", out var value) && value.ValueKind == JsonValueKind.False);
+            return new { state = "loaded", speakReplies = speak, muted = !speak };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", speakReplies = true, muted = false, problem = error.GetType().Name };
+        }
     }
 
     /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): whether the character's

@@ -330,6 +330,9 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // Hearing what this PC plays starts or stops beside the microphone, which carries on.
         if (before.HearPc != next.HearPc) StopPcListening(keepHeard: next.HearPc);
+        // Muting Martlet's voice (Speak Martlet's replies aloud off, or Mute voice on the character's menu) silences what it is
+        // saying now; the reply's words still show. The next reply starts without a voice.
+        if (before.SpeakReplies && !next.SpeakReplies) controller.MuteVoice();
         if (!next.Watch)
         {
             watchPaused = false;
@@ -1167,6 +1170,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 else if (done.Turn?.Snapshot is { SpeechFailed: true } voiceless)
                     reply.AddNote(voiceless.MayHavePlayed ? "The voice stopped partway, so only the beginning was spoken."
                         : "The voice failed, so this wasn't spoken.");
+                else if (done.Turn?.Snapshot is { VoiceMuted: true, MayHavePlayed: true })
+                    reply.AddNote("Muted partway, so only the beginning was spoken.");
                 else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the beginning was spoken.");
             }
         }

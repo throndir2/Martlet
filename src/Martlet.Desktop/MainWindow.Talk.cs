@@ -38,12 +38,14 @@ public partial class MainWindow
 
     private void SaveTalk(TalkPreferences next, bool render = false)
     {
+        var spoke = Talk.SpeakReplies;
         talk = next;
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         avatar.Gaze.Decides = next.DecideGaze;
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
+        if (spoke != next.SpeakReplies) FollowVoice(next.SpeakReplies);
         RenderListening();
         if (render) RenderTab();
     }
@@ -237,17 +239,52 @@ public partial class MainWindow
             Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
     }
 
-    // ---------- Voice: speak replies ----------
+    // ---------- Voice: speak replies (Mute voice on the character's menu is the same choice) ----------
+
+    private CheckBox? speakRepliesCheck;
 
     private Border SpeakRepliesCard()
     {
-        var speak = new CheckBox { Content = "Speak Martlet's replies aloud", IsChecked = Talk.SpeakReplies };
+        var speak = speakRepliesCheck = new CheckBox { Content = "Speak Martlet's replies aloud", IsChecked = Talk.SpeakReplies };
         AutomationProperties.SetAutomationId(speak, "SpeakReplies");
-        speak.Checked += (_, _) => SaveTalk(Talk with { SpeakReplies = true });
-        speak.Unchecked += (_, _) => SaveTalk(Talk with { SpeakReplies = false });
+        speak.Checked += (_, _) => { if (!Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = true }); };
+        speak.Unchecked += (_, _) => { if (Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = false }); };
         return Card(Heading("In conversations"), speak,
-            Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies.",
-                new Thickness(0, 6, 0, 0)));
+            Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies: they show in the " +
+                "talk window and the character's speech bubble. Mute voice and Unmute voice on the character's right-click menu " +
+                "change this too.", new Thickness(0, 6, 0, 0)));
+    }
+
+    /// <summary>Mute voice or Unmute voice on the character's right-click menu: the same choice as Speak Martlet's replies aloud
+    /// (Companion › Voice), so it is saved and shared with your other computers like it.</summary>
+    private void SetVoiceMuted(bool muted)
+    {
+        if (Talk.SpeakReplies == !muted) TellCharacterVoiceAsync(muted).Forget();
+        else SaveTalk(Talk with { SpeakReplies = !muted });
+        if (!closing)
+            ActionText.Text = muted
+                ? "Martlet's voice is muted: replies show as text. Right-click the character and choose Unmute voice to hear them again."
+                : "Martlet's voice is on again: replies are spoken aloud.";
+    }
+
+    /// <summary>Speak Martlet's replies aloud changed (here, on the character's menu or from another computer): muting
+    /// silences a reply Martlet is saying now (the open talk window does that), and the character's menu and Companion ›
+    /// Voice follow.</summary>
+    private void FollowVoice(bool speak)
+    {
+        ErrorLog.Info(speak ? "Martlet's voice is unmuted: replies are spoken aloud." : "Martlet's voice is muted: replies show as text only.");
+        if (speakRepliesCheck is { } check && check.IsChecked != speak) check.IsChecked = speak;
+        TellCharacterVoiceAsync(!speak).Forget();
+    }
+
+    private async Task TellCharacterVoiceAsync(bool muted)
+    {
+        try { await avatar.SetVoiceMutedAsync(muted, lifetime.Token); }
+        catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.Text.Json.JsonException)
+        {
+            if (!closing) ErrorLog.Warn("The character's menu couldn't be told whether Martlet's voice is muted.", error);
+        }
     }
 
     // ---------- Vision ----------
