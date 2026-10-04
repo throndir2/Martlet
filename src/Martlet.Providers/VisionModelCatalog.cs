@@ -16,12 +16,13 @@ public sealed record LocalVisionModel(string Tag, string Memory, string Why);
 /// families are Unsupported and everything else is Unknown.</summary>
 public static partial class VisionModelCatalog
 {
-    // Gemma 4 and Qwen3-VL see and call tools in Ollama; Gemma 3 and Qwen2.5-VL see but cannot call tools.
+    // Gemma 4 and Qwen3.5 see and call tools in Ollama, and answer with Thinking steps Off (Qwen3-VL 8B kept thinking with it
+    // off, so it is no longer suggested); Gemma 3 and Qwen2.5-VL see but cannot call tools.
     public static IReadOnlyList<LocalVisionModel> LocalRecommendations { get; } = Array.AsReadOnly(new[]
     {
         new LocalVisionModel("gemma4:e2b", "about 5 GB of GPU memory (also runs on the CPU)", "small, talks, sees and uses tools; the easy default"),
         new LocalVisionModel("gemma4:e4b", "about 7 GB", "a smarter talker for 12 GB graphics cards"),
-        new LocalVisionModel("qwen3-vl:8b", "about 7 GB", "best at reading on-screen text and game HUDs at this size"),
+        new LocalVisionModel("qwen3.5:4b", "about 4 GB", "a smarter small model that sees and uses tools, but doesn't hear your voice"),
         new LocalVisionModel("gemma4:12b", "about 9 GB", "a smarter talker that also sees, for 16 GB graphics cards"),
         new LocalVisionModel("gemma4:26b", "about 19-20 GB", "the strongest single-GPU option, and quick")
     });
@@ -32,6 +33,8 @@ public static partial class VisionModelCatalog
         "llava", "minicpmv", "moondream", "pixtral", "multimodal", "llama4", "mistralsmall31", "mistralsmall32",
         "mistralmedium3", "gpt4o", "gpt41", "gpt5", "gpt4turbo", "gemini", "claude", "grok4", "glm4v", "glm45v",
         "smolvlm", "paligemma", "idefics", "gemma4",
+        // Qwen3.5 and Ministral 3 take images (Ollama 0.35 lists vision for every size), checked 2026-10-04.
+        "qwen35", "ministral3",
         // Checked with an image on NVIDIA Build's Free Endpoints on 2026-10-01.
         "diffusiongemma", "museglimmer", "kimik3", "glm53flash", "deepseekv41flash"
     ];

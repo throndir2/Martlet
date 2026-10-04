@@ -28,8 +28,9 @@ internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, L
 internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
 
 /// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the graphics card
-/// it needs to run comfortably beside a game and Martlet's character (0 means any PC).</summary>
-internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb);
+/// it needs to run comfortably beside a game and Martlet's character (0 means any PC). <paramref name="Hears"/>: Ollama takes
+/// your recording for it (Gemma 4 E2B, E4B and 12B); the others always get the transcript (the Parakeet cascade).</summary>
+internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb, bool Hears);
 
 /// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
 /// Character, Personality, Lorebook, Memory; What it does: Smart home). Each job page asks where the job runs (this PC by default, another of your computers, or a
@@ -47,17 +48,19 @@ public partial class MainWindow
 
     internal const string LocalOllamaBaseUrl = "http://127.0.0.1:11434/v1";
 
-    // Every suggestion also sees (screen watching) and calls tools. The smallest is recommended: it gives the fastest replies
-    // (latency is king in conversation) and hears recordings itself; the larger ones are smarter but slower. Each leaves about
-    // 5 GB of the card for the game, Martlet's character and Windows: a model that overfills the card is paged out to system
-    // memory and stalls, and its Gemma 4 draft model can't load (see OllamaDraftHead).
+    // Every suggestion also sees (screen watching), calls tools and answers with Thinking steps Off. The smallest is recommended:
+    // it gives the fastest replies (latency is king in conversation) and hears recordings itself; the larger ones are smarter
+    // but slower. Qwen3.5 4B replaces Qwen3-VL 8B, which kept thinking with Thinking steps Off (no words for seconds); it doesn't
+    // hear, so its replies get the transcript. Each leaves about 5 GB of the card for the game, Martlet's character and
+    // Windows: a model that overfills the card is paged out to system memory and stalls, and its Gemma 4 draft model can't load
+    // (see OllamaDraftHead). Measured on an RTX 4070 in docs/VOICE_LATENCY.md (Small models in Ollama).
     internal static readonly IReadOnlyList<LocalChatModel> LocalChatModels =
     [
-        new("gemma4:e2b", "4.6 GB", "any PC", 0),
-        new("qwen3-vl:8b", "6.1 GB", "a graphics card with 12 GB or more", 12),
-        new("gemma4:e4b", "6.6 GB", "a graphics card with 12 GB or more", 12),
-        new("gemma4:12b", "8.0 GB", "a graphics card with 16 GB or more", 16),
-        new("gemma4:26b", "18.7 GB", "a graphics card with 24 GB or more", 24)
+        new("gemma4:e2b", "4.6 GB", "any PC", 0, Hears: true),
+        new("qwen3.5:4b", "3.4 GB", "a graphics card with 12 GB or more", 12, Hears: false),
+        new("gemma4:e4b", "6.6 GB", "a graphics card with 12 GB or more", 12, Hears: true),
+        new("gemma4:12b", "8.0 GB", "a graphics card with 16 GB or more", 16, Hears: true),
+        new("gemma4:26b", "18.7 GB", "a graphics card with 24 GB or more", 24, Hears: false)
     ];
 
     private static readonly CloudProvider OpenAiCloud = new("OpenAI", null, false, null, true);
@@ -190,6 +193,12 @@ public partial class MainWindow
     /// its first sentence on an RTX 4070, against 100-200 ms more for E4B and 12B; docs/VOICE_LATENCY.md) and hears recordings
     /// itself. A larger model the card fits is smarter but slower (<see cref="LargestLocalModel"/>).</summary>
     internal static LocalChatModel RecommendedLocalModel(double? vramGb) => LocalChatModels[0];
+
+    /// <summary>How a suggested local model reads in Companion › Thinking's list: its size, the card it fits, whether it hears
+    /// your recording (or gets the transcript) and whether it is the fastest or the smartest that fits here.</summary>
+    internal static string LocalModelPick(LocalChatModel model, LocalChatModel recommended, LocalChatModel smartest) =>
+        $"{model.Id}  ({model.Size}, fits {model.Fits}, {(model.Hears ? "hears your voice" : "gets the transcript")}" +
+        $"{(model == recommended ? ", fastest, recommended" : model == smartest ? ", smartest that fits here" : "")})";
 
     /// <summary>The largest suggested model this PC's graphics card fits (a "12 GB" card reports a little less): the smartest
     /// local choice, offered beside the fastest.</summary>
@@ -538,7 +547,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(model, "SetupLocalModel");
         model.TextChanged += (_, _) => tabEdited = true;
         var picks = new ComboBox { Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
-            ItemsSource = LocalChatModels.Select(m => $"{m.Id}  ({m.Size}, fits {m.Fits}{(m == recommended ? ", fastest, recommended" : m == LargestLocalModel(machine.BestGpu?.MemoryGb) ? ", smartest that fits here" : "")})")
+            ItemsSource = LocalChatModels.Select(m => LocalModelPick(m, recommended, LargestLocalModel(machine.BestGpu?.MemoryGb)))
                 .Concat((ollamaModels ?? []).Where(id => LocalChatModels.All(m => m.Id != id)).Select(id => $"{id}  (downloaded)")).ToArray() };
         AutomationProperties.SetName(picks, "Suggested local models");
         AutomationProperties.SetAutomationId(picks, "SetupLocalModelPicks");

@@ -161,6 +161,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
         "TalkVoicePathStatus",
+        // Companion › Thinking › This PC: the suggested local model picked from SetupLocalModelPicks (its size, the card it fits,
+        // whether it hears your voice or gets the transcript, and whether it's the fastest or the smartest that fits; choosing
+        // one with ui_select only fills SetupLocalModel, the model name, so it needs --allow-ui-effects but saves nothing).
+        "SetupLocalModelPicks", "SetupLocalModel",
         // The setup advisor: which step it shows and its plan's summary (the goal's one-line explanation).
         "AdvisorStep", "AdvisorSummary",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
