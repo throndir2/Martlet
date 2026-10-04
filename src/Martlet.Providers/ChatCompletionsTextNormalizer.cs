@@ -5,8 +5,10 @@ using Martlet.Core.Contracts;
 namespace Martlet.Providers;
 
 // Tool calls are accepted only when the request offered tools. Reported output tokens are held to the reply budget only when
-// the request sent one (max_tokens).
-internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits, bool toolsOffered = false, bool budgetSent = true)
+// the request sent one (max_tokens). After tool rounds (emptyAllowed) the model may finish with nothing more to say: it said
+// what it had to before its calls (such as "let me think about that" before think_longer).
+internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits, bool toolsOffered = false, bool budgetSent = true,
+    bool emptyAllowed = false)
 {
     private sealed class CallBuilder
     {
@@ -41,7 +43,7 @@ internal sealed class ChatCompletionsTextNormalizer(TextGenerationLimits limits,
             return finish switch
             {
                 "stop" when refusal.Length > 0 => new(Outcome: TextGenerationOutcome.Refused, Usage: usage, Refusal: refusal.ToString()),
-                "stop" when hasText => new(Outcome: TextGenerationOutcome.Completed, Usage: usage),
+                "stop" when hasText || emptyAllowed && refusal.Length == 0 => new(Outcome: TextGenerationOutcome.Completed, Usage: usage),
                 "length" => Fail(ProviderFailureCode.OutputTokenLimit, TextGenerationOutcome.OutputTokenLimit),
                 "content_filter" => Fail(ProviderFailureCode.ContentFiltered, TextGenerationOutcome.Incomplete),
                 _ => throw new ResponseProtocolException(ProviderFailureCode.ResponseSchema)

@@ -268,8 +268,8 @@ public sealed class TextAuthorizationTests
         Assert.Throws<ContractException>(() => new BoundedTextInput("\ud800"));
         Assert.Throws<ContractException>(() => new BoundedTextInput(" "));
         Assert.Throws<ContractException>(() => (new TextGenerationLimits { MaxContextTokens = 64 }).Validate());
-        Assert.Throws<ContractException>(() => (new TextGenerationLimits { MaxOutputTokens = 4097 }).Validate());
-        Assert.Throws<ContractException>(() => (new TextGenerationLimits { MaxEvents = 4095 }).Validate());
+        Assert.Throws<ContractException>(() => (new TextGenerationLimits { MaxOutputTokens = TextGenerationLimits.HardMaxOutputTokens + 1 }).Validate());
+        Assert.Throws<ContractException>(() => (new TextGenerationLimits { MaxEvents = TextGenerationLimits.HardMaxEvents + 1 }).Validate());
         using var safe = OpenAiTransport.CreateProductionHandler();
         Assert.False(safe.AllowAutoRedirect);
         Assert.False(safe.UseCookies);

@@ -6,8 +6,9 @@ namespace Martlet.Providers;
 
 // Output items arrive in index order: assistant messages (text or refusal) and, when tools were offered, function calls.
 // Function calls are accepted only when the request offered tools; events that echo the request's tool schemas can nest
-// deeply, so tool requests read events with a deeper JSON limit.
-internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, string model, bool toolsOffered = false)
+// deeply, so tool requests read events with a deeper JSON limit. After tool rounds (emptyAllowed) the model may finish with
+// nothing more to say: it said what it had to before its calls.
+internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, string model, bool toolsOffered = false, bool emptyAllowed = false)
 {
     private const int MaxItems = TextToolRound.MaxCalls + 2;
 
@@ -154,7 +155,7 @@ internal sealed class ResponsesTextNormalizer(TextGenerationLimits limits, strin
                     return new(Outcome: TextGenerationOutcome.Refused, Usage: usage, Refusal: string.Join("\n", refusals));
                 var calls = items.Where(i => !i.IsMessage)
                     .Select(i => new TextToolCall(i.CallId!, i.Name!, i.Arguments.ToString())).ToArray();
-                Require(calls.Length > 0 || items.Any(i => i.IsMessage && !string.IsNullOrWhiteSpace(i.Text.ToString())));
+                Require(calls.Length > 0 || emptyAllowed || items.Any(i => i.IsMessage && !string.IsNullOrWhiteSpace(i.Text.ToString())));
                 Require(calls.Length <= TextToolRound.MaxCalls &&
                     calls.Select(c => c.CallId).Distinct(StringComparer.Ordinal).Count() == calls.Length);
                 return new(Outcome: TextGenerationOutcome.Completed, Usage: usage, ToolCalls: calls.Length == 0 ? null : calls);

@@ -277,13 +277,13 @@ those numbered facts. When [learning names](VOICES.md) is due after the same
 reply, it is the same request (Companion › Prompts › *Remembering and learning
 names together*), not a second one. On a Thinking model on this PC (Ollama or
 another server on loopback) that request continues the reply's own
-conversation instead of quoting an excerpt: the same instructions and earlier
-messages, the message and the reply, then the task. Such a server keeps the
-conversation in its prompt cache only while requests start like it, so a
-request with another start would make the next reply read the whole
+conversation instead of quoting an excerpt: the same instructions, tools (described
+again, never run) and earlier messages, the message and the reply, then the task.
+Such a server keeps the conversation in its prompt cache only while requests start
+like it, so a request with another start would make the next reply read the whole
 conversation again. It quotes the persona-free excerpt instead elsewhere, when
-what this PC played is in the conversation (remembering never reads that), when
-the reply used tools, or when it wouldn't fit the context.
+what this PC played is in the conversation (remembering never reads that) or when
+it wouldn't fit the context.
 The model answers in a strict line format: `REMEMBER: <fact>`,
 `UPDATE <n>: <fact>`, `FORGET <n>` or `NOTHING`, at most three lines. Desktop
 validates every line (single line, <=300 characters, real words, in-range

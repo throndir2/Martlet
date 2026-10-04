@@ -87,13 +87,17 @@ reply waits at most 10 seconds for servers still starting. Servers that stopped 
 retried when a talk window opens again or from the Tools page. Each server's state,
 tools and recent error output are on the Tools page.
 
-**Which replies get tools.** Only replies to what you say or type, and only when
+**Which replies get tools.** Only replies to what you say or type (and Martlet's
+own reply bringing up finished background work), and only when
 Thinking uses OpenAI or a Chat Completions endpoint (local Ollama, LM Studio,
 OpenRouter, NVIDIA Build...). Screen and camera glances and memory requests never
 get tools, and a paired Martlet host's gateway has no function calling, so replies
 from a host's model don't offer tools. If the model rejects a request because it
 doesn't support tools (many small local models), Martlet asks it once more without
-tools and stops offering them to that model until Martlet restarts.
+tools and stops offering them to that model for a week on this PC
+(`tools-unsupported.json` in the data folder). Martlet's own `think_longer` and
+`cancel_thinking` ([Thinking longer](#thinking-longer)) come first, then the
+terminal, then the servers' tools.
 
 **Confirmations.** Before each call the talk window shows the tool, its server and
 the exact arguments, with *Allow once*, *Always allow this tool* and *Deny*; it is
@@ -174,6 +178,18 @@ rest). The tool's description tells the model the shell, start folder, time limi
 and whether you approve each command, and asks it to prefer commands that only
 read and to say the result in a sentence or two. The command, its start folder and
 what it prints go to the Thinking model.
+
+### Thinking longer
+
+**Companion > Replies > Thinking longer** (on by default) gives every reply on a
+route that does function calling Martlet's own `think_longer` (`task`, the
+complete instruction, and an optional `reason`) and `cancel_thinking` (optional
+`id`). The call never asks first and returns at once; the task is worked out in
+a background request with Thinking steps on and brought up when it's done
+([Thinking longer and background work](CONVERSATION.md#thinking-longer-and-background-work)).
+The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
+started think-1`); the desktop log notes each start, pause and end without the
+task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -1216,6 +1232,49 @@ with first words after about 0.1 s and 16 tokens against about 1-3 s and
 and nothing leaves loopback. A paired host's `think` (desktop client, gateway,
 Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN.
 
+`think_longer_status` shows Companion › Replies › **Thinking longer** as replies
+use it (optional absolute `dataDirectory`, default the current user's):
+`settings`, `thinkLonger` (`enabled`, on by default; `effort` *Medium* or
+*High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12; `delivery` *WhenFree* or
+*NextMessage*; `chosen`), `thinking` (the route's `routeType`, `model`,
+`supportsTools`, `toolsRejected` from `tools-unsupported.json`, `offered`,
+`onThisPc`/`waitsForQuiet` for a model on this PC, its Thinking steps `use`,
+what a background think `sends` at that effort, such as
+`{"reasoning_effort":"medium"}`, and its `outputTokens`), `tools`
+(`think_longer` and `cancel_thinking` exactly as the model gets them), the
+filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
+`recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
+`finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
+`resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
+`startedLastHour`; and the running think's `local`, `attempts` and `pauses`),
+never a task or result. Read-only.
+
+`think_longer_check` rehearses Thinking longer with the production scheduler
+(`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
+layout (`ThinkLonger`), conversation runtime and Chat Completions adapter
+against a fixture endpoint on 127.0.0.1 (canned replies, NOT AI; optional
+`reasoningMs` 200-3000, default 1200, for the fixture's hidden reasoning).
+`flow`: a reply says it'll think it over and calls `think_longer`; the tool
+returns within a few ms (`toolTookMs`), after the first words, and the reply
+completes with nothing more to say; the background request repeats the reply's
+messages and tools unchanged before what Martlet said and the task
+(`layout.sameStart`, `sameTools`, `then`), with Thinking steps on and the
+Medium budget against the reply's off and 4,096 (`replyThinking`,
+`thinkThinking`, `replyBudget`, `thinkBudget`); the result is brought up as
+Martlet's own reply whose message carries it and whose request starts like the
+reply's (`delivery.report`), after which nothing waits, and the notes for the
+next message carry it too. `limits`: one think at a time (the second is refused
+with what the model is told) beside a song job, the user's Cancel (mentioned
+only with the next message, kept when that reply didn't happen), the time limit
+(`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
+the conversation ending (dropped). `local`: a think for a model on this PC waits
+for a quiet moment without sending anything, stops its request when the
+conversation needs the model (`stoppedAfterMs`), sends nothing while paused and
+then finishes from the same request (`attempts` 2, `pauses` 1,
+`sameRequestAgain`). Each part has an `ok`; on this PC the tool returned in
+5 ms and a paused think's request was gone 123-140 ms later (the fixture writes
+every 50 ms). Loopback only; reads no credentials.
+
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
 `dataDirectory`, default the current user's, and optional `delayMs` 0-300,
@@ -2110,7 +2169,29 @@ context size from Companion › Replies; absent when none, and unchanged when a
 settings change is picked up; beside it,
 `LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
 forgets them so the next reply starts fresh, adds the note *Context refreshed.*
-to `LiveHistory` and hides `LiveContext`)
+to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
+works in the background or a finished job waits to be brought up: *Working in
+the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
+it.*, *think-1 waiting for a quiet moment*, *think-1 paused while you talk
+(0:30)*, *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
+*... when you talk next.*; never what a job is about), each job's chip
+`LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
+so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
+only stops that job, and the next thing you say tells Martlet), with the status
+line reading *Starting to think it over in the background…* while
+`think_longer` runs and *Martlet is bringing up what it worked on…* while
+Martlet's own report is on its way; Companion › Replies' `RepliesThinkLonger`
+(*Let Martlet think longer when it needs to*; `checkedState` is the saved
+choice), `RepliesThinkLongerStatus` (*On. When a task needs it, Martlet says
+it'll think it over and works on it in the background (Medium effort, up to 5
+minutes, at most 6 an hour) while you keep talking, then brings it up as soon as
+it's free.*, with *Its model is on this PC, so it thinks only while you aren't
+talking and pauses for every reply.* for a model on this PC, *Off. ...*, or what
+keeps it from working: no Thinking, a paired host's model, a model that turned
+tools down) and the choices `RepliesThinkLongerEffort`, `RepliesThinkLongerTime`,
+`RepliesThinkLongerPerHour` and `RepliesThinkLongerDelivery` (returned;
+`ui_toggle` and `ui_select` on them save the reply settings, so they need
+`--allow-ui-effects`)
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
@@ -2359,7 +2440,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

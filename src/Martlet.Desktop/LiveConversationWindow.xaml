@@ -63,6 +63,16 @@
         <!-- The message box stays in view below the history. -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,12,16,14">
             <StackPanel>
+                <!-- Background work Martlet started (think_longer): what it works on, for how long, and Cancel. It keeps going
+                     while you talk; Stop (Esc) never stops it. -->
+                <Border x:Name="JobsPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="14" Padding="12,8" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveJobsPanel">
+                    <StackPanel>
+                        <TextBlock x:Name="JobsText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveJobs"/>
+                        <StackPanel x:Name="JobChips" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
                 <!-- A tool call waiting for your answer: inline, so answering never leaves (or revokes) the conversation. -->
                 <Border x:Name="ToolApprovalPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
                         CornerRadius="14" Padding="14,10" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveToolApproval">
