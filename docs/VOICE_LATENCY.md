@@ -381,6 +381,71 @@ the first step toward the omni flow. The Qwen, Voxtral,
 Phi-4 and MiniCPM-o models are in the bench only: Martlet's local selector
 runs Ollama, which serves none of them, and none beat Gemma 4 E2B here.
 
+## Straight to Thinking (measured)
+
+**2026-10-04, DIVA (RTX 4070), Martlet's own pipeline.** Companion ›
+Listening › When Thinking can hear you › **Send my voice straight to Thinking**
+([how it works](CONVERSATION.md#straight-to-thinking)) against **Transcribe
+first, then send both**, each in a disposable desktop (Thinking `gemma4:e2b` in
+Ollama 0.35.1 on this PC, Thinking steps Off; Listening Parakeet TDT 0.6B v3 on
+the processor; voice recognition on; Voice the Windows voice Zira). The
+microphone and speakers were the desktop's fixture devices
+(`MARTLET_SIMULATE_MICROPHONE`, `MARTLET_SIMULATE_SPEAKERS`, see
+[MCP](MCP.md)): eight short questions said by the Windows voice David, heard in
+real time 10 s apart, and replies taken at real-time pace into a silent sink;
+the end-of-speech pause is the default 800 ms. Medians of the desktop log's
+*Reply latency* lines, after the first (warm-up) reply and without one outlier
+each way where another job took the graphics card:
+
+| | Straight (n=6) | Transcribe first (n=5) |
+| --- | --- | --- |
+| First audio after you stopped talking | **1,475 ms** | 1,693 ms |
+| First Thinking words after you stopped talking | **1,306 ms** | 1,417 ms |
+| From the end of the pause (minus 800 ms) to the first audio | **675 ms** | 893 ms |
+| Speech-to-text before the request | none | 281 |
+| Voice recognition (who spoke) before the request | 76 | hidden behind speech-to-text |
+| Waiting to answer (talk window's 100 ms tick) | 94 | 18 |
+| Thinking connection (Ollama's prefill, to its first bytes) | 346 | 275 |
+| Prompt cache (`Thinking input`, replies 2-8) | 78-92 % | 71-95 % |
+| Background transcript ready after the reply started | 511-656 ms (speech-to-text 116-205 ms) | |
+
+Straight is about **220 ms sooner to the first audio**: it skips
+speech-to-text (281 ms), but the reply now waits for who spoke (76 ms, which
+used to overlap speech-to-text), meets the talk window's tick more often, and
+Ollama takes about 70 ms longer to read a request whose message is the recording
+alone. The words reach the talk window about 0.6 s after the reply started:
+with Parakeet and Ollama both on this PC, speech-to-text waits for the reply's
+first audio, so it never competes with the reply for the processor (in an
+earlier, smaller run with speech-to-text beside the request, Ollama's first
+bytes came about 130 ms later: 482 against 346 ms median).
+
+Headless, MCP's `straight_voice_check` with `live: true` (the same model and
+Parakeet, three utterances, no voice) measured 223 ms to the first words from
+the end of the recording sent straight against 482 ms transcribing first (281
+ms of speech-to-text, then the request), and showed every straight request
+carrying the recording and only the stand-in text, never the transcript.
+
+**Prompt cache.** Ollama with Gemma 4 reuses its cache only for a request
+that continues a whole earlier one (a request diverging anywhere reads all of
+it again: 0 cached tokens). A reply that carried a recording is never continued
+by the next reply on either path, because the recording isn't sent again; the
+after-reply request (remembering and learning names), which continues the
+reply's request with the transcript in place of the recording, is what the next
+reply continues, so replies 2-8 read 78-92 % of their input from the cache. With
+remembering off, every reply after a recording reads its whole input again on
+both paths. Sending each earlier recording again would keep the reply-to-reply
+cache, at the cost of re-sending audio (about 30 tokens a second) for the whole
+conversation; Martlet drops recordings after their turn instead.
+
+**Still on the path:** voice recognition (76 ms; it could start during the
+end-of-speech pause), the talk window's 100 ms tick (recommendation 8), and the
+800 ms pause itself (recommendation 3).
+
+**NOT RUN:** a real microphone and speakers (fixture devices stood in), a
+cloud model that hears (paid; OpenRouter lists no audio input for the current
+route), Chatterbox or another host voice (a Windows voice spoke), and Parakeet
+110M (not downloaded on this PC).
+
 **NOT RUN:**
 - **A cloud Thinking model** (OpenRouter `x-ai/grok-4.3`, the current route):
   no key is set up for the bench. Run
@@ -469,10 +534,13 @@ backchannel at once would make most of the rest feel instant.
    in about 150 ms from text and 220-240 ms from a recording (see
    [Local options measured](#local-options-measured-voicebench)). Keep the
    voice on the GPU that isn't rendering the character.
-6. **Omni for the reply, a transcript in parallel.** With a Thinking model that
-   hears (Gemma 4 in Ollama on this PC; Martlet now detects it), send the
-   recording and skip speech-to-text on the critical path; transcribe in
-   parallel for history and memory. For a model that can't hear, a smaller
+6. **Omni for the reply, a transcript in parallel.** Done: with a Thinking
+   model that hears (Gemma 4 in Ollama on this PC; Martlet detects it), Companion
+   › Listening › When Thinking can hear you › **Send my voice straight to
+   Thinking** (the default once Let Thinking hear my voice is on) sends the
+   recording alone and transcribes beside the reply for the talk window, history
+   and memory; about 220 ms sooner to the first audio here ([measured](#straight-to-thinking-measured)).
+   For a model that can't hear, a smaller
    transcriber (Parakeet 110M, about 90 ms) saves 150-250 ms over Parakeet v3,
    at the cost of more mistakes on noisy audio.
 7. **Mask the rest** with a cached backchannel in the cloned voice.

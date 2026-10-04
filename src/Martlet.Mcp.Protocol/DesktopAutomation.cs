@@ -150,6 +150,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
+        // Companion › Listening › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
+        // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
+        // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
+        "TalkVoicePathStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
         // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words), under each

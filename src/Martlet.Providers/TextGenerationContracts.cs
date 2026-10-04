@@ -243,9 +243,9 @@ public sealed class BoundedTextInput
         text is { Length: <= HardMaxUtf8Bytes } && !text.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t');
 
     private BoundedTextInput(BoundedTextInput origin, IReadOnlyList<TextToolDefinition> tools, IReadOnlyList<TextToolRound> rounds,
-        bool callsAllowed, bool keepAudio, bool keepImage = true)
+        bool callsAllowed, bool keepAudio, bool keepImage = true, string? words = null)
     {
-        UserText = origin.UserText;
+        UserText = words ?? origin.UserText;
         Personality = origin.Personality;
         Notes = origin.Notes;
         History = origin.History;
@@ -255,14 +255,18 @@ public sealed class BoundedTextInput
         Tools = tools;
         ToolRounds = rounds;
         ToolCallsAllowed = callsAllowed && tools.Count > 0;
-        Utf8Bytes = origin.Utf8Bytes;
+        // The words that replace a recording sent alone count instead of what stood in for them.
+        Utf8Bytes = words is null ? origin.Utf8Bytes : checked(origin.Utf8Bytes - Count(origin.UserText) + Count(words));
+        ContractRules.Require(words is null || !string.IsNullOrWhiteSpace(words) && Utf8Bytes <= HardMaxInputUtf8Bytes,
+            "A nonempty user message is required.");
         var exchange = rounds.Sum(r => r.Utf8Bytes);
         ContractRules.Require(rounds.Count <= HardMaxToolRounds && exchange <= HardMaxToolExchangeBytes,
             "Tool calls and results exceed their bound.");
         ToolUtf8Bytes = tools.Sum(t => t.Utf8Bytes) + exchange;
         ToolTokenReservation = ToolReservation(ToolUtf8Bytes, tools.Count, rounds.Sum(r => r.Calls.Count));
         InputTokenReservation = origin.InputTokenReservation - origin.ToolTokenReservation - AudioReservation(origin.Audio) +
-            AudioReservation(Audio) - ImageReservation(origin.Image) + ImageReservation(Image) + ToolTokenReservation;
+            AudioReservation(Audio) - ImageReservation(origin.Image) + ImageReservation(Image) + ToolTokenReservation +
+            (int)((Utf8Bytes + 2L) / 3 - (origin.Utf8Bytes + 2L) / 3);
     }
 
     /// <summary>This reply's input plus the finished tool rounds; <paramref name="callsAllowed"/> false asks for a text answer.</summary>
@@ -270,19 +274,31 @@ public sealed class BoundedTextInput
     {
         ArgumentNullException.ThrowIfNull(rounds);
         var origin = Origin ?? this;
-        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed, Audio is not null, Image is not null);
+        return new(origin, origin.Tools, rounds.ToArray(), callsAllowed, Audio is not null, Image is not null, Words);
     }
 
     /// <summary>This reply's input with no tools at all, for a model that rejected them.</summary>
-    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false, Audio is not null, Image is not null);
+    public BoundedTextInput WithoutTools() => new(Origin ?? this, [], [], false, Audio is not null, Image is not null, Words);
 
     /// <summary>This input with only the transcript, for a model that rejected the recording or doesn't hear (a fallback).</summary>
     public BoundedTextInput WithoutAudio() =>
-        Audio is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, false, Image is not null);
+        Audio is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, false, Image is not null, Words);
 
     /// <summary>This input without its picture, for a model that rejected the screen picture sent along with the user's words.</summary>
     public BoundedTextInput WithoutImage() =>
-        Image is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, Audio is not null, false);
+        Image is null ? this : new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, Audio is not null, false, Words);
+
+    /// <summary>This input with <paramref name="words"/> (the transcript) in place of the user's recording, for a message that
+    /// went as the recording alone (straight to a Thinking model that hears) when it is asked again without it: a model that
+    /// refused the recording, or the Thinking fallback. It continues the same input, so the action's permission covers it.</summary>
+    public BoundedTextInput WithTranscript(string words)
+    {
+        ArgumentNullException.ThrowIfNull(words);
+        return new(Origin ?? this, Tools, ToolRounds, ToolCallsAllowed, false, Image is not null, words);
+    }
+
+    // The words that replaced the origin's recording-only message, kept through later rounds and retries.
+    private string? Words => Origin is { } origin && !string.Equals(UserText, origin.UserText, StringComparison.Ordinal) ? UserText : null;
 
     private static int ImageReservation(BoundedImage? image) => image is null ? 0 : BoundedImage.TokenReservation;
 

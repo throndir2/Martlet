@@ -1312,8 +1312,17 @@ route's, the production decision `HearingModelCatalog.ForRoute`: only Chat
 Completions endpoints take audio, Ollama on this PC included, then what
 `model-abilities.json` says about the model, then its name; null with
 `modelId`), `savedAbility` (what Martlet found out about the saved model:
-`Hears`, `Sees`, `Source` and `CheckedAt`, or null) and `hearVoice` (the saved
-choice, off by default). Its `fixture`
+`Hears`, `Sees`, `Source` and `CheckedAt`, or null), `hearVoice` (the saved
+choice, off by default), `voicePath` (Companion › Listening › **When Thinking
+can hear you**: `straight`, the default, or `transcribeFirst`),
+`straightApplies` (always listening sends the recording alone right away: the
+choice is on, straight and the route hears) and `lastTurn`: which way the newest
+spoken reply's message went, from the desktop log (`path` `straight` or
+`transcribeFirst` and its *Voice path* `line`; for a straight one
+`transcriptReadyAfterReplyStartMs` and `speechToTextMs` from the *Background
+transcript ready* line, and `wordsLine`, the *Straight to Thinking:* line saying
+where the words went: the conversation, its record, remembering; never the
+words), or null before one. Its `fixture`
 rehearses the production Chat Completions adapter against a canned endpoint
 on 127.0.0.1 (NOT AI) with a 1.5 s synthesized speech-like clip (never
 microphone audio, nothing played): `withRecording` (outcome, the user
@@ -1325,9 +1334,46 @@ text message); `ok` is true when all three hold. It reads no credentials and
 nothing leaves loopback. On the Listening page `TalkHearVoiceStatus` reads
 whether the saved Thinking model hears and where the recording goes, or what to
 change; the `TalkHearVoice` check box saves the choice, so it needs
-`--allow-ui-effects`. A real reply with a recording needs a microphone and a
-model that hears; the talk window then notes *Thinking heard your voice.* (or
-that it got the transcript only) under what you said.
+`--allow-ui-effects`. While Thinking hears and the choice is on, the page shows
+**When Thinking can hear you**: the radio buttons `TalkVoicePathStraight` and
+`TalkVoicePathTranscribeFirst` (`ui_snapshot`'s `selected`; choosing one saves
+`talk-preferences.json`, so it needs `--allow-ui-effects`) and
+`TalkVoicePathStatus`, which says which way your voice goes and when a message
+is transcribed first anyway. A real reply with a recording needs a microphone (or
+the simulated one below) and a model that hears; the talk window then notes
+*Thinking heard your voice.* (*... straight away.* on the straight path, or that
+it got the transcript only) under what you said.
+
+`straight_voice_check` rehearses **Send my voice straight to Thinking**
+headless with the production pieces: the conversation runtime and Chat
+Completions adapter, and the desktop's own `SpokenWords` (the words of a
+recording sent alone, transcribed beside the reply) and
+`ConversationContextBuffer` (what each next request carries). Three utterances
+said by a Windows voice (never a microphone, nothing played) go one turn at a
+time as the recording alone. `straight.turns` gives per turn the request's
+`requestHadAudio`, `wavValid`, `audioSeconds`, `requestText` (only the stand-in
+*(spoken: listen to the recording)*) and `transcriptInRequest` (false), the
+earlier messages it carried (`historyMessages`, `historyRecordings` 0),
+`firstWordsMs`, `transcriptReadyAfterReplyStartMs`, `speechToTextMs`, the
+`transcript` and word check, `inputTokens`/`cachedTokens`/`cachedShare` and the
+`reply`. `history` shows the user messages the conversation now carries (the
+transcripts, never the stand-in) and the request after the last turn
+(`recordingsInHistory` 0, `standInLeft` false). `transcribeFirst` runs the same
+utterances the other way (speech-to-text, then the transcript and recording) and
+`compare` gives both medians from the end of the recording to the first words.
+`refusal` uses a fixture endpoint that refuses any recording: the reply waits
+for the words and asks again with them (`retry.text` is the transcript,
+`retry.audio` false, `audioRejected` true). Speech-to-text is Parakeet on this
+PC when it is downloaded (`speechDirectory`, default the current user's; the
+sherpa runtime from `martletDirectory`, which the script fills in with this
+checkout's Desktop build), else a fixture transcriber. With `live: true`
+Thinking is Ollama on this PC (`model`, default `gemma4:e2b`, which Ollama must
+say hears) through a loopback relay that records each request and sends it on as
+the desktop does (Thinking steps Off, usage with the prompt cache); otherwise a
+fixture endpoint answers (canned replies, NOT AI). `ok` needs every straight
+request to carry the recording and only the stand-in, the history to carry the
+transcripts and no recordings, and the refusal to be answered from the words.
+Nothing leaves this PC and no credentials are read.
 
 `model_ability_check` shows what Thinking models were found to hear (recorded
 audio) and see (pictures), and rehearses how Martlet finds out (optional
@@ -3004,6 +3050,22 @@ at once (logging *Exited without waiting: Martlet was still <step>*),
 the desktop adds a last step that only waits that long (*Waiting on a simulated
 slow step*), to check the closing panel and Exit now.
 
+To drive conversations without a microphone or speakers (always listening,
+replies and their latency lines), set `MARTLET_SIMULATE_MICROPHONE` to a WAV
+file or a folder of WAV files (16-bit PCM mono at 16, 24 or 48 kHz, taken in
+name order) and `MARTLET_SIMULATE_SPEAKERS=1` before launching the desktop
+(`-Desktop` passes the environment on). FIXTURE devices, never real ones: the
+microphone hears each clip once in real time, after a short lead-in, at least
+`MARTLET_SIMULATE_MICROPHONE_GAP` seconds (default 8) after the previous one
+ended, and silence otherwise; the speakers take replies at real-time pace and
+play nothing. Echo reduction and hearing what this PC plays are off while the
+microphone is simulated. The desktop log says so at start (*Simulated
+microphone ... FIXTURE*) and as each clip plays. With a disposable data
+directory whose Thinking is Ollama on this PC, Listening Parakeet and Voice a
+Windows voice, `ui_click` `HomeListen` (with `--allow-ui-effects`) runs whole
+spoken turns; `latency_report`, `logs_tail`, `hearing_check`'s `lastTurn` and
+`conversation_history_status` show what happened.
+
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
 `ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`
@@ -3045,7 +3107,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check` and `parakeet_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
 - Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
