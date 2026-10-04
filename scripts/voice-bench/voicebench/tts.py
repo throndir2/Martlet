@@ -100,11 +100,16 @@ class MartletWorker:
 
     def synthesize(self, text: str, voice: Voice, deadline_s: float = 85) -> Speech:
         session = str(uuid.uuid4())
+        # The canonical reference revisions (the f5 contract checks them; Chatterbox and Dia accept them too): the transcript's
+        # SHA-256, then the SHA-256 of the audio's and the transcript's digests, and a preset UUID derived from the voice.
+        transcript_revision = hashlib.sha256(voice.transcript.encode("utf-8")).hexdigest()
+        reference_revision = hashlib.sha256(bytes.fromhex(voice.sha256) + bytes.fromhex(transcript_revision)).hexdigest()
         body = {
             "ids": {"session_id": session, "turn_id": str(uuid.uuid4()), "request_id": str(uuid.uuid4()), "parent_request_id": None},
             "deadline_utc": (datetime.now(timezone.utc) + timedelta(seconds=deadline_s)).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-            "reference": {"preset_id": f"bench-{voice.name}", "reference_revision": voice.sha256[:16], "audio_sha256": voice.sha256,
-                          "transcript": voice.transcript, "transcript_revision": hashlib.sha256(voice.transcript.encode()).hexdigest()[:16],
+            "reference": {"preset_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"martlet-bench:{voice.name}")),
+                          "reference_revision": reference_revision, "audio_sha256": voice.sha256,
+                          "transcript": voice.transcript, "transcript_revision": transcript_revision,
                           "audio_base64": base64.b64encode(voice.audio).decode("ascii")},
             "chunks": [{"index": 0, "chunk_id": "c0", "text": text}],
         }
@@ -131,6 +136,8 @@ class MartletWorker:
                 elif kind in {"completed", "canceled"}:
                     break
         speech.done_ms = ms(now() - started)
+        if speech.first_audio_ms is None and not speech.error:
+            speech.error = "no audio: the service ended the stream without any (a rejected request)"
         return speech
 
 

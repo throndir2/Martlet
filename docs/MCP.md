@@ -1283,7 +1283,7 @@ whether the saved Thinking model hears and where the recording goes, or what to
 change; the `TalkHearVoice` check box saves the choice, so it needs
 `--allow-ui-effects`. `TalkAnswerFromVoiceStatus` reads whether Answer from my
 voice applies (on this PC, with the consent, or why Martlet answers the words);
-the `TalkAnswerFromVoice` check box saves it, so it needs `--allow-ui-effects`. A real reply with a recording needs a microphone and a
+the `TalkAnswerFromVoice` check box saves it (`ui_toggle`), so it needs `--allow-ui-effects`. A real reply with a recording needs a microphone and a
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
 

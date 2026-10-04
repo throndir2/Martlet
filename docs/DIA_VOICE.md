@@ -141,7 +141,18 @@ route's `engine`.
   minutes per sentence, longer than the 90 s request bound, so real speech
   through the gateway was not run on CPU.
 
-**NOT RUN:** NVIDIA GPU warmup, latency and VRAM, `martlet-host add dia` on a
+- 2026-10-04, RTX 4070 12 GB beside the resident host roles, with the
+  voicebench Dia bench (`scripts/voice-bench`, `Install-VoiceBench.ps1 -Dia`:
+  this worker's own `DiaEngine` and prompts with the pinned source, weights and
+  codec, float16, never the host role): loading added about 3.7 GB, and with
+  Gemma 4 E2B kept loaded in Ollama by another client the card ran out while
+  generating, so Windows moved memory to system RAM and the first 3 s piece took
+  15 minutes. Chatterbox Turbo on the same card started each piece in
+  421-513 ms ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)).
+  Dia needs a card with about 6 GB free beside everything else.
+
+**NOT RUN:** NVIDIA GPU latency on a card with room for Dia (see above),
+`martlet-host add dia` on a
 GPU host, live desktop conversation playback through Dia, and a listening
 review of likeness and of how each cue sounds (no one listened to the output;
 Whisper cannot hear laughs or sighs).
