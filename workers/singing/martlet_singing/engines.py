@@ -172,9 +172,6 @@ class SongEngine:
         self.voice_matches = voice_matches
         self.ace: dict[str, Any] = {}
         self.demucs: Any = None
-        self.rmvpe: Any = None
-        self.soulx: Any = None
-        self.vevo: Any = None
         self.planner = os.environ.get("MARTLET_SINGING_PLANNER", "lm")  # "lm" or "none"
         self.lm_backend = os.environ.get("MARTLET_SINGING_LM_BACKEND", "pt")  # "pt" or "vllm"
         self.quantized: str | None = None
@@ -186,7 +183,7 @@ class SongEngine:
 
     def release(self) -> None:
         self.ace.clear()
-        self.demucs = self.rmvpe = self.soulx = self.vevo = None
+        self.demucs = None
         self._free()
 
     def _keep(self) -> bool:
@@ -240,13 +237,7 @@ class SongEngine:
 
         report("matching_voice", 0.6)
         started = time.perf_counter()
-        if job["voice_match"] == "vevosing":
-            converted48 = self._match_vevo(vocals48, reference, reference_rate)
-        else:
-            converted48 = self._match_soulx(vocals48, reference, reference_rate, directory)
-        if not self._keep():
-            self.soulx = self.vevo = None
-            self._free()
+        converted48, matched = self._match(vocals48, reference, reference_rate, job["voice_match"], directory, canceled)
         timer.add("matching_voice", started)
         _check(canceled)
 
@@ -282,12 +273,14 @@ class SongEngine:
         timer.add("aligning", started)
 
         peak_vram = round(torch.cuda.max_memory_reserved() / 2**20) if torch.cuda.is_available() else 0
+        peak_vram = max(peak_vram, int(matched.get("peak_vram_mib") or 0))
         return {
             "engine": {"generator": pins.GENERATOR_IDS[job["quality"]], "separator": pins.SEPARATOR_ID,
                        "converter": pins.CONVERTER_IDS[job["voice_match"]], "quality": job["quality"],
                        "voice_match": job["voice_match"], "fixture": False,
                        "planner": self.planner, "lm_backend": self.lm_backend if self.planner == "lm" else None,
-                       "quantization": self.quantized},
+                       "quantization": self.quantized, "match": {k: matched.get(k) for k in (
+                           "shift_semitones", "singer_hz", "voice_hz", "load_seconds", "convert_seconds", "peak_vram_mib", "transformers")}},
             "frames": frames, "seed": seed, "bpm": grid["bpm"] or bpm_planned, "planned_bpm": bpm_planned,
             "key": plan.get("keyscale") or job.get("key"), "beats_per_bar": beats_per_bar,
             "beats": grid["beats"], "downbeats": grid["downbeats"], "lyrics": lines,
@@ -309,6 +302,11 @@ class SongEngine:
         import torch
 
         free = torch.cuda.mem_get_info()[0] / 2**30 if torch.cuda.is_available() else 99.0
+        # On Windows (WDDM) CUDA's free figure ignores other processes and spills into shared system memory instead of
+        # failing, so the card's own count (nvidia-smi) decides when it is lower.
+        card = card_memory()
+        if card:
+            free = min(free, (card["total_mib"] - card["used_mib"]) / 1024)
         self.quantized = "int8_weight_only" if free < 7.0 else None
         return self.quantized
 
@@ -448,136 +446,72 @@ class SongEngine:
 
     # ---- stage 3: voice matching
 
-    def _f0(self, extractor: Any, samples, rate: int):
-        """RMVPE pitch (SoulX-Singer's extractor) at the 24 kHz / hop 480 frame rate SoulX expects."""
-        import tempfile
+    def _match(self, vocals48, reference, reference_rate: int, voice_match: str, directory: Path,
+               canceled: Canceled) -> tuple[Any, dict[str, Any]]:
+        """Runs martlet_singing.match in its own process (the converters need an older Transformers than ACE-Step)."""
+        import json
+        import subprocess
 
         import numpy as np
         import soundfile
 
-        with tempfile.TemporaryDirectory() as folder:
-            wav = Path(folder) / "voice.wav"
-            soundfile.write(str(wav), samples, rate)
-            f0 = extractor.process(str(wav), f0_path=str(Path(folder) / "f0.npy"))
-        return np.asarray(f0, dtype=np.float32)
-
-    def _match_soulx(self, vocals48, reference, reference_rate: int, directory: Path):
-        import numpy as np
-        import torch
-
-        _soulx_path()
-        from soulxsinger.utils.file_utils import load_config
-
-        root = _soulx_root()
-        config = load_config(str(root / "soulxsinger/config/soulxsinger.yaml"))
-        rate = config.audio.sample_rate  # 24 kHz
-        target = _resample(vocals48.mean(axis=0), audio.OUTPUT_RATE, rate)
-        prompt = _resample(reference, reference_rate, rate)
-        # RMVPE is small: load it on the card for this song only.
-        from preprocess.tools.f0_extraction import F0Extractor
-
-        extractor = F0Extractor(model_path=str(self.models / "soulx/rmvpe/rmvpe.pt"), device=self.device, verbose=False)
-        gt_f0 = self._f0(extractor, target, rate)
-        pt_f0 = self._f0(extractor, prompt, rate)
-        del extractor
-        self._free()
-        if self.soulx is None:
-            from cli.inference_svc import build_model
-
-            model = build_model(str(self.models / "soulx/model-svc.pt"), config, device="cpu", use_fp16=False)
-            model.half()
-            model.mel.float()
-            model.whisper_encoder.model.to("cpu")
-            self.soulx = model
-            self._free()
-        model = self.soulx
-        voiced_gt, voiced_pt = gt_f0[gt_f0 > 0], pt_f0[pt_f0 > 0]
-        shift = 0
-        if voiced_gt.size and voiced_pt.size:
-            # Singing sits about 7 semitones above the same person's speaking voice; shift whole octaves only, so the
-            # backing never needs re-pitching.
-            raw = 12 * math.log2(float(np.median(voiced_pt)) / float(np.median(voiced_gt)))
-            shift = 12 * round((raw + 7) / 12)
-        torch.manual_seed(42)
-        device = self.device
-        try:
-            with torch.no_grad():
-                model.to(device)
-                pt = torch.from_numpy(prompt).float()[None].to(device)
-                gt = torch.from_numpy(target).float()[None].to(device)
-                generated, _ = model.infer(pt_wav=pt, gt_wav=gt, pt_f0=torch.from_numpy(pt_f0)[None].to(device),
-                                           gt_f0=torch.from_numpy(gt_f0)[None].to(device), auto_shift=False,
-                                           pitch_shift=shift, n_steps=32, cfg=3.0, use_fp16=device.startswith("cuda"))
-                converted = generated.squeeze().float().cpu().numpy()
-                del generated, pt, gt
-        finally:
-            model.to("cpu")
-            model.whisper_encoder.model.to("cpu")
-            self._free()
-        converted48 = _resample(converted, rate, audio.OUTPUT_RATE)
-        return _fit(converted48, vocals48.shape[1])
-
-    def _match_vevo(self, vocals48, reference, reference_rate: int):
-        import numpy as np
-        import torch
-
-        if "vevosing" not in self.voice_matches:
+        if voice_match == "vevosing" and "vevosing" not in self.voice_matches:
             raise SongError("singing.voice_match_unavailable", "VevoSing is not set up on this computer.")
-        _amphion_path()
-        if self.vevo is None:
-            os.environ.setdefault("XDG_CACHE_HOME", str(self.models))
-            from models.svc.vevosing.vevosing_utils import VevosingInferencePipeline
-
-            amphion = _amphion_root()
-            cwd = os.getcwd()
-            os.chdir(amphion)
+        vocals_path, reference_path, out_path = (directory / "match-vocals.wav", directory / "match-reference.wav",
+                                                 directory / "match-out.wav")
+        soundfile.write(str(vocals_path), vocals48.mean(axis=0).astype(np.float32), audio.OUTPUT_RATE, subtype="FLOAT")
+        soundfile.write(str(reference_path), reference.astype(np.float32), reference_rate, subtype="FLOAT")
+        environment = dict(os.environ)
+        paths = [str(Path(__file__).resolve().parent.parent)]
+        overlay = os.environ.get("MARTLET_SINGING_MATCH_SITE")
+        if overlay:
+            paths.insert(0, overlay)
+        environment["PYTHONPATH"] = os.pathsep.join(paths + [p for p in environment.get("PYTHONPATH", "").split(os.pathsep) if p])
+        command = [os.environ.get("MARTLET_SINGING_MATCH_PYTHON") or sys.executable, "-m", "martlet_singing.match",
+                   "--engine", "vevosing" if voice_match == "vevosing" else "soulx", "--models", str(self.models),
+                   "--device", self.device, "--vocals", str(vocals_path), "--reference", str(reference_path),
+                   "--out", str(out_path)]
+        log, result = directory / "match.log", directory / "match.json"
+        with open(log, "wb") as errors, open(result, "wb") as output:
+            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
+                                       env=environment, cwd=str(directory))
             try:
-                self.vevo = VevosingInferencePipeline(
-                    content_style_tokenizer_ckpt_path=str(self.models / "vevo/tokenizer/contentstyle_fvq16384_12.5hz"),
-                    fmt_cfg_path=str(amphion / "models/svc/vevosing/config/fm_emilia101k_singnet7k.json"),
-                    fmt_ckpt_path=str(self.models / "vevo/acoustic_modeling/fm_emilia101k_singnet7k"),
-                    vocoder_cfg_path=str(amphion / "models/svc/vevosing/config/vocoder.json"),
-                    vocoder_ckpt_path=str(self.models / "vevo/acoustic_modeling/Vocoder"),
-                    device=torch.device(self.device))
+                while process.poll() is None:
+                    if canceled():
+                        process.kill()
+                        process.wait()
+                        raise JobCanceled()
+                    time.sleep(0.2)
             finally:
-                os.chdir(cwd)
-        pipeline = self.vevo
-        import librosa
-        import torchaudio
-        from evaluation.metrics.f0.f0_corr import extract_f0_hz  # noqa: F401 - imported for parity with Amphion
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+        stdout = result.read_text(encoding="utf-8", errors="replace")
+        lines = [line for line in stdout.splitlines() if line.strip().startswith("{")]
+        summary = json.loads(lines[-1]) if lines else {}
+        if isinstance(summary.get("error"), dict):
+            raise SongError(summary["error"].get("code", "song.failed"), summary["error"].get("summary", "Voice matching failed."))
+        if process.returncode != 0 or not out_path.exists():
+            tail = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-1:] if log.exists() else []
+            print(f"voice matching failed ({process.returncode}): {tail}", file=sys.stderr, flush=True)
+            raise SongError("song.failed", "Matching the voice failed.")
+        converted, _ = soundfile.read(str(out_path), dtype="float32")
+        for path in (vocals_path, reference_path, out_path, result):
+            path.unlink(missing_ok=True)
+        return _fit(converted, vocals48.shape[1]), summary
 
-        source = _resample(vocals48.mean(axis=0), audio.OUTPUT_RATE, 24_000)
-        prompt = _resample(reference, reference_rate, 24_000)
-        src_f0 = librosa.yin(source, fmin=70, fmax=1000, sr=24_000)
-        ref_f0 = librosa.yin(prompt, fmin=70, fmax=1000, sr=24_000)
-        raw = 12 * math.log2(float(np.median(ref_f0)) / float(np.median(src_f0)))
-        octave = 12 * round((raw + 7) / 12)
-        converted = np.zeros_like(source)
-        with torch.no_grad():
-            ref24 = torch.from_numpy(prompt).float()[None].to(self.device)
-            ref16 = torchaudio.functional.resample(ref24, 24_000, 16_000)
-            ref_codecs = pipeline.extract_coco_codec("content_style", ref16, prompt.astype(np.float32))
-            ref_mels = pipeline.extract_mel_feature(ref24)
-            for a, b in _split_points(source, 24_000):
-                piece = source[a:b]
-                if np.max(np.abs(piece)) < 1e-3:
-                    continue
-                if octave:
-                    piece = librosa.effects.pitch_shift(piece, sr=24_000, n_steps=octave)
-                src24 = torch.from_numpy(piece).float()[None].to(self.device)
-                src16 = torchaudio.functional.resample(src24, 24_000, 16_000)
-                src_codecs = pipeline.extract_coco_codec("content_style", src16, piece.astype(np.float32))
-                cond = pipeline.fmt_model.cond_emb(torch.cat([ref_codecs, src_codecs], dim=1))
-                if pipeline.fmt_model.do_resampling:
-                    cond = pipeline.fmt_model.resampling_layers(cond.transpose(1, 2)).transpose(1, 2)
-                total = ref_mels.shape[1] + pipeline.extract_mel_feature(src24).shape[1]
-                cond = cond[:, :total, :] if cond.shape[1] >= total else torch.cat(
-                    [cond, cond[:, -1:, :].repeat(1, total - cond.shape[1], 1)], dim=1)
-                mel = pipeline.fmt_model.reverse_diffusion(cond=cond, prompt=ref_mels, n_timesteps=32)
-                out = pipeline.vocoder_model(mel.transpose(1, 2)).detach().float().cpu().numpy()[0, 0][: b - a]
-                converted[a:a + len(out)] = out
-        self._free()
-        return _fit(_resample(converted, 24_000, audio.OUTPUT_RATE), vocals48.shape[1])
+
+def card_memory() -> dict[str, int] | None:
+    """The graphics card's used and total memory as the driver counts it (all processes), or None without nvidia-smi."""
+    import subprocess
+
+    try:
+        output = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+                                capture_output=True, text=True, timeout=3, check=True).stdout.split("\n")[0]
+        used, total = (int(v.strip()) for v in output.split(","))
+        return {"used_mib": used, "total_mib": total}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def directory_for(job: dict[str, Any]) -> Path:
@@ -656,6 +590,18 @@ def _soulx_path() -> None:
     root = str(_soulx_root())
     if root not in sys.path:
         sys.path.insert(0, root)
+
+
+def _soulx_build_model():
+    """SoulX-Singer's cli/inference_svc.py build_model, loaded from its file: ACE-Step also has a top-level "cli" module, so
+    SoulX's cli package cannot be imported by name next to it."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("martlet_soulx_inference_svc", _soulx_root() / "cli" / "inference_svc.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module.build_model
 
 
 def _amphion_path() -> None:

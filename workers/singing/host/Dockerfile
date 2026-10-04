@@ -21,30 +21,37 @@ FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047
 
 ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_ROOT_USER_ACTION=ignore
 
-COPY host/requirements.lock /tmp/requirements.lock
+COPY host/requirements.lock host/requirements-match.lock /tmp/
 RUN grep -A1 '^setuptools==' /tmp/requirements.lock | sed 's/ \\$//; s/^ *//' | tr '\n' ' ' > /tmp/setuptools.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile -r /tmp/setuptools.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile --no-build-isolation \
       --extra-index-url https://download.pytorch.org/whl/cu128 -r /tmp/requirements.lock \
- && rm -f /tmp/requirements.lock /tmp/setuptools.lock \
+ && python3.11 -m pip install --no-deps --require-hashes --no-compile --target /opt/martlet-singing/match-site \
+      -r /tmp/requirements-match.lock \
+ && rm -rf /opt/martlet-singing/match-site/bin \
+ && rm -f /tmp/requirements.lock /tmp/requirements-match.lock /tmp/setuptools.lock \
  && find /usr/local/lib/python3.11/site-packages -name __pycache__ -type d -prune -exec rm -rf {} +
 
 COPY --from=sources /src /opt/martlet-singing/src
 COPY martlet_singing /opt/martlet-singing/app/martlet_singing
 ENV PYTHONPATH=/opt/martlet-singing/app:/opt/martlet-singing/src/ace-step:/opt/martlet-singing/src/ace-step/acestep/third_parts/nano-vllm:/opt/martlet-singing/src/soulx-singer \
     MARTLET_SINGING_ROOT=/opt/martlet-singing MARTLET_SINGING_SOURCES=/opt/martlet-singing/src MARTLET_SINGING_PORT=50085 \
-    MARTLET_SINGING_JOBS=/tmp/martlet-singing-jobs \
+    MARTLET_SINGING_JOBS=/tmp/martlet-singing-jobs MARTLET_SINGING_MATCH_SITE=/opt/martlet-singing/match-site \
     HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HOME=/opt/martlet-singing/models/hf-cache \
     XDG_CACHE_HOME=/opt/martlet-singing/models TORCH_HOME=/tmp/torch TRITON_CACHE_DIR=/tmp/triton \
     MPLCONFIGDIR=/tmp/matplotlib NUMBA_CACHE_DIR=/tmp/numba
 RUN python3.11 -c "import acestep.handler, acestep.inference, acestep.llm_inference, nanovllm, demucs.apply, demucs.states, \
-soulxsinger.models.soulxsinger_svc, preprocess.tools.f0_extraction, librosa, soundfile, martlet_singing.engines; print('singing imports ok')" \
+librosa, soundfile, martlet_singing.engines; print('singing imports ok')" \
+ && PYTHONPATH=/opt/martlet-singing/match-site:$PYTHONPATH python3.11 -c "import transformers, martlet_singing.match, \
+soulxsinger.models.soulxsinger_svc, preprocess.tools.f0_extraction; assert transformers.__version__ == '4.46.3'; \
+print('voice match imports ok')" \
  && find /opt/martlet-singing /usr/local/lib/python3.11/site-packages -name __pycache__ -type d -prune -exec rm -rf {} + \
  && printf '#!/bin/sh\nexec /usr/local/bin/python3.11 -m martlet_singing.host "$@"\n' > /usr/local/bin/martlet-singing \
  && chmod 0755 /usr/local/bin/martlet-singing \
  && useradd --uid 10055 --user-group --no-create-home --home-dir /tmp --shell /usr/sbin/nologin martlet-singing \
  && mkdir -p /opt/martlet-singing/models && chown martlet-singing:martlet-singing /opt/martlet-singing/models \
- && chmod -R go-w /usr/local/lib/python3.11/site-packages /opt/martlet-singing/app /opt/martlet-singing/src
+ && chmod -R go-w /usr/local/lib/python3.11/site-packages /opt/martlet-singing/app /opt/martlet-singing/src \
+      /opt/martlet-singing/match-site
 
 USER 10055:10055
 WORKDIR /tmp

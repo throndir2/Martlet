@@ -16,4 +16,5 @@ Optional, only when the owner chooses the VevoSing voice match: Amphion (https:/
 26f6883110181f1dbfe95c70a7c7dbaf4de5f42a), MIT License; Vevo1.5 models (huggingface.co/amphion/Vevo1.5 revision f4053ca),
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 (personal, non-commercial use only); OpenAI Whisper medium, MIT.
 
-PyTorch and the other Python packages pinned in host/requirements.lock keep their own licenses.
+PyTorch and the other Python packages pinned in host/requirements.lock and host/requirements-match.lock keep
+their own licenses.

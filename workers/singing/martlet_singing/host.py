@@ -413,13 +413,9 @@ class Service:
 
 
 def _gpu() -> dict[str, int] | None:
-    try:
-        output = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
-                                capture_output=True, text=True, timeout=3, check=True).stdout.split("\n")[0]
-        used, total = (int(v.strip()) for v in output.split(","))
-        return {"used_mib": used, "total_mib": total}
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return None
+    from martlet_singing.engines import card_memory
+
+    return card_memory()
 
 
 def _validate(body: dict[str, Any]) -> dict[str, Any]:

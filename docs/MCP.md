@@ -2109,7 +2109,7 @@ that rule; `SpeakingEngineRelease` stops them after a confirmation
 Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a
 voice engine row: `SingingEngine` ("Singing" or "Singing · ready"),
 `SingingFeatures` its chips ("NVIDIA GPU 6 GB+, Docker, Sings in your cloned
-voice, With backing music, About a minute per song, ACE-Step MIT · SoulX-Singer
+voice, With backing music, A few minutes per song, ACE-Step MIT · SoulX-Singer
 Apache-2.0"), `SingingState` where it stands on the shown computer ("Not set up on
 this PC yet.", "Setting up on gpu-pc...", "Ready on gpu-pc.", "Setup failed on
 this PC: ..." or why that computer can't sing, such as "Needs an NVIDIA graphics

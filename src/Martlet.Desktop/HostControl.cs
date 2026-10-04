@@ -119,7 +119,7 @@ internal static class HostRoles
         new(Singing, "Sings", "Singing", "an NVIDIA GPU with at least 6 GB",
             Audio2FaceHostConnection.SongRouteId, "singing",
             "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer). " +
-            "The lyrics, style and the voice's recording go there. Songs take about a minute; it frees the graphics card when idle.")
+            "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

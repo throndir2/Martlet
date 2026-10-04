@@ -60,8 +60,11 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
 - **Host role `singing`** (`deploy/host/roles/singing`, port **50085**, NVIDIA GPU with 6 GB+). The image is built on the
   host from `workers/singing/host/Dockerfile`: `python:3.11` with hash-locked PyTorch 2.10 CUDA 12.8 and ACE-Step's own
   locked dependencies (`host/requirements.lock`, from ACE-Step's `uv.lock` plus SoulX-Singer's, Demucs' and VevoSing's
-  modules), then the pinned sources. Its own container and volume (`martlet-singing-models`). It is not a voice engine
-  (`exclusive=voice` is not set): it runs beside the speaking role.
+  modules), then the pinned sources. SoulX-Singer and VevoSing were written for Transformers 4.4x, while ACE-Step needs
+  4.57 (whose Llama attention requires rotary embeddings SoulX-Singer does not pass), so the voice-match stage runs in its
+  own process with a hash-locked Transformers 4.46.3 overlay (`host/requirements-match.lock`, `MARTLET_SINGING_MATCH_SITE`;
+  `MARTLET_SINGING_MATCH_PYTHON` names another interpreter instead). Its own container and volume
+  (`martlet-singing-models`). It is not a voice engine (`exclusive=voice` is not set): it runs beside the speaking role.
 - **Provisioning** (`martlet-singing provision`) downloads and verifies the pinned files. **Nothing is downloaded at run
   time:** `HF_HUB_OFFLINE`, ACE-Step's downloader is replaced by a refusal, Whisper base sits in the Hugging Face cache
   layout and Whisper medium where `whisper.load_model` looks.
@@ -71,7 +74,8 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
   wait in order (`singing.busy` beyond that); finished songs are kept for 30 minutes. `GET /status` reports the state,
   engine, pinned models, voice matches set up, the queue and the graphics card's memory.
 - **Worker process** `martlet_singing.worker` starts with the first song and runs the stages **one at a time**, each
-  moving its model onto the graphics card and back (ACE-Step with CPU offload), so the peak is about 6 GB. When the card
+  moving its model onto the graphics card and back (ACE-Step with CPU offload; the voice match in a child process that
+  exits after the song), so the peak is about 6 GB. When the card
   has less than 7 GB free (it is shared with the speaking and listening roles), the music model loads with int8 weights
   (`MARTLET_SINGING_QUANTIZATION`: auto, none, int8_weight_only). Models stay in system memory between songs unless less
   than 16 GB is available, when each stage frees its models as soon as it is done (`MARTLET_SINGING_KEEP_MODELS`: auto,
@@ -82,7 +86,8 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
 - **Stages** (reported as progress): loading, writing the music (ACE-Step 1.5 turbo, 8 steps, or SFT, 50 steps for High
   quality, with its 0.6B planner on the PyTorch backend), separating (Demucs vocals; backing = song minus vocals),
   matching the voice (RMVPE pitch, SoulX-Singer-SVC cfg 3 and 32 steps in fp16, shifted only by whole octaves so the
-  backing never needs re-pitching; singing is assumed about 7 semitones above the speaking voice), mixing (the matched
+  backing never needs re-pitching, toward about four semitones above the voice's speaking pitch, so a singer already in
+  the voice's range is not moved: an octave too high costs most of the likeness), mixing (the matched
   vocals, silenced outside the phrases the separated original sings (with 20 ms fades) so no backing bleed or conversion
   noise reaches the vocals track, levelled to the original's loudness over the backing), aligning (below).
 - **Aligning:** ACE-Step's own lyric timestamps (LRC, from the same generation) are matched to the request's lines in
@@ -118,7 +123,7 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 ## Desktop
 
 **Companion > Voice > Singing** (below the voice engine) works like a voice engine row: chips (NVIDIA GPU 6 GB+, Docker,
-sings in your cloned voice, with backing music, about a minute per song, the licences), where it stands on the shown
+sings in your cloned voice, with backing music, a few minutes per song, the licences), where it stands on the shown
 computer (not set up, setting up, ready, failed with the reason, or why that computer can't sing), and one **Set up**
 button for this PC or the computer picked in its pills, after a confirmation naming the downloads, licences and terms.
 **Quality** (Fast, High quality) and **Voice match** (SoulX-Singer, VevoSing) are kept in `singing.json`; choosing VevoSing
