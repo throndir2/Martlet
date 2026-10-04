@@ -1645,6 +1645,53 @@ public partial class MainWindow
                 : "Martlet doesn't remember or recall anything between conversations. Turn memory on in Manage memory.",
                 new Thickness(0, 2, 0, 8)),
             Row(PageButton("Manage memory", () => Memory_Click(this, new RoutedEventArgs()), primary: !on, id: "OpenMemory"))));
+        if (conversationHistory is { } record) page.Children.Add(HistoryCard(record, on));
+    }
+
+    /// <summary>Companion › Memory › Conversation history: whether Martlet keeps a record of conversations on this PC (on by
+    /// default while memory is on) and may search it on its own (search_conversations, off by default), what it holds and the
+    /// window to read, search and delete it. Each choice saves at once (conversation-history.json).</summary>
+    private Border HistoryCard(DesktopConversationHistory record, bool memoryOn)
+    {
+        var prefs = record.Preferences;
+        var status = Note(record.Describe(homeSettings?.Memory), new Thickness(0, 2, 0, 8));
+        AutomationProperties.SetAutomationId(status, "HistoryStatus");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+        var keep = new CheckBox { Content = "Keep a record of my conversations", IsChecked = prefs.Keep, IsEnabled = memoryOn };
+        AutomationProperties.SetAutomationId(keep, "HistoryKeep");
+        var search = new CheckBox
+        {
+            Content = "Let Martlet search the record on its own", IsChecked = prefs.Search, IsEnabled = memoryOn && prefs.Keep,
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(search, "HistorySearch");
+        void Save()
+        {
+            var next = new ConversationHistoryPreferences(keep.IsChecked == true, search.IsChecked == true);
+            if (next == record.Preferences) return;
+            if (!record.SetPreferences(next))
+                ErrorLog.Warn("Couldn't save the conversation history choice on this PC; it applies until Martlet restarts.");
+            search.IsEnabled = memoryOn && next.Keep;
+            status.Text = record.Describe(homeSettings?.Memory);
+        }
+        foreach (var choice in new[] { keep, search })
+        {
+            choice.Checked += (_, _) => Save();
+            choice.Unchecked += (_, _) => Save();
+        }
+        // The counts appear once the record has been read (in the background, the first time).
+        if (!record.Store.Loaded)
+            _ = record.Store.LoadAsync().ContinueWith(_ => Dispatcher.InvokeAsync(() => status.Text = record.Describe(homeSettings?.Memory)),
+                TaskScheduler.Default);
+        return Card(Heading("Conversation history"), status, keep,
+            Note("Each exchange (what you typed or said and Martlet's reply) is kept on this PC. When you mention an earlier " +
+                "conversation, like \"remember when...\" or \"what did we talk about yesterday?\", Martlet brings back what was said. " +
+                "Screen glances and what this PC plays are never recorded.", new Thickness(24, 2, 0, 0)),
+            search,
+            Note("With a Thinking model that uses tools, Martlet can also look things up in the record whenever it thinks that " +
+                "helps. Its search tool makes every request a little longer, so the first reply of a conversation may start a " +
+                "little later.", new Thickness(24, 2, 0, 0)),
+            Row(PageButton("Open conversation history", History_Click, id: "OpenHistory")));
     }
 
     // ---------- small builders ----------

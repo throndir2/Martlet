@@ -63,7 +63,8 @@ public sealed class ConcurrencyAndCrashTests
                 ExpectedRevision = saved.Fact.Revision,
                 Content = "must not commit",
                 Provenance = MemoryFixtures.Provenance(clock),
-                Retention = MemoryRetention.UntilDeleted()
+                Retention = MemoryRetention.UntilDeleted(),
+                VoiceId = null
             }, canceled.Token));
         Assert.Equal("original stable fact", Assert.Single((await store.InspectAsync()).Facts).Content);
         Assert.False(File.Exists(scope.PendingPath));
@@ -96,7 +97,8 @@ public sealed class ConcurrencyAndCrashTests
                 ExpectedRevision = saved.Fact.Revision,
                 Content = "interrupted replacement",
                 Provenance = MemoryFixtures.Provenance(clock),
-                Retention = MemoryRetention.UntilDeleted()
+                Retention = MemoryRetention.UntilDeleted(),
+                VoiceId = null
             }));
         Assert.Equal("atomic original", Assert.Single((await store.InspectAsync()).Facts).Content);
         Assert.DoesNotContain("interrupted replacement", await File.ReadAllTextAsync(scope.StorePath),

@@ -158,6 +158,39 @@ public sealed class F5RelayTests
     }
 
     [Fact]
+    public async Task Host_log_says_how_much_speech_a_reply_made_and_that_it_was_slower_than_real_time()
+    {
+        var first = Pcm(4_800, 1);
+        var second = Pcm(1_200, 9);
+        await using var f5 = await FakeF5.StartAsync(request => Slow(request, first, second));
+        await using var worker = new F5RelayWorker(f5.Endpoint, FixtureModel, FixtureRevision, FixtureSha256);
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+
+        await foreach (var _ in connection.StreamSpeechAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            Reference(), "Hello from a busy host.")) { }
+
+        var page = await connection.ReadOwnLogsAsync(0);
+        var line = Assert.Single(page.Entries, e => e.Message.StartsWith($"{route.RouteId} request from desktop-test finished in",
+            StringComparison.Ordinal)).Message;
+        // 0.25 s of speech, but 600 ms passed between its two frames: the desktop's speakers had to wait.
+        Assert.Matches(@"finished in \d+ ms: 0\.25 s of speech, first audio after \d+ ms; made slower than real time, so the " +
+            @"speakers waited at least \d+ ms for it\.$", line);
+        Assert.DoesNotContain("busy host", line);
+
+        static IEnumerable<string> Slow(JsonElement request, byte[] first, byte[] second)
+        {
+            yield return WorkerEvent(request, "started", 0);
+            yield return WorkerEvent(request, "audio_frame", 1, Frame(0, 0, first));
+            Thread.Sleep(600);
+            yield return WorkerEvent(request, "audio_frame", 2, Frame(1, 4_800, second));
+            yield return WorkerEvent(request, "chunk_completed", 3, chunk: 0, final: 6_000);
+            yield return WorkerEvent(request, "completed", 4, final: 6_000);
+        }
+    }
+
+    [Fact]
     public async Task Relay_rejects_a_worker_with_other_model_weights_and_maps_worker_failures()
     {
         await using var f5 = await FakeF5.StartAsync(request =>

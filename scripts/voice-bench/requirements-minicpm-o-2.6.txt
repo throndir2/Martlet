@@ -2,7 +2,8 @@
 # modeling code imports vector-quantize-pytorch and vocos (speech output) even when that isn't loaded.
 # Installed into its own environment with: Install-VoiceBench.ps1 -HfModels minicpm-o-2.6
 transformers==4.44.2
-accelerate
+# The 0.33 line of accelerate is from the same time; newer ones refuse to move a 4-bit model as the remote code does.
+accelerate==0.33.0
 bitsandbytes
 vector-quantize-pytorch==1.18.5
 vocos==0.1.0
