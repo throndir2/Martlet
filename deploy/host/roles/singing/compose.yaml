@@ -1,0 +1,26 @@
+# Martlet singing host service (Martlet writes a song and sings it in a voice from your voice library), loopback-only
+# behind the Martlet gateway. The image is built on this host from Martlet's workers/singing sources
+# (workers/singing/host/Dockerfile: ACE-Step 1.5, SoulX-Singer and Amphion at pinned commits, Demucs 4.0.1 and hash-pinned
+# PyTorch 2.10 CUDA 12.8). "martlet-host add singing" adds compose.gpu.yaml (singing needs the NVIDIA GPU), then runs
+# "martlet-singing provision" (downloads and verifies the pinned model files into the martlet-singing-models volume).
+# The service listens only on 127.0.0.1:50085 (host loopback natively, the gateway's network namespace in Docker); the
+# Martlet gateway is the single LAN entry point.
+
+services:
+  singing:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/singing
+      dockerfile: host/Dockerfile
+    image: martlet-singing:1
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      SINGING_MODEL: ${SINGING_MODEL:-ace-step-v15-soulx-svc}
+      SINGING_VOICE_MATCHES: ${SINGING_VOICE_MATCHES:-soulx}
+    volumes:
+      - models:/opt/martlet-singing/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-singing-models

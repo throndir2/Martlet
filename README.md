@@ -112,7 +112,8 @@ finished, and with [GPT-SoVITS](docs/GPT_SOVITS_VOICE.md), good for anime-style
 voices from 3-10 second recordings, and with [Dia](docs/DIA_VOICE.md), which can
 laugh, sigh, cough and gasp (English only; Companion > Voice > Voice engine). See
 [Voices](docs/SETUP.md#voices-f5) and the [Voice Studio plan](docs/VOICE_STUDIO.md)
-for other engines.
+for other engines. With the [Singing](docs/SINGING.md) role, Martlet also writes
+songs and sings them in a voice from the same list (Companion > Voice > Singing).
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.

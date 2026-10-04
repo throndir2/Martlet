@@ -1,0 +1,9 @@
+# The voice-match stage's Transformers overlay (workers/singing/host/Dockerfile installs it with --no-deps into
+# /opt/martlet-singing/match-site, which only martlet_singing.match puts first on its path). SoulX-Singer-SVC's Llama decoder
+# and Amphion's VevoSing were written against Transformers 4.4x; ACE-Step needs 4.57, whose Llama attention requires the
+# rotary "position_embeddings" SoulX does not pass. Everything else (PyTorch, Hugging Face Hub, safetensors) is shared with
+# requirements.lock. Regenerate requirements-match.lock with:
+#   uv pip compile workers/singing/host/requirements-match.in --no-deps --python-version 3.11 \
+#     --python-platform x86_64-manylinux_2_28 --generate-hashes -o workers/singing/host/requirements-match.lock
+transformers==4.46.3
+tokenizers==0.20.3
