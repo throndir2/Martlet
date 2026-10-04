@@ -52,6 +52,11 @@ public static class SelfHostSetup
     public const string RegistryId = "martlet.gateway.inference-routes";
     public const string RegistryVersion = "1.0";
     public const string OllamaRouteId = "martlet.gateway.ollama-chat.v1";
+    public const string OllamaPath = "/martlet/v1/inference/ollama-chat";
+    /// <summary>The deep-thinking host role's route: a second Ollama of its own on the host (Deep thinking's model), with the same
+    /// native-chat contract as <see cref="OllamaRouteId"/>, so a host can think things over beside the conversation's model.</summary>
+    public const string DeepThinkingRouteId = "martlet.gateway.deep-thinking-chat.v1";
+    public const string DeepThinkingPath = "/martlet/v1/inference/deep-thinking-chat";
     public const string F5RouteId = "martlet.gateway.f5-synthesis.v1";
     public const string SttRouteId = "martlet.gateway.transcription.v1";
     public const string OllamaContractId = "ollama-native-chat-v034-text";
@@ -67,7 +72,7 @@ public static class SelfHostSetup
     public static (SetupRole Role, string Alias, string RouteId, string Path, string ContractId) Gateway(SetupRouteType routeType) =>
         routeType switch
         {
-            SetupRouteType.GatewayOllama => (SetupRole.Llm, GatewayOllamaAlias, OllamaRouteId, "/martlet/v1/inference/ollama-chat", OllamaContractId),
+            SetupRouteType.GatewayOllama => (SetupRole.Llm, GatewayOllamaAlias, OllamaRouteId, OllamaPath, OllamaContractId),
             SetupRouteType.GatewayF5 => (SetupRole.Tts, GatewayF5Alias, F5RouteId, "/martlet/v1/inference/f5-synthesis", F5ContractId),
             SetupRouteType.GatewayStt => (SetupRole.Stt, GatewaySttAlias, SttRouteId, "/martlet/v1/inference/transcription", SttContractId),
             _ => throw new ContractException(ErrorCode.InvalidContract, "Choose a named gateway route.")

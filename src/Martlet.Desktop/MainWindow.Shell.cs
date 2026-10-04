@@ -868,7 +868,13 @@ public partial class MainWindow
     private HostHardwareStore? HardwareStore => store is null ? null : new(store.DataDirectory);
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
-        HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers());
+        HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
+        DeepThinkingHost());
+
+    /// <summary>The paired computer whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
+    private string? DeepThinkingHost() =>
+        store is not null && ThinkLongerSettings.Of(homeSettings?.Generation).On &&
+        DeepThinkingSettings.Load(store.DataDirectory) is { OnHostRole: true } deep ? deep.HostId : null;
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {

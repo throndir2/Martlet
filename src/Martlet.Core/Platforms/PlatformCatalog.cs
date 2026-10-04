@@ -462,6 +462,7 @@ public static class PlatformCatalog
     public static string? EngineForHostRole(string roleKind) => roleKind switch
     {
         "ollama" => "ollama",
+        "deep-thinking" => "ollama",
         "stt" => "whisper",
         "f5" => "f5",
         "xtts" => "xtts",

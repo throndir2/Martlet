@@ -14,7 +14,7 @@ internal interface ICredentialAuthority
 
 /// <summary>Where a background think's request goes when Deep thinking has a destination of its own (Companion › Deep
 /// thinking): an OpenAI-compatible endpoint (a cloud provider, another server, or Ollama on this PC with its own model) or a
-/// paired computer's Ollama through its pinned gateway. It builds the request with that destination's bounds; the think's
+/// paired computer's Deep thinking role (or its Ollama) through its pinned gateway. It builds the request with that destination's bounds; the think's
 /// message is fitted to them (<see cref="ThinkLonger.Fit"/>) and carries no tools.</summary>
 internal sealed class DeepThinkTarget
 {
@@ -49,7 +49,7 @@ internal sealed class DeepThinkTarget
         if (settings.Place == DeepThinkingPlace.Host)
         {
             var host = new HostTextTarget(settings.HostOrigin!, settings.HostId!, settings.HostSpkiFingerprint!, settings.HostDeviceId!,
-                settings.HostCredentialId!.Value);
+                settings.HostCredentialId!.Value, settings.HostRoute);
             var bounds = ThinkLonger.HostBounds(effort);
             var hostLimits = LiveConversationConfiguration.ChatTextLimits with
             {

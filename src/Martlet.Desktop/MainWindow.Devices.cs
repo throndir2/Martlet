@@ -183,7 +183,7 @@ public partial class MainWindow
 
     private static string ComponentGlyph(string? component) => component switch
     {
-        "job:Llm" or "role:" + HostRoles.Ollama => "\uE82F",
+        "job:Llm" or "role:" + HostRoles.Ollama or "role:" + HostRoles.DeepThinking => "\uE82F",
         "job:Stt" or "role:" + HostRoles.Stt => "\uE720",
         "job:Tts" => "\uE767",
         DeviceComponent.LipSync or "role:" + HostRoles.Audio2Face => "\uE76E",

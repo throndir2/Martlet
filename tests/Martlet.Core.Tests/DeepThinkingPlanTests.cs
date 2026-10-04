@@ -69,4 +69,38 @@ public sealed class DeepThinkingPlanTests
         Assert.True(other.Available);
         Assert.False(other.ChecksFit);
     }
+
+    [Fact]
+    public void A_paired_computers_Deep_thinking_role_thinks_beside_its_own_Thinking()
+    {
+        var diva = Gateway(SetupRole.Llm, SetupRouteType.GatewayOllama, "diva", "https://diva.local:9443");
+        var role = Host("diva") with { ModelId = "qwen3-8b", HostRouteId = SelfHostSetup.DeepThinkingRouteId };
+        role.Validate();
+        Assert.True(role.OnHostRole);
+        Assert.Equal(SelfHostSetup.DeepThinkingRouteId, role.HostRoute);
+        Assert.Equal("diva's Deep thinking (qwen3-8b)", role.Describe());
+        var beside = DeepThinkingPlan.For(role, [diva]);
+        Assert.True(beside.Available);
+        Assert.False(beside.ChecksFit);
+        Assert.Contains("beside Thinking there", beside.Why, StringComparison.Ordinal);
+        Assert.True(DeepThinkingPlan.For(role, [LocalThinking]).Available);
+        // Without the role, the computer's Ollama is Thinking's own model: the plan says to add the role.
+        var ollama = DeepThinkingPlan.For(Host("diva"), [diva]);
+        Assert.False(ollama.Available);
+        Assert.Contains("Add the Deep thinking role there", ollama.Why, StringComparison.Ordinal);
+        Assert.Equal(SelfHostSetup.OllamaRouteId, Host("diva").HostRoute);
+        Assert.False(Host("diva").OnHostRole);
+
+        // Saved and read back; a route that isn't one of a computer's Ollama roles, or one on an endpoint, is refused.
+        var folder = Directory.CreateTempSubdirectory("martlet-deep-").FullName;
+        try
+        {
+            Assert.True(role.Save(folder));
+            Assert.Equal((role, "loaded"), DeepThinkingSettings.Read(folder));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => (role with { HostRouteId = "martlet.gateway.f5-synthesis.v1" }).Validate());
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() =>
+            (LocalOllama("gemma4:12b") with { HostRouteId = SelfHostSetup.DeepThinkingRouteId }).Validate());
+    }
 }

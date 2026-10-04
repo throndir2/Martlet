@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
@@ -15,8 +16,9 @@ namespace Martlet.Desktop;
 /// <summary>Companion › Deep thinking: Thinking answers you; Deep thinking works out what Martlet hands it in the background
 /// (think_longer) while the conversation carries on. Whether Martlet may think longer at all (Off, saved with the reply settings,
 /// so your computers share it), how hard, for how long, how often and when it shares the result, and where it thinks (this PC's
-/// own choice, deep-thinking.json): the Thinking model, another of your computers, a second model in Ollama on this PC or a
-/// cloud provider. A think always runs alongside the conversation, so it needs a model of its own (<see cref="DeepThinkingPlan"/>).</summary>
+/// own choice, deep-thinking.json): the Thinking model, another of your computers (its Deep thinking role), a second model in
+/// Ollama on this PC or a cloud provider. A think always runs alongside the conversation, so it needs a model of its own
+/// (<see cref="DeepThinkingPlan"/>).</summary>
 public partial class MainWindow
 {
     private enum DeepPlace { Off, Same, Computer, ThisPc, Cloud }
@@ -71,7 +73,7 @@ public partial class MainWindow
         {
             (DeepPlace.Off, "Off", "Martlet answers everything right away and never thinks in the background."),
             (DeepPlace.Same, "Same as Thinking", "Thinking's own model thinks it through, when its provider answers several requests at once."),
-            (DeepPlace.Computer, "Another of your computers", "A paired computer's Ollama thinks while this PC talks: local, private and parallel."),
+            (DeepPlace.Computer, "Another of your computers", "A paired computer's Deep thinking role thinks while this PC talks: local, private and parallel."),
             (DeepPlace.ThisPc, "Ollama on this PC", "A second model of its own beside Thinking's, when both fit on the graphics card."),
             (DeepPlace.Cloud, "A cloud provider or server", "OpenRouter, OpenAI, NVIDIA Build or another compatible server. Requests may cost money.")
         })
@@ -225,25 +227,32 @@ public partial class MainWindow
 
     // ---------- where it thinks ----------
 
-    /// <summary>Paired computers whose Ollama can think: each with what it offers and Use it.</summary>
+    /// <summary>Paired computers that can think: each with what it offers and Use it. A computer's Deep thinking role (its own
+    /// Ollama) thinks beside its Thinking; one without it is offered Add Deep thinking, and Martlet thinks there once it runs.</summary>
     private Border DeepComputersCard(DeepThinkingSettings deep, bool on)
     {
         var stack = new List<UIElement> { Heading("Another of your computers") };
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.Count == 0)
         {
-            var none = Note("No computer is paired yet. Add one on Devices, with the Thinking role (Ollama).", new Thickness(0, 0, 0, 4));
+            var none = Note("No computer is paired yet. Add one on Devices, then add the Deep thinking role there.", new Thickness(0, 0, 0, 4));
             AutomationProperties.SetAutomationId(none, "DeepThinkingHosts");
             stack.Add(none);
         }
         foreach (var host in hosts)
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
-            var model = check?.Offers?.GetValueOrDefault(HostRoles.Ollama);
+            var own = check?.Offers?.GetValueOrDefault(HostRoles.DeepThinking);
+            var ollama = check?.Offers?.GetValueOrDefault(HostRoles.Ollama);
+            var thinksThere = NetworkMap.ThinkingHost(homeSettings) == host.HostId;
+            var usable = own is not null || ollama is not null && !thinksThere;
             var inUse = on && deep.Place == DeepThinkingPlace.Host && deep.HostId == host.HostId;
-            var detail = inUse ? $"Thinks here ({deep.ModelId})."
-                : model is not null ? $"Ollama runs {model}."
-                : check?.Reachable == true ? "Ollama isn't installed there. Add the Thinking role on Devices."
+            var detail = inUse ? $"Thinks here ({deep.ModelId}{(deep.OnHostRole ? ", its Deep thinking role" : "")})."
+                : own is not null ? $"Its Deep thinking role runs {own}."
+                : ollama is not null && thinksThere ? $"Its Ollama ({ollama}) does Thinking for the conversation. Add the Deep thinking role " +
+                    "there to think beside it."
+                : ollama is not null ? $"Ollama runs {ollama}. Add the Deep thinking role to give Deep thinking a model of its own."
+                : check?.Reachable == true ? "Add the Deep thinking role there to think on it."
                 : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
@@ -251,22 +260,47 @@ public partial class MainWindow
             AutomationProperties.SetName(line, $"{host.HostId}: {detail}");
             AutomationProperties.SetAutomationId(line, "DeepThinkingHost-" + host.HostId);
             text.Children.Add(line);
-            var use = PageButton(inUse ? "In use" : "Use it", () => UseDeepHostAsync(host).Forget(), primary: !inUse && model is not null,
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            if (own is null && check?.Reachable == true && host.CanLaunch && CannotHand(host.HostId, HostRoles.DeepThinking, "deep thinking") is null)
+            {
+                var add = PageButton("Add Deep thinking", () => AddDeepRoleAsync(host).Forget(), primary: !usable && !inUse,
+                    id: "DeepThinkingAddRole-" + host.HostId);
+                AutomationProperties.SetName(add, $"Add Deep thinking on {host.HostId}");
+                add.Margin = new Thickness(0, 0, 8, 0);
+                buttons.Children.Add(add);
+            }
+            var use = PageButton(inUse ? "In use" : "Use it", () => UseDeepHostAsync(host).Forget(), primary: !inUse && usable,
                 id: "DeepThinkingUseHost-" + host.HostId);
             use.IsEnabled = !inUse;
+            buttons.Children.Add(use);
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-            DockPanel.SetDock(use, Dock.Right);
-            row.Children.Add(use);
+            DockPanel.SetDock(buttons, Dock.Right);
+            row.Children.Add(buttons);
             row.Children.Add(text);
             stack.Add(row);
         }
         stack.Add(Row(hosts.Count == 0 ? PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: true, id: "DeepThinkingAddComputer")
             : PageButton("Check computers", () => RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
         stack.Add(Note("The conversation so far (what fits in its 16 KiB) and the task go to that computer through its paired, pinned " +
-            "connection. While it thinks there, Thinking, the voice and listening keep working here at full speed. A computer that " +
-            "also does Thinking for the conversation can't think alongside it. A computer's model can only think as long as its " +
-            "Martlet allows: update it to this version for thinks over a minute.", new Thickness(0, 8, 0, 0)));
+            "connection. While it thinks there, Thinking, the voice and listening keep working here at full speed. The Deep thinking " +
+            "role is an Ollama of its own, so it thinks even on the computer that does Thinking (they share its graphics card); " +
+            "without it, a computer that also does Thinking for the conversation can't think alongside it. A computer's model can " +
+            "only think as long as its Martlet allows: update it to this version for thinks over a minute.", new Thickness(0, 8, 0, 0)));
         return Card([.. stack]);
+    }
+
+    /// <summary>Installs the Deep thinking role on a paired computer (its own run window, with the model choice) and, once it
+    /// runs, thinks there.</summary>
+    private async Task AddDeepRoleAsync(PairedHost host)
+    {
+        if (closing) return;
+        if (CannotHand(host.HostId, HostRoles.DeepThinking, "deep thinking") is { } cannot)
+        {
+            ActionText.Text = $"Deep thinking can't be set up on {host.HostId}: {cannot}";
+            return;
+        }
+        if (await RunHostActionAsync(host, HostRoles.Get(HostRoles.DeepThinking).Add) is null || closing) return;
+        await UseDeepHostAsync(host);
     }
 
     private async Task UseDeepHostAsync(PairedHost host)
@@ -283,20 +317,25 @@ public partial class MainWindow
                 RenderTab();
                 return;
             }
-            var route = check.Routes?.FirstOrDefault(r => r.RouteId == HostJob.Thinking.RouteId);
+            // Its own Deep thinking role first; otherwise its Ollama, when that doesn't do Thinking for the conversation.
+            var route = check.Routes?.FirstOrDefault(r => r.RouteId == HostRoute.DeepThinkingRouteId) ??
+                check.Routes?.FirstOrDefault(r => r.RouteId == HostJob.Thinking.RouteId);
             if (route is null)
             {
-                ActionText.Text = $"{host.HostId} doesn't run Ollama yet. Add the Thinking role there on Devices, then choose it here.";
+                ActionText.Text = $"{host.HostId} doesn't run Deep thinking yet. Add the Deep thinking role there, then choose it here.";
                 RenderTab();
                 return;
             }
+            var own = route.RouteId == HostRoute.DeepThinkingRouteId;
             var next = new DeepThinkingSettings
             {
                 Place = DeepThinkingPlace.Host, ModelId = route.ModelId, HostId = host.HostId, HostOrigin = host.Pairing.Origin,
                 HostSpkiFingerprint = host.Pairing.SpkiFingerprint, HostDeviceId = host.Pairing.DeviceId,
-                HostCredentialId = HostPairingCredential.ToGuid(host.Pairing.CredentialId), ChosenAt = DateTimeOffset.Now
+                HostCredentialId = HostPairingCredential.ToGuid(host.Pairing.CredentialId), HostRouteId = own ? route.RouteId : null,
+                ChosenAt = DateTimeOffset.Now
             };
-            await SaveDeepThinkingAsync(next, null, $"Deep thinking now runs on {host.HostId} ({route.ModelId}).");
+            await SaveDeepThinkingAsync(next, null, own ? $"Deep thinking now runs on {host.HostId}'s Deep thinking role ({route.ModelId})."
+                : $"Deep thinking now runs on {host.HostId} ({route.ModelId}).");
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or InvalidOperationException or ContractException or Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException)

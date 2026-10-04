@@ -147,12 +147,15 @@ public sealed partial class GatewayInferenceRoute
     public GatewayCancellationCapability Cancellation { get; }
     internal PerceptionWorkerIdentity? PerceptionIdentity { get; }
 
+    /// <summary>A host's own loopback Ollama: the conversation model (<c>ollama</c> role), or with <paramref name="deepThinking"/>
+    /// the deep-thinking role's second Ollama, which has its own route and path but the same native-chat contract.</summary>
     public static GatewayInferenceRoute OllamaChat(
         string destinationId,
         string workerId,
         OllamaChatModelSelection selection,
         string modelRevision,
-        string modelSha256)
+        string modelSha256,
+        bool deepThinking = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         GatewayRules.Token(modelRevision, 128);
@@ -161,8 +164,8 @@ public sealed partial class GatewayInferenceRoute
         return new(
             GatewayInferenceKind.OllamaChat,
             GatewayRole.Voice,
-            "martlet.gateway.ollama-chat.v1",
-            "/martlet/v1/inference/ollama-chat",
+            deepThinking ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId : Martlet.Core.Settings.SelfHostSetup.OllamaRouteId,
+            deepThinking ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath : Martlet.Core.Settings.SelfHostSetup.OllamaPath,
             OllamaChatAdapter.Protocol,
             GatewayInferenceProtocol.RegistryVersion,
             destinationId,
