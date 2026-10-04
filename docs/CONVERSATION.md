@@ -1130,7 +1130,10 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
 
 - **Thinking prompt.** When a spoken reply's voice has tags, Companion ›
   Prompts › *Voice sounds and tones* is added to its instructions with exactly
-  that engine's tags, one per line with when to use it, and asks for them
+  that engine's tags in two groups: its non-word sounds (written inline where
+  the sound happens) and its tones of voice (written at the start of a
+  sentence; each spoken piece is synthesized on its own, so a tone reaches only
+  that sentence), one tag per line with when to use it. It asks for them
   sparingly. Text-only replies and voices without tags never get it.
 - **Segmenter.** The speech segmenter (which still silences lines with
   markdown, links, code or other bracketed text) lets the speaking engine's

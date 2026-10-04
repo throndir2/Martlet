@@ -312,11 +312,12 @@ public static class PromptCatalog
             "song is (\"verse line 4 of 12, 0:22 of 1:00\"), {silent} the word the model answers to stay quiet.",
             DefaultWhileSingingInstructions, ["song", "where", "silent"]),
         new(VoiceTags, ConversationGroup, "Voice sounds and tones",
-            "Added to spoken replies when the voice engine understands tags (Chatterbox Turbo: [laugh], [sigh]...). {engine} is the " +
-            "engine's name, {tags} lists exactly its tags in its own syntax, one per line with when to use it, and {example} is its " +
-            "first tag.",
-            "Your replies are spoken aloud by {engine}, which turns these tags into real sounds and tones of voice:\n{tags}\n" +
-            "Write a tag exactly as shown, inline where the sound or tone belongs, for example \"That's hilarious {example} okay, so...\". " +
+            "Added to spoken replies when the voice engine understands tags (Chatterbox Turbo: [laugh], [sigh], [whispering]...). " +
+            "{engine} is the engine's name, {tags} lists exactly its tags in its own syntax, its non-word sounds and then its tones " +
+            "of voice, each group under a line saying where its tags go and each tag on its own line with when to use it, and " +
+            "{example} is its first tag.",
+            "Your replies are spoken aloud by {engine}, which turns these tags into real non-word sounds and tones of voice:\n{tags}\n" +
+            "Write a tag exactly as shown, for example \"That's hilarious {example} okay, so...\". " +
             "Use them sparingly and only when they fit naturally: most replies need none, and never more than one or two in a reply. " +
             "Never write other sound or tone tags, or stage directions. Tags are heard, never shown.",
             ["engine", "tags", "example"]),

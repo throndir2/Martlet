@@ -81,9 +81,11 @@ public static class SpeechEngines
     public const string VoiceDestination = "f5-host";
 
     /// <summary>Chatterbox Turbo's tags, verified against the pinned tokenizer's added_tokens.json
-    /// (huggingface.co/ResembleAI/chatterbox-turbo at 749d1c1a46eb10492095d68fbcf55691ccf137cd). Turbo's generate() ignores
-    /// the older exaggeration slider, so its emotion controls are these native style tokens. [advertisement] and
-    /// [narration] (reading genres, not conversation) are left out.</summary>
+    /// (huggingface.co/ResembleAI/chatterbox-turbo at 749d1c1a46eb10492095d68fbcf55691ccf137cd), which defines 19. Resemble's
+    /// documentation (the model card, the README and the official Turbo apps' EVENT_TAGS) names the nine non-word sounds; the
+    /// other ten are the tokenizer's style tokens, the tones of voice. Turbo's generate() ignores the older exaggeration slider,
+    /// so these tones are its only emotion control. [advertisement] and [narration] (reading genres, not conversation) are left
+    /// out.</summary>
     public static readonly IReadOnlyList<VoiceTag> ChatterboxTurboTags =
     [
         new("[laugh]", VoiceTagKind.Sound, "a laugh, after something genuinely funny"),
@@ -95,14 +97,14 @@ public static class SpeechEngines
         new("[groan]", VoiceTagKind.Sound, "a groan, for something annoying or painful"),
         new("[sniff]", VoiceTagKind.Sound, "a sniff"),
         new("[shush]", VoiceTagKind.Sound, "a shushing sound"),
-        new("[happy]", VoiceTagKind.Emotion, "say the words after it happily"),
-        new("[sarcastic]", VoiceTagKind.Emotion, "say the words after it sarcastically"),
-        new("[surprised]", VoiceTagKind.Emotion, "say the words after it with surprise"),
-        new("[angry]", VoiceTagKind.Emotion, "say the words after it angrily"),
-        new("[fear]", VoiceTagKind.Emotion, "say the words after it fearfully"),
-        new("[crying]", VoiceTagKind.Emotion, "say the words after it as if crying"),
-        new("[whispering]", VoiceTagKind.Emotion, "whisper the words after it"),
-        new("[dramatic]", VoiceTagKind.Emotion, "say the words after it dramatically")
+        new("[happy]", VoiceTagKind.Emotion, "happy and cheerful, for good news or delight"),
+        new("[sarcastic]", VoiceTagKind.Emotion, "sarcastic, for dry teasing or an obvious joke"),
+        new("[surprised]", VoiceTagKind.Emotion, "surprised, for something unexpected"),
+        new("[angry]", VoiceTagKind.Emotion, "angry, for real annoyance or outrage"),
+        new("[fear]", VoiceTagKind.Emotion, "fearful, for something scary or worrying"),
+        new("[crying]", VoiceTagKind.Emotion, "tearful, as if crying, for something genuinely sad"),
+        new("[whispering]", VoiceTagKind.Emotion, "whispered, for a secret or something hushed"),
+        new("[dramatic]", VoiceTagKind.Emotion, "dramatic, for playful theatrics")
     ];
 
     public static readonly SpeechEngine Chatterbox = new("chatterbox", "Chatterbox Turbo", "chatterbox",

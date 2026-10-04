@@ -73,6 +73,51 @@ public sealed class VoiceTagTests
         Assert.Empty(SpeechEngines.TagsForModel("gpt-4o-mini-tts"));
     }
 
+    [Fact]
+    public void Chatterbox_sounds_are_the_documented_event_tags_and_tones_the_other_conversational_style_tokens()
+    {
+        // Resemble's Turbo apps offer exactly these as EVENT_TAGS; the tones are the pinned tokenizer's other style tokens
+        // without [advertisement] and [narration].
+        string[] sounds = ["[clear throat]", "[sigh]", "[shush]", "[cough]", "[groan]", "[sniff]", "[gasp]", "[chuckle]", "[laugh]"];
+        string[] tones = ["[angry]", "[fear]", "[surprised]", "[whispering]", "[dramatic]", "[crying]", "[happy]", "[sarcastic]"];
+        Assert.Equal(sounds.Order(), Chatterbox.Where(tag => tag.Kind == VoiceTagKind.Sound).Select(tag => tag.Text).Order());
+        Assert.Equal(tones.Order(), Chatterbox.Where(tag => tag.Kind == VoiceTagKind.Emotion).Select(tag => tag.Text).Order());
+    }
+
+    [Fact]
+    public void Thinking_prompt_lists_every_chatterbox_sound_then_every_tone_under_where_each_goes()
+    {
+        var prompt = VoiceTags.Instructions(SpeechEngines.Chatterbox, null)!;
+        var sounds = prompt.IndexOf(VoiceTags.SoundsHeading, StringComparison.Ordinal);
+        var tones = prompt.IndexOf(VoiceTags.TonesHeading, StringComparison.Ordinal);
+        Assert.True(sounds > 0 && tones > sounds);
+        foreach (var tag in Chatterbox)
+        {
+            var line = prompt.IndexOf($"\n{tag.Text} - {tag.Usage}\n", StringComparison.Ordinal);
+            Assert.True(line > sounds, tag.Text);
+            Assert.Equal(tag.Kind == VoiceTagKind.Sound, line < tones);
+        }
+        Assert.StartsWith("Your replies are spoken aloud by Chatterbox Turbo", prompt);
+        Assert.Contains("\"That's hilarious [laugh] okay, so...\"", prompt);
+        Assert.DoesNotContain("[advertisement]", prompt);
+        Assert.DoesNotContain("[narration]", prompt);
+    }
+
+    [Fact]
+    public void Thinking_prompt_leaves_out_a_group_the_engine_lacks_and_edited_prompts_get_the_groups_too()
+    {
+        var dia = VoiceTags.Instructions(SpeechEngines.Dia, null)!;
+        Assert.Contains(VoiceTags.SoundsHeading + "\n(laughs) - ", dia);
+        Assert.DoesNotContain(VoiceTags.TonesHeading, dia);
+        Assert.Null(VoiceTags.Instructions(SpeechEngines.F5, null));
+        Assert.Null(VoiceTags.Instructions(null, null));
+        var edited = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.VoiceTags] = "Tags for {engine}:\n{tags}" } };
+        Assert.Equal("Tags for Chatterbox Turbo:\n" + VoiceTags.Catalog(SpeechEngines.Chatterbox),
+            VoiceTags.Instructions(SpeechEngines.Chatterbox, edited));
+        var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.VoiceTags] = "" } };
+        Assert.Null(VoiceTags.Instructions(SpeechEngines.Chatterbox, emptied));
+    }
+
     [Theory]
     [InlineData("Sure, I'll keep it down. [chattiness:quiet]", "Sure, I'll keep it down.", "[chattiness:quiet]")]
     [InlineData("[Chattiness: Chatty] Ooh, look at that!", "Ooh, look at that!", "[chattiness: chatty]")]

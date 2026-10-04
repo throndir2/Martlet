@@ -193,22 +193,37 @@ transcript is sent but Chatterbox does not need it.
 The pinned tokenizer (`added_tokens.json`) defines 19 tags. Martlet's catalog
 for Chatterbox (`SpeechEngines.ChatterboxTurboTags` in Martlet.Core) passes 17:
 
-- **Sounds:** `[laugh]` `[chuckle]` `[sigh]` `[gasp]` `[cough]`
+- **Non-word sounds:** `[laugh]` `[chuckle]` `[sigh]` `[gasp]` `[cough]`
   `[clear throat]` `[groan]` `[sniff]` `[shush]`
-- **Tones:** `[happy]` `[sarcastic]` `[surprised]` `[angry]` `[fear]`
+- **Tones of voice:** `[happy]` `[sarcastic]` `[surprised]` `[angry]` `[fear]`
   `[crying]` `[whispering]` `[dramatic]`
 
 `[advertisement]` and `[narration]` (reading genres) are left out. Turbo's
 `generate` ignores the older `exaggeration`/`cfg_weight` sliders, so these style
-tokens are its only emotion control. Resemble lists only the nine sounds as
-supported (the model card's discussions and the official Turbo app), and a
-measurement here agrees: on the starter voice *Annie*, five takes each,
+tokens are its only emotion control.
+
+What Resemble documents (checked 2026-10-04): the
+[model card](https://huggingface.co/ResembleAI/chatterbox-turbo) and the
+[README](https://github.com/resemble-ai/chatterbox) name `[cough]`, `[laugh]`,
+`[chuckle]` "and more"; the official Turbo apps (`gradio_tts_turbo_app.py` and
+the `chatterbox-turbo-demo` Space) offer exactly the nine sounds as
+`EVENT_TAGS`. The tones are the tokenizer's other style tokens and are not
+documented. Community reports differ (resemble-ai/chatterbox#492: all 19 work in
+the ONNX export, with occasional artifacts; #557: the ten style tokens change
+nothing under `mlx-audio`), and a measurement here agrees with the latter: on
+the starter voice *Annie*, five takes each,
 `[whispering]` and `[angry]` changed neither the level (-27.1 dBFS against
 -26.5 without a tag) nor how noise-like the voice is (spectral flatness 0.158
 and 0.175 against 0.170; a whisper would be far flatter), while `[laugh]` added
 0.56 s and a flatter, louder stretch. The tones stay in the catalog because
-characters' emotes and motions can follow them as cues. How tags reach the
-voice, and stay out of the chat, is in [Conversation](CONVERSATION.md#voice-tags).
+characters' emotes and motions can follow them as cues.
+
+The Thinking prompt (Companion › Prompts › *Voice sounds and tones*) lists both
+groups, each under a line saying where its tags go: a sound inline where it
+happens, a tone at the very start of the sentence it colors (each spoken piece
+is synthesized on its own, so a tone never reaches the next sentence). How tags
+reach the voice, and stay out of the chat, is in
+[Conversation](CONVERSATION.md#voice-tags).
 
 ## Verification
 

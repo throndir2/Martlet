@@ -202,7 +202,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }, ["path"]),
         Tool("voice_tags", "Show how a reply's voice tags are handled for a self-hosted voice engine (engine key, default the " +
             "default engine Chatterbox Turbo; \"none\" for a voice without tags such as OpenAI or Windows): the engine's tag catalog in " +
-            "its own syntax with each tag's engine-independent cue, the Thinking prompt it adds (Companion > Prompts > Voice sounds " +
+            "its own syntax with each tag's engine-independent cue, split into its non-word sounds and tones of voice, the Thinking " +
+            "prompt it adds (Companion > Prompts > Voice sounds " +
             "and tones, from dataDirectory's settings when given), the pieces the real speech segmenter hands that engine for a " +
             "spoken reply, broken where the persona's speech breaks allow (Personality > Where the voice pauses: dataDirectory's " +
             "persona by name, else the one Martlet uses, else the defaults;             \"breaks\" overrides periods, questionMarks, " +
@@ -1689,6 +1690,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             engine = engine?.Key, name = engine?.Name, supportsTags = engine?.SupportsTags ?? false,
             tags = (engine?.Tags ?? []).Select(tag => tag.Text).ToArray(),
+            sounds = (engine?.Tags ?? []).Where(tag => tag.Kind == Martlet.Core.Settings.VoiceTagKind.Sound).Select(tag => tag.Text).ToArray(),
+            tones = (engine?.Tags ?? []).Where(tag => tag.Kind == Martlet.Core.Settings.VoiceTagKind.Emotion).Select(tag => tag.Text).ToArray(),
             cues = (engine?.Tags ?? []).Select(tag => new { tag = tag.Text, cue = tag.Cue }).ToArray(),
             prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
             persona = persona?.Name, breaks = Breaks(breaks),
