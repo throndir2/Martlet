@@ -245,7 +245,8 @@
           "Martlet.Home": "[0.31.0, )",
           "Martlet.Mcp.Client": "[0.31.0, )",
           "Martlet.Providers": "[0.31.0, )",
-          "Martlet.Sherpa": "[0.31.0, )"
+          "Martlet.Sherpa": "[0.31.0, )",
+          "System.Speech": "[10.0.12, )"
         }
       },
       "martlet.memory": {
@@ -337,6 +338,12 @@
         "requested": "[2024.1.0, )",
         "resolved": "2024.1.0",
         "contentHash": "pyOea9czgC+OwMoetuWtMuwRebOyskKkqTZtODgyEZ5K6JwV+Hh/GFiyYubl93YnEvmvNZeuyWyUDsb3LvBDYA=="
+      },
+      "System.Speech": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "IrIKdPfbeCtgDeKQvJE2EtS8sSLxxpBRzCCpkg/4jORLwmhSUrVZtIrnbbaWQxo3tjnXK6aHH6MNsvi3S3PuTg=="
       }
     }
   }

@@ -3,9 +3,11 @@ using System.Text.Json;
 
 namespace Martlet.Sherpa;
 
-/// <summary>What Parakeet heard: the text (empty when nothing was said), the mean token probability (the model's own
-/// estimate, not calibrated accuracy) and the language it detected, when it says.</summary>
-public sealed record ParakeetTranscript(string Text, double? Confidence, string? Language);
+/// <summary>What Parakeet heard: the text (empty when nothing was said), the mean and lowest token probability (the model's own
+/// estimate, not calibrated accuracy), the language it detected, when it says, and when the first and last tokens were heard
+/// (seconds from the start of the audio).</summary>
+public sealed record ParakeetTranscript(string Text, double? Confidence, string? Language, double? Minimum = null,
+    double? FirstToken = null, double? LastToken = null);
 
 /// <summary>NVIDIA Parakeet TDT 0.6B v3 speech-to-text on this PC's processor through sherpa-onnx, as in AudioTranscriber:
 /// 25 European languages detected automatically, punctuated and cased. Audio stays in memory and nothing is sent anywhere.
@@ -15,14 +17,18 @@ public sealed class ParakeetEngine : IDisposable
     public const int SampleRate = 16_000;
     public const int MaximumSeconds = 60;
     private readonly string root;
+    private readonly string? runtime;
     private readonly int threads;
     private readonly object gate = new();
     private IntPtr recognizer;
     private bool disposed;
 
-    public ParakeetEngine(string root, int? threads = null)
+    /// <summary>Parakeet in <paramref name="root"/> (the data folder's speech directory), run with the sherpa-onnx runtime in
+    /// <paramref name="runtimeDirectory"/> (default: Martlet's own folder).</summary>
+    public ParakeetEngine(string root, int? threads = null, string? runtimeDirectory = null)
     {
         this.root = Path.GetFullPath(root);
+        runtime = runtimeDirectory;
         // ONNX Runtime's worker threads spin: 4 threads is ~1.4x faster than 2 but uses ~2x the CPU (AudioTranscriber's measurement).
         this.threads = threads ?? Math.Clamp(Environment.ProcessorCount / 4, 2, 4);
     }
@@ -70,7 +76,7 @@ public sealed class ParakeetEngine : IDisposable
     {
         if (recognizer != IntPtr.Zero) return;
         if (!SherpaComponents.IsParakeetInstalled(root)) throw new SherpaException("The Parakeet model isn't downloaded yet.");
-        SherpaNative.Load(SherpaComponents.RuntimeDirectory() ??
+        SherpaNative.Load(runtime ?? SherpaComponents.RuntimeDirectory() ??
             throw new SherpaException("The speech runtime is missing from Martlet's folder. Reinstall Martlet."));
         var model = SherpaComponents.ParakeetDirectory(root);
         // Offsets of SherpaOnnxOfflineRecognizerConfig (608 bytes): feat{sample_rate@0, feature_dim@4},
@@ -90,15 +96,29 @@ public sealed class ParakeetEngine : IDisposable
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var text = root.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() ?? "" : "";
-        double? confidence = null;
+        double? confidence = null, minimum = null, first = null, last = null;
         if (root.TryGetProperty("ys_log_probs", out var probabilities) && probabilities.ValueKind == JsonValueKind.Array)
         {
             var values = probabilities.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.Number).Select(p => p.GetDouble())
                 .Where(double.IsFinite).Select(Math.Exp).ToArray();
-            if (values.Length > 0) confidence = Math.Round(values.Average(), 4);
+            if (values.Length > 0)
+            {
+                confidence = Math.Round(values.Average(), 4);
+                minimum = Math.Round(values.Min(), 4);
+            }
+        }
+        if (root.TryGetProperty("timestamps", out var times) && times.ValueKind == JsonValueKind.Array)
+        {
+            var values = times.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Number).Select(t => t.GetDouble())
+                .Where(double.IsFinite).ToArray();
+            if (values.Length > 0)
+            {
+                first = Math.Round(values.Min(), 3);
+                last = Math.Round(values.Max(), 3);
+            }
         }
         var language = root.TryGetProperty("lang", out var lang) && lang.ValueKind == JsonValueKind.String && lang.GetString() is { Length: > 0 } l ? l : null;
-        return new(text, confidence, language);
+        return new(text, confidence, language, minimum, first, last);
     }
 
     public void Dispose()
