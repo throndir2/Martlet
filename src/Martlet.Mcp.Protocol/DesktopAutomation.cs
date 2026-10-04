@@ -145,6 +145,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Listening › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
+        // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
+        // Thinking destination the page already shows.
+        "TalkHearVoiceChoice",
         // Companion › Vision › Where the character looks (its VisionGaze-Mouse and VisionGaze-Martlet choices save
         // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
         // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).

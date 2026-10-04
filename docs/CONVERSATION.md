@@ -883,6 +883,23 @@ Completions) endpoint takes it. **Ollama on this PC** does too, for models it
 says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). A paired host's
 Ollama and OpenAI's own route don't. Vision works the same way with pictures.
 
+**On or off.** Your own choice always wins: tick it, or untick it to keep
+Thinking to the transcript. Until you choose, it is **on only while the
+recording stays on this PC**: Thinking is Ollama on this PC (`http://127.0.0.1:11434/v1`)
+with a model that isn't one Ollama forwards to its cloud (a `:cloud` or `-cloud`
+tag). Another server on this PC's loopback (llama.cpp, LM Studio, a LiteLLM-style
+proxy) needs the tick too, since it may send the audio on. So a new setup with
+Gemma 4 E2B in Ollama hears you straight away, while a cloud or paired-host
+Thinking model never gets your recording until you tick the box. The line under
+it says which applies (*On: your voice stays on this PC (Thinking runs here), so
+Thinking hears it unless you turn this off.* or *Off until you tick it: your
+recording would leave this PC for ...*), and the conversation checks again for
+each message, so switching Thinking to a cloud model stops the recordings at
+once. `talk-preferences.json` keeps the choice as `true`, `false` or nothing;
+one saved before this (version 3 or older) with `false` counts as never chosen,
+since off was only the old default. Shared with your other computers: an older
+Martlet's off is likewise taken as never chosen.
+
 Martlet finds out what a model takes instead of guessing from its name:
 
 - **From the server, automatically.** Choosing, testing or checking a Thinking
@@ -912,7 +929,8 @@ says so, checked 3 Oct)*). MCP `model_ability_check` and `hearing_check` show it
 
 ### Straight to Thinking
 
-While Thinking hears and **Let Thinking hear my voice** is on, Companion ›
+While Thinking hears and **Let Thinking hear my voice** is on (by default with a
+model on this PC, see above), Companion ›
 Listening asks **When Thinking can hear you** (shared with your other computers
 like the other listening choices):
 
@@ -929,7 +947,8 @@ On the straight path speech-to-text still runs, beside the reply and never in
 front of it. Where Listening and Thinking both run on this PC (Parakeet and
 Ollama), it starts once the reply's first audio plays (its first words without
 a voice, or when it ends; at most 4 seconds later), so the two never compete for
-the processor before you hear Martlet; elsewhere it starts at once. Its words:
+the processor before you hear Martlet (except the quick check of something short,
+below); elsewhere it starts at once. Its words:
 
 - **Talk window.** Your bubble shows *(your voice; transcribing…)* until the
   words come, then the words. One the word check wouldn't count as words keeps
@@ -960,6 +979,19 @@ mostly what the speakers played, is let go), Voice ID and who is speaking (the
 reply waits for voice recognition, at most 3 s, as Thinking is told who
 talks). Always listening's instructions let Thinking stay quiet with `[pass]`,
 which works on the reply's text as before. Barge-in keeps its own quick check.
+
+**Not words.** Something short that went straight (less than 1 s of voice in
+all, measured by the voice-activity detector) may be a cough, a hum or *mm*
+rather than words. With Parakeet on this PC as Listening, its speech-to-text
+starts the moment the reply's request has started (beside it, never before it),
+and the word check decides. Not words (nothing, *mm*, laughter, a sound) and
+nothing played yet: the reply stops silently, its exchange is never kept,
+recorded or remembered, and the talk window shows the faded note instead of
+your bubble (*Ignored "M" (not words).*). Once the reply's first audio has
+started, it finishes and the words are only labeled, as before. Longer speech
+is unchanged (the 0.45 s gate, the speakers-mostly check and `[pass]`). The log
+says *Not words: Martlet dropped its reply before it played; the quick check
+found ... N ms after the reply started* or *Not words, too late: ...*.
 
 Some messages are transcribed first anyway: push-to-talk, a message with what
 the PC played (`[PC audio]` lines are transcripts, context rather than you, so

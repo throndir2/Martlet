@@ -24,7 +24,8 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
 internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt);
 
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
-// is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice). Straight: with Hear, what was
+// is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice); HearLocalOnly: only because it
+// was never chosen, so only while the recording stays on this PC (checked again for each message). Straight: with Hear, what was
 // said goes straight to a Thinking model that hears as the recording alone, and speech-to-text runs beside the reply
 // (Companion › Listening › When Thinking can hear you). BargeIn: keep listening while
 // Martlet speaks, so talking over a reply with real words (BargeInPolicy) stops it. ReduceEcho: what
@@ -35,10 +36,14 @@ internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, 
 // Word check; UtteranceFilter and BargeInPolicy).
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
     bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
-    bool Straight = false)
+    bool Straight = false, bool HearLocalOnly = false)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
+
+    /// <summary>Thinking may hear the recording with this configuration: Hear, and, when that is only the never-chosen default,
+    /// the recording stays on this PC.</summary>
+    internal bool HearsWith(LiveConversationConfiguration configuration) => Hear && (!HearLocalOnly || configuration.RecordingStaysOnThisPc());
 
     /// <summary>Listening to what this PC plays: the default voice activity (a video's sound, not the user's microphone).</summary>
     internal static ListeningOptions PcAudio { get; } = new(true, new VoiceActivitySettings(), RequireVoiceId: false, Pc: true);
@@ -102,6 +107,8 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal IReadOnlyList<SpokenWords>? StraightWords { get; set; }
     /// <summary>The reply's request carried the user's recording alone, with no transcript (straight to Thinking).</summary>
     internal bool Straight { get; set; }
+    /// <summary>What went straight to Thinking turned out not to be words, and the reply was dropped before it played.</summary>
+    internal bool NotWords { get; set; }
     /// <summary>The picture of what vision watches that goes with the user's message, when vision is on.</summary>
     [JsonIgnore] internal SeenScreen? Seen { get; init; }
     /// <summary>The reply's request carried <see cref="Seen"/>'s picture.</summary>
@@ -736,7 +743,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
         ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
-        IReadOnlyList<SpokenWords>? words = null)
+        IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -763,9 +770,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             long acceptedRevision = revision = checked(revision + 1);
             // Vision being on is the permission for its pictures; a text-only Thinking model never gets one.
             if (selected.Vision() == VisionSupport.Unsupported) seen = null;
+            // Hearing that is on only because it was never chosen holds only while the recording stays on this PC.
+            var hear = microphone ? listening?.HearsWith(selected) == true
+                : recording is not null && (!hearLocalOnly || selected.RecordingStaysOnThisPc());
+            if (!hear) recording = null;
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
-                screen: seen is not null, hear: microphone ? listening?.Hear == true : recording is not null);
+                screen: seen is not null, hear: hear);
             operation = new(authorization, caller)
             {
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
@@ -987,7 +998,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         if (options is not { Straight: true, Hear: true, Pc: false }) return false;
         var configured = utterance.Authorization.Configuration;
-        if (configured.Hearing() != HearingSupport.Supported) return false;
+        if (!options.HearsWith(configured) || configured.Hearing() != HearingSupport.Supported) return false;
         lock (gate)
             if (deafModels.Contains(configured.ToolModelKey())) return false;
         if (smartHome is { ControlEnabled: true, ModelToolsEnabled: false }) return false;
@@ -1016,7 +1027,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 utterance.Recording = audio;
                 // A quick check while it was said over Martlet may already have decided that it stops Martlet.
                 utterance.Interrupts = utterance.TalkOver?.Decision;
-                var spokenWords = utterance.Words = new SpokenWords(clock);
+                var spokenWords = utterance.Words = new SpokenWords(clock) { Voiced = utterance.Voiced };
                 utterance.Publish(new("listen.heard", Finished: true));
                 listening.Post(Result(utterance));
                 handedOn = true;
@@ -1067,7 +1078,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 singing?.Heard(result.Text ?? "");
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
             if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
-            if (listening.Options.Hear) utterance.Recording = audio;
+            if (listening.Options.HearsWith(utterance.Authorization.Configuration)) utterance.Recording = audio;
             utterance.Publish(new("listen.heard", Finished: true));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1409,10 +1420,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 if (operation.Authorization.Hear) operation.Recording = audio;
                 input = new(result.Text!);
             }
-            // Straight to Thinking: the recording alone, unless the model can't take it any more (it refused one since): then the
-            // reply waits for the words, as when transcribing first.
-            var straight = operation.StraightWords is { Count: > 0 } && operation.Recording is not null;
-            if (straight && !Hears(operation.Authorization.Configuration))
+            // Straight to Thinking: the recording alone, unless it can't go (the model refused one since, or hearing that was on
+            // only by default no longer stays on this PC): then the reply waits for the words, as when transcribing first.
+            var straight = operation.StraightWords is { Count: > 0 };
+            if (straight && (operation.Recording is null || !operation.Authorization.Hear || !Hears(operation.Authorization.Configuration)))
             {
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
                 using var bound = CancellationTokenSource.CreateLinkedTokenSource(worker, deadline.Token);
@@ -1420,6 +1431,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 try { words = await SpokenWords.TranscriptAsync(operation.StraightWords!, bound.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (!worker.IsCancellationRequested) { words = null; }
                 operation.LatencyTimeline?.Mark("speech-to-text");
+                // Not words (a cough, mm): like any utterance the word check lets go, it gets no reply.
+                if (operation.StraightWords!.All(spoken => spoken.NotWords))
+                {
+                    operation.Publish(new(NotWordsCode, Finished: true));
+                    return new(SetupWorkOutcome.Completed);
+                }
                 if (words is null)
                 {
                     operation.Publish(new("stt.NoSpeech", Finished: true));
@@ -1640,6 +1657,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 ErrorLog.Info("Voice path: straight to Thinking (your recording alone, no transcript); speech-to-text runs beside the reply.");
                 NoteWordsAsync(operation.StraightWords!).Forget();
+                // Something short might not be words (a cough, mm): Parakeet checks it now, beside the request, and the reply is
+                // dropped if it isn't words and nothing has played yet.
+                if (QuickCheck(operation)) CheckWordsBesideAsync(operation, turn).Forget();
             }
             else if (operation.VoiceSent) ErrorLog.Info("Voice path: transcribe first (your recording with the transcript).");
             var terminal = await turn.Completion.ConfigureAwait(false);
@@ -1818,6 +1838,47 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>How long a reply waits, at most, for the words of an earlier message that went straight to Thinking and are still
     /// being transcribed, so it carries them; after that the earlier message goes as a spoken message without its words.</summary>
     internal static TimeSpan EarlierWordsWait => TimeSpan.FromMilliseconds(1500);
+
+    /// <summary>The outcome of a reply to what went straight to Thinking that turned out not to be words (a cough, mm): dropped
+    /// before it played, or never asked when the words were needed first.</summary>
+    internal const string NotWordsCode = "listen.not_words";
+
+    /// <summary>What went straight to Thinking with less voice than this in all (loud 20 ms frames) gets the quick check of
+    /// whether it is words, when Parakeet runs on this PC (<see cref="CheckWordsBesideAsync"/>); longer speech is rarely not words.</summary>
+    internal static TimeSpan QuickCheckVoice => TimeSpan.FromSeconds(1);
+
+    // Short enough for the quick check, with Parakeet on this PC.
+    private bool QuickCheck(LiveConversationOperation operation) =>
+        localTranscription is not null && operation.Authorization.Configuration.LocalStt() &&
+        operation.StraightWords is { Count: > 0 } spoken && spoken.All(words => words.Voiced is not null) &&
+        spoken.Sum(words => words.Voiced!.Value.TotalMilliseconds) < QuickCheckVoice.TotalMilliseconds;
+
+    /// <summary>The quick check of something short that went straight to Thinking: Parakeet transcribes it now, beside the
+    /// request that has already started (never before it), and the word check decides. Not words (a cough, mm, laughter, nothing)
+    /// and nothing played yet: the reply stops silently and its exchange is never kept; the talk window shows it as ignored.
+    /// Once its first audio has started, the reply finishes and the words are only labeled. The desktop log says which.</summary>
+    private async Task CheckWordsBesideAsync(LiveConversationOperation operation, ConversationTurn turn)
+    {
+        var spoken = operation.StraightWords!;
+        foreach (var words in spoken) words.Release();
+        await Task.WhenAll(spoken.Select(words => words.Ready)).ConfigureAwait(false);
+        if (!spoken.All(words => words.NotWords)) return;
+        var after = spoken.Max(words => words.ReadyAfterReply ?? TimeSpan.Zero).TotalMilliseconds;
+        var took = spoken.Sum(words => words.Took?.TotalMilliseconds ?? 0);
+        var why = spoken.Select(words => words.Ignored?.Reason ?? "no speech").Distinct().ToArray();
+        var snapshot = turn.Snapshot;
+        if (snapshot.MayHavePlayed || snapshot.FirstAudioAfter is not null || snapshot.State is ConversationState.Completed or
+                ConversationState.Failed or ConversationState.Canceled or ConversationState.Refused || operation.Status.Finished)
+        {
+            ErrorLog.Info($"Not words, too late: the quick check found {string.Join(", ", why)} {after:0} ms after the reply started " +
+                $"(speech-to-text {took:0} ms), after Martlet had begun answering; the reply goes on and the words are labeled.");
+            return;
+        }
+        operation.NotWords = true;
+        Stop(operation, NotWordsCode, keepContext: true);
+        ErrorLog.Info($"Not words: Martlet dropped its reply before it played; the quick check found {string.Join(", ", why)} " +
+            $"{after:0} ms after the reply started (speech-to-text {took:0} ms).");
+    }
 
     /// <summary>How long speech-to-text waits, at most, for the reply carrying a recording sent alone to get under way, where both
     /// run on this PC (<see cref="SpokenWords.MayTranscribe"/>).</summary>

@@ -6,8 +6,9 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 // How the user talks with Martlet, chosen in Companion (Listening, Voice and Vision) and used by the talk window while it is
-// open: always listening or push-to-talk, whether replies are spoken, whether Thinking also hears the recording (HearVoice, off
-// by default), whether talking over a reply stops it (BargeIn, opt-in and off by default), how readily what is heard counts as
+// open: always listening or push-to-talk, whether replies are spoken, whether Thinking also hears the recording (HearVoice:
+// on, off, or null when never chosen, which means on only while the recording stays on this PC; see HearVoiceFor), whether
+// talking over a reply stops it (BargeIn, opt-in and off by default), how readily what is heard counts as
 // words (WordCheck: Relaxed, Normal by default, or Sensitive), whether what the PC plays is removed
 // from the microphone (ReduceEcho, on by default), whether always listening also hears what the PC plays (HearPc, off by
 // default) and whether (and at what) Martlet may look, how chatty it is about what it sees and what the PC plays
@@ -20,13 +21,21 @@ namespace Martlet.Desktop;
 // waits for the transcript and sends both.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
-    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false, bool BargeIn = false, bool ReduceEcho = true,
+    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool? HearVoice = null, bool BargeIn = false, bool ReduceEcho = true,
     bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool DecideGaze = false, bool TranscribeFirst = false)
 {
     private const string FileName = "talk-preferences.json";
+
+    /// <summary>Whether Thinking hears your recording with the Thinking route <paramref name="thinking"/>, and why: your own
+    /// choice (ticked or turned off) always wins; never chosen, it is on only while the recording stays on this PC
+    /// (<see cref="HearingModelCatalog.StaysOnThisPc"/>). Hearing that is only on by default is LocalOnly: the conversation checks
+    /// again that the recording stays on this PC before it sends one.</summary>
+    internal (bool On, bool LocalOnly) HearVoiceFor(SetupRoute? thinking) => HearVoice is { } chosen ? (chosen, false)
+        : (HearingModelCatalog.StaysOnThisPc(thinking?.RouteType, thinking?.Origin, thinking?.ModelId), true);
     // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.
     // Version 3 made barge-in opt-in; earlier files have it on only because it was the old default.
-    private const int AlwaysListeningVersion = 2, OptInBargeInVersion = 3, CurrentVersion = OptInBargeInVersion;
+    // Version 4 made HearVoice three-way; earlier files have it off only because that was the old default (never chosen).
+    private const int AlwaysListeningVersion = 2, OptInBargeInVersion = 3, HearVoiceChoiceVersion = 4, CurrentVersion = HearVoiceChoiceVersion;
     internal static readonly TimeSpan[] Pauses = [TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(1200)];
 
     internal static TalkPreferences Load(string? directory)
@@ -41,6 +50,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
             {
                 HandsFree = loaded.Version < AlwaysListeningVersion || loaded.HandsFree,
                 BargeIn = loaded.Version >= OptInBargeInVersion && loaded.BargeIn,
+                HearVoice = loaded.Version < HearVoiceChoiceVersion && loaded.HearVoice == false ? null : loaded.HearVoice,
                 Sensitivity = double.IsFinite(loaded.Sensitivity) ? Math.Clamp(loaded.Sensitivity, 0, 1) : 0.5,
                 PauseIndex = Math.Clamp(loaded.PauseIndex, 0, Pauses.Length - 1),
                 ScreenChattiness = (int)ChattinessTags.Choice(loaded.ScreenChattiness),
