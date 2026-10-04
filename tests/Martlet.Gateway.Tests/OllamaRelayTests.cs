@@ -20,7 +20,10 @@ public sealed class OllamaRelayTests
 
         private FakeOllama(WebApplication app) => this.app = app;
 
-        internal static async Task<FakeOllama> StartAsync(int status, params string[] lines)
+        internal static async Task<FakeOllama> StartAsync(int status, params string[] lines) => await StartAsync(status, null, lines);
+
+        /// <summary>With <paramref name="holdLast"/>, the last line waits for it, as a long think does.</summary>
+        internal static async Task<FakeOllama> StartAsync(int status, Task? holdLast, params string[] lines)
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Logging.ClearProviders();
@@ -29,12 +32,14 @@ public sealed class OllamaRelayTests
             var fake = new FakeOllama(app);
             app.MapPost("/api/chat", async context =>
             {
-                fake.Requests.Add(await JsonDocument.ParseAsync(context.Request.Body));
+                var request = await JsonDocument.ParseAsync(context.Request.Body);
+                lock (fake.Requests) fake.Requests.Add(request);
                 context.Response.StatusCode = status;
                 context.Response.ContentType = "application/x-ndjson";
-                foreach (var line in lines)
+                for (var i = 0; i < lines.Length; i++)
                 {
-                    await context.Response.WriteAsync(line + "\n");
+                    if (i == lines.Length - 1 && holdLast is not null) await holdLast.WaitAsync(context.RequestAborted);
+                    await context.Response.WriteAsync(lines[i] + "\n");
                     await context.Response.Body.FlushAsync();
                 }
             });
@@ -213,5 +218,79 @@ public sealed class OllamaRelayTests
         Assert.Equal("qwen2.5-7b", OllamaRelayWorker.Alias("qwen2.5:7b"));
         Assert.Throws<ArgumentException>(() => new OllamaRelayWorker(new Uri("http://192.168.1.5:11434/"), "llama3.2:3b"));
         Assert.Throws<ContractException>(() => new OllamaRelayWorker(new Uri("http://127.0.0.1:11434/"), "llama3.2:cloud"));
+        Assert.Throws<ArgumentException>(() => OllamaRelayWorker.DeepThinking(new Uri("http://192.168.1.5:11435/"), "qwen3:8b"));
+    }
+
+    [Fact]
+    public async Task Deep_thinking_role_has_its_own_route_and_thinks_while_the_conversation_model_replies()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var conversation = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Still here.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var deep = await FakeOllama.StartAsync(200, release.Task,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Plan: \"},\"done\":false}",
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"rest on Sunday.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var thinking = new OllamaRelayWorker(conversation.Endpoint, "gemma4:e4b");
+        await using var deepWorker = OllamaRelayWorker.DeepThinking(deep.Endpoint, "qwen3:8b");
+
+        // Its own route ID and path, with the conversation model's contract and bounds, which clients accept like any route.
+        Assert.Equal((Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath,
+                GatewayInferenceKind.OllamaChat, OllamaRelayWorker.DeepThinkingWorkerId),
+            (deepWorker.Route.RouteId, deepWorker.Route.Path, deepWorker.Route.Kind, deepWorker.Route.WorkerId));
+        Assert.Equal((thinking.Route.ContractId, thinking.Route.MaximumDuration, thinking.Route.MaximumRequestBytes),
+            (deepWorker.Route.ContractId, deepWorker.Route.MaximumDuration, deepWorker.Route.MaximumRequestBytes));
+        var capability = GatewayInferenceRouteCapability.From(deepWorker.Route);
+        Assert.Equal(deepWorker.Route.RouteId, GatewayInferenceRoute.FromCapability(capability).RouteId);
+        Assert.Throws<GatewayProtocolException>(() => GatewayInferenceRoute.FromCapability(capability with { Path = thinking.Route.Path }));
+        Assert.Throws<GatewayProtocolException>(() => GatewayInferenceRoute.FromCapability(capability with { RouteId = "martlet.gateway.other-chat.v1" }));
+
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [thinking, deepWorker]);
+        var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+            card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
+        using var replies = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        using var thinks = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var routes = await replies.ReadRoutesAsync();
+        var replyRoute = Assert.Single(routes, r => r.RouteId == HostRoute.OllamaChatRouteId);
+        var deepRoute = Assert.Single(routes, r => r.RouteId == HostRoute.DeepThinkingRouteId);
+        Assert.Equal(("qwen3-8b", HostRoute.DeepThinkingPath), (deepRoute.ModelId, deepRoute.Path));
+
+        var thought = new List<string>();
+        var firstThought = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var think = Task.Run(async () =>
+        {
+            await foreach (var delta in thinks.StreamChatAsync(deepRoute, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(60), null, [],
+                "Plan my week.", 0.7, 4_096, 32_768, null, new() { Reasoning = true, ContextTokens = 32_768 }))
+            {
+                thought.Add(delta);
+                firstThought.TrySetResult();
+            }
+        });
+        await firstThought.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        var reply = new List<string>();
+        await foreach (var delta in replies.StreamChatAsync(replyRoute, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30), null, [],
+            "Are you there?", 0.7, 256, 8_192))
+            reply.Add(delta);
+
+        // The reply finished on Thinking's route while the think was still running on its own.
+        Assert.Equal(["Still here."], reply);
+        Assert.False(think.IsCompleted);
+        release.SetResult();
+        await think.WaitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal(["Plan: ", "rest on Sunday."], thought);
+        var toDeep = Assert.Single(deep.Requests).RootElement;
+        Assert.Equal("qwen3:8b", toDeep.GetProperty("model").GetString());
+        Assert.True(toDeep.GetProperty("think").GetBoolean());
+        Assert.Equal(32_768, toDeep.GetProperty("options").GetProperty("num_ctx").GetInt32());
+        var toConversation = Assert.Single(conversation.Requests).RootElement;
+        Assert.Equal("gemma4:e4b", toConversation.GetProperty("model").GetString());
+        Assert.False(toConversation.TryGetProperty("think", out _));
+
+        // The desktop's client sends only a route whose ID and path belong together.
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+        {
+            await foreach (var _ in thinks.StreamChatAsync(deepRoute with { Path = HostRoute.OllamaChatPath }, NewIds(), 3,
+                host.Clock.GetUtcNow().AddSeconds(30), null, [], "Hello", 0.7, 64, 4_096)) { }
+        });
     }
 }

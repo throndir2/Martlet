@@ -304,6 +304,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
             "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { }),
+        Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
+            "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
+            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
+            "the desktop's paired client. Checks both routes and their models are advertised, a think on the Deep thinking route runs " +
+            "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
+            "with Thinking steps on), and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
+            "the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
             "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
@@ -958,6 +965,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "app_update_check" => await AppUpdateCheck.RunAsync(NodeLinkCheckProgram(), cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
+                "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),

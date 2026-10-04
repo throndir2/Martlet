@@ -34,18 +34,28 @@ public sealed record DeepThinkingSettings
     public string? HostSpkiFingerprint { get; init; }
     public string? HostDeviceId { get; init; }
     public Guid? HostCredentialId { get; init; }
+    /// <summary>Which of the paired computer's routes thinks: its Deep thinking role's own Ollama
+    /// (<see cref="SelfHostSetup.DeepThinkingRouteId"/>), or its Ollama role's (null, as saved before that role existed).</summary>
+    public string? HostRouteId { get; init; }
     public DateTimeOffset? ChosenAt { get; init; }
 
     [JsonIgnore] public bool Separate => Place != DeepThinkingPlace.SameAsThinking;
+
+    /// <summary>Whether it thinks with a paired computer's Deep thinking role, a model of its own beside that computer's Thinking.</summary>
+    [JsonIgnore] public bool OnHostRole => Place == DeepThinkingPlace.Host && HostRouteId == SelfHostSetup.DeepThinkingRouteId;
+
+    /// <summary>The paired computer's route a think goes to (Place Host).</summary>
+    [JsonIgnore] public string HostRoute => HostRouteId ?? SelfHostSetup.OllamaRouteId;
 
     /// <summary>Whether the endpoint runs on this PC (Ollama, LM Studio or another server on loopback).</summary>
     [JsonIgnore]
     public bool OnThisPc => Place == DeepThinkingPlace.Endpoint && Uri.TryCreate(Origin, UriKind.Absolute, out var origin) && origin.IsLoopback;
 
     /// <summary>Where it thinks, in words: "the Thinking model", "Ollama on this PC (gemma4:12b)", "diva (gemma4:27b)",
-    /// "openrouter.ai (x-ai/grok-4.3)".</summary>
+    /// "diva's Deep thinking (qwen3-8b)", "openrouter.ai (x-ai/grok-4.3)".</summary>
     public string Describe() => Place switch
     {
+        DeepThinkingPlace.Host when OnHostRole => $"{HostId}'s Deep thinking ({ModelId})",
         DeepThinkingPlace.Host => $"{HostId} ({ModelId})",
         DeepThinkingPlace.Endpoint when string.Equals(Origin, GenerationSupport.LocalOllamaChatBaseUrl, StringComparison.Ordinal) =>
             $"Ollama on this PC ({ModelId})",
@@ -62,18 +72,19 @@ public sealed record DeepThinkingSettings
             case DeepThinkingPlace.Endpoint:
                 _ = ChatCompletionsSetup.BaseUri(Origin ?? "");
                 ChatCompletionsSetup.ModelId(ModelId ?? "");
-                ContractRules.Require(CredentialId != Guid.Empty && HostId is null, "An endpoint's key reference is invalid.");
+                ContractRules.Require(CredentialId != Guid.Empty && HostId is null && HostRouteId is null, "An endpoint's key reference is invalid.");
                 break;
             case DeepThinkingPlace.Host:
                 ContractRules.Require(HostId is { Length: > 0 and <= 128 } && !HostId.Any(char.IsControl) &&
                     Uri.TryCreate(HostOrigin, UriKind.Absolute, out var origin) && origin.Scheme == Uri.UriSchemeHttps &&
                     HostSpkiFingerprint is { Length: > 0 and <= 200 } && HostDeviceId is { Length: > 0 and <= 128 } &&
-                    HostCredentialId is { } pairing && pairing != Guid.Empty && CredentialId is null && Origin is null,
+                    HostCredentialId is { } pairing && pairing != Guid.Empty && CredentialId is null && Origin is null &&
+                    HostRouteId is null or SelfHostSetup.OllamaRouteId or SelfHostSetup.DeepThinkingRouteId,
                     "The paired computer for Deep thinking is incomplete. Choose it again.");
                 ChatCompletionsSetup.ModelId(ModelId ?? "");
                 break;
             default:
-                ContractRules.Require(Origin is null && ModelId is null && CredentialId is null && HostId is null,
+                ContractRules.Require(Origin is null && ModelId is null && CredentialId is null && HostId is null && HostRouteId is null,
                     "Same as Thinking keeps no destination of its own.");
                 break;
         }
@@ -164,7 +175,7 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
                     "Choose another model in Ollama on this PC, another of your computers or a cloud provider.")
                 : thinking.RouteType == SetupRouteType.GatewayOllama
                     ? new(false, $"Thinking's model runs on {thinking.Gateway?.HostId ?? "a paired computer"} and can't think something over " +
-                        "while it answers you. Choose another place for Deep thinking.")
+                        "while it answers you. Add the Deep thinking role there, or choose another place for Deep thinking.")
                     : new(true, "Thinking's provider answers several requests at once, so a think runs alongside the conversation.");
         if (deep.OnThisPc)
         {
@@ -182,9 +193,15 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
         if (deep.Place == DeepThinkingPlace.Host)
         {
             var shared = routes.Where(r => r.Enabled != false && SelfHostSetup.IsGateway(r.RouteType) && r.Gateway?.HostId == deep.HostId).ToArray();
+            // Its Deep thinking role is an Ollama server of its own, so it thinks beside the computer's Thinking model.
+            if (deep.OnHostRole)
+                return shared.Length > 0
+                    ? new(true, $"{deep.HostId}'s Deep thinking role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
+                        "alongside the conversation and shares its graphics card.")
+                    : new(true, $"{deep.HostId}'s Deep thinking role does none of the conversation's jobs, so a think runs there alongside the conversation.");
             if (shared.Any(r => r.Role == SetupRole.Llm))
                 return new(false, $"{deep.HostId} also does Thinking for the conversation, and its model can't think something over while " +
-                    "it answers you. Choose another place for Deep thinking.");
+                    "it answers you. Add the Deep thinking role there, or choose another place for Deep thinking.");
             return shared.Length > 0
                 ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.")
                 : new(true, $"{deep.HostId} does none of the conversation's jobs, so a think runs there alongside the conversation.");

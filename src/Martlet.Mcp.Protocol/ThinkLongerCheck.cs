@@ -70,6 +70,8 @@ internal static class ThinkLongerCheck
             {
                 file = deepState, place = deep.Place.ToString(), where = deep.Separate ? deep.Describe() : route?.ModelId,
                 model = deep.Separate ? deep.ModelId : route?.ModelId, hostId = deep.HostId,
+                // The paired computer's route a think goes to: its Deep thinking role's own Ollama, or its Ollama role's.
+                hostRoute = deep.Place == DeepThinkingPlace.Host ? deep.HostRoute : null, hostRole = deep.OnHostRole,
                 origin = deep.Place == DeepThinkingPlace.Endpoint ? deep.Origin : null,
                 ownKey = deep.CredentialId is not null, usesThinkingKey = deep.UsesThinkingKey(route),
                 available = plan.Available, parallel = plan.Available, checksFit = plan.ChecksFit, why = plan.Why,
@@ -193,7 +195,12 @@ internal static class ThinkLongerCheck
             ("diva, the voice on diva too", Host("diva"),
                 [localThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "diva", "https://diva.local:9443")], true, false),
             ("diva, Thinking on diva too", Host("diva"),
-                [Gateway(SetupRole.Llm, SetupRouteType.GatewayOllama, "diva", "https://diva.local:9443")], false, false)
+                [Gateway(SetupRole.Llm, SetupRouteType.GatewayOllama, "diva", "https://diva.local:9443")], false, false),
+            // diva's Deep thinking role is an Ollama server of its own, so it thinks beside diva's Thinking model.
+            ("diva's Deep thinking role, Thinking on diva too", Host("diva") with { HostRouteId = SelfHostSetup.DeepThinkingRouteId },
+                [Gateway(SetupRole.Llm, SetupRouteType.GatewayOllama, "diva", "https://diva.local:9443")], true, false),
+            ("diva's Deep thinking role, Thinking in Ollama on this PC", Host("diva") with { HostRouteId = SelfHostSetup.DeepThinkingRouteId },
+                [localThinking], true, false)
         };
         var results = cases.Select(c => (c, Plan: DeepThinkingPlan.For(c.Deep, c.Routes))).ToArray();
         var ok = results.All(r => r.Plan.Available == r.c.Available && r.Plan.ChecksFit == r.c.ChecksFit);

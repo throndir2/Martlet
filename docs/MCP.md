@@ -632,6 +632,27 @@ gets `key.expired`. Nothing leaves loopback and nothing is written to disk or
 Windows Credential Manager; it does not cover the desktop window,
 `api-keys.json` on a Linux host, a real model or a real LAN.
 
+`deep_thinking_role_selftest` (no arguments) rehearses the Deep thinking host
+role (`deep-thinking`, deploy/host/roles/deep-thinking) end to end with the
+production code: one real gateway (`lab-deep`: Kestrel, pinned TLS, a throwaway
+certificate) on `127.0.0.1` that publishes both of a host's Ollama roles the way
+`martlet-host` does, Thinking's `martlet.gateway.ollama-chat.v1` (the real
+`OllamaRelayWorker` for `gemma4:e4b`) and Deep thinking's own
+`martlet.gateway.deep-thinking-chat.v1` (`OllamaRelayWorker.DeepThinking` for
+`qwen3:8b`), each over its own fixture Ollama (canned text, NOT AI), and a
+simulated desktop that pairs and streams through the desktop's paired client
+(`HostChat.cs`). It runs `src\Martlet.NodeLinkCheck` (mode `deep-thinking`,
+`DeepThinkingRehearsal.cs`) and returns `{exitCode, report}` like
+`network_selftest`. Its steps: the host advertises both routes with their own
+paths and models and the same contract and fifteen-minute bound; a think on the
+Deep thinking route is held mid-answer while a reply streams on Thinking's
+route, and the reply finishes first (parallel, never queued); each request
+reached its own Ollama (the think with `"think":true`, its own model and a
+32,768-token context, the reply without Thinking steps); and the chat client
+refuses a route whose ID and path don't match. Nothing leaves loopback and
+nothing is written to disk or Windows Credential Manager; it does not cover
+`martlet-host` installing the role, a real Ollama or model, a GPU or a real LAN.
+
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
 the production code: two real gateways on 127.0.0.1 (pinned TLS, the real
@@ -1731,7 +1752,9 @@ route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
 `onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
 *loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
-`model`, `hostId`, an endpoint's `origin`, `ownKey` and `usesThinkingKey`
+`model`, `hostId`, `hostRoute` (a paired computer's route a think goes to:
+`martlet.gateway.deep-thinking-chat.v1` for its Deep thinking role, else its
+Ollama role's) and `hostRole` (true for the Deep thinking role), an endpoint's `origin`, `ownKey` and `usesThinkingKey`
 (never a key), `available` (and `parallel`, the same: a think always runs
 alongside the conversation), `checksFit` (a second model in Ollama on this PC,
 checked to fit beside Thinking's before each think) and `why` from the
@@ -1766,11 +1789,12 @@ with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
 the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
-for eleven setups (Same as Thinking with Thinking on this PC, on OpenRouter or
+for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
 another computer or in this PC's host service; a paired computer that does
-nothing else, also speaks, or also does Thinking), each `available` against
+nothing else, also speaks, or also does Thinking; that computer's Deep thinking
+role beside its Thinking, or with Thinking local), each `available` against
 `expected` with `checksFit` and its `why`.
 `parallel`: a think on a destination of its own (a second fixture endpoint
 stands in for the other machine) keeps working while three replies go to the
@@ -2221,7 +2245,10 @@ withdrawn or stopped) and `NearbyFirewall` (*Let my other computers reach this
 PC*, shown only when blocked: an administrator prompt, never part of
 verification).
 Home and host-dashboard steps have their buttons as `Step-<step>-<n>` (returned:
-the button's label and step, for example *Add Thinking: Add roles*), whether
+the button's label and step, for example *Add Thinking: Add roles*; the host
+dashboard's *Add roles* step offers every role in `HostRoles` that this PC's host
+service doesn't run yet, *Add Deep thinking* included, then *Remove* for each it
+runs), whether
 each is ticked as `StepState-<step>` (returned: *Host service: done*, *Pair your
 main PC: to do* or *Add roles: optional, not done*) and their detail line as
 `StepDetail-<step>` (status text). A step with more than two
@@ -2937,8 +2964,13 @@ down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
 `DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what
 Same as Thinking thinks with, or why Thinking's own model can't think here),
 each paired computer's
-`DeepThinkingHost-<host ID>` (*diva: Ollama runs gemma4:27b.*, *Thinks here
-(...)*, *Ollama isn't installed there...*) or `DeepThinkingHosts` when none is
+`DeepThinkingHost-<host ID>` (*diva: Its Deep thinking role runs qwen3-8b.*,
+*diva: Ollama runs gemma4:27b. Add the Deep thinking role ...*, *Thinks here
+(...)*, *Its Ollama (...) does Thinking for the conversation. Add the Deep
+thinking role there ...*) and, for a reachable computer without the role, its
+`DeepThinkingAddRole-<host ID>` button (returned: *Add Deep thinking on diva*;
+clicking it installs the role in a run window and then thinks there, so it
+needs `--allow-ui-effects`), or `DeepThinkingHosts` when none is
 paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
 `DeepThinkingLocalFit` (whether the model in `DeepThinkingLocalModel` fits
 beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
@@ -2948,7 +2980,8 @@ beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
 Ollama on this PC to itself ...*) and `DeepThinkingKeyStatus` (what the key
 field will do; never a key or typed base URL). `DeepThinkingTurnOff` (Off;
 saves the reply settings), `DeepThinkingUseSame`, `DeepThinkingUseHost-<host
-ID>` (checks that computer and saves its Ollama route), `DeepThinkingUseLocal`
+ID>` (checks that computer and saves its Deep thinking role's route, else its
+Ollama route), `DeepThinkingUseLocal`
 (refuses Thinking's own model) and `DeepThinkingSaveCloud` (with
 `DeepThinkingProvider`, `DeepThinkingBaseUrl`, `DeepThinkingModel`,
 `DeepThinkingKey` and `DeepThinkingConsent`) save `deep-thinking.json` (and turn

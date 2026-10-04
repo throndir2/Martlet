@@ -81,4 +81,61 @@ public sealed class HostRolesTests
         Assert.Equal(LipSyncHandler.Loudness, NetworkMap.LipSync(avatar with { LipSync = AvatarLipSync.Loudness }));
         Assert.Equal(LipSyncHandler.ThisPc, NetworkMap.LipSync(avatar with { RemoteHost = null }));
     }
+
+    private static string RolesDirectory()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            if (Directory.Exists(Path.Combine(directory.FullName, "deploy", "host", "roles")))
+                return Path.Combine(directory.FullName, "deploy", "host", "roles");
+        throw new DirectoryNotFoundException("deploy/host/roles wasn't found above the test output.");
+    }
+
+    [Fact]
+    public void Every_routed_host_role_is_listed_where_roles_are_added()
+    {
+        // HostRoles feeds the host dashboard's Add roles step, the Devices map's Install commands and Martlet hosts' role cards.
+        var roles = Directory.GetDirectories(RolesDirectory())
+            .Select(d => (Kind: Path.GetFileName(d), Conf: File.ReadAllLines(Path.Combine(d, "role.conf"))))
+            .ToArray();
+        var routed = roles.Where(r => r.Conf.Any(line => line.StartsWith("gateway_kind=", StringComparison.Ordinal))).ToArray();
+        Assert.Equal(routed.Select(r => r.Kind).Order(StringComparer.Ordinal), HostRoles.All.Select(r => r.Kind).Order(StringComparer.Ordinal));
+        Assert.All(routed, r => Assert.Contains("gateway_kind=" + r.Kind, r.Conf));
+        Assert.Contains(HostRoles.All, r => r.Kind == HostRoles.DeepThinking && r.Name == "Deep thinking" &&
+            r.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId);
+        // The one route-less role, Home Assistant, is set up from Smart home on a Linux host (Docker Desktop can't run it).
+        Assert.Equal([HomeAssistantHosts.Role], roles.Except(routed).Select(r => r.Kind));
+        Assert.All(HostRoles.All, r => Assert.NotNull(Martlet.Core.Platforms.PlatformCatalog.EngineForHostRole(r.Kind)));
+        Assert.Equal(HostRoles.All.Count, HostRoles.All.Select(r => r.RouteId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(HostRoles.DeepThinking, HostRoles.ForRoute(Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId)?.Kind);
+    }
+
+    [Fact]
+    public void Map_lists_a_hosts_Deep_thinking_role_and_offers_it_where_it_is_missing()
+    {
+        var hosts = new[]
+        {
+            new PairedHost { Pairing = Remote("gpu-a", "192.168.1.20"), Method = HostSetupMethod.SshDocker, SshTarget = "me@gpu-a" },
+            new PairedHost { Pairing = Remote("gpu-b", "192.168.1.30") }
+        };
+        var checks = new Dictionary<string, HostCheck>
+        {
+            ["gpu-a"] = new(true, "Reachable.", new Dictionary<string, string> { ["ollama"] = "gemma4-e4b", ["deep-thinking"] = "qwen3-8b" }),
+            ["gpu-b"] = new(true, "Reachable.", new Dictionary<string, string>())
+        };
+        NetworkNode Host(string id, string? deepThinkingHost) =>
+            NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, Hosts: hosts,
+                DeepThinkingHost: deepThinkingHost)).Single(n => n.Id == "host:" + id);
+
+        var a = Host("gpu-a", null);
+        Assert.Contains(a.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Ready (qwen3-8b). Choose it in Companion > Deep thinking to use it.");
+        Assert.Contains(a.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking) &&
+            c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
+        Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/deep-thinking");
+        Assert.DoesNotContain(a.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-a/deep-thinking");
+        var thinking = Host("gpu-a", "gpu-a");
+        Assert.Contains(thinking.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Thinks things over in the background for this PC (qwen3-8b).");
+        Assert.DoesNotContain(thinking.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking));
+        Assert.Contains(Host("gpu-b", null).Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/deep-thinking" &&
+            c.Label == "Install Deep thinking");
+    }
 }

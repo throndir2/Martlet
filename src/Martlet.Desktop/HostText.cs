@@ -41,8 +41,10 @@ internal sealed class HostTextClient : IHostTextClient
     {
         using var connection = Connect(target);
         var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
-        var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.OllamaChatRouteId && r.ModelId == model.UpstreamModelId) ??
-            throw Failed("reply", ProviderFailureCode.ModelNotFound, $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
+        var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == model.UpstreamModelId) ??
+            throw Failed("reply", ProviderFailureCode.ModelNotFound, target.RouteId == HostRoute.DeepThinkingRouteId
+                ? $"the host's Deep thinking role doesn't run model {model.UpstreamModelId}"
+                : $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();
         // A host older than background thinks takes at most 4,096 output tokens and a minute a request (its route says how long):
         // a think there is held to that, and the host should be updated.

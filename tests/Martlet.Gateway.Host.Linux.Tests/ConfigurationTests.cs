@@ -129,6 +129,14 @@ public sealed class ConfigurationTests
             "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"llama3.2:3b\"}]")).Roles);
         Assert.IsType<Martlet.Gateway.Ollama.OllamaRelayWorker>(NativeHostPlatform.RoleWorker(ollama));
         Assert.Throws<HostInputException>(() => NativeHostPlatform.RoleWorker(ollama with { Model = "Not/A:Valid:Tag" }));
+        // The deep-thinking role is a second Ollama of its own beside the conversation model's, on Deep thinking's route.
+        var both = HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\"}," +
+            "{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\"}]")).Roles;
+        var routes = both.Select(r => ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(r)).Route).ToArray();
+        Assert.Equal([Martlet.Core.Settings.SelfHostSetup.OllamaRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId],
+            routes.Select(r => r.RouteId));
+        Assert.Equal(["gemma4-e4b", "qwen3-8b"], routes.Select(r => r.ModelId));
         var stt = Assert.Single(HostConfiguration.Parse(RoleConfig(
             "[{\"kind\":\"stt\",\"endpoint\":\"http://127.0.0.1:8178/\",\"model\":\"large-v3-turbo\"}]")).Roles);
         Assert.IsType<Martlet.Gateway.Stt.SttRelayWorker>(NativeHostPlatform.RoleWorker(stt));

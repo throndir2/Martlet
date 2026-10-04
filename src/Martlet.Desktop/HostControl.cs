@@ -59,6 +59,7 @@ internal static class HostRoles
 {
     internal const string Audio2Face = "audio2face";
     internal const string Ollama = "ollama";
+    internal const string DeepThinking = "deep-thinking";
     internal const string Stt = "stt";
     internal const string F5 = "f5";
     internal const string Xtts = "xtts";
@@ -94,6 +95,10 @@ internal static class HostRoles
         new(Ollama, "Thinks", "Thinking", "Docker; an NVIDIA GPU is recommended",
             HostRoute.OllamaChatRouteId, "thinking",
             "Runs the conversation model on that host. Your messages and recent conversation go there."),
+        new(DeepThinking, "Deep thinking", "Deep thinking", "Docker; an NVIDIA GPU is recommended",
+            HostRoute.DeepThinkingRouteId, "deep thinking",
+            "Thinks things over in the background on that host with a model of its own, beside Thinking's, while the " +
+            "conversation carries on. A task Martlet hands it and the conversation so far go there."),
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
             "Turns speech into text on that host. Your recorded speech goes there and is not stored."),

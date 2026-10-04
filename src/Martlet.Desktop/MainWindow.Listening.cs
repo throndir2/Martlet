@@ -57,6 +57,8 @@ public partial class MainWindow
         if (ThisPcHost() is { } thisPc && hostChecks.GetValueOrDefault(thisPc.HostId)?.Offers is { } offers)
         {
             if (offers.GetValueOrDefault(HostRoles.Ollama) is { } model) loads.Add(new($"Ollama {model}", ListeningAdvisor.OllamaModelGb(model)));
+            if (offers.GetValueOrDefault(HostRoles.DeepThinking) is { } deep)
+                loads.Add(new($"Deep thinking's {deep}", ListeningAdvisor.OllamaModelGb(deep)));
 
 
             if (offers.ContainsKey(HostRoles.Xtts)) loads.Add(new("the XTTS voice", 3));
