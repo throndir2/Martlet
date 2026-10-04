@@ -1399,13 +1399,15 @@ or `sensitive` to override the saved choice, `audio` default true, absolute
 and absolute `martletDirectory` for the sherpa-onnx runtime, which the script
 fills with this checkout's Desktop build). It runs the production
 `UtteranceFilter` and `BargeInPolicy` on `samples` (up to 64 of `text` with
-optional `voicedMs`, `meanProbability`, `minimumProbability`,
+optional `voicedMs`, `speechMs` (how long the voice went on; `voicedMs` when
+absent), `meanProbability`, `minimumProbability`,
 `noSpeechProbability`, `averageLogProbability`, `engine`, `afterQuestion`,
 `persona`, `playback` `reply` or `song`, and `expectKeep`/`expectInterrupt`),
 by default a fixed set with the outcome Normal must give (fillers, laughter,
 sound tags, "Thank you." from noise or said clearly, subtitle credits, lone
-words, short answers, stop words, backchannels, too many words for the voice,
-a whisper loop, Martlet's name, a song that only stops when asked, and the
+words, short answers, stop words, backchannels, too many words for the speech,
+"I'm gonna make it public." with little loud voice in a second of speech, a
+whisper loop, Martlet's name, a song that only stops when asked, and the
 "Yeah." Parakeet and whisper.cpp wrote for coughs on this PC with their
 measured evidence; another sensitivity only reports what it makes of them).
 Each sample returns `keep`, `kind`, `Reason`, `Words`, `shown` (the talk
@@ -1419,14 +1421,18 @@ Parakeet downloaded, `audio` runs fixtures through the real local
 speech-to-text path (`ParakeetEngine`, the desktop's model): "Stop!", "Wait,
 hold on a second.", "Can you tell me more about that?", "Yes." (after a
 question), "Yeah.", "Mmmmmm.", "Hmm." and "Ha ha ha ha!" said by a Windows
-voice (System.Speech, rendered to memory, never played), plus a hum, two
+voice (System.Speech, rendered to memory, never played), "I'm gonna make it
+public." said quietly over a fan's hum (`quiet-room`: only about half of it is
+as loud as a voice must be to start), plus a hum, two
 coughs, a breath, typing, music and noise, each after 0.3 s and before 1 s of
 faint noise. Per fixture: `voicedMs` (loud frames by the production
-voice-activity detector), Parakeet's `transcript`, `evidence` and
+voice-activity detector) and `speechMs` (from its onset to the silence after
+it), Parakeet's `transcript`, `evidence` and
 `transcribeMs`, the filter's verdict, and `bargeIn`: the production
 `BargeInGate` fed 20 ms at a time as if Martlet were speaking, each quick check
 transcribing the stretch so far (no other check starts while one runs, as in
-the listener) with its `quick` transcripts, probabilities and milliseconds,
+the listener) with its `quick` transcripts, probabilities, voice and speech
+(`VoicedMs`, `SpeechMs`) and milliseconds,
 `interrupted`, `reason` and `afterMs` (from the start of the voice to the
 decision). `stopDelayMs` summarizes the fixtures that stopped Martlet. `ok`
 needs every expectation met: words kept, non-words and noise dropped, stop
