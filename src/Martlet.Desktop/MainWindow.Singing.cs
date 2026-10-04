@@ -35,9 +35,10 @@ public partial class MainWindow
 
     /// <summary>Whether Singing needs a graphics card of its own, in words (the GPU chip's tip and the card's note).</summary>
     internal const string SingingGpuNote =
-        "It doesn't need a graphics card of its own. It shares one with the voice and listening, using about 7 GB only while a " +
-        "song is being made (one stage at a time) and freeing it after five idle minutes. While a song is made it competes with " +
-        "them and with a local Thinking model, so a second computer's card is best when this one is busy.";
+        "It doesn't need a graphics card of its own. It shares one with the voice and listening, using 5-7 GB of it only while a " +
+        "song is being made (one stage at a time) and freeing it when idle. While a song is made it competes with them and with " +
+        "a local Thinking model (replies stay prompt, a song gets a little slower), so a second computer's card is best when " +
+        "this one is busy.";
 
     private string? singingHost;
     private string? singingPendingHost;

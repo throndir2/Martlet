@@ -33,6 +33,50 @@ mostly loading from disk; on this PC it is slow because system memory is short. 
 changes (planner on the PyTorch backend, full-precision model spilling into shared memory beside 5.6 GB of other roles),
 took 705 s for 30 s.
 
+**In the host role, set up through Martlet** (Docker Desktop on the same RTX 4070 PC, its WSL VM 15.6 GB of memory shared
+with the speaking, listening and lip-sync roles, which hold about 7 GB of the card; MCP `singing_check` through the host's
+own gateway with the Jane Doe voice from the shared voice list; seconds):
+
+| Song | Total | Loading | Music | Lyric timestamps | Separating | Voice match (loading, pitch, converting) | Mixing + aligning | Worker peak VRAM |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| SoulX-Singer, 30 s, new worker | 110 | 23.6 | 11.4 | 5.6 | 3.3 | 45.9 (18.0, 14.2, 9.2) | 15.0 | 5.1 GB |
+| SoulX-Singer, 30 s, next song, new worker | 95 | 26.1 | 18.3 | 5.5 | 2.2 | 35.2 (17.8, 3.2, 9.5) | 2.5 | 5.1 GB |
+| SoulX-Singer, 30 s, music model kept, Chatterbox speaking meanwhile | **60** | 0 | 11.5 | 3.7 | 1.6 | 40.2 (18.3, 2.6, 14.0) | 0.8 | 5.2 GB |
+| VevoSing, 30 s, new worker | 109 | 27.1 | 17.4 | 5.6 | 2.3 | 49.0 (21.5 loading, 11.9 converting) | 2.6 | 6.8 GB |
+| VevoSing, 30 s, next song | 104 | 28.0 | 15.4 | 2.2 | 2.4 | 46.0 (19.6, 10.3) | 3.0 | 6.8 GB |
+
+The music model loads with int8 weights there (the card never has 11 GB free beside the other roles). The VM is too short of
+memory to keep the models between songs, so the worker usually ends after each song and the next one loads again (about
+25 s plus 18-21 s for the voice match). When the card had room for the music model to stay (the other roles were holding
+4.4 GB rather than 7 GB), the next song took 60 s. Setting the role up there through Companion › Voice › Singing took
+25 minutes for the first attempt, which stopped at Whisper base (fixed since: the image left a root-owned folder in the
+models volume), then 9 minutes to finish (it rebuilt the image and checked the files already downloaded). Add VevoSing
+there took 14 minutes, including about 4 minutes rebuilding the image. Downloads ran at about 15 MB/s. The models volume
+holds 15.9 GB (SoulX-Singer) or 20.3 GB (with VevoSing), and the image 14.7 GB. On Windows, Docker Desktop's disk image
+(on C: by default) only grows, so leave room: each image rebuild added about 4 GB of build cache there, and a rebuild
+after `docker builder prune` downloads PyTorch again (22 minutes).
+
+## Does Singing need its own graphics card?
+
+No. It shares a card with the speaking, listening and lip-sync roles. The graphics card is used only while a song is being
+made, one stage at a time: the music model with int8 weights peaks at about 5 GB, SoulX-Singer at 2.1 GB, VevoSing at
+6.8 GB. Five idle minutes later (or right after the song when system memory is short) the worker ends and frees the
+card. It needs an NVIDIA card with 6 GB or more and about 5-7 GB free while a song is made. While a song is made, it
+competes with the speaking and listening roles and with a local Thinking model.
+
+Measured on the RTX 4070 (12 GB) beside Chatterbox, Whisper large-v3-turbo and Audio2Face:
+
+- **Nothing failed.** With the other roles holding 7.0 GB, a song took the card to 11.7 GB of
+  12.3 GB. Windows spilled 0.2-0.36 GB into shared system memory, which is slower than the card's own memory. With them
+  holding 4.4-5.3 GB, the card peaked at 10.3 GB and the spill stayed under 0.1 GB.
+- **Chatterbox speaking while a song was made** (a reply of about 5 s of audio every 5 s: 11 while the song was being
+  made, 11 after): time to the first audio stayed 0.42-0.80 s (0.48-0.80 s with no song). Whole replies took 2.5-4.6 s
+  instead of 2.3-3.3 s: up to 1.5 s longer when a reply overlapped the voice match. The song's voice conversion took
+  14.0 s instead of 9.3 s. Spoken replies stay prompt; a song is a little slower.
+- A local Thinking model on the same card makes this tighter. With a few GB less free, more spills into shared memory
+  and everything slows. A second computer's card (pick it in the card's pills) is best when this one is busy, and Singing
+  can run on a computer that does nothing else.
+
 ## Why this pipeline
 
 A feasibility spike on 2026-10-03 (RTX 4070 12 GB, shared with other running models) compared the options before the
@@ -102,7 +146,11 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
     available; VevoSing's process ends after each song.
   - `MARTLET_SINGING_KEEP_MODELS` (auto, keep, release) overrides the system-memory rules. The worker is **restarted** for
     the next song if it dies (the song it was making fails with that reason), and **exits after five idle minutes**
-    (`MARTLET_SINGING_IDLE_SECONDS`), which frees the card and system memory for the speaking and listening roles. ACE-Step's
+    (`MARTLET_SINGING_IDLE_SECONDS`), which frees the card and system memory for the speaking and listening roles. When
+    system memory was too short to keep the music model after a song, the worker ends right after that song (a released
+    model doesn't always give its memory back, and loading it again beside it once ran the system out of memory), so the
+    next song starts a new worker; the worker and voice-match processes end without the interpreter's teardown, which
+    could abort and leave a 4 GB core dump (WSL keeps them under `%TEMP%\wsl-crashes` on Windows). ACE-Step's
     own fallback to a CPU decode when the card looks full is not used.
 - **Stages** (reported as progress): loading, writing the music (ACE-Step 1.5 turbo, 8 steps, or SFT, 50 steps for High
   quality; its 0.6B planner, which rewrites the caption and plans tempo, key and audio codes, runs only for a request with
@@ -200,8 +248,10 @@ it answers without Singing), `SongClient.SpeakingVoiceId(dataDirectory)` is the 
 - `tests/Martlet.Gateway.Tests/SongRelayTests.cs` makes a song through a real gateway and paired client against a
   controlled service: voice resolution (and the one-time recording upload), progress, paging, failures, cancellation and
   the loopback-only relay. `tests/Martlet.Core.Tests/SongContractsTests.cs` checks the contract and the fixture.
-- MCP `singing_check` makes a song through the production path (fixture service, or a live one on loopback);
-  `singing_status` reads a live service. See [MCP](MCP.md).
+- MCP `singing_check` makes a song through the production path (fixture service, or a live one on loopback, or with
+  `dataDirectory` a real paired host through its own gateway, as the desktop does); `singing_status` reads a live service,
+  and with a paired data directory each host's singing through its gateway and this PC's Docker side of the role (a setup
+  in progress included). See [MCP](MCP.md).
 
 ## Singing in conversation
 
