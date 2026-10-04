@@ -141,18 +141,22 @@ route's `engine`.
   minutes per sentence, longer than the 90 s request bound, so real speech
   through the gateway was not run on CPU.
 
-- 2026-10-04, RTX 4070 12 GB beside the resident host roles, with the
-  voicebench Dia bench (`scripts/voice-bench`, `Install-VoiceBench.ps1 -Dia`:
-  this worker's own `DiaEngine` and prompts with the pinned source, weights and
-  codec, float16, never the host role): loading added about 3.7 GB, and with
-  Gemma 4 E2B kept loaded in Ollama by another client the card ran out while
-  generating, so Windows moved memory to system RAM and the first 3 s piece took
-  15 minutes. Chatterbox Turbo on the same card started each piece in
-  421-513 ms ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)).
-  Dia needs a card with about 6 GB free beside everything else.
+- 2026-10-04, RTX 4070 12 GB, with the voicebench Dia bench
+  (`scripts/voice-bench`, `Install-VoiceBench.ps1 -Dia`: this worker's own
+  `DiaEngine` and prompts with the pinned source, weights and codec, float16,
+  Windows, no `torch.compile`; never the host role). **Alone on the card**
+  (Ollama stopped, about 1 GB in use): loaded in 20 s, warm-up 22.6 s, 9.8 GB at
+  its peak; three runs each, the first audio is the whole piece: a 3 s piece in
+  17.0 s, a 3.5 s sentence in 19.5 s, the sigh line (5 s) in 28.2 s, the laugh
+  line (5.8 s) in 38.2 s and an 11 s piece in 60.4 s, about 5.6x slower than
+  real time, with the graphics card busy only about 30% of the time. Chatterbox
+  Turbo, alone on the same card, started every piece in 417-560 ms
+  ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)).
+  Beside the resident roles and a model in Ollama, Dia ran out of graphics
+  memory and its first 3 s piece took 15 minutes.
 
-**NOT RUN:** NVIDIA GPU latency on a card with room for Dia (see above),
-`martlet-host add dia` on a
+**NOT RUN:** Dia in the host role's own Linux image on a GPU (the bench ran
+the same worker code on Windows), `martlet-host add dia` on a
 GPU host, live desktop conversation playback through Dia, and a listening
 review of likeness and of how each cue sounds (no one listened to the output;
 Whisper cannot hear laughs or sighs).
