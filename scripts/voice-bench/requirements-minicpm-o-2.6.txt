@@ -1,0 +1,13 @@
+# MiniCPM-o 2.6 through its own remote code (voicebench hf:minicpm-o-2.6). The model card pins transformers 4.44.2; its
+# modeling code imports vector-quantize-pytorch and vocos (speech output) even when that isn't loaded.
+# Installed into its own environment with: Install-VoiceBench.ps1 -HfModels minicpm-o-2.6
+transformers==4.44.2
+accelerate
+bitsandbytes
+vector-quantize-pytorch==1.18.5
+vocos==0.1.0
+librosa
+pillow
+soundfile
+soxr
+numpy<2.3
