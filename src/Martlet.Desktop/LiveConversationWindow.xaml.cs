@@ -2150,7 +2150,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 MemoryCaptureKind.Remember => "Remembered: ",
                 MemoryCaptureKind.Update => "Updated memory: ",
                 _ => "Forgot: "
-            } + change.Content));
+            } + change.Content + (change.Person is { } person ? $" ({person})" : "")));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });

@@ -131,13 +131,7 @@ internal static partial class VoiceNaming
     {
         text.Append("Martlet's own names (the companion's, never one of the people's): ")
             .Append(string.Join(", ", naming.Companion.Names.Select(VoicePromptContext.Sanitize))).Append('\n');
-        text.Append("Voices heard in the latest message:\n");
-        foreach (var voice in naming.Heard.Known.DistinctBy(v => v.Id))
-        {
-            AppendVoice(text, voice);
-            if (ReferenceEquals(voice, naming.Heard.Speaker?.Voice)) text.Append(" (the one speaking to Martlet)");
-            text.Append('\n');
-        }
+        AppendVoices(text, naming.Heard);
         if (naming.Others.Count == 0) return;
         text.Append("Other voices Martlet knows (not heard in this message; only for SAME lines):\n");
         foreach (var voice in naming.Others)
@@ -146,6 +140,22 @@ internal static partial class VoiceNaming
             text.Append('\n');
         }
     }
+
+    /// <summary>The voices heard in the message: each tag with every name it goes by, and which one spoke to Martlet.</summary>
+    internal static void AppendVoices(StringBuilder text, HeardVoices heard)
+    {
+        text.Append("Voices heard in the latest message:\n");
+        foreach (var voice in heard.Known.DistinctBy(v => v.Id))
+        {
+            AppendVoice(text, voice);
+            if (ReferenceEquals(voice, heard.Speaker?.Voice)) text.Append(" (the one speaking to Martlet)");
+            text.Append('\n');
+        }
+    }
+
+    /// <summary>The tags of the voices heard in the message (V3) and their voice IDs, which the answer's lines refer to.</summary>
+    internal static IReadOnlyDictionary<string, string> Voices(HeardVoices heard) =>
+        heard.Known.DistinctBy(v => v.Id).ToDictionary(v => v.Tag, v => v.Id, StringComparer.OrdinalIgnoreCase);
 
     private static void AppendVoice(StringBuilder text, KnownVoice voice) =>
         text.Append(voice.Tag).Append(": ").Append(voice.Named ? "goes by " + string.Join(", ",

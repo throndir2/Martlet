@@ -329,6 +329,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_status", "Read what Martlet remembers, and whose, from a data directory: whether memory is on and where it is kept " +
+            "(settings.json), then the memory store's facts counted by where they came from (typed, conversation), how many expire, and " +
+            "whose they are: everyone's, each voice they belong to by its tag from voices.json (V3, whether it is named or the owner's) " +
+            "and those of forgotten voices. Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks the " +
+            "store); contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
@@ -729,6 +737,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
+                "memory_status" => await MemoryStatusAsync(arguments, cancellation),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
@@ -1683,6 +1692,93 @@ internal sealed class McpServer(DesktopAutomation desktop)
             byComputer = state.Observed.Values.GroupBy(s => s.By, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
                 .Select(g => new { device = g.Key, facts = g.Count() }).ToArray(),
             forgotten = state.Forgotten.Count
+        };
+    }
+
+    /// <summary>What Martlet remembers and whose, from a data directory: the memory setting in settings.json, then the store's
+    /// authoritative file (".martlet-memory.v1.json", the name Martlet.Memory's MemoryStore uses) read as JSON without opening or
+    /// locking the store, and voices.json for the voices facts belong to. Counts and voice tags only: never a fact's text, a
+    /// name, a voice ID or a path.</summary>
+    private static async Task<object> MemoryStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var loaded = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync(cancellation);
+        var settings = loaded.Settings?.Memory;
+        var memory = loaded.State switch
+        {
+            Martlet.Core.Settings.SettingsLoadState.FirstRun => "not set up",
+            Martlet.Core.Settings.SettingsLoadState.Loaded when settings is null => "on (default)",
+            Martlet.Core.Settings.SettingsLoadState.Loaded => settings!.Enabled ? "on" : "off",
+            _ => "unreadable"
+        };
+        var storage = settings?.StoragePolicy == Martlet.Core.Settings.MemoryStoragePolicy.CustomLocalDirectory ? "custom folder" : "Martlet folder";
+        string folder;
+        try { folder = (settings ?? Martlet.Core.Settings.MemorySettings.Create()).ResolveDirectory(directory); }
+        catch (Martlet.Core.Contracts.ContractException) { return new { memory, storage, state = "unreadable" }; }
+
+        var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
+        string voiceList;
+        var voicesPath = Path.Combine(directory, "voices.json");
+        try
+        {
+            if (File.Exists(voicesPath))
+            {
+                roster = Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(voicesPath));
+                voiceList = "loaded";
+            }
+            else voiceList = "none";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            voiceList = "unreadable";
+        }
+
+        var path = Path.Combine(folder, ".martlet-memory.v1.json");
+        if (!File.Exists(path)) return new { memory, storage, state = "none", voiceList };
+        List<(string? Voice, string? Source, string? Retention)> facts = [];
+        try
+        {
+            byte[] bytes;
+            await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                if (stream.Length > 8 * 1024 * 1024) return new { memory, storage, state = "unreadable", voiceList };
+                bytes = new byte[stream.Length];
+                await stream.ReadExactlyAsync(bytes, cancellation);
+            }
+            using var document = JsonDocument.Parse(bytes);
+            foreach (var fact in document.RootElement.GetProperty("facts").EnumerateArray())
+            {
+                string? Text(params string[] names)
+                {
+                    var element = fact;
+                    foreach (var name in names)
+                        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element)) return null;
+                    return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+                }
+                facts.Add((Text("voice_id"), Text("created_from", "source_kind"), Text("retention", "kind")));
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
+            InvalidOperationException)
+        {
+            return new { memory, storage, state = "unreadable", voiceList };
+        }
+        var owned = facts.Where(f => f.Voice is not null).Select(f => roster.Resolve(f.Voice!)).ToArray();
+        return new
+        {
+            memory, storage, state = "loaded", voiceList,
+            facts = facts.Count,
+            typed = facts.Count(f => f.Source is "user_entry" or "user_reviewed_import"),
+            fromConversation = facts.Count(f => f.Source == "conversation"),
+            expiring = facts.Count(f => f.Retention == "expires_at"),
+            whose = new
+            {
+                everyone = facts.Count(f => f.Voice is null),
+                voices = owned.OfType<Martlet.Core.Speakers.KnownVoice>().GroupBy(v => v.Id, StringComparer.Ordinal)
+                    .OrderBy(g => g.First().Number)
+                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, facts = g.Count() }).ToArray(),
+                forgottenVoices = owned.Count(v => v is null)
+            }
         };
     }
 

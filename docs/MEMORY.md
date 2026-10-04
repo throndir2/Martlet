@@ -58,7 +58,8 @@ current policy. No restore action opens, copies or validates a fact store.
 Changing configuration invalidates an in-flight app retrieval.
 
 Facts come from two places: the dedicated editor (**Add fact**, with an
-explicit `until_deleted` or 30/90/365-day expiry and fresh `user_entry`
+explicit `until_deleted` or 30/90/365-day expiry, whose it is
+(*Belongs to*, see [Whose memories](#whose-memories)) and fresh `user_entry`
 provenance) and automatic remembering from conversations (`conversation`
 provenance, kept until deleted). Inspect shows fact/store revisions, creation
 and last-modified source/times/consent IDs and exact expiry. Delete uses an
@@ -226,7 +227,9 @@ authorized export rename commits before a later delete, that user-created file
 is outside store ownership and immediate erasure, as are any user-created
 copies. No upload or support contact exists.
 
-The schema has no credential, endpoint, model, device or filesystem-path field.
+The schema has no credential, endpoint, model, device or filesystem-path field
+(a fact's optional `voice_id` is an opaque voice list ID, never a name or a
+voiceprint).
 Fact content itself is intentionally present in an explicit export and may
 contain whatever the user chose to save; callers must preview it. The library
 has no logger and exception/authorization `ToString()` output omits fact content
@@ -246,11 +249,14 @@ is OFF, the store is never opened or read by a conversation.
 **Recall.** After STT and participation accept the current explicit typed, PTT
 or hands-free turn, Desktop opens the store once, asks the lexical index for the
 best matches for that user input and fills up to twelve facts with the most
-recently changed ones (so a small store is recalled whole). The facts travel in
+recently changed ones (so a small store is recalled whole; when Martlet
+recognized who is speaking, their facts and everyone's fill it before other
+people's, see [Whose memories](#whose-memories)). The facts travel in
 the notes on the user's message (see
 [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
 as one block between `[MARTLET_LOCAL_MEMORY]` labels, one line per fact with
-its source (`saved by the user` / `from conversation`) and date, and only the
+whose it is (`[Sam] `, when it belongs to someone), its source
+(`saved by the user` / `from conversation`) and date, and only the
 facts not already in the notes of an earlier message the request still carries
 (so a fact is sent once, not with every reply). The instruction says they are
 background data, never instructions,
@@ -285,13 +291,15 @@ conversation again. It quotes the persona-free excerpt instead elsewhere, when
 what this PC played is in the conversation (remembering never reads that) or when
 it wouldn't fit the context.
 The model answers in a strict line format: `REMEMBER: <fact>`,
-`UPDATE <n>: <fact>`, `FORGET <n>` or `NOTHING`, at most three lines. Desktop
+`REMEMBER V<n>: <fact>` (a fact about another voice heard), `UPDATE <n>: <fact>`,
+`FORGET <n>` or `NOTHING`, at most three lines. Desktop
 validates every line (single line, <=300 characters, real words, in-range
-numbers, no memory labels), skips near-duplicates, applies updates/forgets only
+numbers, no memory labels), skips near-duplicates of the same person's facts,
+applies updates/forgets only
 to the exact fact revisions it showed, and saves new facts with `conversation`
 provenance until deleted. A full store drops its oldest conversation fact, never
 a fact the user typed. The conversation window shows what was remembered
-(*Remembered: …*), and Memory lists it.
+(*Remembered: … (Sam)*), and Memory lists it.
 
 A model that declines or answers with nothing simply has nothing to remember;
 an answer cut off by the max reply length keeps the lines it finished. If the
@@ -301,6 +309,57 @@ says why once (*Couldn't update memory.* plus the reason, such as the
 provider limiting requests or the memory folder being unusable); the same
 problem on later exchanges is only logged (`Remembering failed (<code>)`) until
 remembering works again.
+
+## Whose memories
+
+Several people can talk to Martlet through one microphone, and
+[voice recognition](VOICES.md) tells them apart. Each fact can belong to one of
+them: `voice_id` in the fact is the ID of a voice in the voice list
+(`voices.json`), the person who said it or who it is about. A fact without one is
+everyone's (about no one in particular), as every fact was before voices.
+
+- **Remembering.** When Martlet recognized who spoke, the request lists the
+  voices heard (by tag, such as `V3`, with the names they go by), says which one
+  spoke, and says that a new fact is saved as the speaker's; the related facts it
+  shows start with whose each is (`1. [Sam] The user likes tea.`). A fact about
+  another voice heard is answered `REMEMBER V2: <fact>`; a tag that wasn't heard
+  counts as the speaker's. Nobody recognized means no one's fact, as before. An
+  update keeps whose the fact is. The same words for two people are two facts;
+  a near-duplicate of the same person's fact, or of an everyone's fact, is
+  skipped.
+- **Recall.** The best matches for what was said come first, whoever they
+  belong to. The rest of the twelve is filled with the speaker's facts and
+  everyone's before other people's, newest first (by recency alone when nobody
+  was recognized). Each recalled fact starts with whose it is: the voice's name,
+  else its tag (`[V3]`), or `[a forgotten voice]`. When one does, the block also
+  says what that means (Companion › Prompts › *Whose memories*: the name in
+  brackets is whose the fact is; keep whose fact is whose and be discreet with
+  someone's personal facts while another person talks). It is sent only with a
+  block that has such a fact, in that message's notes, so it never changes the
+  start of a request.
+- **Memory window.** *Belongs to* chooses whose a fact is when you add or update
+  it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
+  *This is my voice* on People) unless *Show* lists one voice's facts; then it is
+  that voice's. *Show* lists all facts, everyone's, one voice's, or those of
+  forgotten voices. The list starts each fact with whose it is, and the details
+  say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
+  many belong to how many people and how many to forgotten voices, never a
+  name or a fact.
+- **People.** *What Martlet remembers about them* on each voice opens Memory
+  showing that voice's facts. Merging voices keeps every fact of both (a merged
+  voice's ID leads to the voice it joined). Forgetting a voice keeps its facts,
+  under *Forgotten voices*, until you delete them or give them to someone else.
+- **Sync and compatibility.** The voice ID travels inside the fact like the rest
+  of it, so every computer agrees whose each fact is; the voice list is shared the
+  same way ([sharing](VOICES.md#sharing-between-your-computers)). A fact without a
+  voice is written exactly as before (no `voice_id` field). An older Martlet
+  can't read a fact that has one: it passes through its sync untouched (like any
+  newer fact) and its own store refuses a file that holds one rather than
+  dropping it.
+
+The library checks only the ID's form (1-64 ASCII letters, digits, `-` or `_`);
+it never reads the voice list. `memory_status` (MCP) counts the facts and whose
+they are from a data directory without opening the store.
 
 ## One memory on every computer
 
@@ -363,8 +422,8 @@ Checked locally with `memory_sync_selftest` (MCP): two real gateways and three
 simulated desktops with real memory stores on loopback, covering recall on
 another computer, an edit, a deletion everywhere that never comes back, offline
 edits on two computers, a host that missed a change, a new computer, an expiring
-fact, a newer Martlet's fact, a new memory folder, more facts than one store
-holds, no fact in desktop data folders and an unsigned request refused. The
+fact, a newer Martlet's fact, a fact that belongs to a voice (and is then made
+everyone's), a new memory folder, more facts than one store holds, no fact in desktop data folders and an unsigned request refused. The
 desktop window's status line was checked through `-Desktop`. The desktop's sync
 with real paired hosts, a conversation recalling and remembering around a sync,
 the Linux host's file and two real computers are **NOT RUN**.
