@@ -17,6 +17,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved microphone and speakers, or the Windows defaults when none were saved in Audio setup.</summary>
     internal AudioSettings Audio { get; }
     internal PersonaProfile? Persona { get; }
+    /// <summary>The names the companion itself goes by (Martlet and every persona's), never learned as a voice's name. Worked
+    /// out on first use, off the reply's path.</summary>
+    internal Martlet.Core.Speakers.CompanionNames CompanionNames => companionNames.Value;
+    private readonly Lazy<Martlet.Core.Speakers.CompanionNames> companionNames;
     internal MemorySettings? Memory { get; }
     /// <summary>The saved reply generation settings (Companion > Replies); null keeps every model default.</summary>
     internal GenerationSettings? Generation { get; }
@@ -117,6 +121,8 @@ internal sealed class LiveConversationConfiguration
         Routes = Array.AsReadOnly(settings.Setup!.Routes.ToArray());
         Audio = settings.Audio ?? WindowsDefaultAudio;
         Persona = settings.Companion?.ActivePersona;
+        var personas = settings.Companion?.Personas;
+        companionNames = new(() => Martlet.Core.Speakers.CompanionNames.From(personas?.Select(p => p.Name), personas?.Select(p => p.Text)));
         Memory = settings.Memory;
         Generation = settings.Generation;
         Prompts = settings.Prompts;

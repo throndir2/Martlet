@@ -349,8 +349,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal (bool Paused, bool Muted, bool Locked) Controls { get { lock (gate) return (paused, muted, locked); } }
     /// <summary>Raised off the dispatcher after a finished exchange changed memory or could not be remembered.</summary>
     internal event Action<MemoryCaptureReport>? MemoryCaptured;
-    /// <summary>Raised off the dispatcher after names were picked up for voices from a finished exchange.</summary>
-    internal event Action<IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)>>? VoicesNamed;
+    /// <summary>Raised off the dispatcher after learning names changed voices from a finished exchange (names learned, a name
+    /// dropped, two voices merged).</summary>
+    internal event Action<IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>>? VoicesNamed;
     /// <summary>Tests turn background remembering off to inspect only the reply request.</summary>
     internal bool AutoCapture { get; set; } = true;
     internal Task MemoryCaptureIdle { get { lock (gate) return captureTail; } }
@@ -1388,7 +1389,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             : operation.PcAudio ? VoicePromptContext.Prefix(operation.Heard) + spokenOwn : said;
                         var remember = operation.MemoryRequested && !passed && remembered is not null;
                         var heard = !passed && remembered is not null && operation.Heard is { Known.Count: > 0 } known &&
-                            voices is { Active: true } && VoiceNaming.Worth(known, spokenOwn!, turn.Content.Text) ? known : null;
+                            voices is { Active: true } && VoiceNaming.Worth(known, spokenOwn!, turn.Content.Text,
+                                operation.Authorization.Configuration.CompanionNames) ? known : null;
                         // The after-reply request continues the reply's request (instructions, tools, earlier messages and the
                         // message), then the reply as the next reply's history has it, whether or not the reply called tools.
                         if (remember || heard is not null)
@@ -1804,9 +1806,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         if (voices is not { Active: true } recognizer || speech.Length < 2) return;
         var samples = Pcm.ToFloats(speech);
+        var configuration = operation.Authorization.Configuration;
         operation.Recognition = Task.Run(() =>
         {
-            try { return recognizer.Recognize(samples); }
+            try { return recognizer.Recognize(samples, configuration.CompanionNames); }
             // Recognition is best effort: any failure (native, model or file) only means nobody is named this time.
             catch (Exception error)
             {
@@ -1972,7 +1975,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         MemoryCaptureReport? report = null;
-        IReadOnlyList<(Martlet.Core.Speakers.KnownVoice, string)>? learned = null;
+        IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
         try
         {
             (report, learned) = await Task.Run(() => AfterReplyRunAsync(job)).ConfigureAwait(false);
@@ -2003,7 +2006,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         if (report is not null) MemoryCaptured?.Invoke(report);
     }
 
-    private async Task<(MemoryCaptureReport? Report, IReadOnlyList<(Martlet.Core.Speakers.KnownVoice, string)>? Learned)> AfterReplyRunAsync(
+    private async Task<(MemoryCaptureReport? Report, IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? Learned)> AfterReplyRunAsync(
         AfterReplyJob job)
     {
         var token = job.Token;
@@ -2029,23 +2032,25 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     if (job.Heard is null) return (report, null);
                 }
             }
-            var prompt = AfterReply.Prompt(remember ? known : null, job.Heard, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
+            var naming = job.Heard is not null && voices is not null
+                ? VoiceNaming.Context(job.Heard, voices.Roster, job.User, job.Configuration.CompanionNames) : null;
+            var prompt = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
                 job.Configuration.Prompts, job.Conversation, job.Configuration.FitsContext);
             var purpose = remember && job.Heard is not null ? "Remembering and learning names" : remember ? "Remembering" : "Learning names";
             var (answer, failure) = await AskAsync(purpose, job.Configuration, prompt.Input, token).ConfigureAwait(false);
             if (answer is null)
                 return (remember && !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : report, null);
-            List<(Martlet.Core.Speakers.KnownVoice, string)>? learned = null;
-            if (job.Heard is not null && voices is not null)
+            IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
+            if (naming is not null && voices is not null)
             {
-                learned = [];
-                var persona = job.Configuration.Persona?.Name;
-                foreach (var (id, name) in VoiceNaming.Parse(answer, prompt.Voices, persona is null ? [] : [persona]))
-                {
-                    token.ThrowIfCancellationRequested();
-                    voices.AddHeardName(id, name);
-                    if (voices.Roster.Resolve(id) is { } voice) learned.Add((voice, name));
-                }
+                token.ThrowIfCancellationRequested();
+                var asked = VoiceNaming.Parse(answer, naming, job.Reply);
+                var (applied, refused) = voices.Apply(asked.Updates);
+                learned = applied;
+                // Why lines were left out, never the names (they are personal).
+                if (asked.Refused.Count + refused.Count > 0)
+                    ErrorLog.Info($"Learning names: {applied.Count} change(s) made; left out: " +
+                        string.Join(", ", asked.Refused.Concat(refused).Select(r => r.Reason).Distinct()) + ".");
             }
             if (remember && MemoryCapture.Parse(answer, prompt.ShownFacts) is { Count: > 0 } operations)
             {

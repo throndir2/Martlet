@@ -30,7 +30,7 @@ are recognized and learned only from the microphone, never from
 - **Voices Martlet knows.** Every voice it has heard, the owner's first, then
   named ones, then the most recently heard. For each voice you can:
   - type its **Name** (always wins) and **Also called** (other names,
-    comma-separated; removing one here drops it). There is no Save button:
+    comma-separated, up to 12 in all; removing one here drops it). There is no Save button:
     names save when you leave the field or press Enter (or two seconds after
     you stop typing), then sync to your other computers, so a half-typed name
     isn't shared;
@@ -67,22 +67,47 @@ on), while speech-to-text runs:
 3. **Telling the Thinking model.** The reply's instructions say what the
    voices block means (Companion › Prompts › *Who is talking*), and the notes
    on the message carry the labeled block (`MARTLET_VOICES`, background data,
-   never instructions): who is speaking now (name or voice tag, other names,
-   whether it is you or heard for the first time) and anyone else heard. The
+   never instructions): who is speaking now (name or voice tag, every other
+   name, whether it is you or heard for the first time) and anyone else heard. The
    block is noted only when who is talking changed since the last one in the
    conversation sent, and holds until the next. What Memory reads starts with
    `[name]`, so remembered facts know who said what. The talk window labels
    the message with the speaker's name.
 4. **Learning names.** After a completed reply, if a voice in it has no name
-   yet, or the words suggest a name came up ("my name is", "call me",
-   "thanks, Sam"...), the exchange is sent once more to the same Thinking model
-   in one extra text-only request, the same one as [remembering](MEMORY.md)
-   when both are due. It answers
-   `NAME V3: Sam` lines; only listed voices, real names (at most three words,
-   not Martlet's or the persona's name, not "Voice N") are accepted. Each name
-   is added to that voice with a use count, so a voice collects every name it
-   goes by; the most used one is shown until you type a name yourself. The
-   talk window notes what was learned.
+   yet, the words suggest a name came up ("my name is", "call me", "wrong
+   name", "thanks, Sam"...; greeting the companion by its own name doesn't
+   count) or someone says two voices are them ("that was me", "it's me, Sam"),
+   the exchange is sent once more to the same Thinking model in one extra
+   text-only request, the same one as [remembering](MEMORY.md) when both are
+   due. The request lists the companion's own names, every name each heard
+   voice goes by and, only when someone says they are the same person as
+   someone Martlet knows, up to eight other named voices. It answers at most
+   six lines:
+   - `NAME V3: Sam`: a name the voice goes by. A voice collects every name it
+     goes by (up to 12), each with a use count; the most used one is shown
+     until you type a name yourself.
+   - `CALL V3: Sammy`: the name they ask to be called from now on; it becomes
+     the learned name shown (a name you typed still wins).
+   - `NOT V3: Jane`: a name it learned that they say isn't theirs; it is
+     dropped. Names you typed are never dropped this way.
+   - `SAME V9: V3`: they said both voices are them. The two merge like
+     **Merge** on People (it can't be undone), into your own voice, else a
+     named one, else the one heard most; at most one merge per exchange, at
+     least one of the voices must be in the message, and never two voices you
+     named differently.
+
+   Names go only to listed voices heard in the message, and only real names
+   (at most three words, not "Voice N"). **The companion's own names never
+   become a voice's**: "Martlet", every persona's name and each word of it
+   ("Jane" and "Doe" for *Jane Doe*), a name a persona's text gives it ("You
+   are Jane", "Your name is Jane") and a name Martlet's reply gives itself
+   ("I'm Jane"). The people talking to it are almost never called that, so
+   someone saying "Hey Jane" is talking to Martlet. A voice that learned one
+   of these by mistake (before this check) drops it whenever Martlet reads its
+   settings (when it starts and after you change a persona) and when the voice
+   is heard; a name you typed yourself on People is kept. The talk window notes what was
+   learned, dropped or merged, and the log says why lines were left out
+   (never the names).
 
 Recognition waits at most 3 seconds beyond speech-to-text; a slow or failed
 recognition only means nobody is named for that message. Audio is never kept:
