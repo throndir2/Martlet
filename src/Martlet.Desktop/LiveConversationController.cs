@@ -113,6 +113,11 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal string? HomeSummary { get; set; }
     /// <summary>The MCP tools offered to this turn's reply, if any.</summary>
     internal DesktopToolset? Toolset { get; set; }
+    /// <summary>A reply Martlet starts on its own to bring up finished background work (think_longer), not an answer to the user.</summary>
+    internal bool Report { get; init; }
+    /// <summary>The finished background jobs this reply brings into the conversation (its own message for a report, or the notes
+    /// of the user's message); completed once the exchange is kept, otherwise returned for the next reply.</summary>
+    [JsonIgnore] internal BackgroundDelivery? Delivery { get; set; }
     internal ListeningOptions? Listening { get; init; }
     /// <summary>One utterance recorded by always listening (<see cref="LiveListener"/>): capture and speech-to-text only.</summary>
     internal bool Listen { get; init; }
@@ -282,6 +287,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
     // Thinking models that refused the Thinking steps choice this app session; they get their own default until Martlet restarts.
     private readonly HashSet<string> reasoningRefused = new(StringComparer.Ordinal);
+    // Background work Martlet started during the conversation (think_longer), its own text runtime and credentials (bound to the
+    // one think's request at a time), the think running (so a model on this PC can be handed back to the conversation at once),
+    // whether the user is talking or about to be answered (from the talk window), and who the last spoken reply heard.
+    private readonly BackgroundJobs jobs;
+    private readonly ConversationCredentialSource thinkCredentials;
+    private ConversationRuntime? thinkRuntime;
+    private ConversationAuthorization? thinkAuthorization;
+    private BackgroundThink? thinking;
+    private int userBusy;
+    private (bool Spoken, HeardVoices? Heard) lastAsked;
+    // The latest exchange kept in the conversation, as its request was sent and what Martlet said: a think on a model on this PC
+    // continues it when it starts again, so the conversation since stays in the model's cache.
+    private (BoundedTextInput Sent, string Reply)? lastExchange;
+    private readonly object statusGate = new();
 
     internal bool IsRunning => operations.IsRunning;
     /// <summary>A reply (or a comment on the screen) is running on the shared setup slot.</summary>
@@ -318,6 +337,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal EchoReductionReport? EchoReport => echoReducer?.Report;
     /// <summary>Martlet can hear what this PC plays (Companion › Listening › Hear what this PC plays).</summary>
     internal bool CanHearPc => pcAudio is not null;
+    /// <summary>Martlet's background work in this conversation (think_longer): what runs, what finished and what waits to be
+    /// brought up.</summary>
+    internal BackgroundJobs Jobs => jobs;
+    /// <summary>The background-jobs.json status file in the data directory (kinds, states and times only; never a task or
+    /// result), which MCP's think_longer_status reads.</summary>
+    internal const string JobsStatusFile = "background-jobs.json";
     /// <summary>Whether hearing what this PC plays leaves Martlet's own voice out (null until it first listened); without it,
     /// that listening holds off while Martlet speaks.</summary>
     internal bool? PcWithoutMartlet => pcAudio?.WithoutMartlet;
@@ -385,6 +410,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
             OpenAiTranscriptionAdapter.Create(pcCredentials, this.clock);
         hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
+        jobs = new(this.clock);
+        thinkCredentials = new(() => Volatile.Read(ref thinkAuthorization));
+        jobs.Changed += WriteJobsStatus;
+        WriteJobsStatus();
     }
 
     internal void Configure(SettingsLoadResult loaded)
@@ -791,6 +820,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         context.Clear();
         remarks.Clear();
         lastCache = null;
+        lastExchange = null;
     }
 
     /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
@@ -882,6 +912,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
         Chattiness chattiness, bool camera, CancellationToken worker)
     {
+        YieldBackground(operation.Authorization.Configuration);
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1025,6 +1056,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<SetupWorkResult> RunAsync(LiveConversationOperation operation, BoundedTextInput? input, CancellationToken worker)
     {
         DispatchLease? lease = null;
+        // A model on this PC serves the conversation first: a background think stops at once and starts again once it's quiet.
+        YieldBackground(operation.Authorization.Configuration);
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1052,18 +1085,23 @@ internal sealed class LiveConversationController : IAsyncDisposable
             lock (gate)
             {
                 operation.Authorization.Check(worker);
-                // Receipt is NOW for a newly received transcript. Never renew a queued/busy/expired intent.
-                var source = operation.Spoken ? InputSource.HandsFreeListening
-                    : !operation.Authorization.Microphone ? InputSource.TypedControl
-                    : operation.HandsFree ? InputSource.HandsFreeListening : InputSource.PushToTalkControl;
-                var intent = policy.CreateIntent(new(source,
-                    new Transcript(input!.UserText, confidence: operation.Transcription?.Confidence ?? operation.SpokenConfidence),
-                    trustedTypedAddress: !operation.Authorization.Microphone && !operation.Spoken));
-                var decision = policy.Evaluate(intent);
-                var commit = policy.TryCommit(decision);
-                operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
-                if (!commit.Accepted) return new(SetupWorkOutcome.Completed);
-                lease = commit.Lease;
+                // A report of finished background work is Martlet's own, like a screen glance: the participation policy decides
+                // whether to answer the user, so it doesn't apply.
+                if (!operation.Report)
+                {
+                    // Receipt is NOW for a newly received transcript. Never renew a queued/busy/expired intent.
+                    var source = operation.Spoken ? InputSource.HandsFreeListening
+                        : !operation.Authorization.Microphone ? InputSource.TypedControl
+                        : operation.HandsFree ? InputSource.HandsFreeListening : InputSource.PushToTalkControl;
+                    var intent = policy.CreateIntent(new(source,
+                        new Transcript(input!.UserText, confidence: operation.Transcription?.Confidence ?? operation.SpokenConfidence),
+                        trustedTypedAddress: !operation.Authorization.Microphone && !operation.Spoken));
+                    var decision = policy.Evaluate(intent);
+                    var commit = policy.TryCommit(decision);
+                    operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
+                    if (!commit.Accepted) return new(SetupWorkOutcome.Completed);
+                    lease = commit.Lease;
+                }
                 persona = operation.Authorization.Configuration.Persona;
                 style = persona is null ? null :
                     ResponseStyleSelector.Select(persona.Styles, nextStyle);
@@ -1079,8 +1117,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             operation.LatencyTimeline?.Mark("preparing");
 
             // What the PC played is never the user: memory, tools and Home Assistant only go by the user's own words, and a
-            // message that is only what the PC played gets none of them.
-            var own = operation.PcAudio ? operation.UserWords : input!.UserText;
+            // message that is only what the PC played gets none of them. A report of background work has no words of the user's.
+            var own = operation.Report ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
             DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested && own is not null)
             {
@@ -1094,18 +1132,24 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var lore = await ScanLoreAsync(operation, input!.UserText, history, persona, worker).ConfigureAwait(false);
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
-            // Tools from MCP servers on this PC and the terminal when it is on, only for the user's own turns and routes that do
-            // function calling.
+            // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
+            // is on), only for the user's own turns (and Martlet's reports of its background work) and routes that do function
+            // calling. While Thinking longer is on they are always offered, the same way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
-            if (own is not null && tools is { HasTools: true } && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
+            var builtIns = configured.OffersThinkLonger ? BuiltIns(operation, configured) : null;
+            if ((own is not null || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
+                configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
-                toolset = await tools.PrepareAsync(worker).ConfigureAwait(false);
+                toolset = await tools.PrepareAsync(worker, builtIns).ConfigureAwait(false);
                 operation.Authorization.Check(worker);
                 operation.Toolset = toolset;
                 operation.LatencyTimeline?.Mark("tools");
             }
+
+            // Finished background work that wasn't brought up yet goes with what the user says (its notes).
+            if (own is not null && !operation.Report && operation.Delivery is null) operation.Delivery = jobs.Take(onItsOwn: false);
 
             // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync). When the
             // reply is offered Home Assistant's own tools, the model acts through them instead of Assist, so nothing runs twice.
@@ -1136,18 +1180,22 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 // While vision is on, the newest picture of what it watches goes with the message, so the reply sees it too.
                 // A message too long to fit beside the picture goes without it.
                 var seen = operation.Authorization.Screen ? operation.Seen : null;
+                // A report keeps the instructions of the reply before it (who was heard, always listening), so it starts the same.
+                var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
+                var background = !operation.Report && operation.Delivery is { } carried
+                    ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
                 ConversationRequest Ask(SeenScreen? picture, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
                         extraInstructions: Join(home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
-                            VoicePromptContext.Preamble(operation.Heard, prompts),
+                            VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
-                        messageNotes: home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions,
+                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()));
@@ -1178,14 +1226,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Attach(turn);
             }
             var terminal = await turn.Completion.ConfigureAwait(false);
-            NoteFallback("Reply", configured, terminal);
-            NoteInput("Reply", terminal);
-            // A model that rejected tools is asked without them from now on (this app session).
+            NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
+            NoteInput(operation.Report ? "Background report" : "Reply", terminal);
+            // A model that rejected tools is asked without them from now on (for a week, on this PC).
             if (terminal.ToolsRejected)
             {
                 tools?.MarkUnsupported(configured.ToolModelKey());
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
-                    "Martlet asked again without tools and stops offering them to it until it restarts.");
+                    "Martlet asked again without tools and stops offering them to it for a week.");
             }
             // A model that rejected the recording gets the transcript only from now on (this app session).
             if (terminal.AudioRejected)
@@ -1224,17 +1272,29 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         // A pass stays in the conversation too, so later replies know what was said around Martlet.
                         context.Add(said, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text,
                             configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
+                        if (operation.Sent is { } kept && configured.HostTarget() is null)
+                            lastExchange = (kept, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text);
+                        // The finished background work this reply carried is in the conversation now.
+                        if (operation.Delivery is { } delivered)
+                        {
+                            delivered.Complete();
+                            ErrorLog.Info($"Background work: {string.Join(", ", delivered.Jobs.Select(job => job.Id))} " +
+                                (operation.Report ? "brought up by Martlet on its own" : "brought up with your message") +
+                                (passed ? " (it stayed quiet about it)." : "."));
+                        }
+                        if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
-                        var spokenOwn = operation.PcAudio ? operation.UserWords : input.UserText;
+                        var spokenOwn = operation.Report ? null : operation.PcAudio ? operation.UserWords : input.UserText;
                         var remembered = spokenOwn is null ? null
                             : operation.PcAudio ? VoicePromptContext.Prefix(operation.Heard) + spokenOwn : said;
                         var remember = operation.MemoryRequested && !passed && remembered is not null;
                         var heard = !passed && remembered is not null && operation.Heard is { Known.Count: > 0 } known &&
                             voices is { Active: true } && VoiceNaming.Worth(known, spokenOwn!, turn.Content.Text) ? known : null;
-                        // A reply that used tools continues nothing: its request isn't the one the after-reply request repeats.
+                        // The after-reply request continues the reply's request (instructions, tools, earlier messages and the
+                        // message), then the reply as the next reply's history has it, whether or not the reply called tools.
                         if (remember || heard is not null)
                             EnqueueAfterReplyLocked(operation.Authorization.Configuration, remember, heard, earlier, remembered!,
-                                turn.Content.Text, terminal.ToolCalls == 0 ? operation.Sent : null);
+                                turn.Content.Text, operation.Sent);
                     }
                 }
             }
@@ -1286,6 +1346,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 await turn.OwnershipRelease.ConfigureAwait(false);
                 if (turn.Snapshot.Quarantined) await quarantine.Task.ConfigureAwait(false);
             }
+            // Finished background work a reply didn't get into the conversation waits for the next one.
+            operation.Delivery?.Return();
             lock (gate)
             {
                 if (lease is not null) policy.Release(lease);
@@ -1296,6 +1358,250 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private CorrelationIds Ids() => new() { SessionId = runtime.SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+
+    // ---------- background work (think_longer) ----------
+
+    /// <summary>Martlet's own tools for one reply while Thinking longer is on: think_longer and cancel_thinking, always both, in
+    /// that order, with the Thinking longer prompt, so the start of every request stays the same.</summary>
+    private BuiltInTools BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured)
+    {
+        var settings = configured.ThinkLonger;
+        var definitions = ThinkLonger.Definitions(settings);
+        return new([
+            (definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)),
+            (definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call)))
+        ], ThinkLonger.Instructions(settings, configured.Prompts));
+    }
+
+    /// <summary>think_longer: starts the background think and returns at once (never waits for it), telling the model to tell
+    /// the user now unless it already did. The think continues this reply's request (what was said before the call included).</summary>
+    private ValueTask<ConversationToolResult> ThinkLongerAsync(LiveConversationOperation operation, LiveConversationConfiguration configured,
+        TextToolCall call)
+    {
+        const string server = "Martlet";
+        var (task, reason, problem) = ThinkLonger.Parse(call.ArgumentsJson);
+        if (problem is not null)
+        {
+            tools?.Record(server, ThinkLonger.Name, "invalid arguments", "", true);
+            return ValueTask.FromResult(new ConversationToolResult(problem, true));
+        }
+        var settings = configured.ThinkLonger;
+        if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
+        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
+        var sent = operation.Sent;
+        var local = configured.LocalThinking;
+        var model = configured.Route(SetupRole.Llm).ModelId;
+        var think = new BackgroundThink(ThinkRuntime(),
+            left => PrepareThink(configured, sent, () => operation.Turn?.Content.Text, task!, reason, left),
+            local ? ThinkBusy : null, clock)
+        {
+            AttemptFinished = terminal =>
+            {
+                NoteFallback("Background thinking", configured, terminal);
+                NoteInput("Background thinking", terminal, reply: false);
+                if (IsFailure(terminal) && terminal.State != ConversationState.Canceled) LogReplyFailure("Background thinking", configured, terminal);
+            }
+        };
+        var start = jobs.Start(ThinkLonger.Kind(settings), ThinkLonger.Label(task!), async (job, token) =>
+        {
+            Volatile.Write(ref thinking, think);
+            try { return await think.RunAsync(job, token).ConfigureAwait(false); }
+            finally
+            {
+                Interlocked.CompareExchange(ref thinking, null, think);
+                ErrorLog.Info($"Background thinking: {job.Id} ended after {BackgroundJobs.Duration(job.Elapsed)} " +
+                    $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}" +
+                    (local ? $", paused {think.Pauses} time{(think.Pauses == 1 ? "" : "s")} for the conversation" : "") + ").");
+            }
+        });
+        if (start.Job is not { } started)
+        {
+            tools?.Record(server, ThinkLonger.Name, "not started: " + start.Refusal, ThinkLonger.Label(task!), false);
+            ErrorLog.Info($"Background thinking: a new think wasn't started ({start.Refusal}).");
+            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Refused(start), true));
+        }
+        tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
+        ErrorLog.Info($"Background thinking: started {started.Id} on {model} (thinking steps on, {settings.HowHard} effort, " +
+            $"{BackgroundJobs.Duration(settings.TimeLimit)} limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} of {settings.Hourly} " +
+            "this hour" + (local ? "; the model is on this PC, so it works only while the conversation is quiet)" : ")") +
+            (toldUser ? "." : "; the reply hadn't told you yet, so it was asked to."));
+        return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
+    }
+
+    /// <summary>cancel_thinking: stops the running think; nothing about it is brought up later (Martlet knows).</summary>
+    private ConversationToolResult CancelThinking(TextToolCall call)
+    {
+        var stopped = jobs.Cancel(ThinkLonger.CancelId(call.ArgumentsJson), BackgroundJob.CanceledByMartlet, ThinkLonger.KindName);
+        tools?.Record("Martlet", ThinkLonger.CancelName, stopped is null ? "nothing to stop" : "stopped " + stopped.Id, "", false);
+        if (stopped is not null) ErrorLog.Info($"Background thinking: Martlet stopped {stopped.Id}.");
+        return new(ThinkLonger.Canceled(stopped));
+    }
+
+    /// <summary>The talk window's Cancel on a background job: it stops, and the next thing the user says tells Martlet so.</summary>
+    internal bool CancelJob(string id)
+    {
+        var stopped = jobs.Cancel(id, BackgroundJob.CanceledByYou);
+        if (stopped is not null) ErrorLog.Info($"Background work: you canceled {stopped.Id}.");
+        return stopped is not null;
+    }
+
+    /// <summary>The conversation ended (the talk window closed): background work stops and nothing more is brought up.</summary>
+    internal void EndBackgroundWork()
+    {
+        if (jobs.Active.Count > 0) ErrorLog.Info("Background work: the conversation ended, so its background work stopped.");
+        jobs.CancelAll();
+    }
+
+    // One attempt of a background think: a reply's request continued (or the task alone when it no longer fits), with its own
+    // authorization bound to exactly this request and the time left. On a model on this PC it continues the latest exchange
+    // (the conversation may have gone on while it paused); elsewhere the reply that called think_longer, as said so far.
+    private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured, BoundedTextInput? sent,
+        Func<string?> reply, string task, string? reason, TimeSpan left)
+    {
+        (BoundedTextInput Sent, string Reply)? latest;
+        lock (gate) latest = configured.LocalThinking ? lastExchange : null;
+        var input = latest is { } exchange
+            ? ThinkLonger.Input(exchange.Sent, exchange.Reply, task, reason, configured.Prompts, exchange.Sent.Personality)
+            : ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
+        if (!configured.FitsContext(input)) input = ThinkLonger.Input(null, null, task, reason, configured.Prompts, sent?.Personality);
+        bool withoutReasoning;
+        lock (gate) withoutReasoning = reasoningRefused.Contains(configured.ToolModelKey());
+        var request = configured.ThinkRequest(input, left, withoutReasoning);
+        var authorization = new ConversationAuthorization(configured, voice: false, microphone: false, clock, () => true,
+            settings.LoadAsync, vault, CancellationToken.None, textLimits: request.TextLimits, lifetime: left + TimeSpan.FromSeconds(5));
+        // A tool round (declined) and a retry without Thinking steps may each take one more request.
+        authorization.BindInput(request.Input, request.Limits.MaxToolRounds + 1);
+        Volatile.Write(ref thinkAuthorization, authorization);
+        return (request, authorization);
+    }
+
+    private ConversationRuntime ThinkRuntime()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return thinkRuntime ??= runtimeFactory?.Invoke(thinkCredentials, clock) ??
+                ConversationRuntime.Create(thinkCredentials, clock: clock, hostText: new HostTextClient());
+        }
+    }
+
+    /// <summary>A Thinking model on this PC is needed by the conversation: a reply or glance runs, an exchange is being
+    /// remembered, or the user is talking or about to be answered.</summary>
+    private bool ThinkBusy()
+    {
+        if (Volatile.Read(ref userBusy) != 0) return true;
+        lock (gate) return active is { Worker.Completion.IsCompleted: false } || capturesPending > 0;
+    }
+
+    // On a Thinking model on this PC, the conversation's request goes first: the background think stops at once.
+    private void YieldBackground(LiveConversationConfiguration? configured)
+    {
+        if (configured?.LocalThinking == true) Volatile.Read(ref thinking)?.Yield();
+    }
+
+    /// <summary>The talk window says whether the user is talking or a turn is about to start (heard, typed, held to talk), so a
+    /// background think on a model on this PC gives way before the reply needs it.</summary>
+    internal void NoteUserBusy(bool busy)
+    {
+        if (Interlocked.Exchange(ref userBusy, busy ? 1 : 0) == (busy ? 1 : 0) || !busy) return;
+        YieldBackground(Configuration);
+    }
+
+    /// <summary>Starts a reply Martlet gives on its own to bring up finished background work, as soon as it is free (the talk
+    /// window decides when: never while the user talks, a turn is pending or Martlet is replying). Its message is Martlet's
+    /// note with the results (Companion › Prompts › Background work finished), which stays in the conversation; tools stay
+    /// available, so a later tool can act on the user's yes. Null when nothing waits.</summary>
+    internal LiveConversationOperation? StartReport(bool voice)
+    {
+        var delivery = jobs.Take(onItsOwn: true);
+        if (delivery is null) return null;
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        LiveConversationOperation operation;
+        try
+        {
+            lock (gate)
+            {
+                if (disposed || paused || muted || locked) throw new LiveActionException("conversation.controls_blocked");
+                if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
+                var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
+                if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+                var input = BackgroundJobs.ReportMessage(selected.Prompts, delivery.Jobs);
+                long acceptedRevision = revision = checked(revision + 1);
+                var authorization = new ConversationAuthorization(selected, voice, false, clock,
+                    () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);
+                operation = new(authorization, CancellationToken.None)
+                {
+                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken
+                };
+                active = operation;
+                var worker = operations.TryStart(async token =>
+                {
+                    await published.Task.ConfigureAwait(false);
+                    authorization.BindWorker(token);
+                    return await RunAsync(operation, input, token).ConfigureAwait(false);
+                });
+                if (worker is null)
+                {
+                    authorization.Revoke();
+                    throw new LiveActionException("conversation.ownership_busy");
+                }
+                operation.Worker = worker;
+            }
+        }
+        catch
+        {
+            delivery.Return();
+            throw;
+        }
+        published.SetResult();
+        SuperviseAsync(operation).Forget();
+        return operation;
+    }
+
+    // background-jobs.json in the data directory: each job's kind, ID, state and times, never its task or result. Written off
+    // the caller's thread, the newest state last.
+    private int statusPending;
+
+    private void WriteJobsStatus()
+    {
+        if (dataDirectory is null || Interlocked.Exchange(ref statusPending, 1) != 0) return;
+        Task.Run(() =>
+        {
+            Interlocked.Exchange(ref statusPending, 0);
+            var status = JobsStatus();
+            lock (statusGate)
+            {
+                try
+                {
+                    var path = Path.Combine(dataDirectory, JobsStatusFile);
+                    File.WriteAllText(path + ".tmp", status);
+                    File.Move(path + ".tmp", path, overwrite: true);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            }
+        }).Forget();
+    }
+
+    private string JobsStatus()
+    {
+        object Describe(BackgroundJob job) => new
+        {
+            id = job.Id, kind = job.Kind.Name, state = job.State.ToString(), progress = job.Progress,
+            startedAt = job.StartedUtc, finishedAt = job.FinishedUtc, elapsedSeconds = Math.Round(job.Elapsed.TotalSeconds, 1),
+            timeLimitSeconds = job.Kind.TimeLimit.TotalSeconds, offer = job.Kind.Offer,
+            resultCharacters = job.Result?.Length, cut = job.Cut, problem = job.Problem, canceledBy = job.CanceledBy,
+            delivery = job.Delivery.ToString()
+        };
+        var running = Volatile.Read(ref thinking);
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            updatedAt = clock.GetUtcNow(),
+            active = jobs.Active.Select(Describe),
+            recent = jobs.Recent.Select(Describe),
+            startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName) },
+            thinking = running is null ? null : new { local = running.Busy is not null, attempts = running.Attempts, pauses = running.Pauses }
+        });
+    }
 
     // Speech-to-text for one recorded utterance through its one-use upload permission; null (with the reason published) when
     // nothing usable came back.
@@ -1670,11 +1976,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
         BoundedTextInput input, CancellationToken token)
     {
+        YieldBackground(configuration);
         var request = configuration.MemoryCaptureRequest(input);
         var capture = CaptureRuntime();
         var authorization = new ConversationAuthorization(configuration, voice: false, microphone: false, clock,
             () => !token.IsCancellationRequested, settings.LoadAsync, vault, token);
-        authorization.BindInput(request.Input);
+        authorization.BindInput(request.Input, request.Limits.MaxToolRounds);
         Volatile.Write(ref captureAuthorization, authorization);
         try
         {
@@ -2000,6 +2307,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
         owned?.Cancel("conversation.closed");
         Cancel(stopListening);
         echoReducer?.Forget();
+        // Background work ends with Martlet.
+        jobs.Dispose();
+        DisposeThinkRuntimeAsync().Forget();
         DisposeCaptureRuntimeAsync().Forget();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
@@ -2021,6 +2331,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             adapter.Dispose();
         }
     }
+    private async Task DisposeThinkRuntimeAsync()
+    {
+        ConversationRuntime? owned;
+        lock (gate) owned = thinkRuntime;
+        if (owned is not null) await owned.DisposeAsync().ConfigureAwait(false);
+    }
+
     private async Task DisposeCaptureRuntimeAsync()
     {
         Task tail;

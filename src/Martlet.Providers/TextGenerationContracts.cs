@@ -313,6 +313,12 @@ public sealed record TextGenerationLimits : IContract
     public const int HardMaxContextTokens = 4_194_304;
     /// <summary>The earlier messages a paired host's gateway takes (and the default bound).</summary>
     public const int DefaultMaxHistoryMessages = 16;
+    /// <summary>The largest output budget, event count, stream size and deadline any request may have: a reply uses far less
+    /// (at most 4,096 tokens and two minutes); only a background think (think_longer) reasons this long.</summary>
+    public const int HardMaxOutputTokens = 32_768;
+    public const int HardMaxEvents = 65_534;
+    public const int HardMaxStreamBytes = 16_777_216;
+    public static TimeSpan HardMaxRequestTime => TimeSpan.FromMinutes(15);
 
     public int MaxInputBytes { get; init; } = BoundedTextInput.HardMaxUtf8Bytes;
     public int MaxInputTokens { get; init; } = 24_576;
@@ -330,16 +336,16 @@ public sealed record TextGenerationLimits : IContract
     public void Validate()
     {
         ContractRules.Require(MaxInputBytes is > 0 and <= BoundedTextInput.HardMaxInputUtf8Bytes &&
-            MaxInputTokens is > 0 and <= HardMaxContextTokens && MaxOutputTokens is >= 16 and <= 4096 &&
+            MaxInputTokens is > 0 and <= HardMaxContextTokens && MaxOutputTokens is >= 16 and <= HardMaxOutputTokens &&
             MaxContextTokens is > 0 and <= HardMaxContextTokens && (long)MaxInputTokens + MaxOutputTokens <= MaxContextTokens &&
             MaxHistoryMessages is >= 0 and <= BoundedTextInput.HardMaxHistoryMessages &&
             MaxEventBytes is >= 128 and <= ContractRules.MaxJsonBytes &&
-            MaxStreamBytes >= MaxEventBytes && MaxStreamBytes <= 4_194_304 &&
-            MaxEvents is >= 2 and <= 4094 &&
+            MaxStreamBytes >= MaxEventBytes && MaxStreamBytes <= HardMaxStreamBytes &&
+            MaxEvents is >= 2 and <= HardMaxEvents &&
             MaxTextCharacters is > 0 and <= ContractRules.MaxTextCharacters,
             "Text generation limits are out of range.");
         foreach (var timeout in new[] { FirstDeltaTimeout, IdleTimeout, MaxRequestTime })
-            ContractRules.Require(timeout > TimeSpan.Zero && timeout <= TimeSpan.FromMinutes(2),
+            ContractRules.Require(timeout > TimeSpan.Zero && timeout <= HardMaxRequestTime,
                 "Text generation deadlines are out of range.");
     }
 }

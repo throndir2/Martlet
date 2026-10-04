@@ -17,11 +17,11 @@ internal sealed record AfterReplyPrompt(BoundedTextInput Input, int ShownFacts, 
 
 /// <summary>Remembering and learning names after a reply, in one request when both are due (Companion › Prompts ›
 /// Remembering and learning names together). On a Thinking model on this PC it continues the reply's own conversation (same
-/// instructions, same earlier messages, the message and the reply, then the task), so the model's prompt cache still holds the
-/// conversation for the next reply: a request with another start would push it out, and the next reply would wait while the
-/// whole conversation is read again. Elsewhere, and whenever the conversation can't be continued (what the PC played is in it,
-/// tools were offered, or it would outgrow the context), it reads a short excerpt as before, which costs far less on a paid
-/// provider whose cache isn't pushed out by other requests.</summary>
+/// instructions and tools, same earlier messages, the message and the reply, then the task), so the model's prompt cache still
+/// holds the conversation for the next reply: a request with another start would push it out, and the next reply would wait
+/// while the whole conversation is read again. Elsewhere, and whenever the conversation can't be continued (what the PC played
+/// is in it, or it would outgrow the context), it reads a short excerpt as before, which costs far less on a paid provider
+/// whose cache isn't pushed out by other requests.</summary>
 internal static class AfterReply
 {
     private static readonly IReadOnlyDictionary<string, string> NoVoices = new Dictionary<string, string>();
@@ -90,9 +90,9 @@ internal static class AfterReply
     }
 
     /// <summary>Whether the reply's request can be continued: not with what the PC played anywhere in it (memory and learning
-    /// names never read that), and not with tools (they would have to be offered again to keep the same start).</summary>
+    /// names never read that). Tools it offered are described again (and never run), so the request starts the same.</summary>
     internal static bool CanContinue(BoundedTextInput reply) =>
-        reply.Tools.Count == 0 && !HasPcAudio(reply.UserText) && reply.History.All(message => !HasPcAudio(message.Text));
+        !HasPcAudio(reply.UserText) && reply.History.All(message => !HasPcAudio(message.Text));
 
     private static bool HasPcAudio(string text) => text.Contains(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal);
 
@@ -116,7 +116,8 @@ internal static class AfterReply
         try
         {
             var input = new BoundedTextInput(task.ToString().TrimEnd(), conversation.Personality,
-                [.. conversation.History, new(TextHistoryRole.User, said), new(TextHistoryRole.Assistant, reply)]);
+                [.. conversation.History, new(TextHistoryRole.User, said), new(TextHistoryRole.Assistant, reply)],
+                tools: conversation.Tools);
             return new(input, shown, NoVoices, true);
         }
         catch (ContractException)

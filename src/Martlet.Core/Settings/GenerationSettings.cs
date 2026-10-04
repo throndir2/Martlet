@@ -66,12 +66,23 @@ public sealed record GenerationSettings : IContract
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Reasoning { get; init; }
 
+    /// <summary>Companion › Replies › Thinking longer (<see cref="ThinkLongerSettings"/>); null keeps every default (on).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ThinkLongerSettings? ThinkLonger { get; init; }
+
+    /// <summary>How hard a request with <see cref="Reasoning"/> On thinks, for routes that take an effort (OpenAI's
+    /// <c>reasoning_effort</c>, OpenRouter's <c>reasoning.effort</c>): "medium" or "high". Only a background think sets it
+    /// (<see cref="ThinkLongerSettings.Effort"/>); never saved, and null sends the route's usual On.</summary>
+    [JsonIgnore]
+    public string? ReasoningEffort { get; init; }
+
     /// <summary>Thinking steps when none is chosen: Off, so a reasoning model answers straight away.</summary>
     public const bool DefaultReasoning = false;
 
     [JsonIgnore]
     public bool IsDefault => Temperature is null && TopP is null && TopK is null && MinP is null && RepeatPenalty is null &&
-        FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null && Reasoning is null;
+        FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null && Reasoning is null &&
+        ThinkLonger is null;
 
     /// <summary>The reply token budget requested from the model (the default when unset).</summary>
     [JsonIgnore]
@@ -115,6 +126,11 @@ public sealed record GenerationSettings : IContract
             $"Context size must be a whole number of tokens from {MinimumContextTokens} through {MaximumContextTokens}.");
         ContractRules.Require(ContextTokens is null || ContextTokens > ReplyTokens,
             "Context size must be larger than the max reply length.");
+        ContractRules.Require(ReasoningEffort is null or GenerationSupport.ReasoningEffortOn or GenerationSupport.ReasoningEffortHigh,
+            "The reasoning effort must be medium or high.");
+        ContractRules.Require(ThinkLonger is null || !ThinkLonger.IsDefault,
+            "Thinking longer is saved as absent while every value is the default.");
+        ThinkLonger?.Validate();
     }
 
     private static bool InRange(double value, double minimum, double maximum) =>
@@ -219,8 +235,9 @@ public static class GenerationSupport
     public const string GeminiChatHost = "generativelanguage.googleapis.com";
     /// <summary>Ollama's own port: its OpenAI-compatible endpoint takes <c>reasoning_effort</c>, not chat template arguments.</summary>
     public const int OllamaPort = 11434;
-    /// <summary>The <c>reasoning_effort</c> that turns thinking off, and the one that asks for it.</summary>
-    public const string ReasoningEffortOff = "none", ReasoningEffortOn = "medium";
+    /// <summary>The <c>reasoning_effort</c> that turns thinking off, the one that asks for it, and the one a background think
+    /// asks for when it should think hard (Companion › Replies › Thinking longer).</summary>
+    public const string ReasoningEffortOff = "none", ReasoningEffortOn = "medium", ReasoningEffortHigh = "high";
 
     /// <summary>How a route says whether to think first (Companion › Replies › Thinking steps).</summary>
     public static ReasoningControl Reasoning(SetupRouteType? routeType, string? chatBaseUrl) => routeType switch
@@ -244,18 +261,20 @@ public static class GenerationSupport
     }
 
     /// <summary>Writes the request properties that carry <paramref name="reasoning"/> for <paramref name="control"/> into the
-    /// open request object; <see cref="ReasoningControl.None"/> writes nothing.</summary>
-    public static void WriteReasoning(Utf8JsonWriter writer, ReasoningControl control, bool reasoning)
+    /// open request object; <see cref="ReasoningControl.None"/> writes nothing. <paramref name="effort"/> ("medium" or "high",
+    /// a background think's) goes where the route takes an effort; the others only turn thinking on.</summary>
+    public static void WriteReasoning(Utf8JsonWriter writer, ReasoningControl control, bool reasoning, string? effort = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
         switch (control)
         {
             case ReasoningControl.ReasoningEffort:
-                writer.WriteString("reasoning_effort", reasoning ? ReasoningEffortOn : ReasoningEffortOff);
+                writer.WriteString("reasoning_effort", reasoning ? effort ?? ReasoningEffortOn : ReasoningEffortOff);
                 break;
             case ReasoningControl.OpenRouter:
                 writer.WriteStartObject("reasoning");
-                if (reasoning) writer.WriteBoolean("enabled", true);
+                if (reasoning && effort is not null) writer.WriteString("effort", effort);
+                else if (reasoning) writer.WriteBoolean("enabled", true);
                 else writer.WriteString("effort", ReasoningEffortOff);
                 writer.WriteEndObject();
                 break;
@@ -271,14 +290,15 @@ public static class GenerationSupport
         }
     }
 
-    /// <summary>What a route's requests carry for a Thinking steps choice, as JSON (<c>{}</c> for none), for MCP.</summary>
-    public static string ReasoningJson(SetupRouteType? routeType, string? chatBaseUrl, bool? reasoning)
+    /// <summary>What a route's requests carry for a Thinking steps choice (and a background think's effort), as JSON (<c>{}</c>
+    /// for none), for MCP.</summary>
+    public static string ReasoningJson(SetupRouteType? routeType, string? chatBaseUrl, bool? reasoning, string? effort = null)
     {
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer))
         {
             writer.WriteStartObject();
-            if (reasoning is { } value) WriteReasoning(writer, Reasoning(routeType, chatBaseUrl), value);
+            if (reasoning is { } value) WriteReasoning(writer, Reasoning(routeType, chatBaseUrl), value, effort);
             writer.WriteEndObject();
         }
         return System.Text.Encoding.UTF8.GetString(buffer.ToArray());

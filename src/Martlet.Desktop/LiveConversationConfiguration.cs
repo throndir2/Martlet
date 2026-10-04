@@ -428,7 +428,7 @@ internal sealed class LiveConversationConfiguration
         // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off.
         var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
         var instructions = Join(persona, oneStyle ? styleNote : null, tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools),
-            voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, closingInstructions);
+            tools?.Guidance, voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, closingInstructions);
         if (oneStyle) styleNote = null;
         var facts = memory?.Facts ?? [];
         var hits = lore?.Included ?? [];
@@ -558,13 +558,30 @@ internal sealed class LiveConversationConfiguration
             ? null : prompted;
     }
 
+    /// <summary>Companion › Replies › Thinking longer as replies use it (on by default).</summary>
+    internal ThinkLongerSettings ThinkLonger => ThinkLongerSettings.Of(Generation);
+
+    /// <summary>Whether replies get think_longer: Thinking longer is on and the Thinking route does function calling.</summary>
+    internal bool OffersThinkLonger => ThinkLonger.On && SupportsTools;
+
+    /// <summary>A background think's request (think_longer): <paramref name="input"/> continues a reply's request, with
+    /// Thinking steps On at the chosen effort and its own bounds for the <paramref name="time"/> left (see
+    /// <see cref="Martlet.Conversation.ThinkLonger"/>). Its tools are described but never run.</summary>
+    internal ConversationRequest ThinkRequest(BoundedTextInput input, TimeSpan time, bool withoutReasoning) =>
+        new(input, TextSelection(), Martlet.Conversation.ThinkLonger.Limits(TextLimits, ThinkLonger.HowHard, time),
+            Martlet.Conversation.ThinkLonger.TurnLimits(time), chat: ChatTarget(),
+            generation: Martlet.Conversation.ThinkLonger.Generation(ReplyGeneration, ThinkLonger.HowHard, withoutReasoning),
+            tools: input.Tools.Count > 0 ? Martlet.Conversation.ThinkLonger.NoTools : null, fallback: TextFallback());
+
     /// <summary>The text-only request that asks the Thinking model what to remember and which names voices go by after a
     /// finished exchange. It keeps the model's default sampling (a picking-out task, not a reply) but the same context size, so
-    /// a host's Ollama does not reload the model between the reply and this request, and the same Thinking steps choice.</summary>
+    /// a host's Ollama does not reload the model between the reply and this request, and the same Thinking steps choice. When it
+    /// continues a reply that offered tools, they are described again (so the request starts the same) but never run.</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
-        new(input, TextSelection(), TextLimits, Turn(false), null, ChatTarget(), HostTarget(),
+        new(input, TextSelection(), TextLimits, input.Tools.Count > 0 ? Turn(false) with { MaxToolRounds = 1 } : Turn(false), null,
+            ChatTarget(), HostTarget(),
             generation: GenerationSettings.Normalize(new() { ContextTokens = ReplyGeneration.ContextTokens, Reasoning = ReplyGeneration.Reasoning }),
-            fallback: TextFallback());
+            tools: input.Tools.Count > 0 ? Martlet.Conversation.ThinkLonger.NoTools : null, fallback: TextFallback());
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
     /// spoken.</summary>

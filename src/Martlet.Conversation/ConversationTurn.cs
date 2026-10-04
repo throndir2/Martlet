@@ -396,8 +396,12 @@ public sealed class ConversationTurn
                     input = request.Input.WithToolRounds(rounds, callsAllowed: rounds.Count < request.Limits.MaxToolRounds);
                     continue;
                 }
-                // Calls the model makes when no more are allowed are ignored; it still has to have answered in text.
-                if (string.IsNullOrWhiteSpace(result.Text))
+                // Calls the model makes when no more are allowed are ignored; it still has to have answered in text, in this
+                // round or one before it (a model that said what it was doing before a tool call, such as "let me think about
+                // that" before think_longer, may have nothing to add once the call returns).
+                bool said;
+                lock (Sync) said = text.Length > 0;
+                if (string.IsNullOrWhiteSpace(result.Text) && (rounds.Count == 0 || !said))
                 {
                     Fail(ConversationFailure.InvalidStream, null, SequenceIssue.EmptyCompletion);
                     return;

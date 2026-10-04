@@ -127,18 +127,20 @@ comment; it needs a Thinking model that can see images. See
    route, not as a Thinking failure.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper, the style line and each response style,
-   reply length, always listening, tools, who is talking, lorebook and memory
-   introductions, notes with messages, the screen and camera glance
-   instructions, messages (including the one sent
+   reply length, always listening, tools, Thinking longer, who is talking,
+   lorebook and memory introductions, notes with messages, the screen and
+   camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines, *Screen with your message* (sent with what you type or say while
-   vision is on), the Remembering and Learning names requests and the prompt
+   vision is on), the background work notes and the Thinking longer task, the
+   Remembering and Learning names requests and the prompt
    that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
    edited). Words in braces such as `{name}`, `{persona}`, `{style}` or
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
-   sends nothing (the glance messages can't be emptied). Martlet still parses
+   sends nothing (the glance messages, the Thinking longer task and *Background
+   work finished* can't be emptied). Martlet still parses
    the answers to Remembering and Learning names, so their line formats must
    stay. Reload an open conversation to use saved prompts. Each prompt shows
    its estimated tokens and the page shows all prompts together, by Martlet's
@@ -221,9 +223,16 @@ reads the entire conversation again before every reply (on a 12B model, about
   several replies start at the same exchange instead of moving by one every
   reply.
 - After a reply, remembering and learning names share one request; on a
-  Thinking model on this PC it continues the reply's own conversation, so the
-  model's cache still holds it for the next reply (see
-  [Memory](MEMORY.md#automatic-recall-and-remembering)).
+  Thinking model on this PC it continues the reply's own conversation (its
+  tools described again, never run), so the model's cache still holds it for
+  the next reply (see [Memory](MEMORY.md#automatic-recall-and-remembering)).
+- While **Thinking longer** is on (the default), every reply on a route that
+  does function calling is offered `think_longer` and `cancel_thinking`, always
+  both, first and in the same order, with the *Thinking longer* prompt after
+  the tools prompt, so the start never changes from reply to reply. A
+  background think continues a reply's request (instructions, tools and
+  messages unchanged, then what Martlet said, then the task), so it reuses the
+  cache instead of pushing the conversation out ([Thinking longer](#thinking-longer-and-background-work)).
 
 Each reply, glance and after-reply request writes a desktop log line such as
 *Thinking input (Reply): first words after 2004 ms; 568 input tokens, 525 of
@@ -231,6 +240,112 @@ them (92 %) from the model's prompt cache.* when the provider reports it
 (OpenAI, OpenRouter and others report cached tokens unasked; Martlet asks
 Ollama on this PC for them), and the talk window's context line ends with
 *Last reply: 92% of its 568 input tokens came from the model's cache.*
+
+## Thinking longer and background work
+
+Replies answer right away (Thinking steps are Off by default). **Thinking
+longer** (Companion › Replies, beside Thinking steps; on by default) lets
+Martlet decide, sparingly, that a task needs real thought and work it out in
+the background while the conversation carries on.
+
+**How it goes.** Replies on a Thinking route that does function calling (OpenAI
+or a Chat Completions endpoint, Ollama on this PC included; not a paired host's
+gateway, not a model that turned tools down) get `think_longer(task, reason)`:
+`task` is a complete, self-contained instruction (what to work out and exactly
+what the result must contain), `reason` a few words on why. The tool
+description and the *Thinking longer* prompt say to use it rarely (real
+multi-step reasoning or long creative work such as song lyrics, a story, a plan,
+tricky math or code; never casual chat or quick answers) and to tell the user
+first, in character, that it'll take a while. The call returns at once
+(`{"status":"started","id":"think-1",...}`); what Martlet said before the call
+is already being spoken, and if it said nothing the result tells it to say so
+now (a reply may end with nothing more after its tool calls). The tool never
+holds up the reply. `cancel_thinking` (optional `id`) stops a think.
+
+**The background request** runs on its own runtime with Thinking steps **On**
+at the chosen effort (*Medium* or *High*: `reasoning_effort` medium/high for
+Ollama on this PC, OpenAI and Gemini, OpenRouter's `reasoning.effort`, the chat
+template's `enable_thinking` elsewhere; the OpenAI route's models just write it
+out), whatever replies use, on the current Thinking model and the Thinking
+fallback. It has its own bounds: 8,192 output tokens (Medium) or 16,384
+(High), up to 65,534 stream events and the time limit (2, 5 or 10 minutes) for
+the whole job. It is never spoken. Its message continues a reply's request
+exactly (Companion › Prompts › *Thinking longer: the task*); the picture or
+recording the message went with isn't sent again.
+
+**While it runs** you keep talking and Martlet keeps replying. The talk window
+shows a chip per job (*Thinking about: …* with its time and *Cancel*) and the
+line above it (`LiveJobs`); the desktop log notes each start, pause and end
+(`Background thinking:`) and a *Thinking input (Background thinking)* line.
+Stop (Esc) ends a reply, never a think; the chip's Cancel, `cancel_thinking`,
+closing the conversation, quitting Martlet or the time limit do. At most one
+think runs at a time (a second call is refused and Martlet is told to wait or
+cancel the first) and at most 3, 6 (default) or 12 start in any hour.
+
+**A model on this PC** (Ollama, LM Studio or another server on loopback)
+usually serves one request at a time, and a request with another start would
+push the conversation out of its cache. So there a think works only while the
+conversation is quiet: it waits until nothing is being said, answered or
+remembered, and the moment you start talking, type, hold to talk or Martlet
+starts a reply, glance or after-reply request, it stops its request at once and
+starts it again from the latest exchange once it's quiet (the conversation since
+stays in the cache). A reply never waits behind it.
+
+**Delivery.** When a job finishes (or fails, or runs out of time) its result is
+added at the end of the conversation as a new message, never by rewriting
+anything before it:
+
+- *As soon as Martlet is free* (default): once nobody is talking, nothing waits
+  to be answered, no reply, look or other work runs, Martlet isn't paused and
+  the conversation has been quiet for 2 seconds, Martlet starts a reply of its
+  own whose message is its note with the results (Companion › Prompts ›
+  *Background work finished*). It brings it up in character, offering rather
+  than acting when a result needs the user's go-ahead, with the normal tools
+  available. Talking before it speaks (or over it) stops it, and Esc holds it:
+  the results then go with your next message.
+- *When I talk next*: the results go in the notes of your next message
+  (Companion › Prompts › *Background work finished, with your message*).
+
+Either way the note and Martlet's answer stay in the conversation like any
+exchange. A job you canceled is only mentioned with your next message; one
+Martlet canceled isn't mentioned; closing the conversation drops the rest.
+
+### Background job API (for new kinds of background work)
+
+`Martlet.Conversation.BackgroundJobs` (one per `LiveConversationController`,
+`controller.Jobs`) runs any kind of background work beside the conversation;
+think_longer is the first kind and a song is next. A kind is a
+`BackgroundJobKind(Name, MaxActive, MaxPerHour, TimeLimit, Offer, Doing)`:
+`Name` is lowercase letters and the job IDs' prefix (`think-1`, `song-1`),
+`MaxActive` how many of that kind may run at once (other kinds run alongside),
+`MaxPerHour` how many may start in any hour, `TimeLimit` how long one may take
+(up to 30 minutes), `Offer` marks a result to offer before using it (a song:
+*wanna hear it?*), and `Doing` is what the talk window calls a running one
+(*Making a song*). To add one:
+
+1. Give the kind a tool on the reply's toolset the way think_longer does
+   (`LiveConversationController.BuiltIns`: always offered while its feature is
+   on, so the request start never changes; the handler returns at once).
+2. In the handler, call `jobs.Start(kind, label, runAsync)`. `label` is a few
+   words for the chip and the conversation (it is never logged). `runAsync(job,
+   token)` does the work on a thread-pool thread and returns
+   `BackgroundJobOutcome.Done(result)` (the text the conversation gets; for a
+   song, what is ready and how to play it, such as its ID) or
+   `BackgroundJobOutcome.Failed(problem)` (a few plain words); the token is
+   canceled by Cancel, the conversation ending, Martlet quitting and the time
+   limit. While it works it may call `job.Report(Running/Waiting/Paused,
+   "a few words")`, which the chip shows. `Start` returns `BackgroundJobStart`:
+   the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
+   tell the model.
+3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
+
+The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
+the chip and `LiveJobs`, `background-jobs.json` (kinds, states and times only),
+and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
+completes or returns them, and `BackgroundJobs.ReportMessage` /
+`ReportNotes` word them (with `Offer` kinds marked to offer first). The model
+acting on the user's yes is an ordinary later tool call in that conversation
+(for a song, `sing_song` with the song's ID or the lyrics the think wrote).
 
 [Memory](MEMORY.md) is ON by default (Companion › Memory turns it off). When
 on, each explicit typed/PTT/hands-free turn automatically recalls up to twelve
@@ -262,6 +377,7 @@ game/call audio. Capturing other people requires their permission.
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
 | LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
+| Background think (think_longer) | One at a time, 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |
 

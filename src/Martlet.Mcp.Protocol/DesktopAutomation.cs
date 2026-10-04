@@ -74,7 +74,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full. An MCP directory
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
     private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "HealthCheck-", "HealthOpen-",
-        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-"];
+        "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
+        // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
+        // nothing (the next thing you say tells Martlet you stopped it).
+        "LiveJobCancel-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -152,6 +155,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
         // it needs --allow-ui-effects) and how the Thinking route takes it.
         "RepliesThinking", "RepliesThinkingStatus",
+        // Companion › Replies › Thinking longer: what it does on the Thinking route (on by default) or what keeps it from
+        // working, and the chosen effort, time limit, hourly limit and when it shares results (choosing one with ui_select, or the
+        // RepliesThinkLonger check box, saves it, so it needs --allow-ui-effects). In the talk window, the background work line
+        // (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id> holds that).
+        "RepliesThinkLongerStatus", "RepliesThinkLongerEffort", "RepliesThinkLongerTime", "RepliesThinkLongerPerHour",
+        "RepliesThinkLongerDelivery", "LiveJobs",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",

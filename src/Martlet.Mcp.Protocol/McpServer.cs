@@ -489,6 +489,31 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
+        }),
+        Tool("think_longer_status", "Companion > Replies > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
+            "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
+            "(on by default, effort, time limit, hourly limit, when it shares the result) and whether any was chosen, the Thinking " +
+            "route (whether it does function calling, whether the model turned tools down, whether it runs on this PC so a think " +
+            "only works while the conversation is quiet, and what a background think sends for Thinking steps at that effort), " +
+            "think_longer and cancel_thinking exactly as the Thinking model gets them with the Thinking longer prompt, and the " +
+            "desktop's background-jobs.json: each running or finished job's id, kind, state, progress, times, result length, " +
+            "problem and delivery (never its task or result), how many thinks started in the last hour, and the running think's " +
+            "requests and pauses. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("think_longer_check", "Rehearse think_longer end to end with the production background-job scheduler (BackgroundJobs), " +
+            "think runner (BackgroundThink), tool texts and request layout (ThinkLonger), conversation runtime and Chat Completions " +
+            "adapter against a fixture endpoint on 127.0.0.1 (canned replies, NOT AI): a reply that says it'll think it over and " +
+            "calls think_longer (the call returns at once and the reply completes), the background request (Thinking steps on, its " +
+            "own output budget, the reply's instructions, tools and messages unchanged before the task), delivery as a message at " +
+            "the end of the conversation (as soon as Martlet is free, or in the notes of the next message), the limits (one think " +
+            "at a time beside a song job, the hourly limit, Cancel, Martlet's cancel, the time limit, the conversation ending) and, " +
+            "for a model on this PC, a think waiting for a quiet moment, stopping at once when the conversation needs the model " +
+            "and starting again from the same request. reasoningMs (200-3000, default 1200) is how long the fixture's hidden " +
+            "reasoning takes. Loopback only; reads no credentials.", new
+        {
+            reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         })
     ];
 
@@ -617,6 +642,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
+                "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

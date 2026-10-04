@@ -40,6 +40,12 @@ internal sealed class ToolApprovalRequest(string server, string tool, string arg
 /// <summary>One entry of the in-memory tool log on the Tools page (never written to disk).</summary>
 internal sealed record ToolActivity(DateTimeOffset At, string Server, string Tool, string Outcome, string Arguments, bool Problem);
 
+/// <summary>Tools Martlet itself gives a reply (think_longer and cancel_thinking while Thinking longer is on): each definition
+/// and how to run a call, and the prompt added to the reply's instructions after the tools prompt. They come first, always in
+/// the same order, so the start of every request stays the same.</summary>
+internal sealed record BuiltInTools(IReadOnlyList<(TextToolDefinition Definition,
+    Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>> Call)> Tools, string? Guidance);
+
 /// <summary>The MCP servers Martlet may call while you talk: the user's mcp.json in the data directory plus servers other
 /// Martlet features manage (<see cref="SetManagedServer"/>), one session per enabled server (started only when a
 /// conversation or the Tools page needs them), Martlet's own terminal when it is turned on (<see cref="Terminal"/>, off by
@@ -56,7 +62,7 @@ internal sealed class McpToolService : IAsyncDisposable
     internal static TimeSpan StartupWait => TimeSpan.FromSeconds(10);
     private readonly object gate = new();
     private readonly LinkedList<ToolActivity> log = new();
-    private readonly HashSet<string> unsupportedModels = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> unsupportedModels = new(StringComparer.Ordinal);
     private readonly TimeProvider clock;
     private readonly string? dataDirectory;
     private McpConfiguration configuration = McpConfiguration.Empty;
@@ -73,8 +79,42 @@ internal sealed class McpToolService : IAsyncDisposable
         FilePath = dataDirectory is null ? null : Path.Combine(dataDirectory, FileName);
         Secrets = secrets ?? (FilePath is null || !OperatingSystem.IsWindows() ? null : new WindowsMcpSecrets(FilePath));
         terminal = TerminalSettings.Load(dataDirectory);
+        var now = this.clock.GetUtcNow();
+        foreach (var (key, at) in LoadUnsupported(dataDirectory))
+            if (now - at < UnsupportedMemory) unsupportedModels[key] = at;
         Hub = new("martlet", AppVersions.Current, this.clock);
         Hub.Changed += () => Changed?.Invoke();
+    }
+
+    /// <summary>The Thinking models on this PC that rejected tools (<see cref="MarkUnsupported"/>) and when, kept for
+    /// <see cref="UnsupportedMemory"/> across restarts, so a model without function calling isn't asked with tools (and then
+    /// again without) on the first reply of every session, now that think_longer offers tools by default.</summary>
+    internal const string UnsupportedFileName = "tools-unsupported.json";
+    internal static TimeSpan UnsupportedMemory => TimeSpan.FromDays(7);
+
+    private static Dictionary<string, DateTimeOffset> LoadUnsupported(string? directory)
+    {
+        if (directory is null) return [];
+        try
+        {
+            var path = Path.Combine(directory, UnsupportedFileName);
+            if (!File.Exists(path) || new FileInfo(path).Length > 65_536) return [];
+            return (JsonSerializer.Deserialize<Dictionary<string, DateTimeOffset>>(File.ReadAllText(path)) ?? [])
+                .Where(entry => entry.Key is { Length: > 0 and <= 512 }).Take(64).ToDictionary(StringComparer.Ordinal);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException) { return []; }
+    }
+
+    private void SaveUnsupported()
+    {
+        if (dataDirectory is null) return;
+        Dictionary<string, DateTimeOffset> kept;
+        lock (gate) kept = unsupportedModels.OrderByDescending(entry => entry.Value).Take(64).ToDictionary(StringComparer.Ordinal);
+        try { File.WriteAllText(Path.Combine(dataDirectory, UnsupportedFileName), JsonSerializer.Serialize(kept)); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn("Couldn't save which Thinking models reject tools: " + error.Message);
+        }
     }
 
     internal string? FilePath { get; }
@@ -316,16 +356,18 @@ internal sealed class McpToolService : IAsyncDisposable
     }
 
     internal static string ModelKey(string routeType, string origin, string model) => $"{routeType}|{origin}|{model}";
-    internal bool IsUnsupported(string modelKey) { lock (gate) return unsupportedModels.Contains(modelKey); }
+    internal bool IsUnsupported(string modelKey) { lock (gate) return unsupportedModels.ContainsKey(modelKey); }
     internal void MarkUnsupported(string modelKey)
     {
-        lock (gate) unsupportedModels.Add(modelKey);
+        bool added;
+        lock (gate) added = unsupportedModels.TryAdd(modelKey, clock.GetUtcNow());
+        if (added) SaveUnsupported();
         Changed?.Invoke();
     }
 
-    /// <summary>The tools of every running server and the terminal when it is on, for one reply. Waits briefly for servers that
-    /// are still starting; the terminal alone needs no wait.</summary>
-    internal async Task<DesktopToolset?> PrepareAsync(CancellationToken token)
+    /// <summary>The tools of every running server, the terminal when it is on and Martlet's own <paramref name="builtIns"/>, for
+    /// one reply. Waits briefly for servers that are still starting; the terminal and built-in tools alone need no wait.</summary>
+    internal async Task<DesktopToolset?> PrepareAsync(CancellationToken token, BuiltInTools? builtIns = null)
     {
         var shell = Terminal is { Enabled: true } on ? on : null;
         IReadOnlyList<McpServerStatus> ready = [];
@@ -335,8 +377,8 @@ internal sealed class McpToolService : IAsyncDisposable
             var statuses = await Hub.WaitForStartupAsync(StartupWait, token).ConfigureAwait(false);
             ready = [.. statuses.Where(s => s.State == McpServerState.Ready && !s.Definition.Disabled)];
         }
-        else if (shell is null) return null;
-        return DesktopToolset.Build(this, ready, shell);
+        else if (shell is null && builtIns is null) return null;
+        return DesktopToolset.Build(this, ready, shell, builtIns);
     }
 
     internal bool AutoApproves(McpServerDefinition server, string tool)
@@ -444,45 +486,61 @@ internal sealed class WindowsMcpSecrets(string filePath) : IMcpSecretStore
 }
 
 /// <summary>The tools offered to one reply and how to run them. Tool names are made safe for function calling and unique
-/// across servers (prefixed with the server's name when two servers share one). The terminal, when on, comes first and keeps
-/// its name (<see cref="TerminalTool.Name"/>).</summary>
+/// across servers (prefixed with the server's name when two servers share one). Martlet's own tools come first, then the
+/// terminal when it is on; both keep their names (<see cref="ThinkLonger.Name"/>, <see cref="TerminalTool.Name"/>).</summary>
 internal sealed class DesktopToolset : IConversationToolHost
 {
     private readonly McpToolService service;
     private readonly IReadOnlyDictionary<string, (McpServerDefinition Server, McpTool Tool)> map;
     private readonly bool terminal;
+    private readonly IReadOnlyDictionary<string, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>> builtIn;
 
     private DesktopToolset(McpToolService service, IReadOnlyList<TextToolDefinition> definitions,
-        IReadOnlyDictionary<string, (McpServerDefinition, McpTool)> map, int skipped, IReadOnlyList<string> servers, bool terminal)
+        IReadOnlyDictionary<string, (McpServerDefinition, McpTool)> map, int skipped, IReadOnlyList<string> servers, bool terminal,
+        IReadOnlyDictionary<string, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>> builtIn, string? guidance)
     {
         this.service = service;
         this.map = map;
         this.terminal = terminal;
+        this.builtIn = builtIn;
         Definitions = definitions;
         Skipped = skipped;
         Servers = servers;
+        Guidance = guidance;
     }
 
     internal IReadOnlyList<TextToolDefinition> Definitions { get; }
     /// <summary>Tools left out because their schema was unusable or the tool budget was full.</summary>
     internal int Skipped { get; }
     internal IReadOnlyList<string> Servers { get; }
+    /// <summary>What Martlet's own tools add to the reply's instructions (Companion › Prompts › Thinking longer), or null.</summary>
+    internal string? Guidance { get; }
+    /// <summary>Whether Martlet's own tool <paramref name="name"/> is offered.</summary>
+    internal bool Offers(string name) => builtIn.ContainsKey(name);
 
-    internal static DesktopToolset? Build(McpToolService service, IEnumerable<McpServerStatus> ready, TerminalSettings? terminal = null)
+    internal static DesktopToolset? Build(McpToolService service, IEnumerable<McpServerStatus> ready, TerminalSettings? terminal = null,
+        BuiltInTools? builtIns = null)
     {
         var servers = ready.ToArray();
         var counts = servers.SelectMany(s => s.Tools.Select(t => SafeName(t.Name)))
             .GroupBy(n => n, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         var definitions = new List<TextToolDefinition>();
         var map = new Dictionary<string, (McpServerDefinition, McpTool)>(StringComparer.Ordinal);
+        var own = new Dictionary<string, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>>(StringComparer.Ordinal);
         int bytes = 0, skipped = 0;
+        foreach (var (definition, call) in builtIns?.Tools ?? [])
+        {
+            bytes += definition.Utf8Bytes;
+            definitions.Add(definition);
+            own[definition.Name] = call;
+        }
         if (terminal is not null)
         {
             var shell = new TextToolDefinition(TerminalTool.Name, TerminalTool.Description(terminal), TerminalTool.ParametersJson);
             bytes += shell.Utf8Bytes;
             definitions.Add(shell);
         }
-        bool Taken(string name) => map.ContainsKey(name) || terminal is not null && name == TerminalTool.Name;
+        bool Taken(string name) => map.ContainsKey(name) || own.ContainsKey(name) || terminal is not null && name == TerminalTool.Name;
         foreach (var status in servers)
             foreach (var tool in status.Tools)
             {
@@ -502,11 +560,12 @@ internal sealed class DesktopToolset : IConversationToolHost
                 map[name] = (status.Definition, tool);
             }
         return definitions.Count == 0 ? null : new(service, definitions, map, skipped,
-            map.Values.Select(v => v.Item1.Name).Distinct().ToArray(), terminal is not null);
+            map.Values.Select(v => v.Item1.Name).Distinct().ToArray(), terminal is not null, own, own.Count > 0 ? builtIns?.Guidance : null);
     }
 
     public async ValueTask<ConversationToolResult> CallAsync(TextToolCall call, CancellationToken token)
     {
+        if (builtIn.TryGetValue(call.Name, out var own)) return await own(call, token).ConfigureAwait(false);
         if (terminal && call.Name == TerminalTool.Name) return await RunCommandAsync(call, token).ConfigureAwait(false);
         if (!map.TryGetValue(call.Name, out var target))
         {
