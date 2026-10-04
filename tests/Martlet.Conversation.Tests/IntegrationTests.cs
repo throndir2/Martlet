@@ -80,6 +80,24 @@ public sealed class IntegrationTests
         Assert.Equal("pcm", speechBody.RootElement.GetProperty("response_format").GetString());
     }
 
+    [Fact]
+    public async Task Control_tags_the_request_offers_are_listed_never_shown_or_spoken()
+    {
+        await using var h = new Harness();
+        h.Answer("Sure, I'll keep ", "it down. [chatti", "ness: quiet]");
+        var request = Harness.Request();
+        var turn = h.Start(new ConversationRequest(request.Input, request.Model, request.TextLimits, request.Limits, request.Speech,
+            controlTags: Martlet.Core.Settings.ChattinessTags.All));
+        var result = await Harness.Finish(turn);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal("Sure, I'll keep it down.", turn.Content.Text);
+        Assert.Equal(["[chattiness: quiet]"], turn.Controls);
+        Assert.Equal(["Sure, I'll keep it down."], h.Permissions.SpeechActions.Select(action => action.Input.Text));
+        var events = new List<ConversationEvent>();
+        while (turn.Events.TryRead(out var item)) events.Add(item);
+        Assert.DoesNotContain(events, e => e.Text?.Contains("chattiness", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

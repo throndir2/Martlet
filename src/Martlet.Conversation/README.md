@@ -136,6 +136,13 @@ end. The turn then completes normally (`Completed`) with `SpeechFailure` set
 `FailedProvider` `Tts`, and any segments still staged drained unspoken. No
 other voice is asked. A whole-turn deadline after the text completed likewise
 ends only the voice; before the text completed it fails the turn.
+`MuteVoice()` ends what is said aloud the same way when the user mutes the
+voice mid-reply (Martlet's character menu or *Speak Martlet's replies aloud*
+turned off): the turn completes with `VoiceMuted` and no `SpeechFailure`, and
+each sentence not said aloud reaches the `SpokenTextFeed` captions instead. A
+text-only turn on a runtime with a `SpokenTextFeed` posts each sentence there
+too, split (and kept quiet for a `SilentReply`) the way the voice would say
+it, for its reading time, without a TTS request or an output device.
 Text-only is the deliberate alternative for the next explicit action.
 
 `ConversationTurn.Content` is a content-bearing polling surface, excluded

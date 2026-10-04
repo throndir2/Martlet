@@ -289,12 +289,14 @@ internal static class StraightVoiceCheck
         internal static Listener Create(string martletDirectory, string speechDirectory)
         {
             var runtime = Martlet.Sherpa.SherpaComponents.RuntimeDirectory(martletDirectory);
-            if (runtime is null || !Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speechDirectory))
+            // The fastest Parakeet downloaded on this PC.
+            var model = runtime is null ? null : Martlet.Sherpa.SherpaComponents.InstalledParakeetModels(speechDirectory).FirstOrDefault();
+            if (runtime is null || model is null)
                 return new(null, $"fixture transcriber ({FixtureTranscription.TotalMilliseconds:0} ms, knows the words; Parakeet " +
                     (runtime is null ? "runtime isn't in martletDirectory)" : "isn't downloaded in speechDirectory)"));
-            var engine = new Martlet.Sherpa.ParakeetEngine(speechDirectory, runtimeDirectory: runtime);
+            var engine = new Martlet.Sherpa.ParakeetEngine(speechDirectory, model.Id, runtimeDirectory: runtime);
             engine.Warm();
-            return new(engine, "Parakeet TDT 0.6B v3 on this PC (sherpa-onnx, CPU)");
+            return new(engine, $"{model.Name} on this PC (sherpa-onnx, CPU)");
         }
 
         internal void Transcribe((BoundedWaveAudio Clip, float[] Samples) clip, SpokenWords words, string said)

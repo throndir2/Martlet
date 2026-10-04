@@ -62,6 +62,26 @@ The shared `SyntheticTone` generator produces the same owned 200 ms test PCM
 for SpeakerSmoke and explicit fixture playback; no person's recording, voice,
 model or licensed sound asset was introduced.
 
+## Parakeet speech-to-text models (downloaded on request)
+
+Martlet bundles no speech-to-text model. When the owner chooses one in
+Companion › Listening › *Parakeet in Martlet* (one confirmation per download),
+Martlet downloads that model alone from Hugging Face at a pinned revision into
+the data folder's `speech\models\`, checks every file's exact size and SHA-256
+(`ParakeetModels` in Martlet.Sherpa) and writes its NOTICE beside it. All three
+run on the bundled sherpa-onnx 1.13.8 runtime (see
+`src\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt`).
+
+| Model | Weights licence | ONNX export (Apache-2.0) | Revision | NOTICE written |
+| --- | --- | --- | --- | --- |
+| NVIDIA Parakeet TDT-CTC 110M, its TDT transducer branch (English) | CC BY 4.0, [nvidia/parakeet-tdt_ctc-110m](https://huggingface.co/nvidia/parakeet-tdt_ctc-110m) | fp32, [csukuangfj/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000) | `e9bea5a06247dc3f55319ff23d34b0328f2f5ddf` | `Parakeet-TDT-110M-NOTICE.txt` |
+| NVIDIA Parakeet TDT 0.6B v2 (English) | CC BY 4.0, [nvidia/parakeet-tdt-0.6b-v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) | int8, [csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8) | `1ab9323565ddb038682214b292f588070a538ce2` | `Parakeet-TDT-0.6B-v2-NOTICE.txt` |
+| NVIDIA Parakeet TDT 0.6B v3 (25 European languages) | CC BY 4.0, [nvidia/parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) | int8, [csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8) | `2bda32ec70b097a55adaa07d9a7173915b43cc78` | `Parakeet-NOTICE.txt` |
+
+The weights are used as converted by sherpa-onnx (int8 quantization for the
+0.6B models), with no further change. [DEPENDENCIES](../packaging/windows/DEPENDENCIES.txt)
+carries the same attribution for the installer.
+
 ## Distribution handoff
 
 The Windows system audio engine performs conversion; no external resampler DLL,

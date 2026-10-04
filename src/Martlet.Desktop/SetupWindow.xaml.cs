@@ -341,12 +341,6 @@ public partial class SetupWindow : ThemedWindow
             var provider = Provider;
             var baseUrl = BaseUrl.Text.Trim();
             var modelId = ModelId.Text.Trim();
-            var sameDestination = old is null || (provider.Chat
-                ? old.RouteType == SetupRouteType.ChatCompletions && old.Origin == baseUrl
-                : old.RouteType is null or SetupRouteType.OpenAi);
-            if (!sameDestination && draft.Setup!.PendingRemovals.Any(removal => removal.Role == Role))
-                throw new ContractException(ErrorCode.InvalidContract,
-                    "Remove this job's detached key before changing its destination again.");
             AppSettings updated;
             if (provider.Chat)
                 updated = ChatCompletionsSetup.SelectRoute(draft, baseUrl, modelId);

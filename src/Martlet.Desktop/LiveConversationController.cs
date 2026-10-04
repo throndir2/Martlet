@@ -6,6 +6,7 @@ using Martlet.Audio;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Creations;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Participation;
@@ -71,6 +72,7 @@ internal sealed class LiveConversationOperation
     private LiveConversationStatus status = new("conversation.authorizing");
     private CaptureRun? capture;
     private ConversationTurn? turn;
+    private bool voiceMuted;
     private int releasedPress;
     private int executionFinished;
     private string? cancellationReason;
@@ -146,6 +148,9 @@ internal sealed class LiveConversationOperation
     internal bool PcAudio { get; init; }
     /// <summary>What the user said themselves in a message with <see cref="PcAudio"/>; null when it is only what the PC played.</summary>
     [JsonIgnore] internal string? UserWords { get; init; }
+    /// <summary>Companion › Vision › How often it comments while vision or hearing this PC is turned on (null otherwise): with
+    /// Martlet decides, the reply is told how to switch the level and may end with a chattiness tag.</summary>
+    internal ChattinessChoice? BackgroundChattiness { get; init; }
     private int hearing;
     /// <summary>Speech longer than a cough or click is being recorded right now.</summary>
     internal bool Hearing { get => Volatile.Read(ref hearing) != 0; set => Volatile.Write(ref hearing, value ? 1 : 0); }
@@ -183,6 +188,9 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal AttentionSignal? Attention { get; init; }
     /// <summary>The glance ended in silence: the model answered [pass].</summary>
     internal bool Passed { get; set; }
+    /// <summary>The glance offered the Thinking model the look tags that turn the character's eyes (Martlet decides where the
+    /// character looks).</summary>
+    internal bool LookOffered { get; set; }
     private double voiceLevel = -100;
     internal double VoiceLevel { get => Volatile.Read(ref voiceLevel); set => Volatile.Write(ref voiceLevel, value); }
     internal bool HandsFree => Listening?.HandsFree == true;
@@ -221,8 +229,26 @@ internal sealed class LiveConversationOperation
     }
     internal void Attach(ConversationTurn run)
     {
-        Volatile.Write(ref turn, run);
+        bool mute;
+        lock (gate)
+        {
+            Volatile.Write(ref turn, run);
+            mute = voiceMuted;
+        }
         if (Authorization.IsCanceled) run.StopAsync().Forget();
+        else if (mute) run.MuteVoice();
+    }
+    /// <summary>Martlet's voice was muted while this reply ran: its turn (now, or once it starts) stops saying it aloud, and the
+    /// rest shows as text.</summary>
+    internal void MuteVoice()
+    {
+        ConversationTurn? attached;
+        lock (gate)
+        {
+            voiceMuted = true;
+            attached = Volatile.Read(ref turn);
+        }
+        attached?.MuteVoice();
     }
     internal void ReleasePress()
     {
@@ -330,21 +356,21 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // Thinking models that refused the Thinking steps choice this app session; they get their own default until Martlet restarts.
     private readonly HashSet<string> reasoningRefused = new(StringComparer.Ordinal);
     // Background work Martlet started during the conversation (think_longer), its own text runtime and credentials (bound to the
-    // one think's request at a time), the think running (so a model on this PC can be handed back to the conversation at once),
-    // whether the user is talking or about to be answered (from the talk window), and who the last spoken reply heard.
+    // one think's request at a time), where Deep thinking thinks on this PC (deep-thinking.json, read when the conversation is
+    // set up or the page saves it), and who the last spoken reply heard.
     private readonly BackgroundJobs jobs;
     private readonly ConversationCredentialSource thinkCredentials;
     private ConversationRuntime? thinkRuntime;
     private ICredentialAuthority? thinkAuthorization;
-    // Where the running think works and whether it runs alongside the conversation (for background-jobs.json).
+    private DeepThinkingSettings deepThinking = new();
+    // Where the running think works and whether it can run there (for background-jobs.json).
     private ThinkPlace? thinkingWhere;
     private sealed record ThinkPlace(string Where, DeepThinkingPlan Plan);
     private BackgroundThink? thinking;
-    private int userBusy;
-    private (bool Spoken, HeardVoices? Heard) lastAsked;
-    // The latest exchange kept in the conversation, as its request was sent and what Martlet said: a think on a model on this PC
-    // continues it when it starts again, so the conversation since stays in the model's cache.
-    private (BoundedTextInput Sent, string Reply)? lastExchange;
+    private (bool Spoken, HeardVoices? Heard, ChattinessChoice? Chattiness) lastAsked;
+    // The chattiness level Martlet picked while it decides how chatty it is: Normal until a reply or glance switches it, then
+    // kept until Martlet closes.
+    private Chattiness decided = Chattiness.Normal;
     private readonly object statusGate = new();
 
     internal bool IsRunning => operations.IsRunning;
@@ -401,6 +427,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal string? PcOutput => pcAudio?.Output;
     /// <summary>The controller's clock, for timing what it measured (such as when the user's voice began).</summary>
     internal TimeProvider Clock => clock;
+
+    /// <summary>The level Martlet picked while it decides how chatty it is (Companion › Vision › How often it comments: Martlet
+    /// decides): Normal until a reply or glance switches it with a chattiness tag, then kept until Martlet closes.</summary>
+    internal Chattiness DecidedChattiness { get { lock (gate) return decided; } }
+    /// <summary>Raised off the dispatcher when a reply or glance switched <see cref="DecidedChattiness"/>: the level before and
+    /// the new one.</summary>
+    internal event Action<Chattiness, Chattiness>? ChattinessDecided;
+
+    /// <summary>Takes the level a finished reply or glance switched to (the last chattiness tag it wrote) while Martlet decides
+    /// how chatty it is. A reply cut off before its words were all written (restarted, stopped early) switches nothing.</summary>
+    private void Decide(ConversationTurn turn, ConversationSnapshot terminal, string what)
+    {
+        if (!terminal.TextComplete || ChattinessTags.Last(turn.Controls) is not { } level) return;
+        Chattiness before;
+        lock (gate)
+        {
+            before = decided;
+            decided = level;
+        }
+        if (before == level) return;
+        ErrorLog.Info($"Chattiness: Martlet went from {ChattinessTags.Name(before)} to {ChattinessTags.Name(level)} " +
+            $"({what}; Martlet decides).");
+        ChattinessDecided?.Invoke(before, level);
+    }
 
     /// <summary>How long after Martlet asks something a short answer ("yes", "mm-hmm") counts as one.</summary>
     internal static TimeSpan AnswerWindow => TimeSpan.FromSeconds(30);
@@ -527,11 +577,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
         if (dataDirectory is not null) Configuration?.UseAbilities(ModelAbilities.Load(dataDirectory));
     }
 
+    /// <summary>Reads where Deep thinking thinks on this PC (deep-thinking.json) again, after Companion › Deep thinking saved it:
+    /// the next reply offers think_longer only where Deep thinking can run, and the next think goes there.</summary>
+    internal void ReloadDeepThinking() => Volatile.Write(ref deepThinking, DeepThinkingSettings.Load(dataDirectory));
+
+    /// <summary>Whether Deep thinking can run where it is set to think, for <paramref name="configured"/>'s routes.</summary>
+    private DeepThinkingPlan DeepPlan(LiveConversationConfiguration configured) =>
+        DeepThinkingPlan.For(Volatile.Read(ref deepThinking), configured.Routes);
+
     internal void Configure(SettingsLoadResult loaded)
     {
         // The context windows found on this PC (Companion › Replies › Check) keep the context size within the model's own, and
         // what Thinking models were found to hear and see decides whether a recording or picture goes with a message.
         var next = LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory), ModelAbilities.Load(dataDirectory));
+        ReloadDeepThinking();
         LiveConversationOperation? stop;
         LiveListener[] stopListening;
         bool changed;
@@ -640,7 +699,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
-        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, IReadOnlyList<SpokenWords>? words = null)
+        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
+        IReadOnlyList<SpokenWords>? words = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -676,6 +736,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, StraightWords = words,
                 PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
+                BackgroundChattiness = chattiness,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
                     : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
             };
@@ -1035,7 +1096,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
         context.Clear();
         remarks.Clear();
         lastCache = null;
-        lastExchange = null;
         conversationId = Guid.NewGuid();
     }
 
@@ -1055,9 +1115,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>One unprompted screen glance: the image, the window title and recent context go to the Thinking model,
     /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
-    /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look.</summary>
-    internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, Chattiness chattiness, bool voice,
-        bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null)
+    /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look. With
+    /// <paramref name="look"/> (Martlet decides where the character looks) the model may also start its answer with a look tag
+    /// that turns the character's eyes to part of the picture.</summary>
+    internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, ChattinessChoice chattiness, bool voice,
+        bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
+        bool look = false)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -1082,7 +1145,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 await published.Task.ConfigureAwait(false);
                 authorization.BindWorker(token);
-                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, token).ConfigureAwait(false);
+                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, look && !camera, token).ConfigureAwait(false);
             });
             if (worker is null)
             {
@@ -1115,9 +1178,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
-        Chattiness chattiness, bool camera, CancellationToken worker)
+        ChattinessChoice chattiness, bool camera, bool look, CancellationToken worker)
     {
-        YieldBackground();
+        // While Martlet decides how chatty it is, the look is told how to switch the level (the same at every level) and the
+        // level it is at goes in the notes.
+        var decides = chattiness == ChattinessChoice.MartletDecides;
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1134,9 +1199,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
                 var history = context.Snapshot(sent: true);
+                var level = ChattinessTags.Level(chattiness, decided);
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
-                    out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera, configured.Prompts),
-                    LiveConversationConfiguration.SilentReply, characterActions: characterActions);
+                    out var usedHistory, out _, out var usedLore, image,
+                    LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides),
+                    LiveConversationConfiguration.SilentReply, characterActions: characterActions,
+                    gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
+                    chattiness: decides ? configured.ChattinessNote(level) : null, controlTags: decides ? ChattinessTags.All : null);
+                operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
@@ -1152,6 +1222,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             NoteInput(camera ? "Camera glance" : "Screen glance", terminal);
+            if (decides) Decide(turn, terminal, camera ? "a camera look" : "a screen glance");
             var text = turn.Content.Text;
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
@@ -1228,6 +1299,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         operation.Cancel(reason);
     }
 
+    /// <summary>Martlet's voice was muted (Speak Martlet's replies aloud turned off): the reply or comment running now stops
+    /// saying it aloud and finishes as text, with the rest in the captions. Nothing is canceled or forgotten, and what comes
+    /// next is text only because it starts without a voice.</summary>
+    internal void MuteVoice()
+    {
+        LiveConversationOperation? running;
+        lock (gate) running = active is { OwnershipReleased: false } ? active : null;
+        running?.MuteVoice();
+    }
+
     private async Task SuperviseAsync(LiveConversationOperation operation)
     {
         while (!operation.Worker.Completion.IsCompleted && !operation.ExecutionFinished)
@@ -1265,8 +1346,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<SetupWorkResult> RunAsync(LiveConversationOperation operation, BoundedTextInput? input, CancellationToken worker)
     {
         DispatchLease? lease = null;
-        // A model on this PC serves the conversation first: a background think stops at once and starts again once it's quiet.
-        YieldBackground();
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1376,8 +1455,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
-            // is on), only for the user's own turns (and Martlet's reports of its background work) and routes that do function
-            // calling. While Thinking longer is on they are always offered, the same way, so every request starts the same.
+            // is on and Deep thinking can run where it is set to think, search_conversations while it is allowed, list_creations
+            // and perform_creation while any kind of creation is registered), only for the user's own turns (and Martlet's reports
+            // of its background work) and routes that do function calling. While they are on they are always offered, the same
+            // way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
             var builtIns = BuiltIns(operation, configured, conversation);
@@ -1442,6 +1523,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
                     ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
+                // While Martlet decides how chatty it is (and vision is on or it hears this PC), every reply is told how to switch
+                // the level, the same way every time; the level goes in the notes when the conversation's notes don't say it yet.
+                var decides = operation.BackgroundChattiness == ChattinessChoice.MartletDecides;
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
@@ -1450,6 +1534,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
+                            decides ? LiveConversationConfiguration.ChattinessDecides(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
@@ -1457,6 +1542,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
+                        chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
+                        controlTags: decides ? ChattinessTags.All : null,
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
@@ -1508,6 +1595,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
+            if (operation.BackgroundChattiness == ChattinessChoice.MartletDecides)
+                Decide(turn, terminal, operation.Report ? "bringing up background work"
+                    : operation.PcAudio && operation.UserWords is null ? "what this PC played" : "your message");
             // A model that rejected tools is asked without them from now on (for a week, on this PC).
             if (terminal.ToolsRejected)
             {
@@ -1561,9 +1651,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             // speech-to-text has them; the record of conversations, memory and learning names follow then.
                             var exchange = context.Add(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText,
                                 kept, configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
-                            if (operation.Sent is { } sentAlone && configured.HostTarget() is null) lastExchange = (sentAlone, kept);
                             ConversationContextBuffer.Pending(exchange,
-                                KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, kept, turn.Content.Text, passed)));
+                                KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, turn.Content.Text, passed)));
                         }
                         else
                         {
@@ -1580,8 +1669,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
                                         : operation.Spoken || operation.Authorization.Microphone ? HistoryInputKind.Spoken : HistoryInputKind.Typed,
                                     recordedWords, turn.Content.Text,
                                     operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null);
-                            if (operation.Sent is { } sentInput && configured.HostTarget() is null)
-                                lastExchange = (sentInput, kept);
                         }
                         // The finished background work this reply carried is in the conversation now.
                         if (operation.Delivery is { } delivered)
@@ -1591,7 +1678,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                                 (operation.Report ? "brought up by Martlet on its own" : "brought up with your message") +
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
-                        if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard);
+                        if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
                         var spokenOwn = operation.Report || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
                         var remembered = spokenOwn is null ? null
@@ -1697,7 +1784,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         LiveConversationConfiguration.WithoutPcAudio(history.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text) ?? "";
 
     private sealed record StraightExchange(LiveConversationOperation Operation, LiveConversationConfiguration Configured, Guid Conversation,
-        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Kept, string Reply, bool Passed)
+        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed)
     {
         public override string ToString() => nameof(StraightExchange);
     }
@@ -1720,8 +1807,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var hostless = keep.Configured.HostTarget() is null;
             var current = conversationId == keep.Conversation;
             if (current) filled = context.Fill(keep.Exchange, said, hostless ? sent?.SentUserText : null);
-            if (current && sent is not null && hostless && lastExchange is { } last && ReferenceEquals(last.Sent, operation.Sent))
-                lastExchange = (sent, keep.Kept);
             if (!keep.Passed && history is { } historyRecord && historyRecord.Active(keep.Configured.Memory))
             {
                 historyRecord.Record(keep.Conversation, HistoryInputKind.Spoken, userWords, keep.Reply,
@@ -1778,12 +1863,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
     /// prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
-    /// off by default). Null when there are none.</summary>
+    /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
+    /// docs/CREATIONS.md). Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
         string? guidance = null;
-        if (configured.OffersThinkLonger)
+        if (configured.OffersThinkLonger && DeepPlan(configured).Available)
         {
             var settings = configured.ThinkLonger;
             var definitions = ThinkLonger.Definitions(settings);
@@ -1793,6 +1879,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
             own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
+        var kinds = Creations.Kinds;
+        if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
+        {
+            var definitions = CreationTools.Definitions(kinds);
+            own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
+            own.Add((definitions[1], PerformCreationAsync));
+        }
         return own.Count == 0 ? null : new(own, guidance);
     }
 
@@ -1801,6 +1894,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         var (result, outcome) = await history!.SearchAsync(call, conversation, token).ConfigureAwait(false);
         tools?.Record("Martlet", PastConversations.ToolName, outcome, ConversationHistory.Preview(call.ArgumentsJson, 120), result.IsError);
+        return result;
+    }
+
+    /// <summary>The kinds of creation Martlet knows and what performs them (docs/CREATIONS.md).</summary>
+    internal CreationRegistry Creations { get; init; } = CreationRegistry.Shared;
+
+    /// <summary>list_creations: what Martlet made, from this PC's copy of the shared list (read only when called).</summary>
+    private ConversationToolResult ListCreations(TextToolCall call)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = CreationTools.List(library, Creations, call.ArgumentsJson, c => CreationStore.IsComplete(dataDirectory!, c));
+        tools?.Record("Martlet", CreationTools.ListName, result.IsError ? "invalid arguments" : $"{library.Live.Count} creations", "", result.IsError);
+        return result;
+    }
+
+    /// <summary>perform_creation: hands the creation to its kind's handler (a song is sung by the conversation that attached the
+    /// song handler), or says clearly why it can't.</summary>
+    private async ValueTask<ConversationToolResult> PerformCreationAsync(TextToolCall call, CancellationToken token)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = await CreationTools.PerformAsync(library, Creations, call.ArgumentsJson, c => CreationStore.Assets(dataDirectory!, c), token)
+            .ConfigureAwait(false);
+        tools?.Record("Martlet", CreationTools.PerformName, result.IsError ? "not performed" : "performed", "", result.IsError);
+        ErrorLog.Info($"Creations: perform_creation {(result.IsError ? "didn't start" : "started")}.");
         return result;
     }
 
@@ -1818,16 +1935,22 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         var settings = configured.ThinkLonger;
         if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
+        // Where it thinks (Companion › Deep thinking, this PC's choice). Deep thinking is parallel thinking: it runs only where it
+        // has a model of its own, and on a second model in Ollama on this PC only while both fit on the graphics card.
+        var deep = Volatile.Read(ref deepThinking);
+        var plan = DeepThinkingPlan.For(deep, configured.Routes);
+        if (!plan.Available)
+        {
+            tools?.Record(server, ThinkLonger.Name, "not started: unavailable", ThinkLonger.Label(task!), false);
+            ErrorLog.Info($"Background thinking: a new think wasn't started ({plan.Why})");
+            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Unavailable(plan.Why), true));
+        }
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
-        // Where it thinks (Companion › Deep thinking, this PC's choice) and whether that runs alongside the conversation or waits
-        // for quiet moments because it shares the conversation's hardware.
-        var deep = DeepThinkingSettings.Load(dataDirectory);
-        var plan = DeepThinkingPlan.For(deep, configured.Routes);
-        var where = deep.Separate ? deep.Describe() : configured.Route(SetupRole.Llm).ModelId;
+        var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
+        var where = deep.Separate ? deep.Describe() : thinkingModel;
         var think = new BackgroundThink(ThinkRuntime(),
-            left => PrepareThink(configured, deep, plan, sent, () => operation.Turn?.Content.Text, task!, reason, left),
-            plan.Parallel ? null : ThinkBusy, clock)
+            left => PrepareThink(configured, deep, sent, () => operation.Turn?.Content.Text, task!, reason, left), clock)
         {
             AttemptFinished = terminal =>
             {
@@ -1844,13 +1967,40 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             Volatile.Write(ref thinking, think);
             Volatile.Write(ref thinkingWhere, new ThinkPlace(where, plan));
-            try { return await think.RunAsync(job, token).ConfigureAwait(false); }
+            using var guard = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var watch = Task.CompletedTask;
+            string? pushed = null;
+            try
+            {
+                if (plan.ChecksFit)
+                {
+                    // A second model in the same Ollama: it starts only when both fit on the graphics card (Thinking's loaded
+                    // first, so its own size counts), and stops if loading it pushed Thinking's off the card after all.
+                    job.Report(BackgroundJobState.Waiting, "checking it fits beside Thinking");
+                    var fit = await LocalDeepThinking.CheckAsync(thinkingModel, deep.ModelId!, loadThinking: true, token).ConfigureAwait(false);
+                    ErrorLog.Info($"Background thinking: {job.Id} {(fit.Fits ? "can" : "can't")} run in Ollama on this PC beside Thinking. {fit.Why}");
+                    if (!fit.Fits) return BackgroundJobOutcome.Failed(fit.Why.TrimEnd('.'));
+                    watch = LocalDeepThinking.WatchAsync(thinkingModel, deep.ModelId!, why =>
+                    {
+                        Volatile.Write(ref pushed, why);
+                        guard.Cancel();
+                    }, guard.Token);
+                }
+                return await think.RunAsync(job, guard.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && Volatile.Read(ref pushed) is { } pushedOut)
+            {
+                ErrorLog.Warn($"Background thinking: {job.Id} stopped. {pushedOut}");
+                LocalDeepThinking.RecoverAsync(thinkingModel, deep.ModelId!).Forget();
+                return BackgroundJobOutcome.Failed(pushedOut.TrimEnd('.'));
+            }
             finally
             {
+                await guard.CancelAsync().ConfigureAwait(false);
+                await watch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 Interlocked.CompareExchange(ref thinking, null, think);
                 ErrorLog.Info($"Background thinking: {job.Id} ended after {BackgroundJobs.Duration(job.Elapsed)} " +
-                    $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}" +
-                    (plan.Parallel ? ", alongside the conversation" : $", paused {think.Pauses} time{(think.Pauses == 1 ? "" : "s")} for the conversation") + ").");
+                    $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}, alongside the conversation).");
             }
         });
         if (start.Job is not { } started)
@@ -1862,7 +2012,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
         ErrorLog.Info($"Background thinking: started {started.Id} on {where} (thinking steps on, {settings.HowHard} effort, " +
             $"{BackgroundJobs.Duration(settings.TimeLimit)} limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} of {settings.Hourly} " +
-            $"this hour; {(plan.Parallel ? "in parallel with the conversation" : "only while the conversation is quiet")}: {plan.Why})" +
+            $"this hour; in parallel with the conversation: {plan.Why})" +
             (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
     }
@@ -1891,19 +2041,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
         jobs.CancelAll();
     }
 
-    // One attempt of a background think: a reply's request continued and fitted to where it thinks, with its own authorization
-    // bound to exactly this request and the time left. When it waits for quiet moments it continues the latest exchange (the
-    // conversation may have gone on while it paused, and that keeps the model's cache on the conversation); otherwise the
-    // reply that called think_longer, as said so far.
+    // A background think's request: the reply that called think_longer (as said so far) continued and fitted to where it thinks,
+    // with its own authorization bound to exactly this request and the time left.
     private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured,
-        DeepThinkingSettings deep, DeepThinkingPlan plan, BoundedTextInput? sent, Func<string?> reply, string task, string? reason,
-        TimeSpan left)
+        DeepThinkingSettings deep, BoundedTextInput? sent, Func<string?> reply, string task, string? reason, TimeSpan left)
     {
-        (BoundedTextInput Sent, string Reply)? latest;
-        lock (gate) latest = plan.Parallel ? null : lastExchange;
-        var full = latest is { } exchange
-            ? ThinkLonger.Input(exchange.Sent, exchange.Reply, task, reason, configured.Prompts, exchange.Sent.Personality)
-            : ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
+        var full = ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
         var effort = configured.ThinkLonger.HowHard;
         if (deep.Separate)
         {
@@ -1939,26 +2082,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>The conversation needs the hardware a waiting think shares: a reply or glance runs, an exchange is being
-    /// remembered, or the user is talking or about to be answered.</summary>
-    private bool ThinkBusy()
-    {
-        if (Volatile.Read(ref userBusy) != 0) return true;
-        lock (gate) return active is { Worker.Completion.IsCompleted: false } || capturesPending > 0;
-    }
-
-    // A think that shares the conversation's hardware stops at once when the conversation needs it; one that runs in parallel
-    // (another computer or provider) carries on.
-    private void YieldBackground() => Volatile.Read(ref thinking)?.Yield();
-
-    /// <summary>The talk window says whether the user is talking or a turn is about to start (heard, typed, held to talk), so a
-    /// think that shares the conversation's hardware gives way before the reply needs it.</summary>
-    internal void NoteUserBusy(bool busy)
-    {
-        if (Interlocked.Exchange(ref userBusy, busy ? 1 : 0) == (busy ? 1 : 0) || !busy) return;
-        YieldBackground();
-    }
-
     /// <summary>Starts a reply Martlet gives on its own to bring up finished background work, as soon as it is free (the talk
     /// window decides when: never while the user talks, a turn is pending or Martlet is replying). Its message is Martlet's
     /// note with the results (Companion › Prompts › Background work finished), which stays in the conversation; tools stay
@@ -1983,7 +2106,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);
                 operation = new(authorization, CancellationToken.None)
                 {
-                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken
+                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken, BackgroundChattiness = lastAsked.Chattiness
                 };
                 active = operation;
                 var worker = operations.TryStart(async token =>
@@ -2054,8 +2177,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName) },
             thinking = running is null ? null : new
             {
-                where = place?.Where, parallel = place?.Plan.Parallel, why = place?.Plan.Why,
-                waitsForQuiet = running.Busy is not null, attempts = running.Attempts, pauses = running.Pauses
+                where = place?.Where, available = place?.Plan.Available, checksFit = place?.Plan.ChecksFit, why = place?.Plan.Why,
+                parallel = true, attempts = running.Attempts
             }
         });
     }
@@ -2458,7 +2581,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
         BoundedTextInput input, CancellationToken token)
     {
-        YieldBackground();
         var picture = input.Image is not null;
         var request = configuration.MemoryCaptureRequest(input, imageOptional: picture);
         var capture = CaptureRuntime();

@@ -37,12 +37,15 @@ public static class PromptCatalog
     public const string GlanceCamera = "glance_camera";
     public const string GlanceRemarks = "glance_remarks";
     public const string GlanceAttention = "glance_attention";
+    public const string GlanceLook = "glance_look";
     public const string CommentaryScreen = "commentary_screen";
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
+    public const string ChattinessDecides = "chattiness_decides";
+    public const string ChattinessNow = "chattiness_now";
     public const string MemoryCapture = "memory_capture";
     public const string VoiceNaming = "voice_naming";
     public const string AfterReply = "after_reply";
@@ -101,6 +104,21 @@ public static class PromptCatalog
         "up in the same reply, in character, without mentioning notes, background jobs or tools. If a result needs the user's " +
         "go-ahead, offer it and ask first.";
 
+    public const string DefaultChattinessDecidesInstructions =
+        "You decide how chatty you are about what goes on around the user without them asking: what you see on their screen " +
+        "or camera and what plays on their PC. There are three levels:\n" +
+        "quiet: speak up only when something is clearly remarkable or they'd want to know; otherwise [{silent}].\n" +
+        "normal: say something when it's worth saying; otherwise [{silent}].\n" +
+        "chatty: react more often, like a friend enjoying it with them, but still [{silent}] when nothing is new.\n" +
+        "Levels only change remarks nobody asked for: always answer the user when they talk to you. Martlet's notes say your " +
+        "level right now. Change it whenever what's happening or what the user says calls for it: go quiet when they're " +
+        "focused, busy, on a call, watching or listening closely, seem tired of your remarks or ask for quiet; go chatty when " +
+        "they invite your reactions, ask what you think, play, watch or listen to something together with you, or things get " +
+        "exciting; go back to normal once it settles down. When they ask for more or less talk, change it right away.\n" +
+        "To change it, write {quiet}, {normal} or {chatty}, exactly as written, at the very end of your reply, after your " +
+        "last sentence or after [{silent}]. The tag is never shown or spoken. Don't write it while your level stays the same, " +
+        "and never talk about levels or tags.";
+
     public const string DefaultReplyLengthInstructions =
         "Reply length: one or two short sentences at most, like a quick spoken reply. No lists, headings or markdown, no " +
         "second paragraph, and no closing offers such as \"let me know if you need anything\". Go longer only when the user " +
@@ -143,6 +161,13 @@ public static class PromptCatalog
         "Write a tag exactly as shown, for example \"Oh, stop it {example} you're too kind.\" Use one when it fits how you feel or " +
         "what you do: at most two in a reply, and many replies need none. The character acts the tags out; they are never shown " +
         "or spoken. Never write tags that aren't listed.";
+
+    public const string DefaultGlanceLookInstructions =
+        "You also appear on the user's screen as an animated character whose eyes follow their mouse. When something specific " +
+        "in the picture catches your eye, start your reply with the tag for where it is, and the character looks there for a " +
+        "moment:\n{tags}\nIt works before a remark and before [{silent}]. Use at most one, and only for something worth a look " +
+        "(something new, something moving, or what you remark on); otherwise write none and the character keeps watching their " +
+        "mouse. The tags are never shown or spoken.";
 
     public const string DefaultCharacterActionNamingInstructions =
         "You set up an animated desktop character (a Live2D or VRM model) for Martlet, a voice companion. Each numbered item is one " +
@@ -344,6 +369,16 @@ public static class PromptCatalog
             "Answer [{silent}] unless it is worth saying.", ["silent"]),
         new(ChattinessChatty, VisionGroup, "Chattiness: chatty", "Closes the glance instructions when vision is chatty.",
             "You are in a chatty mood, but still answer [{silent}] when nothing is new.", ["silent"]),
+        new(ChattinessDecides, VisionGroup, "Chattiness: Martlet decides",
+            "Closes the glance instructions, and is added to replies to what this PC plays and to your messages while vision is on " +
+            "or Martlet hears this PC, when How often it comments is Martlet decides. It stays the same from message to message. " +
+            "{quiet}, {normal} and {chatty} are the tags a reply ends with to switch the level (at the end, so the first words " +
+            "aren't held back; never shown or spoken); {silent} is the word for staying quiet.",
+            DefaultChattinessDecidesInstructions, ["silent", "quiet", "normal", "chatty"]),
+        new(ChattinessNow, VisionGroup, "Chattiness right now",
+            "Goes in the notes of a message while Martlet decides how chatty it is, when the conversation's notes don't already " +
+            "say the level (it starts at normal and changes when a reply switches it). {level} is quiet, normal or chatty.",
+            "Your chattiness right now: {level}.", ["level"]),
         new(GlanceScreen, VisionGroup, "Screen glance message",
             "The message sent with each screenshot. {title} is the active window's title; {remarks} is the line below when Martlet already said something.",
             "(Screen glance. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark.)",
@@ -362,6 +397,12 @@ public static class PromptCatalog
             "(Screen glance: {what}. Active window: \"{title}\".{remarks} If it is a message, call or reminder they would want to " +
             "know about, give a quick heads-up: who or which app it is from, never the message itself. Otherwise reply [{silent}].)",
             ["what", "title", "remarks", "silent"]),
+        new(GlanceLook, VisionGroup, "Where the character looks",
+            "Added to screen glances while Companion › Vision › Where the character looks is Martlet decides and the character " +
+            "shows, so the Thinking model can turn the character's eyes to a part of the picture. {tags} lists the nine look tags, " +
+            "one per line with where each looks; {silent} is the word for staying quiet. Empty it and only what changes on screen " +
+            "draws the character's eyes.",
+            DefaultGlanceLookInstructions, ["tags", "silent"]),
         new(SeenWithMessage, VisionGroup, "Screen with your message",
             "Added to replies while vision is on: the newest picture of what Martlet watches goes with what you type or say. " +
             "{source} says what the picture shows.",

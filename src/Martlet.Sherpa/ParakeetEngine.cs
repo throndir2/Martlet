@@ -9,9 +9,9 @@ namespace Martlet.Sherpa;
 public sealed record ParakeetTranscript(string Text, double? Confidence, string? Language, double? Minimum = null,
     double? FirstToken = null, double? LastToken = null);
 
-/// <summary>NVIDIA Parakeet TDT 0.6B v3 speech-to-text on this PC's processor through sherpa-onnx, as in AudioTranscriber:
-/// 25 European languages detected automatically, punctuated and cased. Audio stays in memory and nothing is sent anywhere.
-/// The model (about 1 GB in memory) loads on first use; calls are serialized.</summary>
+/// <summary>NVIDIA Parakeet speech-to-text (one of <see cref="ParakeetModels"/>) on this PC's processor through sherpa-onnx, as in
+/// AudioTranscriber: punctuated and cased, with v3 detecting 25 European languages by itself. Audio stays in memory and nothing is
+/// sent anywhere. The model (about 0.6 to 0.9 GB in memory) loads on first use; calls are serialized.</summary>
 public sealed class ParakeetEngine : IDisposable
 {
     public const int SampleRate = 16_000;
@@ -23,19 +23,25 @@ public sealed class ParakeetEngine : IDisposable
     private IntPtr recognizer;
     private bool disposed;
 
-    /// <summary>Parakeet in <paramref name="root"/> (the data folder's speech directory), run with the sherpa-onnx runtime in
-    /// <paramref name="runtimeDirectory"/> (default: Martlet's own folder).</summary>
-    public ParakeetEngine(string root, int? threads = null, string? runtimeDirectory = null)
+    /// <summary>The Parakeet model <paramref name="modelId"/> in <paramref name="root"/> (the data folder's speech directory), run
+    /// with the sherpa-onnx runtime in <paramref name="runtimeDirectory"/> (default: Martlet's own folder). Throws
+    /// <see cref="ArgumentException"/> for a model this Martlet doesn't know.</summary>
+    public ParakeetEngine(string root, string modelId, int? threads = null, string? runtimeDirectory = null)
     {
         this.root = Path.GetFullPath(root);
+        Model = ParakeetModels.Get(modelId);
         runtime = runtimeDirectory;
         // ONNX Runtime's worker threads spin: 4 threads is ~1.4x faster than 2 but uses ~2x the CPU (AudioTranscriber's measurement).
         this.threads = threads ?? Math.Clamp(Environment.ProcessorCount / 4, 2, 4);
     }
 
-    /// <summary>Parakeet is downloaded to <paramref name="root"/> and Martlet's folder has the sherpa-onnx runtime.</summary>
-    public static bool Installed(string root) =>
-        SherpaComponents.RuntimeDirectory() is not null && SherpaComponents.IsParakeetInstalled(root);
+    /// <summary>The model this engine runs.</summary>
+    public ParakeetModel Model { get; }
+
+    /// <summary>The model <paramref name="modelId"/> is downloaded to <paramref name="root"/> and Martlet's folder has the
+    /// sherpa-onnx runtime.</summary>
+    public static bool Installed(string root, string modelId) =>
+        SherpaComponents.RuntimeDirectory() is not null && SherpaComponents.IsParakeetInstalled(root, modelId);
 
     /// <summary>Transcribes 16 kHz mono <paramref name="samples"/> (at most a minute).</summary>
     public ParakeetTranscript Transcribe(float[] samples)
@@ -75,20 +81,20 @@ public sealed class ParakeetEngine : IDisposable
     private void Open()
     {
         if (recognizer != IntPtr.Zero) return;
-        if (!SherpaComponents.IsParakeetInstalled(root)) throw new SherpaException("The Parakeet model isn't downloaded yet.");
+        if (!SherpaComponents.IsParakeetInstalled(root, Model)) throw new SherpaException($"{Model.Name} isn't downloaded yet.");
         SherpaNative.Load(runtime ?? SherpaComponents.RuntimeDirectory() ??
             throw new SherpaException("The speech runtime is missing from Martlet's folder. Reinstall Martlet."));
-        var model = SherpaComponents.ParakeetDirectory(root);
+        var model = SherpaComponents.ParakeetDirectory(root, Model);
         // Offsets of SherpaOnnxOfflineRecognizerConfig (608 bytes): feat{sample_rate@0, feature_dim@4},
         // model{transducer{encoder@8, decoder@16, joiner@24}, tokens@104, num_threads@112, debug@116, provider@120,
-        // model_type@128}, decoding_method@528.
+        // model_type@128}, decoding_method@528. Every Parakeet model is a NeMo TDT transducer with 80 features.
         using var config = new NativeConfig(608)
             .Int(0, SampleRate).Int(4, 80)
-            .Text(8, Path.Combine(model, "encoder.int8.onnx")).Text(16, Path.Combine(model, "decoder.int8.onnx"))
-            .Text(24, Path.Combine(model, "joiner.int8.onnx")).Text(104, Path.Combine(model, "tokens.txt"))
+            .Text(8, Path.Combine(model, Model.Encoder)).Text(16, Path.Combine(model, Model.Decoder))
+            .Text(24, Path.Combine(model, Model.Joiner)).Text(104, Path.Combine(model, Model.Tokens))
             .Int(112, threads).Text(120, "cpu").Text(128, "nemo_transducer").Text(528, "greedy_search");
         recognizer = SherpaNative.SherpaOnnxCreateOfflineRecognizer(config.Pointer);
-        if (recognizer == IntPtr.Zero) throw new SherpaException("The Parakeet model could not be loaded.");
+        if (recognizer == IntPtr.Zero) throw new SherpaException($"{Model.Name} could not be loaded.");
     }
 
     internal static ParakeetTranscript Parse(string json)

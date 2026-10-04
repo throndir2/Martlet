@@ -88,7 +88,9 @@ public partial class MainWindow : ThemedWindow
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
         avatar.LockedPlacement = CharacterPlacementStore.Load(store?.DataDirectory);
+        avatar.VoiceMuted = !Talk.SpeakReplies;
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
+        avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
@@ -106,6 +108,7 @@ public partial class MainWindow : ThemedWindow
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
+            conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
         }
         WireCharacterActions();
         WireCharacterThemes();
@@ -146,6 +149,7 @@ public partial class MainWindow : ThemedWindow
         InitializeVoiceSync();
         InitializeSpeakingVoices();
         InitializeCharacterModels();
+        InitializeCreations();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
@@ -178,7 +182,7 @@ public partial class MainWindow : ThemedWindow
         }
         else ErrorLog.Info("Martlet started as a Martlet host: the character and listening stay off on this PC" +
             (background.StartCompanion ? " (When Martlet starts, show the character and start listening is kept for when it's your companion PC)." : "."));
-        // An update Martlet just restarted into brings back the character and listening that were on when it closed for it.
+        // An update Martlet just restarted into brings back the character, listening and watching that were on when it closed for it.
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartSettingsSync();
@@ -188,13 +192,14 @@ public partial class MainWindow : ThemedWindow
         StartVoiceSync();
         StartSpeakingVoices();
         StartCharacterModels();
+        StartCreations();
         StartHomeShare();
         StartNodeAgent();
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (Role == DeviceRole.Companion &&
-            homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
-            parakeet?.WarmAsync().Forget();
+            homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt) is { RouteType: SetupRouteType.LocalParakeet } listening)
+            parakeet?.WarmAsync(listening.ModelId).Forget();
         if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
@@ -466,8 +471,8 @@ public partial class MainWindow : ThemedWindow
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
-    /// Martlet, talk, open Companion › Character or lock its position. The overlay handles its zoom, position and keep-on-top
-    /// itself; it can't unlock its own position.</summary>
+    /// Martlet, talk, open Companion › Character, lock its position, or mute or unmute Martlet's voice. The overlay handles its
+    /// zoom, position and keep-on-top itself; it can't unlock its own position.</summary>
     private void CharacterRequested(string action)
     {
         if (closing) return;
@@ -487,6 +492,8 @@ public partial class MainWindow : ThemedWindow
             case "lock":
                 if (!avatar.PlacementLocked) SetCharacterLockAsync(true).Forget();
                 break;
+            case "mute": SetVoiceMuted(true); break;
+            case "unmute": SetVoiceMuted(false); break;
         }
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();

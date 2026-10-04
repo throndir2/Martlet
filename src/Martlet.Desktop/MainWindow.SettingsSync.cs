@@ -296,7 +296,7 @@ public partial class MainWindow
             {
                 HandsFree = value.HandsFree, PauseIndex = Math.Clamp(value.PauseIndex, 0, TalkPreferences.Pauses.Length - 1),
                 SpeakReplies = value.SpeakReplies, HearVoice = value.HearVoice, BargeIn = value.BargeIn,
-                ScreenChattiness = Math.Clamp(value.ScreenChattiness, 0, 2),
+                ScreenChattiness = (int)ChattinessTags.Choice(value.ScreenChattiness),
                 WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal,
                 TranscribeFirst = value.TranscribeFirst
             });
@@ -528,7 +528,7 @@ public partial class MainWindow
                 return voices.Any(v => v.Id == route.Voice) ? null
                     : $"The Windows voice {WindowsVoices.DisplayName(route.Voice)} isn't installed on this PC. Add it in Windows Settings › Time & language › Speech, or choose a voice in Companion › Voice.";
             case SharedRoute.Parakeet:
-                return parakeet?.Installed == true ? null : "Parakeet isn't downloaded on this PC yet. Set it up in Companion › Listening.";
+                return SharedParakeetWaiting(route.Model, model => parakeet?.Installed(model) == true);
             case SharedRoute.ChatCompletions when route.Origin == LocalOllamaBaseUrl:
                 if (LocalOllama.Executable() is null) return "Ollama isn't installed on this PC. Set it up in Companion › Thinking.";
                 var models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(3), token);

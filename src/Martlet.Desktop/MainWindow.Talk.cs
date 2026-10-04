@@ -12,7 +12,8 @@ namespace Martlet.Desktop;
 
 /// <summary>The Companion choices the talk window follows: how you talk (Listening), whether replies are spoken (Voice) and
 /// what Martlet may look at (Vision). They save to talk-preferences.json and an open talk window follows them at once; the
-/// talk window itself shows the conversation, starts and stops listening, and pauses or resumes vision.</summary>
+/// talk window itself shows the conversation, and listening and watching each start and stop from their own buttons there, on
+/// Home and in the notification-area menu.</summary>
 public partial class MainWindow
 {
     private TalkPreferences? talk;
@@ -23,7 +24,7 @@ public partial class MainWindow
     private bool findingCameras, findingHomeCameras;
 
     private static readonly string[] PauseChoices = ["Short (0.5 s)", "Normal (0.8 s)", "Long (1.2 s)"];
-    private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty"];
+    private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty", "Martlet decides"];
     // Companion › Listening › Word check, in the order shown.
     private static readonly string[] WordCheckChoices = ["Relaxed", "Normal (recommended)", "Sensitive"];
     private static readonly ListeningSensitivity[] WordCheckOrder =
@@ -38,11 +39,14 @@ public partial class MainWindow
 
     private void SaveTalk(TalkPreferences next, bool render = false)
     {
+        var spoke = Talk.SpeakReplies;
         talk = next;
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
+        avatar.Gaze.Decides = next.DecideGaze;
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
+        if (spoke != next.SpeakReplies) FollowVoice(next.SpeakReplies);
         RenderListening();
         if (render) RenderTab();
     }
@@ -192,7 +196,7 @@ public partial class MainWindow
             conversation?.PcOutput ?? outputs?.Output, outputs?.Elsewhere);
         var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "TalkHearPcStatus");
-        return Card(Heading("Watch along"), hear, status,
+        return Card([Heading("Watch along"), hear, status,
             Note("While always listening runs, Martlet also hears the sound your PC plays (videos, streams, calls, games), as if it " +
                 "were watching with you. Your Listening choice transcribes it like your microphone (a cloud provider gets that sound " +
                 "when Listening uses one), and it goes to Thinking marked as the PC's, never " +
@@ -200,7 +204,10 @@ public partial class MainWindow
                 "and never saved. Martlet's own voice is left out where Windows allows it. While another output is in use (a voice " +
                 "changer's or microphone app's virtual cable carries your own voice there), Martlet hears only the output you hear " +
                 "and pauses while it speaks. On its own, what plays goes to Thinking " +
-                "about every 20 seconds, and Thinking mostly stays quiet.", new Thickness(0, 0, 0, 0)));
+                "about every 20 seconds (45 when Martlet is quiet, 12 when it is chatty), and Thinking mostly stays quiet.",
+                new Thickness(0, 0, 0, 8)),
+            Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
+            .. ChattinessPicker("TalkPcChattiness")]);
     }
 
     internal static (string Text, bool Problem) PcAudioStatus(TalkPreferences prefs, bool available, bool? withoutMartlet,
@@ -261,17 +268,52 @@ public partial class MainWindow
           "window once it is transcribed. A message with what this PC plays, one said over Martlet while it speaks, or one for " +
           "Home Assistant's Assist is transcribed first.";
 
-    // ---------- Voice: speak replies ----------
+    // ---------- Voice: speak replies (Mute voice on the character's menu is the same choice) ----------
+
+    private CheckBox? speakRepliesCheck;
 
     private Border SpeakRepliesCard()
     {
-        var speak = new CheckBox { Content = "Speak Martlet's replies aloud", IsChecked = Talk.SpeakReplies };
+        var speak = speakRepliesCheck = new CheckBox { Content = "Speak Martlet's replies aloud", IsChecked = Talk.SpeakReplies };
         AutomationProperties.SetAutomationId(speak, "SpeakReplies");
-        speak.Checked += (_, _) => SaveTalk(Talk with { SpeakReplies = true });
-        speak.Unchecked += (_, _) => SaveTalk(Talk with { SpeakReplies = false });
+        speak.Checked += (_, _) => { if (!Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = true }); };
+        speak.Unchecked += (_, _) => { if (Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = false }); };
         return Card(Heading("In conversations"), speak,
-            Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies.",
-                new Thickness(0, 6, 0, 0)));
+            Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies: they show in the " +
+                "talk window and the character's speech bubble. Mute voice and Unmute voice on the character's right-click menu " +
+                "change this too.", new Thickness(0, 6, 0, 0)));
+    }
+
+    /// <summary>Mute voice or Unmute voice on the character's right-click menu: the same choice as Speak Martlet's replies aloud
+    /// (Companion › Voice), so it is saved and shared with your other computers like it.</summary>
+    private void SetVoiceMuted(bool muted)
+    {
+        if (Talk.SpeakReplies == !muted) TellCharacterVoiceAsync(muted).Forget();
+        else SaveTalk(Talk with { SpeakReplies = !muted });
+        if (!closing)
+            ActionText.Text = muted
+                ? "Martlet's voice is muted: replies show as text. Right-click the character and choose Unmute voice to hear them again."
+                : "Martlet's voice is on again: replies are spoken aloud.";
+    }
+
+    /// <summary>Speak Martlet's replies aloud changed (here, on the character's menu or from another computer): muting
+    /// silences a reply Martlet is saying now (the open talk window does that), and the character's menu and Companion ›
+    /// Voice follow.</summary>
+    private void FollowVoice(bool speak)
+    {
+        ErrorLog.Info(speak ? "Martlet's voice is unmuted: replies are spoken aloud." : "Martlet's voice is muted: replies show as text only.");
+        if (speakRepliesCheck is { } check && check.IsChecked != speak) check.IsChecked = speak;
+        TellCharacterVoiceAsync(!speak).Forget();
+    }
+
+    private async Task TellCharacterVoiceAsync(bool muted)
+    {
+        try { await avatar.SetVoiceMutedAsync(muted, lifetime.Token); }
+        catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.Text.Json.JsonException)
+        {
+            if (!closing) ErrorLog.Warn("The character's menu couldn't be told whether Martlet's voice is muted.", error);
+        }
     }
 
     // ---------- Vision ----------
@@ -284,7 +326,7 @@ public partial class MainWindow
         var kind => new(kind)
     };
 
-    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera while the talk window is open, what it
+    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera once you press Start watching, what it
     /// looks at and how chatty it is. Turning it on is the consent; the text above the button says exactly what is captured and
     /// where it is sent.</summary>
     private void RenderVisionPage(Panel page)
@@ -295,7 +337,7 @@ public partial class MainWindow
         var canSee = thinking is not null && LiveConversationConfiguration.Vision(thinking, abilities) != VisionSupport.Unsupported;
         var source = VisionSource(prefs);
         var chosen = source.IsScreen || source.Id.Length > 0;
-        var chattiness = (Chattiness)Math.Clamp(prefs.ScreenChattiness, 0, 2);
+        var chattiness = ChattinessTags.Choice(prefs.ScreenChattiness);
 
         var now = new List<UIElement>
         {
@@ -303,7 +345,7 @@ public partial class MainWindow
             new TextBlock
             {
                 Text = prefs.Watch
-                    ? $"On. Martlet looks at {source.Label} occasionally. Comments: {chattiness}."
+                    ? $"On. Martlet looks at {source.Label} occasionally. Comments: {CommentsLabel(chattiness)}."
                     : "Off. Martlet doesn't look at your screen or cameras.",
                 FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
             }
@@ -403,24 +445,94 @@ public partial class MainWindow
         }
         page.Children.Add(Card([.. looks]));
 
-        var chatty = new ComboBox { Width = 280, ItemsSource = ChattinessChoices, SelectedIndex = (int)chattiness, HorizontalAlignment = HorizontalAlignment.Left };
-        AutomationProperties.SetName(chatty, "How often Martlet comments");
-        AutomationProperties.SetAutomationId(chatty, "VisionChattiness");
-        chatty.SelectionChanged += (_, _) => { if (chatty.SelectedIndex >= 0) SaveTalk(Talk with { ScreenChattiness = chatty.SelectedIndex }, render: true); };
-        page.Children.Add(Card(Heading("How often it comments"),
-            Note("Most looks end silently. Martlet won't interrupt while you're talking.", new Thickness(0, 0, 0, 8)),
-            chatty));
+        page.Children.Add(Card([Heading("How often it comments"),
+            Note("Most looks end silently. Martlet won't interrupt while you're talking. This also sets how often Martlet reacts " +
+                "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
+            .. ChattinessPicker("VisionChattiness")]));
+        page.Children.Add(GazeCard(prefs));
 
         toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
         {
             var on = !Talk.Watch;
             SaveTalk(Talk with { Watch = on }, render: true);
-            ActionText.Text = !on ? "Vision is off." : openConversation is null ? "Vision is on. Start listening on Home, or open the talk window, to start." : "Vision is on.";
+            ActionText.Text = on ? "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look." : "Vision is off.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
         var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"), disclosure, Row(toggle)));
+    }
+
+    /// <summary>How the comments line reads: the level, or Martlet decides with the level it picked while a conversation runs.</summary>
+    private string CommentsLabel(ChattinessChoice choice) =>
+        choice != ChattinessChoice.MartletDecides ? choice.ToString()
+        : conversation is { } live ? $"Martlet decides ({ChattinessTags.Name(live.DecidedChattiness)} right now)" : "Martlet decides";
+
+    // Martlet switched how chatty it is: Vision and Listening say the level it picked.
+    private void FollowChattiness()
+    {
+        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision && !tabEdited &&
+            ChattinessTags.Choice(Talk.ScreenChattiness) == ChattinessChoice.MartletDecides)
+            RenderTab();
+    }
+
+    internal const string ChattinessAbout = "Martlet decides: Martlet picks Quiet, Normal or Chatty itself and switches as it goes, " +
+        "from what's happening and what you say. Ask it to hush, or to tell you what it thinks, and it follows. It starts at Normal.";
+
+    /// <summary>Companion's chattiness choice (Vision's How often it comments, and the same choice under Listening › Watch
+    /// along): Quiet, Normal, Chatty or Martlet decides, then what Martlet decides means and, while a conversation runs, the
+    /// level it picked.</summary>
+    private UIElement[] ChattinessPicker(string id)
+    {
+        var choice = ChattinessTags.Choice(Talk.ScreenChattiness);
+        var chatty = new ComboBox { Width = 280, ItemsSource = ChattinessChoices, SelectedIndex = (int)choice, HorizontalAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetName(chatty, "How often Martlet comments");
+        AutomationProperties.SetAutomationId(chatty, id);
+        chatty.SelectionChanged += (_, _) =>
+        {
+            if (chatty.SelectedIndex >= 0 && chatty.SelectedIndex != Talk.ScreenChattiness)
+                SaveTalk(Talk with { ScreenChattiness = chatty.SelectedIndex }, render: true);
+        };
+        var status = Note(ChattinessStatus(choice, conversation?.DecidedChattiness), new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(status, id + "Status");
+        return [chatty, status];
+    }
+
+    internal static string ChattinessStatus(ChattinessChoice choice, Chattiness? decided) => choice switch
+    {
+        ChattinessChoice.MartletDecides => ChattinessAbout +
+            (decided is { } level ? $" Right now it is {ChattinessTags.Name(level)}." : ""),
+        ChattinessChoice.Quiet => "Quiet: Martlet speaks up only when something is clearly remarkable.",
+        ChattinessChoice.Chatty => "Chatty: Martlet reacts more often, but still stays quiet when nothing is new.",
+        _ => "Normal: Martlet says something when it's worth saying."
+    };
+
+    /// <summary>Companion › Vision › Where the character looks: at your mouse (the default), or Martlet decides with each new
+    /// screenshot of your screen whether to look at your mouse or at something on the screen.</summary>
+    private Border GazeCard(TalkPreferences prefs)
+    {
+        var mouse = Choice("VisionGaze", "At your mouse", "The character's head and eyes follow your mouse pointer.",
+            !prefs.DecideGaze, "VisionGaze-Mouse");
+        var decide = Choice("VisionGaze", "Martlet decides",
+            "With each new screenshot of your screen, Martlet looks at your mouse or at something interesting on the screen: " +
+            "something that just popped up or moved, or what it is about to remark on.",
+            prefs.DecideGaze, "VisionGaze-Martlet");
+        mouse.Checked += (_, _) => { if (Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = false }, render: true); };
+        decide.Checked += (_, _) => { if (!Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = true }, render: true); };
+        var status = Note(GazeStatus(prefs), new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(status, "VisionGazeStatus");
+        return Card(Heading("Where the character looks"), mouse, decide, status,
+            Note("It decides while vision watches your active window or whole screen and the character shows. Screenshots are " +
+                "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
+                "is sent.", new Thickness(0, 6, 0, 0)));
+    }
+
+    private string GazeStatus(TalkPreferences prefs)
+    {
+        if (!prefs.DecideGaze) return "The character follows your mouse.";
+        if (!prefs.Watch) return "Vision is off, so the character follows your mouse. Turn vision on below.";
+        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character follows your mouse.";
+        return avatar.Gaze.Status;
     }
 
     /// <summary>Lists the cameras Windows offers to desktop apps, on request only; nothing is opened.</summary>
