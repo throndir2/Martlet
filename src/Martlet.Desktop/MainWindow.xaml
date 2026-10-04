@@ -608,6 +608,8 @@
                             </WrapPanel>
                             <TextBlock x:Name="UpdateStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="AppUpdateStatus"/>
+                            <TextBlock x:Name="OwnHostUpdateText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="OwnHostUpdateStatus"/>
                         </StackPanel>
                     </Border>
 

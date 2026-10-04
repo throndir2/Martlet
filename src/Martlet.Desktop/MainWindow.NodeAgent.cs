@@ -10,9 +10,9 @@ namespace Martlet.Desktop;
 /// <summary>This PC as a node your other Martlet computers can command. When this PC runs a host service (Docker Desktop),
 /// Martlet here is that host's agent: every few seconds it asks the host's gateway for commands paired computers sent (with
 /// the token the gateway wrote where only this PC can read it), runs them (update Martlet and the host service, add or
-/// remove a role, status) and streams their output back. It also keeps this PC's host service on this PC's version, so a
-/// host service from before commands existed gets them by itself. On by default; Settings › Your other computers turns it
-/// off (node-commands.txt).</summary>
+/// remove a role, status) and streams their output back. This PC's host service follows this PC's version by itself
+/// (<see cref="FollowOwnHostAsync"/>), so a host service from before commands existed gets them too. On by default; Settings ›
+/// Your other computers turns it off (node-commands.txt).</summary>
 public partial class MainWindow
 {
     private const string NodeCommandsFile = "node-commands.txt";
@@ -31,9 +31,6 @@ public partial class MainWindow
     private DateTimeOffset nodeUpdateToldAt;
     /// <summary>The command from another computer this PC runs right now (an install waits for it to finish).</summary>
     private Martlet.Core.Nodes.NodeCommand? nodeCommandRunning;
-    private string? ownHostUpdateTried;
-    /// <summary>When keeping this PC's own host service current found it busy with another change, the next try.</summary>
-    private DateTimeOffset? ownHostRetryAt;
     private string? lastNodeCommand;
 
     private void InitializeNodeAgent()
@@ -204,78 +201,21 @@ public partial class MainWindow
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or IOException) { return null; }
     }
 
-    /// <summary>Brings this PC's host service to this PC's version when it is older (for example one from before commands
-    /// between computers), once per version and session; its output goes to the host-runs log.</summary>
+    /// <summary>This PC's host service is older than commands between computers (or didn't hand this PC its agent token): it is
+    /// brought to this PC's version by the same background update that follows every Martlet update
+    /// (<see cref="FollowOwnHostAsync"/>), and this says where that stands.</summary>
     private async Task KeepOwnHostServiceCurrentAsync(PairedHost host, string why)
     {
-        var current = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
+        await FollowOwnHostAsync();
         if (closing) return;
-        if (current is null)
+        ShowNodeAgentStatus(ownHostSeen switch
         {
-            ShowNodeAgentStatus($"{host.HostId} isn't running here (is Docker Desktop started?). Commands from your other computers wait for it.");
-            return;
-        }
-        if (!AppVersions.IsOlder(current, Version))
-        {
-            ShowNodeAgentStatus($"{host.HostId} runs Martlet {current} but did not hand this PC its agent token: {why}");
-            return;
-        }
-        if (hostUpdates.IsUpdating(ThisPcHostId))
-        {
-            ShowNodeAgentStatus($"{host.HostId} runs Martlet {current}; Martlet is updating it to {Version} now.");
-            return;
-        }
-        if (ownHostUpdateTried == Version || hostUpdatesRunning)
-        {
-            ShowNodeAgentStatus($"{host.HostId} runs Martlet {current}, older than commands between computers. Bringing it to {Version} " +
-                "did not finish; the host-runs log shows why. Update hosts now (above) tries again.");
-            return;
-        }
-        if (ownHostRetryAt is { } retry && DateTimeOffset.UtcNow < retry) return;
-        ownHostRetryAt = null;
-        ownHostUpdateTried = Version;
-        hostUpdatesRunning = true;
-        using var updating = hostUpdates.Begin(ThisPcHostId);
-        const string title = "Keep this PC's host service current";
-        var output = new EngineOutput(new LineSink(line => HostRunLog.Write(title, line)));
-        ShowNodeAgentStatus($"Updating {host.HostId} from Martlet {current} to {Version}, so your other computers can update and manage it from now on...");
-        HostRunLog.Write(title, $"--- started: {current} -> {Version}");
-        try
-        {
-            var target = ThisPcTarget();
-            await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(title, "status: " + status), output, lifetime.Token);
-            // Automatic: it doesn't queue behind a change already running on this host (an install, for example).
-            var exit = await HostLocal.EngineAsync(target, ["update"], output, lifetime.Token, waitForOtherChanges: false);
-            HostRunLog.Write(title, $"--- exit {exit}");
-            if (closing) return;
-            if (output.Busy(exit) is { } busy)
-            {
-                ownHostUpdateTried = null;
-                ownHostRetryAt = DateTimeOffset.UtcNow + HostRetryDelay;
-                ShowNodeAgentStatus($"{host.HostId} is busy ({busy}), so updating it to {Version} waits; nothing was changed. " +
-                    $"Martlet tries again at {ownHostRetryAt.Value.ToLocalTime():t}.");
-                return;
-            }
-            if (exit == 0)
-            {
-                thisPcHostVersion = Version;
-                HostUpdateSettled(ThisPcHostId);
-                ErrorLog.Info($"Updated this PC's host service from {current} to {Version}.");
-                ShowNodeAgentStatus($"Updated {host.HostId} to Martlet {Version}. Your other computers can now update and manage it from there.");
-                CheckHostsAsync([host]).Forget();
-            }
-            else ShowNodeAgentStatus($"Updating {host.HostId} to {Version} stopped (exit {exit}); the host-runs log shows why.");
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
-        {
-            HostRunLog.Write(title, "--- stopped: " + error.Message);
-            if (!closing) ShowNodeAgentStatus($"Could not update {host.HostId}: {error.Message}");
-        }
-        finally
-        {
-            hostUpdatesRunning = false;
-        }
+            null or { Step: OwnHostStep.NotFound } =>
+                $"{host.HostId} isn't running here (is Docker Desktop started?). Commands from your other computers wait for it.",
+            { Step: OwnHostStep.Current, Version: var current } =>
+                $"{host.HostId} runs Martlet {current} but did not hand this PC its agent token: {why}",
+            _ => $"{host.HostId}: {OwnHostUpdateText.Text}"
+        });
     }
 
     /// <summary>Runs commands on the UI thread, where Martlet's update and host-service state lives.</summary>
@@ -431,7 +371,7 @@ public partial class MainWindow
             if (engineOutput.Busy(exit) is { } busy)
                 return new(false, $"{here}'s host stayed busy with another change ({busy}), so its host service wasn't updated. Send the update again when that finishes.", exit);
             if (exit != 0) return new(false, $"Updating {here}'s host service stopped (exit {exit}). The output shows why.", exit);
-            thisPcHostVersion = ownHostUpdateTried = Version;
+            thisPcHostVersion = Version;
             HostUpdateSettled(ThisPcHostId);
             return new(true, $"{here} runs Martlet {Version}: the app and its host service.", 0);
         }

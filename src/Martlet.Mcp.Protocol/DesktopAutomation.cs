@@ -216,6 +216,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // through the VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingEngineSharedGpu", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
+        // Settings › App updates: this PC's own host service following the app's version (shown only when this PC runs one):
+        // current, being updated in the background, busy (and when Martlet tries again), stopped, not running, or why the
+        // update stopped. Versions and fixed text only.
+        "OwnHostUpdateStatus",
         // Companion › Replies › Context size: the size replies use, where it comes from (the setting, Martlet's default, the
         // model's limit, the host's default or Ollama's context length) and what Martlet knows of the model's own limit. Its
         // Check model limit button (RepliesCheckContext) asks the Thinking model's server, so it needs --allow-ui-effects.

@@ -84,8 +84,9 @@ as every other command:
   desktop sends a `martlet.update` command through the host's gateway; Martlet
   there updates itself from its GitHub Release when it is older, then runs
   `update` on its own Docker Desktop, and its output streams into the desktop's
-  run window. Martlet on a host PC also keeps its own host service on its
-  version by itself. See [Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
+  run window. Martlet on a host PC (or any PC running its own host service)
+  also keeps that host service on its version by itself, in the background
+  right after Martlet updates itself. See [Commands between your computers](../../docs/CLUSTER.md#commands-between-your-computers).
 
 `update` asks nothing unless the new version changes `host.json`; that renews
 the service approval (in the gateway console, or with `--yes` through
@@ -99,7 +100,9 @@ With *Keep my Martlet hosts on this PC's version* (Settings > App updates) the
 desktop runs `update` in the background for older hosts every check interval,
 without asking anything: for SSH hosts through Martlet's SSH runner (its own key,
 the pinned host key and a sudo password only if you chose to remember one; no
-`--yes`), for this PC in Docker Desktop. A host that needs a password, a new host
+`--yes`), for this PC in Docker Desktop. This PC's own host service doesn't need
+that setting: Martlet always brings it to its own version in the background
+after it updates itself. A host that needs a password, a new host
 key, sudo or an approval fails that run without changing anything and keeps
 *Update host*. A host busy with another change (below) is not interrupted: the
 background `update` stops at once without changing anything, its Devices card

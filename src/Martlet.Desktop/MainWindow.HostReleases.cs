@@ -18,6 +18,7 @@ public partial class MainWindow
         var saved = hardware?.Load() ?? [];
         var updated = new List<string>();
         var shown = false;
+        var ownPairing = OwnHostPairing()?.HostId;
         foreach (var view in views.Values)
         {
             if (view.MartletVersion is not { } now) continue;
@@ -46,6 +47,7 @@ public partial class MainWindow
             if (!change.Current) continue;
             // Whatever this PC said it was doing to bring this host up to date is over: it already runs this PC's release.
             if (hostUpdates.Current(id, now, DateTime.Now, seen: true)) shown = true;
+            if (id == ownPairing) OwnHostFoundCurrent(now);
         }
         if (closing) return;
         if (updated.Count > 0)
