@@ -170,8 +170,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "its own syntax with each tag's engine-independent cue, the Thinking prompt it adds (Companion > Prompts > Voice sounds " +
             "and tones, from dataDirectory's settings when given), the pieces the real speech segmenter hands that engine for a " +
             "spoken reply, broken where the persona's speech breaks allow (Personality > Where the voice pauses: dataDirectory's " +
-            "persona by name, else the one Martlet uses, else the defaults; \"breaks\" overrides commas, periods, questionMarks, " +
-            "exclamationMarks and shortEndingWords), the text the chat and captions show and, with characterTags (the character's " +
+            "persona by name, else the one Martlet uses, else the defaults;             \"breaks\" overrides periods, questionMarks, " +
+                        "exclamationMarks and shortEndingWords; commas, semicolons and dashes never break), the text the chat and captions show and, with characterTags (the character's " +
             "tags such as \"{blush}\"), the character cues found in each spoken piece (piece index, -1 for cues after the last " +
             "words; tag; character offset). Synthesizes and contacts nothing.", new
         {
@@ -1349,7 +1349,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             set.TryGetProperty(stop, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : current;
         breaks = breaks with
         {
-            Commas = Stop("commas", breaks.Commas), Periods = Stop("periods", breaks.Periods),
+            Periods = Stop("periods", breaks.Periods),
             QuestionMarks = Stop("questionMarks", breaks.QuestionMarks), ExclamationMarks = Stop("exclamationMarks", breaks.ExclamationMarks),
             ShortEndingWords = set.TryGetProperty("shortEndingWords", out var words) && words.TryGetInt32(out var count) ? count : breaks.ShortEndingWords
         };
@@ -1363,7 +1363,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         type = "object",
         properties = new
         {
-            commas = new { type = "boolean" }, periods = new { type = "boolean" }, questionMarks = new { type = "boolean" },
+            periods = new { type = "boolean" }, questionMarks = new { type = "boolean" },
             exclamationMarks = new { type = "boolean" },
             shortEndingWords = new { type = "integer", minimum = 0, maximum = Martlet.Core.Settings.SpeechBreaks.MaximumShortEndingWords }
         }
@@ -1372,7 +1372,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
     /// <summary>Speech breaks as MCP reports them (Personality › Where the voice pauses).</summary>
     internal static object Breaks(Martlet.Core.Settings.SpeechBreaks breaks) => new
     {
-        commas = breaks.Commas, periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
+        periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
         exclamationMarks = breaks.ExclamationMarks, shortEndingWords = breaks.ShortEndingWords, isDefault = breaks.IsDefault
     };
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's

@@ -291,7 +291,7 @@ public partial class MainWindow
                 await SaveJobHostAsync(job, host, route, voice);
                 RecordClusterJob(job.Job, new(host.HostId, false));
                 return $"{job.Title} now uses {job.Engine} on this PC" +
-                    (voice is null ? "." : $", with the voice \"{voice.PresetName}\".") + " Reload an open conversation to use it.";
+                    (voice is null ? "." : $", with the voice \"{voice.PresetName}\".") + OpenConversationFollows;
             }
 
             string? status;

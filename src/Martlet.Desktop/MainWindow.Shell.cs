@@ -274,6 +274,18 @@ public partial class MainWindow
 
     // ---------- home ----------
 
+    /// <summary>Said after a job change the open conversation follows by itself (<see cref="FollowSavedSetup"/>).</summary>
+    private const string OpenConversationFollows = " An open conversation switches over before its next reply.";
+
+    /// <summary>The talk window takes a setup saved here between replies, keeping what was said so far, so switching a job's
+    /// engine, model or computer never needs the conversation reopened. Nothing happens when it already uses
+    /// <paramref name="revision"/>.</summary>
+    private void FollowSavedSetup(string? revision, string reason = "Your setup changed.")
+    {
+        if (openConversation is { } talking && revision is not null && conversation?.Configuration?.Revision != revision)
+            talking.ReloadWhenIdle(reason);
+    }
+
     private async Task RefreshHomeAsync()
     {
         if (store is null || setupService is null || closing || refreshingHome || setupOperations.IsRunning) return;

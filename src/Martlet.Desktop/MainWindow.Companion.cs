@@ -75,6 +75,7 @@ public partial class MainWindow
     /// <summary>The open page's auto-save (Prompts, Replies), saved at once when another page opens.</summary>
     private AutoSave? tabAutoSave;
     private IReadOnlyList<string>? ollamaModels;
+    private bool ollamaAutoChecked;
     private LocalModelTestOutcome? localModelTest;
     private Action? showLocalTest;
     private bool testingLocalModel;
@@ -513,6 +514,12 @@ public partial class MainWindow
     private Border LocalThinkingCard(SetupRoute? route)
     {
         var installed = !Prerequisites.IsMissing(Prerequisites.Ollama);
+        // What Ollama already has decides whether switching needs a download, so look once without being asked (loopback only).
+        if (installed && ollamaModels is null && !ollamaAutoChecked)
+        {
+            ollamaAutoChecked = true;
+            CheckOllamaAsync(quiet: true).Forget();
+        }
         var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
         var model = new TextBox { MaxLength = 128, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
             Text = IsLocalOllama(route) ? route!.ModelId : recommended.Id };
@@ -528,10 +535,11 @@ public partial class MainWindow
 
         var gpu = machine.BestGpu is { } best ? $"This PC has {best.Describe()}." : "No dedicated graphics card was found; small models still run on the processor.";
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
-            Text = !installed ? "Ollama isn't installed on this PC yet."
+            Text = (!installed ? "Ollama isn't installed on this PC yet."
                 : ollamaModels is null ? "Ollama is installed. Check it to see which models are downloaded."
                 : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
-                : $"Ollama is running with: {string.Join(", ", ollamaModels)}." };
+                : $"Ollama is running with: {string.Join(", ", ollamaModels)}.") +
+                (IsLocalOllama(route) ? $" Thinking uses {route!.ModelId}." : "") };
         AutomationProperties.SetAutomationId(status, "SetupOllamaStatus");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
 
@@ -682,8 +690,9 @@ public partial class MainWindow
         if (!closing) await TestLocalModelAsync(model);
     }
 
-    /// <summary>Asks the local Ollama (loopback only, on request) which models it has.</summary>
-    private async Task CheckOllamaAsync()
+    /// <summary>Asks the local Ollama (loopback only) which models it has. <paramref name="quiet"/>: the Thinking tab's own
+    /// check when it opens, which leaves the status line and a model being typed alone.</summary>
+    private async Task CheckOllamaAsync(bool quiet = false)
     {
         try
         {
@@ -695,29 +704,109 @@ public partial class MainWindow
                 ? models.EnumerateArray().Select(m => m.TryGetProperty("name", out var name) ? name.GetString() : null)
                     .OfType<string>().Where(name => name.Length is > 0 and <= 128).Take(50).ToArray()
                 : [];
-            ActionText.Text = ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
-                : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.";
+            if (!quiet)
+                ActionText.Text = ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
+                    : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.";
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException)
         {
             ollamaModels = null;
-            ActionText.Text = Prerequisites.IsMissing(Prerequisites.Ollama)
-                ? "Ollama isn't installed on this PC yet. Install it first."
-                : "Ollama didn't answer on this PC. Start Ollama from the Start menu, then check again.";
+            if (!quiet)
+                ActionText.Text = Prerequisites.IsMissing(Prerequisites.Ollama)
+                    ? "Ollama isn't installed on this PC yet. Install it first."
+                    : "Ollama didn't answer on this PC. Start Ollama from the Start menu, then check again.";
         }
-        if (!closing && openTab == CompanionTab.Thinking) RenderTab();
+        if (!closing && openTab == CompanionTab.Thinking && !(quiet && tabEdited)) RenderTab();
     }
 
+    /// <summary>Use Ollama on this PC. With Ollama installed, the model in the box is downloaded first when it isn't here yet
+    /// (after one confirmation) and loaded, in a run window, and only then does Thinking switch to it: the current Thinking
+    /// keeps answering until then, the first reply doesn't wait for the load, and a model that won't download or load leaves
+    /// Thinking as it was.</summary>
     private async Task SaveLocalThinkingAsync(string model)
     {
+        try { ChatCompletionsSetup.ModelId(model); }
+        catch (ContractException error) { ActionText.Text = error.Message; return; }
+        if (!Prerequisites.IsMissing(Prerequisites.Ollama) && !await PrepareLocalThinkingAsync(model)) return;
+        if (closing) return;
         await SaveSectionRouteAsync(HostJob.Thinking,
             settings => ChatCompletionsSetup.SelectRoute(settings, LocalOllamaBaseUrl, model), key: null,
             $"Martlet now uses {model} in Ollama on this PC." +
-            (ollamaModels is { } known && !known.Contains(model, StringComparer.Ordinal) ? $" Download {model} to use it." : ""));
+            (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : ""));
         // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
         if (!closing && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))
             CheckNewModelContextAsync().Forget();
+    }
+
+    private bool preparingLocalThinking;
+
+    /// <summary>Gets <paramref name="model"/> ready in this PC's Ollama before Thinking switches to it: starts Ollama when it
+    /// isn't answering, downloads the model when it isn't here (the owner confirms the download), then loads it. Returns
+    /// whether Thinking may switch now; otherwise the status line says why it didn't.</summary>
+    private async Task<bool> PrepareLocalThinkingAsync(string model)
+    {
+        if (preparingLocalThinking)
+        {
+            ActionText.Text = "Martlet is already getting a model ready. Wait for it to finish.";
+            return false;
+        }
+        preparingLocalThinking = true;
+        try
+        {
+            var token = lifetime.Token;
+            var models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(3), token);
+            if (models is null && LocalOllama.Start())
+            {
+                ActionText.Text = "Starting Ollama on this PC...";
+                for (var attempt = 0; models is null && attempt < 15 && !closing; attempt++)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), token);
+                    models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(2), token);
+                }
+            }
+            if (closing) return false;
+            if (models is null)
+            {
+                ActionText.Text = "Ollama didn't answer on this PC. Start Ollama from the Start menu, then try again. Thinking didn't change.";
+                return false;
+            }
+            ollamaModels = models;
+            var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+            var keeps = thinking is null || IsLocalOllama(thinking) && thinking.ModelId == model ? ""
+                : $" Thinking keeps using {(IsLocalOllama(thinking) ? thinking.ModelId : NetworkMap.ProviderName(thinking))} until it's ready.";
+            var download = !LocalOllama.Serves(models, model);
+            if (download)
+            {
+                var size = LocalChatModels.FirstOrDefault(m => m.Id == model)?.Size;
+                if (!ConfirmationDialog.Confirm(this,
+                        $"{model} isn't downloaded on this PC yet. Download it with Ollama{(size is null ? "" : $" ({size})")}, load it and then " +
+                        $"switch Thinking to it?{keeps} The model's own license applies.",
+                        "Download and switch", questionId: "LocalModelDownloadQuestion"))
+                {
+                    ActionText.Text = "Thinking didn't change.";
+                    return false;
+                }
+            }
+            var done = await HostRunWindow.RunAsync(this, $"Switch Thinking to {model}", async run =>
+            {
+                if (keeps.Length > 0) run.Output.Report(keeps.Trim());
+                if (download) await LocalOllama.PullAsync(model, run.Status, run.Output, run.Token);
+                var loaded = await LocalOllama.LoadAsync(model, run.Status, run.Output, run.Token);
+                return $"{model} is {(download ? "downloaded and " : "")}loaded{(loaded >= TimeSpan.FromSeconds(1) ? $" ({loaded.TotalSeconds:0.0} s)" : "")}. " +
+                    "Thinking switches to it now.";
+            });
+            if (closing) return false;
+            if (download) await CheckOllamaAsync(quiet: true);
+            if (done is null)
+            {
+                ActionText.Text = $"Thinking didn't change: {model} isn't ready. The run window says why.";
+                return false;
+            }
+            return true;
+        }
+        catch (OperationCanceledException) { return false; }
+        finally { preparingLocalThinking = false; }
     }
 
     /// <summary>What Ollama on this PC says about <paramref name="model"/>'s context, kept for replies; loopback only, and the
@@ -1184,10 +1273,11 @@ public partial class MainWindow
             var saved = await setupService.SaveAsync(confirmed, revision, token);
             if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
             homeSettings = confirmed;
+            FollowSavedSetup(saved.Save.Revision);
             pendingJobHosts.Remove(role);
             pendingJobVoices.Remove(role);
             RecordClusterJob(job.Job, new(null, false));
-            ActionText.Text = done + (reused ? " It uses the key you saved for it before." : "") + " Reload any open conversation to use it.";
+            ActionText.Text = done + (reused ? " It uses the key you saved for it before." : "") + OpenConversationFollows;
             tabPlace.Remove(openTab ?? CompanionTab.Thinking);
             return true;
         }
