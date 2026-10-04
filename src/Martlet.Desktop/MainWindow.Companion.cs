@@ -426,7 +426,8 @@ public partial class MainWindow
     {
         var problem = coverage.FirstOrDefault(c => c.Job == job.Job && c.IsProblem);
         var routeName = route is null ? "" : route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice on this PC"
-            : route.RouteType is SetupRouteType.LocalParakeet or SetupRouteType.LocalWhisper ? PlaceName(route)
+            : route.RouteType == SetupRouteType.LocalParakeet ? $"{PlaceName(route)}: {ParakeetName(route.ModelId)}"
+            : route.RouteType == SetupRouteType.LocalWhisper ? PlaceName(route)
             : $"{PlaceName(route)}: {route.ModelId}";
         var status = route is null
             ? section == CompanionTab.Voice
@@ -437,7 +438,9 @@ public partial class MainWindow
                 (route.Enabled == false ? " (turned off)" : route.Consent is null ? " (not confirmed yet)" : "");
         var now = new StackPanel();
         now.Children.Add(Heading("Now"));
-        now.Children.Add(new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap });
+        var nowText = new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(nowText, "SetupJobNow-" + section);
+        now.Children.Add(nowText);
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Needs attention: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
@@ -885,9 +888,9 @@ public partial class MainWindow
         if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Speak with the Windows voice {voice} on this PC?" + LeavingNote(leaving),
                 "Use a Windows voice"))
             return;
-        await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
+        var saved = await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
             $"Martlet now speaks with the Windows voice {voice} on this PC. Audio stays on this PC.");
-        if (closing || leaving is null) return;
+        if (!saved || closing || leaving is null) return;
         assigningRole = true;
         try { ActionText.Text += await StopLeftVoiceEngineAsync(leaving); }
         finally { assigningRole = false; }
@@ -1028,6 +1031,7 @@ public partial class MainWindow
             keySavedMark.Visibility = keySaved && entered.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
         var hint = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
@@ -1036,9 +1040,14 @@ public partial class MainWindow
         consent.Content = consentText;
 
         CloudProvider Selected() => provider.SelectedItem as CloudProvider ?? OpenAiCloud;
+        string? ChatUrl(CloudProvider p) => p.Chat ? p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim() : null;
         bool SameAsSaved(CloudProvider p) => cloudRoute is not null && (p.Chat
-            ? cloudRoute.RouteType == SetupRouteType.ChatCompletions && cloudRoute.Origin == (p.BaseUrl is { Length: > 0 } fixedUrl ? fixedUrl : baseUrl.Text.Trim())
+            ? cloudRoute.RouteType == SetupRouteType.ChatCompletions && cloudRoute.Origin == ChatUrl(p)
             : cloudRoute.RouteType is null or SetupRouteType.OpenAi);
+        // A key this job used with the provider before, set aside when it switched away, is used again.
+        bool SetAside(CloudProvider p) => !(SameAsSaved(p) && cloudRoute!.CredentialId is not null) &&
+            SetupSettings.SetAsideCredentials(homeSettings, role, ChatUrl(p)).Count > 0;
+        bool HasKey(CloudProvider p) => SameAsSaved(p) && cloudRoute!.CredentialId is not null || SetAside(p);
         string? Default(CloudProvider p) => p.Chat ? p.DefaultModel : role switch
         {
             SetupRole.Llm => OpenAiTextGenerationCatalog.DefaultModelId,
@@ -1065,10 +1074,11 @@ public partial class MainWindow
                 if (p.Chat) modelText.Text = value;
                 else model.SelectedItem = Catalog(p).Contains(value, StringComparer.Ordinal) ? value : Default(p);
             }
-            var saved = SameAsSaved(p) && cloudRoute!.CredentialId is not null;
+            var saved = HasKey(p);
             keySaved = saved;
             RefreshKeyMark();
-            keyStatus.Text = saved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
+            keyStatus.Text = SetAside(p) ? $"Your {p.Name} key from before is still saved. Leave this empty to use it again, or paste a new key."
+                : saved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
                 : "Add a key only if your server needs one.";
             var retired = SameAsSaved(p) && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
@@ -1089,7 +1099,7 @@ public partial class MainWindow
         baseUrl.TextChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
         voice.SelectionChanged += (_, _) => { tabEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => { tabEdited = true; RefreshKeyMark(); };
-        baseUrl.TextChanged += (_, _) => { keySaved = SameAsSaved(Selected()) && cloudRoute!.CredentialId is not null; RefreshKeyMark(); };
+        baseUrl.TextChanged += (_, _) => { keySaved = HasKey(Selected()); RefreshKeyMark(); };
 
         // A cloud provider is a commitment (a key, data sent elsewhere, possible costs), so it stays an explicit action named for
         // what it does rather than an automatic save.
@@ -1163,13 +1173,16 @@ public partial class MainWindow
             var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role);
             var keySaved = route?.CredentialId is not null && (provider.Chat
                 ? route.RouteType == SetupRouteType.ChatCompletions && route.Origin == url
-                : route.RouteType is null or SetupRouteType.OpenAi);
+                : route.RouteType is null or SetupRouteType.OpenAi) || SetupSettings.SetAsideCredentials(homeSettings, role, url).Count > 0;
+            var missingKey = $"Paste your {provider.Name} API key first.";
             if (key is null && provider.NeedsKey && !keySaved)
-                throw new ContractException(ErrorCode.InvalidContract, $"Paste your {provider.Name} API key first.");
-            await SaveSectionRouteAsync(job, settings => provider.Chat
+                throw new ContractException(ErrorCode.InvalidContract, missingKey);
+            if (!await SaveSectionRouteAsync(job, settings => provider.Chat
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
-                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.");
+                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.",
+                provider.NeedsKey ? missingKey : null))
+                return;
             // A new Thinking model: ask its server how much context it takes, so replies stay within it.
             if (!closing && role == SetupRole.Llm && provider.Chat &&
                 homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } chosen && chosen.Origin == url && chosen.ModelId == model)
@@ -1204,14 +1217,17 @@ public partial class MainWindow
     }
 
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
-    /// confirmed choice. A key the route no longer uses is listed for explicit removal in Setup, as there.</summary>
-    private async Task SaveSectionRouteAsync(HostJob job, Func<AppSettings, AppSettings> select, SecretLease? key, string done)
+    /// confirmed choice. A key the route no longer uses is set aside (listed for removal in Advanced setup), and a key set aside
+    /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
+    /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.</summary>
+    private async Task<bool> SaveSectionRouteAsync(HostJob job, Func<AppSettings, AppSettings> select, SecretLease? key, string done,
+        string? missingKey = null)
     {
-        if (store is null || setupService is null || closing) return;
+        if (store is null || setupService is null || closing) return false;
         if (savingTab || assigningRole || setupOperations.IsRunning)
         {
             ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
+            return false;
         }
         savingTab = true;
         var role = job.Role;
@@ -1225,9 +1241,23 @@ public partial class MainWindow
             var old = settings.Setup!.Routes.SingleOrDefault(r => r.Role == role);
             var updated = select(settings);
             var chosen = updated.Setup!.Routes.Single(r => r.Role == role);
-            if (old is not null && (old.RouteType != chosen.RouteType || old.Origin != chosen.Origin) &&
-                settings.Setup.PendingRemovals.Any(removal => removal.Role == role && !SelfHostSetup.IsGateway(removal.Scope?.RouteType)))
-                throw new InvalidOperationException($"Remove {job.Job}'s detached key in Advanced setup (Credentials) before switching it to another provider.");
+            var reused = false;
+            if (key is null && chosen is { CredentialId: null, RouteType: SetupRouteType.OpenAi or SetupRouteType.ChatCompletions })
+            {
+                var service = setupService;
+                foreach (var setAside in SetupSettings.SetAsideCredentials(updated, role,
+                             chosen.RouteType == SetupRouteType.ChatCompletions ? chosen.Origin : null))
+                {
+                    // Only a key still in Windows Credential Manager is used again; it is read on a worker and never shown.
+                    var candidate = SetupSettings.ReattachSetAsideCredential(updated, setAside);
+                    if (await Task.Run(() => service.CheckCredential(candidate, role), token) != CredentialError.None) continue;
+                    updated = candidate;
+                    reused = true;
+                    break;
+                }
+            }
+            if (key is null && missingKey is not null && updated.Setup!.Routes.Single(r => r.Role == role).CredentialId is null)
+                throw new InvalidOperationException(missingKey);
             updated = SetupSettings.QueueReplacedCredential(updated, old);
             if (key is not null)
             {
@@ -1248,13 +1278,15 @@ public partial class MainWindow
             pendingJobHosts.Remove(role);
             pendingJobVoices.Remove(role);
             RecordClusterJob(job.Job, new(null, false));
-            ActionText.Text = done + OpenConversationFollows;
+            ActionText.Text = done + (reused ? " It uses the key you saved for it before." : "") + OpenConversationFollows;
             tabPlace.Remove(openTab ?? CompanionTab.Thinking);
+            return true;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { return false; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
         {
             ActionText.Text = error.Message;
+            return false;
         }
         finally
         {

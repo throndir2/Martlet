@@ -221,6 +221,75 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
         Assert.Equal(CredentialError.Missing, service.CheckCredential(openAi, SetupRole.Llm));
     }
 
+    [Fact]
+    public async Task Switching_providers_sets_old_keys_aside_and_switching_back_uses_them_again()
+    {
+        using var native = new FakeCredentialNative();
+        var vault = new WindowsCredentialStore(native);
+        var service = new SetupService(Store, vault);
+        var openRouter = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl;
+        var nvidia = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl;
+        const string ollama = "http://127.0.0.1:11434/v1";
+
+        async Task<(AppSettings Settings, string? Revision)> Switch(AppSettings settings, string? revision, string baseUrl,
+            string model, SecretLease? key = null)
+        {
+            var old = settings.Setup!.Routes.SingleOrDefault(route => route.Role == SetupRole.Llm);
+            var next = ChatCompletionsSetup.SelectRoute(settings, baseUrl, model);
+            if (key is null && SetupSettings.SetAsideCredentials(next, SetupRole.Llm, baseUrl).FirstOrDefault() is { } setAside)
+                next = SetupSettings.ReattachSetAsideCredential(next, setAside);
+            next = SetupSettings.QueueReplacedCredential(next, old);
+            if (key is not null)
+            {
+                var staged = await service.SaveAsync(next, revision);
+                Assert.True(staged.Save.Saved, staged.Summary);
+                var stored = await service.ReplaceCredentialAsync(staged.Settings, staged.Save.Revision, SetupRole.Llm, key);
+                Assert.True(stored.Save.Saved, stored.Summary);
+                (next, revision) = (stored.Settings, stored.Save.Revision);
+            }
+            var chosen = next.Setup!.Routes.Single(route => route.Role == SetupRole.Llm);
+            next = SetupSettings.ReplaceRoute(next, chosen with { Consent = chosen.Selection() });
+            var saved = await service.SaveAsync(next, revision);
+            Assert.True(saved.Save.Saved, saved.Summary);
+            return (next, saved.Save.Revision);
+        }
+
+        using var first = new SecretLease("synthetic.openrouter.key");
+        using var second = new SecretLease("synthetic.nvidia.key");
+        var (settings, revision) = await Switch(Settings, null, openRouter, "synthetic/model:v1", first);
+        var openRouterKey = settings.Setup!.Routes.Single().CredentialId!.Value;
+        (settings, revision) = await Switch(settings, revision, nvidia, "synthetic/model:v1", second);
+        var nvidiaKey = settings.Setup!.Routes.Single().CredentialId!.Value;
+        Assert.Equal(openRouterKey, Assert.Single(settings.Setup.PendingRemovals).CredentialId);
+
+        // Switching to a local server while an older key is already set aside sets this one aside too; nothing is deleted.
+        (settings, revision) = await Switch(settings, revision, ollama, "gemma4:12b");
+        Assert.Null(settings.Setup!.Routes.Single().CredentialId);
+        Assert.Equal(new[] { openRouterKey, nvidiaKey }, settings.Setup.PendingRemovals.Select(item => item.CredentialId));
+        Assert.Empty(SetupSettings.SetAsideCredentials(settings, SetupRole.Llm, ollama));
+        Assert.Empty(SetupSettings.SetAsideCredentials(settings, SetupRole.Llm, null));
+        Assert.Empty(SetupSettings.SetAsideCredentials(settings, SetupRole.Tts, openRouter));
+        Assert.Equal(nvidiaKey, Assert.Single(SetupSettings.SetAsideCredentials(settings, SetupRole.Llm, nvidia)).CredentialId);
+        Assert.DoesNotContain(native.Events, item => item.StartsWith("delete", StringComparison.Ordinal));
+
+        // A key only fits its own destination.
+        var atOllama = ChatCompletionsSetup.SelectRoute(settings, ollama, "gemma4:27b");
+        Assert.Throws<ContractException>(() => SetupSettings.ReattachSetAsideCredential(atOllama, settings.Setup.PendingRemovals[0]));
+
+        // Switching back to OpenRouter uses its key again, without typing it.
+        (settings, revision) = await Switch(settings, revision, openRouter, "synthetic/model:v2");
+        var back = settings.Setup!.Routes.Single();
+        Assert.Equal(openRouterKey, back.CredentialId);
+        Assert.Equal(back.Selection(), back.Consent);
+        Assert.Equal(nvidiaKey, Assert.Single(settings.Setup.PendingRemovals).CredentialId);
+        Assert.Equal(CredentialError.None, service.CheckCredential(settings, SetupRole.Llm));
+        using (var read = vault.Read(CredentialBinding.For(settings, SetupRole.Llm, openRouterKey)))
+            read.Secret!.Use(value => Assert.Equal("synthetic.openrouter.key", new string(value)));
+        var loaded = await Store.LoadAsync();
+        Assert.Equal(revision, loaded.Revision);
+        Assert.Equal(openRouterKey, loaded.Settings!.Setup!.Routes.Single().CredentialId);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(directory)) Directory.Delete(directory, true);

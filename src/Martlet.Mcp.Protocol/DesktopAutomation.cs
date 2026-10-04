@@ -208,6 +208,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
         // what its key field will do.
         "FallbackNow", "FallbackKeyStatus",
+        // Companion › Thinking, Voice and Listening: the job's Now line (where it runs and the model, as "Ollama on this PC:
+        // gemma4:12b") and, under A cloud provider, what the key field will do: keep the saved key, use again a key set aside
+        // when the job left that provider, or ask for one (never the key). Its Use button (SetupCloudSave-<page>) and
+        // SetupUseLocalThinking save the route, so they need --allow-ui-effects.
+        "SetupJobNow-Thinking", "SetupJobNow-Voice", "SetupJobNow-Listening",
+        "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
@@ -329,6 +335,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
         // or "...: not made yet" for a Thinking palette not made).
         "AppearanceColor-", "AppearancePreview-",
+        // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
+        // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
+        // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>
+        // button downloads (after a confirmation) and switches Listening, so it needs --allow-ui-effects.
+        "ListenParakeetModel",
         // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
         // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
         "CreationState-"];

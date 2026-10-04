@@ -267,8 +267,15 @@ computers* is on, from `cluster-sync.txt`),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
-the voice models (`included`: `found`, `runtime`, `voiceModels`), whether
-Parakeet is downloaded, and counts from `voices.json` (voices, named, owner, with
+the voice models (`included`: `found`, `runtime`, `voiceModels`), whether any
+Parakeet model is downloaded (`parakeet`), `parakeetModels` (Companion ›
+Listening › *Parakeet in Martlet*: `listening`, the Listening route type with
+its `parakeetModel`, whether this Martlet `known`s it and whether it is
+`downloaded`; `displayLanguage` and the `recommended` model for it,
+`parakeet-tdt-110m-en` for English and `parakeet-tdt-0.6b-v3-int8` otherwise;
+and `models`, each with `id`, `name`, `languages`, `englishOnly`,
+`downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
+`recommended` and `inUse`), and counts from `voices.json` (voices, named, owner, with
 learned names, `withCompanionName`: voices that learned one of the companion's
 own names from the saved personas, which Martlet drops when it next hears them,
 `mostNames`: the most names one voice has, merged, tombstones). It never returns
@@ -292,6 +299,23 @@ about V1-V3, at most 8192 characters) and `reply` are checked against the same
 fixture: `answer.updates`, `refused` (line and reason), `applied` (what the talk
 window would say) and the fixture `voices` afterwards. It never reads or writes
 the saved voice list and uses no audio, model or network.
+
+`parakeet_check` runs Companion › Listening › *Parakeet in Martlet*'s models
+the way the desktop does (optional absolute `dataDirectory`; `speechDirectory`,
+default the data directory's `speech` folder, where the desktop downloads
+them; `martletDirectory` for the sherpa-onnx runtime, which the script fills
+with this checkout's Desktop build). It loads each downloaded model (or those
+named in `models`) through the production `ParakeetEngine` and transcribes
+`phrases` (default four English sentences without numbers or names; up to 8)
+said by a Windows voice (System.Speech rendered to memory, never played) after
+0.3 s and before 1 s of faint noise. Per model it returns `loadMs`,
+`memoryMb` (process memory the model added), each phrase's `transcript`,
+`wordErrors`, `words`, `transcribeMs` and `meanProbability`, the
+`wordErrorRate` and `medianTranscribeMs`, and `ok` (at most 20% word errors);
+`ok` overall needs every model to pass, and `status` is `voices_status`'s
+`parakeetModels`. Without the runtime or a downloaded model, `ran` is false
+with the reason. Nothing is downloaded, recorded or played, and nothing leaves
+this PC.
 
 `voices_engine_check` runs the voice recognition engine that ships in a Martlet
 folder (same optional `martletDirectory`) the way the desktop does: it loads the
@@ -1586,6 +1610,8 @@ and barge-in (Companion › Listening › **Word check**; optional absolute
 `dataDirectory`, default the current user's, `sensitivity` `relaxed`, `normal`
 or `sensitive` to override the saved choice, `audio` default true, absolute
 `speechDirectory` where Parakeet is downloaded, default the current user's,
+`parakeetModel` to choose the model, default Listening's when it is downloaded,
+else v3, else the one downloaded,
 and absolute `martletDirectory` for the sherpa-onnx runtime, which the script
 fills with this checkout's Desktop build). It runs the production
 `UtteranceFilter` and `BargeInPolicy` on `samples` (up to 64 of `text` with
@@ -1608,7 +1634,8 @@ window's *Ignored ...* note), `interrupts` and `interruptReason`. It returns
 `pauseMs`, `wordsToInterrupt`) and `filterCost` (`microsecondsPerCall` over
 thousands of calls: what the filter adds to a reply). With `audio` and
 Parakeet downloaded, `audio` runs fixtures through the real local
-speech-to-text path (`ParakeetEngine`, the desktop's model): "Stop!", "Wait,
+speech-to-text path (`ParakeetEngine` with the chosen model, named in `model`
+and `engine`): "Stop!", "Wait,
 hold on a second.", "Can you tell me more about that?", "Yes." (after a
 question), "Yeah.", "Mmmmmm.", "Hmm." and "Ha ha ha ha!" said by a Windows
 voice (System.Speech, rendered to memory, never played), "I'm gonna make it
@@ -1724,7 +1751,7 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Where the character looks: *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Where the character looks: *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -1739,13 +1766,22 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus` (on, off, or that the installation
 lacks the voice recognition files), `PeopleSyncStatus` and
-`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
+`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus` (*Parakeet in
+Martlet* with *in use*, *downloading* or *no Docker*) and, for each Parakeet
+model, `ListenParakeetModel-<model ID>` (what it is for, with *recommended*
+or *in use*: "Fastest in English  ·  recommended") and
+`ListenParakeetModelState-<model ID>` (its name, languages, what it is good
+at, its memory and *Downloaded.*, *Downloads once: 477 MB.* or, while it
+downloads, *Downloading: 46% of 477 MB...*); snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
 its field loses focus, on Enter or two seconds after typing stops, then syncs);
 like `PeopleRecognize` (ticked by default; a shared setting),
-`PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
+`PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet-<model ID>` (*Download
+and use* asks one confirmation, `ConfirmationYes`, then downloads that model
+and switches Listening to it; *Use it* switches to a downloaded model at once),
+they
 change data or download and need `--allow-ui-effects` (People has no sharing
 switch of its own: the list follows `ClusterSync`). Each voice's
 `PeopleMemories-3` (*What Martlet remembers about them*) only opens Memory
@@ -2768,9 +2804,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check` and `parakeet_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
