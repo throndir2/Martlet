@@ -45,6 +45,10 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
     /// turning features on, or Windows' boot configuration keeps the hypervisor off.</summary>
     public bool HypervisorOff => Hypervisor == false && !FirmwareOff;
 
+    /// <summary>Firmware virtualization is off on a physical PC and Windows' features or WSL are missing too (a fresh PC):
+    /// Windows can turn those on first, without virtualization, so the one restart into the firmware settings finishes both.</summary>
+    public bool FeaturesBeforeFirmware => FirmwareOff && !VirtualMachine && (FeaturesOff || WslMissing);
+
     public bool RuntimeUnavailable => ServiceUnavailable(ComputeService) || ServiceUnavailable(NetworkService) ||
         WslStatus is WslStatusState.Unavailable or WslStatusState.RestartRequired or WslStatusState.Failed;
 
@@ -70,7 +74,10 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
     public string Recovery => FirmwareOff
         ? VirtualMachine
             ? "Ask the administrator of this virtual machine's host to enable nested virtualization, then check again."
-            : "Turn on Intel VT-x or AMD SVM in this PC's firmware settings (UEFI/BIOS), then check again."
+            : FeaturesBeforeFirmware
+                ? "Let Martlet turn on the Windows features and WSL that Docker Desktop needs (administrator approval), then restart into this PC's " +
+                  "firmware settings (UEFI/BIOS) and turn on Intel VT-x or AMD SVM. That one restart finishes both."
+                : "Turn on Intel VT-x or AMD SVM in this PC's firmware settings (UEFI/BIOS), then check again."
         : RestartRequired
             ? "Restart Windows to finish setting up virtualization, then let Martlet continue setup. Restarting Docker Desktop alone cannot finish this Windows change."
         : NeedsChanges
@@ -89,12 +96,14 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         {
             problems.Add(VirtualMachine ? "hardware virtualization is not exposed to this virtual machine"
                 : "virtualization is turned off in this PC's firmware (UEFI/BIOS)");
-            return problems;
+            if (!FeaturesBeforeFirmware) return problems;
         }
-        if (RestartRequired) problems.Add("Windows must restart to finish setting up virtualization");
+        else if (RestartRequired) problems.Add("Windows must restart to finish setting up virtualization");
         if (IsOff(MachinePlatform)) problems.Add("Virtual Machine Platform is off");
         if (IsOff(Subsystem)) problems.Add("Windows Subsystem for Linux is off");
         if (WslMissing) problems.Add(Wsl == NoWsl ? "WSL isn't installed" : $"WSL {Wsl} is older than {MinimumWsl}");
+        // Without firmware virtualization, the hypervisor, services and WSL 2 can't run yet: no separate problems.
+        if (FirmwareOff) return problems;
         if (HypervisorOff && !FeaturesOff) problems.Add("the Windows hypervisor isn't running yet");
         if (ServiceUnavailable(ComputeService))
             problems.Add($"Host Compute Service (vmcompute) is {(ComputeService == WindowsServiceState.Absent ? "not installed" : "disabled")}");
