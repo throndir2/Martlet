@@ -98,7 +98,8 @@ public sealed record SongRequest
     }
 }
 
-/// <summary>Where a song job is. Stages run in this order; <see cref="Loading"/> appears only while models load.</summary>
+/// <summary>Where a song job is. Stages run in this order; <see cref="Loading"/> appears only while models load, and
+/// <see cref="Aligning"/> times the lyric lines and fits the beat grid.</summary>
 public enum SongStage
 {
     Queued,
@@ -107,6 +108,7 @@ public enum SongStage
     Separating,
     MatchingVoice,
     Mixing,
+    Aligning,
     Delivering,
     Completed
 }
@@ -124,6 +126,7 @@ public sealed record SongProgress(SongStage Stage, double Fraction, int? QueuePo
         SongStage.Separating => "Separating the voice from the music",
         SongStage.MatchingVoice => "Matching the singing to the voice",
         SongStage.Mixing => "Mixing",
+        SongStage.Aligning => "Timing the lyrics and beats",
         SongStage.Delivering => "Fetching the song",
         _ => "Done"
     };
@@ -185,8 +188,12 @@ public sealed class SongTrack
         string.Create(CultureInfo.InvariantCulture, $"{Kind} {SampleRate} Hz x{Channels}, {Duration.TotalSeconds:0.0} s");
 }
 
-/// <summary>When a lyric line starts (and ends, when known) in the song, from ACE-Step's LRC lyric timestamps.</summary>
-public sealed record SongLyricLine(TimeSpan Start, TimeSpan? End, string Text);
+/// <summary>One sung line. <see cref="Start"/> is the line's vocal onset (often a pickup slightly before the downbeat);
+/// <see cref="End"/> is where its singing stops, when known. <see cref="Section"/> names the request's section tag the line
+/// is in ("verse", "chorus", "bridge"...), numbered from its second occurrence ("verse 2", "chorus 2"); empty when the
+/// lyrics have no tags. Times come from ACE-Step's own lyric timestamps snapped to the matched vocals' onsets, or from the
+/// vocals' phrases when those are unavailable.</summary>
+public sealed record SongLyricLine(TimeSpan Start, TimeSpan? End, string Text, string Section = "");
 
 /// <summary>How long one stage took on the host (loading models counts as <see cref="SongStage.Loading"/>).</summary>
 public sealed record SongStageTiming(SongStage Stage, TimeSpan Duration);
@@ -195,8 +202,11 @@ public sealed record SongStageTiming(SongStage Stage, TimeSpan Duration);
 public sealed record SongEngineIdentity(string Generator, string Separator, string Converter, SongQuality Quality,
     SongVoiceMatch VoiceMatch, bool Fixture);
 
-/// <summary>A finished song: the mix to play, the separate vocals and backing (for ducking or stopping the voice), lyric
-/// timestamps when the music model provided them, and how long each stage took.</summary>
+/// <summary>A finished song: the mix to play, the separate vocals and backing (for ducking or stopping the voice), the
+/// lyric lines with their sections and times, the beat grid, and how long each stage took. The three tracks are
+/// sample-aligned, so a player can stop musically (let the voice finish its word, ring the band to the next beat and fade
+/// it over one beat) and resume musically (bring the backing in on a downbeat one or two bars before the interrupted line
+/// and unmute the vocals where the line starts) without asking the host again.</summary>
 public sealed record SongResult
 {
     public required string JobId { get; init; }
@@ -206,8 +216,16 @@ public sealed record SongResult
     public required SongTrack Backing { get; init; }
     public required SongEngineIdentity Engine { get; init; }
     public required long Seed { get; init; }
-    public int? Bpm { get; init; }
+    /// <summary>The tempo in quarter notes per minute, measured from the backing (ACE-Step's planned tempo when the
+    /// measurement fails); null when neither is known.</summary>
+    public double? Bpm { get; init; }
     public string? Key { get; init; }
+    /// <summary>Beats per bar, from ACE-Step's time signature (4 when unknown).</summary>
+    public int BeatsPerBar { get; init; } = 4;
+    /// <summary>Every beat from the first to the end of the song, on a straight grid fitted to the backing.</summary>
+    public IReadOnlyList<TimeSpan> Beats { get; init; } = [];
+    /// <summary>The first beat of every bar (a subset of <see cref="Beats"/>).</summary>
+    public IReadOnlyList<TimeSpan> Downbeats { get; init; } = [];
     public IReadOnlyList<SongLyricLine> LyricTimestamps { get; init; } = [];
     public IReadOnlyList<SongStageTiming> StageTimings { get; init; } = [];
     public TimeSpan Duration => Mix.Duration;
@@ -246,4 +264,40 @@ public static class SongErrorCodes
 public sealed class SongException(string code, string message, Exception? inner = null) : Exception(message, inner)
 {
     public string Code { get; } = code;
+}
+
+/// <summary>The sung lines of a request's lyrics with their sections, as the host times them (<see cref="SongLyricLine"/>).</summary>
+public static class SongLyrics
+{
+    /// <summary>Each non-empty line outside a section tag, with the section it is in: the tag's name in lower case
+    /// ("verse", "chorus", "pre-chorus"...), numbered from its second occurrence ("verse 2") unless the tag already ends
+    /// with a number; "" before the first tag.</summary>
+    public static IReadOnlyList<(string Section, string Text)> Parse(string lyrics)
+    {
+        ArgumentNullException.ThrowIfNull(lyrics);
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var section = "";
+        var lines = new List<(string, string)>();
+        foreach (var raw in lyrics.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            if (line.Length >= 2 && line[0] == '[' && line[^1] == ']')
+            {
+                var name = string.Join(' ', line[1..^1].Trim().ToLowerInvariant()
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+                if (name.Length == 0) continue;
+                if (char.IsAsciiDigit(name[^1]))
+                    section = name;
+                else
+                {
+                    var count = seen[name] = seen.GetValueOrDefault(name) + 1;
+                    section = count == 1 ? name : string.Create(CultureInfo.InvariantCulture, $"{name} {count}");
+                }
+                continue;
+            }
+            lines.Add((section, line));
+        }
+        return lines;
+    }
 }

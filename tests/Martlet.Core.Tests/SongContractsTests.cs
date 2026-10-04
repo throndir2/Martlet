@@ -47,10 +47,18 @@ public sealed class SongContractsTests
         Assert.All([song.Mix, song.Vocals, song.Backing], t => Assert.Equal(SongTrack.SampleRateHz, t.SampleRate));
         Assert.Equal(3, song.LyricTimestamps.Count);
         Assert.Equal("Morning light is on the window", song.LyricTimestamps[0].Text);
+        Assert.Equal(["verse", "verse", "chorus"], song.LyricTimestamps.Select(l => l.Section));
         Assert.True(song.LyricTimestamps[1].Start > song.LyricTimestamps[0].Start);
+        Assert.Equal(4, song.BeatsPerBar);
+        Assert.Equal(96, song.Bpm);
+        Assert.Equal(TimeSpan.Zero, song.Beats[0]);
+        Assert.Equal(60.0 / 96, (song.Beats[1] - song.Beats[0]).TotalSeconds, 6);
+        Assert.True(song.Beats[^1] < song.Duration && song.Beats[^1] > song.Duration - TimeSpan.FromSeconds(1));
+        Assert.All(song.Downbeats, d => Assert.Contains(d, song.Beats));
+        Assert.All(song.LyricTimestamps, l => Assert.Contains(l.Start, song.Downbeats));
         Assert.Equal([SongStage.Queued, SongStage.WritingMusic, SongStage.Separating, SongStage.MatchingVoice,
-            SongStage.Mixing, SongStage.Delivering, SongStage.Completed], stages);
-        Assert.Equal(5, song.StageTimings.Count);
+            SongStage.Mixing, SongStage.Aligning, SongStage.Delivering, SongStage.Completed], stages);
+        Assert.Equal(6, song.StageTimings.Count);
         Assert.Contains(song.Vocals.Pcm16.ToArray(), b => b != 0);
 
         var wave = song.Vocals.ToWave();
@@ -66,6 +74,14 @@ public sealed class SongContractsTests
         var other = FixtureSongMaker.Compose(Request() with { VoiceId = "another-voice" });
         Assert.Equal(a.Vocals.Pcm16.ToArray(), b.Vocals.Pcm16.ToArray());
         Assert.NotEqual(a.Vocals.Pcm16.ToArray(), other.Vocals.Pcm16.ToArray());
+    }
+
+    [Fact]
+    public void LyricsParseIntoNumberedSections()
+    {
+        var lines = SongLyrics.Parse("Intro words\n[Verse]\nA\n\n[chorus]\nB\n[verse]\nC\n[Chorus]\nD\n[bridge 1]\nE\n[]\n");
+        Assert.Equal([("", "Intro words"), ("verse", "A"), ("chorus", "B"), ("verse 2", "C"), ("chorus 2", "D"),
+            ("bridge 1", "E")], lines);
     }
 
     [Fact]
