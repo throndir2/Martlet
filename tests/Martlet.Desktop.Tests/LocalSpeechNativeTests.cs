@@ -6,7 +6,7 @@ using Xunit;
 namespace Martlet.Desktop.Tests;
 
 /// <summary>Runs the real sherpa-onnx engine and models: the runtime and voice models the build puts beside these tests, and
-/// Parakeet from MARTLET_SPEECH_ROOT (a data folder's speech directory with Parakeet downloaded). Opt-in: set
+/// every Parakeet model downloaded in MARTLET_SPEECH_ROOT (a data folder's speech directory). Opt-in: set
 /// MARTLET_SPEECH_FIXTURES to a folder with a1.wav, a2.wav (one speaker) and b1.wav (another), 16 kHz mono PCM16 with a 44-byte
 /// header. Nothing is downloaded by the test.</summary>
 public sealed class LocalSpeechNativeTests
@@ -33,9 +33,16 @@ public sealed class LocalSpeechNativeTests
             Assert.True(first.Speaker!.Added);
             var other = voices.Recognize(Read("b1"));
             Assert.True(other.Speaker!.Added);
-            var again = voices.Recognize(Read("a2"));
+            // A name learned by mistake that is the companion's own is dropped when the voice is heard again.
+            var (applied, refused) = voices.Apply([new(VoiceUpdateKind.Name, first.Speaker.Voice!.Id, "Jane"),
+                new(VoiceUpdateKind.Name, first.Speaker.Voice.Id, "Sam")]);
+            Assert.Equal(2, applied.Count);
+            Assert.Empty(refused);
+            var again = voices.Recognize(Read("a2"), CompanionNames.From(["Jane"]));
             Assert.Equal(VoiceMatchKind.Known, again.Speaker!.Kind);
             Assert.Equal(first.Speaker.Voice!.Id, again.Speaker.Voice!.Id);
+            Assert.Equal(new[] { "Sam" }, again.Speaker.Voice.Names.Select(n => n.Text).ToArray());
+            Assert.Equal("Sam", voices.Roster.Resolve(first.Speaker.Voice.Id)!.DisplayName);
             Assert.Equal(2, voices.Roster.Live.Count);
             Assert.True(File.Exists(Path.Combine(data.FullName, LocalVoices.RosterFile)));
             using var reloaded = new LocalVoices(data.FullName, "desk-test");
@@ -49,10 +56,17 @@ public sealed class LocalSpeechNativeTests
     {
         if (Root is null || Fixtures is null) return;
         using var listener = new ParakeetListener(Root);
-        Assert.True(listener.Installed);
+        var installed = Martlet.Sherpa.SherpaComponents.InstalledParakeetModels(Root);
+        Assert.NotEmpty(installed);
         var bytes = File.ReadAllBytes(Path.Combine(Fixtures!, "b1.wav"))[44..];
-        var heard = await listener.TranscribeAsync(Martlet.Sherpa.SherpaComponents.ParakeetModelId, bytes, CancellationToken.None);
-        Assert.Contains("sister", heard.Text, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("parakeet", heard.Evidence?.Engine);
+        // Each downloaded model in turn: the listener unloads one before loading the next.
+        foreach (var model in installed)
+        {
+            Assert.True(listener.Installed(model.Id));
+            var heard = await listener.TranscribeAsync(model.Id, bytes, CancellationToken.None);
+            Assert.Equal(model.Id, listener.Loaded);
+            Assert.Contains("sister", heard.Text, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("parakeet", heard.Evidence?.Engine);
+        }
     }
 }

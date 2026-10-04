@@ -94,8 +94,8 @@ public partial class MainWindow
             busy.Add("Troubleshooting is waiting to clean up its files");
         if (updateDownloadCancellation is not null)
             busy.Add(availableUpdate is { } update ? $"Downloading Martlet {update.Version.ToString(3)}" : "Downloading a Martlet update");
-        if (installingParakeet)
-            busy.Add("Downloading Parakeet speech recognition");
+        if (installingParakeet is { } downloading)
+            busy.Add($"Downloading {Martlet.Sherpa.ParakeetModels.Find(downloading)?.Name ?? "Parakeet"} speech recognition");
         if (hostUpdatesRunning || hostUpdates.Running)
             busy.Add("Updating Martlet on your hosts");
         if (!asked && nodeCommandRunning is { } command)
@@ -196,6 +196,10 @@ public partial class MainWindow
         if (conversation is not null)
             await StepAsync("ending the conversation", "Windows releases the microphone and speakers when Martlet exits.",
                 () => Task.Run(async () => await conversation.DisposeAsync()));
+        // The last exchanges are still being written to the record of conversations (a moment at most).
+        if (conversationHistory is { Pending: > 0 } record)
+            await StepAsync("saving the conversation history", "The last exchange may be missing from it.",
+                () => record.Idle.WaitAsync(InterruptWait));
         // Ends every MCP server Martlet started (they also end with Martlet's process through its job object).
         await StepAsync("stopping your tool servers", "Windows ends any still running along with Martlet.",
             () => Task.Run(async () => await mcpTools.DisposeAsync()));

@@ -51,8 +51,9 @@ public partial class MainWindow
             return new()
             {
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
-                NotConnected = store is not null && Martlet.Sherpa.ParakeetEngine.Installed(LocalVoices.SpeechRoot(store.DataDirectory)) ? null
-                    : "Parakeet isn't downloaded. Choose Parakeet again in Listening to download it"
+                NotConnected = store is not null && Martlet.Sherpa.ParakeetEngine.Installed(LocalVoices.SpeechRoot(store.DataDirectory), route.ModelId)
+                    ? null
+                    : $"{ParakeetName(route.ModelId)} isn't downloaded. Choose it again in Listening to download it"
             };
         if (route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper)
             return new()

@@ -963,8 +963,9 @@ it.*
   re-asked every message.
 - **Today**: the conversation window has no per-message ticks. Listening
   (always or push-to-talk), spoken replies and vision are chosen in Companion
-  (Listening, Voice, Vision); the talk window shows *Start listening* (then
-  *Stop listening*) and a *Vision* toggle while they are on. Avatar inspection and analysis keep their own
+  (Listening, Voice, Vision); the talk window, Home and the notification-area
+  menu show *Start listening* (then *Stop listening*) and *Start watching* (then
+  *Stop watching*) while they are on, each working without the other. Avatar inspection and analysis keep their own
   ticks; a Settings › Privacy page does not exist yet.
 
 #### G4. Stop everything now
@@ -1023,7 +1024,9 @@ it.*
   permission is off, picking one turns it on (it's the user's explicit
   action) and the chip lights.
 - **Clicks**: 2.
-- **Today**: Companion › Vision chooses the source and chattiness and *Turn
+- **Today**: Companion › Vision chooses the source and chattiness (Quiet,
+  Normal, Chatty or Martlet decides, which lets Martlet switch it itself from
+  what's happening and what you say) and *Turn
   vision on*; the talk window then looks while it is open, and its *Vision*
   button pauses and resumes it.
 

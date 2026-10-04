@@ -30,14 +30,19 @@ are recognized and learned only from the microphone, never from
 - **Voices Martlet knows.** Every voice it has heard, the owner's first, then
   named ones, then the most recently heard. For each voice you can:
   - type its **Name** (always wins) and **Also called** (other names,
-    comma-separated; removing one here drops it). There is no Save button:
+    comma-separated, up to 12 in all; removing one here drops it). There is no Save button:
     names save when you leave the field or press Enter (or two seconds after
     you stop typing), then sync to your other computers, so a half-typed name
     isn't shared;
   - tick **This is my voice**;
   - **Merge** it into another entry that is the same person (the names,
-    voiceprints and counts combine; it can't be split again);
-  - **Forget this voice** (its voiceprint and names are deleted).
+    voiceprints and counts combine, and so do the facts Memory keeps for them;
+    it can't be split again);
+  - **What Martlet remembers about them** opens Memory showing that voice's
+    facts ([Whose memories](MEMORY.md#whose-memories));
+  - **Forget this voice** (its voiceprint and names are deleted; what Martlet
+    remembers about them stays in Memory under *Forgotten voices* until you
+    delete it).
   When two voices go by the same name, the page suggests merging them.
   **Forget all voices** clears the list.
 
@@ -67,22 +72,50 @@ on), while speech-to-text runs:
 3. **Telling the Thinking model.** The reply's instructions say what the
    voices block means (Companion › Prompts › *Who is talking*), and the notes
    on the message carry the labeled block (`MARTLET_VOICES`, background data,
-   never instructions): who is speaking now (name or voice tag, other names,
-   whether it is you or heard for the first time) and anyone else heard. The
+   never instructions): who is speaking now (name or voice tag, every other
+   name, whether it is you or heard for the first time) and anyone else heard. The
    block is noted only when who is talking changed since the last one in the
    conversation sent, and holds until the next. What Memory reads starts with
-   `[name]`, so remembered facts know who said what. The talk window labels
+   `[name]`, so remembered facts know who said what: a fact remembered from
+   the message belongs to the speaker (or to another voice heard that it is
+   about), recall puts the speaker's facts first, and each recalled fact says
+   whose it is ([Whose memories](MEMORY.md#whose-memories)). The talk window labels
    the message with the speaker's name.
 4. **Learning names.** After a completed reply, if a voice in it has no name
-   yet, or the words suggest a name came up ("my name is", "call me",
-   "thanks, Sam"...), the exchange is sent once more to the same Thinking model
-   in one extra text-only request, the same one as [remembering](MEMORY.md)
-   when both are due. It answers
-   `NAME V3: Sam` lines; only listed voices, real names (at most three words,
-   not Martlet's or the persona's name, not "Voice N") are accepted. Each name
-   is added to that voice with a use count, so a voice collects every name it
-   goes by; the most used one is shown until you type a name yourself. The
-   talk window notes what was learned.
+   yet, the words suggest a name came up ("my name is", "call me", "wrong
+   name", "thanks, Sam"...; greeting the companion by its own name doesn't
+   count) or someone says two voices are them ("that was me", "it's me, Sam"),
+   the exchange is sent once more to the same Thinking model in one extra
+   text-only request, the same one as [remembering](MEMORY.md) when both are
+   due. The request lists the companion's own names, every name each heard
+   voice goes by and, only when someone says they are the same person as
+   someone Martlet knows, up to eight other named voices. It answers at most
+   six lines:
+   - `NAME V3: Sam`: a name the voice goes by. A voice collects every name it
+     goes by (up to 12), each with a use count; the most used one is shown
+     until you type a name yourself.
+   - `CALL V3: Sammy`: the name they ask to be called from now on; it becomes
+     the learned name shown (a name you typed still wins).
+   - `NOT V3: Jane`: a name it learned that they say isn't theirs; it is
+     dropped. Names you typed are never dropped this way.
+   - `SAME V9: V3`: they said both voices are them. The two merge like
+     **Merge** on People (it can't be undone), into your own voice, else a
+     named one, else the one heard most; at most one merge per exchange, at
+     least one of the voices must be in the message, and never two voices you
+     named differently.
+
+   Names go only to listed voices heard in the message, and only real names
+   (at most three words, not "Voice N"). **The companion's own names never
+   become a voice's**: "Martlet", every persona's name and each word of it
+   ("Jane" and "Doe" for *Jane Doe*), a name a persona's text gives it ("You
+   are Jane", "Your name is Jane") and a name Martlet's reply gives itself
+   ("I'm Jane"). The people talking to it are almost never called that, so
+   someone saying "Hey Jane" is talking to Martlet. A voice that learned one
+   of these by mistake (before this check) drops it whenever Martlet reads its
+   settings (when it starts and after you change a persona) and when the voice
+   is heard; a name you typed yourself on People is kept. The talk window notes what was
+   learned, dropped or merged, and the log says why lines were left out
+   (never the names).
 
 Recognition waits at most 3 seconds beyond speech-to-text; a slow or failed
 recognition only means nobody is named for that message. Audio is never kept:
@@ -124,25 +157,46 @@ longer read.
 
 ## Parakeet on this PC (Listening)
 
-Companion › Listening › This PC now offers **Parakeet in Martlet** next to
-whisper. NVIDIA Parakeet TDT 0.6B v3 (int8 ONNX export) runs inside Martlet on
-the processor through the same sherpa-onnx runtime: no Docker, no host
-service. *Download and use Parakeet* asks once, downloads about 670 MB from
-Hugging Face at a pinned revision into `speech\` in Martlet's data folder,
-checks each file (a file that doesn't match is deleted) and switches Listening
-to the `LocalParakeet` route (`local-parakeet`, model `parakeet-tdt-0.6b-v3-int8`).
-It runs on the sherpa-onnx runtime that ships with Martlet.
-It needs about 1 GB of memory while Martlet runs.
+Companion › Listening › This PC offers **Parakeet in Martlet** next to
+whisper: NVIDIA Parakeet runs inside Martlet on the processor through the same
+sherpa-onnx runtime that ships with Martlet, with no Docker and no host
+service. It offers three models (`ParakeetModels` in Martlet.Sherpa); each
+downloads once, on request, after one confirmation that names it and its size:
 
-AudioTranscriber measured it on 48 public English clips: 6.85% word error rate
-against 10.56% for whisper large-v3-turbo, 14x faster than real time on two
-threads. It detects 25 European languages by itself (bg, cs, da, de, el, en,
-es, et, fi, fr, hr, hu, it, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, uk);
-use whisper for others. The utterance is transcribed in memory on this PC with
-the same one-use audio authorization as the other routes, bound to
-`local://windows` and the model; nothing is sent anywhere and there is no
-charge. Locally, a 6-7 s utterance transcribed in about 0.8 s on an
-i7-13700K.
+| Model (route `ModelId`) | What it is for | Download | Memory |
+| --- | --- | --- | --- |
+| **Parakeet TDT 110M** (`parakeet-tdt-110m-en`, English) | *Fastest in English*: about 0.1 s for a short turn, the default for an English Windows display language. Less accurate with noise or a distant microphone | 477 MB (fp32 ONNX) | about 0.6 GB |
+| **Parakeet TDT 0.6B v2** (`parakeet-tdt-0.6b-v2-int8`, English) | *Most accurate in English (about 0.2 s slower)*: holds up best in noisy rooms and on distant microphones | 661 MB (int8 ONNX) | about 0.9 GB |
+| **Parakeet TDT 0.6B v3** (`parakeet-tdt-0.6b-v3-int8`) | *25 languages*: bg, cs, da, de, el, en, es, et, fi, fr, hr, hu, it, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, uk, detected by itself; the default when Windows' display language isn't English | 670 MB (int8 ONNX) | about 0.9 GB |
+
+The card marks the recommended model (110M for English, v3 otherwise) and the
+one in use. Martlet downloads from Hugging Face at a pinned revision into
+`speech\models\<model ID>\` in Martlet's data folder, checks each file's exact
+size and SHA-256 (a file that doesn't match is deleted), writes the model's
+NOTICE beside it (`speech\models\Parakeet-TDT-110M-NOTICE.txt`,
+`Parakeet-TDT-0.6B-v2-NOTICE.txt`, `Parakeet-NOTICE.txt` for v3) and switches
+Listening to the `LocalParakeet` route (`local-parakeet`) with that model.
+Choosing a model that is already downloaded switches at once. One model is
+loaded at a time; switching unloads the other. A Listening route saved before
+these choices keeps v3: Martlet never changes a model you chose.
+
+Why these three (measured with sherpa-onnx 1.13.8 on this PC's processor; see
+[voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)): 110M took 86-140 ms
+per short turn and brought a cascade into Gemma 4 E2B to its first audio in
+734 ms against 931 ms with v3, but misheard 11% of the words on a desk
+microphone and 14% on AMI's headsets; v2 misheard 1.2% and 8.6% (20% on AMI's
+room microphone) in 208-420 ms; v3 took 234-454 ms with 10.7% on the desk
+microphone. Speed comes first for the default, so English starts with 110M.
+
+The utterance is transcribed in memory on this PC with the same one-use audio
+authorization as the other routes, bound to `local://windows` and the model;
+nothing is sent anywhere and there is no charge. With Parakeet as Listening,
+talking over Martlet is checked with the same model (see
+[Conversation](CONVERSATION.md)). *Keep Martlet the same on all my computers*
+shares the chosen model with your other computers; one that hasn't downloaded
+it keeps listening as before and *Settings for all devices* says which model
+to download in Companion › Listening (nothing downloads by itself), and a
+model a newer Martlet added waits for the update.
 
 ## Limits
 
@@ -177,8 +231,21 @@ it off and on was reflected by `voices_status`.
 
 `voices_engine_check` runs the bundled engine on any 16 kHz mono PCM16 WAV
 files you give it. To run the native tests, point `MARTLET_SPEECH_FIXTURES` at
-a folder with `a1.wav`, `a2.wav` (one speaker) and `b1.wav` (another), 16 kHz
-mono PCM16, and for Parakeet `MARTLET_SPEECH_ROOT` at a speech folder with
-Parakeet downloaded, then run `LocalSpeechNativeTests`. They use the runtime
-and models the build places beside the tests, skip otherwise and never
-download.
+a folder with `a1.wav`, `a2.wav` (one speaker) and `b1.wav` (another, saying
+"sister"), 16 kHz mono PCM16, and for Parakeet `MARTLET_SPEECH_ROOT` at a
+speech folder with one or more Parakeet models downloaded, then run
+`LocalSpeechNativeTests`: it transcribes `b1.wav` with each downloaded model in
+turn through the desktop's listener, which unloads one before loading the
+next. They use the runtime and models the build places beside the tests, skip
+otherwise and never download. MCP's `parakeet_check` loads every downloaded
+model through the production engine and transcribes Windows-voice phrases with
+it, and `voices_status` lists the models, which are downloaded and which one
+Listening uses.
+
+When the three Parakeet models were added, the 110M and v2 models were
+downloaded through Companion › Listening on a disposable data directory (MCP
+clicked *Download and use* and confirmed; each file matched its pin), Listening
+switched to each and back without another download, `parakeet_check` ran all
+three on four phrases (no word errors from v2 and v3, one from 110M, which
+wrote "to morrow"; 110M transcribed about 2.5 times faster), and
+`utterance_filter_check` passed with each model as Listening's.

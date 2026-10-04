@@ -1,13 +1,14 @@
-namespace Martlet.Desktop;
+using Martlet.Core.Settings;
 
-internal enum Chattiness { Quiet, Normal, Chatty }
+namespace Martlet.Desktop;
 
 internal enum PacerVerdict { Look, Busy, WarmingUp, AfterConversation, AfterComment, AfterLook, HourlyLimit, UserAway, NothingNew, BackingOff }
 
 /// <summary>Decides when Martlet takes a look at the screen, the way a friend in the room would: not while you are
 /// talking to it, not right after it said something, more likely when the picture just changed, rarely when nothing
 /// moves, never to an empty room, and never more than an hourly budget of looks (each look is one model request).
-/// Whether a look turns into a remark is then the model's call: it answers [pass] when nothing is worth saying.</summary>
+/// Whether a look turns into a remark is then the model's call: it answers [pass] when nothing is worth saying. While
+/// Martlet decides how chatty it is, <see cref="Retune"/> follows the level it picks without forgetting the looks so far.</summary>
 internal sealed class ScreenCommentaryPacer
 {
     internal sealed record Tuning(TimeSpan AfterComment, TimeSpan AfterLook, TimeSpan AfterConversation, int LooksPerHour,
@@ -24,6 +25,18 @@ internal sealed class ScreenCommentaryPacer
         Chattiness.Quiet => new(TimeSpan.FromMinutes(4), TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(30), 12, 0.02, TimeSpan.FromMinutes(8)),
         Chattiness.Chatty => new(TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(25), TimeSpan.FromSeconds(12), 45, 0.10, TimeSpan.FromMinutes(2)),
         _ => new(TimeSpan.FromSeconds(100), TimeSpan.FromSeconds(45), TimeSpan.FromSeconds(20), 24, 0.04, TimeSpan.FromMinutes(4))
+    };
+
+    /// <summary>The most a choice may cost: its own level's tuning, or Chatty's while Martlet decides (it may pick any level).</summary>
+    internal static Tuning AtMost(ChattinessChoice choice) =>
+        For(choice == ChattinessChoice.MartletDecides ? Chattiness.Chatty : (Chattiness)choice);
+
+    /// <summary>At most how often what this PC plays, on its own, goes to Martlet, counted from its last answer.</summary>
+    internal static TimeSpan PcPace(Chattiness chattiness) => chattiness switch
+    {
+        Chattiness.Quiet => TimeSpan.FromSeconds(45),
+        Chattiness.Chatty => TimeSpan.FromSeconds(12),
+        _ => TimeSpan.FromSeconds(20)
     };
 
     private readonly TimeProvider clock;
@@ -45,8 +58,18 @@ internal sealed class ScreenCommentaryPacer
         started = this.clock.GetTimestamp();
     }
 
-    internal Chattiness Chattiness { get; }
-    internal Tuning Settings { get; }
+    internal Chattiness Chattiness { get; private set; }
+    internal Tuning Settings { get; private set; }
+
+    /// <summary>Follows a new level (Martlet decided, or the choice changed): the spacing and the hourly budget change from
+    /// now on; the looks taken, the last remark and the picture's change so far still count.</summary>
+    internal void Retune(Chattiness chattiness)
+    {
+        if (chattiness == Chattiness) return;
+        Chattiness = chattiness;
+        Settings = For(chattiness);
+        jitter = TimeSpan.Zero;
+    }
     internal double Novelty => novelty;
     internal int LooksThisHour { get { Evict(); return looks.Count; } }
     internal TimeSpan? SinceLastLook => lastLook is { } at ? clock.GetElapsedTime(at) : null;

@@ -1,3 +1,4 @@
+using Martlet.Core.Settings;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -73,6 +74,77 @@ public sealed class ScreenCommentaryTests
     [InlineData("Passing through the castle already?", false)]
     public void Silent_reply_is_recognized_without_swallowing_real_remarks(string text, bool silent) =>
         Assert.Equal(silent, LiveConversationController.IsSilentReply(text));
+
+    [Fact]
+    public void Retuning_follows_the_new_level_without_forgetting_the_looks_so_far()
+    {
+        var clock = new Clock();
+        var pacer = new ScreenCommentaryPacer(Chattiness.Chatty, clock, () => 0.0);
+        clock.Advance(ScreenCommentaryPacer.Warmup);
+        for (var i = 0; i < 12; i++)
+        {
+            pacer.NoteLook(commented: false);
+            clock.Advance(pacer.Settings.AfterLook);
+        }
+        Assert.Equal(PacerVerdict.Look, pacer.Decide(false, TimeSpan.Zero));
+        // Martlet went quiet: Quiet's budget (12 looks an hour) is already used by the looks taken while chatty.
+        pacer.Retune(Chattiness.Quiet);
+        Assert.Equal(Chattiness.Quiet, pacer.Chattiness);
+        Assert.Equal(ScreenCommentaryPacer.For(Chattiness.Quiet), pacer.Settings);
+        Assert.Equal(PacerVerdict.AfterLook, pacer.Decide(false, TimeSpan.Zero));
+        clock.Advance(pacer.Settings.AfterLook);
+        Assert.Equal(PacerVerdict.HourlyLimit, pacer.Decide(false, TimeSpan.Zero));
+        pacer.Retune(Chattiness.Chatty);
+        Assert.Equal(PacerVerdict.Look, pacer.Decide(false, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void Each_level_paces_what_the_pc_plays_and_martlet_decides_may_cost_up_to_chatty()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(45), ScreenCommentaryPacer.PcPace(Chattiness.Quiet));
+        Assert.Equal(TimeSpan.FromSeconds(20), ScreenCommentaryPacer.PcPace(Chattiness.Normal));
+        Assert.Equal(TimeSpan.FromSeconds(12), ScreenCommentaryPacer.PcPace(Chattiness.Chatty));
+        Assert.Equal(ScreenCommentaryPacer.For(Chattiness.Chatty), ScreenCommentaryPacer.AtMost(ChattinessChoice.MartletDecides));
+        Assert.Equal(ScreenCommentaryPacer.For(Chattiness.Quiet), ScreenCommentaryPacer.AtMost(ChattinessChoice.Quiet));
+        // What Companion says before vision is turned on covers the most Martlet may pick.
+        Assert.Contains("up to 45 screenshots per hour", LiveConversationConfiguration.ScreenDisclosure(null,
+            ChattinessChoice.MartletDecides, new WatchSource(WatchKind.ActiveWindow)));
+        Assert.Contains("up to 24 screenshots per hour", LiveConversationConfiguration.ScreenDisclosure(null,
+            ChattinessChoice.Normal, new WatchSource(WatchKind.ActiveWindow)));
+    }
+
+    [Fact]
+    public void The_talk_window_and_companion_say_what_martlet_decided()
+    {
+        Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Quiet, false, null));
+        Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.Quiet, Chattiness.Quiet, true, null));
+        Assert.Equal("Martlet decides how chatty it is: normal right now.",
+            LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Normal, true, null));
+        Assert.StartsWith("Martlet decides how chatty it is: chatty right now (since ",
+            LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Chatty, true, DateTime.Now));
+        Assert.EndsWith("Right now it is quiet.", MainWindow.ChattinessStatus(ChattinessChoice.MartletDecides, Chattiness.Quiet));
+        Assert.Equal(MainWindow.ChattinessAbout, MainWindow.ChattinessStatus(ChattinessChoice.MartletDecides, null));
+        Assert.StartsWith("Chatty:", MainWindow.ChattinessStatus(ChattinessChoice.Chatty, Chattiness.Quiet));
+        Assert.Contains("went quiet", LiveConversationWindow.ChattinessSwitched(Chattiness.Normal, Chattiness.Quiet));
+        Assert.Contains("chattier", LiveConversationWindow.ChattinessSwitched(Chattiness.Quiet, Chattiness.Chatty));
+    }
+
+    [Theory]
+    [InlineData(3, ChattinessChoice.MartletDecides)]
+    [InlineData(0, ChattinessChoice.Quiet)]
+    [InlineData(2, ChattinessChoice.Chatty)]
+    [InlineData(7, ChattinessChoice.Normal)]
+    [InlineData(-1, ChattinessChoice.Normal)]
+    public void Martlet_decides_is_saved_and_out_of_range_choices_load_as_normal(int saved, ChattinessChoice loaded)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Talk.Chattiness." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.True(new TalkPreferences(ScreenChattiness: saved).Save(directory));
+            Assert.Equal(loaded, ChattinessTags.Choice(TalkPreferences.Load(directory).ScreenChattiness));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
 
     [Fact]
     public void Duplication_downscale_averages_the_requested_region_into_opaque_pixels()
