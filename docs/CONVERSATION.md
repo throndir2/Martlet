@@ -716,6 +716,56 @@ known and where it came from (*This Thinking model can hear (Ollama on this PC
 says so, checked 3 Oct)*). MCP `model_ability_check` and `hearing_check` show it
 ([MCP](MCP.md)).
 
+### Answer from my voice
+
+Companion › Listening › **Answer from my voice (fastest)**, on by default, lets
+a Thinking model that hears answer each thing you say straight from its
+recording, without waiting for speech-to-text. As soon as you pause (and Voice
+ID, when it's on, let it through), always listening offers the utterance; when
+nothing else waits to be answered, the talk window starts the reply with the
+recording alone and a short message saying so (Companion › Prompts › *Your
+recorded voice, answered right away*). Speech-to-text runs beside it, so a
+cascade's transcription time (about 100-250 ms with Parakeet on this PC, more
+in the cloud) is no longer on the way to the first audio. On the bench this
+was the fastest flow on real and noisy speech (see
+[Voice latency](VOICE_LATENCY.md)).
+
+- **When it applies.** Always listening only, a Thinking model that hears, and
+  a recording that may go to it: a model in **Ollama on this PC** (one of its own
+  models, never an Ollama cloud model: the recording never leaves this PC), or
+  any other model that hears with **Let Thinking hear my voice** on. Otherwise,
+  and when Home Assistant's Assist (which needs the words) handles your smart
+  home, Martlet answers your words as before. The status under the check box says
+  which (MCP: `TalkAnswerFromVoiceStatus`).
+- **The words still count.** The transcript fills in your bubble and is what the
+  conversation history, Memory and learning voice names keep; the recording is
+  never kept. The reply can't use Memory recall, lore or Assist keyed on words it
+  doesn't have yet: Memory is recalled from what you said last, lore scans the
+  conversation so far, and tools are still offered.
+- **Not words.** When speech-to-text finds that it wasn't words (the
+  [utterance filter](#listening-for-words): a cough, a hum, *Thank you.* made up
+  from noise, or no speech at all), the reply stops at once, usually before it
+  speaks (Parakeet takes about 100-250 ms; the first audio comes at about 750
+  ms), the exchange isn't kept, and the muted *Ignored* note shows instead.
+- **You keep talking.** Talking on before Martlet speaks restarts the reply as
+  usual; the first utterance's words then go with what you say next, from the
+  transcript.
+- **Staying quiet and barge-in** work unchanged: the reply is a spoken turn, so
+  the model may answer `[pass]`, and talking over it uses the same word check
+  (the quick check runs on Parakeet when it is your Listening choice).
+- **A model that can't take it.** If the model refuses the recording alone,
+  Martlet answers your transcript instead and doesn't ask it from your recording
+  again until it restarts. The Thinking fallback never gets a recording, so a
+  reply from the recording alone never falls back.
+
+The desktop log's reply latency line ends with *Answered from your recording;
+speech-to-text finished beside it N ms after you stopped talking.* for these
+replies, and the talk window notes *Martlet answered from your voice.* under
+what you said. MCP `latency_report` gives `firstAudioFromRecording` and
+`firstAudioFromWords` side by side, and `hearing_check` rehearses the request
+(`fixture.recordingOnly`) and the decision (`answersFromVoice`,
+`answerDecisions`).
+
 ## Hearing what this PC plays
 
 *Hear what this PC plays* (Companion › Listening › Watch along, off by

@@ -28,9 +28,11 @@ internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, 
 // microphone first (Companion › Listening › Reduce echo from my speakers), so speakers work without headphones. Pc: listens to
 // what this PC plays instead of the microphone (Companion › Listening › Hear what this PC plays): never Voice ID, voice
 // recognition, a recording for Thinking or memory. WordCheck: how readily what was heard counts as words (Companion › Listening ›
-// Word check; UtteranceFilter and BargeInPolicy).
+// Word check; UtteranceFilter and BargeInPolicy). AnswerFromVoice: a Thinking model that hears answers each utterance from its
+// recording right away, with speech-to-text beside it (Companion › Listening › Answer from my voice; EarlyHearing).
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
-    bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal)
+    bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
+    bool AnswerFromVoice = false)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -153,6 +155,9 @@ internal sealed class LiveConversationOperation
     internal UtteranceDecision? Ignored { get; set; }
     /// <summary>The utterance's words, said over Martlet, stop it (where speech-to-text isn't on this PC, or a quick check missed them).</summary>
     internal BargeInDecision? Interrupts { get; set; }
+    /// <summary>An utterance offered to be answered from its recording right away, or the reply that answers one (Answer from my
+    /// voice): the request carries the recording alone and speech-to-text runs beside it.</summary>
+    [JsonIgnore] internal EarlyHearing? Early { get; set; }
     /// <summary>What this reply is, said aloud: a reply (stops for real words) or a song (stops only when asked to).</summary>
     internal PlaybackMode Playback { get; init; } = PlaybackMode.Reply;
     /// <summary>Frame by frame, whether this utterance's sound was what the speakers played (echo reduction only).</summary>
@@ -610,10 +615,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
-        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply)
+        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, EarlyHearing? early = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
+        // A reply from the recording alone (Answer from my voice) is a spoken turn whose message is the recording itself.
+        if (early is not null)
+        {
+            if (!spoken || microphone || pcAudio || text is not null || recording is not null)
+                throw new LiveActionException("conversation.invalid_input");
+            recording = early.Recording;
+        }
         if (listening is not null && !microphone || spoken && microphone || recording is not null && !spoken ||
             listening?.Pc == true || pcAudio && (!spoken || recording is not null) || !pcAudio && userWords is not null)
             throw new LiveActionException("conversation.invalid_input");
@@ -622,7 +634,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         if (listening?.RequireVoiceId == true)
             voiceprint = voiceIdentity?.Current ?? throw new LiveActionException("voiceid.not_enrolled");
         caller.ThrowIfCancellationRequested();
-        BoundedTextInput? input = microphone ? null : new(text ?? "");
+        BoundedTextInput? input = microphone || early is not null ? null : new(text ?? "");
         if (input is { UserText.Length: > 4096 }) throw new LiveActionException("conversation.input_limit");
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LiveConversationOperation operation;
@@ -632,6 +644,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+            // The Thinking model may have stopped hearing since the utterance was offered (another model, a refused recording):
+            // then its words are answered as usual.
+            if (early is not null)
+            {
+                if (selected.Hearing() != HearingSupport.Supported || deafModels.Contains(selected.ToolModelKey()))
+                    throw new LiveActionException("listen.words_first");
+                input = new(PromptSettings.Fill(selected.Prompts, PromptCatalog.HeardOnly)!);
+            }
             long acceptedRevision = revision = checked(revision + 1);
             // Vision being on is the permission for its pictures; a text-only Thinking model never gets one.
             if (selected.Vision() == VisionSupport.Unsupported) seen = null;
@@ -642,7 +662,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
-                SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen,
+                SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, Early = early,
                 PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
                     : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
@@ -841,12 +861,26 @@ internal sealed class LiveConversationController : IAsyncDisposable
         utterance.Status.Code is "listen.heard" or "listen.ignored" ? utterance.Transcript : null, utterance.Transcription?.Confidence, utterance.Heard,
         utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null,
         utterance.LatencyTimeline, utterance.Status.Code == "listen.ignored" ? utterance.Ignored : null,
-        utterance.Status.Code == "listen.heard" ? utterance.Interrupts : null, utterance.SpeechStartedAt);
+        utterance.Status.Code == "listen.heard" ? utterance.Interrupts : null, utterance.SpeechStartedAt, utterance.Early);
+
+    /// <summary>Whether always listening offers each utterance to be answered from its recording right away (Answer from my
+    /// voice): the Thinking model hears and hasn't refused a recording this session, the recording may go to it (Thinking runs
+    /// on this PC, or Let Thinking hear my voice is on), and nothing needs the words before the reply (Home Assistant's Assist).</summary>
+    private bool AnswersFromVoice(ListeningOptions options)
+    {
+        if (!options.AnswerFromVoice || options.Pc) return false;
+        lock (gate)
+            return configuration is { } selected && selected.AnswersFromVoice(options.Hear) &&
+                !deafModels.Contains(selected.ToolModelKey()) && smartHome is not { ControlEnabled: true, ModelToolsEnabled: false };
+    }
 
     // Voice ID, then speech-to-text, one utterance after another (so what you said stays in order) while the next is recorded.
+    // With Answer from my voice, the utterance is offered to the talk window as soon as Voice ID let it through, so a Thinking
+    // model that hears can start on the recording while speech-to-text runs.
     private async Task TranscribeHeardAsync(Task previous, LiveListener listening, LiveConversationOperation utterance, byte[] speech,
         CancellationToken token)
     {
+        EarlyHearing? early = null;
         try
         {
             await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -855,6 +889,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             finally { CryptographicOperations.ZeroMemory(speech); }
             if (audio is null) return;
             if (utterance.Voiceprint is not null) utterance.LatencyTimeline?.Mark("Voice ID");
+            if (AnswersFromVoice(listening.Options))
+            {
+                early = new(audio, utterance.LatencyTimeline?.Copy());
+                utterance.Early = early;
+                listening.Offer(early);
+            }
             // Never longer than the upload's own 30 s deadline, even if a native boundary ignores it.
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
@@ -913,8 +953,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         finally
         {
-            if (!token.IsCancellationRequested) listening.Post(Result(utterance));
+            var heard = Result(utterance);
+            // The words of an utterance offered early go to the reply that took it (if any) before they are posted.
+            if (early is not null)
+            {
+                listening.Withdraw(early);
+                early.Finish(token.IsCancellationRequested ? null : heard, clock.GetTimestamp());
+            }
+            if (!token.IsCancellationRequested) listening.Post(heard);
             listening.EndTranscribing();
+            early?.End();
         }
     }
 
@@ -997,6 +1045,41 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     internal static bool IsSilentReply(string text) => StayQuiet.IsQuiet(text);
+
+    /// <summary>How long a reply from the recording alone waits, once it is done, for the words speech-to-text finds beside it
+    /// (speech-to-text's own deadline is 35 s).</summary>
+    internal static TimeSpan EarlyWordsWait => TimeSpan.FromSeconds(40);
+    /// <summary>What the history keeps of a reply's message when it was answered from the recording alone and speech-to-text
+    /// found no words for it (failed or ran out of time).</summary>
+    internal const string UntranscribedSpeech = "[spoken; not transcribed]";
+
+    /// <summary>A reply from the recording alone stops as soon as speech-to-text beside it finds that what was heard wasn't words
+    /// (UtteranceFilter, or no speech at all), before it speaks if it can, like a reply restarted because the user kept
+    /// talking: the exchange is never kept and the talk window shows the muted Ignored note instead of the reply.</summary>
+    private void StopWhenNotWords(LiveConversationOperation operation, EarlyHearing early) =>
+        early.Words.ContinueWith(task =>
+        {
+            if (task.Result is not { NotWords: true } heard || operation.OwnershipReleased) return;
+            var played = operation.Turn?.Snapshot.MayHavePlayed == true;
+            ErrorLog.Info("Answer from my voice: what Martlet answered wasn't words (" +
+                (heard.Ignored is { } ignored ? $"{ignored.Reason}, {ignored.Kind}" : "speech-to-text found no speech") +
+                $"), so it stopped the reply {(played ? "after it began speaking" : "before it spoke")}.");
+            Stop(operation, "listen.ignored", keepContext: true);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+    // The reply's request with the words speech-to-text found in place of the recording, as the history keeps it: what the next
+    // reply and the request after the reply continue.
+    private static BoundedTextInput? Transcribed(BoundedTextInput? sent, string words)
+    {
+        if (sent is null) return null;
+        try { return new(words, sent.Personality, sent.History, tools: sent.Tools, notes: sent.Notes); }
+        catch (ContractException) { return null; }
+    }
+
+    // What the user said last, for recalling memory when their newest words aren't known yet (a reply from the recording alone).
+    private static string? LastUserWords(IReadOnlyList<TextHistoryMessage> history) =>
+        LiveConversationConfiguration.WithoutPcAudio(history.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text) is
+            { Length: > 0 } words && words != UntranscribedSpeech ? words : null;
 
     /// <summary>A reply still streaming that may turn out to be [pass]; it isn't shown until it clearly isn't.</summary>
     internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
@@ -1210,18 +1293,22 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
             // What the PC played is never the user: memory, tools and Home Assistant only go by the user's own words, and a
             // message that is only what the PC played gets none of them. A report of background work has no words of the user's.
-            var own = operation.Report ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
+            // A reply from the recording alone (Answer from my voice) has no words yet: memory is recalled by the conversation
+            // so far, lore scans only it, and Home Assistant's Assist (which needs the words) isn't used, but tools are offered.
+            var heardOnly = operation.Early is not null;
+            var own = operation.Report || heardOnly ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
+            var recall = heardOnly ? LastUserWords(history) : own;
             DesktopMemoryRecall? memoryResult = null;
-            if (operation.MemoryRequested && own is not null)
+            if (operation.MemoryRequested && recall is not null)
             {
                 operation.Publish(new("memory.recalling"));
-                memoryResult = await RecallAsync(operation, own, worker).ConfigureAwait(false);
+                memoryResult = await RecallAsync(operation, recall, worker).ConfigureAwait(false);
                 operation.Authorization.Check(worker);
                 await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
                 operation.MemoryStoreRevision = memoryResult?.StoreRevision;
                 operation.LatencyTimeline?.Mark("memory");
             }
-            var lore = await ScanLoreAsync(operation, input!.UserText, history, persona, worker).ConfigureAwait(false);
+            var lore = await ScanLoreAsync(operation, heardOnly ? "" : input!.UserText, history, persona, worker).ConfigureAwait(false);
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
@@ -1230,7 +1317,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
             var builtIns = configured.OffersThinkLonger ? BuiltIns(operation, configured) : null;
-            if ((own is not null || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
+            if ((own is not null || heardOnly || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
                 configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
@@ -1241,25 +1328,28 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
 
             // Finished background work that wasn't brought up yet goes with what the user says (its notes).
-            if (own is not null && !operation.Report && operation.Delivery is null) operation.Delivery = jobs.Take(onItsOwn: false);
+            if ((own is not null || heardOnly) && !operation.Report && operation.Delivery is null) operation.Delivery = jobs.Take(onItsOwn: false);
 
             // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync). When the
             // reply is offered Home Assistant's own tools, the model acts through them instead of Assist, so nothing runs twice.
             HomeTurn? home = null;
-            if (own is not null && smartHome is { ControlEnabled: true } house)
+            if ((own is not null || heardOnly) && smartHome is { ControlEnabled: true } house)
             {
                 if (house.ModelToolsEnabled && toolset?.Servers.Contains(SmartHome.ServerName) == true &&
                     tools!.ManagedConflicts.All(s => s.Name != SmartHome.ServerName))
                     home = house.ToolsTurn(configured.Prompts);
-                else
+                else if (own is not null)
                 {
                     operation.Publish(new("home.asking"));
                     home = await house.HandleAsync(own, worker, configured.Prompts).ConfigureAwait(false);
                     operation.Authorization.Check(worker);
                     operation.LatencyTimeline?.Mark("Home Assistant");
                 }
-                operation.HomeSummary = home.Summary;
-                operation.Publish(new(home.Code));
+                if (home is not null)
+                {
+                    operation.HomeSummary = home.Summary;
+                    operation.Publish(new(home.Code));
+                }
             }
 
             lock (gate)
@@ -1269,6 +1359,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 // The recording goes only to a Thinking model that hears and hasn't refused one this session.
                 var recording = operation.Authorization.Hear && configured.Hearing() == HearingSupport.Supported &&
                     !deafModels.Contains(configured.ToolModelKey()) ? operation.Recording : null;
+                // A reply from the recording alone can't go without it: its words are answered instead.
+                if (heardOnly && recording is null) throw new LiveActionException("listen.words_first");
                 // While vision is on, the newest picture of what it watches goes with the message, so the reply sees it too.
                 // A message too long to fit beside the picture goes without it.
                 var seen = operation.Authorization.Screen ? operation.Seen : null;
@@ -1284,13 +1376,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
-                            recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
+                            // A reply from the recording alone says so in its message (Your recorded voice, answered right
+                            // away), so the instructions stay those of a typed message.
+                            recording is null || heardOnly ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
-                        characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()));
+                        characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
+                        audioRequired: heardOnly);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 try { request = Ask(seen, out usedHistory, out usedMemory, out usedLore); }
@@ -1317,7 +1412,29 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
             }
+            if (operation.Early is { } answering) StopWhenNotWords(operation, answering);
             var terminal = await turn.Completion.ConfigureAwait(false);
+            // A reply from the recording alone keeps what was said, once speech-to-text beside it finished: the history, memory
+            // and learning names read those words (or a note that there are none), never the recording.
+            HeardSpeech? heardWords = null;
+            if (operation.Early is { } answered && terminal.State == ConversationState.Completed &&
+                !string.IsNullOrWhiteSpace(turn.Content.Text))
+            {
+                try { heardWords = await answered.Words.WaitAsync(EarlyWordsWait, clock, worker).ConfigureAwait(false); }
+                catch (TimeoutException) { }
+                operation.Heard ??= heardWords?.Voices;
+            }
+            // A model that refused the recording alone answers the transcript instead (the talk window asks again with it), and
+            // gets only the transcript until Martlet restarts.
+            var refusedRecording = operation.Early is not null && terminal.State == ConversationState.Failed &&
+                string.IsNullOrEmpty(turn.Content.Text) && terminal.ProviderFailure is ProviderFailureCode.RequestRejected or
+                    ProviderFailureCode.FormatRejected or ProviderFailureCode.ModelUnsupported;
+            if (refusedRecording)
+            {
+                lock (gate) deafModels.Add(configured.ToolModelKey());
+                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected a reply from your recording alone; " +
+                    "Martlet answers your transcript instead and doesn't ask it from your recording again until it restarts.");
+            }
             NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
             // A model that rejected tools is asked without them from now on (for a week, on this PC).
@@ -1350,7 +1467,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     $"{(GenerationSettings.ThinkingSteps(configured.Generation) ? "On" : "Off")}; Martlet asked again with the model's own default and " +
                     "uses it until it restarts. This model always thinks, so choose a model that can answer without thinking for the fastest replies.");
             }
-            if (IsFailure(terminal)) LogReplyFailure("Reply", configured, terminal);
+            if (IsFailure(terminal) && !refusedRecording) LogReplyFailure("Reply", configured, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
             var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
@@ -1358,20 +1475,28 @@ internal sealed class LiveConversationController : IAsyncDisposable
             // A reply that ends by asking something makes a short answer to it ("yes", "mm-hmm") count as words for a while.
             if (terminal.State == ConversationState.Completed && !passed && !string.IsNullOrWhiteSpace(turn.Content.Text))
                 Interlocked.Exchange(ref askedAt, AsksSomething(turn.Content.Text) ? clock.GetTimestamp() : 0);
-            if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
+            if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text) &&
+                heardWords?.NotWords != true)
             {
                 lock (gate)
                 {
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
                     {
                         var earlier = context.Snapshot();
+                        // What the user said: their message, or for a reply from the recording alone the words speech-to-text
+                        // found beside it.
+                        var words = operation.Early is null ? input!.UserText
+                            : heardWords?.Text?.Trim() is { Length: > 0 } transcript ? transcript : null;
+                        var untranscribed = words is null;
+                        words ??= UntranscribedSpeech;
+                        var sentAs = operation.Early is null ? operation.Sent : Transcribed(operation.Sent, words);
                         // Who said it travels with the words, so later replies (and memory) know who said what. A message with
                         // what the PC played keeps its marked lines as they are.
-                        var said = operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
+                        var said = operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + words;
                         // A pass stays in the conversation too, so later replies know what was said around Martlet.
                         context.Add(said, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text,
-                            configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
-                        if (operation.Sent is { } kept && configured.HostTarget() is null)
+                            configured.HostTarget() is null ? sentAs?.SentUserText : null);
+                        if (sentAs is { } kept && configured.HostTarget() is null)
                             lastExchange = (kept, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text);
                         // The finished background work this reply carried is in the conversation now.
                         if (operation.Delivery is { } delivered)
@@ -1383,7 +1508,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         }
                         if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
-                        var spokenOwn = operation.Report ? null : operation.PcAudio ? operation.UserWords : input.UserText;
+                        var spokenOwn = operation.Report ? null : operation.PcAudio ? operation.UserWords
+                            : untranscribed ? null : words;
                         var remembered = spokenOwn is null ? null
                             : operation.PcAudio ? VoicePromptContext.Prefix(operation.Heard) + spokenOwn : said;
                         var remember = operation.MemoryRequested && !passed && remembered is not null;
@@ -1393,7 +1519,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         // message), then the reply as the next reply's history has it, whether or not the reply called tools.
                         if (remember || heard is not null)
                             EnqueueAfterReplyLocked(operation.Authorization.Configuration, remember, heard, earlier, remembered!,
-                                turn.Content.Text, operation.Sent);
+                                turn.Content.Text, sentAs);
                     }
                 }
             }

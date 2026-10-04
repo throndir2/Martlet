@@ -1048,7 +1048,15 @@ Completions endpoints take audio, Ollama on this PC included, then what
 `model-abilities.json` says about the model, then its name; null with
 `modelId`), `savedAbility` (what Martlet found out about the saved model:
 `Hears`, `Sees`, `Source` and `CheckedAt`, or null) and `hearVoice` (the saved
-choice, off by default). Its `fixture`
+choice, off by default). Answer from my voice: `answerFromVoice` (the saved
+choice, on by default), `staysOnThisPc` (the saved Thinking route is Ollama on
+this PC with one of its own models, never a `:cloud`/`-cloud` one; null with
+`modelId`), `answersFromVoice` (whether always listening answers the saved
+model from the recording right away: it hears and the recording stays on this
+PC or `hearVoice` is on) and `answerDecisions` (`ok` and each case's `answers`
+against `expected`: Gemma 4 E2B in Ollama on this PC without consent yes, an
+Ollama cloud model, a text-only model and another loopback server without
+consent no, a cloud model only with consent). Its `fixture`
 rehearses the production Chat Completions adapter against a canned endpoint
 on 127.0.0.1 (NOT AI) with a 1.5 s synthesized speech-like clip (never
 microphone audio, nothing played): `withRecording` (outcome, the user
@@ -1056,11 +1064,16 @@ message's `contentParts` `text` and `input_audio`, `audioFormat` `wav`,
 `wavValid`, `audioSeconds`, `audioBytes`), `withoutAudioPermission`
 (`ConsentMissing` with `requestsSent` 0: text permission never covers the
 recording) and `transcriptOnly` (the retry without the recording sends a plain
-text message); `ok` is true when all three hold. It reads no credentials and
+text message), and `recordingOnly` (Answer from my voice: the recording alone
+with the *Your recorded voice, answered right away* message and no transcript;
+`contentParts`, `wavValid`, `audioSeconds`, `messageIsHeardOnlyPrompt`); `ok`
+is true when all four hold. It reads no credentials and
 nothing leaves loopback. On the Listening page `TalkHearVoiceStatus` reads
 whether the saved Thinking model hears and where the recording goes, or what to
 change; the `TalkHearVoice` check box saves the choice, so it needs
-`--allow-ui-effects`. A real reply with a recording needs a microphone and a
+`--allow-ui-effects`. `TalkAnswerFromVoiceStatus` reads whether Answer from my
+voice applies (on this PC, with the consent, or why Martlet answers the words);
+the `TalkAnswerFromVoice` check box saves it, so it needs `--allow-ui-effects`. A real reply with a recording needs a microphone and a
 model that hears; the talk window then notes *Thinking heard your voice.* (or
 that it got the transcript only) under what you said.
 
@@ -1193,11 +1206,15 @@ user's) for the newest `replies` (1-500, default 20) and returns `measured`
 (lines with steps), `legacy` (older lines that only gave the first words and
 audio from the reply's start), `firstAudio` (from the moment that counts for
 you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
-Median, P90, Min, Max}` in ms), `steps` (the same for every step),
-`slowestSteps` (the five with the largest median) and `newest` (each reply's
-`at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
-`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `models`,
-`interrupted`, `legacy`). It only reads the log: no audio, network or provider
+Median, P90, Min, Max}` in ms), `firstAudioFromRecording` and
+`firstAudioFromWords` (the first audio of replies answered from the recording
+alone, Answer from my voice, next to those answered from the transcript) and
+`transcriptBeside` (when speech-to-text finished beside those replies), `steps`
+(the same for every step), `slowestSteps` (the five with the largest median)
+and `newest` (each reply's `at`, `measured`, `totalMs`, `from`, `steps`,
+`firstWordsMs`, `firstAudioMs`, `spokenPieces`, `firstPieceSpeechSeconds`,
+`firstPieceMadeMs`, `models`, `interrupted`, `restarted`, `fromRecording`,
+`transcriptMs`, `legacy`). It only reads the log: no audio, network or provider
 request.
 
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as

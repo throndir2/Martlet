@@ -29,10 +29,12 @@ internal static partial class LatencyReport
     private static partial Regex FirstPiece();
     [GeneratedRegex(@"Models: (?<models>.*)\.$")]
     private static partial Regex Models();
+    [GeneratedRegex(@"Answered from your recording(?:; speech-to-text finished beside it (?<ms>\d+) ms after)?")]
+    private static partial Regex FromRecording();
 
     internal sealed record Reply(DateTimeOffset At, string Measured, double? TotalMs, string? From, IReadOnlyDictionary<string, double> Steps,
         double? FirstWordsMs, double? FirstAudioMs, int? SpokenPieces, double? FirstPieceSpeechSeconds, double? FirstPieceMadeMs,
-        string? Models, bool Interrupted, bool Legacy, bool Restarted = false);
+        string? Models, bool Interrupted, bool Legacy, bool Restarted = false, bool FromRecording = false, double? TranscriptMs = null);
 
     internal static object Read(string? dataDirectory, int? replies)
     {
@@ -58,6 +60,8 @@ internal static partial class LatencyReport
         var stepNames = current.SelectMany(r => r.Steps.Keys).Distinct(StringComparer.Ordinal).ToArray();
         var steps = stepNames.ToDictionary(name => name, name => Stats(current.Where(r => r.Steps.ContainsKey(name)).Select(r => r.Steps[name])));
         var spoken = current.Where(r => r.Measured == "first audio").ToArray();
+        var fromRecording = spoken.Where(r => r.FromRecording).ToArray();
+        var fromWords = spoken.Where(r => !r.FromRecording).ToArray();
         return new
         {
             logsFolder,
@@ -65,6 +69,10 @@ internal static partial class LatencyReport
             measured = current.Length,
             legacy = parsed.Count(r => r.Legacy),
             firstAudio = Stats(spoken.Select(r => r.TotalMs!.Value)),
+            // Answer from my voice: replies asked with the recording alone, next to those asked with the transcript.
+            firstAudioFromRecording = Stats(fromRecording.Select(r => r.TotalMs!.Value)),
+            firstAudioFromWords = Stats(fromWords.Select(r => r.TotalMs!.Value)),
+            transcriptBeside = Stats(parsed.Where(r => r.TranscriptMs is not null).Select(r => r.TranscriptMs!.Value)),
             firstWordsFromReplyStart = Stats(parsed.Where(r => r.FirstWordsMs is not null).Select(r => r.FirstWordsMs!.Value)),
             firstAudioFromReplyStart = Stats(parsed.Where(r => r.FirstAudioMs is not null).Select(r => r.FirstAudioMs!.Value)),
             slowestSteps = steps.OrderByDescending(s => s.Value.Median).Take(5).Select(s => new { step = s.Key, medianMs = s.Value.Median }).ToArray(),
@@ -73,7 +81,8 @@ internal static partial class LatencyReport
             {
                 at = r.At, measured = r.Measured, totalMs = r.TotalMs, from = r.From, steps = r.Steps, firstWordsMs = r.FirstWordsMs,
                 firstAudioMs = r.FirstAudioMs, spokenPieces = r.SpokenPieces, firstPieceSpeechSeconds = r.FirstPieceSpeechSeconds,
-                firstPieceMadeMs = r.FirstPieceMadeMs, models = r.Models, interrupted = r.Interrupted, restarted = r.Restarted, legacy = r.Legacy
+                firstPieceMadeMs = r.FirstPieceMadeMs, models = r.Models, interrupted = r.Interrupted, restarted = r.Restarted,
+                fromRecording = r.FromRecording, transcriptMs = r.TranscriptMs, legacy = r.Legacy
             }).ToArray()
         };
     }
@@ -110,13 +119,15 @@ internal static partial class LatencyReport
         var start = FromStart().Match(rest);
         var piece = FirstPiece().Match(rest);
         var models = Models().Match(rest);
+        var recorded = FromRecording().Match(rest);
         return new(at, line.Groups["what"].Value, Number(line.Groups["total"].Value), line.Groups["from"].Value.Trim(), steps,
             start.Success ? Number(start.Groups["words"].Value) : null,
             start.Success && start.Groups["audio"].Success ? Number(start.Groups["audio"].Value) : null,
             start.Success ? (int?)Number(start.Groups["pieces"].Value) : null,
             piece.Success ? Number(piece.Groups["speech"].Value) : null, piece.Success ? Number(piece.Groups["made"].Value) : null,
             models.Success ? models.Groups["models"].Value : null, interrupted, false,
-            rest.Contains("replaced because you kept talking", StringComparison.Ordinal));
+            rest.Contains("replaced because you kept talking", StringComparison.Ordinal),
+            recorded.Success, recorded.Groups["ms"].Success ? Number(recorded.Groups["ms"].Value) : null);
     }
 
     private static double? Number(string text) =>

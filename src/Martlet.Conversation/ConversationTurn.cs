@@ -243,7 +243,8 @@ public sealed class ConversationTurn
     // Switches the rest of this reply to the Thinking fallback when there is one and nothing of the failed answer was said.
     private bool FallBack(int textBefore, string reason)
     {
-        if (request.Fallback is null) return false;
+        // The fallback never gets a recording, so a reply from the recording alone has nothing to send it.
+        if (request.Fallback is null || request.AudioRequired) return false;
         lock (Sync)
         {
             if (invalidated || stop.IsCancellationRequested || whole.Expired || text.Length != textBefore) return false;
@@ -292,8 +293,9 @@ public sealed class ConversationTurn
                 if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
                 {
                     // A model that refuses the attached recording rejects the request before answering; ask again with the
-                    // transcript only, and drop the recording for the rest of this reply.
-                    if (!audioDropped && !fallback && input.Audio is not null && result.Text.Length == 0 &&
+                    // transcript only, and drop the recording for the rest of this reply. A reply from the recording alone has
+                    // no transcript to ask with: it fails, and the caller answers the transcript instead.
+                    if (!audioDropped && !fallback && !request.AudioRequired && input.Audio is not null && result.Text.Length == 0 &&
                         result.Failure == ProviderFailureCode.RequestRejected)
                     {
                         audioDropped = true;
@@ -354,6 +356,11 @@ public sealed class ConversationTurn
                         }
                         continue;
                     }
+                    // A reply from the recording alone rejected again without the Thinking steps choice: the recording was the
+                    // problem, not the choice (the caller answers the transcript instead).
+                    if (request.AudioRequired && reasoningDropped && result.Text.Length == 0 &&
+                        result.Failure == ProviderFailureCode.RequestRejected)
+                        lock (Sync) reasoningRejected = false;
                     // Nothing of this answer arrived yet, so the fallback can give it instead.
                     if (!fallback && result.Text.Length == 0 &&
                         FallBack(before, result.Failure?.ToString() ?? result.Issue?.ToString() ?? result.End.ToString()))

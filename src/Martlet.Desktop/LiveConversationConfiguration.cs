@@ -424,7 +424,8 @@ internal sealed class LiveConversationConfiguration
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
         string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false,
         string? voices = null, string? messageNotes = null,
-        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false)
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
+        bool audioRequired = false)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -475,7 +476,7 @@ internal sealed class LiveConversationConfiguration
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
-                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default);
+                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, audioRequired && audio is not null);
                 }
             }
         }
@@ -661,6 +662,15 @@ internal sealed class LiveConversationConfiguration
     /// the model (its server's metadata, Test hearing or a refused recording), then its name.</summary>
     internal HearingSupport Hearing() => Hearing(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
 
+    /// <summary>Whether always listening may answer each utterance from its recording right away (Companion › Listening › Answer
+    /// from my voice): the Thinking model hears, and the recording may go to it: it stays on this PC (Ollama on this PC with
+    /// one of its own models), or the user let Thinking hear their voice (<paramref name="hearConsent"/>).</summary>
+    internal bool AnswersFromVoice(bool hearConsent) => AnswersFromVoice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities, hearConsent);
+
+    internal static bool AnswersFromVoice(SetupRoute? thinking, ModelAbilities? abilities, bool hearConsent) =>
+        thinking is not null && HearingModelCatalog.AnswersFromVoice(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
+            hearConsent, IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
+
     internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) =>
         thinking is null ? HearingSupport.Unknown
         : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
@@ -700,7 +710,9 @@ internal sealed class LiveConversationConfiguration
         "When this is on and the Thinking model can hear, the recording of what you say (up to " +
         $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))} " +
         "with the transcript, so it hears your tone as well as your words. Speech-to-text still runs as before. Recordings are " +
-        "never saved, added to Memory or sent to the Thinking fallback. Audio may use more quota or cost more than text.";
+        "never saved, added to Memory or sent to the Thinking fallback. Audio may use more quota or cost more than text. " +
+        "With Answer from my voice on and a model that hears in Ollama on this PC, your recording goes to it even with this " +
+        "off, and never leaves this PC.";
 
     internal string ScreenDisclosure(Chattiness chattiness, WatchSource source) =>
         ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +

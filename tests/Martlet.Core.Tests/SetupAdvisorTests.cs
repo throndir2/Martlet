@@ -21,15 +21,30 @@ public sealed class SetupAdvisorTests
     }
 
     [Fact]
-    public void FastestSinglePcGivesTheWholeGpuToTheLlm()
+    public void FastestSinglePcUsesASmallModelAndKeepsAClonedVoiceOnTheSameGpu()
     {
         var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Fastest, ThisPcGpu = AdvisorGpu.Nvidia24, Character = true });
 
         Assert.Equal("This PC (GPU)", Role(advice, "Thinking").Where);
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Thinking").Availability);
-        Assert.Contains("medium", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
-        Assert.Equal("Windows installed voices", Role(advice, "Voice").Choice);
-        Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
+        Assert.Contains("small", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
+        Assert.Contains("smarter but slower", Role(advice, "Thinking").Why, StringComparison.Ordinal);
+        Assert.Equal("This PC (GPU)", Role(advice, "Voice").Where);
+        Assert.Contains(Settings.SpeechEngines.Default.Name, Role(advice, "Voice").Choice, StringComparison.Ordinal);
+        Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
+        Assert.Equal(AdvisorAvailability.Available, Role(advice, "Speech-to-text").Availability);
+    }
+
+    [Fact]
+    public void FastestNeverSuggestsAPlannedRecognizerOrALargerModel()
+    {
+        foreach (var gpu in new[] { AdvisorGpu.Nvidia8, AdvisorGpu.Nvidia12, AdvisorGpu.Nvidia16, AdvisorGpu.Nvidia24, AdvisorGpu.Nvidia32Plus })
+        {
+            var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Fastest, ThisPcGpu = gpu, VoiceInput = true });
+            Assert.Contains("small", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
+            Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
+            Assert.DoesNotContain(advice.Roles, r => r.Choice.Contains("Windows speech recognition", StringComparison.Ordinal));
+        }
     }
 
     [Fact]

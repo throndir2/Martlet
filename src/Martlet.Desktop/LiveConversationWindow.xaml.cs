@@ -23,20 +23,21 @@ public enum ChatRole { User, Martlet, Note, PcAudio }
 public sealed class ChatMessage : INotifyPropertyChanged
 {
     private string text;
+    private string caption;
     private string note = "";
 
     internal ChatMessage(ChatRole role, string text, string caption = "")
     {
         Role = role;
         this.text = text;
-        Caption = caption;
+        this.caption = caption;
     }
 
     public ChatRole Role { get; }
     public bool IsUser => Role == ChatRole.User;
     public bool IsNote => Role == ChatRole.Note;
     public bool IsPcAudio => Role == ChatRole.PcAudio;
-    public string Caption { get; }
+    public string Caption { get => caption; set => Set(ref caption, value); }
     public string Text { get => text; set => Set(ref text, value); }
     public string Note { get => note; set { if (Set(ref note, value)) Changed(nameof(HasNote)); } }
     public bool HasNote => note.Length > 0;
@@ -100,6 +101,19 @@ public partial class LiveConversationWindow : ThemedWindow
     // WhileYouTalked: a line the PC played that was heard while the microphone was still hearing or transcribing you.
     private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
         BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false, ReplyTimeline? Timeline = null);
+    // A reply started from the recording alone (Answer from my voice): the utterance it answers, the bubble its words fill in
+    // once speech-to-text beside it is done (Words), and whether it was given up (Abandoned: restarted because you kept
+    // talking, or the model couldn't answer the recording), so those words wait to be answered like anything heard.
+    private sealed class EarlyAnswer(EarlyHearing hearing, LiveConversationOperation reply, ChatMessage bubble)
+    {
+        internal EarlyHearing Hearing { get; } = hearing;
+        internal LiveConversationOperation Reply { get; } = reply;
+        internal ChatMessage Bubble { get; } = bubble;
+        internal HeardSpeech? Words { get; set; }
+        internal bool Abandoned { get; set; }
+    }
+    private EarlyAnswer? early;
+    internal const string SpokenPlaceholder = "(spoken)";
     // Hearing what this PC plays (Companion › Listening › Hear what this PC plays): a second listener beside the microphone
     // while always listening runs. What it hears waits here, goes with the next thing you say, and on its own is offered to
     // Martlet at most every PcPace (or once the PC goes quiet), so a video never floods Thinking or interrupts you.
@@ -315,7 +329,7 @@ public partial class LiveConversationWindow : ThemedWindow
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
-            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck)
+            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.AnswerFromVoice != next.AnswerFromVoice)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -444,6 +458,7 @@ public partial class LiveConversationWindow : ThemedWindow
             else if (message is not null && owned is { } sent) typed = (sent, message);
             return;
         }
+        if (TryAnswerEarly()) return;
         if (TryAnswer()) return;
         if (TryReport()) return;
         TryStartCommentary();
@@ -618,7 +633,96 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck);
+        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
+        AnswerFromVoice: handsFree && preferences.AnswerFromVoice);
+
+    // ---------- Answer from my voice ----------
+
+    // Answer from my voice: as soon as you pause, a Thinking model that hears answers the recording of what you said while
+    // speech-to-text runs beside it, so the reply doesn't wait for the transcript. Only when nothing else waits: words heard
+    // earlier, what the PC played, or more of what you are saying (then everything is answered from the words, as usual).
+    private bool TryAnswerEarly()
+    {
+        if (listener is not { Early: { Taken: false } offered } live || live.Hearing || live.Transcribing != 1 ||
+            heardQueue.Count > 0 || pcHeld.Count > 0 || playingQueue.Count > 0 || !offered.Take())
+            return false;
+        try
+        {
+            var started = controller.Start(null, Voice, microphone: false, approved: true, spoken: true, seen: SeenNow(),
+                timeline: offered.Timeline?.Copy(), early: offered);
+            owned = started;
+            var bubble = Add(ChatRole.User, SpokenPlaceholder, "You (spoken)");
+            early = new(offered, started, bubble);
+            answering = [];
+            lastHeard = activityAt = answeredAt = clock.GetTimestamp();
+            reportHeld = false;
+            yielded = null;
+            notice = null;
+            pacer?.NoteConversation();
+            Observe();
+            return true;
+        }
+        // The Thinking model can't take it now (another model, a refused recording, the app slot is busy): its words are
+        // answered once speech-to-text has them.
+        catch (Exception error) when (error is LiveActionException or ContractException or VoiceIdentityException) { return false; }
+    }
+
+    // The words speech-to-text found for the utterance the reply answers: they fill in its bubble. When they weren't words at
+    // all, the reply was stopped (before it spoke, if it could) and only the muted Ignored note shows.
+    private void HeardEarly(EarlyAnswer answer, HeardSpeech speech)
+    {
+        // Once the reply is over too, nothing more comes for this utterance.
+        if (answer.Reply.OwnershipReleased) early = null;
+        if (speech.NotWords)
+        {
+            Messages.Remove(answer.Bubble);
+            if (speech.Ignored is { } ignored) ShowIgnored(ignored.Describe(speech.Text));
+            return;
+        }
+        if (speech.Text?.Trim() is not { Length: > 0 } text)
+        {
+            answer.Bubble.AddNote("Martlet couldn't transcribe this.");
+            notice = ListenOutcome(speech.Status, controller.Configuration) ?? notice;
+            return;
+        }
+        answer.Bubble.Text = text;
+        if (speech.Voices?.Speaker?.Voice is { } voice) answer.Bubble.Caption = $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)";
+        saidLately.Add((text, clock.GetTimestamp()));
+        LeaveOutYourVoice();
+    }
+
+    // The reply from the recording was given up (you kept talking, or the model couldn't answer the recording): its words wait
+    // to be answered like anything heard, in the bubble already shown.
+    private void HeardAfterAll(EarlyAnswer answer)
+    {
+        early = null;
+        var speech = answer.Words!;
+        if (speech.NotWords)
+        {
+            Messages.Remove(answer.Bubble);
+            if (speech.Ignored is { } ignored) ShowIgnored(ignored.Describe(speech.Text));
+            return;
+        }
+        if (speech.Text?.Trim() is not { Length: > 0 } text)
+        {
+            answer.Bubble.AddNote("Not answered.");
+            notice = ListenOutcome(speech.Status, controller.Configuration) ?? notice;
+            return;
+        }
+        answer.Bubble.Text = text;
+        if (speech.Voices?.Speaker?.Voice is { } voice) answer.Bubble.Caption = $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)";
+        lastHeard = clock.GetTimestamp();
+        heardQueue.Add(new(text, speech.Confidence, speech.Voices, answer.Bubble, preferences.HearVoice ? speech.Recording : null,
+            At: lastHeard, Timeline: speech.Timeline));
+        saidLately.Add((text, lastHeard));
+        LeaveOutYourVoice();
+    }
+
+    private void Abandon(EarlyAnswer answer)
+    {
+        answer.Abandoned = true;
+        if (answer.Words is not null) HeardAfterAll(answer);
+    }
 
     // ---------- always listening ----------
 
@@ -851,6 +955,14 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         micProblem = null;
+        // The words of an utterance a reply already answers from its recording fill in its bubble.
+        if (early is { } answer && speech.Early is { } offered && ReferenceEquals(offered, answer.Hearing))
+        {
+            answer.Words = speech;
+            if (answer.Abandoned) HeardAfterAll(answer);
+            else HeardEarly(answer, speech);
+            return;
+        }
         // What isn't words (mm, a cough, "Thank you." made up from noise) shows only as a muted note, so you can see what was
         // let go and tune Word check.
         if (speech.Ignored is { } ignored)
@@ -908,7 +1020,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var said = heardInterrupt;
         heardInterrupt = null;
         var over = quick is not null || said is not null;
-        var talking = over || listener is { Hearing: true } or { Transcribing: > 0 };
+        var talking = over || listener is { Hearing: true } || OthersTranscribing > 0;
         if (!talking && heardQueue.Count == 0) return;
         pacer?.NoteConversation();
         // Barge-in: you talked over a reply Martlet is already saying. It stops at once (the rest of the reply and its queued
@@ -928,6 +1040,8 @@ public partial class LiveConversationWindow : ThemedWindow
             answering = null;
             Requeue(batch);
             controller.Stop(reply, "conversation.continued", keepContext: true);
+            // A reply from the recording alone gives way too: its words are answered with what you say now.
+            if (early is { } answer && ReferenceEquals(answer.Reply, reply)) Abandon(answer);
         }
         if (talking && commentary is { OwnershipReleased: false } glance && !ReferenceEquals(yielded, glance) && (over || !Speaking(glance)))
         {
@@ -947,6 +1061,11 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>Martlet is saying it (or may already have said some of it).</summary>
     private static bool Speaking(LiveConversationOperation operation) =>
         operation.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true };
+
+    /// <summary>Utterances being transcribed besides the one a reply already answers from its recording (Answer from my voice):
+    /// that one is what the reply is about, not more of what you are saying.</summary>
+    private int OthersTranscribing => Math.Max(0, (listener?.Transcribing ?? 0) -
+        (early is { Abandoned: false } answer && !answer.Hearing.Ended && ReferenceEquals(answer.Reply, owned) ? 1 : 0));
 
     // What you said, once you paused, that stops Martlet (BargeInPolicy), and when your voice began; taken by the next Interrupt.
     private (BargeInDecision Decision, long StartedAt)? heardInterrupt;
@@ -978,7 +1097,7 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private static bool Restartable(LiveConversationOperation reply) =>
         reply.HomeSummary is null && reply.Status.Code != "home.asking" &&
-        reply.Turn?.Snapshot is not ({ ToolCalls: > 0 } or { ActiveTool: not null });
+        reply.Turn?.Snapshot is not ({ ToolCalls: > 0 } or { ActiveTool: not null } or { State: ConversationState.Completed or ConversationState.Refused });
 
     // Everything heard since the last reply goes to the Thinking model as one message once you pause; it decides whether to
     // answer. Waits while you are still talking or what you said is being transcribed, and a moment longer when it sounds
@@ -1134,6 +1253,11 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         var code = status.Code;
         var continued = code == "conversation.continued";
+        // A reply from the recording alone (Answer from my voice) and how it ended: stopped because what it answered wasn't
+        // words, or given up because the model couldn't answer the recording (its words are answered instead).
+        var fromVoice = early is { } answer && ReferenceEquals(answer.Reply, done) ? answer : null;
+        var notWords = fromVoice is not null && code == "listen.ignored";
+        var wordsFirst = fromVoice is not null && !continued && !notWords && CouldNotHear(done);
         // Voice latency for every reply, in the desktop log (logs_tail and MCP's latency_report read it): how long from when you
         // stopped talking (or sent your message) to the first audio, step by step (ReplyLatency). Martlet bringing up its
         // background work on its own isn't a wait of yours, so it has no line.
@@ -1141,17 +1265,20 @@ public partial class LiveConversationWindow : ThemedWindow
             ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
                 done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
-                passed: done.Passed, restarted: continued) is { } latency)
+                passed: done.Passed, restarted: continued, fromRecording: done.Early is not null,
+                transcriptAt: done.Early is { TranscribedAt: > 0 } transcribed ? transcribed.TranscribedAt : null) is { } latency)
             ErrorLog.Info(latency);
         if (ReferenceEquals(shown, done) && reply is not null)
         {
-            // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it.
-            if (continued && done.Turn?.Snapshot.MayHavePlayed != true)
+            // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it; so
+            // is one from your recording that turned out not to be words.
+            if ((continued || notWords || wordsFirst) && done.Turn?.Snapshot.MayHavePlayed != true)
             {
                 Messages.Remove(reply);
                 if (ReferenceEquals(lastReply, reply)) lastReply = null;
                 reply = null;
             }
+            else if (notWords) reply.AddNote("Stopped: what Martlet heard wasn't words.");
             else
             {
                 var refusal = done.Turn?.Content.Refusal?.Trim();
@@ -1165,12 +1292,14 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // Whether Thinking got the recording of what you said with the transcript (Companion › Listening). Notes go on your own
         // words, never on what the PC played.
-        var asked = done.Spoken ? answering?.LastOrDefault(entry => !entry.Pc)?.Bubble
+        var asked = fromVoice is not null ? fromVoice.Bubble
+            : done.Spoken ? answering?.LastOrDefault(entry => !entry.Pc)?.Bubble
             : ReferenceEquals(shown, done) ? heard ?? (typed is { } sent && ReferenceEquals(sent.Operation, done) ? sent.Bubble : null) : null;
-        if (!continued && done.VoiceSent && asked is { } said)
+        if (!continued && !notWords && done.VoiceSent && asked is { } said)
         {
             if (done.Turn?.Snapshot.AudioRejected == true) said.AddNote("Thinking couldn't take your recording, so it got the transcript.");
-            else if (done.Turn?.Snapshot.State == ConversationState.Completed) said.AddNote("Thinking heard your voice.");
+            else if (done.Turn?.Snapshot.State == ConversationState.Completed)
+                said.AddNote(done.Early is not null ? "Martlet answered from your voice." : "Thinking heard your voice.");
         }
         // Whether the reply saw the picture of what vision watches that went with your message.
         if (!continued)
@@ -1187,14 +1316,32 @@ public partial class LiveConversationWindow : ThemedWindow
         if (typed is { } finished && ReferenceEquals(finished.Operation, done)) typed = null;
         if (done.Spoken && !continued)
         {
-            if (done.Passed) answering?.LastOrDefault(entry => !entry.Pc)?.Bubble.AddNote("Martlet stayed quiet.");
+            if (done.Passed) (fromVoice?.Bubble ?? answering?.LastOrDefault(entry => !entry.Pc)?.Bubble)?.AddNote("Martlet stayed quiet.");
             answering = null;
             restarts = 0;
         }
-        notice = Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
+        if (fromVoice is not null)
+        {
+            // The model couldn't answer the recording: its words are answered instead, as soon as speech-to-text has them.
+            if (wordsFirst)
+            {
+                ErrorLog.Info("Answer from my voice: the Thinking model couldn't answer your recording, so Martlet answers your words.");
+                Abandon(fromVoice);
+            }
+            else if (fromVoice.Words is not null) early = null;
+        }
+        notice = wordsFirst ? null : Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
         // The setup was changed elsewhere (Companion is usable while this window is open): load it before the next turn.
         if (code == "conversation.configuration_changed") reloadReason ??= "Your setup changed.";
     }
+
+    /// <summary>A reply from the recording alone ended without a word because the model couldn't answer the recording (it
+    /// stopped hearing, or refused it), so the words are answered instead.</summary>
+    private static bool CouldNotHear(LiveConversationOperation done) =>
+        done.Status.Code == "listen.words_first" ||
+        done.Turn is { } turn && string.IsNullOrEmpty(turn.Content.Text) && !turn.Snapshot.MayHavePlayed &&
+        turn.Snapshot.State == ConversationState.Failed && turn.Snapshot.ProviderFailure is ProviderFailureCode.RequestRejected or
+            ProviderFailureCode.FormatRejected or ProviderFailureCode.ModelUnsupported or ProviderFailureCode.InputLimit;
 
     /// <summary>Which job's request failed: the reply's own record, or speech-to-text for a failed transcription.</summary>
     private static ProviderRole? FailedJob(LiveConversationOperation done) =>
@@ -1213,7 +1360,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             "runtime.Completed" or "commentary.glance" or "conversation.typing" or "conversation.listening_paused" or
                 "commentary.interrupted" or "conversation.interrupted" or "conversation.closed" or "mic.no_speech" or
-                "listen.passed" or "conversation.continued" or "report.interrupted" => null,
+                "listen.passed" or "listen.ignored" or "listen.words_first" or "conversation.continued" or "report.interrupted" => null,
             "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" when done.HandsFree => null,
             var code when code.StartsWith("policy.", StringComparison.Ordinal) && (done.HandsFree || done.Spoken) => null,
             var code => Remedy(code)

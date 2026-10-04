@@ -88,8 +88,11 @@ public static class ReplyLatency
     /// <summary>The line for a finished reply, or null when nothing of it arrived (no words, no audio).</summary>
     /// <param name="timeline">What happened before the reply started; its last step is the reply's start
     /// (<paramref name="replyStartedAt"/>).</param>
+    /// <param name="fromRecording">The reply was asked with the user's recording alone (Answer from my voice), before its
+    /// transcript; <paramref name="transcriptAt"/> is when speech-to-text, running beside it, finished (controller clock).</param>
     public static string? Describe(ReplyTimeline? timeline, long replyStartedAt, TimeProvider clock, ConversationSnapshot reply,
-        string? models, bool interrupted = false, bool passed = false, bool restarted = false)
+        string? models, bool interrupted = false, bool passed = false, bool restarted = false, bool fromRecording = false,
+        long? transcriptAt = null)
     {
         if (reply.FirstTextAfter is null && reply.FirstAudioAfter is null) return null;
         var steps = new List<(string Step, long At)>();
@@ -144,6 +147,14 @@ public static class ReplyLatency
             text.Append(CultureInfo.InvariantCulture,
                 $" First piece: {speech.TotalSeconds:0.00} s of speech made in {Math.Max(0, (made - asked).TotalMilliseconds):0} ms.");
         if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
+        if (fromRecording)
+        {
+            text.Append(" Answered from your recording");
+            if (transcriptAt is { } transcribed)
+                text.Append(CultureInfo.InvariantCulture,
+                    $"; speech-to-text finished beside it {Milliseconds(Math.Max(0, transcribed - origin), clock)} ms after {from}");
+            text.Append('.');
+        }
         if (!string.IsNullOrWhiteSpace(models)) text.Append(" Models: ").Append(models.Trim()).Append('.');
         return text.ToString();
     }

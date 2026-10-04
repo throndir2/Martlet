@@ -9,11 +9,48 @@ namespace Martlet.Desktop;
 /// <summary>What always listening made of one utterance: the words heard, or why there are none (another voice for Voice ID,
 /// a speech-to-text or microphone failure). Text is set only when the utterance was transcribed; Recording only when Thinking may
 /// also hear it. Ignored: the utterance filter dropped it (Text is what speech-to-text wrote, only to show it as ignored).
-/// Interrupt: its words, said over Martlet, stop it (BargeInPolicy); SpeechStartedAt is when its voice began (controller clock).</summary>
+/// Interrupt: its words, said over Martlet, stop it (BargeInPolicy); SpeechStartedAt is when its voice began (controller clock).
+/// Early: the utterance was offered to be answered from its recording before its transcript (Answer from my voice).</summary>
 internal sealed record HeardSpeech(LiveConversationStatus Status, string? Text, double? Confidence, HeardVoices? Voices,
     SpeakerCheck? SpeakerCheck, Voiceprint? Voiceprint, Martlet.Providers.BoundedWaveAudio? Recording = null,
     ReplyTimeline? Timeline = null, Martlet.Providers.UtteranceDecision? Ignored = null, BargeInDecision? Interrupt = null,
-    long SpeechStartedAt = 0);
+    long SpeechStartedAt = 0, EarlyHearing? Early = null)
+{
+    /// <summary>What was heard turned out not to be words at all: the utterance filter dropped it, or speech-to-text found no
+    /// speech.</summary>
+    internal bool NotWords => Ignored is not null || Status.Code == "stt.NoSpeech";
+}
+
+/// <summary>An utterance a Thinking model that hears may answer from its recording right away (Companion › Listening › Answer
+/// from my voice): always listening offers it as soon as Voice ID let it through, before speech-to-text, and the talk window
+/// takes it when nothing else waits. Speech-to-text runs beside the reply: <see cref="Words"/> is the utterance's own result
+/// (null when listening stopped), which fills in what was said for the history and memory; when it turns out not to be words
+/// (<see cref="HeardSpeech.NotWords"/>), the reply stops, before it speaks if it can.</summary>
+internal sealed class EarlyHearing(Martlet.Providers.BoundedWaveAudio recording, ReplyTimeline? timeline)
+{
+    private readonly TaskCompletionSource<HeardSpeech?> words = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int taken, ended;
+    private long transcribedAt;
+    internal Martlet.Providers.BoundedWaveAudio Recording { get; } = recording;
+    /// <summary>The utterance's steps so far (end of speech, recording, Voice ID), for the reply's latency line.</summary>
+    internal ReplyTimeline? Timeline { get; } = timeline;
+    internal Task<HeardSpeech?> Words => words.Task;
+    /// <summary>Speech-to-text for this utterance is over and it no longer counts as being transcribed.</summary>
+    internal bool Ended => Volatile.Read(ref ended) != 0;
+    internal void End() => Volatile.Write(ref ended, 1);
+    /// <summary>When speech-to-text finished beside the reply (controller clock; 0 until then).</summary>
+    internal long TranscribedAt => Interlocked.Read(ref transcribedAt);
+    /// <summary>A reply was started from the recording; otherwise the words, once ready, are answered as usual.</summary>
+    internal bool Taken => Volatile.Read(ref taken) != 0;
+    internal bool Take() => Interlocked.Exchange(ref taken, 1) == 0;
+    internal void Release() => Volatile.Write(ref taken, 0);
+    internal void Finish(HeardSpeech? speech, long at)
+    {
+        Interlocked.Exchange(ref transcribedAt, at);
+        words.TrySetResult(speech);
+    }
+    public override string ToString() => nameof(EarlyHearing);
+}
 
 /// <summary>Always listening (<see cref="LiveConversationController.Listen"/>): one loop on its own slot beside replies. It
 /// records one utterance at a time and transcribes each in order while it already listens for the next, so nothing said while
@@ -24,6 +61,7 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
 {
     private readonly ConcurrentQueue<HeardSpeech> results = new();
     private LiveConversationOperation? utterance;
+    private EarlyHearing? early;
     private int transcribing, held;
     private long revision;
     private string? ended;
@@ -59,6 +97,11 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
 
     internal void Post(HeardSpeech speech) => results.Enqueue(speech);
     internal bool TryTake([NotNullWhen(true)] out HeardSpeech? speech) => results.TryDequeue(out speech);
+    /// <summary>The utterance being transcribed that a reply may start from right away (Answer from my voice); null otherwise.
+    /// It is withdrawn before its words are posted, so the talk window never answers the same utterance twice.</summary>
+    internal EarlyHearing? Early => Volatile.Read(ref early);
+    internal void Offer(EarlyHearing offered) => Volatile.Write(ref early, offered);
+    internal void Withdraw(EarlyHearing offered) => Interlocked.CompareExchange(ref early, null, offered);
     /// <summary>Something heard waits to be taken (it is posted before <see cref="Transcribing"/> drops).</summary>
     internal bool HasResults => !results.IsEmpty;
     internal void BeginTranscribing() => Interlocked.Increment(ref transcribing);
