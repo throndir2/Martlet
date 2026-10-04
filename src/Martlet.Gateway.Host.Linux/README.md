@@ -89,7 +89,9 @@ lives in `home-assistant.json` (at most 16 KiB, through
 `home-assistant.staging`). The settings the owner's computers share
 ([one Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),
 including their cloud API keys, live in `shared-settings.json` (at most 2 MiB,
-through `shared-settings.staging`). All are 0600 service-owner files and none is part
+through `shared-settings.staging`), and everything Martlet remembers
+([one memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer))
+in `memories.json` (at most 12 MiB, through `memories.staging`). All are 0600 service-owner files and none is part
 of approval. Its log (own activity plus, as the owner's
 [log host](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), every
 computer's lines) is kept the same way in `logs.json` (at most 2 MiB, through

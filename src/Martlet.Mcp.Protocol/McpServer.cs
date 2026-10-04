@@ -279,13 +279,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
         Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
             "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
-            "companion, replies, prompts, memory, lorebooks, character, talk, speech-display, appearance) with which computer changed it " +
-            "and when, its revision, whether it uses an API key (never the key or its digest), the provider and model of each job's " +
-            "route, and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
+            "companion, replies, prompts, memory, lorebooks, character, character-actions, talk, speech-display, appearance, " +
+            "voice-recognition, voice-id, smart-home, updates) with which computer changed it and when, its revision, whether it uses an " +
+            "API key (never the key or its digest), the provider and model of each job's route, the values of non-personal settings, " +
+            "and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
             "contacts nothing and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_sync_status", "Read one memory on every computer (what Martlet remembers, the same on all the owner's computers " +
+            "through the paired hosts) from a data directory's memory-sync.json: whether sync is on, when this PC last synced its memory " +
+            "store, how many facts it had then and which computer wrote each version, and how many forgotten facts every computer agreed " +
+            "on. Never a fact or its text. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
+            "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
+            "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
+            "Walks saving on one computer and recalling on another, an edit, a deletion reaching every computer (and never coming back), " +
+            "offline edits on two computers, a host that missed changes, a new computer taking everything, an expired fact, a full store " +
+            "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder and " +
+            "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
             "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
@@ -553,6 +568,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
+                "memory_sync_status" => MemorySyncStatus(arguments),
+                "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
@@ -621,7 +638,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             recognition = Choice("voice-recognition.txt") ?? "on (default)",
-            sharing = Choice("voice-sharing.txt") ?? "on (default)",
+            // The voice list travels with the rest of Martlet while "Keep Martlet the same on all my computers" is on.
+            sharing = Choice("cluster-sync.txt") is "off" ? "off" : "on (Keep Martlet the same on all my computers)",
             included = new
             {
                 found = File.Exists(Path.Combine(martlet, "Martlet.Desktop.exe")),
@@ -1435,7 +1453,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
-                if (setting.Key is "memory" or "appearance" or "talk")
+                if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates")
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();
@@ -1455,6 +1473,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
                 value = Route(s)
             }).ToArray()
+        };
+    }
+
+    /// <summary>One memory on every computer as this PC keeps it (memory-sync.json, the name Martlet.Core.Sync.MemorySyncState
+    /// uses): whether sync is on, which store it last synced, when, how many facts it had then and who wrote them, and the
+    /// forgotten facts every computer agreed on. Never a fact: the file holds IDs, revisions, digests and device IDs only.</summary>
+    private static object MemorySyncStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.MemorySyncState.FileName))) return new { sync, state = "none" };
+        var state = Martlet.Core.Sync.MemorySyncState.Load(directory);
+        return new
+        {
+            sync, state = state.StoreId == Guid.Empty ? "unreadable" : "loaded", syncedAt = state.SyncedAt, facts = state.Observed.Count,
+            byComputer = state.Observed.Values.GroupBy(s => s.By, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { device = g.Key, facts = g.Count() }).ToArray(),
+            forgotten = state.Forgotten.Count
         };
     }
 

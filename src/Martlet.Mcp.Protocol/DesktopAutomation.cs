@@ -42,7 +42,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // status, virtualization services and pending restart. It starts, sets up and pairs nothing.
         "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
-        // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
+        // answers; Not now only hides the setup form. Sign in, Set up, Connect, Disconnect, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
@@ -102,8 +102,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
         // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
         // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
-        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects.
-        "SettingsSyncStatus", "SettingsSyncWaiting",
+        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
+        // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
+        // forgotten on other computers (never a fact).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
@@ -170,10 +172,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
         "NodeAgentStatus", "HostReachNow", "HostReachHint",
-        // Companion › Smart home: the connection in words (address, name, version, whether it is shared; never the token),
-        // the typed address, Find's result line, the setup form's target and outcome (never the password fields), sharing,
-        // the flexible-requests state, the devices check and the Home Assistant summary (version, installation, integrations,
-        // last backup) or why it couldn't be read.
+        // Companion › Smart home: the connection in words (address, name, version, whether the other computers use it; never the
+        // token), the typed address, Find's result line, the setup form's target and outcome (never the password fields), the
+        // one connection for all computers, the flexible-requests state, the devices check and the Home Assistant summary
+        // (version, installation, integrations, last backup) or why it couldn't be read.
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",

@@ -279,6 +279,7 @@ public partial class MainWindow
             if (!enabled) updateCheckCancellation?.Cancel();
             ShowUpdateControls();
             UpdateStatusText.Text = DescribeUpdateSettings();
+            QueueSettingsSync();
             if (enabled) RunUpdateCycleAsync().Forget();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -306,6 +307,7 @@ public partial class MainWindow
             updatePreferences = next;
             ShowUpdateControls();
             UpdateStatusText.Text = DescribeUpdateSettings();
+            QueueSettingsSync();
             if (startNow) RunUpdateCycleAsync().Forget();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -321,6 +323,29 @@ public partial class MainWindow
     }
 
     private async void CheckForUpdates_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(background: false);
+
+    /// <summary>Uses the update choices made on another of the owner's computers (Martlet updates the same way everywhere).</summary>
+    private void ApplySharedUpdates(bool checks, UpdatePreferences next)
+    {
+        if (store is null) return;
+        if (checks != updateChecksEnabled) UpdateCheckPreferences.Save(store.DataDirectory, checks);
+        if (next != updatePreferences) UpdatePreferences.Save(store.DataDirectory, next);
+        var startNow = checks && !updateChecksEnabled || next.AutoInstall && !updatePreferences.AutoInstall ||
+            next.AutoUpdateHosts && !updatePreferences.AutoUpdateHosts;
+        if (!checks) updateCheckCancellation?.Cancel();
+        updateChecksEnabled = checks;
+        updatePreferences = next;
+        changingUpdateChoice = true;
+        AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
+        AutomaticUpdateInstall.IsChecked = updatePreferences.AutoInstall;
+        AutomaticHostUpdate.IsChecked = updatePreferences.AutoUpdateHosts;
+        UpdateIntervalChoice.SelectedItem = UpdateIntervalChoice.Items.OfType<ComboBoxItem>()
+            .First(item => (int)item.Tag == updatePreferences.IntervalMinutes);
+        changingUpdateChoice = false;
+        ShowUpdateControls();
+        UpdateStatusText.Text = DescribeUpdateSettings();
+        if (startNow && started) RunUpdateCycleAsync().Forget();
+    }
 
     /// <summary>Waits until no update check or download is under way (the periodic one, or one you started), so work that
     /// needs one joins it instead of finding Martlet busy and giving up.</summary>

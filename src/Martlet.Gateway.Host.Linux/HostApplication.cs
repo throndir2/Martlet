@@ -276,6 +276,23 @@ internal sealed class ControlSettingsStorage(LinuxControlDirectory directory) : 
     }
 }
 
+/// <summary>Keeps everything Martlet remembers, the same on the owner's computers, in memories.json beside host.json (0600,
+/// service owner). It holds the owner's memories and is not part of the approved configuration.</summary>
+internal sealed class ControlMemoryStorage(LinuxControlDirectory directory) : IGatewayMemoryStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? Load()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Memories, LinuxControlDirectory.MaximumMemoriesBytes);
+    }
+
+    public void Save(byte[] bytes)
+    {
+        lock (gate) directory.WriteMemories(bytes);
+    }
+}
+
 internal static class HostApplication
 {
     private static DurableGatewayHost? retainedOwner;
@@ -359,6 +376,7 @@ internal static class HostApplication
                     owner.AttachCharacterModels(new ControlCharacterModelStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachSettings(new ControlSettingsStorage(directory));
+                    owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
                     var (networkState, networkId) = owner.NetworkState;

@@ -6,6 +6,12 @@ member desktops pair with every host of the network by themselves. A Linux
 machine you set up over SSH from one PC is ready on all your PCs a moment
 later, without anyone logging in to it or typing a code on the other PCs.
 
+The network is what makes Martlet [one app on all your computers](CLUSTER.md):
+each host you add brings what it runs (thinking, listening, speaking, lip-sync,
+Home Assistant) to the whole app, and its gateway keeps a private copy of
+Martlet's shared settings, memories, people, voices and characters for your
+other computers.
+
 ## How it works for you
 
 | You do | What happens |

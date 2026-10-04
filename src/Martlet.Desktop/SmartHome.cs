@@ -11,9 +11,10 @@ using Martlet.Mcp.Client;
 namespace Martlet.Desktop;
 
 /// <summary>The saved smart home connection. The access token lives in Windows Credential Manager, never here.
-/// <paramref name="SharedRevision"/> is the newest connection shared through the paired hosts this PC has used or declined;
-/// <paramref name="FollowShare"/> is on while this PC's connection is the shared one (it shared it, or took it from a host
-/// in <paramref name="SharedBy"/>), so a newer share replaces it and stopping sharing elsewhere disconnects it.</summary>
+/// <paramref name="SharedRevision"/> is the newest connection shared through the paired hosts this PC has seen;
+/// <paramref name="FollowShare"/> is on while this PC's connection is the one every computer uses (it shared it, or took it
+/// from a host in <paramref name="SharedBy"/>). Home Assistant is one connection for the whole app, so a newer one shared
+/// anywhere replaces it and a disconnection anywhere disconnects it.</summary>
 internal sealed record HomePreferences(string Address = "", Guid CredentialId = default, bool Control = false,
     bool AllowSensitive = false, string LocationName = "", string Version = "", bool ModelTools = false,
     long SharedRevision = 0, bool FollowShare = false, string SharedBy = "")
@@ -317,24 +318,35 @@ internal sealed class SmartHome : IDisposable
     internal void MarkShared(long revision) =>
         Update(current => current with { FollowShare = true, SharedBy = "", SharedRevision = Math.Max(revision, current.SharedRevision) });
 
-    /// <summary>Sharing stopped from this PC: it keeps its own connection, no longer tied to the shared one.</summary>
-    internal void MarkUnshared(long revision) =>
-        Update(current => current with { FollowShare = false, SharedBy = "", SharedRevision = Math.Max(revision, current.SharedRevision) });
+    /// <summary>This PC has seen the shared value <paramref name="revision"/> (for example its own disconnection everywhere).</summary>
+    internal void SeenShared(long revision) =>
+        Update(current => current with { SharedRevision = Math.Max(revision, current.SharedRevision) });
 
-    /// <summary>Applies a newer connection shared through <paramref name="hostId"/>: takes it when this PC has no connection
-    /// or follows the shared one (turning on "Use Home Assistant when I ask" the first time), or disconnects a followed
-    /// connection when sharing stopped. A connection the owner made on this PC alone is never replaced. Returns what changed,
-    /// or null for nothing.</summary>
-    internal async Task<string?> AdoptAsync(SharedHomeAssistant shared, string hostId, CancellationToken cancellationToken, bool replace = false)
+    /// <summary>When smart-home.json last changed (null when there is none).</summary>
+    internal DateTimeOffset? ChangedAt
+    {
+        get
+        {
+            if (directory is null) return null;
+            var path = Path.Combine(directory, "smart-home.json");
+            try { return File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) : null; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        }
+    }
+
+    /// <summary>Applies a newer connection shared through <paramref name="hostId"/>: Home Assistant is one connection for the
+    /// whole app, so this PC takes the newest one shared (turning on "Use Home Assistant when I ask" the first time it connects),
+    /// or disconnects when it was disconnected on another computer. Returns what changed, or null for nothing.</summary>
+    internal async Task<string?> AdoptAsync(SharedHomeAssistant shared, string hostId, CancellationToken cancellationToken)
     {
         var saved = Preferences;
-        if (!replace && (shared.Revision <= saved.SharedRevision || Connected && !saved.FollowShare)) return null;
+        if (shared.Revision <= saved.SharedRevision) return null;
         if (shared.Address is null || shared.Token is null)
         {
             if (!Connected) { Update(current => current with { SharedRevision = shared.Revision }); return null; }
             Disconnect();
             Update(current => current with { SharedRevision = shared.Revision });
-            return "Your other computers stopped sharing Home Assistant, so this PC disconnected from it.";
+            return "Home Assistant was disconnected on your other computers, so this PC disconnected from it too.";
         }
         var baseUri = HomeAssistantEndpoint.Normalize(shared.Address);
         if (Connected && SameAddress(saved.Address, baseUri) && SameToken(saved.CredentialId, shared.Token))

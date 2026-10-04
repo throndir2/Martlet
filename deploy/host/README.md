@@ -196,8 +196,10 @@ holds no keys and the host never acts on it. See
 `shared-settings.json` holds the settings the owner's computers share
 (how Martlet thinks, listens and speaks with their cloud API keys, its
 character and personality; see
-[One Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer)),
-given only to paired devices. Beside them it keeps
+[One Martlet on every computer](../../docs/CLUSTER.md#one-martlet-on-every-computer))
+and `memories.json` everything Martlet remembers (see
+[One memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer)),
+both given only to paired devices. Beside them it keeps
 `commands.json` (commands paired computers sent, never their secrets) and
 `agent.token` (written fresh at each start; only Martlet on the host computer
 reads it, to take those commands). See

@@ -45,7 +45,7 @@ public partial class MainWindow
     /// <summary>Pushes a change soon (debounced), so another computer that becomes the companion sees it.</summary>
     private void QueueVoiceSync()
     {
-        if (voiceSyncQueued || !localVoices.Sharing || closing) return;
+        if (voiceSyncQueued || !clusterEnabled || closing) return;
         voiceSyncQueued = true;
         SyncSoonAsync().Forget();
 
@@ -59,10 +59,10 @@ public partial class MainWindow
     }
 
     /// <summary>Reads every paired host's copy of the voice list, merges it here and gives each host whose copy differs the
-    /// merged list. Hosts older than voice sharing are skipped.</summary>
+    /// merged list, while "Keep Martlet the same on all my computers" is on. Hosts older than voice sharing are skipped.</summary>
     private async Task SyncVoicesAsync()
     {
-        if (voiceSyncBusy || closing || store is null || !localVoices.Sharing) return;
+        if (voiceSyncBusy || closing || store is null || !clusterEnabled) return;
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.Count == 0)
         {
@@ -154,6 +154,7 @@ public partial class MainWindow
         try
         {
             localVoices.SetEnabled(on);
+            QueueSettingsSync();
             ActionText.Text = on ? "Voice recognition is on. Open conversations use it from your next message."
                 : "Voice recognition is off. Saved voices are kept.";
         }
@@ -166,33 +167,16 @@ public partial class MainWindow
 
     private Border SharingCard()
     {
-        var share = new CheckBox { Content = "Sync across my computers",
-            IsChecked = localVoices.Sharing, IsEnabled = localVoices.Available };
-        AutomationProperties.SetAutomationId(share, "PeopleShare");
-        share.Checked += (_, _) => SetSharing(true);
-        share.Unchecked += (_, _) => SetSharing(false);
         var sync = PageButton(voiceSyncBusy ? "Syncing..." : "Sync now", () => SyncVoicesAsync().Forget(), link: true, id: "PeopleSync");
-        sync.IsEnabled = localVoices.Sharing && !voiceSyncBusy;
-        var syncStatus = Note(localVoices.Sharing ? voiceSyncStatus : "Off. This list stays on this PC.", new Thickness(0, 6, 0, 0));
+        sync.IsEnabled = clusterEnabled && !voiceSyncBusy;
+        var syncStatus = Note(clusterEnabled ? voiceSyncStatus
+            : "Off: Keep Martlet the same on all my computers (Settings) is off, so this list stays on this PC.", new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(syncStatus, "PeopleSyncStatus");
-        return Card(Heading("Your computers"), share,
-            Note("When Martlet is running, your paired computers keep the same voice list.", new Thickness(0, 6, 0, 0)),
+        return Card(Heading("Your computers"),
+            Note("While Martlet is the same on all your computers (Settings › Settings for all devices), every computer knows the " +
+                "same people and voices, and whether Martlet recognizes them.", new Thickness(0, 0, 0, 0)),
             syncStatus,
             Row(sync));
-    }
-
-    private void SetSharing(bool on)
-    {
-        try
-        {
-            localVoices.SetSharing(on);
-            if (on) SyncVoicesAsync().Forget();
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            ActionText.Text = $"Couldn't save sharing: {error.Message}";
-        }
-        RenderTab();
     }
 
     private Border VoiceListCard()

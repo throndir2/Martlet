@@ -75,13 +75,23 @@ public partial class MainWindow
         clusterCheckedAt = null;
         settingsCheckedAt = null;
         settingsCopies.Clear();
+        memoryCopies.Clear();
         if (on) StartCluster();
         else clusterTimer.Stop();
         QueueSettingsSync();
-        ActionText.Text = on ? "Martlet is now the same on all your computers: who does what and its settings stay in sync."
-            : "Sync is off. This PC keeps its own choices and settings.";
+        QueueMemorySync();
+        if (on)
+        {
+            QueueVoiceSync();
+            QueueSpeakingVoiceSync();
+            QueueCharacterModelSync();
+            SyncHomeShareAsync().Forget();
+        }
+        ActionText.Text = on ? "Martlet is now the same on all your computers: who does what, its settings, memories, people, voices, characters and Home Assistant stay in sync."
+            : "Sync is off. This PC keeps its own choices, settings and memories.";
         ShowClusterStatus();
         ShowSettingsStatus();
+        ShowMemorySyncStatus();
         if (DevicesPage.IsVisible) RenderMap();
         RefreshCoverage();
     }
@@ -311,7 +321,7 @@ public partial class MainWindow
             {
                 if (closing || clusterPlan.For(job) is not { } desired) continue;
                 var before = ClusterSync.Local(job, homeSettings, homeAvatar);
-                if (ClusterSync.Matches(desired, before))
+                if (ClusterSync.Matches(desired, before) && !SpeakingEngineMoved(job, desired))
                 {
                     clusterFollow.Remove(job);
                     continue;
@@ -349,6 +359,21 @@ public partial class MainWindow
         return changed;
     }
 
+    /// <summary>Speaking stays on its host but that host now speaks with another voice engine (one runs on a computer at a
+    /// time, and another computer switched it): this PC follows the engine the host runs.</summary>
+    private bool SpeakingEngineMoved(string job, ClusterAssignment desired)
+    {
+        if (job != ClusterJobs.Speaking || desired.HostId is not { } hostId) return false;
+        var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
+        if (route is not { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: { } snapshot } || route.Gateway?.HostId != hostId) return false;
+        return clusterProbes.GetValueOrDefault(hostId) is { Reachable: true, Routes: { } routes } &&
+            routes.All(r => r.RouteId != snapshot.RouteId) && HostVoiceEngine(routes) is not null;
+    }
+
+    /// <summary>The voice engine a host speaks with now, from the routes it offers (it runs one at a time).</summary>
+    private static SpeechEngine? HostVoiceEngine(IEnumerable<HostRoute> routes) =>
+        routes.Select(r => SpeechEngines.ForRoute(r.RouteId)).OfType<SpeechEngine>().FirstOrDefault();
+
     private async Task<string?> FollowJobAsync(HostJob job, ClusterAssignment desired)
     {
         if (desired.HostId is null)
@@ -369,16 +394,32 @@ public partial class MainWindow
         }
         if (FindHost(desired.HostId) is not { } host)
             return $"pair {desired.HostId} with this PC first.";
-        if (clusterProbes.GetValueOrDefault(host.HostId)?.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId) is not { } route)
+        var routes = clusterProbes.GetValueOrDefault(host.HostId)?.Routes;
+        // Speaking follows the voice engine the host runs (another computer may have switched it), so every computer speaks
+        // with the same engine.
+        if (job.Role == SetupRole.Tts && routes?.Any(r => r.RouteId == job.RouteId) != true && routes is not null &&
+            HostVoiceEngine(routes) is { } running)
+        {
+            job = HostJob.SpeakingFor(running);
+            if (SpeakingEngineChoice.Current != running) SpeakingEngineChoice.Save(store!.DataDirectory, running);
+        }
+        if (routes?.FirstOrDefault(r => r.RouteId == job.RouteId) is not { } route)
             return $"{host.HostId} isn't ready for {job.Job} yet.";
         F5ReferenceSettings? reference = null;
+        F5ReferenceSnapshot? voice = null;
         if (job.RouteType == SetupRouteType.GatewayF5)
         {
             reference = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts)?.Reference;
             if (reference is null || reference.ProcessingDestinationId != route.DestinationId)
-                return $"choose the voice for {host.HostId} under Speaking.";
+            {
+                // The voice chosen on all computers (shared speaking voices) for this engine, else the one applied here.
+                reference = null;
+                voice = await F5Voices.DefaultAsync(store!.DataDirectory, route.DestinationId, lifetime.Token, SpeechEngines.ForRoute(job.RouteId));
+                if (voice is null || voice.Rights.ProcessingDestinationId != route.DestinationId)
+                    return $"choose the voice for {host.HostId} under Speaking.";
+            }
         }
-        await SaveJobHostAsync(job, host, route, reference: reference);
+        await SaveJobHostAsync(job, host, route, voice, reference);
         return null;
     }
 

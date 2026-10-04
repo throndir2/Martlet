@@ -19,7 +19,7 @@ public partial class MainWindow
     private string? homeAddressDraft;
     private IReadOnlyList<FoundHomeAssistant>? homeFound;
     private string? homeFindStatus;
-    private bool homeFinding, homeShareOnConnect = true;
+    private bool homeFinding;
     /// <summary>A Home Assistant waiting for its owner account (nobody has set it up yet).</summary>
     private Uri? homeSetupTarget;
     private string? homeSetupStatus;
@@ -39,13 +39,7 @@ public partial class MainWindow
         page.Children.Add(ConnectionCard(saved, connected, hosts.Count > 0));
         if (homeSetupTarget is { } target) page.Children.Add(SetupCard(target, hosts.Count > 0));
         if (hosts.Count > 0) page.Children.Add(HostsCard(hosts, saved, connected));
-        if (connected && hosts.Count > 0) page.Children.Add(ShareCard(saved));
-        if (!connected && homeShared is { Address: not null } offered && hosts.Count > 0)
-            page.Children.Add(Card(Heading("Shared by your other computers"),
-                Status(offered.Revision > saved.SharedRevision
-                    ? $"Your other computers share Home Assistant at {offered.Address}. Martlet connects to it by itself within a minute."
-                    : $"Your other computers share Home Assistant at {offered.Address}.", "SmartHomeShareStatus"),
-                Row(PageButton("Use the shared one", () => UseSharedHomeAssistantAsync().Forget(), primary: true, id: "SmartHomeUseShared"))));
+        if (hosts.Count > 0) page.Children.Add(ShareCard(saved, connected));
 
         page.Children.Add(PermissionsCard(saved, connected));
         if (connected)
@@ -102,25 +96,17 @@ public partial class MainWindow
         Button? connect = null;
         connect = PageButton(connected ? "Reconnect" : "Connect with token", () => ConnectSmartHomeAsync(address, token, connect!).Forget(),
             id: "SmartHomeConnect");
-        var disconnect = connected ? PageButton("Disconnect", DisconnectSmartHome, id: "SmartHomeDisconnect") : null;
-
-        var share = new CheckBox
-        {
-            IsChecked = homeShareOnConnect, Margin = new Thickness(0, 10, 0, 0), Visibility = hasHosts && !connected ? Visibility.Visible : Visibility.Collapsed,
-            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Share it with my other computers through my Martlet hosts" }
-        };
-        AutomationProperties.SetAutomationId(share, "SmartHomeShareOnConnect");
-        share.Checked += (_, _) => homeShareOnConnect = true;
-        share.Unchecked += (_, _) => homeShareOnConnect = false;
+        var disconnect = connected ? PageButton("Disconnect", () => DisconnectSmartHomeAsync().Forget(), id: "SmartHomeDisconnect") : null;
 
         var children = new List<UIElement>
         {
             Heading("Home Assistant"),
-            Note("Connect Home Assistant so Martlet can answer questions and control devices when you ask. Martlet only uses the address below.",
+            Note("Connect Home Assistant so Martlet can answer questions and control devices when you ask. Martlet only uses the address below." +
+                (hasHosts && clusterEnabled ? " It is one connection for all your computers: connecting here connects them too." : ""),
                 new Thickness(0, 0, 0, 8)),
             Status(connected
                 ? $"Connected to {saved.LocationName} at {saved.Address}" + (saved.Version.Length > 0 ? $" (Home Assistant {saved.Version})." : ".") +
-                    (saved.FollowShare ? saved.SharedBy.Length > 0 ? $" Shared through {saved.SharedBy}." : " Shared with your other computers." : "")
+                    (saved.FollowShare ? saved.SharedBy.Length > 0 ? $" Connected on your other computers (through {saved.SharedBy})." : " Your other computers use it too." : "")
                 : "Not connected.", "SmartHomeStatus", 15),
             new Label { Content = "Home Assistant _address", Target = address, Padding = new Thickness(0, 10, 0, 4) },
             address,
@@ -140,7 +126,6 @@ public partial class MainWindow
             children.Add(line);
             children.Add(use);
         }
-        children.Add(share);
         children.Add(Row(signIn, check, disconnect));
         children.Add(Note("Sign in opens Home Assistant's own sign-in page in your browser; Martlet then keeps its own access token. " +
             "Set up a new one creates the owner account of a Home Assistant nobody has set up yet.", new Thickness(0, 2, 0, 0)));
@@ -255,31 +240,36 @@ public partial class MainWindow
         }
     }
 
-    // After a new connection: share it when chosen, and say what to do next.
+    // After a new connection: it becomes the one every computer uses, and say what to do next.
     private async Task ConnectedAsync(HomeAssistantInfo info)
     {
         var text = smartHome.ControlEnabled
             ? $"Connected to {info.LocationName}."
             : $"Connected to {info.LocationName}. Turn on \"Use Home Assistant when I ask\" to use it.";
-        if (homeShareOnConnect && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync())
+        if (clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync())
             text += " " + ActionText.Text;
         ActionText.Text = text;
     }
 
-    private void DisconnectSmartHome()
+    private async Task DisconnectSmartHomeAsync()
     {
-        var shared = smartHome.Preferences.FollowShare;
-        if (!ConfirmationDialog.Confirm(this, "Disconnect Home Assistant?\n\nMartlet will remove the saved token on this PC and stop using your smart home here. " +
-            (shared ? "Your other computers keep the shared connection; use Stop sharing for them. " : "") +
+        var everywhere = clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0;
+        if (!ConfirmationDialog.Confirm(this, (everywhere
+                ? "Disconnect Home Assistant on all your computers?\n\nMartlet removes its saved token here and on your other computers, and " +
+                  "your Martlet hosts forget it. "
+                : "Disconnect Home Assistant?\n\nMartlet will remove the saved token on this PC and stop using your smart home here. ") +
             "Revoke the token in Home Assistant if you no longer need it.", "Martlet - smart home"))
             return;
-        smartHome.Disconnect();
+        var reached = everywhere && await DisconnectEverywhereAsync();
+        if (!reached) smartHome.Disconnect();
         homeManageLoadedFor = null;
         homeSystem = null;
         homeDiscoveries = null;
         homeUpdates = null;
         homeBackups = null;
-        ActionText.Text = "Home Assistant disconnected.";
+        ActionText.Text = reached ? "Home Assistant is disconnected on all your computers."
+            : everywhere ? "Home Assistant disconnected here. No Martlet host answered, so your other computers disconnect when one does."
+            : "Home Assistant disconnected.";
         RenderTab();
     }
 
@@ -311,15 +301,9 @@ public partial class MainWindow
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Use Home Assistant when I ask" }
         };
         AutomationProperties.SetAutomationId(control, "SmartHomeSetupControl");
-        var share = new CheckBox
-        {
-            IsChecked = hasHosts, IsEnabled = hasHosts, Margin = new Thickness(0, 6, 0, 0),
-            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Share it with my other computers through my Martlet hosts" }
-        };
-        AutomationProperties.SetAutomationId(share, "SmartHomeSetupShare");
         Button? setUp = null;
         setUp = PageButton("Set up Home Assistant", () => SetUpHomeAssistantAsync(target, name.Text, username.Text, password, confirm,
-            control.IsChecked == true, share.IsChecked == true, setUp!).Forget(), primary: true, id: "SmartHomeSetUp");
+            control.IsChecked == true, setUp!).Forget(), primary: true, id: "SmartHomeSetUp");
         var cancel = PageButton("Not now", () => { homeSetupTarget = null; RenderTab(); }, id: "SmartHomeSetupCancel");
         var children = new List<UIElement>
         {
@@ -329,7 +313,7 @@ public partial class MainWindow
             new Label { Content = "_Username", Target = username, Padding = new Thickness(0, 8, 0, 4) }, username,
             new Label { Content = "_Password", Target = password, Padding = new Thickness(0, 8, 0, 4) }, password,
             new Label { Content = "_Repeat password", Target = confirm, Padding = new Thickness(0, 8, 0, 4) }, confirm,
-            control, share, Row(setUp, cancel),
+            control, Row(setUp, cancel),
             Note("Martlet creates the owner account (an administrator) with this name and password, gives Home Assistant this PC's time zone, " +
                 "country, currency, units and language, leaves usage analytics off, and connects with its own access token. You sign in to " +
                 "Home Assistant with this username and password; Martlet doesn't keep the password. Set your home's location in Home Assistant " +
@@ -340,7 +324,7 @@ public partial class MainWindow
     }
 
     private async Task SetUpHomeAssistantAsync(Uri target, string name, string username, PasswordBox password, PasswordBox confirm,
-        bool control, bool share, Button button)
+        bool control, Button button)
     {
         if (closing) return;
         if (name.Trim().Length == 0 || username.Trim().Length == 0)
@@ -370,7 +354,7 @@ public partial class MainWindow
             homeAddressDraft = null;
             homeManageLoadedFor = null;
             var text = $"Home Assistant is set up and connected ({info.LocationName}, version {info.Version}). Sign in to it as {username.Trim()}.";
-            if (share && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync()) text += " " + ActionText.Text;
+            if (clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync()) text += " " + ActionText.Text;
             ActionText.Text = text;
         }
         catch (HomeAssistantException error) { homeSetupStatus = error.Message; ActionText.Text = error.Message; }
@@ -439,33 +423,28 @@ public partial class MainWindow
 
     // ---------- sharing ----------
 
-    private Border ShareCard(HomePreferences saved)
+    private Border ShareCard(HomePreferences saved, bool connected)
     {
         var children = new List<UIElement> { Heading("Your other computers") };
-        string state;
-        Button? action;
-        if (saved.FollowShare)
-        {
-            state = saved.SharedBy.Length > 0
-                ? $"This PC uses the connection your other computers share (taken from {saved.SharedBy})."
-                : "This PC shares its connection with your other computers.";
-            action = PageButton("Stop sharing", () => StopSharingHomeAssistantAsync().Forget(), id: "SmartHomeStopShare");
-        }
-        else if (homeShared is { Address: not null } other && !string.Equals(other.Address.TrimEnd('/'), saved.Address, StringComparison.OrdinalIgnoreCase))
-        {
-            state = $"Your other computers share a different Home Assistant ({other.Address}). This PC keeps its own connection.";
-            action = PageButton("Use the shared one", () => UseSharedHomeAssistantAsync().Forget(), id: "SmartHomeUseShared");
-        }
-        else
-        {
-            state = "Only this PC uses this connection.";
-            action = PageButton("Share with my other computers", () => ShareHomeAssistantAsync().Forget(), primary: true, id: "SmartHomeShare");
-        }
+        var state = !clusterEnabled
+                ? "Keep Martlet the same on all my computers (Settings) is off, so only this PC uses this connection."
+            : connected && saved.FollowShare
+                ? saved.SharedBy.Length > 0
+                    ? $"Every computer uses this Home Assistant (this PC took it from {saved.SharedBy})."
+                    : "Every computer uses this Home Assistant."
+            : connected
+                ? "Martlet gives this connection to your other computers on the next check."
+            : homeShared is { Address: not null } offered
+                ? $"Your other computers use Home Assistant at {offered.Address}. This PC connects to it by itself within a minute."
+                : "None of your computers is connected to Home Assistant.";
         children.Add(Status(state, "SmartHomeShareState"));
         children.Add(Status(homeShareStatus, "SmartHomeShareStatus"));
-        children.Add(Row(action, PageButton("Check now", () => SyncHomeShareAsync().Forget(), link: true, id: "SmartHomeShareCheck")));
-        children.Add(Note("Sharing gives your paired Martlet hosts this Home Assistant's address and Martlet's access token. They keep it privately " +
-            "and hand it only to your paired computers, which then connect by themselves.", new Thickness(0, 6, 0, 0)));
+        var check = PageButton("Check now", () => SyncHomeShareAsync().Forget(), link: true, id: "SmartHomeShareCheck");
+        check.IsEnabled = clusterEnabled;
+        children.Add(Row(check));
+        children.Add(Note("Home Assistant is one connection for all your computers: your paired Martlet hosts keep its address and Martlet's " +
+            "access token privately and hand them only to your paired computers, which connect by themselves. Disconnecting disconnects " +
+            "every computer. What Martlet may do with it (below) is the same everywhere too.", new Thickness(0, 6, 0, 0)));
         return Card([.. children]);
     }
 
@@ -529,6 +508,7 @@ public partial class MainWindow
         var current = smartHome.Preferences;
         if (current.Control == control && current.AllowSensitive == allowSensitive && current.ModelTools == modelTools) return;
         var saved = smartHome.SetControl(control, allowSensitive, modelTools);
+        if (saved) QueueSettingsSync();
         if (saved && modelTools && control) mcpTools.EnsureStarted(retry: true);
         ActionText.Text = !saved ? "Couldn't save the smart home setting. Check access to your data directory."
             : !control ? "Home Assistant is off."

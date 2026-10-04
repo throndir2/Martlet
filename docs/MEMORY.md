@@ -9,15 +9,17 @@ Configuration restore still forces memory OFF for review (like routes).
 When memory is ON, each explicit conversation turn recalls saved facts
 automatically, and after each completed reply the same Thinking model picks out
 lasting facts to save (see [Automatic recall and remembering](#automatic-recall-and-remembering)).
-Facts stay in the local store on this PC; there is no embedding, vector
-database, cloud copy, store-wide upload, backup or background timer. Screen and
+Martlet remembers the same things on every computer of yours: facts travel
+through your paired hosts ([One memory on every computer](#one-memory-on-every-computer)),
+like the rest of Martlet ([CLUSTER](CLUSTER.md)), and each computer keeps them in
+its own local store. There is no embedding, vector database, cloud copy,
+backup or background timer beyond that sync. Screen and
 camera glances are never remembered, and neither is
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays): recall and
 remembering read only the user's own words. This is internal functional evidence, not
-completed remote P03, AC-16, P04 or G4 qualification. Gateway
-authentication/role enforcement, memory-store backup/restore, real-user
-usefulness/privacy comprehension, clean-machine and physical crash/power-loss
-evidence remain separate gates.
+completed remote P03, AC-16, P04 or G4 qualification. Memory-store
+backup/restore, real-user usefulness/privacy comprehension, clean-machine and
+physical crash/power-loss evidence remain separate gates.
 
 The foundation was reused from `fc1fd57f59fed0899ccbd5991797f1699d4e9bfb`
 in PR #39 with finalization-time expiry and consistent top-K ranking fixes.
@@ -88,7 +90,9 @@ only that selected scope and acquires its exclusive owner lock. A second owner
 is refused. An authorization is bound with ordinal equality to the exact preview
 and normalized path and cannot be replayed, including by case-folding it.
 
-The only fact-producing library operation is `SaveAsync(SaveFactRequest)`.
+The fact-producing library operations are `SaveAsync(SaveFactRequest)` and,
+for the [memory sync](#one-memory-on-every-computer) only, `MergeAsync`, which
+puts in facts other computers made exactly as they are.
 The library has no transcript, conversation, provider, watcher, ingestion
 callback or generic object API; Desktop decides what to save. Each save
 requires bounded fact content, typed provenance, a consent UUID and a retention
@@ -116,7 +120,9 @@ The selected directory has a finite owned layout:
 
 Unrelated files are not opened, renamed or removed. There is no `.bak` file,
 directory sweep or automatic backup. The document records a store UUID, monotonic
-store revision, UTC update time and exact facts. JSON rejects duplicate
+store revision, UTC update time (never behind any fact's own time, so a fact
+another computer stamped ahead of this clock keeps its times) and exact facts.
+JSON rejects duplicate
 properties, unknown members, numeric/unknown enums, malformed UTF-8, missing
 required fields, future schema versions, duplicate fact UUIDs and inconsistent
 timestamps. A malformed or newer authoritative file is preserved and refused;
@@ -296,6 +302,73 @@ provider limiting requests or the memory folder being unusable); the same
 problem on later exchanges is only logged (`Remembering failed (<code>)`) until
 remembering works again.
 
+## One memory on every computer
+
+What Martlet remembers is the same on all your computers, so whichever one is
+your companion PC recalls what was said on any of them. The facts travel
+through your paired hosts, the same way as [the rest of Martlet](CLUSTER.md), while
+memory is ON (the `memory` shared setting, the same everywhere) and **Keep
+Martlet the same on all my computers** is on. Each computer still keeps its own
+local store, in the folder chosen on that computer.
+
+- **The network copy** (`Martlet.Core.Sync.SharedMemories`): one
+  last-writer-wins entry per fact ID with the fact exactly as the store keeps
+  it (content, provenance, retention and times, as `MemoryFactJson`), its
+  revision, the time and the computer that wrote that version. A forgotten fact
+  is a tombstone: the revision it forgot plus one. Merging keeps, per fact, the
+  highest (revision, time, forgotten, writer, content): an edit made on top of
+  another wins by its revision, two edits of the same revision made apart keep
+  the later one, and a deletion wins over the version it deleted. The merge is
+  commutative, associative and idempotent, so every copy converges. JSON, snake
+  case, schema 1, at most 12 MiB, 1,024 facts, 4,096 tombstones and 64 KiB per
+  fact. Hosts never look inside a fact, so a newer Martlet's facts pass through
+  them and through this version's desktops unchanged.
+- **The sync** (`Martlet.Core.Sync.MemorySyncNode`, every 30 seconds and a few
+  seconds after the Memory window closes): the desktop reads each paired host's
+  copy when its digest changed, then, only while nobody else uses the store, opens
+  it once: a fact saved or edited here since the last sync is a change made here,
+  and a fact gone from the store (deleted, forgotten by remembering, expired or
+  dropped to make room) is forgotten everywhere. It merges in the hosts'
+  copies, forgets expired facts and, when every computer's facts together don't
+  fit one store (512), the oldest facts picked out of conversations (never one
+  the owner typed), and makes the store hold exactly the newest version of every
+  fact in one commit (`MemoryStore.MergeAsync`). Then it gives every host whose
+  copy differs the merged one.
+- **Never in a conversation's way**: the sync skips its turn while Martlet replies,
+  while you are talking to it or while the Memory window is open, and it never
+  waits for the store: if recall, remembering or the Memory window holds it, the
+  sync tries on the next check. Network reads and writes happen outside the
+  store, which the sync holds only for the moment it takes to read and update it
+  on disk, off the window's thread.
+- **What this PC keeps** (`memory-sync.json` in Martlet's data folder): which
+  store it synced (a new memory folder is a new store: it takes every fact again
+  and forgets nothing), and for each fact only its ID, revision, a SHA-256 digest
+  and which computer wrote it, plus the agreed tombstones. No fact text is kept
+  there; the facts stay in the memory store.
+- **Each host** keeps `memories.json` beside `host.json` (0600, gateway service
+  owner; not part of the approved configuration) and serves
+  `GET /martlet/v1/memories`, `GET /martlet/v1/memories/digest` and
+  `POST /martlet/v1/memories` (merge and return) to paired devices only, over
+  their pinned, signed connection; API keys for other apps may not use them.
+  Like the shared API keys and voiceprints, the facts are readable by every
+  paired device and not encrypted end to end between desktops.
+- Memory OFF on all computers stops remembering and recall everywhere and pauses
+  the sync (the store isn't opened); facts already kept on hosts stay there.
+
+*Devices > Settings for all devices* shows `MemorySyncStatus`: how many facts
+Martlet remembers, on how many hosts they are the same, when it last checked and
+how many facts it took from or forgot because of your other computers.
+
+Checked locally with `memory_sync_selftest` (MCP): two real gateways and three
+simulated desktops with real memory stores on loopback, covering recall on
+another computer, an edit, a deletion everywhere that never comes back, offline
+edits on two computers, a host that missed a change, a new computer, an expiring
+fact, a newer Martlet's fact, a new memory folder, more facts than one store
+holds, no fact in desktop data folders and an unsigned request refused. The
+desktop window's status line was checked through `-Desktop`. The desktop's sync
+with real paired hosts, a conversation recalling and remembering around a sync,
+the Linux host's file and two real computers are **NOT RUN**.
+
 Delete, save/edit/purge, memory configuration, pause, lock, Stop,
 output/configuration change, conversation close and app exit advance the app
 retrieval generation and cancel the old operation. The foundation store
@@ -329,8 +402,8 @@ All validation remains local; no remote workflow was added or run.
 
 ## Remaining gates
 
-- Define authenticated gateway/host-2 ownership, role scope, transport schema,
-  service lifecycle, migration and compatibility before remote access.
+- Qualify the memory sync between real computers and real paired hosts, and
+  decide whether facts should be encrypted end to end between desktops.
 - Design explicit backup/restore semantics and prove compatible restore and
   deletion behavior; this foundation intentionally makes no backup.
 - Run physical interruption/filesystem/storage tests and clean-machine

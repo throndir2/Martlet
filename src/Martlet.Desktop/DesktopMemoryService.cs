@@ -304,6 +304,26 @@ internal sealed class DesktopMemoryService : IDisposable
     private static DesktopMemoryException Invalidated() => new("memory.retrieval_invalidated",
         "Memory changed while it was being read.");
 
+    /// <summary>Runs the memory sync's local step with the store, only while memory is on and nobody else holds the store
+    /// right now (a conversation's recall or remembering never waits for it). Ran is false, with why, when it didn't run.</summary>
+    internal async Task<(bool Ran, string? Why, T? Result)> TryWithFreeStoreAsync<T>(
+        Func<MemoryStore, CancellationToken, Task<T>> action, CancellationToken token = default)
+    {
+        EnsureOpen();
+        var loaded = await settings.LoadAsync(token).ConfigureAwait(false);
+        if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null || loaded.Settings?.Memory is not { Enabled: true } memory)
+            return (false, "off", default);
+        if (HasPendingCleanup) return (false, "busy", default);
+        try
+        {
+            return (true, null, await WithStoreAsync(memory.ConfigurationRevision, action, token, TimeSpan.Zero).ConfigureAwait(false));
+        }
+        catch (DesktopMemoryException error) when (error.Code is "memory.busy" or "memory.disabled" or "memory.configuration_changed")
+        {
+            return (false, error.Code == "memory.busy" ? "busy" : "off", default);
+        }
+    }
+
     internal void Invalidate()
     {
         CancellationTokenSource previous;
@@ -320,7 +340,8 @@ internal sealed class DesktopMemoryService : IDisposable
     private async Task<T> WithStoreAsync<T>(
         Guid expectedConfigurationRevision,
         Func<MemoryStore, CancellationToken, Task<T>> action,
-        CancellationToken token)
+        CancellationToken token,
+        TimeSpan? wait = null)
     {
         EnsureOpen();
         token.ThrowIfCancellationRequested();
@@ -329,7 +350,7 @@ internal sealed class DesktopMemoryService : IDisposable
         var preview = MemoryStoreActivationPreview.Create(configured.Directory);
         preview.ValidateLocalScope();
         var approval = preview.Authorize(MemoryConsentDecision.Allow);
-        if (!await storeGate.WaitAsync(StoreWait, token).ConfigureAwait(false))
+        if (!await storeGate.WaitAsync(wait ?? StoreWait, token).ConfigureAwait(false))
             throw new DesktopMemoryException("memory.busy",
                 "Memory is busy. Try again in a moment.");
         MemoryStore store;

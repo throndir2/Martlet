@@ -231,12 +231,15 @@ to bottom: the **map**, the **selected device** with what it does, and
     SSH or Docker Desktop route; without one, Martlet copies the command to
     run on the host.
 - **Settings for all devices** (companion mode) closes the page: **Check all
-  hosts** reads every host's roles (explicit only), and **Keep who does what
-  in sync on all my computers** (ON by default; unticking it saves `off`) shares the assignments with
-  every paired host and your other computers ([details](CLUSTER.md)): every
-  15 seconds it checks the hosts, follows changes made elsewhere and pushes
-  changes made here. A status line says how many hosts hold the current plan
-  and which need an update. While it is on, each job row offers **Fail over
+  hosts** reads every host's roles (explicit only), and **Keep Martlet the same
+  on all my computers** (ON by default; unticking it saves `off`) makes Martlet
+  one app on all your computers through every paired host ([details](CLUSTER.md)):
+  who does what, the settings and API keys, memories, people, speaking voices,
+  characters and Home Assistant. Every 15 seconds it checks the hosts, follows
+  changes made elsewhere and pushes changes made here. Status lines say how many
+  hosts hold the current plan and which need an update, how many settings are
+  the same on how many hosts, and how many facts Martlet remembers on how many
+  hosts. While it is on, each job row offers **Fail over
   to another host**: when its host stops answering for about 30 seconds the
   job moves to another paired host that runs the same engine, and the row
   says where it moved from or why this PC cannot follow the plan (host not
