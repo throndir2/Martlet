@@ -246,7 +246,8 @@ public partial class MainWindow
             var ollama = check?.Offers?.GetValueOrDefault(HostRoles.Ollama);
             var thinksThere = NetworkMap.ThinkingHost(homeSettings) == host.HostId;
             var usable = own is not null || ollama is not null && !thinksThere;
-            var inUse = on && deep.Place == DeepThinkingPlace.Host && deep.HostId == host.HostId;
+            // In use only on the route Use it would pick: a computer still thought on through its Ollama offers its new role.
+            var inUse = on && deep.Place == DeepThinkingPlace.Host && deep.HostId == host.HostId && (deep.OnHostRole || own is null);
             var detail = inUse ? $"Thinks here ({deep.ModelId}{(deep.OnHostRole ? ", its Deep thinking role" : "")})."
                 : own is not null ? $"Its Deep thinking role runs {own}."
                 : ollama is not null && thinksThere ? $"Its Ollama ({ollama}) does Thinking for the conversation. Add the Deep thinking role " +
