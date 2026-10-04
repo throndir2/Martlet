@@ -11,18 +11,20 @@ namespace Martlet.Desktop;
 // talking over a reply stops it (BargeIn, opt-in and off by default), how readily what is heard counts as
 // words (WordCheck: Relaxed, Normal by default, or Sensitive), whether what the PC plays is removed
 // from the microphone (ReduceEcho, on by default), whether always listening also hears what the PC plays (HearPc, off by
-// default) and whether (and at what) Martlet may look, how chatty it is about what it sees and what the PC plays
-// (ScreenChattiness: a ChattinessChoice, Normal by default; 3 is Martlet decides), and whether Martlet decides where the
-// character looks while it watches your screen (DecideGaze, off by default: the character follows the mouse). The talk
-// window's mic and vision buttons pause them there (Stop and Esc pause vision, never listening). A camera address is saved
-// without its user name or password.
+// default) and whether (and at what) Martlet may look (Watch, on by default, and ScreenScope, a WatchKind: your whole
+// screen by default; a saved file keeps the choices in it, and Martlet still looks only after Start watching), how chatty it
+// is about what it sees and what the PC plays (ScreenChattiness: a ChattinessChoice, Normal by default; 3 is Martlet
+// decides), and whether Martlet decides where the character looks while it watches your screen (DecideGaze, off by default:
+// the character follows the mouse). The talk window's mic and vision buttons pause them there (Stop and Esc pause vision,
+// never listening). A camera address is saved without its user name or password.
 // Companion › Listening › When Thinking can hear you: with HearVoice on and a Thinking model that hears, what you said goes
 // straight to Thinking as the recording alone while speech-to-text runs beside the reply (the default), or TranscribeFirst
 // waits for the transcript and sends both.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
-    int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
-    bool SpeakReplies = true, bool Watch = false, int Version = 0, bool? HearVoice = null, bool BargeIn = false, bool ReduceEcho = true,
-    bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool DecideGaze = false, bool TranscribeFirst = false)
+    int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
+    string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
+    bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
+    bool DecideGaze = false, bool TranscribeFirst = false)
 {
     private const string FileName = "talk-preferences.json";
 

@@ -499,18 +499,18 @@ public partial class MainWindow
         else if (!BundledLive2D.IsBuiltIn(path) && !File.Exists(path))
             return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(path)}). Add it in Companion › Character › Your " +
                 "characters on the computer that has it, so it is copied here.");
-        var loaded = await setupService!.LoadAsync(token);
-        if (loaded.Settings is not { } settings) return SharedApply.Waiting("Finish setting up Martlet on this PC first.");
-        var profiles = new AvatarProfileStore(directory);
-        var current = await profiles.LoadAsync(settings.Profile.Id, token);
-        var profile = current.Profile ?? AvatarProfile.BuiltIn(settings.Profile.Id);
+        // A new PC takes the character before anything else is set up on it (its first settings give the profile its ID).
+        AvatarProfile profile;
+        string? revision;
+        try { (profile, revision) = await Pairings().EnsureProfileAsync(token); }
+        catch (InvalidOperationException error) { return SharedApply.Waiting(error.Message); }
         var next = profile with
         {
             Renderer = value.Renderer, ModelPath = path, Configuration = value.Configuration.Clone(), AutoShow = value.AutoShow,
             ResourceRevision = null
         };
         next.Validate();
-        await profiles.SaveAsync(next, current.Revision, token);
+        await new AvatarProfileStore(directory).SaveAsync(next, revision, token);
         homeAvatar = next;
         characterChanged = profile.ModelPath != next.ModelPath || profile.Renderer != next.Renderer;
         return SharedApply.Done;

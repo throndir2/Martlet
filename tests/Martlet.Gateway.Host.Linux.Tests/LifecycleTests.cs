@@ -76,6 +76,18 @@ internal sealed class StepClock : TimeProvider
     public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
 }
 
+/// <summary>Standard input that stays open until <see cref="End"/>, as a terminal or Martlet's pipe does.</summary>
+internal sealed class HeldInput : TextReader
+{
+    private readonly ManualResetEventSlim ended = new();
+    internal void End() => ended.Set();
+    public override string? ReadLine()
+    {
+        ended.Wait();
+        return null;
+    }
+}
+
 public sealed class LifecycleTests
 {
     [Fact]
@@ -365,6 +377,8 @@ public sealed class LifecycleTests
         platform.Terminal = new() { Interactive = false };
         Assert.Equal(0, await platform.Run("owner-init", output));
 
+        var input = new HeldInput();
+        platform.Input = input;
         using var pairing = new WatchingWriter("");
         var run = HostApplication.RunAsync(["owner-pair", "--config", "/srv/martlet/host.json"], pairing, default, platform);
         var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -372,6 +386,7 @@ public sealed class LifecycleTests
             await Task.Delay(50);
         var shown = pairing.ToString();
         Assert.DoesNotContain("martlet-pair-v1.", shown);
+        Assert.Contains("doesn't expire", shown);
         var code = System.Text.RegularExpressions.Regex.Match(shown, @"Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})").Groups[1].Value;
         var address = System.Text.RegularExpressions.Regex.Match(shown, @"Address:\s+(\S+)").Groups[1].Value;
         Assert.Equal(9, code.Length);
@@ -382,6 +397,10 @@ public sealed class LifecycleTests
         var refused = await Assert.ThrowsAsync<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(() =>
             Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(origin, wrong, "fixture-desktop", "Fixture PC"));
         Assert.Equal("pairing.invalid", refused.Code);
+        // Ten minutes later on the host's clock (past the old five-minute window), the code still waits for the desktop.
+        platform.Clock.Offset = TimeSpan.FromMinutes(10);
+        await Task.Delay(1200);
+        Assert.False(run.IsCompleted);
         var (paired, secret) = await Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(
             origin, " " + code.ToLowerInvariant().Replace("-", " ") + " ", "fixture-desktop", "Fixture PC");
         Assert.Equal(platform.Owner!.Identity!.SpkiFingerprint, paired.SpkiFingerprint);
@@ -390,12 +409,47 @@ public sealed class LifecycleTests
         Assert.Equal(43, secret.Length);
         Assert.Equal(0, await run.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Contains("Paired: fixture-desktop (Fixture PC)", pairing.ToString());
+        input.End();
 
         platform.Terminal = new("yes", "list");
         using var listed = new StringWriter();
         Assert.Equal(0, await platform.Run("admin", listed));
         Assert.Contains("Device: fixture-desktop | Name: Fixture PC", listed.ToString());
         Assert.Throws<HostInputException>(() => HostOptions.Parse(["owner-pair", "--config", "/srv/martlet/host.json", "--name", "x"]));
+    }
+
+    [Fact]
+    public async Task Owner_pair_code_ends_when_withdrawn_or_mistyped_five_times()
+    {
+        using var platform = new FixturePlatform();
+        using var output = new StringWriter();
+        platform.Terminal = new() { Interactive = false };
+        Assert.Equal(0, await platform.Run("owner-init", output));
+        string[] pair = ["owner-pair", "--config", "/srv/martlet/host.json"];
+
+        // The end of stdin withdraws the code (Martlet went away), so it never outlives whoever showed it.
+        platform.Input = new StringReader("");
+        using var ended = new StringWriter();
+        Assert.Equal(3, await HostApplication.RunAsync(pair, ended, default, platform).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("pairing.canceled", ended.ToString());
+
+        var input = new HeldInput();
+        platform.Input = input;
+        using var pairing = new StringWriter();
+        var run = HostApplication.RunAsync(pair, pairing, default, platform);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!pairing.ToString().Contains("Waiting for the desktop", StringComparison.Ordinal) && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        var code = System.Text.RegularExpressions.Regex.Match(pairing.ToString(), @"Code:\s+([2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4})").Groups[1].Value;
+        var wrong = (code[0] == '2' ? "3" : "2") + code[1..];
+        for (var attempt = 0; attempt < GatewayPairingService.MaximumFailedAttempts; attempt++)
+            await Assert.ThrowsAsync<Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException>(() =>
+                Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostClient.PairWithCodeAsync(
+                    platform.Origin.CanonicalOrigin, wrong, "fixture-desktop", "Fixture PC"));
+        Assert.Equal(3, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("pairing.closed: the code was typed wrong five times", pairing.ToString());
+        Assert.DoesNotContain("Paired:", pairing.ToString());
+        input.End();
     }
 
     internal static async Task<IssuedDeviceCredential> PairCard(PinnedGatewayClient client, GatewayOrigin origin, GatewayPairingCard card)

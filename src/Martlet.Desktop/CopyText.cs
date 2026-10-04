@@ -94,7 +94,8 @@ public static class CopyText
         }
     }
 
-    private static void Acknowledge(Button button, bool copied)
+    /// <summary>Shows on <paramref name="button"/> for a few seconds whether its copy worked ("Copied" or "Couldn't copy").</summary>
+    internal static void Acknowledge(Button button, bool copied)
     {
         if (button.GetValue(TimerProperty) is DispatcherTimer running) running.Stop();
         else button.SetValue(RestingProperty, button.Content);

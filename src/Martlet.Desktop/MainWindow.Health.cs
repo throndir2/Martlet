@@ -249,9 +249,15 @@ public partial class MainWindow
         if (store is not null && !settingsBroken && llm is null)
         {
             var nothingYet = homeSettings is null || routes.Count == 0;
+            // A new PC joins your other computers first: it then uses your hosts and the setup they share, with nothing to set
+            // up here (Add a computer opens on Martlet on your network).
+            var joinFirst = nothingYet && hosts.All(h => h.HostId == localHost?.HostId);
             Add("thinking-setup", HealthLevel.Problem, "Set up thinking",
-                "Martlet needs a conversation model before it can reply. Everything else is optional.",
-                [Open(CompanionTab.Thinking, "Set up thinking"), new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
+                "Martlet needs a conversation model before it can reply. Everything else is optional." +
+                (joinFirst ? " Already use Martlet on another computer? Connect to it first: this PC then uses your hosts and the same setup." : ""),
+                [Open(CompanionTab.Thinking, "Set up thinking"),
+                 .. joinFirst ? [ConnectComputersFix()] : Array.Empty<HealthFix>(),
+                 new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
         if (llm is not null && ChatCompletionsEndpointCatalog.RetiredOn(llm.Origin, llm.ModelId) is { } retired)
@@ -545,6 +551,8 @@ public partial class MainWindow
         var warnings = issues.Count(i => i.Level == HealthLevel.Warning);
         var llm = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         AdvisorButton.Visibility = issues.Any(i => i.Id == "thinking-setup") ? Visibility.Visible : Visibility.Collapsed;
+        ConnectComputersButton.Visibility = issues.Any(i => i.Id == "thinking-setup" && i.Fixes.Any(f => f.Id == "network"))
+            ? Visibility.Visible : Visibility.Collapsed;
         if (top is not null)
         {
             StageTitle.Text = top.Headline ?? top.Title;

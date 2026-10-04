@@ -179,7 +179,7 @@ Operator-managed disk encryption is separate and is neither detected nor set up.
 | `health` | Explicit bounded pinned HTTPS observation using the approved nonsecret pin; not a passive command. |
 | `owner-init` | Owner command, no console: create the selected absent state leaf (as `init`) and approve unattended serve of exactly this configuration and identity (as `approve-service`), then close. |
 | `owner-approve` | Owner command, no console: open the existing identity (as `admin`, which also accepts an approval for an earlier config of the same host, UID/GID and pin) and approve unattended serve of exactly this configuration, then close. |
-| `owner-pair` | Owner command, no console. `owner-pair --config <path> [--roles voice]`: open the existing identity, start the listener, open one five-minute short-code window and print the host's address and an `XXXX-XXXX` code for a person to type in Martlet (**Enter a pairing code**); whichever desktop proves the code names itself ([short typed codes](../Martlet.Gateway/README.md#short-typed-codes)). `owner-pair --config <path> --device-id <id> --name <display name> [--roles voice]`: create one five-minute invitation for exactly that device and print it as one `pairing-code: martlet-pair-v1...` line (Martlet reads it over SSH or on this PC). Either way, wait until a new credential registers (exit 0), the invitation expires or a `cancel` line arrives on stdin (exit 3), then close cleanly. The daemon must be stopped, as for `admin`. |
+| `owner-pair` | Owner command, no console. `owner-pair --config <path> [--roles voice]`: open the existing identity, start the listener, open one short-code window with no deadline and print the host's address and an `XXXX-XXXX` code for a person to type in Martlet (**Enter a pairing code**); whichever desktop proves the code names itself ([short typed codes](../Martlet.Gateway/README.md#short-typed-codes)). Wait until a new credential registers (exit 0), a `cancel` line arrives or stdin ends (the code is withdrawn, so it never outlives a pipe or session that showed it; a Docker TTY whose console closed never ends, so withdraw with `cancel`, Ctrl+C or `docker stop`) or five wrong tries close the code (exit 3). `owner-pair --config <path> --device-id <id> --name <display name> [--roles voice]`: create one five-minute invitation for exactly that device and print it as one `pairing-code: martlet-pair-v1...` line (Martlet reads it over SSH or on this PC); wait until it registers (exit 0), the invitation expires or a `cancel` line arrives on stdin (exit 3). Either way, then close cleanly. The daemon must be stopped, as for `admin`. |
 | `owner-network-reset` | Owner command, no console (`martlet-host network-reset`, daemon stopped): remove `network.json`, so the host is in no [Martlet network](../../docs/NETWORK.md) and the next desktop that pairs binds it to its own. Pairings stay (revoke them with `admin`). |
 
 Administration commands are `start`, `pair`, `list`, `revoke`,
@@ -196,7 +196,8 @@ confirmation. Running them requires the same UID, native custody and stopped
 daemon as `admin`, so they grant nothing that same-UID code could not already do
 with plaintext-at-rest state. `owner-pair` writes the one-use invitation to
 stdout (for the desktop to read and redeem at once), not to the owned terminal's
-alternate screen: treat that stdout as secret for its five-minute life.
+alternate screen: treat that stdout as secret until the invitation is used or
+withdrawn.
 
 `start` separately approves the selected listener. `pair` requires it already
 started, reviews the exact device/name/roles and obtains a fresh approval before

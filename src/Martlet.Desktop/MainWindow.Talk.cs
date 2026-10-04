@@ -331,9 +331,9 @@ public partial class MainWindow
         var kind => new(kind)
     };
 
-    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera once you press Start watching, what it
-    /// looks at and how chatty it is. Turning it on is the consent; the text above the button says exactly what is captured and
-    /// where it is sent.</summary>
+    /// <summary>Companion › Vision: whether Martlet may look at your screen or a camera once you press Start watching (on by
+    /// default, at your whole screen), what it looks at and how chatty it is. Pressing Start watching is the consent; the text
+    /// above the button says exactly what is captured and where it is sent.</summary>
     private void RenderVisionPage(Panel page)
     {
         var prefs = Talk;
@@ -344,17 +344,15 @@ public partial class MainWindow
         var chosen = source.IsScreen || source.Id.Length > 0;
         var chattiness = ChattinessTags.Choice(prefs.ScreenChattiness);
 
-        var now = new List<UIElement>
+        var nowText = new TextBlock
         {
-            Heading("Now"),
-            new TextBlock
-            {
-                Text = prefs.Watch
-                    ? $"On. Martlet looks at {source.Label} occasionally. Comments: {CommentsLabel(chattiness)}."
-                    : "Off. Martlet doesn't look at your screen or cameras.",
-                FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
-            }
+            Text = prefs.Watch
+                ? $"On. Martlet looks at {source.Label} occasionally. Comments: {CommentsLabel(chattiness)}."
+                : "Off. Martlet doesn't look at your screen or cameras.",
+            FontSize = 15, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6)
         };
+        AutomationProperties.SetAutomationId(nowText, "VisionNow");
+        var now = new List<UIElement> { Heading("Now"), nowText };
         if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
         var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities);
         var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice);

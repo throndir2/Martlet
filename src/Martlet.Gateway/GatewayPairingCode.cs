@@ -6,12 +6,14 @@ namespace Martlet.Gateway;
 
 /// <summary>
 /// Short pairing codes a person can read on the host and type on a desktop (for example <c>K7QM-4XPA</c>): 8 characters
-/// from 32 unambiguous symbols (40 bits), one use, five minutes. The desktop connects to the address the host shows
+/// from 32 unambiguous symbols (40 bits), one use, no deadline (open until a desktop redeems it, five wrong proofs close it
+/// or the owner withdraws it on the host). The desktop connects to the address the host shows
 /// without a pin, then proves it knows the code with an HMAC keyed by PBKDF2(code, the host key it was shown and a fresh
 /// client nonce); the host answers with its own proof under the same key before the desktop pins that key. A host key
 /// swapped in by someone on the network changes the derived key, so the real host rejects the proof and the impostor
 /// cannot answer without the code. Observing one attempt leaves only an offline guess per code at 100,000 PBKDF2
-/// iterations each, far slower than the five-minute window. Desktops implement the same derivation
+/// iterations each; the desktop then reports that the host could not prove the code, and withdrawing that code on the host
+/// ends the search. Desktops implement the same derivation
 /// (<c>Audio2FaceHostClient.PairWithCodeAsync</c>); keep both in step.
 /// </summary>
 public static class GatewayPairingCode
@@ -107,14 +109,15 @@ public sealed record GatewayCodePairingApproval
     }
 }
 
-/// <summary>What the host shows for a short-code pairing: its address and the code (formatted XXXX-XXXX).</summary>
+/// <summary>What the host shows for a short-code pairing: its address and the code (formatted XXXX-XXXX). The code has no
+/// deadline; <see cref="PairingId"/> (not secret) asks <see cref="GatewayPairingService.IsOpen"/> whether it still works.</summary>
 public sealed record GatewayCodePairingCard
 {
+    public required string PairingId { get; init; }
     public required string HostId { get; init; }
     public required string Origin { get; init; }
     public required string SpkiFingerprint { get; init; }
     public required GatewaySecret Code { get; init; }
-    public required DateTimeOffset ExpiresAt { get; init; }
 
     public override string ToString() => nameof(GatewayCodePairingCard);
 }

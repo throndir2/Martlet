@@ -38,10 +38,10 @@ renderer failure and Audio2Face unavailability do not delay or fail voice.
 Only explicit A2F mouth/expression mapping is currently wired; alternatives and
 other aspects require explicit omission, not automatic fallback.
 
-**Vision** (Companion › Vision, off by default) lets Martlet glance at your
-active window, screen or a camera while you have it watching (**Start watching**)
-and occasionally comment; it needs a Thinking model that can see images. See
-[Screen commentary](SCREEN_COMMENTARY.md).
+**Vision** (Companion › Vision, on by default and looking at your whole screen)
+lets Martlet glance at your active window, screen or a camera while you have it
+watching (**Start watching**) and occasionally comment; it needs a Thinking
+model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 ## First configured action
 

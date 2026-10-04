@@ -754,7 +754,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
-            "whether vision and hearing the PC are on (replies are told about Martlet decides only while one is), the level Martlet " +
+            "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
+            "what vision looks at (the whole screen by default), the level Martlet " +
             "decides starts at, the tags a reply switches the level with, what Martlet decides tells the Thinking model and the " +
             "note that says the level (Companion > Prompts, from settings.json's edits), then a rehearsal: sample replies (or reply) " +
             "through the production speech segmenter and chat stripper with those tags offered, returning what is spoken and shown, " +
