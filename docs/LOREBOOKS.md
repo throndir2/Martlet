@@ -46,7 +46,9 @@ other entries*).
 
 ## Privacy and cost
 
-Lorebooks stay on this PC. Only triggered entries are sent, inside the
+Lorebooks are the same on all your computers: they travel as a
+[shared setting](CLUSTER.md#one-martlet-on-every-computer) through your paired
+hosts. Only triggered entries are sent to a model, inside the
 already-authorized LLM request to the Thinking model you chose, so they count
 toward that request's size (and any per-request cost). The conversation
 window's disclosure says so before each action, and its status line lists how

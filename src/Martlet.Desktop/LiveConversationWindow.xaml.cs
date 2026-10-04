@@ -1222,6 +1222,8 @@ public partial class LiveConversationWindow : ThemedWindow
     internal bool HandsFree => preferences.HandsFree;
     /// <summary>Start listening was pressed and listening hasn't been stopped since.</summary>
     internal bool ListeningStarted => !listenPaused;
+    /// <summary>Always listening is hearing you, or what you just said is still being transcribed or taken.</summary>
+    internal bool HearingYou => MicBusy;
 
     /// <summary>Home's listening indicator: what listening is doing now, and whether that is a problem.</summary>
     internal (string Text, bool Problem) ListeningStatus
@@ -1557,7 +1559,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var snapshot = live.Turn?.Snapshot;
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
-                ? $"Allow {ask.Tool}? Answer above." : $"Using {tool}…";
+                ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…" : $"Using {tool}…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
     }
@@ -2048,8 +2050,8 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         var left = Math.Max(0, (int)Math.Ceiling((request.Expires - clock.GetUtcNow()).TotalSeconds));
-        ToolApprovalText.Text = $"Allow {request.Tool} from {request.Server}? It can use this PC with your permissions. " +
-            $"Automatically denied in {left} s.";
+        ToolApprovalTitle.Text = request.Title;
+        ToolApprovalText.Text = $"{request.Question} Automatically denied in {left} s.";
         if (ReferenceEquals(shownApproval, request)) return;
         shownApproval = request;
         ToolApprovalArguments.Text = request.Arguments;

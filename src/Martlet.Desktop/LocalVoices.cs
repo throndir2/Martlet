@@ -22,13 +22,13 @@ internal sealed record HeardVoices(IReadOnlyList<HeardVoice> Voices, bool Overla
 
 /// <summary>Recognizing the people Martlet hears. The voice list (voices.json) holds voiceprints and the names each voice goes
 /// by, never audio; the engine (sherpa-onnx with the WeSpeaker and pyannote models, AudioTranscriber's pipeline) ships in
-/// Martlet's folder and runs on this PC. Whether it is on (voice-recognition.txt, on unless the owner turned it off) and whether
-/// the list is shared with the owner's paired Martlet hosts (voice-sharing.txt) are this PC's choices.</summary>
+/// Martlet's folder and runs on this PC. Whether it is on (voice-recognition.txt, on unless the owner turned it off) is one of
+/// Martlet's shared settings, and the list itself travels through the paired hosts while Martlet is the same on all the
+/// owner's computers.</summary>
 internal sealed class LocalVoices : IDisposable
 {
     internal const string RosterFile = "voices.json";
     internal const string EnabledFile = "voice-recognition.txt";
-    internal const string SharingFile = "voice-sharing.txt";
     private readonly object gate = new();
     private readonly string? directory;
     private readonly string? appDirectory;
@@ -47,7 +47,6 @@ internal sealed class LocalVoices : IDisposable
         Included = SpeakerEngine.Included(appDirectory);
         if (directory is null) return;
         Enabled = ReadChoice(EnabledFile) ?? true;
-        Sharing = ReadChoice(SharingFile) ?? true;
         try
         {
             var path = Path.Combine(directory, RosterFile);
@@ -66,7 +65,6 @@ internal sealed class LocalVoices : IDisposable
     /// <summary>The engine and voice models are in Martlet's folder (always, in a complete installation).</summary>
     internal bool Included { get; }
     internal bool Enabled { get; private set; }
-    internal bool Sharing { get; private set; }
     /// <summary>On and included: each utterance is checked against the voice list.</summary>
     internal bool Active => Enabled && Included;
     internal string? LoadError { get; private set; }
@@ -82,11 +80,16 @@ internal sealed class LocalVoices : IDisposable
         Changed?.Invoke();
     }
 
-    internal void SetSharing(bool on)
+    /// <summary>When voice-recognition.txt last changed (null when the owner never chose).</summary>
+    internal DateTimeOffset? EnabledChangedAt
     {
-        WriteChoice(SharingFile, on);
-        Sharing = on;
-        Changed?.Invoke();
+        get
+        {
+            if (directory is null) return null;
+            var path = Path.Combine(directory, EnabledFile);
+            try { return File.Exists(path) ? new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) : null; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+        }
     }
 
     /// <summary>Who spoke in one utterance (16 kHz mono samples). Confident matches teach the voice a little more; a clearly new

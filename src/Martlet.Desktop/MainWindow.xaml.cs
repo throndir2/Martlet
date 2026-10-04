@@ -124,6 +124,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeSettingsSync();
+        InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
         InitializeNearby();
@@ -189,8 +190,11 @@ public partial class MainWindow : ThemedWindow
         }
         else ErrorLog.Info("Martlet started as a Martlet host: the character and listening stay off on this PC" +
             (background.StartCompanion ? " (When Martlet starts, show the character and start listening is kept for when it's your companion PC)." : "."));
+        // An update Martlet just restarted into brings back the character and listening that were on when it closed for it.
+        if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartSettingsSync();
+        StartMemorySync();
         StartNetwork();
         StartApiKeys();
         StartVoiceSync();
@@ -323,7 +327,10 @@ public partial class MainWindow : ThemedWindow
     private async void Memory_Click(object sender, RoutedEventArgs e)
     {
         if (memory is null || closing || saving || model?.IsRunning == true) return;
-        new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog();
+        memoryWindowOpen = true;
+        try { new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog(); }
+        finally { memoryWindowOpen = false; }
+        QueueMemorySync();
         await RefreshAsync();
     }
 

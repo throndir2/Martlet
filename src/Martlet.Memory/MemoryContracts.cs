@@ -103,6 +103,9 @@ public sealed record MemoryRetention
 
     internal bool IsExpired(DateTimeOffset now) =>
         Kind == MemoryRetentionKind.ExpiresAt && ExpiresAtUtc <= now;
+
+    /// <summary>Whether the fact is gone by <paramref name="now"/> (it is removed on the store's next operation).</summary>
+    public bool HasExpired(DateTimeOffset now) => IsExpired(now);
 }
 
 public sealed record MemoryFact
@@ -186,19 +189,43 @@ public sealed record DeleteFactRequest
 
 public sealed record MemoryMutationReceipt(long StoreRevision, MemoryFact Fact);
 
+/// <summary>Facts the owner's other computers share, to put into this store exactly as they are (each the newest version every
+/// computer agreed on, as Martlet.Memory's fact JSON from <see cref="MemoryFactJson"/>), and facts to forget.</summary>
+public sealed record MemoryMergeRequest
+{
+    public required IReadOnlyList<string> Facts { get; init; }
+    public required IReadOnlyCollection<Guid> Forget { get; init; }
+
+    public override string ToString() => $"Memory merge request {{ Facts = {Facts?.Count}, Forget = {Forget?.Count}, Content = [redacted] }}";
+}
+
+public sealed record MemoryMergeReceipt(int Saved, int Forgotten, int Expired, long StoreRevision);
+
+/// <summary>A fact as JSON, the form in which facts travel between the owner's computers. <see cref="Read"/> is as strict as
+/// the store is with its own file and throws <see cref="MemoryException"/>.</summary>
+public static class MemoryFactJson
+{
+    public static string Write(MemoryFact fact) => MemoryJson.WriteFact(fact);
+
+    public static MemoryFact Read(string json) => MemoryJson.ReadFact(json);
+}
+
 public sealed record MemoryDeleteReceipt(Guid FactId, long DeletedFactRevision, long StoreRevision, Guid ConsentId);
 
 public sealed record MemoryExpiryReceipt(int DeletedFacts, long StoreRevision);
 
 public sealed class MemoryInspection
 {
-    internal MemoryInspection(long storeRevision, DateTimeOffset inspectedAtUtc, MemoryFact[] facts)
+    internal MemoryInspection(Guid storeId, long storeRevision, DateTimeOffset inspectedAtUtc, MemoryFact[] facts)
     {
+        StoreId = storeId;
         StoreRevision = storeRevision;
         InspectedAtUtc = inspectedAtUtc;
         Facts = Array.AsReadOnly(facts);
     }
 
+    /// <summary>Identifies this store (a new memory folder starts a new one).</summary>
+    public Guid StoreId { get; }
     public long StoreRevision { get; }
     public DateTimeOffset InspectedAtUtc { get; }
     public IReadOnlyList<MemoryFact> Facts { get; }

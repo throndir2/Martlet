@@ -47,6 +47,7 @@ internal static class AppUpdateCheck
         {
             var outcomes = await Task.WhenAll(scenarios.Select(scenario => RunScenarioAsync(root, fixture, scenario, cancellation)));
             foreach (var (scenario, outcome) in scenarios.Zip(outcomes)) Check(scenario, outcome, Step);
+            CheckResume(Path.Combine(root, "resume", "updates"), Step);
         }
         finally
         {
@@ -124,6 +125,42 @@ internal static class AppUpdateCheck
     }
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>The note Martlet leaves for itself as it closes to install (<see cref="AppUpdateResume"/>), so the restarted
+    /// Martlet shows the character and listens again: read once, only what was on, nothing when nothing was, and ignored once
+    /// it is older than an install takes.</summary>
+    private static void CheckResume(string updates, Action<string, bool, string> step)
+    {
+        var now = DateTimeOffset.UtcNow;
+        Directory.CreateDirectory(updates);
+        var path = Path.Combine(updates, AppUpdateResume.FileName);
+
+        AppUpdateResume.Save(updates, character: true, listening: true, now);
+        var first = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(2));
+        var second = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(2));
+        step("resume: picks-up-character-and-listening-once", first == (true, true) && second is null && !File.Exists(path),
+            $"two minutes after closing: {Describe(first)}; read again: {Describe(second)}; note left: {File.Exists(path)}");
+
+        AppUpdateResume.Save(updates, character: true, listening: false, now);
+        var character = AppUpdateResume.Take(updates, now + TimeSpan.FromMinutes(1));
+        step("resume: only-what-was-on", character == (true, false), $"character showing, not listening: {Describe(character)}");
+
+        AppUpdateResume.Save(updates, character: false, listening: true, now);
+        AppUpdateResume.Save(updates, character: false, listening: false, now);
+        var nothing = AppUpdateResume.Take(updates, now);
+        step("resume: nothing-on-leaves-no-note", nothing is null && !File.Exists(path),
+            $"an earlier note is replaced by none: {Describe(nothing)}, note left: {File.Exists(path)}");
+
+        AppUpdateResume.Save(updates, character: true, listening: true, now);
+        var stale = AppUpdateResume.Take(updates, now + AppUpdateResume.MaximumAge + TimeSpan.FromMinutes(1));
+        step("resume: stale-note-ignored", stale is null && !File.Exists(path),
+            $"read {(AppUpdateResume.MaximumAge + TimeSpan.FromMinutes(1)).TotalMinutes:0} minutes later (Martlet started by you, not " +
+            $"the update): {Describe(stale)}, note left: {File.Exists(path)}");
+
+        static string Describe((bool Character, bool Listening)? resume) => resume is { } r
+            ? $"character {(r.Character ? "on" : "off")}, listening {(r.Listening ? "on" : "off")}"
+            : "nothing to pick up";
+    }
 
     private static void Check(Scenario scenario, Outcome outcome, Action<string, bool, string> step)
     {

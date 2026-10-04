@@ -124,10 +124,12 @@ public sealed record SharedSettings
         : string.CompareOrdinal(a.Content, b.Content) >= 0;
 
     // The newest settings (by revision) up to the limit, sorted by key, and only the secrets they use, sorted by SHA-256, so
-    // equal content always writes equal bytes.
+    // equal content always writes equal bytes. Settings come before computers' own entries (pc.<device>), which are never
+    // removed: a computer retired long ago drops out before any setting does.
     private static SharedSettings Bounded(IEnumerable<SharedSetting> settings, IEnumerable<SharedSecret> secrets)
     {
-        var kept = settings.OrderByDescending(s => s.Revision).ThenBy(s => s.Key, StringComparer.Ordinal).Take(MaximumSettings)
+        var kept = settings.OrderBy(s => IsDeviceKey(s.Key) ? 1 : 0).ThenByDescending(s => s.Revision)
+            .ThenBy(s => s.Key, StringComparer.Ordinal).Take(MaximumSettings)
             .OrderBy(s => s.Key, StringComparer.Ordinal).ToArray();
         var used = kept.Select(s => s.SecretSha256).OfType<string>().ToHashSet(StringComparer.Ordinal);
         var pool = secrets.Where(s => used.Contains(s.Sha256)).GroupBy(s => s.Sha256, StringComparer.Ordinal)
@@ -140,6 +142,12 @@ public sealed record SharedSettings
 
     /// <summary>Identifies one setting's content (its value and which secret it uses), as a computer records what it has.</summary>
     public static string ContentDigest(string value, string? secretSha256) => Sha256(value + "\n" + secretSha256);
+
+    /// <summary>The prefix of the entry each computer keeps about itself ("pc.desktop-a").</summary>
+    public const string DevicePrefix = "pc.";
+
+    /// <summary>Whether <paramref name="key"/> is a computer's own entry rather than a setting.</summary>
+    public static bool IsDeviceKey(string key) => key.StartsWith(DevicePrefix, StringComparison.Ordinal);
 
     public static bool IsKey(string? key) => key is { Length: > 0 and <= 64 } && char.IsAsciiLetterLower(key[0]) &&
         key.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.');

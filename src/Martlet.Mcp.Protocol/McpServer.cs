@@ -100,12 +100,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
         }, ["id", "dx", "dy"]),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
-            "window is visible or hidden in the notification area, whether its menu is open (menuOpen) and whether Martlet still " +
-            "runs. \"open\" and \"menu\" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu " +
-            "at the mouse pointer; ui_snapshot then lists the Tray* items). \"close\" presses the main window's close button, which " +
-            "hides Martlet in the notification area by default or exits it, so it requires --allow-ui-effects.", new
+            "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
+            "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
+            "what Explorer sends for a left click (show Martlet) and a right click (its menu, which opens beside the click; " +
+            "ui_snapshot then lists the Tray* items), at the mouse pointer or at optional x, y (physical screen pixels, as Explorer " +
+            "reports them). \"close\" presses the main window's close button, which hides Martlet in the notification area by " +
+            "default or exits it, so it requires --allow-ui-effects.", new
         {
-            action = new { type = "string", @enum = DesktopAutomation.TrayActions }
+            action = new { type = "string", @enum = DesktopAutomation.TrayActions },
+            x = new { type = "integer", minimum = short.MinValue, maximum = short.MaxValue },
+            y = new { type = "integer", minimum = short.MinValue, maximum = short.MaxValue }
         }),
         Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices (recognition is on " +
             "unless turned off), whether a Martlet folder (optional absolute martletDirectory, default the installed release's Desktop " +
@@ -225,7 +229,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "one (from the notification area, whose installer fails), the helper waits for Martlet to exit, runs the installer with " +
             "no window at all (/VERYSILENT, no questions, no restart), records its exit code, logs every step in update.log and " +
             "starts Martlet again minimized (in the notification area when it was there); one you confirmed shows the installer's " +
-            "progress window (/SILENT). Installs nothing, starts no real Martlet and contacts nothing.", new { }),
+            "progress window (/SILENT). Also checks the note Martlet leaves itself so the restarted Martlet shows the character and " +
+            "listens again (read once, only what was on, ignored when stale). Installs nothing, starts no real Martlet and contacts " +
+            "nothing.", new { }),
         Tool("api_keys_status", "Read the API keys of this PC's Martlet network from a data directory (api-keys.json, docs/API.md): for " +
             "each key its ID, name, scopes, who made it and when, expiry and whether it is revoked or expired. Read-only; contacts " +
             "nothing and never returns a key or its verifier.", new
@@ -277,13 +283,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
         Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
             "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
-            "companion, replies, prompts, memory, lorebooks, character, talk, speech-display, appearance) with which computer changed it " +
-            "and when, its revision, whether it uses an API key (never the key or its digest), the provider and model of each job's " +
-            "route, and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
+            "companion, replies, prompts, memory, lorebooks, character, character-actions, talk, speech-display, appearance, " +
+            "voice-recognition, voice-id, smart-home, updates) with which computer changed it and when, its revision, whether it uses an " +
+            "API key (never the key or its digest), the provider and model of each job's route, the values of non-personal settings, " +
+            "and whether this PC still has the same value (\"same\", \"different\" or \"unknown\" for its own files). Read-only; " +
             "contacts nothing and reads no credentials.", new
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_sync_status", "Read one memory on every computer (what Martlet remembers, the same on all the owner's computers " +
+            "through the paired hosts) from a data directory's memory-sync.json: whether sync is on, when this PC last synced its memory " +
+            "store, how many facts it had then and which computer wrote each version, and how many forgotten facts every computer agreed " +
+            "on. Never a fact or its text. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
+            "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
+            "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
+            "Walks saving on one computer and recalling on another, an edit, a deletion reaching every computer (and never coming back), " +
+            "offline edits on two computers, a host that missed changes, a new computer taking everything, an expired fact, a full store " +
+            "making room by forgetting the oldest conversation fact, a fact from a newer Martlet passing through, a new memory folder and " +
+            "an unsigned request refused. Synthetic facts only; loopback only; the folder is deleted.", new { }),
         Tool("settings_sync_selftest", "Rehearse one Martlet on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory shared-settings.json) and three simulated desktops with real settings.json, " +
             "lorebooks.json and shared-settings.json in a temporary folder, an in-memory stand-in for Windows Credential Manager, the " +
@@ -400,6 +421,26 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
+            "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
+            "this PC has, whether every command asks first (on by default), the time limit, whether commands start in the home folder " +
+            "or a chosen one (never its path) and whether it exists, and run_terminal_command exactly as the Thinking model gets it " +
+            "(the start folder shown as {folder}). Read-only; runs nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("terminal_check", "Rehearse Companion > Tools > Terminal with the desktop's production terminal runner and fixed, " +
+            "harmless commands (never anything a model or the owner chose), in the saved shell or shell (WindowsPowerShell, " +
+            "PowerShell or CommandPrompt), in a fresh temporary folder removed afterwards: UTF-8 output and the start folder, quotes " +
+            "and & | in a command, an error line with exit code 3, closed input (a command that reads input ends at once), a 2-second time limit stopping " +
+            "the shell and its child process (a loopback ping), 20,000 lines of output kept as its start and end, the commands " +
+            "refused before anything runs, and a program the command starts in the background (a 3-second loopback ping) not " +
+            "holding up the run. Returns ok, each step and what the model would be told. Runs whether or not the " +
+            "terminal is on; local only, reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" },
+            shell = new { type = "string", @enum = Enum.GetNames<TerminalShell>() }
         }),
         Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default), the saved " +
             "Let me interrupt Martlet by talking choice (bargeIn, opt-in and off by default) and whether the " +
@@ -527,7 +568,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
-                "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status"),
+                "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),
@@ -551,6 +592,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
+                "memory_sync_status" => MemorySyncStatus(arguments),
+                "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
@@ -559,6 +602,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
+                "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
@@ -619,7 +664,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             recognition = Choice("voice-recognition.txt") ?? "on (default)",
-            sharing = Choice("voice-sharing.txt") ?? "on (default)",
+            // The voice list travels with the rest of Martlet while "Keep Martlet the same on all my computers" is on.
+            sharing = Choice("cluster-sync.txt") is "off" ? "off" : "on (Keep Martlet the same on all my computers)",
             included = new
             {
                 found = File.Exists(Path.Combine(martlet, "Martlet.Desktop.exe")),
@@ -1433,7 +1479,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
-                if (setting.Key is "memory" or "appearance" or "talk")
+                if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates")
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();
@@ -1453,6 +1499,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     : seen == Martlet.Core.Sync.SharedSettings.ContentDigest(s.Value, s.SecretSha256) ? "same" : "different",
                 value = Route(s)
             }).ToArray()
+        };
+    }
+
+    /// <summary>One memory on every computer as this PC keeps it (memory-sync.json, the name Martlet.Core.Sync.MemorySyncState
+    /// uses): whether sync is on, which store it last synced, when, how many facts it had then and who wrote them, and the
+    /// forgotten facts every computer agreed on. Never a fact: the file holds IDs, revisions, digests and device IDs only.</summary>
+    private static object MemorySyncStatus(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        string? choice;
+        try { choice = File.ReadAllText(Path.Combine(directory, "cluster-sync.txt")).Trim(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { choice = null; }
+        var sync = choice switch { "off" => "off", null => "on (default)", _ => "on" };
+        if (!File.Exists(Path.Combine(directory, Martlet.Core.Sync.MemorySyncState.FileName))) return new { sync, state = "none" };
+        var state = Martlet.Core.Sync.MemorySyncState.Load(directory);
+        return new
+        {
+            sync, state = state.StoreId == Guid.Empty ? "unreadable" : "loaded", syncedAt = state.SyncedAt, facts = state.Observed.Count,
+            byComputer = state.Observed.Values.GroupBy(s => s.By, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new { device = g.Key, facts = g.Count() }).ToArray(),
+            forgotten = state.Forgotten.Count
         };
     }
 

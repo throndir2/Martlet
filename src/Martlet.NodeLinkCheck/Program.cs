@@ -52,6 +52,13 @@ if (args is ["settings"])
     Console.WriteLine(JsonSerializer.Serialize(settingsReport));
     return settingsOk ? 0 : 1;
 }
+// With "memories" it rehearses one memory on every computer: real memory stores kept the same through the hosts (MemoryRehearsal).
+if (args is ["memories"])
+{
+    var (memoriesOk, memoriesReport) = await Martlet.NodeLinkCheck.MemoryRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(memoriesReport));
+    return memoriesOk ? 0 : 1;
+}
 // With "voice-engine <engine> <endpoint> [text]" it speaks one sentence with a live voice engine's loopback service through
 // the engine's real relay and gateway (VoiceEngineCheck) and prints its report.
 if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceText] && voiceText.Length <= 1)

@@ -190,7 +190,7 @@ public sealed class MemoryStore : IDisposable
             EnsureOpen();
             var now = clock.GetUtcNow();
             MemoryGuard.Utc(now);
-            return new(state.Revision, now, state.Facts.Values
+            return new(state.StoreId, state.Revision, now, state.Facts.Values
                 .OrderBy(fact => fact.CreatedAtUtc)
                 .ThenBy(fact => fact.Id)
                 .ToArray());
@@ -260,7 +260,8 @@ public sealed class MemoryStore : IDisposable
             {
                 Revision = existing.Revision + 1,
                 Content = request.Content,
-                UpdatedAtUtc = now,
+                // A fact another computer stamped ahead of this clock stays in order.
+                UpdatedAtUtc = now > existing.UpdatedAtUtc ? now : existing.UpdatedAtUtc,
                 LastModifiedBy = request.Provenance,
                 Retention = request.Retention
             };
@@ -308,6 +309,53 @@ public sealed class MemoryStore : IDisposable
     {
         using var operation = BeginOperation();
         return await PurgeExpiredCoreAsync(cancellationToken);
+    }
+
+    /// <summary>Makes this store match the owner's other computers in one commit: puts each fact of
+    /// <paramref name="request"/> in exactly as it is (replacing this store's version of it; already expired ones are left out)
+    /// and forgets the listed facts. Only the memory sync calls this, with the newest version of each fact every computer agreed
+    /// on; facts keep their own IDs, revisions, times and provenance.</summary>
+    public async Task<MemoryMergeReceipt> MergeAsync(MemoryMergeRequest request, CancellationToken cancellationToken = default)
+    {
+        using var operation = BeginOperation();
+        MemoryGuard.Require(request is { Facts: not null, Forget: not null });
+        var incoming = request!.Facts!.Select(MemoryJson.ReadFact).ToArray();
+        MemoryGuard.Require(incoming.Select(fact => fact.Id).Distinct().Count() == incoming.Length);
+        await writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
+            var now = CurrentUtc();
+            StoreState current;
+            lock (gate)
+            {
+                EnsureWritable();
+                current = state;
+            }
+            var facts = new Dictionary<Guid, MemoryFact>(current.Facts);
+            var forgotten = request.Forget!.Count(facts.Remove);
+            var saved = 0;
+            var expired = 0;
+            foreach (var fact in incoming)
+            {
+                if (fact.Retention.IsExpired(now))
+                {
+                    expired++;
+                    continue;
+                }
+                facts[fact.Id] = fact;
+                saved++;
+            }
+            if (saved == 0 && forgotten == 0)
+                return new(0, 0, expired, current.Revision);
+            MemoryGuard.Require(facts.Count <= MemoryLimits.MaximumFacts, MemoryFailure.LimitExceeded);
+            var committed = await CommitFactsAsync(current, facts.Values.ToArray(), now, cancellationToken);
+            return new(saved, forgotten, expired, committed.Revision);
+        }
+        finally
+        {
+            writeGate.Release();
+        }
     }
 
     public async Task<MemoryRetrievalResult> RetrieveAsync(MemoryQuery query,
@@ -602,12 +650,14 @@ public sealed class MemoryStore : IDisposable
         MemoryGuard.Require(facts.Length <= MemoryLimits.MaximumFacts, MemoryFailure.LimitExceeded);
         MemoryGuard.Require(expected.Revision < MemoryLimits.MaximumRevision, MemoryFailure.LimitExceeded);
         var revision = expected.Revision + 1;
+        // Never behind a fact's own time: a fact another computer stamped ahead of this clock keeps the document valid.
+        var stamp = facts.Select(fact => fact.UpdatedAtUtc).Append(now).Max();
         var document = new MemoryStoreDocument
         {
             SchemaVersion = MemoryLimits.SchemaVersion,
             StoreId = expected.StoreId,
             StoreRevision = revision,
-            UpdatedAtUtc = now,
+            UpdatedAtUtc = stamp,
             Facts = facts
         };
         var dictionary = facts.ToDictionary(fact => fact.Id);
@@ -618,7 +668,7 @@ public sealed class MemoryStore : IDisposable
         {
             EnsureOpen();
             MemoryGuard.Require(state.Revision == expected.Revision, MemoryFailure.Conflict);
-            committed = new(expected.StoreId, revision, now, dictionary, index);
+            committed = new(expected.StoreId, revision, stamp, dictionary, index);
             state = committed;
             queryCache.Clear();
         }

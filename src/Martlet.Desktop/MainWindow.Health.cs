@@ -467,17 +467,20 @@ public partial class MainWindow
                   (hostsDown > 0 ? $", {hostsDown} not" : hostsAnswering < others ? ", others not checked yet" : "") +
                   (hostsOld > 0 ? $", {hostsOld} need updates" : ""),
             () => Navigate(NavDevices)));
-        if (toolServers.Count > 0 || mcpTools.ConfigurationError is not null)
+        var terminalOn = mcpTools.Terminal.Enabled;
+        if (toolServers.Count > 0 || mcpTools.ConfigurationError is not null || terminalOn)
         {
             var enabled = toolServers.Count(s => !s.Disabled);
             var failedTools = toolStatus.Count(s => s.State == Martlet.Mcp.Client.McpServerState.Failed);
             var ready = toolStatus.Count(s => s.State == Martlet.Mcp.Client.McpServerState.Ready);
+            var terminalNote = !terminalOn ? "" : toolServers.Count == 0 ? "Terminal on" : ", terminal on";
             tiles.Add(new("tools", "Tools", TabGlyph(CompanionTab.Tools),
-                mcpTools.ConfigurationError is not null || failedTools > 0 ? NodeHealth.Attention : ready > 0 ? NodeHealth.Ready : NodeHealth.Unknown,
-                mcpTools.ConfigurationError is not null ? "Tool setup can't be read"
-                    : failedTools > 0 ? $"{failedTools} of {enabled} server{(enabled == 1 ? "" : "s")} not working"
-                    : ready > 0 ? $"{ready} of {enabled} server{(enabled == 1 ? "" : "s")} ready"
-                    : $"{enabled} server{(enabled == 1 ? "" : "s")}, start when you talk",
+                mcpTools.ConfigurationError is not null || failedTools > 0 ? NodeHealth.Attention : ready > 0 || terminalOn ? NodeHealth.Ready : NodeHealth.Unknown,
+                mcpTools.ConfigurationError is not null ? "Tool setup can't be read" + (terminalOn ? "; terminal on" : "")
+                    : toolServers.Count == 0 ? terminalNote
+                    : (failedTools > 0 ? $"{failedTools} of {enabled} server{(enabled == 1 ? "" : "s")} not working"
+                        : ready > 0 ? $"{ready} of {enabled} server{(enabled == 1 ? "" : "s")} ready"
+                        : $"{enabled} server{(enabled == 1 ? "" : "s")}, start when you talk") + terminalNote,
                 () => OpenCompanion(CompanionTab.Tools)));
         }
         tiles.Add(new("updates", "Updates", "\uE895",

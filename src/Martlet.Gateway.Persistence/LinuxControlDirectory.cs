@@ -49,6 +49,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The settings the owner's computers share, including their API keys (not part of the approved configuration).</summary>
     internal const string SharedSettings = "shared-settings.json", SharedSettingsStaging = "shared-settings.staging";
     internal const int MaximumSharedSettingsBytes = Martlet.Core.Sync.SharedSettings.MaximumBytes;
+    /// <summary>Everything Martlet remembers, the same on the owner's computers (not part of the approved configuration).</summary>
+    internal const string Memories = "memories.json", MemoriesStaging = "memories.staging";
+    internal const int MaximumMemoriesBytes = Martlet.Core.Sync.SharedMemories.MaximumBytes;
     internal uint UserId => fs.UserId;
     internal uint GroupId => fs.GroupId;
 
@@ -108,7 +111,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys or SharedSettings) &&
+        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
@@ -276,6 +279,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces shared-settings.json (0600, service owner).</summary>
     internal void WriteSharedSettings(byte[] bytes) => ReplaceRecovering(SharedSettings, SharedSettingsStaging, bytes, MaximumSharedSettingsBytes);
+
+    /// <summary>Atomically replaces memories.json (0600, service owner).</summary>
+    internal void WriteMemories(byte[] bytes) => ReplaceRecovering(Memories, MemoriesStaging, bytes, MaximumMemoriesBytes);
 
     /// <summary>Removes network.json (martlet-host network-reset), so the host is in no Martlet network.</summary>
     internal bool RemoveNetwork()

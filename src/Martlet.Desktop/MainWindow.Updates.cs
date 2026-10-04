@@ -4,7 +4,9 @@ using System.IO;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Installation;
 using Martlet.Core.Nodes;
 
 namespace Martlet.Desktop;
@@ -133,7 +135,7 @@ public partial class MainWindow
         var every = UpdatePreferences.Describe(updatePreferences.IntervalMinutes);
         var text = updateChecksEnabled
             ? $"Martlet {Version}. Checks every {every} while Martlet runs" +
-              (updatePreferences.AutoInstall ? " and installs updates automatically." : ". You choose when to install.")
+              (updatePreferences.AutoInstall ? " and installs updates as soon as they're downloaded." : ". You choose when to install.")
             : $"Martlet {Version}. Automatic checks are off. Use Check for updates any time.";
         if (updatePreferences.AutoUpdateHosts) text += $" Paired hosts update every {every}.";
         return text;
@@ -166,7 +168,7 @@ public partial class MainWindow
             InstallNow(unattended: false);
             return;
         }
-        if (AutoInstallReady && IsIdleForUpdate())
+        if (AutoInstallReady && CanInstallNow())
         {
             InstallNow(unattended: true);
             return;
@@ -188,7 +190,7 @@ public partial class MainWindow
     private void ShowInstallWaiting()
     {
         if (readyUpdate is not { } ready) return;
-        installWaitingText = $"Martlet {ready.Update.Version.ToString(3)} is downloaded. It installs when Martlet is idle or when you exit." +
+        installWaitingText = $"Martlet {ready.Update.Version.ToString(3)} is downloaded and installs as soon as Martlet isn't busy." +
             (InstallBlocker() is { } why ? $" Waiting: {why}." : "");
         UpdateStatusText.Text = installWaitingText;
     }
@@ -216,7 +218,7 @@ public partial class MainWindow
                 await DownloadUpdateAsync();
             if (AutoInstallReady && readyUpdate is { } ready && !closing)
             {
-                if (IsIdleForUpdate())
+                if (CanInstallNow())
                 {
                     InstallNow(unattended: true);
                     return;
@@ -236,20 +238,22 @@ public partial class MainWindow
         : conversation?.IsRunning == true ? "The conversation"
         : null;
 
-    /// <summary>What installing an update now would interrupt, in words, or null when Martlet may close for it: you, the
-    /// character or a conversation, and work Martlet does for you or for your other computers (setup tasks, host updates,
-    /// a command another computer sent, an update check or download). <paramref name="asked"/>: the install is what a
-    /// martlet.update command from another computer is doing, so that command doesn't count as work in the way.</summary>
+    /// <summary>What installing an update now would cut short, in words, or null when Martlet may close for it: a reply or
+    /// something you are saying, a question waiting for your answer, and work Martlet does for you or for your other computers
+    /// (setup tasks, host updates, a command another computer sent, an update check or download, anything else exiting would
+    /// interrupt). Martlet's window being in front, its other windows, the character and listening don't hold an update back:
+    /// Martlet restarts into it within moments, with the character and listening as they were.
+    /// <paramref name="asked"/>: the install is what a martlet.update command from another computer is doing, so that command
+    /// doesn't count as work in the way.</summary>
     private string? InstallBlocker(bool asked = false) =>
         closing ? "Martlet is closing"
         : saving ? "Martlet is saving your changes"
-        : avatar.IsShowing ? "the character is showing"
-        : conversation?.IsRunning == true ? "a conversation is running"
+        : conversation?.Replying == true ? "Martlet is replying"
+        : openConversation?.HearingYou == true ? "you're talking to Martlet"
+        : ComponentDispatcher.IsThreadModal ? "a Martlet question is waiting for your answer"
         : HostWorkBlocker(asked) is { } work ? work
         : updateBusy ? "an update check or download is running"
         : !asked && nodeAgentBusy ? "Martlet is checking for commands from your other computers"
-        : OwnedWindows.Count > 0 ? "a Martlet window is open"
-        : IsActive ? "you're using Martlet"
         // Anything else exiting would cut short, so an unattended install never has to ask on the way out.
         : ExitInterruptions(asked) is [var interrupted, ..] ? char.ToLowerInvariant(interrupted[0]) + interrupted[1..]
         : null;
@@ -262,7 +266,7 @@ public partial class MainWindow
         : !asked && nodeCommandRunning is { } command ? $"Martlet is running {NodeCommandAgent.Describe(command)}"
         : null;
 
-    private bool IsIdleForUpdate(bool asked = false) => InstallBlocker(asked) is null;
+    private bool CanInstallNow(bool asked = false) => InstallBlocker(asked) is null;
 
     private void UpdateCheckSetting_Changed(object sender, RoutedEventArgs e)
     {
@@ -275,6 +279,7 @@ public partial class MainWindow
             if (!enabled) updateCheckCancellation?.Cancel();
             ShowUpdateControls();
             UpdateStatusText.Text = DescribeUpdateSettings();
+            QueueSettingsSync();
             if (enabled) RunUpdateCycleAsync().Forget();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -302,6 +307,7 @@ public partial class MainWindow
             updatePreferences = next;
             ShowUpdateControls();
             UpdateStatusText.Text = DescribeUpdateSettings();
+            QueueSettingsSync();
             if (startNow) RunUpdateCycleAsync().Forget();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -317,6 +323,29 @@ public partial class MainWindow
     }
 
     private async void CheckForUpdates_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(background: false);
+
+    /// <summary>Uses the update choices made on another of the owner's computers (Martlet updates the same way everywhere).</summary>
+    private void ApplySharedUpdates(bool checks, UpdatePreferences next)
+    {
+        if (store is null) return;
+        if (checks != updateChecksEnabled) UpdateCheckPreferences.Save(store.DataDirectory, checks);
+        if (next != updatePreferences) UpdatePreferences.Save(store.DataDirectory, next);
+        var startNow = checks && !updateChecksEnabled || next.AutoInstall && !updatePreferences.AutoInstall ||
+            next.AutoUpdateHosts && !updatePreferences.AutoUpdateHosts;
+        if (!checks) updateCheckCancellation?.Cancel();
+        updateChecksEnabled = checks;
+        updatePreferences = next;
+        changingUpdateChoice = true;
+        AutomaticUpdateCheck.IsChecked = updateChecksEnabled;
+        AutomaticUpdateInstall.IsChecked = updatePreferences.AutoInstall;
+        AutomaticHostUpdate.IsChecked = updatePreferences.AutoUpdateHosts;
+        UpdateIntervalChoice.SelectedItem = UpdateIntervalChoice.Items.OfType<ComboBoxItem>()
+            .First(item => (int)item.Tag == updatePreferences.IntervalMinutes);
+        changingUpdateChoice = false;
+        ShowUpdateControls();
+        UpdateStatusText.Text = DescribeUpdateSettings();
+        if (startNow && started) RunUpdateCycleAsync().Forget();
+    }
 
     /// <summary>Waits until no update check or download is under way (the periodic one, or one you started), so work that
     /// needs one joins it instead of finding Martlet busy and giving up.</summary>
@@ -341,7 +370,8 @@ public partial class MainWindow
         try
         {
             using var http = GitHubReleaseClient.CreateHttpClient();
-            var result = await new GitHubReleaseClient(http).CheckAsync(typeof(App).Assembly.GetName().Version!, cancellation.Token);
+            var result = SimulatedAppUpdate.Update ??
+                await new GitHubReleaseClient(http).CheckAsync(typeof(App).Assembly.GetName().Version!, cancellation.Token);
             if (closing || cancellation.IsCancellationRequested) return;
             availableUpdate = result;
             if (readyUpdate is { } ready && ready.Update.Version != result?.Version) readyUpdate = null;
@@ -389,7 +419,9 @@ public partial class MainWindow
         try
         {
             using var http = GitHubReleaseClient.CreateHttpClient();
-            var path = await AppUpdateInstaller.DownloadAsync(new GitHubReleaseClient(http), update, store.DataDirectory, cancellation.Token);
+            var path = SimulatedAppUpdate.Update?.Version == update.Version
+                ? SimulatedAppUpdate.Write(store.DataDirectory, update)
+                : await AppUpdateInstaller.DownloadAsync(new GitHubReleaseClient(http), update, store.DataDirectory, cancellation.Token);
             readyUpdate = (path, update);
             if (!closing) UpdateStatusText.Text = $"Martlet {update.Version.ToString(3)} is ready to install.";
         }
@@ -450,11 +482,23 @@ public partial class MainWindow
         if (readyUpdate is not { } ready || closing) return;
         var version = ready.Update.Version.ToString(3);
         installOnExit = (ready.Path, ready.Update.Version, true, unattended);
+        resumeAfterInstall = (avatar.IsShowing, openConversation is { HandsFree: true, ListeningStarted: true, Paused: false });
+        ErrorLog.Info($"Installing Martlet {version} {(unattended ? "automatically, with no installer window" : "as you confirmed")}. " +
+            "Martlet closes and restarts into it" + (resumeAfterInstall switch
+            {
+                (true, true) => ", showing the character and listening again.",
+                (true, false) => ", showing the character again.",
+                (false, true) => ", listening again.",
+                _ => "."
+            }));
         UpdateStatusText.Text = ActionText.Text = unattended
             ? $"Installing Martlet {version} in the background, with no installer window. Martlet restarts by itself when it's done."
             : $"Installing Martlet {version}. Martlet will restart when it's done.";
         ExitMartlet();
     }
+
+    /// <summary>What to pick up again after the restart into an update: the character showing, always listening.</summary>
+    private (bool Character, bool Listening) resumeAfterInstall;
 
     /// <summary>At exit: runs the requested install, or a downloaded automatic update without restarting Martlet.</summary>
     private void LaunchPendingInstall()
@@ -462,15 +506,50 @@ public partial class MainWindow
         if (store is null) return;
         var install = installOnExit ?? (AutoInstallReady && readyUpdate is { } ready ? (ready.Path, ready.Update.Version, false, false) : null);
         if (install is not { } run) return;
+        var updates = AppUpdateInstaller.UpdatesDirectory(store.DataDirectory);
         try
         {
+            if (run.Relaunch) AppUpdateResume.Save(updates, resumeAfterInstall.Character, resumeAfterInstall.Listening, DateTimeOffset.UtcNow);
             AppUpdateInstaller.Launch(run.Installer, run.Version, store.DataDirectory, run.Relaunch, run.Unattended,
                 (Application.Current as App)?.DataDirectoryArgument, inTray);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
         {
             ErrorLog.Warn($"Could not start installing Martlet {run.Version.ToString(3)}", error);
+            try { AppUpdateResume.Discard(updates); }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    /// <summary>After restarting into an update: shows the character and starts listening again when they were on as Martlet
+    /// closed for it (unless Show at startup or Settings' startup choice already did). A note older than a few minutes, from an
+    /// install that didn't restart Martlet, is ignored.</summary>
+    private async Task ResumeAfterUpdateAsync()
+    {
+        if (store is null) return;
+        (bool Character, bool Listening)? resume;
+        try { resume = AppUpdateResume.Take(AppUpdateInstaller.UpdatesDirectory(store.DataDirectory), DateTimeOffset.UtcNow); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn("Couldn't read what to pick up again after the update", error);
+            return;
+        }
+        if (resume is not { } again || closing) return;
+        if (Role != DeviceRole.Companion)
+        {
+            ErrorLog.Info("Martlet restarted after its update as a Martlet host, so the character and listening stay off on this PC.");
+            return;
+        }
+        if (again.Character && !avatar.IsShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+        if (closing) return;
+        if (again.Listening && Talk.HandsFree && openConversation is not { ListeningStarted: true }) StartListening();
+        var picked = (again.Character, again.Listening) switch
+        {
+            (true, true) => "showing the character and listening",
+            (true, false) => "showing the character",
+            _ => "listening"
+        };
+        ErrorLog.Info($"Martlet restarted after its update and is {picked} again, as before the update.");
     }
 
     private void ReviewUpdate_Click(object sender, RoutedEventArgs e)

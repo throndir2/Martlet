@@ -15,8 +15,11 @@ internal enum ToolApprovalChoice { Deny, AllowOnce, AlwaysAllow }
 /// autoApprove, then asking with Always allow offered); AskEveryTime asks without offering Always allow; Deny blocks.</summary>
 internal enum ToolApprovalPolicy { Default, AutoApprove, AskEveryTime, Deny }
 
-/// <summary>A tool call waiting for the user's answer in the talk window. Unanswered requests are declined.</summary>
-internal sealed class ToolApprovalRequest(string server, string tool, string arguments, DateTimeOffset expires, bool allowAlways = true)
+/// <summary>A tool call waiting for the user's answer in the talk window. Unanswered requests are declined. <paramref name="title"/>
+/// and <paramref name="question"/> replace the default "Allow this tool?" heading and "Allow tool from server?" line (the
+/// terminal asks to run its command), and <paramref name="label"/> is what the talk window's status line calls the call.</summary>
+internal sealed class ToolApprovalRequest(string server, string tool, string arguments, DateTimeOffset expires, bool allowAlways = true,
+    string? title = null, string? question = null, string? label = null)
 {
     private readonly TaskCompletionSource<ToolApprovalChoice> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal string Server { get; } = server;
@@ -26,6 +29,9 @@ internal sealed class ToolApprovalRequest(string server, string tool, string arg
     internal DateTimeOffset Expires { get; } = expires;
     /// <summary>Whether Always allow is offered (never for managed servers or calls their owner wants asked every time).</summary>
     internal bool AllowAlways { get; } = allowAlways;
+    internal string Title { get; } = title ?? "Allow this tool?";
+    internal string Question { get; } = question ?? $"Allow {tool} from {server}? It can use this PC with your permissions.";
+    internal string Label { get; } = label ?? tool;
     internal Task<ToolApprovalChoice> Answer => answer.Task;
     internal void Resolve(ToolApprovalChoice choice) => answer.TrySetResult(choice);
     public override string ToString() => $"{nameof(ToolApprovalRequest)} {Server}/{Tool}";
@@ -36,11 +42,14 @@ internal sealed record ToolActivity(DateTimeOffset At, string Server, string Too
 
 /// <summary>The MCP servers Martlet may call while you talk: the user's mcp.json in the data directory plus servers other
 /// Martlet features manage (<see cref="SetManagedServer"/>), one session per enabled server (started only when a
-/// conversation or the Tools page needs them), per-call confirmations and a short in-memory log. Tools are offered only to
-/// user-started replies, never to screen glances or memory requests.</summary>
+/// conversation or the Tools page needs them), Martlet's own terminal when it is turned on (<see cref="Terminal"/>, off by
+/// default), per-call confirmations and a short in-memory log. Tools are offered only to user-started replies, never to screen
+/// glances or memory requests.</summary>
 internal sealed class McpToolService : IAsyncDisposable
 {
     internal const string FileName = "mcp.json";
+    /// <summary>How the terminal appears in confirmations and the tool log.</summary>
+    internal const string TerminalName = "Terminal";
     internal const int LogLength = 40;
     internal static TimeSpan ApprovalTimeout => TimeSpan.FromSeconds(60);
     internal static TimeSpan CallTimeout => TimeSpan.FromSeconds(60);
@@ -49,7 +58,9 @@ internal sealed class McpToolService : IAsyncDisposable
     private readonly LinkedList<ToolActivity> log = new();
     private readonly HashSet<string> unsupportedModels = new(StringComparer.Ordinal);
     private readonly TimeProvider clock;
+    private readonly string? dataDirectory;
     private McpConfiguration configuration = McpConfiguration.Empty;
+    private TerminalSettings terminal;
     private readonly Dictionary<string, (McpServerDefinition Definition, Func<string, JsonObject, ToolApprovalPolicy>? Policy)> managed =
         new(StringComparer.Ordinal);
     private ToolApprovalRequest? pending;
@@ -58,8 +69,10 @@ internal sealed class McpToolService : IAsyncDisposable
     internal McpToolService(string? dataDirectory, TimeProvider? clock = null, IMcpSecretStore? secrets = null)
     {
         this.clock = clock ?? TimeProvider.System;
+        this.dataDirectory = dataDirectory;
         FilePath = dataDirectory is null ? null : Path.Combine(dataDirectory, FileName);
         Secrets = secrets ?? (FilePath is null || !OperatingSystem.IsWindows() ? null : new WindowsMcpSecrets(FilePath));
+        terminal = TerminalSettings.Load(dataDirectory);
         Hub = new("martlet", AppVersions.Current, this.clock);
         Hub.Changed += () => Changed?.Invoke();
     }
@@ -86,6 +99,32 @@ internal sealed class McpToolService : IAsyncDisposable
     }
 
     internal bool HasEnabledServers => Servers.Any(s => !s.Disabled);
+
+    /// <summary>Whether replies may get tools: an enabled server or the terminal.</summary>
+    internal bool HasTools => Terminal.Enabled || HasEnabledServers;
+
+    /// <summary>Companion › Tools › Terminal on this PC (terminal.json; off by default).</summary>
+    internal TerminalSettings Terminal { get { lock (gate) return terminal; } }
+
+    /// <summary>Saves the terminal settings; false (and nothing changes) when the data folder can't be written. A reply that
+    /// is already running uses the new settings for its next command.</summary>
+    internal bool SetTerminal(TerminalSettings next)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        next = next.Normalized();
+        lock (gate)
+        {
+            if (disposed) return false;
+            if (terminal == next) return true;
+        }
+        if (!next.Save(dataDirectory)) return false;
+        lock (gate) terminal = next;
+        ErrorLog.Info($"Terminal settings: {(next.Enabled ? "on" : "off")}, {TerminalRunner.Name(next.Shell)}, " +
+            $"{(next.AskFirst ? "asks before every command" : "runs commands without asking")}, {next.TimeLimitSeconds} s limit, " +
+            $"{(next.CustomFolder ? "a chosen start folder" : "starts in the home folder")}.");
+        Changed?.Invoke();
+        return true;
+    }
 
     /// <summary>Every server Martlet runs: mcp.json's, then managed ones whose name mcp.json doesn't already use.</summary>
     internal IReadOnlyList<McpServerDefinition> Servers
@@ -284,13 +323,20 @@ internal sealed class McpToolService : IAsyncDisposable
         Changed?.Invoke();
     }
 
-    /// <summary>The tools of every running server, for one reply. Waits briefly for servers that are still starting.</summary>
+    /// <summary>The tools of every running server and the terminal when it is on, for one reply. Waits briefly for servers that
+    /// are still starting; the terminal alone needs no wait.</summary>
     internal async Task<DesktopToolset?> PrepareAsync(CancellationToken token)
     {
-        if (!HasEnabledServers) return null;
-        EnsureStarted();
-        var statuses = await Hub.WaitForStartupAsync(StartupWait, token).ConfigureAwait(false);
-        return DesktopToolset.Build(this, statuses.Where(s => s.State == McpServerState.Ready && !s.Definition.Disabled));
+        var shell = Terminal is { Enabled: true } on ? on : null;
+        IReadOnlyList<McpServerStatus> ready = [];
+        if (HasEnabledServers)
+        {
+            EnsureStarted();
+            var statuses = await Hub.WaitForStartupAsync(StartupWait, token).ConfigureAwait(false);
+            ready = [.. statuses.Where(s => s.State == McpServerState.Ready && !s.Definition.Disabled)];
+        }
+        else if (shell is null) return null;
+        return DesktopToolset.Build(this, ready, shell);
     }
 
     internal bool AutoApproves(McpServerDefinition server, string tool)
@@ -300,9 +346,9 @@ internal sealed class McpToolService : IAsyncDisposable
     }
 
     internal async Task<ToolApprovalChoice> RequestApprovalAsync(string server, string tool, string arguments, CancellationToken token,
-        bool allowAlways = true)
+        bool allowAlways = true, string? title = null, string? question = null, string? label = null)
     {
-        var request = new ToolApprovalRequest(server, tool, arguments, clock.GetUtcNow() + ApprovalTimeout, allowAlways);
+        var request = new ToolApprovalRequest(server, tool, arguments, clock.GetUtcNow() + ApprovalTimeout, allowAlways, title, question, label);
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
@@ -398,17 +444,20 @@ internal sealed class WindowsMcpSecrets(string filePath) : IMcpSecretStore
 }
 
 /// <summary>The tools offered to one reply and how to run them. Tool names are made safe for function calling and unique
-/// across servers (prefixed with the server's name when two servers share one).</summary>
+/// across servers (prefixed with the server's name when two servers share one). The terminal, when on, comes first and keeps
+/// its name (<see cref="TerminalTool.Name"/>).</summary>
 internal sealed class DesktopToolset : IConversationToolHost
 {
     private readonly McpToolService service;
     private readonly IReadOnlyDictionary<string, (McpServerDefinition Server, McpTool Tool)> map;
+    private readonly bool terminal;
 
     private DesktopToolset(McpToolService service, IReadOnlyList<TextToolDefinition> definitions,
-        IReadOnlyDictionary<string, (McpServerDefinition, McpTool)> map, int skipped, IReadOnlyList<string> servers)
+        IReadOnlyDictionary<string, (McpServerDefinition, McpTool)> map, int skipped, IReadOnlyList<string> servers, bool terminal)
     {
         this.service = service;
         this.map = map;
+        this.terminal = terminal;
         Definitions = definitions;
         Skipped = skipped;
         Servers = servers;
@@ -419,7 +468,7 @@ internal sealed class DesktopToolset : IConversationToolHost
     internal int Skipped { get; }
     internal IReadOnlyList<string> Servers { get; }
 
-    internal static DesktopToolset? Build(McpToolService service, IEnumerable<McpServerStatus> ready)
+    internal static DesktopToolset? Build(McpToolService service, IEnumerable<McpServerStatus> ready, TerminalSettings? terminal = null)
     {
         var servers = ready.ToArray();
         var counts = servers.SelectMany(s => s.Tools.Select(t => SafeName(t.Name)))
@@ -427,12 +476,19 @@ internal sealed class DesktopToolset : IConversationToolHost
         var definitions = new List<TextToolDefinition>();
         var map = new Dictionary<string, (McpServerDefinition, McpTool)>(StringComparer.Ordinal);
         int bytes = 0, skipped = 0;
+        if (terminal is not null)
+        {
+            var shell = new TextToolDefinition(TerminalTool.Name, TerminalTool.Description(terminal), TerminalTool.ParametersJson);
+            bytes += shell.Utf8Bytes;
+            definitions.Add(shell);
+        }
+        bool Taken(string name) => map.ContainsKey(name) || terminal is not null && name == TerminalTool.Name;
         foreach (var status in servers)
             foreach (var tool in status.Tools)
             {
                 var name = SafeName(tool.Name);
-                if (counts[name] > 1 || map.ContainsKey(name)) name = SafeName(status.Name + "_" + tool.Name);
-                if (map.ContainsKey(name)) name = SafeName(name + "_" + Hash(status.Name + "/" + tool.Name));
+                if (counts[name] > 1 || Taken(name)) name = SafeName(status.Name + "_" + tool.Name);
+                if (Taken(name)) name = SafeName(name + "_" + Hash(status.Name + "/" + tool.Name));
                 TextToolDefinition definition;
                 try { definition = new(name, Describe(tool), Schema(tool.InputSchema)); }
                 catch (Martlet.Core.Contracts.ContractException) { skipped++; continue; }
@@ -446,11 +502,12 @@ internal sealed class DesktopToolset : IConversationToolHost
                 map[name] = (status.Definition, tool);
             }
         return definitions.Count == 0 ? null : new(service, definitions, map, skipped,
-            map.Values.Select(v => v.Item1.Name).Distinct().ToArray());
+            map.Values.Select(v => v.Item1.Name).Distinct().ToArray(), terminal is not null);
     }
 
     public async ValueTask<ConversationToolResult> CallAsync(TextToolCall call, CancellationToken token)
     {
+        if (terminal && call.Name == TerminalTool.Name) return await RunCommandAsync(call, token).ConfigureAwait(false);
         if (!map.TryGetValue(call.Name, out var target))
         {
             service.Record("?", call.Name, "unknown tool", "", true);
@@ -501,6 +558,67 @@ internal sealed class DesktopToolset : IConversationToolHost
             service.Record(server.Name, tool.Name, "failed: " + error.Message, Preview(shown), true);
             return new($"The tool failed: {error.Message}", true);
         }
+    }
+
+    /// <summary>One terminal command: with the terminal's settings as they are now (turning it off or asking first applies to a
+    /// reply already running), asked first unless the user turned that off (Allow once or Deny; never Always allow), then run
+    /// hidden. The desktop log notes each run without the command or its output.</summary>
+    private async ValueTask<ConversationToolResult> RunCommandAsync(TextToolCall call, CancellationToken token)
+    {
+        const string server = McpToolService.TerminalName, tool = "command";
+        string? command = null;
+        try
+        {
+            if (JsonNode.Parse(call.ArgumentsJson) is JsonObject arguments && arguments["command"] is JsonValue value &&
+                value.TryGetValue<string>(out var text))
+                command = text;
+        }
+        catch (JsonException) { }
+        if (command is null)
+        {
+            service.Record(server, tool, "invalid arguments", Preview(call.ArgumentsJson), true);
+            return new("Pass one JSON object with the command as a string, like {\"command\": \"Get-Date\"}.", true);
+        }
+        var settings = service.Terminal;
+        if (!settings.Enabled)
+        {
+            service.Record(server, tool, "blocked: the terminal is off", Preview(command), false);
+            return new("The user turned the terminal off in Companion › Tools. Tell them it's off; don't retry.", true);
+        }
+        if (TerminalRunner.Check(settings.Shell, command) is { } invalid)
+        {
+            service.Record(server, tool, "not run: " + invalid, Preview(command), true);
+            return new(invalid, true);
+        }
+        var shell = TerminalRunner.Name(settings.Shell);
+        if (settings.AskFirst)
+        {
+            var shown = (command.Length <= 1200 ? command : command[..1200] + "\n...") + "\n\nStarts in " + settings.StartFolder;
+            var choice = await service.RequestApprovalAsync(server, tool, shown, token, allowAlways: false, title: "Run this command?",
+                question: $"Martlet wants to run this in {shell}, on this PC as you.", label: "the command").ConfigureAwait(false);
+            if (choice == ToolApprovalChoice.Deny)
+            {
+                service.Record(server, tool, "declined", Preview(command), false);
+                ErrorLog.Info($"Terminal: a command for {shell} was declined (or not answered in time).");
+                return new("The user declined this command (or didn't answer in time). Don't run it again unless they ask; answer without it.", true);
+            }
+        }
+        TerminalRun run;
+        try { run = await TerminalRunner.RunAsync(settings, command, token).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            service.Record(server, tool, "stopped with the reply", Preview(command), true);
+            ErrorLog.Info($"Terminal: a {shell} command was stopped because the reply stopped.");
+            throw;
+        }
+        var outcome = run.Problem is { } problem ? "couldn't run: " + problem
+            : run.TimedOut ? $"stopped at the {settings.TimeLimitSeconds} s limit" : $"ran, exit code {run.ExitCode}";
+        service.Record(server, tool, outcome, Preview(command), !run.Succeeded);
+        ErrorLog.Info(run.Problem is not null ? $"Terminal: a {shell} command couldn't run: {run.Problem}"
+            : $"Terminal: ran a {shell} command{(settings.AskFirst ? " you allowed" : "")} " +
+              $"({(run.TimedOut ? $"stopped at the {settings.TimeLimitSeconds} s limit" : $"exit code {run.ExitCode}")}, " +
+              $"{run.Elapsed.TotalSeconds:0.0} s, {run.Output.Length} characters of output{(run.Cut ? ", cut" : "")}).");
+        return new(TerminalRunner.Report(run, settings), !run.Succeeded);
     }
 
     internal static string SafeName(string name)

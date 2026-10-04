@@ -75,7 +75,9 @@ sets XTTS-v2 up on the shown computer (this PC, or the one picked under Another
 of your computers) after a confirmation naming its non-commercial licence, then
 switches Speaking to it; the engine it replaces stops. The choice is kept in
 `speaking-engine.txt`. The speaking route records the engine's route, and the
-speech client asks the host for that route and model. The Devices map lists both
+speech client asks the host for that route and model. Your other computers
+that speak through the same host follow the engine it runs now on their next
+check ([CLUSTER](CLUSTER.md#edge-cases)). The Devices map lists both
 roles ("Speaking (F5-TTS)", "Speaking (XTTS-v2)").
 
 ## Verification

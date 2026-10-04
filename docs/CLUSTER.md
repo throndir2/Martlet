@@ -1,15 +1,42 @@
-# Shared "who does what", shared settings and failover
+# One Martlet on all your computers
 
-Martlet is one companion with many computers attached. It keeps **who does
-what** (which computer handles thinking, listening, speaking and lip-sync) and
-**its settings** (how it thinks, listens and speaks with your API keys, its
-character, personality and replies; see
-[One Martlet on every computer](#one-martlet-on-every-computer)) the same on
-every computer you own, moves jobs between computers on the spot, and moves a
-job to another host when its host stops answering. Sync is **on by default**
-(turn it off in **Devices > Settings for all devices > Keep Martlet the same on
-all my computers**); failover stays a per-job **Fail over to another host**
-choice.
+Martlet is **one app that lives on all your computers**. Install it on another
+PC and it is the same Martlet: the same companion with the same personality,
+settings, memories, people, voices and characters, the same Home Assistant and
+the same API keys. Each computer is either a **companion PC** (where you talk
+to Martlet) or a **host PC** (it lends its graphics card), and you can switch a
+computer between the two in one click. Adding a host to your
+[Martlet network](NETWORK.md) adds what it can do (thinking, listening,
+speaking, lip-sync, Home Assistant, collecting logs) to the whole app; jobs move
+between hosts on the spot and fail over when a host stops answering.
+
+What differs from one computer to the next is only what belongs to that
+computer itself: its microphone, speakers and cameras, its screens (where the
+character and its speech bubble sit), whether it is a companion or a host PC,
+how it starts, what it installed (Ollama models, Parakeet, a whisper package,
+Windows voices, MCP servers, the terminal it may use) and its own security
+choices. See
+[What stays with each computer](#what-stays-with-each-computer).
+
+Everything travels through your paired hosts: each keeps a private copy and
+hands it only to your paired computers over their pinned, signed connection.
+Hosts never talk to each other, so desktops carry changes between them. It is
+**on by default**; one switch, **Devices > Settings for all devices > Keep
+Martlet the same on all my computers**, turns all of it off (each computer then
+keeps its own choices and memories, and a change made meanwhile is shared, with
+its time, when you turn it on again). Failover stays a per-job **Fail over to
+another host** choice.
+
+| The same on every computer | How it travels | Details |
+| --- | --- | --- |
+| Who does each job (thinking, listening, speaking, lip-sync) and the log host | The cluster plan | [Model](#model) |
+| How Martlet thinks, listens and speaks with the API keys, the Thinking fallback, the personality, replies, prompts, memory on or off, lorebooks, the character and its emotes and motions, how you talk, speech bubbles and subtitles, the theme, recognizing voices, Voice ID, what Martlet may do with Home Assistant, app updates | Shared settings | [One Martlet on every computer](#one-martlet-on-every-computer) |
+| What Martlet remembers | Shared memories | [MEMORY](MEMORY.md#one-memory-on-every-computer) |
+| The people and voices Martlet recognizes | The shared voice list | [The shared voice list](#the-shared-voice-list) |
+| The voices Martlet speaks with and their recordings | Shared speaking voices | [The shared speaking voices](#the-shared-speaking-voices) |
+| Your characters (Live2D and VRM models) | Shared character models | [The shared character models](#the-shared-character-models) |
+| The Home Assistant connection | Shared Home Assistant | [The shared Home Assistant connection](#the-shared-home-assistant-connection) |
+| Which computers belong, API keys for other apps, commands between computers, logs | Always on: the [network](NETWORK.md), [API keys](API.md), [commands](#commands-between-your-computers), [log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) | Security and diagnostics, not settings |
 
 ## Model
 
@@ -113,6 +140,7 @@ row says where it came from.
 | Change made on another desktop | Followed within a check; the status line names the computer that chose it |
 | Planned host not paired with this PC | This PC keeps its current route and its row says to pair that host here; the shared plan is not overwritten. A host of your [Martlet network](NETWORK.md) is paired by itself within a minute, so this lasts only until then |
 | Speaking moves to another F5 host | The applied reference voice is reused (same `f5-host` destination), and the new host already holds its recording ([shared speaking voices](#the-shared-speaking-voices)). A desktop without a voice keeps its route and asks you to add one |
+| Another computer switches the voice engine on the speaking host | A host runs one voice engine at a time, so the engine Speaking used there stops. Every other computer follows the engine the host runs now on its next check (its own engine choice, `speaking-engine.txt`, follows too) and keeps the voice chosen on all computers, so all of them speak with the same engine. Failover then looks for another host with that engine |
 | Host model differs | The new route records the model the host advertises; the failover confirmation says the model may differ |
 | Host older than cluster sync | Still usable and a failover candidate; it keeps no copy, and the status line suggests **Update host** |
 | New host paired | It receives the plan and appears as a node on the next check |
@@ -143,16 +171,36 @@ NVIDIA Build and its old key.
 | `thinking`, `listening`, `speaking` | The route a job uses when no paired host does it: provider (OpenAI, OpenRouter, NVIDIA Build or any OpenAI-compatible server, Ollama on the computer itself, Windows speech, Parakeet), model, voice and **the API key** | Host routes and pairings (the plan above); a local whisper package |
 | `thinking-fallback` | The *If Thinking fails* endpoint, model and its own key (or none) | |
 | `companion` | The personalities (same IDs, so lorebooks stay linked) and which one is used | |
-| `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off | Where memory is stored, and the memories themselves |
+| `replies`, `prompts`, `memory` | Reply settings, edited prompts, memory on or off (the memories themselves travel as [shared memories](MEMORY.md#one-memory-on-every-computer)) | Where memory is stored on this PC |
 | `lorebooks` | Every lorebook and the scan settings (up to 1 MiB) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
-| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras, Voice ID, echo reduction, hearing what the PC plays |
-| `speech-display`, `appearance` | Speech bubbles and subtitles, the theme | |
-| `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere and not counted as a shared setting | |
+| `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
+| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
+| `speech-display` | Whether speech bubbles and subtitles show | Where the bubble sits (beside the character or in one place, and its offsets): it depends on this PC's screens |
+| `appearance` | The theme | |
+| `voice-recognition` | Whether Martlet recognizes the people it hears (Companion › People) | |
+| `voice-id` | Voice ID on or off and the owner's voiceprint (numbers only, never audio; Companion › Listening) | |
+| `smart-home` | What Martlet may do with Home Assistant: use it when asked, locks, doors and alarms, flexible requests | |
+| `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
+| `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 
-Audio devices, the device role (companion or host PC), startup choices, MCP
-servers, updates and host pairings stay with each computer. Conversations are
-not shared.
+Conversations are not shared.
+
+### What stays with each computer
+
+These describe the computer itself, so they never travel:
+
+| Stays here | Why |
+| --- | --- |
+| Microphone, speakers, cameras, video addresses, microphone sensitivity, echo reduction, hearing what the PC plays | This PC's devices |
+| Watch my screen or a camera (on or off, what it looks at) | It captures this PC's screen or camera, so it is chosen at that screen |
+| Where the character and its speech bubble sit, and the character's zoom | This PC's screens |
+| Companion PC or host PC, the host service on it, *When Martlet starts* and closing choices, Start with Windows | What this computer is for and how it starts |
+| Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
+| Where memory is stored | A folder on this PC (the memories travel) |
+| Installed engines and models: Ollama models, Parakeet, a whisper package, Windows voices, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
+| The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
+| Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 
 ### Conflicts and offline changes
 
@@ -178,9 +226,10 @@ to *different* settings made on different computers are all kept.
   followed from elsewhere is not counted as a change made here.
 - **A setting this PC can't use yet** (a Windows voice not installed, Parakeet
   not downloaded, Ollama without the model, a character file not at the same
-  path, a job a paired host does now) keeps its current value and is tried on
-  every check; *Settings for all devices* lists it with why, and it is never
-  shared back as this PC's choice.
+  path, a job a paired host does now, Home Assistant not connected here yet,
+  emotes and motions while the Thinking model names them here) keeps its
+  current value and is tried on every check; *Settings for all devices* lists
+  it with why, and it is never shared back as this PC's choice.
 - **A failed push** is not lost: the change is in this PC's copy and goes to
   every host whose copy differs on the next check; a host that was off gets it
   when it answers again, and a restarted host serves its saved copy.
@@ -221,18 +270,32 @@ changes, offline edits on both sides, a host that missed a change and
 restarted, a stale copy, a newer Martlet's setting, a Windows voice a new
 computer lacks, a new computer, the fallback and its key, lorebooks, no keys in
 desktop files and an unsigned request refused. The desktop window's own sync
-(status, the character, how you talk, speech bubbles and theme) was checked on
-a disposable data folder through `-Desktop`. Two real computers with real paired
-hosts, a real Credential Manager across them and the Linux host's file are
-**NOT RUN**.
+(status, the character, how you talk, speech bubbles and theme; and, on a
+disposable data folder through `-Desktop` with `--allow-ui-effects`, turning on
+automatic installs and turning off recognizing voices recorded as `updates` and
+`voice-recognition` changes made on this PC) was checked through MCP. Two real
+computers with real paired hosts, a real Credential Manager across them, the
+emotes, Voice ID and smart-home sections between real computers, and the Linux
+host's file are **NOT RUN**.
+
+## The shared memories
+
+What Martlet remembers travels in its own document, one last-writer-wins entry
+per fact (forgotten facts leave tombstones): each host keeps `memories.json`
+beside `host.json` (0600, gateway service owner) and serves
+`GET /martlet/v1/memories`, `GET /martlet/v1/memories/digest` and
+`POST /martlet/v1/memories` (merge and return) to paired devices only. Desktops
+sync every 30 seconds while memory is on and Martlet is the same on all your
+computers. See [MEMORY](MEMORY.md#one-memory-on-every-computer).
 
 ## The shared voice list
 
 The voices Martlet recognizes (Companion › People) travel the same way, in
 their own document: each host keeps `voices.json` beside `cluster.json` and
 serves `GET`/`POST /martlet/v1/voices`; desktops merge every 30 seconds while
-sharing is on (its own choice, on by default, independent of the who-does-what
-sync). Each voice is a last-writer-wins entry with the same hybrid revisions;
+Martlet is the same on all your computers (the one switch above; whether
+Martlet recognizes voices at all is the `voice-recognition` shared setting).
+Each voice is a last-writer-wins entry with the same hybrid revisions;
 forgotten and merged voices leave tombstones. See [VOICES](VOICES.md#sharing-between-your-computers).
 
 ## The shared speaking voices
@@ -273,7 +336,8 @@ removed like any other ([F5 voice](F5_VOICE.md#one-voice-list-on-every-computer)
 | `GET /martlet/v1/speaking-voices/audio/<sha256>` | One recording (`reference.missing` when the host has none) |
 | `POST /martlet/v1/speaking-voices/audio/<sha256>` | Send `{"audio_base64": ...}` for a live voice; refused (`request.invalid`) for a wrong SHA-256, a recording no live voice has, or anything but a mono 16-bit PCM WAV of 1 to 30 seconds |
 
-Every 30 seconds while any host is paired (and two seconds after you add, use or
+Every 30 seconds while any host is paired and Martlet is the same on all your
+computers (and two seconds after you add, use or
 remove a voice) the desktop reads every paired host's list, merges them into
 its own, copies each recording it lacks from a host that has it (starter
 recordings come from Martlet itself), deletes removed voices' copies (not the
@@ -282,7 +346,7 @@ and sends each host every recording it lacks. Then it follows the voice chosen
 on another computer once its recording is here and the speaking engine can use
 it (an open conversation reloads when idle). Voices > *F5VoicesShared* says with
 how many computers the voices are shared. Nothing is written while no host is
-paired.
+paired or while the switch is off.
 
 A speaking request names its recording by SHA-256 (`reference_audio_base64` is
 optional); the host's gateway hands its engine the copy it keeps. A host that
@@ -359,7 +423,8 @@ complete). The built-in character is part of Martlet and never in the list.
 | `GET /martlet/v1/character-models/chunks/<sha256>` | One piece (`chunk.missing` when the host has none) |
 | `POST /martlet/v1/character-models/chunks/<sha256>` | Send `{"data_base64": ...}` for a live model; refused (`request.invalid`) for a wrong SHA-256 or a piece no live model has |
 
-Every 30 seconds while any host is paired (and two seconds after you add, use or
+Every 30 seconds while any host is paired and Martlet is the same on all your
+computers (and two seconds after you add, use or
 remove a character) the desktop reads every paired host's list, merges them into
 its own, copies the pieces of each model it lacks from hosts that have them,
 assembles and checks the model, deletes removed models' copies (not the one it
@@ -368,8 +433,10 @@ differs the merged list and sends each host every piece it lacks. A model file
 this PC showed before characters were shared joins the list on the first sync,
 and the PC then shows Martlet's copy (the same files). Companion › Character's
 `CharacterModelsShared` says with how many computers the characters are shared.
-Nothing is written while no host is paired. A host older than shared characters
-refuses with `request.invalid`; the status asks you to update it.
+Nothing is written while no host is paired or while the switch is off. A host
+older than shared characters refuses with `request.invalid`; the status asks you
+to update it. Each model's emotes and motions travel with the shared settings
+(`character-actions`), keyed by the same model ID.
 
 Checked locally with `character_models_selftest` (MCP): two real gateways and
 three simulated desktops on loopback with generated Live2D and VRM fixtures, and
@@ -381,13 +448,26 @@ are **NOT RUN**.
 
 ## The shared Home Assistant connection
 
-The Home Assistant address and long-lived access token can travel through the
-same paired-host path. Each host keeps one `home-assistant.json` beside
-`cluster.json`/`voices.json`; any paired desktop can read it and replace it via
-`GET`/`POST /martlet/v1/home-assistant`. A null address/token is a tombstone
-that stops sharing while keeping the latest revision. This document contains a
-secret: the HA token. Linux hosts keep it as a 0600 service-owner file and the
-gateway sends it only to paired devices over the pinned, signed connection.
+Home Assistant is one connection for the whole app. Each host keeps one
+`home-assistant.json` beside `cluster.json`/`voices.json`; any paired desktop
+can read it and replace it via `GET`/`POST /martlet/v1/home-assistant`, newest
+revision wins. While Martlet is the same on all your computers:
+
+- connecting Home Assistant on any computer (setup, sign-in or a pasted token)
+  gives every host that connection at once, and every other computer takes it
+  within a minute, replacing whatever it used before;
+- a computer connected before connections were shared, while no host
+  answered or while the switch was off, gives its connection to the hosts when
+  they keep none or an older one;
+- **Disconnect** writes a tombstone (a null address and token, keeping the
+  latest revision): the hosts forget the token and every computer disconnects;
+- what Martlet may do with it (use it when asked; locks, doors and alarms;
+  flexible requests) is the `smart-home` shared setting.
+
+With the switch off, a connection stays on the computer where it was made. The
+document contains a secret, the Home Assistant token: Linux hosts keep it as a
+0600 service-owner file and the gateway sends it only to paired devices over
+the pinned, signed connection. See [SMART_HOME](SMART_HOME.md).
 
 ## Commands between your computers
 
@@ -429,7 +509,7 @@ refused with `request.invalid`):
 
 | Kind | Arguments | What the agent does |
 | --- | --- | --- |
-| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed when Martlet is idle with no installer window at all, then restarts by itself, minimized, and continues; each step is in that PC's log), then the host service to Martlet's version |
+| `martlet.update` | `version` | Updates Martlet itself to at least that version from its GitHub Release (checked against GitHub's SHA-256 digest, installed as soon as no reply or other work there would be cut short, with no installer window at all, then restarts by itself, minimized, with the character and listening as they were, and continues; each step is in that PC's log), then the host service to Martlet's version |
 | `host.status` | none | `martlet-host status` |
 | `host.describe-role` | `role` | `martlet-host describe <role>` (its terms, secrets and choices, for the sender's install dialog) |
 | `host.add-role` | `role`, `choice.<VAR>`; secrets `secret.<name>` | `martlet-host add <role>` with the answers on stdin |
