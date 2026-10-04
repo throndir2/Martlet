@@ -391,6 +391,9 @@ public partial class MainWindow
             _ => CloudCard(section, job, route)
         });
 
+        // Singing uses the voices of the voice library on a computer with the singing role, wherever Speaking runs.
+        if (section == CompanionTab.Voice) page.Children.Add(SingingCard());
+
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
         // The voices the self-hosted engines copy from your recordings, wherever one can speak: this PC or another of your

@@ -52,26 +52,6 @@ public static partial class HearingModelCatalog
         return Classify(modelId);
     }
 
-    /// <summary>Whether a recording sent to this Thinking route stays on this PC: Ollama on this PC with one of its own models,
-    /// never one of Ollama's cloud models (a <c>:cloud</c> or <c>-cloud</c> tag), which it forwards to ollama.com. Another
-    /// server on loopback may forward what it gets, so it doesn't count.</summary>
-    public static bool StaysOnThisPc(SetupRouteType? routeType, string? origin, string? modelId)
-    {
-        if (routeType != SetupRouteType.ChatCompletions || origin != GenerationSupport.LocalOllamaChatBaseUrl ||
-            string.IsNullOrWhiteSpace(modelId)) return false;
-        var tag = modelId.Contains(':') ? modelId[(modelId.LastIndexOf(':') + 1)..] : "";
-        return tag != "cloud" && !tag.EndsWith("-cloud", StringComparison.Ordinal) && !modelId.EndsWith("-cloud", StringComparison.Ordinal);
-    }
-
-    /// <summary>Whether always listening answers each utterance from its recording right away (Companion › Listening › Answer
-    /// from my voice, on unless turned off): the Thinking model hears (<see cref="ForRoute"/>) and the recording may go to it:
-    /// it stays on this PC (<see cref="StaysOnThisPc"/>), or the user let Thinking hear their voice
-    /// (<paramref name="hearConsent"/>).</summary>
-    public static bool AnswersFromVoice(SetupRouteType? routeType, string? origin, string? modelId, ModelAbilities? abilities,
-        bool hearConsent, bool retired = false) =>
-        ForRoute(routeType, origin, modelId, abilities, retired) == HearingSupport.Supported &&
-        (hearConsent || StaysOnThisPc(routeType, origin, modelId));
-
     [GeneratedRegex("[^a-z0-9]")]
     private static partial Regex Compact();
 

@@ -1,7 +1,12 @@
 using System.Text;
 using Martlet.Providers;
 
+// Also built into Martlet's MCP server (straight_voice_check), in its own namespace.
+#if MARTLET_MCP
+namespace Martlet.Mcp.Shared;
+#else
 namespace Martlet.Desktop;
+#endif
 
 /// <summary>The exchanges of the open conversation, kept in memory only for the next replies. Each reply sends as many of the
 /// newest as fit its context size (Companion › Replies), so the buffer only bounds memory: at most
@@ -17,8 +22,20 @@ internal sealed class ConversationContextBuffer
     private readonly Queue<Entry> entries = [];
     private long utf8Bytes;
     private long removed;
-    // Sent: the user's message exactly as a Thinking model on this PC got it (the words and Martlet's notes), or null.
-    private sealed record Entry(string User, string Assistant, int Utf8Bytes, string? Sent);
+    // Sent: the user's message exactly as a Thinking model on this PC got it (the words and Martlet's notes), or null. Filling: a
+    // message that went straight to Thinking as the recording alone, whose words (the transcript) replace what stands in for them
+    // once speech-to-text has them (Fill).
+    private sealed class Entry(string user, string assistant, string? sent)
+    {
+        internal string User { get; set; } = user;
+        internal string Assistant { get; } = assistant;
+        internal string? Sent { get; set; } = sent;
+        internal int Utf8Bytes { get; set; } = Bytes(user, assistant, sent);
+        internal Task? Filling { get; set; }
+    }
+
+    private static int Bytes(string user, string assistant, string? sent) =>
+        checked(Encoding.UTF8.GetByteCount(sent ?? user) + Encoding.UTF8.GetByteCount(assistant));
 
     internal int Count => entries.Count;
 
@@ -32,15 +49,40 @@ internal sealed class ConversationContextBuffer
     /// <summary>Keeps an exchange. <paramref name="sent"/> is the user's message exactly as the Thinking model got it (the words
     /// and Martlet's notes): the next replies send it again as it was (see <see cref="Snapshot"/>), so each request starts like
     /// the one before and the provider's prompt cache (or Ollama's, which reuses only a request that starts with a whole earlier
-    /// one) holds it. Null for a paired host, which gets the notes with its instructions.</summary>
-    internal void Add(string user, string assistant, string? sent = null)
+    /// one) holds it. Null for a paired host, which gets the notes with its instructions. Returns the exchange, for
+    /// <see cref="Fill"/>.</summary>
+    internal object Add(string user, string assistant, string? sent = null)
     {
-        var bytes = checked(Encoding.UTF8.GetByteCount(sent ?? user) + Encoding.UTF8.GetByteCount(assistant));
-        entries.Enqueue(new(user, assistant, bytes, sent));
-        utf8Bytes += bytes;
+        var entry = new Entry(user, assistant, sent);
+        entries.Enqueue(entry);
+        utf8Bytes += entry.Utf8Bytes;
         while (entries.Count > MaximumTurns || utf8Bytes > MaximumUtf8Bytes)
             RemoveOldest();
+        return entry;
     }
+
+    /// <summary>Marks a kept exchange whose words are on their way: <paramref name="filling"/> ends once <see cref="Fill"/> has
+    /// them (or they never came).</summary>
+    internal static void Pending(object exchange, Task filling) => ((Entry)exchange).Filling = filling;
+
+    /// <summary>The words of a message that went straight to Thinking as the recording alone, in place of what stood in for them,
+    /// so the next replies carry the transcript. False when the exchange was already let go.</summary>
+    internal bool Fill(object exchange, string user, string? sent)
+    {
+        var entry = (Entry)exchange;
+        if (!entries.Contains(entry)) return false;
+        utf8Bytes -= entry.Utf8Bytes;
+        entry.User = user;
+        entry.Sent = sent;
+        entry.Utf8Bytes = Bytes(user, entry.Assistant, sent);
+        utf8Bytes += entry.Utf8Bytes;
+        while (utf8Bytes > MaximumUtf8Bytes && entries.Count > 0)
+            RemoveOldest();
+        return true;
+    }
+
+    /// <summary>The kept exchanges whose words are still on their way (speech-to-text beside a reply).</summary>
+    internal Task[] Filling() => [.. entries.Select(entry => entry.Filling).OfType<Task>().Where(task => !task.IsCompleted)];
 
     /// <summary>The kept exchanges: what the user said, or with <paramref name="sent"/> each message as it went to the Thinking
     /// model (with its notes) where Martlet kept that. Lore, memory and learning names read the plain ones.</summary>

@@ -157,18 +157,18 @@ internal static class VoiceEngineCheck
         }
     }
 
-    /// <summary>A real gateway on 127.0.0.1 with one engine's relay route over the live voice service.</summary>
-    private sealed class LiveHost : IAsyncDisposable, IGatewayAuditSink
+    /// <summary>A real gateway on 127.0.0.1 with one role's relay route over its live loopback service.</summary>
+    internal sealed class LiveHost : IAsyncDisposable, IGatewayAuditSink
     {
         private const string HostId = "voice-check-host";
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
-        private F5RelayWorker worker = null!;
+        private IGatewayInferenceWorker worker = null!;
         private GatewayServer server = null!;
         private GatewayHostIdentity identity = null!;
         private string origin = "";
 
-        internal static async Task<LiveHost> StartAsync(F5RelayWorker worker)
+        internal static async Task<LiveHost> StartAsync(IGatewayInferenceWorker worker)
         {
             var host = new LiveHost { worker = worker, certificate = Certificate() };
             try
@@ -201,7 +201,7 @@ internal static class VoiceEngineCheck
         public async ValueTask DisposeAsync()
         {
             if (listener is not null) await listener.DisposeAsync();
-            await worker.DisposeAsync();
+            if (worker is IAsyncDisposable disposable) await disposable.DisposeAsync();
             certificate?.Dispose();
         }
 

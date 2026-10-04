@@ -15,7 +15,7 @@ namespace Martlet.Mcp;
 /// a fixture endpoint on 127.0.0.1 (canned reply, NOT AI): a synthesized speech-like clip (never microphone audio, nothing
 /// played) goes out as an input_audio WAV part beside the transcript, is refused without its own audio permission before any
 /// request is sent, and is left out of a transcript-only retry. Nothing leaves loopback.</summary>
-internal static class HearingCheck
+internal static partial class HearingCheck
 {
     private const string LocalOllama = "http://127.0.0.1:11434/v1";
 
@@ -37,8 +37,8 @@ internal static class HearingCheck
         var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
             : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
                 thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
-        var hearVoice = HearVoice(dataDirectory);
-        var answerFromVoice = AnswerFromVoice(dataDirectory);
+        var hearVoice = TalkChoice(dataDirectory, "HearVoice");
+        var transcribeFirst = TalkChoice(dataDirectory, "TranscribeFirst");
         return new
         {
             model,
@@ -50,62 +50,59 @@ internal static class HearingCheck
             routeHearing = routeHearing?.ToString(),
             savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Source, saved.CheckedAt },
             hearVoice,
-            // Companion › Listening › Answer from my voice (on unless turned off) and whether always listening answers the saved
-            // Thinking model from the recording right away: it hears and the recording stays on this PC, or hearVoice is on.
-            answerFromVoice,
-            staysOnThisPc = modelId is null && thinking is not null ? HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId) : (bool?)null,
-            answersFromVoice = modelId is null && thinking is not null ? answerFromVoice && HearingModelCatalog.AnswersFromVoice(thinking.RouteType,
-                thinking.Origin, thinking.ModelId, abilities, hearVoice,
-                thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null)
-                : (bool?)null,
-            answerDecisions = AnswerDecisions(),
+            // Companion › Listening › When Thinking can hear you (shown while Thinking hears): straight (the default) or transcribe
+            // first. Straight applies to always listening when the route hears; push-to-talk and messages with what the PC
+            // played, said over Martlet or for Home Assistant's Assist are transcribed first.
+            voicePath = transcribeFirst ? "transcribeFirst" : "straight",
+            straightApplies = hearVoice && !transcribeFirst && routeHearing == HearingSupport.Supported,
+            lastTurn = LastTurn(dataDirectory),
             fixture = await FixtureAsync(model, cancellation)
         };
     }
 
-    // The Answer from my voice decisions replies use (HearingModelCatalog.AnswersFromVoice), each with what it should be.
-    private static object AnswerDecisions()
-    {
-        (string Case, SetupRouteType Type, string Origin, string Model, bool Consent, bool Expected)[] cases =
-        [
-            ("ollamaGemma4E2bWithoutConsent", SetupRouteType.ChatCompletions, LocalOllama, "gemma4:e2b", false, true),
-            ("ollamaCloudModelWithoutConsent", SetupRouteType.ChatCompletions, LocalOllama, "gemma4:e2b-cloud", false, false),
-            ("ollamaTextOnlyModel", SetupRouteType.ChatCompletions, LocalOllama, "qwen3:8b", true, false),
-            ("loopbackServerWithoutConsent", SetupRouteType.ChatCompletions, "http://127.0.0.1:8080/v1", "gemma-4-e2b", false, false),
-            ("loopbackServerWithConsent", SetupRouteType.ChatCompletions, "http://127.0.0.1:8080/v1", "gemma-4-e2b", true, true),
-            ("cloudModelWithoutConsent", SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "google/gemini-2.5-flash", false, false),
-            ("cloudModelWithConsent", SetupRouteType.ChatCompletions, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "google/gemini-2.5-flash", true, true)
-        ];
-        var results = cases.Select(c => new
-        {
-            c.Case, c.Model, c.Consent,
-            answers = HearingModelCatalog.AnswersFromVoice(c.Type, c.Origin, c.Model, null, c.Consent),
-            expected = c.Expected
-        }).ToArray();
-        return new { ok = results.All(r => r.answers == r.expected), cases = results };
-    }
-
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): AnswerFromVoice is on unless saved off.
-    private static bool AnswerFromVoice(string directory)
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearVoice and TranscribeFirst are off unless saved on.
+    private static bool TalkChoice(string directory, string name)
     {
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return !document.RootElement.TryGetProperty("AnswerFromVoice", out var value) || value.ValueKind != JsonValueKind.False;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return true; }
-    }
-
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearVoice is off unless saved on.
-    private static bool HearVoice(string directory)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return document.RootElement.TryGetProperty("HearVoice", out var value) && value.ValueKind == JsonValueKind.True;
+            return document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return false; }
     }
+
+    /// <summary>Which way the newest spoken reply's message went to Thinking, from the desktop log (never what was said): its
+    /// "Voice path:" line, and for a straight one the "Background transcript" line (how long after the reply started the words
+    /// were ready, how long speech-to-text took) and the "Straight to Thinking:" line (where the words went).</summary>
+    internal static object? LastTurn(string dataDirectory)
+    {
+        var directory = Martlet.Diagnostics.LocalLogs.Directory(dataDirectory);
+        if (!Directory.Exists(directory)) return null;
+        var lines = Martlet.Diagnostics.LocalLogs.Read(directory, Martlet.Diagnostics.LocalLogs.ThisDeviceId())
+            .Where(r => r.Component == "desktop").OrderBy(r => r.At).ToArray();
+        var path = lines.LastOrDefault(r => r.Message.StartsWith("Voice path: ", StringComparison.Ordinal));
+        if (path is null) return null;
+        var after = lines.Where(r => r.At >= path.At).ToArray();
+        var transcript = after.FirstOrDefault(r => r.Message.StartsWith("Background transcript", StringComparison.Ordinal));
+        var kept = after.FirstOrDefault(r => r.Message.StartsWith("Straight to Thinking: ", StringComparison.Ordinal));
+        var timing = transcript is null ? null : TranscriptTiming().Match(transcript.Message);
+        double? Ms(string group) => timing is { Success: true } && timing.Groups[group].Success &&
+            double.TryParse(timing.Groups[group].Value, System.Globalization.CultureInfo.InvariantCulture, out var ms) ? ms : null;
+        var before = timing is { Success: true } && timing.Groups["when"].Value == "before";
+        return new
+        {
+            at = path.At,
+            path = path.Message.StartsWith("Voice path: straight", StringComparison.Ordinal) ? "straight" : "transcribeFirst",
+            line = path.Message,
+            transcriptReadyAfterReplyStartMs = Ms("after") is { } readyMs ? before ? -readyMs : readyMs : (double?)null,
+            speechToTextMs = Ms("stt"),
+            transcriptLine = transcript?.Message,
+            wordsLine = kept?.Message
+        };
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"ready (?<after>\d+) ms (?<when>after|before) the reply started \(speech-to-text (?<stt>\d+) ms")]
+    private static partial System.Text.RegularExpressions.Regex TranscriptTiming();
 
     private static async Task<object> FixtureAsync(string model, CancellationToken cancellation)
     {
@@ -125,19 +122,13 @@ internal static class HearingCheck
             var refused = await AskAsync(adapter, baseUrl, model, input, false, cancellation);
             var sentWithoutConsent = Count(requests) - sent;
             var transcript = await AskAsync(adapter, baseUrl, model, input.WithoutAudio(), false, cancellation);
-            // Answer from my voice: the recording alone, with its own short message instead of a transcript.
-            var heardOnlyText = PromptSettings.Fill(null, PromptCatalog.HeardOnly)!;
-            var alone = await AskAsync(adapter, baseUrl, model, new BoundedTextInput(heardOnlyText, "Fixture check.", audio: clip), true, cancellation);
             byte[][] bodies;
             lock (requests) bodies = [.. requests];
             var withRecording = bodies.Length > 0 ? Describe(bodies[0]) : null;
-            var transcriptOnly = bodies.Length > 2 ? Describe(bodies[^2]) : null;
-            var recordingOnly = bodies.Length > 2 ? Describe(bodies[^1]) : null;
-            var recordingOnlyOk = alone.Outcome == "Completed" && recordingOnly is { HasAudio: true, WavValid: true } &&
-                recordingOnly.Text == heardOnlyText;
+            var transcriptOnly = bodies.Length > 1 ? Describe(bodies[^1]) : null;
             var ok = heard.Outcome == "Completed" && withRecording is { HasText: true, HasAudio: true, WavValid: true } &&
                 refused.Failure == "ConsentMissing" && sentWithoutConsent == 0 &&
-                transcript.Outcome == "Completed" && transcriptOnly is { HasAudio: false, PlainText: true } && recordingOnlyOk;
+                transcript.Outcome == "Completed" && transcriptOnly is { HasAudio: false, PlainText: true };
             return new
             {
                 ok,
@@ -151,11 +142,6 @@ internal static class HearingCheck
                 },
                 withoutAudioPermission = new { refused.Outcome, refused.Failure, requestsSent = sentWithoutConsent },
                 transcriptOnly = new { transcript.Outcome, transcript.Failure, plainText = transcriptOnly?.PlainText, audio = transcriptOnly?.HasAudio },
-                recordingOnly = new
-                {
-                    ok = recordingOnlyOk, alone.Outcome, alone.Failure, contentParts = recordingOnly?.Parts, wavValid = recordingOnly?.WavValid,
-                    audioSeconds = recordingOnly?.Seconds, messageIsHeardOnlyPrompt = recordingOnly?.Text == heardOnlyText
-                },
                 requests = bodies.Length
             };
         }
@@ -188,19 +174,18 @@ internal static class HearingCheck
     }
 
     private sealed record Sent(string[] Parts, bool HasText, bool HasAudio, bool PlainText, string? Format, bool WavValid,
-        double? Seconds, int? Bytes, string? Text = null);
+        double? Seconds, int? Bytes);
 
-    // The user message of a captured request: its content parts, its text and the attached WAV's header.
+    // The user message of a captured request: its content parts and the attached WAV's header.
     private static Sent Describe(byte[] body)
     {
         using var document = JsonDocument.Parse(body);
         var messages = document.RootElement.GetProperty("messages");
         var content = messages[messages.GetArrayLength() - 1].GetProperty("content");
-        if (content.ValueKind == JsonValueKind.String) return new(["text"], true, false, true, null, false, null, null, content.GetString());
+        if (content.ValueKind == JsonValueKind.String) return new(["text"], true, false, true, null, false, null, null);
         var parts = content.EnumerateArray().Select(p => p.GetProperty("type").GetString() ?? "").ToArray();
         string? format = null;
         byte[]? wave = null;
-        var text = new StringBuilder();
         foreach (var part in content.EnumerateArray())
             if (part.GetProperty("type").GetString() == "input_audio")
             {
@@ -208,10 +193,9 @@ internal static class HearingCheck
                 format = audio.GetProperty("format").GetString();
                 wave = Convert.FromBase64String(audio.GetProperty("data").GetString() ?? "");
             }
-            else if (part.GetProperty("type").GetString() == "text") text.Append(part.GetProperty("text").GetString());
         var valid = wave is { Length: > 44 } && wave.AsSpan(0, 4).SequenceEqual("RIFF"u8) && wave.AsSpan(8, 4).SequenceEqual("WAVE"u8);
         double? seconds = valid ? Math.Round((wave!.Length - 44) / (2.0 * BitConverter.ToInt32(wave, 24)), 2) : null;
-        return new(parts, parts.Contains("text"), wave is not null, false, format, valid, seconds, wave?.Length, text.ToString());
+        return new(parts, parts.Contains("text"), wave is not null, false, format, valid, seconds, wave?.Length);
     }
 
     // A minimal HTTP/1.1 endpoint: records each request body and streams one canned Chat Completions reply.

@@ -19,9 +19,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
-        // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
-        // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
-        "LiveStop", "LiveRefreshContext",
+        // The talk window's Stop (Esc) only stops work (a reply, a recording, vision, a song); it starts nothing and never pauses
+        // listening. Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops
+        // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song.
+        "LiveStop", "LiveRefreshContext", "LiveSongStop",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
@@ -75,12 +76,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
     /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
-    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") only show that computer's engines. Home's
+    /// Voice engine's computer pills ("SpeakingHost-gpu-pc") and Singing's ("SingingHost-this-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
     /// "LogPart-gateway") only filter the shown lines, and selecting a line ("LogEntry-0") only shows it in full. An MCP directory
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
-    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "HealthCheck-", "HealthOpen-",
+    private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
@@ -149,10 +150,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
-        // Companion › Listening › Answer from my voice: whether always listening answers the recording right away (on this PC,
-        // or with Let Thinking hear my voice) or why it answers the words. The TalkAnswerFromVoice check box saves the choice,
-        // so it needs --allow-ui-effects.
-        "TalkAnswerFromVoiceStatus",
+        // Companion › Listening › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
+        // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
+        // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
+        "TalkVoicePathStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
         // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words), under each
@@ -160,6 +161,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
+        // Companion › Voice › Singing: the role on the shown computer (title with its badge, chips, where it stands: not set up,
+        // setting up, ready, failed with the reason, or why that computer can't sing), the Set up button's label and the saved
+        // quality and voice match. Set up needs --allow-ui-effects. Songs are only performed in conversation (singing_check
+        // exercises them headlessly).
+        "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingQuality", "SingingVoiceMatch",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
@@ -205,10 +211,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // graphics card, why Same as Thinking can or can't think here, and what an endpoint's key field will do (never a key or
         // base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
         // background work line (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id>
-        // holds that).
+        // holds that). The song panel's line (the song's id, state, position, line number and section, lead-in, vamps, ducking, or
+        // where and why it stopped; never its title or words: LiveSongLine holds those).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
-        "DeepThinkingKeyStatus", "LiveJobs",
+        "DeepThinkingKeyStatus", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -338,7 +345,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-",
+    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",

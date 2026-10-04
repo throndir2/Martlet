@@ -42,34 +42,6 @@ public sealed class ModelAbilityDetectionTests
     }
 
     [Fact]
-    public void Answer_from_my_voice_needs_a_model_that_hears_and_a_recording_that_stays_here_or_consent()
-    {
-        // Gemma 4 E2B in Ollama on this PC: the recording never leaves this PC, so no further consent is needed.
-        Assert.True(HearingModelCatalog.StaysOnThisPc(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b"));
-        Assert.True(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b", null, hearConsent: false));
-        // Ollama's cloud models forward what they get to ollama.com.
-        foreach (var cloud in new[] { "gemma4:e2b-cloud", "gpt-oss:120b-cloud", "qwen3-omni:cloud" })
-        {
-            Assert.False(HearingModelCatalog.StaysOnThisPc(SetupRouteType.ChatCompletions, Ollama, cloud));
-            Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, Ollama, cloud, null, hearConsent: false));
-        }
-        // Another loopback server may forward what it gets, and a cloud model is elsewhere: both need Let Thinking hear my voice.
-        Assert.False(HearingModelCatalog.StaysOnThisPc(SetupRouteType.ChatCompletions, "http://127.0.0.1:8080/v1", "gemma-4-e2b"));
-        Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, "http://127.0.0.1:8080/v1", "gemma-4-e2b", null, false));
-        Assert.True(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, "http://127.0.0.1:8080/v1", "gemma-4-e2b", null, true));
-        Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions,
-            ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "google/gemini-2.5-flash", null, hearConsent: false));
-        Assert.True(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions,
-            ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "google/gemini-2.5-flash", null, hearConsent: true));
-        // A model that doesn't hear (by name or by what was found), a host's Ollama or a retired model never does.
-        Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, Ollama, "gemma4:12b", null, true));
-        Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b",
-            Found(Ollama, "gemma4:e2b", false, true), true));
-        Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.GatewayOllama, "gpu-pc", "gemma4:e2b", null, true));
-        Assert.False(HearingModelCatalog.AnswersFromVoice(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b", null, true, retired: true));
-    }
-
-    [Fact]
     public void Vision_follows_what_was_found()
     {
         Assert.Equal(VisionSupport.Unsupported, VisionModelCatalog.ForRoute(Ollama, "gemma4:e2b", Found(Ollama, "gemma4:e2b", true, false)));

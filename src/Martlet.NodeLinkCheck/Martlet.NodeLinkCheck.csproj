@@ -11,6 +11,8 @@
     <ProjectReference Include="..\Martlet.Gateway.Xtts\Martlet.Gateway.Xtts.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.GptSovits\Martlet.Gateway.GptSovits.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Dia\Martlet.Gateway.Dia.csproj" />
+    <!-- singing-check (singing_check) makes a song through the singing role's production relay. -->
+    <ProjectReference Include="..\Martlet.Gateway.Singing\Martlet.Gateway.Singing.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <!-- memories (memory_sync_selftest) keeps real memory stores the same through the hosts. -->

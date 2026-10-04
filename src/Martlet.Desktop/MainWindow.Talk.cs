@@ -225,9 +225,7 @@ public partial class MainWindow
     // ---------- Listening: let Thinking hear your voice ----------
 
     /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said with the
-    /// transcript (off by default; ticking it is the consent, and the text under it says what is sent and where), and whether
-    /// it answers from the recording right away, before the transcript (Answer from my voice, on by default: the fastest
-    /// replies on a Thinking model on this PC; a cloud model also needs Let Thinking hear my voice).</summary>
+    /// transcript. Off by default; ticking it is the consent, and the text under it says what is sent and where.</summary>
     private Border HearVoiceCard()
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -241,31 +239,34 @@ public partial class MainWindow
         var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities);
         var status = hears || !Talk.HearVoice ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        var answer = new CheckBox { Content = "Answer from my voice (fastest)", IsChecked = Talk.AnswerFromVoice, Margin = new Thickness(0, 10, 0, 6) };
-        AutomationProperties.SetAutomationId(answer, "TalkAnswerFromVoice");
-        answer.Checked += (_, _) => { if (!Talk.AnswerFromVoice) SaveTalk(Talk with { AnswerFromVoice = true }, render: true); };
-        answer.Unchecked += (_, _) => { if (Talk.AnswerFromVoice) SaveTalk(Talk with { AnswerFromVoice = false }, render: true); };
-        var answerStatus = Note(AnswerFromVoiceStatus(Talk, thinking, abilities), new Thickness(0, 0, 0, 6));
-        AutomationProperties.SetAutomationId(answerStatus, "TalkAnswerFromVoiceStatus");
-        return Card([Heading("Hear how you say it"), hear, status, .. HearingTestControls(thinking), answer, answerStatus,
-            Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
+        return Card([Heading("Hear how you say it"), hear, status, .. hears && Talk.HearVoice ? VoicePathControls() : [],
+            .. HearingTestControls(thinking), Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
     }
 
-    /// <summary>Whether always listening answers from the recording right away with the saved choices and Thinking model, and
-    /// why not when it doesn't (Companion › Listening › Answer from my voice).</summary>
-    internal static string AnswerFromVoiceStatus(TalkPreferences prefs, SetupRoute? thinking, ModelAbilities? abilities)
+    /// <summary>Companion › Listening › When Thinking can hear you, shown while Thinking hears your voice: your voice straight to
+    /// Thinking (the default; speech-to-text runs beside the reply for the talk window, history and memory) or the transcript
+    /// first, then both.</summary>
+    private UIElement[] VoicePathControls()
     {
-        const string how = " Speech-to-text runs beside the reply and fills in your words; a cough or a hum stops the reply before it speaks.";
-        if (!prefs.AnswerFromVoice) return "Off. Martlet waits for speech-to-text, then answers your words.";
-        if (!prefs.HandsFree) return "On, but it works only with Always listening. Push-to-talk answers your words.";
-        if (LiveConversationConfiguration.Hearing(thinking, abilities) != HearingSupport.Supported)
-            return "On, but this Thinking model doesn't hear, so Martlet answers your words. Choose one that hears, such as Gemma 4 E2B in Ollama on this PC.";
-        var local = thinking is not null && HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);
-        if (!local && !prefs.HearVoice)
-            return "On, but your recording would leave this PC: turn on Let Thinking hear my voice to send it to the Thinking model. Until then Martlet answers your words.";
-        return (local ? "On. Ollama on this PC answers your recording as soon as you pause, without waiting for speech-to-text; it never leaves this PC."
-            : "On. The Thinking model answers your recording as soon as you pause, without waiting for speech-to-text.") + how;
+        var label = new TextBlock { Text = "When Thinking can hear you", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 6) };
+        var straight = Choice("TalkVoicePath", "Send my voice straight to Thinking (fastest)",
+            "The reply starts the moment you stop talking. Your words are still transcribed in the background for the talk window, " +
+            "the conversation history and memory.", !Talk.TranscribeFirst, "TalkVoicePathStraight");
+        var first = Choice("TalkVoicePath", "Transcribe first, then send both",
+            "Martlet waits for speech-to-text, then sends Thinking your recording with the transcript.", Talk.TranscribeFirst,
+            "TalkVoicePathTranscribeFirst");
+        straight.Checked += (_, _) => { if (Talk.TranscribeFirst) SaveTalk(Talk with { TranscribeFirst = false }, render: true); };
+        first.Checked += (_, _) => { if (!Talk.TranscribeFirst) SaveTalk(Talk with { TranscribeFirst = true }, render: true); };
+        var status = Note(VoicePathStatus(Talk), new Thickness(0, 0, 0, 6));
+        AutomationProperties.SetAutomationId(status, "TalkVoicePathStatus");
+        return [label, straight, first, status];
     }
+
+    internal static string VoicePathStatus(TalkPreferences prefs) => prefs.TranscribeFirst
+        ? "Transcribe first: each reply waits for speech-to-text, then Thinking gets your recording and the transcript."
+        : "Straight to Thinking: Thinking gets your recording alone and answers right away. What you said appears in the talk " +
+          "window once it is transcribed. A message with what this PC plays, one said over Martlet while it speaks, or one for " +
+          "Home Assistant's Assist is transcribed first.";
 
     // ---------- Voice: speak replies (Mute voice on the character's menu is the same choice) ----------
 

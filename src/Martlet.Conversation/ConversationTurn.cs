@@ -279,8 +279,7 @@ public sealed class ConversationTurn
     // Switches the rest of this reply to the Thinking fallback when there is one and nothing of the failed answer was said.
     private bool FallBack(int textBefore, string reason)
     {
-        // The fallback never gets a recording, so a reply from the recording alone has nothing to send it.
-        if (request.Fallback is null || request.AudioRequired) return false;
+        if (request.Fallback is null) return false;
         lock (Sync)
         {
             if (invalidated || stop.IsCancellationRequested || whole.Expired || text.Length != textBefore) return false;
@@ -293,6 +292,31 @@ public sealed class ConversationTurn
 
     private sealed record RoundResult(RoundEnd End, string Text, IReadOnlyList<TextToolCall> Calls,
         ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null);
+
+    // The words of a message sent as the user's recording alone, once speech-to-text running beside the reply has them.
+    private string? spokenWords;
+
+    // The input without its recording: with the transcript it already carries, or, for a recording sent alone, with its words
+    // (waiting, within the reply's own time, for speech-to-text to finish). Null when those words never came.
+    private async Task<BoundedTextInput?> WithoutRecordingAsync(BoundedTextInput input)
+    {
+        if (input.Audio is null) return input;
+        if (request.SpokenWords is not { } words) return input.WithoutAudio();
+        if (spokenWords is null)
+        {
+            try
+            {
+                var heard = await words(stop.Token).WaitAsync(whole.Remaining > TimeSpan.Zero ? whole.Remaining : TimeSpan.Zero, Clock,
+                    stop.Token).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(heard)) return null;
+                spokenWords = heard.Trim();
+            }
+            catch (TimeoutException) { return null; }
+            lock (Sync) CheckActive();
+        }
+        try { return input.WithTranscript(spokenWords); }
+        catch (ContractException) { return null; }
+    }
 
     // One reply may take several requests: each tool round sends the calls and their results back to the model, until it
     // answers in text. Every request is separately authorized; text from every round is shown and spoken in order.
@@ -312,9 +336,20 @@ public sealed class ConversationTurn
                 int before;
                 lock (Sync) before = text.Length;
                 RoundResult result;
+                // Without the recording (a model that refused it, or the fallback): the transcript, or the words that stand in
+                // for a recording sent alone once speech-to-text has them.
+                var sent = input;
+                if (fallback || audioDropped)
+                {
+                    if (await WithoutRecordingAsync(input).ConfigureAwait(false) is not { } withoutRecording)
+                    {
+                        Fail(ConversationFailure.ProviderFailed, audioDropped ? ProviderFailureCode.RequestRejected : null, null, ProviderRole.Llm);
+                        return;
+                    }
+                    sent = withoutRecording;
+                }
                 try
                 {
-                    var sent = fallback || audioDropped ? input.WithoutAudio() : input;
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
                         attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped).ConfigureAwait(false);
                 }
@@ -329,9 +364,8 @@ public sealed class ConversationTurn
                 if (result.End is RoundEnd.Failed or RoundEnd.Invalid)
                 {
                     // A model that refuses the attached recording rejects the request before answering; ask again with the
-                    // transcript only, and drop the recording for the rest of this reply. A reply from the recording alone has
-                    // no transcript to ask with: it fails, and the caller answers the transcript instead.
-                    if (!audioDropped && !fallback && !request.AudioRequired && input.Audio is not null && result.Text.Length == 0 &&
+                    // transcript only, and drop the recording for the rest of this reply.
+                    if (!audioDropped && !fallback && input.Audio is not null && result.Text.Length == 0 &&
                         result.Failure == ProviderFailureCode.RequestRejected)
                     {
                         audioDropped = true;
@@ -392,11 +426,6 @@ public sealed class ConversationTurn
                         }
                         continue;
                     }
-                    // A reply from the recording alone rejected again without the Thinking steps choice: the recording was the
-                    // problem, not the choice (the caller answers the transcript instead).
-                    if (request.AudioRequired && reasoningDropped && result.Text.Length == 0 &&
-                        result.Failure == ProviderFailureCode.RequestRejected)
-                        lock (Sync) reasoningRejected = false;
                     // Nothing of this answer arrived yet, so the fallback can give it instead.
                     if (!fallback && result.Text.Length == 0 &&
                         FallBack(before, result.Failure?.ToString() ?? result.Issue?.ToString() ?? result.End.ToString()))

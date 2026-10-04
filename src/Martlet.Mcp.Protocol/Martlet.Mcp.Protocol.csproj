@@ -36,6 +36,9 @@
     <Compile Include="..\Martlet.Desktop\ThemeSample.cs" Link="Theme\ThemeSample.cs" />
     <Compile Include="..\Martlet.Desktop\CopyText.cs" Link="Theme\CopyText.cs" />
     <Compile Include="..\Martlet.Desktop\ErrorLog.cs" Link="Theme\ErrorLog.cs" />
+    <!-- straight_voice_check: the desktop's own words of a recording sent straight to Thinking and the conversation it keeps. -->
+    <Compile Include="..\Martlet.Desktop\SpokenWords.cs" Link="Shared\SpokenWords.cs" />
+    <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <Page Include="..\Martlet.Desktop\Themes\Motion.xaml" Link="Themes\Motion.xaml" />
   </ItemGroup>

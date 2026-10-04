@@ -112,7 +112,8 @@ finished, and with [GPT-SoVITS](docs/GPT_SOVITS_VOICE.md), good for anime-style
 voices from 3-10 second recordings, and with [Dia](docs/DIA_VOICE.md), which can
 laugh, sigh, cough and gasp (English only; Companion > Voice > Voice engine). See
 [Voices](docs/SETUP.md#voices-f5) and the [Voice Studio plan](docs/VOICE_STUDIO.md)
-for other engines.
+for other engines. With the [Singing](docs/SINGING.md) role, Martlet also writes
+songs and sings them in a voice from the same list (Companion > Voice > Singing).
 
 The [planned installation flow](docs/INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup)
 coordinates optional features and mixed API/self-hosted roles across machines.
@@ -130,7 +131,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 
 | Document | Purpose |
 | --- | --- |
-| [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, validation before merge (affected tests and MCP verification), and normal merge into `main`; explicit holds and safety boundaries remain binding |
+| [Coding-agent instructions](AGENTS.md) | Autonomous autopilot-style work, task branches, validation before merge (targeted tests and MCP verification), and normal merge into `main`; explicit holds and safety boundaries remain binding |
 | [Validating changes](docs/VALIDATION.md) | The validation flow for every change: the change-aware parallel test runner, validation hosts and the developer profile, known failures, MCP verification and writing tests |
 | [Contributing](CONTRIBUTING.md) | Setup, branches, validation and pull requests for developers joining the project |
 | [Development plan](DEVELOPMENT_PLAN.md) | Scope, proposed decisions, priorities, risks, and reading order |
@@ -257,14 +258,15 @@ including GitHub Actions with self-hosted runners. Do not restore Actions
 billing, increase spending limits or use another hosted service to obtain
 validation evidence.
 
-Before merge, every change except documentation passes the tests it affects,
-selected and run in parallel by `scripts\Test-Martlet.ps1` on the developer's
-PC and on the validation hosts they have set up (their local developer profile,
-`~\.martlet-dev\validation.json`). Every feature or behavior change is also
-verified working through Martlet's own MCP server, which is extended in the
-same change so it can reach and observe the feature. A new failing test blocks
-the merge; tests that already fail on `main` are listed in
-`tests\known-failures.txt` until they are fixed. The flow, the runner and the
+Before merge, every change except documentation passes its targeted tests (the
+tests it adds or changes and the suite directly covering the changed code, never
+every affected suite), run by `scripts\Test-Martlet.ps1 -Project` on the
+developer's PC and on the validation hosts they have set up (their local
+developer profile, `~\.martlet-dev\validation.json`). Every feature or behavior
+change is also verified working through Martlet's own MCP server, which is
+extended in the same change so it can reach and observe the feature. A targeted
+test the change breaks blocks the merge; tests that already fail on `main` are
+listed in `tests\known-failures.txt` until they are fixed. The flow, the runner and the
 hosts are described in [Validating changes](docs/VALIDATION.md). `CI=true`
 remains a local MSBuild setting for locked restore and deterministic build
 metadata; it does not require a remote runner.
@@ -307,8 +309,9 @@ npm ci --prefix src\Martlet.Avatar.Vrm --no-audit --no-fund
 dotnet restore Martlet.slnx --locked-mode
 dotnet build Martlet.slnx --no-restore -c Release "-p:NodeExecutable=$((Get-Command node).Source)"
 .\scripts\Test-Martlet.ps1 -InitProfile   # once: your local developer profile and validation hosts
-.\scripts\Test-Martlet.ps1                # the tests your change affects, in parallel
-.\scripts\Test-Martlet.ps1 -All           # every suite
+.\scripts\Test-Martlet.ps1 -List          # what your change touches, without running anything
+.\scripts\Test-Martlet.ps1 -Project Martlet.Core.Tests -Filter 'FullyQualifiedName~Settings'   # targeted tests
+.\scripts\Test-Martlet.ps1 -All           # every suite, only when explicitly wanted
 .\scripts\Smoke-Doctor.ps1
 .\scripts\Smoke-Desktop.ps1
 ```

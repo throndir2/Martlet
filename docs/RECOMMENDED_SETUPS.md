@@ -152,9 +152,9 @@ Microphone audio and your voice stay at home, and the GPU goes where it helps mo
 that hears, **Gemma 4 E2B in Ollama on this PC** (about 3.3 GB), beside your
 cloned voice (Chatterbox Turbo, streaming) on the same graphics card, and
 Parakeet speech-to-text on the processor. Measured on an RTX 4070 12 GB: about
-0.73-0.81 s from the end of the recording to the first audio, with Martlet
-answering straight from your recording (*Answer from my voice*, on by
-default). Bigger models are smarter but slower (E4B, 12B: 100-200 ms more to
+0.73-0.81 s from the end of the recording to the first audio; with *Let
+Thinking hear my voice* on, *Send my voice straight to Thinking* skips the
+transcript on the way to the reply. Bigger models are smarter but slower (E4B, 12B: 100-200 ms more to
 the first sentence), and one that overfills the card pages into system memory
 and stalls. Keep every layer in VRAM ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)).
 
