@@ -191,7 +191,8 @@ public partial class MainWindow
             children.Add(Note("None yet. Turn recognition on and talk to Martlet. New voices will appear here.", new Thickness(0, 0, 0, 0)));
             return Card([.. children]);
         }
-        children.Add(Note("Name voices, add other names, merge duplicates, or forget voices. Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
+        children.Add(Note("Name voices, add other names, merge duplicates, see what Martlet remembers about each, or forget voices. " +
+            "Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
         foreach (var voice in voices) children.Add(VoiceEntry(voice, voices));
         children.Add(Row(PageButton("Forget all voices", ForgetAllVoices, link: true, id: "PeopleForgetAll")));
         return Card([.. children]);
@@ -260,6 +261,8 @@ public partial class MainWindow
         stack.Add(mergeRow);
 
         stack.Add(Row(
+            PageButton("What Martlet remembers about them", () => OpenMemoryAsync(voice.Id).Forget(), link: true,
+                id: "PeopleMemories-" + voice.Number),
             PageButton("Forget this voice", () => ForgetVoice(voice), link: true, id: "PeopleForget-" + voice.Number)));
         return Option(stack, voice.Owner);
     }
@@ -324,7 +327,8 @@ public partial class MainWindow
     private void ForgetVoice(KnownVoice voice)
     {
         if (!ConfirmationDialog.Confirm(this,
-                $"Forget {voice.DisplayName}?\n\nIts saved voice and names will be deleted from all your computers. If Martlet hears it again, it will appear as new.",
+                $"Forget {voice.DisplayName}?\n\nIts saved voice and names will be deleted from all your computers. If Martlet hears it again, it will appear as new. " +
+                "What Martlet remembers about them stays in Memory under Forgotten voices, where you can delete it.",
                 "Forget"))
             return;
         localVoices.Forget(voice.Id);
@@ -335,7 +339,8 @@ public partial class MainWindow
     private void ForgetAllVoices()
     {
         if (!ConfirmationDialog.Confirm(this,
-                "Forget every voice?\n\nSaved voices and names will be deleted from all your computers. Recognition stays on and starts over.",
+                "Forget every voice?\n\nSaved voices and names will be deleted from all your computers. Recognition stays on and starts over. " +
+                "What Martlet remembers about them stays in Memory under Forgotten voices, where you can delete it.",
                 "Forget all"))
             return;
         localVoices.ForgetAll();

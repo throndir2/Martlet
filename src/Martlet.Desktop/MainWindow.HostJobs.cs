@@ -239,7 +239,7 @@ public partial class MainWindow
             pendingJobHosts.Remove(job.Role);
             await SaveJobHostAsync(job, host, route, voice);
             RecordClusterJob(job.Job, new(host.HostId, false));
-            var moved = $"{job.Title} now uses {host.HostId}{withVoice}. Reload any open conversation to use it.";
+            var moved = $"{job.Title} now uses {host.HostId}{withVoice}.{OpenConversationFollows}";
             ActionText.Text = moved;
             if (others.Count > 0) ActionText.Text = moved + await ReleaseVoiceEnginesAsync(host, others);
             if (leaving is not null) ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
@@ -293,6 +293,7 @@ public partial class MainWindow
         var saved = await setupService.SaveAsync(next, loaded.Revision, lifetime.Token);
         if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
         homeSettings = next;
+        FollowSavedSetup(saved.Save.Revision);
     }
 
     private async Task JobBackAsync(HostJob job)
@@ -337,8 +338,9 @@ public partial class MainWindow
         var result = await setupService.SaveAsync(next, loaded.Revision, lifetime.Token);
         if (!result.Save.Saved) throw new InvalidOperationException(result.Summary);
         homeSettings = next;
+        FollowSavedSetup(result.Save.Revision);
         RecordClusterJob(job.Job, new(null, false));
-        ActionText.Text = $"{job.Title} now uses {name}. Reload any open conversation to use it." +
+        ActionText.Text = $"{job.Title} now uses {name}.{OpenConversationFollows}" +
             (saved.CredentialId is not null && next.Setup!.Routes.First(r => r.Role == job.Role).CredentialId is null
                 ? " Its key is missing. Save it again in Setup." : "");
     }

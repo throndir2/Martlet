@@ -249,5 +249,78 @@ class EngineFailureTests(unittest.TestCase):
         self.assertIn("ValueError: bad tensor shape", engine.error)
 
 
+def _have(*modules):
+    try:
+        for module in modules:
+            __import__(module)
+        return True
+    except ImportError:
+        return False
+
+
+class FastTurboTests(unittest.TestCase):
+    """The streaming decoder's cancellation and warm-up, in process with stand-ins for T3 and the watermarker (FIXTURE - NOT
+    AI). Needs PyTorch and transformers (the service's image has them); skipped elsewhere."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT))
+        import martlet_chatterbox_host as host
+        cls.host = host
+
+    @unittest.skipUnless(_have("torch", "transformers"), "needs PyTorch and transformers")
+    def test_a_stopped_reply_stops_decoding_at_the_next_token(self):
+        import torch
+
+        vocabulary, width = 64, 8
+        replays = []
+        stop_after = 20
+
+        class Graph:
+            def replay(self):
+                replays.append(1)
+
+        class Hp:
+            start_speech_token, stop_speech_token = 0, vocabulary - 1
+
+        class T3:
+            hp = Hp()
+            speech_emb = torch.nn.Embedding(vocabulary, width)
+
+            def prepare_input_embeds(self, t3_cond, text_tokens, speech_tokens, cfg_weight):
+                return torch.zeros(1, 4, width), None
+
+        logits = torch.zeros(1, 1, vocabulary)
+        logits[..., vocabulary - 1] = -float("inf")  # never the stop token: only cancellation ends it
+        graph = object.__new__(self.host._T3Graph)
+        graph.torch, graph.t3, graph.cuda_graph, graph.out = torch, T3(), Graph(), logits
+        graph.x, graph.position = torch.zeros(1, 1, width), torch.zeros(1, dtype=torch.long)
+        graph._prefill = lambda embeds: logits
+        chunks = list(graph.chunks(None, torch.zeros(1, 3, dtype=torch.long), cancelled=lambda: len(replays) >= stop_after))
+        # The first chunk (12 tokens plus the decoder's 3 of lookahead) left before the reply was stopped; nothing after it,
+        # and no token was decoded once it was stopped, though its chunk had 25 more to go.
+        self.assertEqual([last for _, last in chunks], [False])
+        self.assertEqual(chunks[0][0].shape[1], 15)
+        self.assertEqual(len(replays), stop_after)
+
+    @unittest.skipUnless(_have("numpy"), "needs NumPy")
+    def test_warming_up_runs_the_watermarker_once(self):
+        calls = []
+
+        class Watermarker:
+            def apply_watermark(self, wav, sample_rate):
+                calls.append((wav.dtype.name, wav.shape, sample_rate))
+                return wav
+
+        class Model:
+            sr = 24_000
+            watermarker = Watermarker()
+
+        fast = object.__new__(self.host.FastTurbo)
+        fast.model = Model()
+        fast._warm_watermarker()
+        self.assertEqual(calls, [("float32", (24_000,), 24_000)])
+
+
 if __name__ == "__main__":
     unittest.main()

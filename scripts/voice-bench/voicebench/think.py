@@ -242,8 +242,8 @@ def unload_ollama(except_model: str | None = None) -> None:
 
 
 class FirstPiece:
-    """Martlet's speech segmenter, for the first piece only: a sentence (. ? ! then a space or a new line), or with nothing
-    said yet a clause of 24+ characters ending in , ; or a dash."""
+    """Martlet's speech segmenter, for the first piece only: a sentence (. ? ! then a space or a new line); commas,
+    semicolons and dashes never end a piece."""
 
     def __init__(self) -> None:
         self.buffer = ""
@@ -264,7 +264,7 @@ class FirstPiece:
                     return True
                 continue
             self.buffer += c
-            self.pending = c in ".?!" or (c in ",;\u2014\u2013" and len(self.buffer) >= 24)
+            self.pending = c in ".?!"
         return False
 
     def finish(self) -> bool:

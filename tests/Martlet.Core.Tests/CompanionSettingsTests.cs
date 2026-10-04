@@ -160,6 +160,30 @@ public sealed class CompanionSettingsTests : IDisposable
     }
 
     [Fact]
+    public void EarlierSavedCommasStopStillLoadsAndIsNotWrittenAgain()
+    {
+        var settings = CompanionSettings.Begin(null);
+        var persona = settings.Companion!.ActivePersona;
+        settings = settings with
+        {
+            Companion = settings.Companion.Update(persona.Id, persona.Name, persona.Text, persona.Styles,
+                SpeechBreaks.Default with { QuestionMarks = false })
+        };
+        var document = System.Text.Json.Nodes.JsonNode.Parse(ContractJson.Write(settings))!;
+        var breaks = document["companion"]!["personas"]![0]!["breaks"]!.AsObject();
+        Assert.False(breaks.ContainsKey("commas"));
+        breaks["commas"] = false;
+
+        var loaded = SettingsJson.Read(Encoding.UTF8.GetBytes(document.ToJsonString()));
+        Assert.Equal(SpeechBreaks.Default with { QuestionMarks = false }, loaded.Companion!.ActivePersona.SpokenBreaks);
+        Assert.Equal(ContractJson.Write(settings), ContractJson.Write(loaded));
+        Assert.DoesNotContain("commas", Encoding.UTF8.GetString(ContractJson.Write(loaded)), StringComparison.Ordinal);
+
+        breaks.Remove("question_marks");
+        Assert.True(SettingsJson.Read(Encoding.UTF8.GetBytes(document.ToJsonString())).Companion!.ActivePersona.SpokenBreaks.IsDefault);
+    }
+
+    [Fact]
     public async Task StoreRejectsPersonaMutationWithoutFreshRevision()
     {
         var settings = CompanionSettings.Begin(null);

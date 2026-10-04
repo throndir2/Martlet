@@ -196,6 +196,10 @@ public partial class MainWindow
         if (conversation is not null)
             await StepAsync("ending the conversation", "Windows releases the microphone and speakers when Martlet exits.",
                 () => Task.Run(async () => await conversation.DisposeAsync()));
+        // The last exchanges are still being written to the record of conversations (a moment at most).
+        if (conversationHistory is { Pending: > 0 } record)
+            await StepAsync("saving the conversation history", "The last exchange may be missing from it.",
+                () => record.Idle.WaitAsync(InterruptWait));
         // Ends every MCP server Martlet started (they also end with Martlet's process through its job object).
         await StepAsync("stopping your tool servers", "Windows ends any still running along with Martlet.",
             () => Task.Run(async () => await mcpTools.DisposeAsync()));

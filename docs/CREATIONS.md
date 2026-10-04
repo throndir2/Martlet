@@ -123,8 +123,8 @@ or personality, and the log names counts and short IDs only.
 ## Martlet's tools
 
 While at least one kind is registered, every reply on a Thinking route that does
-function calling gets two of Martlet's own tools, after `think_longer` and
-`cancel_thinking`, always the same two in the same order with the same texts
+function calling gets two of Martlet's own tools, after `think_longer`,
+`cancel_thinking` and `search_conversations`, always the same two in the same order with the same texts
 (built from the registered kinds, never from the creations), so the start of
 every request stays the same for prompt caches:
 

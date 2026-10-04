@@ -40,9 +40,10 @@ internal sealed class ToolApprovalRequest(string server, string tool, string arg
 /// <summary>One entry of the in-memory tool log on the Tools page (never written to disk).</summary>
 internal sealed record ToolActivity(DateTimeOffset At, string Server, string Tool, string Outcome, string Arguments, bool Problem);
 
-/// <summary>Tools Martlet itself gives a reply (think_longer and cancel_thinking while Thinking longer is on): each definition
-/// and how to run a call, and the prompt added to the reply's instructions after the tools prompt. They come first, always in
-/// the same order, so the start of every request stays the same.</summary>
+/// <summary>Tools Martlet itself gives a reply (think_longer and cancel_thinking while Thinking longer is on, then
+/// search_conversations while the owner lets Martlet search past conversations): each definition and how to run a call, and the
+/// prompt added to the reply's instructions after the tools prompt. They come first, always in the same order, so the start of
+/// every request stays the same.</summary>
 internal sealed record BuiltInTools(IReadOnlyList<(TextToolDefinition Definition,
     Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>> Call)> Tools, string? Guidance);
 

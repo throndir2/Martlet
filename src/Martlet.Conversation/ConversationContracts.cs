@@ -107,11 +107,14 @@ public sealed class ConversationRequest(
     [JsonIgnore] public IReadOnlyList<string> CharacterTags { get; } = characterTags ?? [];
     [JsonIgnore] public SpeechBreaks? SpeechBreaks { get; } = speechBreaks;
 
+    /// <summary>The most character tags one request may carry.</summary>
+    public const int MaximumCharacterTags = 128;
+
     internal void Validate()
     {
         ContractRules.Require(SilentReply is null || SilentReply.Length is > 0 and <= 16 && SilentReply.All(char.IsAsciiLetter),
             "The silent reply word must be 1-16 ASCII letters.");
-        ContractRules.Require(CharacterTags.Count <= 128 && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
+        ContractRules.Require(CharacterTags.Count <= MaximumCharacterTags && CharacterTags.All(tag => tag is { Length: >= 3 and <= 64 } &&
             tag[0] == '{' && tag[^1] == '}' && !tag.Any(char.IsControl)), "Character tags must be at most 128 {tags} of 3-64 characters.");
         SpeechBreaks?.Validate();
         ArgumentNullException.ThrowIfNull(Input);
@@ -265,12 +268,14 @@ public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issu
 /// <see cref="ConversationSnapshot.FirstTextAfter"/> and <see cref="ConversationSnapshot.FirstAudioAfter"/> (null when it never
 /// happened): the Thinking request sent (after its authorization), the provider's response headers, its first hidden reasoning,
 /// the first speakable piece staged for the voice, the first voice request sent, the voice's first audio received, the first
-/// piece fully synthesized (and how much speech it holds) and the first audio handed to the speakers. Diagnostics only (the
-/// desktop log's reply latency line); nothing depends on them.</summary>
+/// piece fully synthesized (and how much speech it holds) and the first audio handed to the speakers; and how many times the
+/// speakers ran dry mid-piece waiting for the voice's next audio (a voice slower than real time pauses), and for how long.
+/// Diagnostics only (the desktop log's reply latency line); nothing depends on them.</summary>
 public sealed record ConversationTimings(
     TimeSpan? TextRequestAfter = null, TimeSpan? TextResponseAfter = null, TimeSpan? FirstReasoningAfter = null,
     TimeSpan? FirstSegmentAfter = null, TimeSpan? SpeechRequestAfter = null, TimeSpan? FirstSpeechAudioAfter = null,
-    TimeSpan? FirstPieceSynthesizedAfter = null, TimeSpan? FirstPieceSpeech = null, TimeSpan? PlaybackStartedAfter = null);
+    TimeSpan? FirstPieceSynthesizedAfter = null, TimeSpan? FirstPieceSpeech = null, TimeSpan? PlaybackStartedAfter = null,
+    int VoiceWaits = 0, TimeSpan VoiceWaited = default);
 
 public sealed class ConversationContent(string text, string? refusal)
 {
