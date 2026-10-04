@@ -138,4 +138,37 @@ public sealed class HostRolesTests
         Assert.Contains(Host("gpu-b", null).Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/deep-thinking" &&
             c.Label == "Install Deep thinking");
     }
+
+    [Fact]
+    public void A_voice_engine_sharing_a_Windows_hosts_graphics_card_is_warned_about()
+    {
+        var wsl = new Martlet.Core.Installation.HostHardware("diva-host", "https://192.168.1.45:9443", DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow, "docker", "Docker Desktop", "5.15.167.4-microsoft-standard-WSL2", null, null, null, "Docker 29.8.1",
+            "yes", []) { Platform = "linux" };
+        var linux = wsl with { HostId = "linux-host", OperatingSystem = "Ubuntu 24.04", Kernel = "6.8.0-45-generic" };
+        var offers = new Dictionary<string, string> { ["chatterbox"] = "chatterbox-turbo", ["audio2face"] = "claire", ["stt"] = "large-v3-turbo" };
+        var warning = Martlet.Core.Installation.SharedGpu.Warning("diva-host", true, "Chatterbox Turbo", ["Lip-sync", "Listening"]);
+
+        // Every role is either a voice engine or one of the other roles that use the card, under the same name as here.
+        Assert.All(HostRoles.All.Where(r => !HostRoles.Speaks(r.Kind)), role =>
+            Assert.Contains((role.Kind, role.Name), Martlet.Core.Installation.SharedGpu.OtherGpuRoles));
+
+        // The Devices map shows it on a Windows host that runs a voice engine beside other roles, not on a Linux one.
+        var hosts = new[]
+        {
+            new PairedHost { Pairing = Remote("diva-host", "192.168.1.45") },
+            new PairedHost { Pairing = Remote("linux-host", "192.168.1.60") }
+        };
+        var checks = new Dictionary<string, HostCheck>
+        {
+            ["diva-host"] = new(true, "Reachable.", offers),
+            ["linux-host"] = new(true, "Reachable.", offers)
+        };
+        var nodes = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, [wsl, linux], hosts));
+        Assert.Equal(warning, nodes.Single(n => n.Id == "host:diva-host").SharedGpu);
+        Assert.Null(nodes.Single(n => n.Id == "host:linux-host").SharedGpu);
+        var quiet = new Dictionary<string, HostCheck> { ["diva-host"] = new(true, "Reachable.", new Dictionary<string, string> { ["chatterbox"] = "chatterbox-turbo" }) };
+        Assert.Null(NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, quiet, [wsl], hosts))
+            .Single(n => n.Id == "host:diva-host").SharedGpu);
+    }
 }

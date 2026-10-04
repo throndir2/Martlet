@@ -53,6 +53,25 @@ MAX_FRAME_SAMPLES = 4_800
 MAX_FRAME_BYTES = MAX_FRAME_SAMPLES * 2
 MAX_SAMPLES = 24_000 * 90
 TERMINAL = {"completed", "canceled", "failed"}
+# While nobody speaks, the model is run briefly this often (seconds; 0 turns it off): Windows moves an idle model out of
+# graphics memory when other programs fill the card, and the next reply then waits for it (51 s once on a shared card).
+IDLE_CHECK_SECONDS = float(os.environ.get("MARTLET_CHATTERBOX_IDLE_CHECK_SECONDS", "300"))
+# A CUDA error such as a device-side assert or an illegal memory access breaks the process's graphics context for good;
+# the service exits with this code so Docker (restart: unless-stopped) starts it again with a fresh one.
+RESTART_EXIT_CODE = 75
+RESTART_DELAY_SECONDS = 1.0
+# The most speech tokens (25 a second) a piece may take: SPEECH_TOKENS_BASE plus so many per text token and per tag
+# ([laugh]...). Measured on three starter voices (270 pieces, none ran away): a text token took 6.7 speech tokens (median),
+# at most 11.5, and up to 16 in digit strings ("3.14159265358979"); a tag up to about 35 more. These allow about twice the
+# most measured, so only a piece Turbo doesn't stop is cut.
+SPEECH_TOKENS_BASE = int(os.environ.get("MARTLET_CHATTERBOX_TOKENS_BASE", "100"))
+SPEECH_TOKENS_PER_TEXT_TOKEN = int(os.environ.get("MARTLET_CHATTERBOX_TOKENS_PER_TEXT_TOKEN", "25"))
+SPEECH_TOKENS_PER_TAG = int(os.environ.get("MARTLET_CHATTERBOX_TOKENS_PER_TAG", "100"))
+# The tokenizer's 19 tags (added_tokens.json, ids 50257-50275).
+TAG_TOKEN_FIRST, TAG_TOKEN_LAST = 50257, 50275
+# How many speech tokens are drawn between asking the GPU whether the stop token came (the tokens are the same as asking
+# after every one; measured on an RTX 4070, 11.3 -> 11.1 ms a token, the same 30 ms with another program using the card).
+CHECK_EVERY = 4
 REVISION = "749d1c1a46eb10492095d68fbcf55691ccf137cd"
 BASE_URL = f"https://huggingface.co/ResembleAI/chatterbox-turbo/resolve/{REVISION}/"
 
@@ -573,6 +592,13 @@ class Job:
         self.queue.put(None)
 
 
+class IdleCheck:
+    """The brief run of the model while nobody speaks (see EngineHost.idle_check); a reply that arrives stops it."""
+
+    def __init__(self) -> None:
+        self.cancel_requested = False
+
+
 class EngineHost:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -585,14 +611,30 @@ class EngineHost:
         self.fast: FastTurbo | None = None
         self.active: Job | None = None
         self.loading = False
+        # Set once a model has loaded in this process: only then can a broken graphics context be this process's own.
+        self.loaded_once = False
+        # The graphics context broke: the service is about to exit so Docker starts it fresh; nothing loads meanwhile.
+        self.restarting = False
+        self.idle: IdleCheck | None = None
+        self.last_activity = time.monotonic()
+        self.idle_checks = 0
+        self.idle_last_ms: int | None = None
+        self.idle_fastest_ms: int | None = None
 
     def status(self) -> dict[str, Any]:
         with self.lock:
-            return {"error": self.error, "ready": self.state == "ready", "state": self.state, "worker": self.identity}
+            return {
+                "error": self.error,
+                "idle_check": {"checks": self.idle_checks, "every_seconds": IDLE_CHECK_SECONDS, "fastest_ms": self.idle_fastest_ms,
+                               "last_ms": self.idle_last_ms},
+                "ready": self.state == "ready",
+                "state": self.state,
+                "worker": self.identity,
+            }
 
     def start_loading(self) -> None:
         with self.lock:
-            if self.loading or self.state in {"ready", "busy", "loading_model"}:
+            if self.loading or self.restarting or self.state in {"ready", "busy", "loading_model"}:
                 return
             if not CONFIG.is_file():
                 self.state, self.error = "not_provisioned", "Run the chatterbox role's provisioning step first."
@@ -604,6 +646,11 @@ class EngineHost:
         threading.Thread(target=self._load, name="chatterbox-load", daemon=True).start()
 
     def _load(self) -> None:
+        # A model dropped after a failure must be gone from graphics memory before the next one loads, or the card needs
+        # room for both.
+        _free_gpu_memory()
+        engine: str | None = None
+        device = DEVICE
         try:
             config = json.loads(CONFIG.read_text(encoding="utf-8"))
             engine = config.get("engine")
@@ -640,8 +687,13 @@ class EngineHost:
                 self.state = "failed"
                 self.error = f"The Chatterbox worker could not load: {exc}"
                 self.loading = False
+                reloading = self.loaded_once
                 self.changed.notify_all()
             traceback.print_exc()
+            # Reloading after a failed reply in a process whose graphics context broke can't work; a fresh process can.
+            # (A fresh process that fails to load is not restarted: it would fail the same way.)
+            if reloading and engine == "chatterbox" and (broken := _cuda_broken(device)):
+                self._restart(broken)
             return
         with self.lock:
             self.model = model
@@ -650,7 +702,24 @@ class EngineHost:
             self.identity = identity
             self.state, self.error = "ready", None
             self.loading = False
+            self.loaded_once = True
+            self.last_activity = time.monotonic()
             self.changed.notify_all()
+
+    def _restart(self, why: str) -> None:
+        """The graphics context is broken (why): say so, refuse new replies and exit so Docker starts the service fresh."""
+        with self.lock:
+            if self.restarting:
+                return
+            self.restarting = True
+            self.state = "failed"
+            self.error = f"The graphics card's CUDA context broke ({why}); the voice service is restarting."
+            self.changed.notify_all()
+        _log(f"The graphics card's CUDA context broke ({why}); exiting so Docker restarts the voice service with a fresh one.")
+        # A moment for the failed reply's last event to reach the relay first.
+        timer = threading.Timer(RESTART_DELAY_SECONDS, _restart_process)
+        timer.daemon = True
+        timer.start()
 
     def wait_settled(self, seconds: float) -> dict[str, Any]:
         deadline = time.monotonic() + seconds
@@ -665,7 +734,11 @@ class EngineHost:
     def wait_admissible(self, seconds: float) -> None:
         deadline = time.monotonic() + seconds
         with self.lock:
-            while (self.state != "ready" or self.active is not None) and self.state not in {"not_provisioned", "failed"}:
+            # A reply stops an idle check at its next speech token instead of waiting for it.
+            if self.idle is not None:
+                self.idle.cancel_requested = True
+            while ((self.state != "ready" or self.active is not None or self.idle is not None)
+                   and self.state not in {"not_provisioned", "failed"}):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
@@ -673,6 +746,7 @@ class EngineHost:
 
     def run(self, job: Job) -> None:
         failed_engine: str | None = None
+        broken: str | None = None
         try:
             job.started()
             with self.lock:
@@ -701,14 +775,21 @@ class EngineHost:
                     samples = 0
                     first_audio: float | None = None
                     streaming = fast is not None and fast.streams
+                    capped = 0
                     for chunk in job.request.chunks:
                         if job.cancel_requested:
                             return
+                        text = _speakable(chunk.text)
+                        if not text:
+                            # Nothing Turbo should say (only quotation marks): an empty piece, not the library's stand-in sentence.
+                            if not job.chunk_completed(chunk.index):
+                                return
+                            continue
                         spoken = False
                         if streaming:
                             # Spoken as it is made: the first audio leaves after about a dozen speech tokens.
                             try:
-                                for pcm in fast.stream(chunk.text, cancelled=lambda: job.cancel_requested):
+                                for pcm in fast.stream(text, cancelled=lambda: job.cancel_requested):
                                     spoken = True
                                     first_audio = first_audio if first_audio is not None else time.monotonic() - started
                                     samples += len(pcm) // 2
@@ -719,18 +800,21 @@ class EngineHost:
                             if job.cancel_requested:
                                 return
                         if not spoken:
-                            pcm = _generate_with_memory_retry(engine, chunk.text, reference_path)
+                            pcm = _generate_with_memory_retry(engine, text, reference_path)
                             first_audio = first_audio if first_audio is not None else time.monotonic() - started
                             samples += len(pcm) // 2
                             if not job.emit_pcm(chunk.index, pcm):
                                 return
+                        if fast is not None and fast.graph is not None and fast.graph.capped:
+                            capped += 1
                         if not job.chunk_completed(chunk.index):
                             return
                     # Timing only, never the text: how long this reply's speech took to make.
                     _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms, first audio after "
                          f"{(first_audio or 0) * 1000:.0f} ms ({'kept' if cached else 'new'} voice conditionals, "
                          f"{'CUDA graph' if fast is not None and fast.graph_ready else 'eager'} decoding"
-                         f"{', streamed' if streaming else ''}).")
+                         f"{', streamed' if streaming else ''}"
+                         f"{f', {capped} piece(s) stopped at their speech-token limit' if capped else ''}).")
                 job.completed()
             finally:
                 if reference_path is not None:
@@ -749,13 +833,19 @@ class EngineHost:
                     action_id="chatterbox.free-gpu-memory", retryable=True))
             else:
                 failed_engine = detail
-                job.failed(ContractError("internal_failure", f"The Chatterbox engine failed while synthesizing this reply ({detail}).",
-                    stage="synthesis", action_id="chatterbox.restart-worker"))
+                # A device-side assert or an illegal memory access leaves the graphics context unusable until the process
+                # exits; reloading the model here would fail every reply until someone restarted the container.
+                broken = _cuda_broken(str(getattr(self.model, "device", None) or DEVICE)) if kind == "chatterbox" else None
+                job.failed(ContractError("internal_failure", f"The Chatterbox engine failed while synthesizing this reply ({detail})"
+                    + ("; the voice service is restarting." if broken else "."), stage="synthesis", action_id="chatterbox.restart-worker"))
         finally:
+            dropped: FastTurbo | None = None
             with self.lock:
                 if self.active is job:
                     self.active = None
+                self.last_activity = time.monotonic()
                 if failed_engine is not None:
+                    dropped = self.fast
                     self.model = None
                     self.fast = None
                     self.state = "failed"
@@ -763,6 +853,63 @@ class EngineHost:
                 elif self.state == "busy":
                     self.state = "ready"
                 self.changed.notify_all()
+            if dropped is not None:
+                # Its CUDA graph and the reference it keeps on the model would hold the old model in graphics memory.
+                dropped.close()
+            if broken is not None:
+                self._restart(broken)
+
+    def idle_check(self) -> bool:
+        """Runs the model briefly when nobody has spoken for IDLE_CHECK_SECONDS: speech tokens, the decoder, the vocoder and the
+        watermark, on the warm-up's synthetic voice (FIXTURE - NOT a voice), output thrown away. That brings a model Windows
+        moved out of graphics memory back before the next reply instead of during it, says in the log when it was slow
+        (evidence of it), and finds a broken graphics context before a reply does. A reply stops it at its next token.
+        True when it ran."""
+        with self.lock:
+            fast = self.fast
+            if (fast is None or self.state != "ready" or self.active is not None or self.idle is not None or self.restarting
+                    or self.engine_kind != "chatterbox" or time.monotonic() - self.last_activity < IDLE_CHECK_SECONDS):
+                return False
+            idle = self.idle = IdleCheck()
+            device = str(getattr(self.model, "device", None) or DEVICE)
+        started = time.monotonic()
+        failure: Exception | None = None
+        try:
+            fast.idle_pass(lambda: idle.cancel_requested)
+        except Exception as exc:  # noqa: BLE001 - reported below; the model stays for the next reply
+            failure = exc
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        fastest: int | None = None
+        with self.lock:
+            self.idle = None
+            self.last_activity = time.monotonic()
+            if failure is None and not idle.cancel_requested:
+                fastest = self.idle_fastest_ms
+                self.idle_checks += 1
+                self.idle_last_ms = elapsed_ms
+                self.idle_fastest_ms = elapsed_ms if fastest is None else min(fastest, elapsed_ms)
+            self.changed.notify_all()
+        if failure is not None:
+            detail = _failure_detail(failure)
+            if _out_of_memory(failure):
+                _free_gpu_memory()
+                _log(f"Idle check: the graphics card was out of memory ({detail}); other programs are using it.")
+            elif broken := _cuda_broken(device):
+                self._restart(broken)
+            else:
+                _log(f"Idle check failed ({detail}); the model stays loaded.")
+        elif not idle.cancel_requested and elapsed_ms > (5_000 if fastest is None else max(2_000, 4 * fastest)):
+            _log(f"Idle check took {elapsed_ms} ms{f' (fastest {fastest} ms)' if fastest is not None else ''}: the graphics card was "
+                 "busy, or Windows had moved the voice model out of graphics memory while other programs used it; it is back now.")
+        return True
+
+    def idle_loop(self) -> None:
+        while True:
+            time.sleep(max(1.0, min(30.0, IDLE_CHECK_SECONDS / 10)))
+            try:
+                self.idle_check()
+            except Exception:  # noqa: BLE001 - the idle check must never stop the service
+                traceback.print_exc()
 
 
 def _failure_detail(exc: BaseException) -> str:
@@ -775,6 +922,41 @@ def _failure_detail(exc: BaseException) -> str:
 
 def _out_of_memory(exc: BaseException) -> bool:
     return type(exc).__name__ == "OutOfMemoryError" or "out of memory" in str(exc).lower()
+
+
+def _cuda_broken(device: str) -> str | None:
+    """Why this process can no longer use the graphics card (a sticky CUDA error such as a device-side assert, an illegal
+    memory access or a launch failure poisons the context until the process exits), or None when a tiny operation still
+    runs, the card is only out of memory, or there is no CUDA here."""
+    try:
+        import torch  # type: ignore
+    except ImportError:
+        return None
+    if not str(device).startswith("cuda") or not torch.cuda.is_available():
+        return None
+    try:
+        probe = torch.ones(1, device=device)
+        probe.add_(1)
+        torch.cuda.synchronize(probe.device)
+        return None
+    except Exception as exc:  # noqa: BLE001 - whatever stops a tiny operation means the context is gone
+        return None if _out_of_memory(exc) else _failure_detail(exc)
+
+
+def _restart_process() -> None:
+    """Exits so Docker (restart: unless-stopped) starts the service again with a fresh CUDA context."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(RESTART_EXIT_CODE)
+
+
+_DOUBLE_QUOTES = dict.fromkeys(map(ord, "\"\u201c\u201d\u201e\u00ab\u00bb"))
+
+
+def _speakable(text: str) -> str:
+    """A piece as Turbo should read it: without double quotation marks, which it can say as a breath or a sigh
+    (resemble-ai/chatterbox#433), and with single spaces. Apostrophes stay."""
+    return " ".join(text.translate(_DOUBLE_QUOTES).split())
 
 
 def _free_gpu_memory() -> None:
@@ -910,6 +1092,8 @@ class FastTurbo:
         self.conditionals: OrderedDict[str, Any] = OrderedDict()
         self.graph: _T3Graph | None = None
         self.graph_error: str | None = None
+        # The warm-up's synthetic conditionals (FIXTURE - NOT a voice), kept for the idle check.
+        self.warm_conds: Any = None
         self._original = model.t3.inference_turbo
         if graph:
             try:
@@ -922,6 +1106,15 @@ class FastTurbo:
     @property
     def graph_ready(self) -> bool:
         return self.graph is not None and self.graph.captured
+
+    def close(self) -> None:
+        """Lets go of the model: puts T3's own decoding back (the patched method held this object, and through it the model,
+        in a reference cycle that kept it in graphics memory until a full garbage collection) and drops the CUDA graph and
+        the kept conditionals."""
+        self.model.t3.__dict__.pop("inference_turbo", None)
+        self.graph = None
+        self.conditionals.clear()
+        self.warm_conds = None
 
     @property
     def streams(self) -> bool:
@@ -1023,16 +1216,17 @@ class FastTurbo:
                     raise
                 self.graph = None
                 self.graph_error = _failure_detail(exc)
-                self.model.t3.inference_turbo = self._original
+                self.model.t3.__dict__.pop("inference_turbo", None)
                 _log(f"CUDA-graph decoding stopped ({self.graph_error}); using the library's own decoding.")
         return self._original(t3_cond, text_tokens, temperature=temperature, top_k=top_k, top_p=top_p,
                               repetition_penalty=repetition_penalty, max_gen_len=max_gen_len)
 
     def warm(self) -> None:
         """Pays the first reply's one-time costs now: the conditionals' librosa/numba warm-up, the CUDA graph capture, the
-        decoder's first run and the Perth watermarker's first call (on the CPU: about 0.8 s the first time, 20 ms after, which
-        the first reply's first audio used to wait for), on a synthetic signal (FIXTURE - NOT a voice) that is forgotten
-        afterwards. Never raises."""
+        decoder's first run, a streamed piece long enough for several chunks (the vocoder's carried-over source and the
+        growing decodes a reply uses) and the Perth watermarker's first call (on the CPU: about 0.8 s the first time, 20 ms
+        after, which the first reply's first audio used to wait for), on a synthetic signal (FIXTURE - NOT a voice). Its
+        conditionals stay for the idle check (idle_pass), out of the voices' cache. Never raises."""
         started = time.monotonic()
         try:
             import torch  # type: ignore
@@ -1046,12 +1240,29 @@ class FastTurbo:
                     self.model.s3gen.inference(speech_tokens=tokens.to(self.model.device), ref_dict=self.model.conds.gen,
                                                n_cfm_timesteps=2)
             self._warm_watermarker()
-            self.conditionals.pop(key, None)
+            if self.streams:
+                for _ in self.stream("Warming up the voice, so that the first reply starts right away."):
+                    pass
+            self.warm_conds = self.conditionals.pop(key, None)
             self.model.conds = None
             decoding = "CUDA graph" if self.graph_ready else f"eager ({self.graph_error or 'graph off'})"
             _log(f"Chatterbox Turbo warmed up in {(time.monotonic() - started) * 1000:.0f} ms; decoding: {decoding}.")
         except Exception as exc:  # noqa: BLE001 - warming up is best effort
             _log(f"Warming Chatterbox Turbo up failed ({_failure_detail(exc)}); the first reply may be slower.")
+
+    def idle_pass(self, cancelled: Any) -> None:
+        """One short piece on the warm-up's synthetic voice (FIXTURE - NOT a voice), thrown away: every part of the model a
+        reply uses runs once. Stops at the next speech token once cancelled() says a reply is waiting."""
+        conds = self.warm_conds or self.model.conds
+        if conds is None:
+            return
+        self.model.conds = conds
+        if self.streams:
+            for _ in self.stream("Okay.", cancelled=cancelled):
+                if cancelled():
+                    return
+        elif not cancelled():
+            self.model.generate("Okay.")
 
     def _warm_watermarker(self) -> None:
         # FIXTURE - NOT a voice: one second of a quiet 220 Hz tone, watermarked once and thrown away.
@@ -1098,6 +1309,8 @@ class _T3Graph:
         self.position = torch.zeros(1, dtype=torch.long, device=weight.device)
         self.out: Any = None
         self.cuda_graph: Any = None
+        # Whether the last piece decoded stopped at its speech-token budget rather than at the stop token.
+        self.capped = False
 
     @property
     def captured(self) -> bool:
@@ -1133,7 +1346,6 @@ class _T3Graph:
                  max_gen_len: int) -> Any:
         """The speech tokens, or None when this prompt doesn't fit the static cache (the caller decodes it as before)."""
         torch = self.torch
-        import torch.nn.functional as F  # type: ignore
         from transformers.generation.logits_process import (  # type: ignore
             LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper)
 
@@ -1153,34 +1365,15 @@ class _T3Graph:
             length = embeds.shape[1]
             if embeds.shape[0] != 1 or length + max_gen_len + 1 > self.MAX_TOKENS:
                 return None
-            if self.cuda_graph is None:
-                self._prefill(embeds)
-                self._capture(length)
-            logits = self._prefill(embeds)
-            next_token = torch.multinomial(F.softmax(processors(start, logits[:, -1, :]), dim=-1), num_samples=1)
-            generated = [next_token]
-            for i in range(max_gen_len):
-                self.x.copy_(t3.speech_emb(next_token))
-                self.position.fill_(length + i)
-                self.cuda_graph.replay()
-                processed = processors(torch.cat(generated, dim=1), self.out[:, -1, :])
-                if torch.all(processed == -float("inf")):
-                    break
-                next_token = torch.multinomial(F.softmax(processed, dim=-1), num_samples=1)
-                generated.append(next_token)
-                if torch.all(next_token == t3.hp.stop_speech_token):
-                    break
-            tokens = torch.cat(generated, dim=1)
-            if tokens.size(1) > 0 and tokens[0, -1] == t3.hp.stop_speech_token:
-                tokens = tokens[:, :-1]
+            tokens = None
+            for tokens, _last in self._decode(embeds, start, processors, min(max_gen_len, self.budget(text_tokens)), None, None):
+                pass
             return tokens
-
 
     def chunks(self, t3_cond: Any, text_tokens: Any, cancelled: Any = None, first: int = 12, largest: int = 100) -> Any:
         """The speech tokens so far, as (tokens, last) once there are first + 3 (the decoder's lookahead), then 25, 50 and
         largest more at a time, and once more with all of them at the end; sampled exactly as generate() does."""
         torch = self.torch
-        import torch.nn.functional as F  # type: ignore
         from transformers.generation.logits_process import (  # type: ignore
             LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper)
 
@@ -1190,36 +1383,71 @@ class _T3Graph:
         with torch.inference_mode():
             start = t3.hp.start_speech_token * torch.ones_like(text_tokens[:, :1])
             embeds, _ = t3.prepare_input_embeds(t3_cond=t3_cond, text_tokens=text_tokens, speech_tokens=start, cfg_weight=0.0)
-            length = embeds.shape[1]
-            budget = min(1000, self.MAX_TOKENS - length - 1)
-            if embeds.shape[0] != 1 or budget < 100:
+            room = self.MAX_TOKENS - embeds.shape[1] - 1
+            if embeds.shape[0] != 1 or room < 100:
                 raise CacheTooSmall()
-            if self.cuda_graph is None:
-                self._prefill(embeds)
-                self._capture(length)
-            logits = self._prefill(embeds)
-            next_token = torch.multinomial(F.softmax(processors(start, logits[:, -1, :]), dim=-1), num_samples=1)
-            generated = [next_token]
-            target, step = first + 3, 25
-            for i in range(budget):
-                # Checked every token: a reply stopped mid-chunk (up to 100 tokens, seconds on a busy card) would otherwise keep
-                # the model busy and the next reply would be refused with worker.busy.
-                if cancelled is not None and cancelled():
+            yield from self._decode(embeds, start, processors, min(room, self.budget(text_tokens)), cancelled, (first + 3, largest))
+
+    def budget(self, text_tokens: Any) -> int:
+        """The most speech tokens (25 a second) a piece of these text tokens may take: well beyond what its words need
+        (MARTLET_CHATTERBOX_TOKENS_* below), so a piece Turbo doesn't stop (it has no stop detector of its own and would
+        otherwise babble or hiss up to 1,000 tokens, 40 s) ends instead, and never more than 1,000."""
+        tags = int(((text_tokens >= TAG_TOKEN_FIRST) & (text_tokens <= TAG_TOKEN_LAST)).sum())
+        words = int(text_tokens.shape[1]) - tags
+        return min(1000, SPEECH_TOKENS_BASE + SPEECH_TOKENS_PER_TEXT_TOKEN * words + SPEECH_TOKENS_PER_TAG * tags)
+
+    def _decode(self, embeds: Any, start: Any, processors: Any, budget: int, cancelled: Any, schedule: tuple[int, int] | None) -> Any:
+        """Samples up to budget speech tokens after the prompt embeds, as T3.inference_turbo does (the same processors, the
+        same multinomial draws in the same order, the same stop token), yielding (tokens so far, last): at each target of
+        schedule (first, largest: first, then 25, 50 and largest more at a time) and once at the end. The GPU is asked
+        whether the stop token came only every CHECK_EVERY tokens (and at each target), not after every token, so the
+        processor queues the next tokens while the card works; tokens drawn after the stop are discarded. A step whose
+        probabilities are not finite (every logit -inf, which the library stops on) draws the stop token without asking
+        the GPU."""
+        torch = self.torch
+        import torch.nn.functional as F  # type: ignore
+
+        t3 = self.t3
+        stop = t3.hp.stop_speech_token
+        self.capped = False
+        length = embeds.shape[1]
+        if self.cuda_graph is None:
+            self._prefill(embeds)
+            self._capture(length)
+        logits = self._prefill(embeds)
+        ids = torch.empty(1, budget + 1, dtype=torch.long, device=logits.device)
+        next_token = torch.multinomial(F.softmax(processors(start, logits[:, -1, :]), dim=-1), num_samples=1)
+        ids[:, :1] = next_token
+        only_stop = torch.zeros(1, logits.shape[-1], device=logits.device, dtype=torch.float32)
+        only_stop[0, stop] = 1.0
+        # The first token is kept whatever it is, as the library does; from the second on, the stop token ends the piece.
+        count, checked = 1, 1
+        target, step = (schedule[0], 25) if schedule is not None else (None, 0)
+        for i in range(budget):
+            # Checked every token: a reply stopped mid-chunk (up to 100 tokens, seconds on a busy card) would otherwise keep
+            # the model busy and the next reply would be refused with worker.busy.
+            if cancelled is not None and cancelled():
+                return
+            self.x.copy_(t3.speech_emb(next_token))
+            self.position.fill_(length + i)
+            self.cuda_graph.replay()
+            probs = F.softmax(processors(ids[:, :count], self.out[:, -1, :]), dim=-1)
+            probs = torch.where(torch.isfinite(probs).all(), probs, only_stop)
+            next_token = torch.multinomial(probs, num_samples=1)
+            ids[:, count:count + 1] = next_token
+            count += 1
+            due = target is not None and count >= target
+            if due or count - checked >= CHECK_EVERY or i == budget - 1:
+                hits = (ids[0, checked:count] == stop).nonzero()
+                if hits.numel() > 0:
+                    yield ids[:, :checked + int(hits[0, 0])], True
                     return
-                self.x.copy_(t3.speech_emb(next_token))
-                self.position.fill_(length + i)
-                self.cuda_graph.replay()
-                processed = processors(torch.cat(generated, dim=1), self.out[:, -1, :])
-                if torch.all(processed == -float("inf")):
-                    break
-                next_token = torch.multinomial(F.softmax(processed, dim=-1), num_samples=1)
-                if torch.all(next_token == t3.hp.stop_speech_token):
-                    break
-                generated.append(next_token)
-                if len(generated) >= target:
-                    yield torch.cat(generated, dim=1), False
-                    target, step = target + step, min(step * 2, largest)
-            yield torch.cat(generated, dim=1), True
+                checked = count
+                if due:
+                    yield ids[:, :count], False
+                    target, step = target + step, min(step * 2, schedule[1])
+        self.capped = True
+        yield ids[:, :count], True
 
 
 class CacheTooSmall(Exception):
@@ -1304,8 +1532,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         WORKER.wait_admissible(min(BUSY_WAIT_SECONDS, max(0.0, remaining / 2)))
         with WORKER.lock:
             identity = WORKER.identity
-            if WORKER.state != "ready" or identity is None or WORKER.active is not None:
-                busy = WORKER.active is not None or WORKER.state == "busy"
+            if WORKER.state != "ready" or identity is None or WORKER.active is not None or WORKER.idle is not None:
+                busy = WORKER.active is not None or WORKER.idle is not None or WORKER.state == "busy"
                 refusal = {"error": "worker.busy" if busy else "worker.unavailable", "state": WORKER.state}
                 # Why the model isn't ready (it failed to load, or the last reply failed it); the relay logs it on the host.
                 if WORKER.error and not busy:
@@ -1386,6 +1614,8 @@ def serve() -> None:
     server.daemon_threads = True
     if CONFIG.is_file():
         WORKER.start_loading()
+    if IDLE_CHECK_SECONDS > 0:
+        threading.Thread(target=WORKER.idle_loop, name="chatterbox-idle", daemon=True).start()
     _log(f"Martlet Chatterbox host service listening on 127.0.0.1:{PORT}")
     server.serve_forever()
 

@@ -60,10 +60,11 @@ internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictiona
     string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null);
 
 /// <summary>A device on the map. <paramref name="HealthCommand"/> is what clicking its status runs, when the status names
-/// something one click fixes ("Update available" updates the host).</summary>
+/// something one click fixes ("Update available" updates the host). <paramref name="SharedGpu"/> warns that its voice engine
+/// shares a Windows computer's graphics card with other work (<see cref="Martlet.Core.Installation.SharedGpu.Warning"/>).</summary>
 internal sealed record NetworkNode(string Id, NodeKind Kind, string Title, string Subtitle, string Glyph, NodeHealth Health,
     string HealthText, IReadOnlyList<HostedRole> Roles, IReadOnlyList<NodeFact> Facts, IReadOnlyList<NodeCommand> Commands,
-    IReadOnlyList<string> Notes, string? PairedHostId = null, NodeCommand? HealthCommand = null);
+    IReadOnlyList<string> Notes, string? PairedHostId = null, NodeCommand? HealthCommand = null, string? SharedGpu = null);
 
 internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSettings? Settings, AvatarProfile? Avatar,
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
@@ -110,6 +111,7 @@ internal static class NetworkMap
         internal List<string> Notes { get; } = [];
         internal string? PairedHostId { get; set; }
         internal NodeCommand? HealthCommand { get; set; }
+        internal string? SharedGpu { get; set; }
 
         /// <summary>Shows a worse status; returns whether <paramref name="text"/> is now the status shown.</summary>
         internal bool Worsen(NodeHealth health, string text)
@@ -121,7 +123,7 @@ internal static class NetworkMap
         }
 
         internal NetworkNode Build() =>
-            new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes, PairedHostId, HealthCommand);
+            new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes, PairedHostId, HealthCommand, SharedGpu);
     }
 
     internal static LipSyncHandler LipSync(AvatarProfile? avatar) =>
@@ -558,8 +560,14 @@ internal static class NetworkMap
                         Argument: id + "/" + role.Kind, Component: offered ? RoleComponent(role.Kind) : null));
             }
             if (managed) target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id, Component: hostService));
-            // Home Assistant runs on the host's own network (no gateway route); the host reports it in its machine report.
             var hardware = inputs.HostHardware?.FirstOrDefault(h => h.HostId == id);
+            // A voice engine on a Windows computer whose graphics card also does other work falls behind when the card fills.
+            if (check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks) is { } voiceKind &&
+                SharedGpu.Warning(local ? "This PC" : id, SharedGpu.OnWindows(local, hardware), SpeechEngines.ForRoleKind(voiceKind)?.Name,
+                    SharedGpu.Neighbours(check.Offers.Keys, local && MainWindow.IsLocalOllama(
+                        inputs.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))) is { } sharedGpu)
+                target.SharedGpu = sharedGpu;
+            // Home Assistant runs on the host's own network (no gateway route); the host reports it in its machine report.
             if (HomeAssistantHosts.Runs(hardware))
             {
                 target.Roles.Add(new("Home", "Home Assistant", $"Runs at {HomeAssistantHosts.Address(paired).AbsoluteUri.TrimEnd('/')}. " +

@@ -37,8 +37,18 @@ Model card: <https://huggingface.co/ResembleAI/chatterbox-turbo>, MIT license.
   text), and a 503 while the model isn't ready adds `detail` (why it failed to load or failed the last reply). Martlet's
   relay writes both into the host's own log, which paired desktops show on their Diagnostics page. When the graphics card
   runs out of memory, the worker frees PyTorch's cached memory and tries the sentence once more; if it runs out again the
-  reply fails with `gpu_out_of_memory` and the model stays loaded (reloading would need more memory). Any other engine
-  failure (`internal_failure`) drops the model, and the next reply reloads it.
+  reply fails with `gpu_out_of_memory` and the model stays loaded (reloading would need more memory). After any other engine
+  failure (`internal_failure`) the worker runs a tiny operation on the card: if that fails too, the CUDA context is broken
+  (a device-side assert or an illegal memory access lasts until the process exits), the summary adds "the voice service is
+  restarting" and the service exits with code 75 a second later so Docker restarts it; otherwise it drops the model (its
+  CUDA graph and kept conditionals let go of it first) and the next reply reloads it.
+- Each piece may take at most `MARTLET_CHATTERBOX_TOKENS_BASE` (100) speech tokens plus `..._PER_TEXT_TOKEN` (25) per text
+  token and `..._PER_TAG` (100) per tag, never more than 1,000: Turbo has no stop detector of its own. The log line of a reply
+  says when a piece was cut. Double quotation marks are removed from the text first.
+- While no reply has come for `MARTLET_CHATTERBOX_IDLE_CHECK_SECONDS` (300; 0 turns it off), the worker makes one short
+  piece on the warm-up's synthetic voice (**FIXTURE - NOT a voice**) and throws it away, so a model Windows moved out of
+  graphics memory comes back before the next reply; a reply stops it at its next speech token. `/status` reports
+  `idle_check` (`checks`, `every_seconds`, `fastest_ms`, `last_ms`) and the log says when one was slow.
 - Turbo ignores `exaggeration`, `cfg_weight`, and `min_p`; `tts_turbo.py` logs that those controls are not supported. Martlet uses Turbo's native style/emotion tokens as its emotion control instead.
 - Martlet passes these pinned tokenizer tags through unchanged: sounds `[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`, `[cough]`, `[clear throat]`, `[groan]`, `[sniff]`, `[shush]`; emotions/styles `[happy]`, `[sarcastic]`, `[surprised]`, `[angry]`, `[fear]`, `[crying]`, `[whispering]`, `[dramatic]`.
 - The tokenizer also contains `[advertisement]` and `[narration]`, but Martlet intentionally leaves those out.
