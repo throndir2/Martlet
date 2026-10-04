@@ -175,10 +175,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
         // Companion › Voice › Singing: the role on the shown computer (title with its badge, chips, where it stands: not set up,
-        // setting up, ready, failed with the reason, or why that computer can't sing), the Set up button's label and the saved
-        // quality and voice match. Set up needs --allow-ui-effects. Songs are only performed in conversation (singing_check
-        // exercises them headlessly).
-        "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingQuality", "SingingVoiceMatch",
+        // setting up, ready with the voice matches set up there, failed with the reason, or why that computer can't sing), the
+        // Set up button's label, whether it needs a graphics card of its own (SingingGpu, fixed text) and the saved quality and
+        // voice match; with VevoSing chosen where it isn't set up, that it isn't (or is being added) and the Add VevoSing there
+        // button's label. Set up and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
+        // (singing_check exercises them headlessly).
+        "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingGpu", "SingingQuality", "SingingVoiceMatch",
+        "SingingVoiceMatchState", "SingingSetUpVevo",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character

@@ -183,6 +183,8 @@ class SongEngine:
         # Keep models in system memory between songs (faster next song) unless memory is short; "release" frees each
         # stage's models as soon as it is done. MARTLET_SINGING_KEEP_MODELS: auto, keep or release.
         self.keep_models = os.environ.get("MARTLET_SINGING_KEEP_MODELS", "auto")
+        # Set when a song released the music model for lack of system memory: the worker process then ends after the song.
+        self.exit_after_song = False
 
     # ---- lifecycle
 
@@ -238,12 +240,15 @@ class SongEngine:
         _check(canceled)
 
         # The music model stays warm on the card while separating and matching leave room; otherwise it waits in system
-        # memory when there is plenty, or is released.
+        # memory when there is plenty, or is released. Released for lack of memory, the worker also ends after this song:
+        # a released model doesn't always give its memory back, and the next song loading it again beside it (and beside
+        # the voice match kept in memory) ran the system out of memory, so the next song starts a fresh worker instead.
         if not (self.dit_resident and _card_free_mib() >= 3_072):
             if self._keep(8.0):
                 self._park_ace()
             else:
                 self.ace.clear()
+                self.exit_after_song = True
         self._free()
         report("separating", 0.45)
         started = time.perf_counter()

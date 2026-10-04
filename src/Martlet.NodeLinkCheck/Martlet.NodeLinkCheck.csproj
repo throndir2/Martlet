@@ -13,6 +13,9 @@
     <ProjectReference Include="..\Martlet.Gateway.Dia\Martlet.Gateway.Dia.csproj" />
     <!-- singing-check (singing_check) makes a song through the singing role's production relay. -->
     <ProjectReference Include="..\Martlet.Gateway.Singing\Martlet.Gateway.Singing.csproj" />
+    <!-- singing-check paired:<data directory> and singing-status sign requests to a paired host with the desktop's pairing
+         secret from Windows Credential Manager (never printed). -->
+    <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <!-- memories (memory_sync_selftest) keeps real memory stores the same through the hosts. -->

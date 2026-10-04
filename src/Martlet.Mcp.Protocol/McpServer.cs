@@ -468,7 +468,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
             "voice matches set up (soulx, vevosing), queue, whether the worker process holds the graphics card, the card's memory " +
             "and the idle release time) and, with a data directory, the Singing card's saved choices (singing.json: quality and " +
-            "voice match). Read-only; loopback only.", new
+            "voice match) and, when that directory is paired with hosts (hosts.json), Singing on each paired host read through its " +
+            "own gateway as the card reads it (reachable, offers the song route, the service's state, voice matches, models and " +
+            "their size, worker and GPU; a role in Docker on this PC listens only inside the gateway's network, so this is how " +
+            "to read it) plus what this PC's Docker shows of the role (container, images, models volume, and whether a " +
+            "\"martlet-host add singing\" is running now: a setup in progress). Read-only; the pairing secret from Windows " +
+            "Credential Manager only signs the requests and is never returned.", new
         {
             endpoint = new { type = "string", maxLength = 64 },
             dataDirectory = new { type = "string" }
@@ -477,7 +482,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "on 127.0.0.1 (pinned TLS, pairing, the shared speaking-voice list with a starter voice) and the desktop's paired song " +
             "client. endpoint \"fixture\" (the default) starts this checkout's workers/singing service with the FIXTURE - NOT AI " +
             "engine; a numeric loopback endpoint (for example http://127.0.0.1:50085/) uses a live singing service and its real " +
-            "models. Returns every stage seen and when, the host's stage timings, the three tracks (seconds, peak and RMS), the " +
+            "models. With dataDirectory (a desktop data directory paired with a host) it goes through that real paired host " +
+            "instead, exactly as the desktop does: the host offering Singing (or host), its own gateway and singing role, and " +
+            "voiceId (a full ID or a unique 8+ character prefix from that gateway's shared voice list; nothing is added to the " +
+            "list); when the host lacks that voice's recording it is sent once from voiceRecording or the data directory's voice " +
+            "store, checked against the voice's SHA-256. Returns every stage seen and when, the host's stage timings, the three tracks (seconds, peak and RMS), the " +
             "beat grid and timed lyric lines, the service status before and after (models, GPU memory), or the failure code and " +
             "message, plus the host's word-timing source and sanity metric (median word start to vocal onset), the backing " +
             "bleed removed from the vocals and its graphics-memory peak. Nothing is played; with saveDirectory (an absolute, " +
@@ -488,6 +497,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
+            dataDirectory = new { type = "string", maxLength = 260 },
+            host = new { type = "string", maxLength = 64 },
+            voiceId = new { type = "string", minLength = 8, maxLength = 128 },
             seconds = new { type = "integer", minimum = 15, maximum = 180 },
             quality = new { type = "string", @enum = new[] { "fast", "high_quality" } },
             voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
@@ -1210,14 +1222,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(6), cancellation, command);
     }
 
-    /// <summary>singing_check: Martlet.NodeLinkCheck's singing-check mode, with the fixture service or a live one on loopback.</summary>
+    /// <summary>singing_check: Martlet.NodeLinkCheck's singing-check mode, with the fixture service, a live one on loopback, or
+    /// (with dataDirectory) a real paired host through its own gateway.</summary>
     private static async Task<object> SingingCheckAsync(JsonElement arguments, CancellationToken cancellation)
     {
         var endpoint = OptionalString(arguments, "endpoint") ?? "fixture";
-        if (endpoint != "fixture" && (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
+        var paired = OptionalString(arguments, "dataDirectory") is { Length: > 0 } pairedData ? pairedData : null;
+        if (paired is not null)
+        {
+            if (!Path.IsPathFullyQualified(paired) || !File.Exists(Path.Combine(paired, "hosts.json")))
+                throw new ArgumentException("dataDirectory must be the absolute path of a Martlet desktop data directory paired with a host (it has hosts.json).");
+            endpoint = "paired:" + paired;
+        }
+        else if (endpoint != "fixture" && (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
             !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address)))
             throw new ArgumentException("endpoint must be \"fixture\" or a numeric loopback address such as http://127.0.0.1:50085/.");
-        if (endpoint != "fixture") endpoint = new Uri(endpoint).GetLeftPart(UriPartial.Authority) + "/";
+        if (paired is null && endpoint != "fixture") endpoint = new Uri(endpoint).GetLeftPart(UriPartial.Authority) + "/";
         var seconds = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("seconds", out var value) &&
             value.TryGetInt32(out var number) ? number : endpoint == "fixture" ? 20 : 30;
         if (seconds is < 15 or > 180) throw new ArgumentException("seconds must be 15 to 180.");
@@ -1237,8 +1257,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ? beats : 90;
         if (bpm is not 0 and (< 40 or > 240)) throw new ArgumentException("bpm must be 0 (none) or 40 to 240.");
         var key = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("key", out var keyValue) ? keyValue.GetString() ?? "" : "G major";
+        var voiceId = OptionalString(arguments, "voiceId") is { Length: > 0 } id ? id : null;
+        var host = OptionalString(arguments, "host") is { Length: > 0 } named ? named : null;
+        if (voiceId is not null && (voiceId.Length < 8 || !voiceId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')))
+            throw new ArgumentException("voiceId must be a voice ID or a prefix of 8+ of its characters.");
+        if (host is not null && !host.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-'))
+            throw new ArgumentException("host must be a paired host's ID.");
+        if (paired is null && (voiceId is not null || host is not null))
+            throw new ArgumentException("voiceId and host need dataDirectory (a paired desktop data directory).");
         command = [.. command, recording ?? "-", OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript ? transcript : "-",
-            bpm == 0 ? "-" : bpm.ToString(System.Globalization.CultureInfo.InvariantCulture), key.Length == 0 ? "-" : key];
+            bpm == 0 ? "-" : bpm.ToString(System.Globalization.CultureInfo.InvariantCulture), key.Length == 0 ? "-" : key,
+            voiceId ?? "-", host ?? "-"];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(20), cancellation, command);
     }
 
@@ -1283,8 +1312,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             service = new { answered = false, problem = error.Message };
         }
         object? choices = null;
+        object? paired = null;
         if (OptionalString(arguments, "dataDirectory") is { } directory)
         {
+            // Singing on the hosts this desktop is paired with, through their own gateways (as the card reads it).
+            if (Path.IsPathFullyQualified(directory) && File.Exists(Path.Combine(directory, "hosts.json")))
+                paired = await NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, ["singing-status", directory]);
             var path = Path.Combine(directory, "singing.json");
             try
             {
@@ -1304,7 +1337,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 choices = new { quality = "fast", voiceMatch = "soulx", saved = false };
             }
         }
-        return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices };
+        return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices, paired };
     }
 
     /// <summary>The host IDs in a data directory's hosts.json (nothing secret: pairing secrets stay in Credential Manager).</summary>

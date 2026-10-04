@@ -133,7 +133,7 @@ def provision(fixture: bool) -> None:
                               "sha256": sha256})
         # transformers finds the pinned Whisper base (SoulX's content encoder) offline through its cache layout.
         whisper_base = next(p for p in pins.PINNED_FILES if p.repository == "openai/whisper-base")
-        refs = MODELS / "hf-cache/hub/models--openai--whisper-base/refs"
+        refs = MODELS / "huggingface/hub/models--openai--whisper-base/refs"
         refs.mkdir(parents=True, exist_ok=True)
         (refs / "main").write_text(whisper_base.revision, encoding="utf-8")
     identity = {
@@ -166,6 +166,8 @@ class Job:
         self.created = time.monotonic()
         self.finished: float | None = None
         self.started: float | None = None
+        # The worker process making this song.
+        self.worker: Any = None
 
     @property
     def directory(self) -> Path:
@@ -323,7 +325,14 @@ class Service:
             with self.lock:
                 kind = message.get("type")
                 if kind == "state":
-                    self.worker_state = str(message.get("state"))
+                    if message.get("state") == "released" and self.process is process:
+                        # The worker ends after this song (its models were released for lack of system memory): the next
+                        # song starts a new one, and this one's last messages are still read below.
+                        _log("The singing worker ends after this song to give its memory back.")
+                        self.process = None
+                        self.worker_state = "stopped"
+                    elif self.process is process:
+                        self.worker_state = str(message.get("state"))
                     self.changed.notify_all()
                     continue
                 job = self.jobs.get(str(message.get("job_id")))
@@ -346,15 +355,20 @@ class Service:
                     self.running = None
                 self.last_active = time.monotonic()
                 self.changed.notify_all()
+        try:
+            process.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            pass
         with self.lock:
             if self.process is process:
                 self.worker_state = "stopped"
-                if self.running is not None and (job := self.jobs.get(self.running)) is not None:
-                    self._finish(job, "failed", {"code": "song.failed",
-                                                 "summary": "The singing worker stopped; it restarts for the next song."})
-                    self.restarts += 1
-                    self.running = None
-                self.changed.notify_all()
+            # A song this worker was making fails with the reason (also after it said it would end).
+            if self.running is not None and (job := self.jobs.get(self.running)) is not None and job.worker is process:
+                self._finish(job, "failed", {"code": "song.failed",
+                                             "summary": "The singing worker stopped; it restarts for the next song."})
+                self.restarts += 1
+                self.running = None
+            self.changed.notify_all()
 
     def dispatch(self) -> None:
         """Runs queued songs one at a time; releases the worker after an idle period and drops old results."""
@@ -386,6 +400,7 @@ class Service:
                     self._finish(job, "failed", {"code": "singing.unavailable", "summary": f"The singing worker could not start: {error}"})
                     self.running = None
                     continue
+                job.worker = self.process
                 message = {"type": "run", "job": {**job.request, "job_id": job.job_id, "directory": str(job.directory)}}
             if not self._send(message):
                 with self.lock:

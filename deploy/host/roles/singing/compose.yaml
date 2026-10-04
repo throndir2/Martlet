@@ -11,7 +11,7 @@ services:
     build:
       context: ${MARTLET_SOURCE:?set by martlet-host}/workers/singing
       dockerfile: host/Dockerfile
-    image: martlet-singing:1
+    image: martlet-singing:2
     pull_policy: build
     restart: unless-stopped
     environment:

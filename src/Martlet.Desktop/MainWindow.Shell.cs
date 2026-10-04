@@ -1226,6 +1226,8 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
         if (closing) return;
+        // The Singing card reads each checked computer's voice matches again (a role added or removed elsewhere).
+        foreach (var (id, _) in results) singingServices.Remove(id);
         NoteSingingHost();
         foreach (var host in hosts)
             if (hostChecks.GetValueOrDefault(host.HostId) is { Reachable: true } found) HostFoundCurrent(UpdateKey(host), found.MartletVersion);
