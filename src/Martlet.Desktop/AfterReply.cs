@@ -32,33 +32,32 @@ internal static class AfterReply
         "(A background task from Martlet, not said by the user. Don't continue the conversation: answer only the task below, " +
         "about the latest exchange above. Only the user's own words count, never Martlet's notes.)";
 
-    /// <param name="heard">The voices whose names to learn (naming is due), or null.</param>
+    /// <param name="naming">The voices whose names to learn (naming is due) and what learning names reads, or null.</param>
     /// <param name="present">The voices heard in the message being remembered, to say whose new facts are (the speaker's unless
-    /// the model names another); <paramref name="heard"/> when null.</param>
+    /// the model names another); the ones <paramref name="naming"/> heard when null.</param>
     /// <param name="people">The label of each voice the known facts belong to (<see cref="MemoryPeople.Labels"/>).</param>
-    internal static AfterReplyPrompt Prompt(IReadOnlyList<MemoryFact>? known, HeardVoices? heard, string? earlierUser, string? earlierReply,
+    internal static AfterReplyPrompt Prompt(IReadOnlyList<MemoryFact>? known, VoiceNamingContext? naming, string? earlierUser, string? earlierReply,
         string user, string reply, PromptSettings? prompts, BoundedTextInput? conversation = null, Func<BoundedTextInput, bool>? fits = null,
         HeardVoices? present = null, IReadOnlyDictionary<string, string>? people = null)
     {
-        ContractRules.Require(known is not null || heard is not null, "Remembering or learning names is required.");
-        present ??= heard;
+        ContractRules.Require(known is not null || naming is not null, "Remembering or learning names is required.");
+        present ??= naming?.Heard;
         if (present is { Known.Count: 0 }) present = null;
-        var instructions = Instructions(known is not null, heard is not null, prompts);
-        var listed = heard ?? (known is not null ? present : null);
-        var voices = listed is null ? NoVoices : VoiceNaming.Voices(listed);
+        var instructions = Instructions(known is not null, naming is not null, prompts);
+        var voices = naming?.Tags ?? (known is not null && present is not null ? VoiceNaming.Voices(present) : NoVoices);
         if (conversation is not null && fits is not null &&
-            Continue(conversation, instructions, known, heard, known is not null ? present : null, people, reply) is { } continued &&
+            Continue(conversation, instructions, known, naming, known is not null ? present : null, people, reply) is { } continued &&
             fits(continued.Input))
             return continued with { Voices = voices };
-        if (heard is null)
+        if (naming is null)
         {
             var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts, present, people);
             return new(memory.Input, memory.ShownFacts, voices, false);
         }
         if (known is null)
         {
-            var naming = VoiceNaming.Prompt(heard, earlierUser, earlierReply, user, reply, prompts);
-            return new(naming.Input, 0, naming.Voices, false);
+            var named = VoiceNaming.Prompt(naming, earlierUser, earlierReply, user, reply, prompts);
+            return new(named.Input, 0, named.Voices, false);
         }
         // Both: drop context before the latest exchange if an unusually large excerpt would not fit the LLM input budget.
         foreach (var (earlier, shown) in new[] { (true, Math.Min(known.Count, MemoryCapture.MaximumShownFacts)), (false, Math.Min(known.Count, 4)), (false, 0) })
@@ -66,15 +65,15 @@ internal static class AfterReply
             var text = new StringBuilder();
             MemoryCapture.AppendKnown(text, known, shown, people);
             text.Append('\n');
-            VoiceNaming.AppendVoices(text, heard);
-            MemoryCapture.AppendWhose(text, heard);
+            VoiceNaming.AppendVoices(text, naming);
+            MemoryCapture.AppendWhose(text, naming.Heard);
             if (earlier && (earlierUser is not null || earlierReply is not null))
             {
                 text.Append("\nEarlier in the conversation (context only):\n");
                 if (earlierUser is not null) text.Append("User: ").Append(MemoryCapture.Clip(earlierUser, 300)).Append('\n');
                 if (earlierReply is not null) text.Append("Martlet: ").Append(MemoryCapture.Clip(earlierReply, 300)).Append('\n');
             }
-            text.Append("\nLatest exchange:\n").Append(VoiceNaming.UserLabel(heard)).Append(MemoryCapture.Clip(user, 1400))
+            text.Append("\nLatest exchange:\n").Append(VoiceNaming.UserLabel(naming.Heard)).Append(MemoryCapture.Clip(user, 1400))
                 .Append("\nMartlet: ").Append(MemoryCapture.Clip(reply, 800));
             try
             {
@@ -110,18 +109,19 @@ internal static class AfterReply
     // The reply's request exactly as it was sent (instructions, earlier messages, the message with its notes), then the reply
     // and the task. The picture or recording sent with the message isn't sent again.
     private static AfterReplyPrompt? Continue(BoundedTextInput conversation, string? instructions, IReadOnlyList<MemoryFact>? known,
-        HeardVoices? heard, HeardVoices? present, IReadOnlyDictionary<string, string>? people, string reply)
+        VoiceNamingContext? naming, HeardVoices? present, IReadOnlyDictionary<string, string>? people, string reply)
     {
         if (!CanContinue(conversation) || string.IsNullOrWhiteSpace(reply)) return null;
         var shown = Math.Min(known?.Count ?? 0, MemoryCapture.MaximumShownFacts);
-        var listed = heard ?? present;
+        var listed = naming?.Heard ?? present;
         var task = new StringBuilder(ContinuationHeader).Append("\n\n");
         if (instructions is not null) task.Append(instructions).Append("\n\n");
         if (known is not null) MemoryCapture.AppendKnown(task, known, shown, people);
         if (known is not null && listed is not null) task.Append('\n');
         if (listed is not null)
         {
-            VoiceNaming.AppendVoices(task, listed);
+            if (naming is not null) VoiceNaming.AppendVoices(task, naming);
+            else VoiceNaming.AppendVoices(task, listed);
             if (listed.Speaker?.Voice is { } speaker) task.Append("The latest message above was said by ").Append(speaker.Tag).Append(".\n");
             if (known is not null) MemoryCapture.AppendWhose(task, listed);
         }

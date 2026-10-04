@@ -252,8 +252,29 @@ installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
 the voice models (`included`: `found`, `runtime`, `voiceModels`), whether
 Parakeet is downloaded, and counts from `voices.json` (voices, named, owner, with
-learned names, merged, tombstones). It never returns names, voiceprints or audio and
-runs no model.
+learned names, `withCompanionName`: voices that learned one of the companion's
+own names from the saved personas, which Martlet drops when it next hears them,
+`mostNames`: the most names one voice has, merged, tombstones). It never returns
+names, voiceprints or audio and runs no model.
+
+`voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
+with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
+voice list's name rules) on a fixture voice list in memory: V1 is the owner
+(typed Robert, learned Bob) and not heard; V2 (typed Sammy, learned Sam and, by
+mistake, Jane) and V3 (new, speaking) are heard; the fixture companion is the
+persona "Jane Doe" ("You are Jane, ..."). Its `scenarios` (each `passed` with a
+`detail`; `passed` is all of them) check that the companion's names, a word of
+them and a name Martlet's reply gives itself are refused, a heard voice drops
+Jane, a voice learns a name, keeps five names and shows the one it asked for
+(CALL), a wrong learned name is dropped (NOT) but a typed one is kept, a voice
+not heard gets no name, and SAME merges V3 into the owner's voice once per
+exchange. With a `dataDirectory` whose settings have personas,
+`companionNames` lists their names (`companionSource`) and one more scenario
+refuses a saved persona's name. An optional `answer` (NAME/CALL/NOT/SAME lines
+about V1-V3, at most 8192 characters) and `reply` are checked against the same
+fixture: `answer.updates`, `refused` (line and reason), `applied` (what the talk
+window would say) and the fixture `voices` afterwards. It never reads or writes
+the saved voice list and uses no audio, model or network.
 
 `voices_engine_check` runs the voice recognition engine that ships in a Martlet
 folder (same optional `martletDirectory`) the way the desktop does: it loads the
@@ -2613,7 +2634,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

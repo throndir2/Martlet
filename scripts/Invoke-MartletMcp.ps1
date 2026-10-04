@@ -4,7 +4,7 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
-order, and prints one JSON array of results. Doctor, voices_status, f5_voices, cluster_status, network_status, nearby_status, logs_tail,
+order, and prints one JSON array of results. Doctor, voices_status, voices_naming_check, f5_voices, cluster_status, network_status, nearby_status, logs_tail,
 logs_timeline, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, memory_status, character_status, hearing_check, model_ability_check,
 echo_check, pc_audio_check, context_check, thinking_steps_check, think_longer_status, conversation_history_status, latency_report, character_models,
 character_actions, character_theme and utterance_filter_check calls without an explicit dataDirectory get a disposable one;

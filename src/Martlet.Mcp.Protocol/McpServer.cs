@@ -114,10 +114,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices (recognition is on " +
             "unless turned off), whether a Martlet folder (optional absolute martletDirectory, default the installed release's Desktop " +
             "folder) includes the voice recognition runtime and models, whether Parakeet is downloaded and counts of known voices " +
-            "(never names, voiceprints or audio). Read-only; no audio, network or models run.", new
+            "(never names, voiceprints or audio), including how many go by a name of the companion's own (from the saved personas) " +
+            "and the most names one voice has. Read-only; no audio, network or models run.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" }
+        }),
+        Tool("voices_naming_check", "Rehearse learning names (Companion › People) with the production checks and changes on a fixture " +
+            "voice list in memory: the companion's own names (persona names, \"You are ...\" in persona text, \"I'm ...\" in Martlet's " +
+            "reply) are never given to a voice, a heard voice drops one it learned by mistake, a voice keeps many names and shows the " +
+            "one it asked for (CALL), a wrong learned name is dropped (NOT) but never one the owner typed, names go only to voices " +
+            "heard, and two voices merge into the owner's (SAME) at most once per exchange. Optional dataDirectory supplies the saved " +
+            "personas' names (one more scenario); optional answer (a Thinking answer of NAME/CALL/NOT/SAME lines about V1-V3) and " +
+            "reply (Martlet's reply) are checked against the same fixture. Never reads or writes the saved voice list; no audio, model " +
+            "or network.", new
+        {
+            dataDirectory = new { type = "string" },
+            answer = new { type = "string" },
+            reply = new { type = "string" }
         }),
         Tool("voices_engine_check", "Run the voice recognition engine that ships in a Martlet folder (optional absolute " +
             "martletDirectory, default the installed release's Desktop folder): load its sherpa-onnx runtime and the WeSpeaker and " +
@@ -713,6 +727,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
+                "voices_naming_check" => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),
+                    OptionalString(arguments, "reply")),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),
                 "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
@@ -803,10 +819,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             try
             {
                 var list = Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(path));
+                Martlet.Core.Speakers.CompanionNames? companion;
+                try { companion = VoiceNamingCheck.SavedCompanion(directory).Names; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+                {
+                    companion = null;
+                }
+                companion ??= Martlet.Core.Speakers.CompanionNames.Martlet;
                 roster = new
                 {
                     state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
                     withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
+                    // Voices that learned one of the companion's own names; Martlet drops it when it next hears them.
+                    withCompanionName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
+                        companion.Matches(n.Text))),
+                    mostNames = list.Live.Select(v => v.Names.Count).DefaultIfEmpty(0).Max(),
                     merged = list.Live.Sum(v => v.MergedVoices), tombstones = list.Voices.Count(v => v.Removed)
                 };
             }

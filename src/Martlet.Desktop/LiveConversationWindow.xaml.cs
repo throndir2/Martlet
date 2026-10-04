@@ -2155,11 +2155,11 @@ public partial class LiveConversationWindow : ThemedWindow
         else AddNote(text);
     });
 
-    // Raised off the dispatcher once names were picked up for voices from an exchange.
-    private void VoicesNamed(IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)> learned) => Dispatcher.BeginInvoke(() =>
+    // Raised off the dispatcher once learning names changed voices from an exchange.
+    private void VoicesNamed(IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult> learned) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
-        var text = string.Join("  ", learned.Select(l => $"Learned {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
+        var text = string.Join("  ", learned.Select(l => l.Text));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });
