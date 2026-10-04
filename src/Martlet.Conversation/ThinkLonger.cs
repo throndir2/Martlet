@@ -278,6 +278,8 @@ public sealed class BackgroundThink
     public TimeProvider Clock { get; }
     /// <summary>Raised after each attempt's request ended (for the desktop log's Thinking input line).</summary>
     public Action<ConversationSnapshot>? AttemptFinished { get; init; }
+    /// <summary>What the job chip says while a request runs ("Writing the lyrics"); null says nothing.</summary>
+    public string? Doing { get; init; }
     /// <summary>How many times it stopped for the conversation and started again.</summary>
     public int Pauses { get; private set; }
     /// <summary>How many requests it sent.</summary>
@@ -316,7 +318,7 @@ public sealed class BackgroundThink
             var left = TimeSpan.FromSeconds((double)(deadline - Clock.GetTimestamp()) / Clock.TimestampFrequency);
             // Too little time left to be worth asking: the job's time limit ends it.
             if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
-            job.Report(BackgroundJobState.Running, Attempts == 0 ? null : "picked up where it paused");
+            job.Report(BackgroundJobState.Running, Attempts == 0 ? Doing : Doing is null ? "picked up where it paused" : Doing + " (picked up where it paused)");
             var (request, authorization) = Prepare(left);
             ConversationTurn started;
             lock (gate)

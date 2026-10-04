@@ -8,6 +8,7 @@ using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
+using Martlet.Core.Singing;
 using Martlet.Participation;
 using Martlet.Providers;
 using Martlet.Memory;
@@ -145,6 +146,12 @@ internal sealed class LiveConversationOperation
     /// <summary>Why talking over Martlet stopped it, and how long after the user's voice began that was decided.</summary>
     internal TalkOverResult? TalkOver { get => Volatile.Read(ref talkOver); set => Volatile.Write(ref talkOver, value); }
     private TalkOverResult? talkOver;
+    private int stoppedSong;
+    /// <summary>This utterance asked Martlet to stop singing, and the song stopped.</summary>
+    internal bool StoppedSong { get => Volatile.Read(ref stoppedSong) != 0; set => Volatile.Write(ref stoppedSong, value ? 1 : 0); }
+    /// <summary>What Martlet was singing when this message was heard (its title and where it was), for the Said while you were
+    /// singing note; null when it wasn't singing.</summary>
+    internal (string Title, string Where)? WhileSinging { get; init; }
     /// <summary>What this utterance's sound was: how much was a voice (loud 20 ms frames the speakers don't explain).</summary>
     internal TimeSpan? Voiced { get; set; }
     /// <summary>The controller-clock timestamp the utterance's voice began at (0 when unknown).</summary>
@@ -326,6 +333,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // continues it when it starts again, so the conversation since stays in the model's cache.
     private (BoundedTextInput Sent, string Reply)? lastExchange;
     private readonly object statusGate = new();
+    // Singing (sing_song, play_song, stop_singing): the songs and the one playing, the output device speech plays through, and
+    // a text runtime of the song job's own for writing lyrics (bound to that one request at a time), whose think yields like
+    // think_longer's.
+    private readonly ConversationSinging? singing;
+    private readonly IPlaybackDeviceFactory playbackDevices;
+    private readonly ConversationCredentialSource songCredentials;
+    private ConversationRuntime? songRuntime;
+    private ICredentialAuthority? songAuthorization;
+    private BackgroundThink? songThink;
 
     internal bool IsRunning => operations.IsRunning;
     /// <summary>A reply (or a comment on the screen) is running on the shared setup slot.</summary>
@@ -380,16 +396,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>How long after Martlet asks something a short answer ("yes", "mm-hmm") counts as one.</summary>
     internal static TimeSpan AnswerWindow => TimeSpan.FromSeconds(30);
 
-    /// <summary>What Martlet is saying aloud right now (a reply or remark, or a song), or null while it isn't speaking.</summary>
+    /// <summary>What Martlet is saying aloud right now (a reply or remark, or a song), or null while it isn't speaking. A reply
+    /// over a song counts as the reply (it stops for real words; the song keeps going unless asked to stop).</summary>
     internal PlaybackMode? Speaking
     {
         get
         {
             lock (gate)
-                return active is { Worker: not null } current && !current.OwnershipReleased &&
-                    current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true } ? current.Playback : null;
+                if (active is { Worker: not null } current && !current.OwnershipReleased &&
+                    current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true })
+                    return current.Playback;
+            return singing?.Playing == true ? PlaybackMode.Song : null;
         }
     }
+
+    /// <summary>A reply or remark is being said (or may still be): a song ducks under it, and a lead-in waits for it.</summary>
+    private bool ReplySpeaking()
+    {
+        lock (gate)
+            return active is { Worker: not null } current && !current.OwnershipReleased &&
+                current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true };
+    }
+
+    /// <summary>Martlet's songs in this conversation (sing_song, play_song, stop_singing), or null where it can't sing.</summary>
+    internal ConversationSinging? Singing => singing;
 
     /// <summary>What the utterance filter and barge-in policy know besides the words: the voice, the engine's evidence, whether
     /// Martlet just asked something, and the persona's name (which, like "Martlet", addresses it).</summary>
@@ -432,13 +462,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
         SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null,
         LocalVoices? voices = null, ILocalTranscriber? localListener = null, EchoReducer? echoReducer = null,
         PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
-        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null)
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, ConversationSinging? singing = null)
 
     {
         this.operations = operations;
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
+        this.playbackDevices = playbackDevices;
+        this.singing = singing;
         this.echoReducer = echoReducer;
         this.pcAudio = pcAudio;
         this.characterActions = characterActions;
@@ -475,6 +507,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
         jobs = new(this.clock);
         thinkCredentials = new(() => Volatile.Read(ref thinkAuthorization));
+        songCredentials = new(() => Volatile.Read(ref songAuthorization));
         jobs.Changed += WriteJobsStatus;
         WriteJobsStatus();
     }
@@ -644,6 +677,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen,
                 PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
+                WhileSinging = spoken ? singing?.Now() : null,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
                     : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
             };
@@ -713,9 +747,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
         listening.Worker.RequestCancellation();
     }
 
-    /// <summary>Whether this listener holds off right now. Hearing what this PC plays holds off only while Martlet speaks and
-    /// Windows can't leave Martlet's own voice out of it (never for barge-in: only the user interrupts).</summary>
-    private bool Held(ListeningOptions options) => options.Pc ? pcAudio?.WithoutMartlet != true && Held(false) : Held(options.BargeIn);
+    /// <summary>Whether this listener holds off right now. Hearing what this PC plays holds off only while Martlet speaks (or
+    /// sings) and Windows can't leave Martlet's own voice out of it (never for barge-in: only the user interrupts). While Martlet
+    /// sings, the microphone keeps listening when barge-in or echo reduction is on (the song is taken out of what it hears), so
+    /// the user can talk to it or ask it to stop; otherwise it holds off as for a reply.</summary>
+    private bool Held(ListeningOptions options) => options.Pc
+        ? pcAudio?.WithoutMartlet != true && (Held(false) || singing?.Playing == true)
+        : Held(options.BargeIn) || !options.BargeIn && !options.ReduceEcho && singing?.Playing == true;
 
     /// <summary>Always listening holds off while Martlet speaks (a reply or a remark, plus a short tail for the room's echo), so
     /// it never hears itself, and while other setup work (a microphone test, Voice ID enrollment) owns the app slot. With
@@ -890,6 +928,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (options is { BargeIn: true, Pc: false } && Speaking is { } mode)
                 utterance.Interrupts = utterance.TalkOver?.Decision ??
                     (BargeInPolicy.Decide(result.Text, words, options.WordCheck, mode) is { Interrupt: true } decision ? decision : null);
+            // Said while Martlet sings: asking it to stop ends the song musically; a quick check may already have, and then
+            // the note quotes everything that was said.
+            if (!options.Pc && !StopSongIfAsked(utterance, result.Text, words, options.WordCheck) && utterance.StoppedSong)
+                singing?.Heard(result.Text ?? "");
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
             if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
             if (listening.Options.Hear) utterance.Recording = audio;
@@ -1242,6 +1284,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
             // Finished background work that wasn't brought up yet goes with what the user says (its notes).
             if (own is not null && !operation.Report && operation.Delivery is null) operation.Delivery = jobs.Take(onItsOwn: false);
+            // Where the last song stopped and why (or that it ended) goes at the end of the conversation once, with the next
+            // message Martlet answers.
+            var songNote = singing?.PendingNote;
 
             // Only the user's own typed or spoken words ever reach Home Assistant (glances use RunCommentaryAsync). When the
             // reply is offered Home Assistant's own tools, the model acts through them instead of Assist, so nothing runs twice.
@@ -1276,6 +1321,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
                     ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
+                // Heard while Martlet sings: it keeps singing and answers only when talked to ([pass] otherwise).
+                var whileSinging = operation.WhileSinging is { } sung ? SongTools.WhileSinging(prompts, sung.Title, sung.Where) : null;
                 ConversationRequest Ask(SeenScreen? picture, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
@@ -1287,7 +1334,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
-                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background),
+                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background, songNote, whileSinging),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()));
@@ -1382,6 +1429,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
                         if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard);
+                        // The note about the last song is in the conversation now.
+                        if (songNote is not null) singing?.NoteDelivered(songNote);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
                         var spokenOwn = operation.Report ? null : operation.PcAudio ? operation.UserWords : input.UserText;
                         var remembered = spokenOwn is null ? null
@@ -1461,15 +1510,27 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // ---------- background work (think_longer) ----------
 
     /// <summary>Martlet's own tools for one reply while Thinking longer is on: think_longer and cancel_thinking, always both, in
-    /// that order, with the Thinking longer prompt, so the start of every request stays the same.</summary>
+    /// that order, with the Thinking longer prompt, then, while singing is set up, sing_song, play_song and stop_singing with
+    /// the Singing prompt, so the start of every request stays the same.</summary>
     private BuiltInTools BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured)
     {
         var settings = configured.ThinkLonger;
         var definitions = ThinkLonger.Definitions(settings);
-        return new([
+        List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)> tools =
+        [
             (definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)),
             (definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call)))
-        ], ThinkLonger.Instructions(settings, configured.Prompts));
+        ];
+        var guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+        if (singing is { Offered: true })
+        {
+            var songs = SongTools.Definitions;
+            tools.Add((songs[0], (call, token) => ValueTask.FromResult(SingSong(operation, configured, call))));
+            tools.Add((songs[1], (call, token) => ValueTask.FromResult(PlaySong(configured, call))));
+            tools.Add((songs[2], (call, token) => ValueTask.FromResult(StopSinging(call))));
+            guidance = Join(guidance, SongTools.Instructions(configured.Prompts));
+        }
+        return new(tools, guidance);
     }
 
     /// <summary>think_longer: starts the background think and returns at once (never waits for it), telling the model to tell
@@ -1552,11 +1613,197 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return stopped is not null;
     }
 
-    /// <summary>The conversation ended (the talk window closed): background work stops and nothing more is brought up.</summary>
+    /// <summary>The conversation ended (the talk window closed): background work stops and nothing more is brought up, and a song
+    /// stops at once.</summary>
     internal void EndBackgroundWork()
     {
         if (jobs.Active.Count > 0) ErrorLog.Info("Background work: the conversation ended, so its background work stopped.");
         jobs.CancelAll();
+        singing?.Stop(SongStopCause.Button, musical: false, reason: "closing the conversation");
+    }
+
+    // ---------- singing (sing_song, play_song, stop_singing) ----------
+
+    /// <summary>sing_song: starts the song job and returns at once, telling the model to tell the user now unless it already did.
+    /// Without lyrics, the job first writes them (and the style, tempo and key) with a background think that continues this
+    /// reply's request like think_longer's (Thinking steps on, where Deep thinking thinks, waiting for quiet moments when it shares
+    /// the conversation's hardware); then the song maker makes the song in the chosen voice, and the library keeps it.</summary>
+    private ConversationToolResult SingSong(LiveConversationOperation operation, LiveConversationConfiguration configured, TextToolCall call)
+    {
+        const string server = "Martlet";
+        var (arguments, problem) = SongTools.ParseSing(call.ArgumentsJson);
+        if (arguments is null)
+        {
+            tools?.Record(server, SongTools.SingName, "invalid arguments", "", true);
+            return new(problem!, true);
+        }
+        var label = SongTools.Label(arguments.About);
+        if (!configured.ThinkLonger.On) return new(SongTools.Unavailable("the user turned background work off."), true);
+        var (setup, unavailable) = singing?.Source?.Current() ?? (null, "singing isn't set up.");
+        if (setup is null || singing?.Library is not { } library)
+        {
+            tools?.Record(server, SongTools.SingName, "not started: singing unavailable", label, false);
+            ErrorLog.Info($"Singing: a song wasn't started ({unavailable}).");
+            return new(SongTools.Unavailable(unavailable ?? "singing isn't set up."), true);
+        }
+        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
+        var sent = operation.Sent;
+        BackgroundThink? writer = null;
+        var where = "";
+        if (arguments.Lyrics is null)
+        {
+            var deep = DeepThinkingSettings.Load(dataDirectory);
+            var plan = DeepThinkingPlan.For(deep, configured.Routes);
+            where = deep.Separate ? deep.Describe() : configured.Route(SetupRole.Llm).ModelId;
+            var task = SongTools.WritingTask(configured.Prompts, arguments);
+            writer = new BackgroundThink(SongRuntime(),
+                left => PrepareThink(configured, deep, plan, sent, () => operation.Turn?.Content.Text, task, null, left, song: true),
+                plan.Parallel ? null : ThinkBusy, clock)
+            {
+                Doing = "Writing the lyrics",
+                AttemptFinished = terminal =>
+                {
+                    NoteFallback("Song lyrics", configured, terminal);
+                    NoteInput("Song lyrics", terminal, reply: false);
+                    if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
+                        ErrorLog.Warn($"Singing: writing the lyrics on {where} failed ({Describe(terminal)}).");
+                }
+            };
+        }
+        var writing = configured.ThinkLonger.TimeLimit;
+        var start = jobs.Start(SongTools.Kind, label, (job, token) => MakeSongAsync(job, arguments, setup, library, writer, writing, token));
+        if (start.Job is not { } started)
+        {
+            tools?.Record(server, SongTools.SingName, "not started: " + start.Refusal, label, false);
+            ErrorLog.Info($"Singing: a new song wasn't started ({start.Refusal}).");
+            return new(SongTools.Refused(start), true);
+        }
+        tools?.Record(server, SongTools.SingName, "started " + started.Id, label, false);
+        ErrorLog.Info($"Singing: started {started.Id} ({arguments.Seconds} s, {(writer is null ? "lyrics given" : $"lyrics written on {where}")}, " +
+            $"made on {setup.Where} with {setup.Quality} quality and {setup.VoiceMatch} voice match; " +
+            $"{jobs.StartedWithinHour(SongTools.KindName)} of {SongTools.PerHour} this hour)" +
+            (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
+        return new(SongTools.Started(started, toldUser, writer is not null));
+    }
+
+    // The song job: the singing computer is checked, the lyrics written (when none were given), the song made and kept.
+    private async Task<BackgroundJobOutcome> MakeSongAsync(BackgroundJob job, SingArguments arguments, SongSetup setup, SongLibrary library,
+        BackgroundThink? writer, TimeSpan writing, CancellationToken token)
+    {
+        job.Report(BackgroundJobState.Running, "Checking the singing computer");
+        var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
+        if (!availability.Available) return BackgroundJobOutcome.Failed(availability.Reason ?? "singing isn't available right now");
+        WrittenSong? written;
+        string? problem;
+        if (writer is not null)
+        {
+            Volatile.Write(ref songThink, writer);
+            BackgroundJobOutcome lyrics;
+            using (var limit = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                limit.CancelAfter(writing);
+                try { lyrics = await writer.RunAsync(job, limit.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    return BackgroundJobOutcome.Failed($"writing the lyrics took longer than {BackgroundJobs.Duration(writing)}");
+                }
+                finally { Interlocked.CompareExchange(ref songThink, null, writer); }
+            }
+            if (lyrics.Result is not { } text) return BackgroundJobOutcome.Failed(lyrics.Problem ?? "the lyrics couldn't be written");
+            (written, problem) = SongTools.ParseWritten(text, arguments);
+        }
+        else (written, problem) = SongTools.ParseWritten("LYRICS:\n" + arguments.Lyrics, arguments);
+        if (written is null) return BackgroundJobOutcome.Failed(problem ?? "the lyrics didn't come out right");
+        job.Report(BackgroundJobState.Running, "Writing the music");
+        var request = new SongRequest
+        {
+            Lyrics = written.Lyrics, Style = written.Style, VoiceId = setup.VoiceId, DurationSeconds = arguments.Seconds,
+            Bpm = written.Bpm, Key = written.Key, Quality = setup.Quality, VoiceMatch = setup.VoiceMatch
+        };
+        SongResult result;
+        try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job), token).ConfigureAwait(false); }
+        catch (SongException error) { return BackgroundJobOutcome.Failed(SongProblem(error)); }
+        job.Report(BackgroundJobState.Running, "Saving the song");
+        var song = library.Save(result, written.Title, arguments.About, written.Lyrics, written.Style, clock.GetUtcNow());
+        singing?.Made(song);
+        ErrorLog.Info($"Singing: {job.Id} made {song.Id} ({SongLibrary.Clock(TimeSpan.FromSeconds(song.DurationSeconds))}, " +
+            $"{song.Lines.Count} lines, {song.Generator} + {song.Converter}{(song.Fixture ? ", FIXTURE - NOT AI" : "")}) after " +
+            $"{BackgroundJobs.Duration(job.Elapsed)}: " + string.Join(", ", result.StageTimings.Select(stage => $"{stage.Stage} {stage.Duration.TotalSeconds:0.0} s")) + ".");
+        return BackgroundJobOutcome.Done(SongTools.Ready(song));
+    }
+
+    private static string SongProblem(SongException error) => error.Code switch
+    {
+        SongErrorCodes.Unavailable => "the singing computer isn't reachable or ready",
+        SongErrorCodes.Busy => "the singing computer is busy with other songs",
+        SongErrorCodes.VoiceMissing => "the voice isn't on the singing computer yet",
+        SongErrorCodes.VoiceMatchUnavailable => "the chosen voice match isn't set up on the singing computer",
+        SongErrorCodes.RequestInvalid => "the song request wasn't valid (" + error.Message.TrimEnd('.') + ")",
+        SongErrorCodes.TimedOut => "making it took too long",
+        _ => "making the music failed on the singing computer"
+    };
+
+    // The song maker's stages, on the job's chip ("Writing the music", "Matching the singing to the voice").
+    private sealed class SongJobProgress(BackgroundJob job) : IProgress<SongProgress>
+    {
+        public void Report(SongProgress value)
+        {
+            if (value.Stage != SongStage.Completed) job.Report(BackgroundJobState.Running, value.Describe());
+        }
+    }
+
+    /// <summary>play_song: plays a finished song through Martlet's voice output from where the model chose, with a musical
+    /// lead-in anywhere but the top; returns at once.</summary>
+    private ConversationToolResult PlaySong(LiveConversationConfiguration configured, TextToolCall call)
+    {
+        const string server = "Martlet";
+        var (id, from, problem) = SongTools.ParsePlay(call.ArgumentsJson);
+        if (problem is not null)
+        {
+            tools?.Record(server, SongTools.PlayName, "invalid arguments", "", true);
+            return new(problem, true);
+        }
+        var library = singing?.Library;
+        if (library?.Find(id) is not { } song)
+        {
+            tools?.Record(server, SongTools.PlayName, "no such song", "", true);
+            var kept = library?.List().Take(5).Select(s => $"{s.Id} (\"{s.Title}\")").ToArray() ?? [];
+            return new(kept.Length == 0 ? $"There's no song {id}, and no finished songs yet."
+                : $"There's no song {id}. The newest songs are {string.Join(", ", kept)}.", true);
+        }
+        var speaking = ReplySpeaking();
+        var (player, trouble) = singing!.Play(song, from, configured.SpeechOutput(), ReplySpeaking);
+        if (player is null)
+        {
+            tools?.Record(server, SongTools.PlayName, "not played", song.Id, true);
+            return new(trouble ?? "It couldn't play.", true);
+        }
+        tools?.Record(server, SongTools.PlayName, $"playing {song.Id} from {player.Plan.Target.Describe}", song.Id, false);
+        return new(SongTools.Playing(song, player.Plan, speaking));
+    }
+
+    /// <summary>stop_singing: the song ends musically; the result says where and why (Martlet knows, so no note follows).</summary>
+    private ConversationToolResult StopSinging(TextToolCall call)
+    {
+        var record = singing?.Stop(SongStopCause.Martlet, musical: true, reason: SongTools.ParseStop(call.ArgumentsJson));
+        tools?.Record("Martlet", SongTools.StopName, record is null ? "nothing to stop" : "stopped " + record.SongId, "", false);
+        return new(SongTools.Stopped(record));
+    }
+
+    /// <summary>The talk window stops the song: Stop and Esc quickly (a 300 ms fade), the talk button musically. The note says
+    /// which.</summary>
+    internal SongStopRecord? StopSong(bool musical, string button) =>
+        singing?.Stop(SongStopCause.Button, musical, reason: button);
+
+    /// <summary>The talk window's Play: Martlet sings the song shown there from the line where it stopped (or from the top),
+    /// without asking the Thinking model; where it stops is noted for the conversation like any stop. Returns why it can't.</summary>
+    internal string? PlaySongNow()
+    {
+        if (singing?.Current is not { } song) return "There's no song to play yet.";
+        if (Configuration is not { } configured) return "Martlet isn't set up to talk yet.";
+        var resume = singing.Last is { Ended: false } last && last.SongId == song.Id;
+        var (player, problem) = singing.Play(song, resume ? "resume" : "start", configured.SpeechOutput(), ReplySpeaking);
+        return player is null ? problem : null;
     }
 
     // One attempt of a background think: a reply's request continued and fitted to where it thinks, with its own authorization
@@ -1565,7 +1812,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // reply that called think_longer, as said so far.
     private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured,
         DeepThinkingSettings deep, DeepThinkingPlan plan, BoundedTextInput? sent, Func<string?> reply, string task, string? reason,
-        TimeSpan left)
+        TimeSpan left, bool song = false)
     {
         (BoundedTextInput Sent, string Reply)? latest;
         lock (gate) latest = plan.Parallel ? null : lastExchange;
@@ -1580,7 +1827,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var separate = target.Request(ThinkLonger.Fit(full, target.Bounds), effort, left);
             var own = new DeepThinkAuthorization(target, separate, configured.Profile,
                 configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), vault, clock, clock.GetUtcNow() + left + TimeSpan.FromSeconds(5));
-            Volatile.Write(ref thinkAuthorization, own);
+            if (song) Volatile.Write(ref songAuthorization, own);
+            else Volatile.Write(ref thinkAuthorization, own);
             return (separate, own);
         }
         // With the Thinking model: within the reply's own bounds, its tools kept so the start is the reply's.
@@ -1593,7 +1841,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             settings.LoadAsync, vault, CancellationToken.None, textLimits: request.TextLimits, lifetime: left + TimeSpan.FromSeconds(5));
         // A tool round (declined) and a retry without Thinking steps may each take one more request.
         authorization.BindInput(request.Input, request.Limits.MaxToolRounds + 1);
-        Volatile.Write(ref thinkAuthorization, authorization);
+        if (song) Volatile.Write(ref songAuthorization, authorization);
+        else Volatile.Write(ref thinkAuthorization, authorization);
         return (request, authorization);
     }
 
@@ -1607,6 +1856,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
     }
 
+    // The song job's own text runtime (for writing lyrics), so a think and a song can each have one request at a time.
+    private ConversationRuntime SongRuntime()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return songRuntime ??= runtimeFactory?.Invoke(songCredentials, clock) ??
+                ConversationRuntime.Create(songCredentials, clock: clock, hostText: new HostTextClient());
+        }
+    }
+
     /// <summary>The conversation needs the hardware a waiting think shares: a reply or glance runs, an exchange is being
     /// remembered, or the user is talking or about to be answered.</summary>
     private bool ThinkBusy()
@@ -1616,8 +1876,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     // A think that shares the conversation's hardware stops at once when the conversation needs it; one that runs in parallel
-    // (another computer or provider) carries on.
-    private void YieldBackground() => Volatile.Read(ref thinking)?.Yield();
+    // (another computer or provider) carries on. A song's lyrics are written the same way.
+    private void YieldBackground()
+    {
+        Volatile.Read(ref thinking)?.Yield();
+        Volatile.Read(ref songThink)?.Yield();
+    }
 
     /// <summary>The talk window says whether the user is talking or a turn is about to start (heard, typed, held to talk), so a
     /// think that shares the conversation's hardware gives way before the reply needs it.</summary>
@@ -1719,7 +1983,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             updatedAt = clock.GetUtcNow(),
             active = jobs.Active.Select(Describe),
             recent = jobs.Recent.Select(Describe),
-            startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName) },
+            startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName), song = jobs.StartedWithinHour(SongTools.KindName) },
             thinking = running is null ? null : new
             {
                 where = place?.Where, parallel = place?.Plan.Parallel, why = place?.Plan.Why,
@@ -2204,8 +2468,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
         var settings = operation.Listening!.Activity;
         var detector = new EnergyVoiceActivityDetector(settings);
         var talkOver = operation.Listening.Pc ? null : new TalkOverDetector();
-        var bargeIn = operation is { Listen: true, Listening: { Pc: false, BargeIn: true } } && WordsCheck(operation) is { } check
-            ? (Gate: new BargeInGate(operation.Listening.WordCheck), Check: check) : default;
+        // Quick checks of the words said over Martlet: for barge-in, and while it sings (to hear "stop singing" at once).
+        var bargeIn = operation is { Listen: true, Listening.Pc: false } && (operation.Listening.BargeIn || singing is not null) &&
+            WordsCheck(operation) is { } check ? (Gate: new BargeInGate(operation.Listening.WordCheck), Check: check) : default;
         Task? checking = null;
         var echo = operation.Echo;
         var minimumFrames = (int)(ListeningOptions.MinimumUtterance.TotalMilliseconds / 20);
@@ -2236,7 +2501,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     // Talking over Martlet: once the voice has gone on long enough (or a short word just ended), what was said so
                     // far is checked for words without waiting for the pause.
                     if (bargeIn.Gate?.Process(loud, speakers, checking is { IsCompleted: false }) == true && !operation.TalkingOver &&
-                        Speaking is { } mode)
+                        Speaking is { } mode && (operation.Listening.BargeIn || mode == PlaybackMode.Song))
                         checking = CheckWordsAsync(operation, run, bargeIn.Gate, bargeIn.Check, index, mode);
                     if (transition == VoiceActivityTransition.SpeechStarted)
                     {
@@ -2338,6 +2603,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return (pcm, token) => local.TranscribeAsync(model, pcm, token);
     }
 
+    /// <summary>What was said while Martlet sings asks it to stop ("okay okay Martlet, stop singing": a stop word with its name, or
+    /// with sing, singing, song or music; BargeInPolicy's song rules): the song ends musically and the note quotes the words.
+    /// Returns whether this stopped the song.</summary>
+    private bool StopSongIfAsked(LiveConversationOperation operation, string? text, UtteranceContext context, ListeningSensitivity sensitivity)
+    {
+        if (singing is not { Playing: true } songs || operation.StoppedSong) return false;
+        if (!BargeInPolicy.Decide(text, context, sensitivity, PlaybackMode.Song).Interrupt) return false;
+        if (songs.Stop(SongStopCause.UserWords, musical: true, words: text?.Trim()) is null) return false;
+        operation.StoppedSong = true;
+        return true;
+    }
+
     // One quick check of what was said over Martlet so far (the current stretch of voice with its pre-roll): Parakeet transcribes
     // it off the microphone loop and BargeInPolicy decides. Real words stop Martlet (TalkingOver); a hum, a cough or laughter
     // never does. Decided only while the utterance is still being recorded: after that, its own transcript decides.
@@ -2361,8 +2638,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 if (frames == 0) return;
                 var heard = await check(pcm.AsMemory(0, frames * EnergyVoiceActivityDetector.FrameBytes), operation.OriginalCaller).ConfigureAwait(false);
-                var decision = BargeInPolicy.Decide(heard.Text, WordsContext(operation, voice, heard.Evidence), options.WordCheck, mode);
-                if (!decision.Interrupt || run.Completion.IsCompleted || operation.Authorization.IsCanceled) return;
+                var context = WordsContext(operation, voice, heard.Evidence);
+                if (run.Completion.IsCompleted || operation.Authorization.IsCanceled) return;
+                // Asked to stop singing: the song ends musically at once, whatever else is being said over it.
+                StopSongIfAsked(operation, heard.Text, context, options.WordCheck);
+                if (!options.BargeIn) return;
+                var decision = BargeInPolicy.Decide(heard.Text, context, options.WordCheck, mode);
+                if (!decision.Interrupt) return;
                 operation.TalkOver = new(decision, clock.GetElapsedTime(startedAt), checks, startedAt);
                 operation.TalkingOver = true;
             }
@@ -2518,6 +2800,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         jobs.Dispose();
         DisposeThinkRuntimeAsync().Forget();
         DisposeCaptureRuntimeAsync().Forget();
+        singing?.DisposeAsync().AsTask().Forget();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();
@@ -2540,9 +2823,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
     private async Task DisposeThinkRuntimeAsync()
     {
-        ConversationRuntime? owned;
-        lock (gate) owned = thinkRuntime;
+        ConversationRuntime? owned, song;
+        lock (gate)
+        {
+            owned = thinkRuntime;
+            song = songRuntime;
+        }
         if (owned is not null) await owned.DisposeAsync().ConfigureAwait(false);
+        if (song is not null) await song.DisposeAsync().ConfigureAwait(false);
     }
 
     private async Task DisposeCaptureRuntimeAsync()

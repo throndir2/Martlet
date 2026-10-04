@@ -60,6 +60,9 @@ public static class PromptCatalog
     public const string BackgroundThink = "background_think";
     public const string BackgroundDone = "background_done";
     public const string BackgroundDoneNotes = "background_done_notes";
+    public const string Singing = "singing";
+    public const string WhileSinging = "while_singing";
+    public const string SongLyrics = "song_lyrics";
 
     public const string ConversationGroup = "Every reply";
     public const string VisionGroup = "Screen and camera glances";
@@ -97,6 +100,30 @@ public static class PromptCatalog
         "Background work you started has finished:\n{results}\nAnswer what the user just said first; then, when it fits, bring this " +
         "up in the same reply, in character, without mentioning notes, background jobs or tools. If a result needs the user's " +
         "go-ahead, offer it and ask first.";
+
+    public const string DefaultSingingInstructions =
+        "You can sing. sing_song makes a song sung in your own voice in the background; it takes a few minutes. When the user " +
+        "asks you to sing, first tell them in character that you'll work on it, like \"Sure, I'll sing you a song, give me a few " +
+        "minutes while I figure out the lyrics and beat!\", then call sing_song once. Keep talking normally meanwhile; a note " +
+        "tells you when the song is ready, with its ID and its map of sections and lines. Then offer it naturally, and play it with " +
+        "play_song only once they say yes. play_song's from chooses where you start: start, a section (chorus, verse 2), line:N, a " +
+        "time like 1:05, or resume to pick up the line where you stopped (the band comes in a bar or two before it). Say at most " +
+        "a few words before a song starts, like \"Okay, where was I... oh right!\". While you sing you still hear the user: " +
+        "answer only when they talk to you, otherwise reply [{silent}]. When they ask you to stop, call stop_singing; it ends " +
+        "musically. A note always tells you where you stopped and why.";
+
+    public const string DefaultWhileSingingInstructions =
+        "(You are singing \"{song}\" right now ({where}) and the user said this while you sang. The song keeps going: reply with " +
+        "exactly [{silent}] unless they talk to you or ask you something. If they want you to stop, call stop_singing. If you do " +
+        "answer, keep it to one short sentence; the song is turned down while you talk.)";
+
+    public const string DefaultSongLyricsInstructions =
+        "Write an original song for Martlet to sing: {about}.{style}\n" +
+        "It lasts about {seconds} seconds, so write about {lines} short, singable lines in sections tagged [verse], [chorus] and " +
+        "[bridge] (a chorus that comes back is welcome), one sung line per line, in the language of the conversation and in " +
+        "Martlet's own personality. Answer in exactly this form and nothing else:\n" +
+        "TITLE: <a short title>\nSTYLE: <genre, instruments, mood and vocal style, under 200 characters>\n" +
+        "BPM: <a tempo from 60 to 180>\nKEY: <a key such as G major>\nLYRICS:\n[verse]\n<the lines, section by section>";
 
     public const string DefaultReplyLengthInstructions =
         "Reply length: one or two short sentences at most, like a quick spoken reply. No lists, headings or markdown, no " +
@@ -237,6 +264,15 @@ public static class PromptCatalog
             "Goes in the notes of your next message instead, when finished background work hasn't been brought up yet (or " +
             "Thinking longer shares results when you talk next). {results} lists each finished job.",
             DefaultBackgroundDoneNotesInstructions, ["results"]),
+        new(Singing, ConversationGroup, "Singing",
+            "Added to every reply offered sing_song, play_song and stop_singing (while Thinking longer is on and singing is set up " +
+            "in Companion › Voice › Singing), after the Thinking longer prompt. It stays the same from reply to reply. {silent} is " +
+            "the word the model answers to stay quiet.",
+            DefaultSingingInstructions, ["silent"]),
+        new(WhileSinging, ConversationGroup, "Said while you were singing",
+            "Goes in the notes of what always listening heard while Martlet sings. {song} is the song's title, {where} where the " +
+            "song is (\"verse line 4 of 12, 0:22 of 1:00\"), {silent} the word the model answers to stay quiet.",
+            DefaultWhileSingingInstructions, ["song", "where", "silent"]),
         new(VoiceTags, ConversationGroup, "Voice sounds and tones",
             "Added to spoken replies when the voice engine understands tags (Chatterbox Turbo: [laugh], [sigh]...). {engine} is the " +
             "engine's name, {tags} lists exactly its tags in its own syntax, one per line with when to use it, and {example} is its " +
@@ -360,6 +396,12 @@ public static class PromptCatalog
             "sent it, so the model's prompt cache is reused. {task} is the task Martlet gave; {reason} is why, on a line of its own " +
             "when Martlet said.",
             DefaultBackgroundThinkInstructions, ["task", "reason"]),
+        new(SongLyrics, BackgroundGroup, "Singing: writing the song",
+            "The task of a song's first step (sing_song without lyrics): a background think writes the title, style, tempo, key " +
+            "and lyrics, which Martlet reads from its TITLE, STYLE, BPM, KEY and LYRICS lines. {about} is what the song is about, " +
+            "{style} the style asked for (a line of its own when there is one), {seconds} its length and {lines} about how many " +
+            "lines fit.",
+            DefaultSongLyricsInstructions, ["about", "style", "seconds", "lines"]),
         new(CharacterTheme, BackgroundGroup, "Character theme colors",
             "Asks the Thinking model which colors define the character (Settings › Appearance › Make with Thinking; also once " +
             "for each new character while a Thinking palette is chosen): its accent, glow, background tint and how strong. Who " +
@@ -410,7 +452,8 @@ public static class PromptCatalog
     public static PromptDefinition? Find(string id) => ById.GetValueOrDefault(id);
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
-    public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone;
+    public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or
+        SongLyrics;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

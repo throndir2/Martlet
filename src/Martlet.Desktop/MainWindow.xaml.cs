@@ -92,13 +92,16 @@ public partial class MainWindow : ThemedWindow
         if (setupService is not null)
         {
             var microphones = new WasapiCaptureDeviceFactory();
+            // Martlet sings through the same output as its voice; the character's mouth follows the vocals.
+            var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(), new WasapiDeviceFactory(), captions.Feed,
+                avatar.SingAsync);
             conversation = new(setupOperations, setupService, vault, microphones, new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
                 tools: mcpTools, voices: localVoices, localListener: parakeet,
                 echoReducer: new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
                 pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
-                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor);
+                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, singing: singing);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         WireCharacterActions();

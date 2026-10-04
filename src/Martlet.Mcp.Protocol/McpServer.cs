@@ -601,6 +601,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "reasoning takes. Loopback only; reads no credentials.", new
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
+        }),
+        Tool("songs_status", "Martlet singing in conversation (sing_song, play_song, stop_singing), from a data directory: whether " +
+            "background work (Thinking longer, which the song tools come with) is on; the song library (songs/: each song's id, " +
+            "length, number of lines, sections, tempo, beat grid size, engine and whether it is the FIXTURE - NOT AI song; never its " +
+            "title or words); the desktop's songs-status.json (whether singing is offered, the song playing: state, position, line " +
+            "number and section, where it started, lead-in bars and fade-in, vamps, ducking and its stop plan; and the last stop: " +
+            "where, which line and section, and why, without the user's words); the song job kind's limits; and the three tools and " +
+            "Singing prompt exactly as the Thinking model gets them. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("song_playback_check", "Run Martlet's production song playback headlessly (SongTransport, SongMixer and SongPlayer " +
+            "pumping a fixture output ten times faster than real time; nothing is played aloud) on the FIXTURE - NOT AI tone song, " +
+            "or on a stored song (songId with its dataDirectory), and measure the transitions in the audio it produced: where " +
+            "play_song's from points (start, a section, line:N, a time, misses); the resume lead-in (entry downbeat, 1 or 2 bars, " +
+            "equal-power fade-in gain at its start, middle and end, vocals silent until just before the line); the band vamping " +
+            "twice while Martlet talks before the vocals come in; ducking (-12 dB); and a full run: sung from the top, stopped " +
+            "musically mid-line by the user's words (the stop record and its note, the word's end, the beat the band fades from, " +
+            "when the output went silent), resumed from that line with its lead-in, and stopped with Esc (a 300 ms fade).", new
+        {
+            dataDirectory = new { type = "string" },
+            songId = new { type = "string", maxLength = 21 }
         })
     ];
 
@@ -739,6 +761,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
+                "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "song_playback_check" => await SongsCheck.RunAsync(
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "songId"),
+                    cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };

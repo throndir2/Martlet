@@ -161,6 +161,14 @@ internal sealed class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
+    /// <summary>Opens the showing character's mouth to <paramref name="level"/> (0 closed to 1 open), as loudness lip-sync does,
+    /// for a song Martlet sings (its vocals' loudness as heard). Does nothing while the character is hidden.</summary>
+    internal async Task SingAsync(double level, CancellationToken token)
+    {
+        if (renderer is not { HasExited: false } current || profile is null) return;
+        await current.SendAsync("mouth", new { level = Math.Clamp(level, 0, 1) }, token).ConfigureAwait(false);
+    }
+
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
     /// <summary>A small PNG of the character as it shows now (at most 320 pixels on its longer side, transparent around it),
