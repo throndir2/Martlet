@@ -71,6 +71,59 @@ public sealed class DockerDesktopVirtualizationTests
         Assert.Empty(state.Problems());
     }
 
+    [Fact]
+    public void DockerSayingWslIsMissingCountsWhenTheWindowsProbeTimedOut()
+    {
+        const string check = "checking WSL version: wsl is not installed";
+        Assert.Equal(check, DockerDesktopStatus.Precondition(
+            "[2026-10-04T21:20:00.000000000Z][com.docker.backend.exe.engines][E] attempting to recover from error: starting engine: " +
+            "engine linux/wsl failed to start: checking preconditions: checking WSL version: wsl is not installed"));
+        var unknown = WindowsVirtualization.Unknown with { ProbeIssues = ["Windows prerequisite probe timed out after one minute"] };
+        Assert.False(unknown.NeedsChanges);
+
+        var state = unknown with { DockerPrecondition = check };
+
+        Assert.True(WindowsVirtualization.WindowsCanFix(check));
+        Assert.True(state.DockerNeedsWindows);
+        Assert.True(state.NeedsChanges);
+        Assert.True(state.Blocked);
+        Assert.False(state.Ready);
+        Assert.Contains($"Docker Desktop says \"{check}\"", state.Problems());
+        Assert.StartsWith("Let Martlet set up the Windows features and WSL", state.Recovery, StringComparison.Ordinal);
+        Assert.Contains("Docker Desktop says", state.Describe(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("WSL update required")]
+    [InlineData("Virtual Machine Platform not enabled")]
+    public void DockerSayingWindowsFeaturesAreMissingCountsWhenUnread(string check)
+    {
+        Assert.True(WindowsVirtualization.WindowsCanFix(check));
+        Assert.True((WindowsVirtualization.Unknown with { DockerPrecondition = check }).NeedsChanges);
+    }
+
+    [Fact]
+    public void DockerSayingWslIsMissingDoesNotOverrideWhatWindowsReported()
+    {
+        // Docker Desktop's message can be from before WSL was installed: a WSL version Windows reports wins.
+        var state = WindowsVirtualization.Parse(Ready) with { DockerPrecondition = "checking WSL version: wsl is not installed" };
+
+        Assert.False(state.DockerNeedsWindows);
+        Assert.False(state.NeedsChanges);
+        Assert.True(state.Ready);
+        Assert.Empty(state.Problems());
+    }
+
+    [Theory]
+    [InlineData("No virtualization available")]
+    [InlineData("querying the Win32OptionalFeature class over WMI: Exception occurred")]
+    [InlineData(null)]
+    public void OtherDockerChecksDoNotAskForWindowsChanges(string? check)
+    {
+        Assert.False(WindowsVirtualization.WindowsCanFix(check));
+        Assert.False((WindowsVirtualization.Unknown with { DockerPrecondition = check }).NeedsChanges);
+    }
+
     [Theory]
     [InlineData("[2026-10-04T19:40:26.085281500Z][com.docker.backend.exe.engines][E] engine linux/wsl failed to start: checking preconditions: Virtual Machine Platform not enabled",
         "Virtual Machine Platform not enabled")]

@@ -16,18 +16,24 @@ internal sealed class PausedForRestartException(string message) : InvalidOperati
 /// continues the setup after the next sign-in. A restart already pending is handled before another install or Docker retry.
 /// Virtualization turned off in the firmware can't be changed from Windows: on a fresh PC the features are turned on first,
 /// so the one offered restart into the firmware settings finishes both.</summary>
+/// <summary>What <see cref="WindowsVirtualizationSetup.EnsureReadyAsync"/> found: whether Martlet just changed Windows
+/// without a restart, and whether Windows is confirmed ready (every check read and passed).</summary>
+internal readonly record struct WindowsCheck(bool Changed, bool Ready);
+
 internal static class WindowsVirtualizationSetup
 {
     private const string FirmwareHow = "turn on Intel VT-x or AMD SVM, then save and exit";
 
-    /// <summary>Returns when Windows is ready (or does not say otherwise): true when Martlet just changed Windows without a
-    /// restart (Docker Desktop, if it is running, needs a restart of its own). Throws <see cref="PausedForRestartException"/>
-    /// when Windows must restart and <see cref="InvalidOperationException"/> when the owner declined or a step failed.
-    /// <paramref name="resume"/> is what continues after the restart.</summary>
-    internal static async Task<bool> EnsureReadyAsync(HostRunWindow run, ContinueSetupKind resume)
+    /// <summary>Returns when Windows is ready (or does not say otherwise): <see cref="WindowsCheck.Changed"/> when Martlet just
+    /// changed Windows without a restart (Docker Desktop, if it is running, needs a restart of its own). Throws
+    /// <see cref="PausedForRestartException"/> when Windows must restart and <see cref="InvalidOperationException"/> when the
+    /// owner declined or a step failed. <paramref name="resume"/> is what continues after the restart.
+    /// <paramref name="dockerPrecondition"/> is the start check Docker Desktop failed, if any (for example "wsl is not
+    /// installed"): when Martlet's own checks can't read that fact, Docker Desktop's word counts and Windows is set up.</summary>
+    internal static async Task<WindowsCheck> EnsureReadyAsync(HostRunWindow run, ContinueSetupKind resume, string? dockerPrecondition = null)
     {
         run.Status("Checking Windows virtualization...");
-        var state = await WindowsVirtualization.ProbeAsync(run.Token);
+        var state = await WindowsVirtualization.ProbeAsync(run.Token) with { DockerPrecondition = dockerPrecondition };
         run.Output.Report("Windows: " + state.Describe() + ".");
         if (state.FeaturesBeforeFirmware)
         {
@@ -46,7 +52,7 @@ internal static class WindowsVirtualizationSetup
             if (state.RuntimeUnavailable)
                 throw new InvalidOperationException($"Docker Desktop can't start: {string.Join(", ", state.Problems())}. {state.Recovery}");
             if (!state.Ready) run.Output.Report("Windows readiness could not be confirmed. " + state.Recovery);
-            return false;
+            return new(false, state.Ready);
         }
         run.Output.Report($"Windows needs changes before Docker Desktop can start: {string.Join(", ", state.Problems())}.");
         if (await TurnOnFeaturesAsync(run) == WindowsVirtualization.RestartExitCode) await RestartAsync(run, resume);
@@ -57,7 +63,7 @@ internal static class WindowsVirtualizationSetup
             throw new InvalidOperationException($"Docker Desktop still can't start: {string.Join(", ", after.Problems())}. {after.Recovery}");
         run.Output.Report(after.Ready ? "Windows is ready for Docker Desktop."
             : "Windows changes finished, but readiness could not be confirmed. " + after.Recovery);
-        return true;
+        return new(true, after.Ready);
     }
 
     /// <summary>Turns on what Docker Desktop needs from Windows (<see cref="FixAsync"/>, one administrator prompt). Returns 0,
