@@ -237,8 +237,8 @@ public partial class MainWindow
     private async Task KeepNetworkPairingAsync(Audio2FaceHostPairing pairing, string secret)
     {
         var pairings = Pairings();
-        // Fails before anything is stored when Setup was never completed (hosts.json needs its profile).
-        await pairings.LoadProfileAsync(lifetime.Token);
+        // Fails before anything is stored when this PC's settings can't be read. A PC with no settings yet pairs fine.
+        await pairings.CheckCanKeepAsync(lifetime.Token);
         var vault = new WindowsCredentialStore();
         using (var lease = new SecretLease(secret))
         {

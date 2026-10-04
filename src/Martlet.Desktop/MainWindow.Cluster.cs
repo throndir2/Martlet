@@ -214,7 +214,10 @@ public partial class MainWindow
                 }
             clusterPlan = host ? plan : Failover(plan, probes, now, events);
             if (clusterPlan.Digest() != before) SaveClusterPlan();
-            if (!host && !assigningRole && !setupOperations.IsRunning && homeSettings?.Setup is not null) followed = await FollowClusterAsync(events);
+            // A new PC follows the plan as soon as it is paired, before anything is set up on it: that is how it starts using
+            // your hosts. Unreadable settings are left alone.
+            if (!host && !assigningRole && !setupOperations.IsRunning && homeSettingsState is SettingsLoadState.Loaded or SettingsLoadState.FirstRun)
+                followed = await FollowClusterAsync(events);
             await PushClusterAsync(probes);
         }
         catch (OperationCanceledException) { }
@@ -365,8 +368,8 @@ public partial class MainWindow
             if (JobSavedRoute.Load(store!.DataDirectory, job.SavedFile) is not { } saved)
                 return sharedProblem ?? $"choose a Setup option for {job.Job} on this PC.";
             var loaded = await setupService!.LoadAsync(lifetime.Token);
-            if (loaded.Settings is not { Setup: not null } settings) return "complete Setup first.";
-            var next = HostHandoff.Back(settings, saved);
+            if (loaded.Error is not null) return loaded.Error.Summary;
+            var next = HostHandoff.Back(UseModels(SetupSettings.Begin(loaded.Settings)), saved);
             var result = await setupService.SaveAsync(next, loaded.Revision, lifetime.Token);
             if (!result.Save.Saved) return result.Summary;
             homeSettings = next;

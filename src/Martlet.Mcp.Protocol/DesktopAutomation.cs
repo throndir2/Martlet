@@ -30,9 +30,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveToolDeny",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
         // shows; its Set up, Pair and role buttons do the work. The Devices map's Add a computer details open the same wizard
-        // from their + (SelectedDeviceAdd) and their first choice card.
-        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HostsStepWhere", "HostsStepInstall", "HostsStepPair",
-        "HostsStepRoles", "HostsBack", "HostsNext",
+        // from their + (SelectedDeviceAdd) and their first choice card, and so does Home's Connect to your other computers on a
+        // new PC (HomeConnectComputers).
+        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepWhere",
+        "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
