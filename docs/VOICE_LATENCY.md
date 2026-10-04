@@ -482,6 +482,58 @@ cloud model that hears (paid; OpenRouter lists no audio input for the current
 route), Chatterbox or another host voice (a Windows voice spoke), and Parakeet
 110M (not downloaded on this PC).
 
+### Hearing on by default, and the quick check of short non-words
+
+**2026-10-04, DIVA (RTX 4070), Martlet's own pipeline** (same setup as above:
+`gemma4:e2b` in Ollama on this PC, Parakeet TDT 0.6B v3, a Windows voice,
+fixture microphone and speakers). *Let Thinking hear my voice* is now on by
+default while the recording stays on this PC ([how it
+works](CONVERSATION.md#thinking-models-that-hear-and-see)), so this setup
+takes the straight path without ticking anything; before, it transcribed first
+until the box was ticked.
+
+**Real words are not slower.** Something short that went straight (less than
+1 s of voice) now gets Parakeet beside the request, from the moment the request
+has started. Eight short answers (*Yes, please.*, *Stop.*, *Okay, thanks.*,
+*Sure, go on.*, *No thanks.*, *Good morning!*, *Really?*, *Tell me more.*), all
+short enough for the check, each run alternately on `main` (with the box ticked)
+and on this change (never chosen), two runs each after a 30 s settle, medians of
+the *Reply latency* lines without each run's first reply and one reply each where
+another program made Ollama reload the model:
+
+| | Before (main, n=10) | After (n=12) |
+| --- | --- | --- |
+| Request start after you stopped talking | 936 ms (p90 971) | 913 ms (p90 948) |
+| First audio after you stopped talking | 1,888 ms (p90 2,146) | 1,804 ms (p90 1,952) |
+| Thinking connection | 713 | 643 |
+
+Another program shared the graphics card during these runs (Thinking connection
+600-800 ms instead of about 250), equally for both. Headless, MCP's
+`straight_voice_check` (`live: true`, the quick check's `contention`, eight
+rounds of the same short straight request, new each time) measured the model's
+first words at 78 ms alone, 69 ms with Parakeet started at the request's start
+and 75 ms with it started at the first words: no measurable cost. Parakeet
+finished about 320 ms after the request started there, and 90-500 ms in the
+desktop (the desktop trims the silence around the voice first).
+
+**Non-words are dropped before they play.** Twelve fixture clips in one
+conversation (MCP's own synthesized cough and breath, and *Hmm.*, *Mmm.*,
+*Ha ha ha!*, *Uh.*, *Mm-hmm.* said by a Windows voice, between real
+questions): the six non-words that reached a request (two coughs, a breath,
+*Mmm.*, laughter, *Mm-hmm.*) were all dropped before their first audio (the
+check decided 89-497 ms after the request started; *Not words: Martlet dropped
+its reply before it played*), none was recorded or remembered, and the talk
+window showed *Ignored a sound (no speech).* and *Ignored "MMM." (not words).*
+instead. *Hmm.* and *Uh.* never reached a request (shorter than the 0.45 s
+gate). All four real utterances were answered (*Stop.* with `[pass]`), none
+dropped. On `main`, the same *Mmm.* and a hum got a spoken reply. A hum longer
+than 1 s of voice isn't checked; the model stayed quiet about it with
+`[pass]`.
+
+**NOT RUN:** a real microphone, coughs and hums from a person (synthesized ones
+stood in), Chatterbox (its slower first audio leaves the check more time), and
+a quiet graphics card for the desktop comparison (another program used it).
+
 **NOT RUN:**
 - **A cloud Thinking model** (OpenRouter `x-ai/grok-4.3`, the current route):
   no key is set up for the bench. Run
@@ -573,7 +625,8 @@ backchannel at once would make most of the rest feel instant.
 6. **Omni for the reply, a transcript in parallel.** Done: with a Thinking
    model that hears (Gemma 4 in Ollama on this PC; Martlet detects it), Companion
    › Listening › When Thinking can hear you › **Send my voice straight to
-   Thinking** (the default once Let Thinking hear my voice is on) sends the
+   Thinking** (the default once Let Thinking hear my voice is on, which it is by
+   default while Thinking runs on this PC) sends the
    recording alone and transcribes beside the reply for the talk window, history
    and memory; about 220 ms sooner to the first audio here ([measured](#straight-to-thinking-measured)).
    For a model that can't hear, a smaller
