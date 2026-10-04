@@ -22,6 +22,13 @@ public static class ThinkLonger
     /// <summary>The background request's output budget (its hidden reasoning included where the route counts it): Medium and
     /// High. A reply's is at most 4,096.</summary>
     public const int MediumOutputTokens = 8_192, HighOutputTokens = 16_384;
+
+    public static int OutputTokens(ThinkEffort effort) => effort == ThinkEffort.High ? HighOutputTokens : MediumOutputTokens;
+
+    /// <summary>What a think on a paired computer's Ollama must fit: its gateway takes 16 KiB and 16 earlier messages, no tools,
+    /// and loads at most <see cref="GenerationSettings.MaximumHostContextTokens"/> of context, which the output shares.</summary>
+    public static ThinkBounds HostBounds(ThinkEffort effort) => new(BoundedTextInput.HardMaxUtf8Bytes,
+        TextGenerationLimits.DefaultMaxHistoryMessages, GenerationSettings.MaximumHostContextTokens - OutputTokens(effort), Tools: false);
     /// <summary>The least time left worth starting (or resuming) a background request with.</summary>
     public static TimeSpan MinimumAttempt => TimeSpan.FromSeconds(5);
 
@@ -142,6 +149,35 @@ public static class ThinkLonger
         return new BoundedTextInput(message, personality);
     }
 
+    /// <summary>The think's message within a destination's <paramref name="bounds"/>: the tools are dropped when it doesn't take
+    /// them (a destination other than the Thinking model has no prompt cache to share), then the oldest exchanges are left out
+    /// two at a time until it fits, then the persona; the task always stays.</summary>
+    public static BoundedTextInput Fit(BoundedTextInput full, ThinkBounds bounds)
+    {
+        ArgumentNullException.ThrowIfNull(full);
+        ArgumentNullException.ThrowIfNull(bounds);
+        var history = full.History.ToList();
+        var excess = history.Count - bounds.MaxHistoryMessages;
+        if (excess > 0) history.RemoveRange(0, Math.Min(history.Count, excess + (excess & 1)));
+        IReadOnlyList<TextToolDefinition> tools = bounds.Tools ? full.Tools : [];
+        var personality = full.Personality;
+        while (true)
+        {
+            try
+            {
+                var candidate = new BoundedTextInput(full.UserText, personality, history, tools: tools);
+                if (candidate.Utf8Bytes <= bounds.MaxInputBytes && candidate.History.Count <= bounds.MaxHistoryMessages &&
+                    candidate.InputTokenReservation <= bounds.MaxInputTokens)
+                    return candidate;
+            }
+            catch (ContractException) { }
+            if (history.Count > 0) history.RemoveRange(0, Math.Min(2, history.Count));
+            else if (personality is not null) personality = null;
+            else if (tools.Count > 0) tools = [];
+            else return new BoundedTextInput(full.UserText);
+        }
+    }
+
     /// <summary>The background request's bounds: the reply's input bounds with the effort's output budget and the time left,
     /// and room for a reasoning model's long stream of hidden thinking.</summary>
     public static TextGenerationLimits Limits(TextGenerationLimits reply, ThinkEffort effort, TimeSpan time)
@@ -208,11 +244,16 @@ public static class ThinkLonger
     }
 }
 
-/// <summary>One background think's attempts at its request on its own runtime, beside the conversation. On a model that serves
-/// one request at a time (Thinking on this PC: Ollama, LM Studio...), <see cref="Busy"/> says when the conversation needs it:
-/// the think waits for a quiet moment, and when the user talks or Martlet replies it stops (<see cref="Yield"/>, at once) and
-/// starts again from the same cached start once it's quiet, so a reply never waits behind it and the conversation stays in the
-/// model's cache. Elsewhere (a cloud route) it simply runs.</summary>
+/// <summary>What a think's message must fit on its destination: its byte, message and estimated-token bounds, and whether it
+/// carries the reply's tools (only on the Thinking model, to share its prompt cache).</summary>
+public sealed record ThinkBounds(int MaxInputBytes, int MaxHistoryMessages, int MaxInputTokens, bool Tools);
+
+/// <summary>One background think's attempts at its request on its own runtime, beside the conversation. When it shares the
+/// conversation's hardware (<see cref="DeepThinkingPlan"/>: the Thinking model on this PC, a server on this PC while Thinking or
+/// the voice runs here, or a paired computer that does one of the conversation's jobs), <see cref="Busy"/> says when the
+/// conversation needs it: the think waits for a quiet moment, and when the user talks or Martlet replies it stops
+/// (<see cref="Yield"/>, at once) and starts again once it's quiet, so a reply never waits behind it. On another machine (a
+/// paired computer or a provider of its own) it simply runs, in parallel with the conversation.</summary>
 public sealed class BackgroundThink
 {
     private readonly object gate = new();

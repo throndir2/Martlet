@@ -16,6 +16,11 @@ public static class GatewayInferenceProtocol
     public const int MaximumCancelRequestBytes = 2_048;
     public static readonly TimeSpan MaximumCancellationDuration = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan MaximumRetirementDuration = TimeSpan.FromSeconds(2);
+    /// <summary>The longest a route lets one request run: a background think (think_longer) on the conversation model. Before
+    /// it, every route took at most two minutes (the conversation model one).</summary>
+    public static readonly TimeSpan MaximumJobDuration = TimeSpan.FromMinutes(15);
+    /// <summary>The most output tokens a conversation-model request may ask for (a background think's budget); 4,096 before it.</summary>
+    public const int MaximumOllamaOutputTokens = 32_768;
 }
 
 public enum GatewayInferenceKind
@@ -89,7 +94,7 @@ public sealed partial class GatewayInferenceRoute
             maximumStreamBytes >= maximumEventBytes &&
             maximumStreamBytes <= 8 * 1024 * 1024 &&
             maximumDuration > TimeSpan.Zero &&
-            maximumDuration <= TimeSpan.FromSeconds(120), "worker.invalid");
+            maximumDuration <= GatewayInferenceProtocol.MaximumJobDuration, "worker.invalid");
         GatewayRules.Defined(cancellation);
 
         Kind = kind;
@@ -177,7 +182,8 @@ public sealed partial class GatewayInferenceRoute
             maximumEventBytes: 64 * 1024,
             maximumEvents: 4_096,
             maximumStreamBytes: 4 * 1024 * 1024,
-            maximumDuration: TimeSpan.FromSeconds(60),
+            // A reply's own deadline is far shorter; a background think (think_longer) may take up to fifteen minutes.
+            maximumDuration: GatewayInferenceProtocol.MaximumJobDuration,
             GatewayCancellationCapability.RequestAbort);
     }
 

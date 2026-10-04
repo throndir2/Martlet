@@ -41,6 +41,14 @@ internal static class ThinkLongerCheck
             route.RouteType == SetupRouteType.ChatCompletions && Uri.TryCreate(route.Origin, UriKind.Absolute, out var origin) && origin.IsLoopback);
         var rejected = route is not null && ToolsRejected(dataDirectory, $"{route.RouteType}|{route.Origin}|{route.ModelId}");
         var effort = settings.HowHard == ThinkEffort.High ? GenerationSupport.ReasoningEffortHigh : GenerationSupport.ReasoningEffortOn;
+        var (deep, deepState) = DeepThinkingSettings.Read(dataDirectory);
+        var plan = DeepThinkingPlan.For(deep, loaded.Settings?.Setup?.Routes ?? []);
+        (SetupRouteType? Type, string? Origin) deepRoute = deep.Place switch
+        {
+            DeepThinkingPlace.Host => (SetupRouteType.GatewayOllama, null),
+            DeepThinkingPlace.Endpoint => (SetupRouteType.ChatCompletions, deep.Origin),
+            _ => (route?.RouteType, route?.Origin)
+        };
         return new
         {
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
@@ -53,11 +61,20 @@ internal static class ThinkLongerCheck
             {
                 routeType = route.RouteType?.ToString() ?? "OpenAi", model = route.ModelId, supportsTools, toolsRejected = rejected,
                 offered = settings.On && supportsTools && !rejected,
-                onThisPc = local,
-                waitsForQuiet = local,
-                thinkingSteps = GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning).ToString(),
-                sends = GenerationSupport.ReasoningJson(route.RouteType, route.Origin, true, effort),
-                outputTokens = settings.HowHard == ThinkEffort.High ? ThinkLonger.HighOutputTokens : ThinkLonger.MediumOutputTokens
+                onThisPc = local
+            },
+            deepThinking = new
+            {
+                file = deepState, place = deep.Place.ToString(), where = deep.Separate ? deep.Describe() : route?.ModelId,
+                model = deep.Separate ? deep.ModelId : route?.ModelId, hostId = deep.HostId,
+                origin = deep.Place == DeepThinkingPlace.Endpoint ? deep.Origin : null,
+                ownKey = deep.CredentialId is not null, usesThinkingKey = deep.UsesThinkingKey(route),
+                parallel = plan.Parallel, waitsForQuiet = !plan.Parallel, why = plan.Why,
+                thinkingSteps = deepRoute.Type is null ? "Unused" : GenerationSupport.Use(deepRoute.Type, deepRoute.Origin, GenerationSetting.Reasoning).ToString(),
+                sends = deepRoute.Type == SetupRouteType.GatewayOllama ? "{\"think\":true}"
+                    : GenerationSupport.ReasoningJson(deepRoute.Type, deepRoute.Origin, true, effort),
+                outputTokens = ThinkLonger.OutputTokens(settings.HowHard),
+                carriesTools = !deep.Separate
             },
             tools = ThinkLonger.Definitions(settings).Select(tool => new
             {
@@ -107,14 +124,158 @@ internal static class ThinkLongerCheck
         var flow = await FlowAsync(fixture, cancellation);
         var limits = await LimitsAsync(cancellation);
         var local = await LocalAsync(fixture, cancellation);
+        var plans = Plans();
+        await using var other = new Fixture(reasoning * 3);
+        var parallel = await ParallelAsync(fixture, other, cancellation);
+        var host = HostFit();
         return new
         {
-            ok = flow.Ok && limits.Ok && local.Ok,
+            ok = flow.Ok && limits.Ok && local.Ok && plans.Ok && parallel.Ok && host.Ok,
             endpoint = fixture.BaseUrl,
-            note = "Fixture endpoint on 127.0.0.1 with canned replies (NOT AI); the scheduler, runner, tool texts, request layout, " +
-                "runtime and adapter are Martlet's own.",
-            flow = flow.Report, limits = limits.Report, local = local.Report
+            note = "Fixture endpoints on 127.0.0.1 with canned replies (NOT AI); the scheduler, runner, tool texts, request layout, " +
+                "Deep thinking plan, runtime and adapter are Martlet's own.",
+            flow = flow.Report, limits = limits.Report, local = local.Report, plans = plans.Report, parallel = parallel.Report,
+            hostFit = host.Report
         };
+    }
+
+    // ---------- Deep thinking: where a think runs and whether it waits ----------
+
+    private static SetupRoute Chat(SetupRole role, string origin, string model) => new()
+    {
+        RouteType = SetupRouteType.ChatCompletions, Role = role, ProviderAlias = ChatCompletionsSetup.Alias, Origin = origin, ModelId = model,
+        ConfigurationRevision = Guid.NewGuid(), Enabled = true
+    };
+
+    private static SetupRoute Gateway(SetupRole role, SetupRouteType type, string hostId, string origin) => new()
+    {
+        RouteType = type, Role = role, ProviderAlias = SelfHostSetup.Gateway(type).Alias, Origin = origin, ModelId = "fixture",
+        ConfigurationRevision = Guid.NewGuid(), Enabled = true,
+        Gateway = new() { SchemaVersion = 1, Origin = origin, HostId = hostId, SpkiFingerprint = "sha256:" + new string('0', 64), DeviceRole = SelfHostSetup.GatewayRole }
+    };
+
+    private static DeepThinkingSettings Host(string hostId) => new()
+    {
+        Place = DeepThinkingPlace.Host, ModelId = "gemma4:27b", HostId = hostId, HostOrigin = $"https://{hostId}.local:9443",
+        HostSpkiFingerprint = "sha256:" + new string('0', 64), HostDeviceId = "fixture-device", HostCredentialId = Guid.NewGuid()
+    };
+
+    // The production plan (DeepThinkingPlan) for the setups that matter: a think waits for quiet moments only when it shares
+    // the conversation's hardware.
+    private static (bool Ok, object Report) Plans()
+    {
+        const string ollama = GenerationSupport.LocalOllamaChatBaseUrl, openRouter = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl;
+        var localThinking = Chat(SetupRole.Llm, ollama, "gemma4:e4b");
+        var cloudThinking = Chat(SetupRole.Llm, openRouter, "x-ai/grok-4.3");
+        var cases = new (string Name, DeepThinkingSettings Deep, SetupRoute[] Routes, bool Parallel)[]
+        {
+            ("Same as Thinking, Thinking in Ollama on this PC", new(), [localThinking], false),
+            ("Same as Thinking, Thinking on OpenRouter", new(), [cloudThinking], true),
+            ("OpenRouter, Thinking in Ollama on this PC", new() { Place = DeepThinkingPlace.Endpoint, Origin = openRouter, ModelId = "x-ai/grok-4.3" },
+                [localThinking], true),
+            ("Ollama on this PC (another model), Thinking in Ollama on this PC",
+                new() { Place = DeepThinkingPlace.Endpoint, Origin = ollama, ModelId = "gemma4:12b" }, [localThinking], false),
+            ("Ollama on this PC, Thinking on OpenRouter and the voice on diva",
+                new() { Place = DeepThinkingPlace.Endpoint, Origin = ollama, ModelId = "gemma4:12b" },
+                [cloudThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "diva", "https://diva.local:9443")], true),
+            ("Ollama on this PC, Thinking on OpenRouter and the voice in this PC's host service",
+                new() { Place = DeepThinkingPlace.Endpoint, Origin = ollama, ModelId = "gemma4:12b" },
+                [cloudThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "this-pc", "https://127.0.0.1:9443")], false),
+            ("diva, Thinking in Ollama on this PC and the voice on imouto", Host("diva"),
+                [localThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "imouto", "https://imouto.local:9443")], true),
+            ("diva, the voice on diva too", Host("diva"),
+                [localThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "diva", "https://diva.local:9443")], false)
+        };
+        var results = cases.Select(c => (c, Plan: DeepThinkingPlan.For(c.Deep, c.Routes))).ToArray();
+        var ok = results.All(r => r.Plan.Parallel == r.c.Parallel);
+        return (ok, new
+        {
+            ok,
+            cases = results.Select(r => new { name = r.c.Name, where = r.c.Deep.Separate ? r.c.Deep.Describe() : "the Thinking model",
+                parallel = r.Plan.Parallel, expected = r.c.Parallel, why = r.Plan.Why })
+        });
+    }
+
+    // A think on a destination of its own (the plan says parallel): it runs on its own endpoint (a second fixture, standing in for
+    // the other machine) while three replies go to the conversation's, and is never stopped. Its request is fitted to the
+    // destination: the conversation and the task, no tools, Thinking steps on.
+    private static async Task<(bool Ok, object Report)> ParallelAsync(Fixture conversation, Fixture other, CancellationToken cancellation)
+    {
+        var settings = new ThinkLongerSettings();
+        var plan = DeepThinkingPlan.For(new() { Place = DeepThinkingPlace.Endpoint, Origin = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
+            ModelId = "x-ai/grok-4.3" }, [Chat(SetupRole.Llm, GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e4b")]);
+        using var jobs = new BackgroundJobs();
+        await using var thinking = ConversationRuntime.Create(new NoCredentials());
+        await using var replies = ConversationRuntime.Create(new NoCredentials());
+        var conversationInput = new BoundedTextInput(Asked, Persona, [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey!")],
+            tools: ThinkLonger.Definitions(settings));
+        var bounds = new ThinkBounds(BoundedTextInput.HardMaxInputUtf8Bytes, BoundedTextInput.HardMaxHistoryMessages, 93_904, Tools: false);
+        var think = new BackgroundThink(thinking, left =>
+        {
+            var input = ThinkLonger.Fit(ThinkLonger.Input(conversationInput, Acknowledged, TaskText, null, null), bounds);
+            return (new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, Model),
+                ThinkLonger.Limits(ReplyLimits, settings.HowHard, left), ThinkLonger.TurnLimits(left), chat: new ChatCompletionsTarget(other.BaseUrl, true),
+                generation: new GenerationSettings { Reasoning = true, ReasoningEffort = GenerationSupport.ReasoningEffortOn }),
+                new Permissions(ChatCompletionsSetup.BaseUri(other.BaseUrl)));
+        }, plan.Parallel ? null : () => true);
+        var before = other.Count("think");
+        var job = jobs.Start(ThinkLonger.Kind(settings), ThinkLonger.Label(TaskText), think.RunAsync).Job!;
+        var waited = Stopwatch.StartNew();
+        while (other.Count("think", inFlight: true) == 0 && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
+        // Three replies to the conversation's own endpoint while the think works on the other.
+        var firstWords = new List<long>();
+        for (var i = 0; i < 3; i++)
+        {
+            var reply = replies.Start(new ConversationRequest(new BoundedTextInput($"Quick question {i + 1}?", Persona),
+                new TextModelSelection(ChatCompletionsSetup.Alias, Model), ReplyLimits, new ConversationLimits(),
+                chat: new ChatCompletionsTarget(conversation.BaseUrl, true), generation: new GenerationSettings { Reasoning = false }),
+                new Permissions(ChatCompletionsSetup.BaseUri(conversation.BaseUrl)), cancellation);
+            var done = await reply.Completion.WaitAsync(TimeSpan.FromSeconds(30), cancellation);
+            await reply.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+            firstWords.Add((long)(done.FirstTextAfter?.TotalMilliseconds ?? -1));
+        }
+        var thinkingDuringReplies = other.Count("think", inFlight: true) == 1;
+        waited.Restart();
+        while (!job.Finished && waited.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(20, cancellation);
+        var body = other.Bodies("think").Skip(before).FirstOrDefault();
+        var sent = body is null ? null : JsonNode.Parse(body)!.AsObject();
+        var messages = body is null ? [] : Messages(body);
+        var last = messages.LastOrDefault()?["content"]?.GetValue<string>() ?? "";
+        var ok = plan.Parallel && thinkingDuringReplies && firstWords.All(ms => ms is >= 0 and < 1000) && job.State == BackgroundJobState.Succeeded &&
+            job.Result == Lyrics && think.Attempts == 1 && think.Pauses == 0 && other.Served("think").Skip(before).All(s => !s.Aborted) &&
+            sent?["tools"] is null && sent?["reasoning_effort"] is null && sent?["chat_template_kwargs"]?["enable_thinking"]?.GetValue<bool>() == true &&
+            messages.Count == 6 && last.Contains(TaskText, StringComparison.Ordinal);
+        return (ok, new
+        {
+            ok, plan = new { parallel = plan.Parallel, why = plan.Why },
+            thinkingWhileReplying = thinkingDuringReplies, replyFirstWordsMs = firstWords,
+            think = new { state = job.State.ToString(), attempts = think.Attempts, pauses = think.Pauses, finishedAfterMs = (long)job.Elapsed.TotalMilliseconds },
+            request = new { tools = sent?["tools"] is not null, thinking = sent?["chat_template_kwargs"]?.ToJsonString(), messages = messages.Count,
+                taskLast = last.Contains(TaskText, StringComparison.Ordinal) }
+        });
+    }
+
+    // A think on a paired computer: a long conversation fitted into its gateway's 16 KiB and 16 messages (the newest kept, the
+    // task last, no tools), as the production fit does.
+    private static (bool Ok, object Report) HostFit()
+    {
+        var settings = new ThinkLongerSettings();
+        var history = Enumerable.Range(0, 80).SelectMany(i => new TextHistoryMessage[]
+        {
+            new(TextHistoryRole.User, $"Message {i}: " + new string('a', 300)), new(TextHistoryRole.Assistant, $"Answer {i}: " + new string('b', 300))
+        }).ToArray();
+        var conversation = new BoundedTextInput(Asked, Persona, history, tools: ThinkLonger.Definitions(settings));
+        var bounds = ThinkLonger.HostBounds(settings.HowHard);
+        var fitted = ThinkLonger.Fit(ThinkLonger.Input(conversation, Acknowledged, TaskText, null, null), bounds);
+        var newest = fitted.History.Count >= 2 && fitted.History[^1].Text.StartsWith(Acknowledged, StringComparison.Ordinal);
+        var ok = fitted.Utf8Bytes <= bounds.MaxInputBytes && fitted.History.Count <= bounds.MaxHistoryMessages && fitted.Tools.Count == 0 &&
+            fitted.Personality == Persona && newest && fitted.UserText.Contains(TaskText, StringComparison.Ordinal);
+        return (ok, new
+        {
+            ok, bytes = fitted.Utf8Bytes, maxBytes = bounds.MaxInputBytes, messages = fitted.History.Count, maxMessages = bounds.MaxHistoryMessages,
+            leftOut = conversation.History.Count + 2 - fitted.History.Count, tools = fitted.Tools.Count, persona = fitted.Personality is not null,
+            newestKept = newest, inputTokens = bounds.MaxInputTokens, outputTokens = ThinkLonger.OutputTokens(settings.HowHard)
+        });
     }
 
     // A reply that calls think_longer, the background request, and bringing the result up as a message at the end.
@@ -501,6 +662,10 @@ internal static class ThinkLongerCheck
                             await ChunkAsync(stream, "{\"content\":" + JsonSerializer.Serialize(line == Lyrics.Split('\n')[^1] ? line : line + "\n") + "}");
                         await FinishAsync(stream, "stop");
                         break;
+                    case "chat":
+                        await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":\"Sure thing, here you go.\"}");
+                        await FinishAsync(stream, "stop");
+                        break;
                     default:
                         await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(Report) + "}");
                         await FinishAsync(stream, "stop");
@@ -531,7 +696,8 @@ internal static class ThinkLongerCheck
             var content = last?["content"] is JsonValue value && value.TryGetValue<string>(out var text) ? text : "";
             return role == "tool" ? "after-tool"
                 : content.Contains("A background task from Martlet", StringComparison.Ordinal) ? "think"
-                : content.Contains("Martlet's note", StringComparison.Ordinal) ? "report" : "reply";
+                : content.Contains("Martlet's note", StringComparison.Ordinal) ? "report"
+                : JsonNode.Parse(body)?["tools"] is null ? "chat" : "reply";
         }
 
         private Task ChunkAsync(NetworkStream stream, string delta) =>

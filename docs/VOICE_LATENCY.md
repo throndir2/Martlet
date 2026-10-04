@@ -125,7 +125,7 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
 4. **Thinking steps** (Companion › Replies) turns a reasoning model's hidden
    thinking off, and is Off by default; a model that refuses Off is asked again
    with its default.
-5. **Thinking longer** (Companion › Replies, on by default) gives the hard
+5. **Thinking longer** (Companion › Deep thinking, on by default) gives the hard
    tasks their thinking back without making any reply wait for it: Martlet
    says it'll think it over and works on the task in a background request
    ([Thinking longer](CONVERSATION.md#thinking-longer-and-background-work)).
@@ -139,10 +139,19 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
    - The background request continues a reply's request, so a cloud provider
      reads it from the cache and a model on this PC keeps the conversation in
      its cache.
-   - On a model on this PC (one request at a time) the think stops the moment
-     you talk or a reply, glance or after-reply request starts, and starts
-     again from the latest exchange once it's quiet; replies never queue
-     behind it.
+   - When the think shares the conversation's hardware (Thinking's own model
+     on this PC or a paired computer, or any model on this PC while Thinking or
+     the voice runs here: one request at a time and one graphics card) it stops
+     the moment you talk or a reply, glance or after-reply request starts, and
+     starts again from the latest exchange once it's quiet; replies never
+     queue behind it.
+   - **Deep thinking** (Companion › Deep thinking › *Where it thinks*) can put
+     it on another machine instead: a paired computer's Ollama, Ollama on this
+     PC while the conversation runs elsewhere, or a cloud provider. Then it
+     runs in parallel and is never paused, and the conversation's model,
+     cache and graphics card are left alone. Its request doesn't carry the
+     reply's tools, so it doesn't share the conversation's cache (it is on
+     another server anyway).
    - A model that turns tools down is remembered on this PC for a week, so it
      isn't asked with tools (and again without) on every first reply.
 
@@ -163,6 +172,16 @@ Martlet brought it up on its own from 85%). An earlier build that resumed the
 think from the reply that started it, against a fixture that noticed a hang-up
 only every 100 ms, measured 93-138 ms with 917 of 937-1,013 tokens cached: why
 a resumed think continues the latest exchange.
+
+Deep thinking on a second single-slot loopback fixture (Custom server on
+127.0.0.1, so the plan still waits for quiet moments because both share this
+PC): typed messages, warm, *Reply latency* first words 59 and 60 ms with nothing
+running, then 59, 45, 55 and 46 ms during the think, each reply 98-99% from the
+cache (the think went to the second fixture without tools, paused 4 times and
+finished in 57 s; Martlet brought it up from the first, 83% from the cache). With
+a destination of its own (`think_longer_check`'s `parallel` part: the
+production plan says parallel, the think is never stopped) three replies beside
+it answered in 2 ms each, as without it.
 
 Two measurements: one process on an idle GPU (graph against the library's own
 decoding), and the running service against this change's service on a side
@@ -408,4 +427,5 @@ backchannel at once would make most of the rest feel instant.
   speakers, and GPUs other than the RTX 5080. For Thinking longer: a real
   model calling think_longer (Ollama on this PC was shared with other running
   work and kept swapping models, so local timings would have measured that) and
-  a cloud provider's background think (paid).
+  a cloud provider's background think (paid), and Deep thinking on a real
+paired computer (none is paired here) or a cloud provider (paid).

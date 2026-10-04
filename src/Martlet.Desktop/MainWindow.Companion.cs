@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, Voice, Listening, Vision, LipSync, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome }
+internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -107,7 +107,7 @@ public partial class MainWindow
 
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
-        CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
+        CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
@@ -125,6 +125,7 @@ public partial class MainWindow
     private static string TabTitle(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Thinking",
+        CompanionTab.DeepThinking => "Deep thinking",
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
         CompanionTab.Vision => "Vision",
@@ -145,6 +146,7 @@ public partial class MainWindow
     private static string TabGlyph(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "\uE82F",
+        CompanionTab.DeepThinking => "\uE945",
         CompanionTab.Voice => "\uE767",
         CompanionTab.Listening => "\uE720",
         CompanionTab.Vision => "\uE890",
@@ -165,6 +167,7 @@ public partial class MainWindow
     private static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Choose where Martlet thinks and which model it uses. This PC keeps conversations local.",
+        CompanionTab.DeepThinking => "Thinking answers you. Deep thinking works out hard tasks in the background, ideally on another machine, so Martlet keeps talking.",
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
         CompanionTab.Vision => "Choose whether Martlet can see your screen or camera while the talk window is open.",
@@ -328,6 +331,7 @@ public partial class MainWindow
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;
+            case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
