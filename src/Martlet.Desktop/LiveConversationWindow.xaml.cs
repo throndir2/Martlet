@@ -117,6 +117,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private string? pendingText;
     private ChatMessage? pendingMessage;
     private string? reloadReason;
+    // The load that runs now takes a changed setup in an open conversation (said once in the log).
+    private bool following;
     // What the status line says after something finished or went wrong; the next thing you do clears it.
     private string? notice;
     // The bubbles the current operation fills in.
@@ -268,6 +270,10 @@ public partial class LiveConversationWindow : ThemedWindow
             ready = loaded.Error is null;
             notice = loaded.Error?.Summary ?? (controller.Configuration is null
                 ? "Set up Thinking in Companion, then come back to talk." : null);
+            if (following && controller.Configuration is { } now)
+                ErrorLog.Info("The open conversation follows the changed setup between replies: " +
+                    string.Join(", ", now.Routes.Select(r => $"{r.Role} {r.RouteType}{(r.ModelId is { Length: > 0 } id ? " " + id : "")}")) + ".");
+            following = false;
             Warm();
             StartLive();
             if (listenWhenReady && preferences.HandsFree && listenPaused && Available) Mic_Click(this, new RoutedEventArgs());
@@ -430,6 +436,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             reloadReason = null;
             if (Messages.Count > 0) AddNote(reason + " Martlet picked it up and carries on.");
+            following = true;
             LoadAsync().Forget();
             return;
         }
@@ -2179,16 +2186,16 @@ public partial class LiveConversationWindow : ThemedWindow
                 MemoryCaptureKind.Remember => "Remembered: ",
                 MemoryCaptureKind.Update => "Updated memory: ",
                 _ => "Forgot: "
-            } + change.Content));
+            } + change.Content + (change.Person is { } person ? $" ({person})" : "")));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });
 
-    // Raised off the dispatcher once names were picked up for voices from an exchange.
-    private void VoicesNamed(IReadOnlyList<(Martlet.Core.Speakers.KnownVoice Voice, string Name)> learned) => Dispatcher.BeginInvoke(() =>
+    // Raised off the dispatcher once learning names changed voices from an exchange.
+    private void VoicesNamed(IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult> learned) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
-        var text = string.Join("  ", learned.Select(l => $"Learned {l.Voice.Tag.Replace("V", "voice ")} is {l.Name}."));
+        var text = string.Join("  ", learned.Select(l => l.Text));
         if (lastReply is not null) lastReply.AddNote(text);
         else AddNote(text);
     });

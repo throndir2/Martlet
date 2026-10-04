@@ -27,12 +27,14 @@ internal static partial class LatencyReport
     private static partial Regex Legacy();
     [GeneratedRegex(@"First piece: (?<speech>[\d.]+) s of speech made in (?<made>\d+) ms")]
     private static partial Regex FirstPiece();
+    [GeneratedRegex(@"The voice paused (?<pauses>\d+) times? for (?<ms>\d+) ms in all")]
+    private static partial Regex VoicePauses();
     [GeneratedRegex(@"Models: (?<models>.*)\.$")]
     private static partial Regex Models();
 
     internal sealed record Reply(DateTimeOffset At, string Measured, double? TotalMs, string? From, IReadOnlyDictionary<string, double> Steps,
         double? FirstWordsMs, double? FirstAudioMs, int? SpokenPieces, double? FirstPieceSpeechSeconds, double? FirstPieceMadeMs,
-        string? Models, bool Interrupted, bool Legacy, bool Restarted = false);
+        string? Models, bool Interrupted, bool Legacy, bool Restarted = false, int VoicePauses = 0, double VoicePausedMs = 0);
 
     internal static object Read(string? dataDirectory, int? replies)
     {
@@ -69,11 +71,19 @@ internal static partial class LatencyReport
             firstAudioFromReplyStart = Stats(parsed.Where(r => r.FirstAudioMs is not null).Select(r => r.FirstAudioMs!.Value)),
             slowestSteps = steps.OrderByDescending(s => s.Value.Median).Take(5).Select(s => new { step = s.Key, medianMs = s.Value.Median }).ToArray(),
             steps,
+            // Replies whose speakers ran dry mid-reply waiting for a voice made slower than real time, and those waits.
+            voicePauses = new
+            {
+                replies = parsed.Count(r => r.VoicePauses > 0),
+                pauses = parsed.Sum(r => r.VoicePauses),
+                pausedMs = Stats(parsed.Where(r => r.VoicePauses > 0).Select(r => r.VoicePausedMs))
+            },
             newest = parsed.Reverse().Select(r => new
             {
                 at = r.At, measured = r.Measured, totalMs = r.TotalMs, from = r.From, steps = r.Steps, firstWordsMs = r.FirstWordsMs,
                 firstAudioMs = r.FirstAudioMs, spokenPieces = r.SpokenPieces, firstPieceSpeechSeconds = r.FirstPieceSpeechSeconds,
-                firstPieceMadeMs = r.FirstPieceMadeMs, models = r.Models, interrupted = r.Interrupted, restarted = r.Restarted, legacy = r.Legacy
+                firstPieceMadeMs = r.FirstPieceMadeMs, voicePauses = r.VoicePauses, voicePausedMs = r.VoicePausedMs, models = r.Models,
+                interrupted = r.Interrupted, restarted = r.Restarted, legacy = r.Legacy
             }).ToArray()
         };
     }
@@ -109,6 +119,7 @@ internal static partial class LatencyReport
         var rest = line.Groups["rest"].Value;
         var start = FromStart().Match(rest);
         var piece = FirstPiece().Match(rest);
+        var pauses = VoicePauses().Match(rest);
         var models = Models().Match(rest);
         return new(at, line.Groups["what"].Value, Number(line.Groups["total"].Value), line.Groups["from"].Value.Trim(), steps,
             start.Success ? Number(start.Groups["words"].Value) : null,
@@ -116,7 +127,9 @@ internal static partial class LatencyReport
             start.Success ? (int?)Number(start.Groups["pieces"].Value) : null,
             piece.Success ? Number(piece.Groups["speech"].Value) : null, piece.Success ? Number(piece.Groups["made"].Value) : null,
             models.Success ? models.Groups["models"].Value : null, interrupted, false,
-            rest.Contains("replaced because you kept talking", StringComparison.Ordinal));
+            rest.Contains("replaced because you kept talking", StringComparison.Ordinal),
+            pauses.Success ? (int)Number(pauses.Groups["pauses"].Value)!.Value : 0,
+            pauses.Success ? Number(pauses.Groups["ms"].Value)!.Value : 0);
     }
 
     private static double? Number(string text) =>

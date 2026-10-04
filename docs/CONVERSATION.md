@@ -128,7 +128,7 @@ comment; it needs a Thinking model that can see images. See
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper, the style line and each response style,
    reply length, always listening, tools, Thinking longer, who is talking,
-   lorebook and memory introductions, notes with messages, the screen and
+   lorebook, memory and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines (including *Martlet decides* and *Chattiness right now*), *Screen with your message* (sent with what you type or say while
@@ -214,7 +214,9 @@ reads the entire conversation again before every reply (on a 12B model, about
 - **The message** comes last and ends with Martlet's **notes** between
   `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
   remembered facts not already in the notes of an earlier message the request
-  carries, who is talking when that changed, a smart home result, and the
+  carries, what was said in earlier conversations when the message refers to
+  one ([Memory › Conversation history](MEMORY.md#conversation-history)), who is
+  talking when that changed, a smart home result, and the
   picked style when the persona has several and it changed. The first notes
   start with what notes are (Companion › Prompts › *Notes with messages*).
   Notes are never shown and never what the user said.
@@ -395,8 +397,11 @@ ahead without memory and the status says why. After a completed reply, the
 exchange is sent once more, as one extra text-only request (shared with
 learning names when both are due), to the same Thinking model, which picks out
 lasting facts to save locally (shown under the reply and
-listed in Memory). Screen glances are never remembered. The volatile exchange
-buffer itself is still not persisted. TTS receives only eligible
+listed in Memory). Screen glances are never remembered. The exchanges kept in
+mind for the next replies stay in memory only; separately, while memory and
+*Keep a record of my conversations* are on, each finished exchange is added to
+the [record of conversations](MEMORY.md#conversation-history) on this PC, which
+a later message that mentions an earlier conversation brings back. TTS receives only eligible
 generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
 fallback provider, retry loop or hidden continuation.
@@ -418,7 +423,7 @@ game/call audio. Capturing other people requires their permission.
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
 | Background think (think_longer) | One at a time, 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
-| Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |
+| Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio files or ordinary content logs; finished exchanges (the user's own words and the reply, never audio, glances or what the PC plays) go to the [record of conversations](MEMORY.md#conversation-history) on this PC only while memory and *Keep a record of my conversations* are on |
 
 These are admission and request limits, **not a measured latency promise or a
 currency/invoice ceiling**. Input-token reservations are conservative local
@@ -488,6 +493,17 @@ requests cancellation without releasing the shared ownership slot early.
 Partial response text remains available; stopped speech is not replayed.
 The shortcut is local to this conversation window, not a system-wide hotkey.
 
+A job changed while the talk window is open (Thinking's model or provider, the
+Listening or Speaking engine, the computer that does a job, the voice or the
+Thinking fallback, saved in Companion or on the Devices map) needs no reopening:
+the window takes the saved setup once no reply or turn is running, keeps what
+was said so far as context and says *Your setup changed. Martlet picked it up
+and carries on.* (logged as *The open conversation follows the changed setup
+between replies: ...*). It doesn't stop a reply to switch.
+Switching to an engine first gets it ready where that is possible (a host role is
+installed and answering, a local Ollama model is downloaded and loaded) and only
+then saves the change, so the old one keeps answering until the switch.
+
 The STT adapter's backwards-compatible two-token overload retains the original
 caller and app-operation tokens independently through credentials, serialization,
 send and result acceptance. A blocking newer cancellation callback cannot hide
@@ -501,19 +517,20 @@ Time to first audio is what makes a spoken reply feel conversational, so the
 voice pipeline never waits for a whole reply:
 
 - **Pipelined chunking.** Text is spoken as it streams from the Thinking model:
-  each finished sentence goes to the voice right away. The first piece of a
-  reply is cut even earlier, at a comma, semicolon or dash once it is at least
-  24 characters long, so audio starts before the first sentence is finished;
-  later pieces stay whole sentences, which sound more natural.
+  each finished sentence goes to the voice right away. Only sentence ends
+  (`.`, `?`, `!` followed by a space), a new line and the end of the reply
+  break a reply into pieces; commas, semicolons and dashes never do, so each
+  piece is one or more whole sentences, which sounds more natural.
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
-  break in the wrong place sounds awkward ("I'm so glad you're here, | cutie.").
-  Personality › **Where the voice pauses** sets, per persona, which stops may
-  break a reply: commas, semicolons and dashes (first piece only), periods,
-  question marks and exclamation marks, all on by default. A stop that is off
-  doesn't break until the piece has grown long (100 characters); then any stop
-  does, so a piece never runs past what the voice can say at once. **Say a
+  break in the wrong place sounds awkward ("That was a wonderful idea. |
+  Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
+  sentence ends may break a reply: periods, question marks and exclamation
+  marks, all on by default. A stop that is off doesn't break until the piece
+  has grown long (100 characters); then any sentence end does, so a piece
+  rarely runs past what the voice can say at once (past the voice's byte limit
+  it is cut there). **Say a
   short ending with the words before it** (up to two words by default; *Never*
-  turns it off) keeps an ending such as ", cutie." or ". Cutie!" with the piece
+  turns it off) keeps an ending such as ". Cutie!" with the piece
   before it: each piece waits until a few more words have streamed in (or the
   line or reply ends) before it goes to the voice.
 - **Overlapped synthesis.** While one sentence plays, the next is already being
@@ -600,7 +617,10 @@ cache are untouched.
   the participation policy's confidence) and, for any engine that gives them,
   whisper's no-speech and average log probabilities. And always how much of
   the utterance was a voice: the loud 20 ms frames the speakers don't explain
-  (`LiveConversationOperation.Voiced`). Measured on this PC: Parakeet's
+  (`LiveConversationOperation.Voiced`), and how long that voice went on, from
+  its onset to the silence after it with short pauses included and the frames
+  the speakers explain left out (`LiveConversationOperation.Speech`;
+  `BargeInGate.Speech` for a quick check). Measured on this PC: Parakeet's
   "Yeah." for a cough had a mean of 0.67-0.70 but a lowest token of
   0.20-0.32, a Windows voice saying it 0.79 and 0.51; whisper.cpp's "Yeah."
   for two coughs had a word probability of 0.07. A paired host's whisper and
@@ -608,8 +628,12 @@ cache are untouched.
   probabilities) took about 65 ms longer per utterance on this PC (190 against
   255 ms), so Martlet doesn't ask for it, and there the voice decides (a phrase
   speech-to-text makes up needs 400 ms of voice on Normal).
-- **Too many words for the voice.** More than about seven words per second of
-  voice plus one ("I think the second one is better." from 250 ms of voice).
+- **Too many words for the speech.** More than about seven words per second of
+  speech plus one ("I think the second one is better." from 300 ms of
+  speech). It counts how long the voice went on, not only its loudest frames:
+  fluent speech is often under half that loud, so "I'm gonna make it public."
+  (460 ms of loud voice in about a second of speech, Parakeet sure of every
+  word) was once dropped as *5 words from 460 ms of voice*.
 - **Unsure and lone words.** A short utterance the engine was unsure of, a
   lone word that says nothing on its own ("the", "so", "you"), or a lone word
   shorter than 200 ms of voice. Short answers and commands ("yes", "no",
@@ -624,7 +648,7 @@ cache are untouched.
 - **What you see.** An ignored utterance shows as a faded note in the talk
   window, *Ignored "Mmm" (not words).*, several in a row sharing one note, and
   the desktop log records *Always listening ignored what it heard: reason
-  (kind, voice, evidence, word check)*, never the words. What the PC plays
+  (kind, voice in speech, evidence, word check)*, never the words. What the PC plays
   that isn't words is simply let go.
 - **Martlet stays quiet.** What passes the filter but isn't meant for Martlet
   (people talking in the room, a muttered word) still goes to the Thinking

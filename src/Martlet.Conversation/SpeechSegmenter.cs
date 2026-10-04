@@ -12,8 +12,8 @@ internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues 
 
 // English-oriented plain prose, not a Markdown parser. State survives arbitrary delta boundaries.
 // silentWord: a reply sentence that is just this word (for example "[pass]" or "Pass.") means "say nothing".
-// eagerFirstClause: until something has been said, a comma, semicolon or dash after a long enough clause also ends a piece, so
-// the first audio starts before the first sentence is finished; later pieces stay whole sentences for natural prosody.
+// Only sentence ends (. ? ! then whitespace), a new line and the reply's end break pieces; commas, semicolons and dashes never
+// do. Past the voice's byte limit a piece is cut at that limit.
 // tags: the voice engine's own tags (Martlet.Core.Settings.SpeechEngine.Tags), passed through exactly as the engine spells
 // them; every other registered engine's tag is dropped. Neither silences its sentence the way other bracketed text does.
 // characterTags: the desktop character's tags ({blush}): dropped from the words like other engines' tags. Each kept engine
@@ -21,16 +21,14 @@ internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues 
 // a character tag after the last words of a reply arrives in a piece with no text.
 // controlTags: tags that tell Martlet something about the reply ([chattiness:quiet]): dropped from the words, never a cue.
 // breaks: the persona's stops (Martlet.Core.Settings.SpeechBreaks). A stop that is off never ends a piece until the piece is
-// LongPiece characters long; then any stop ends it, so a piece stays short enough for the voice to say at once. A piece of at
-// most ShortEndingWords words (", cutie.") joins the piece before it: each piece waits until more words than that follow it
-// (or a line, the reply or a piece with nothing to say ends). Null breaks at every sentence end and never joins pieces.
-internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null, bool eagerFirstClause = false,
+// LongPiece characters long; then any sentence end ends it, so a piece stays short enough for the voice to say at once. A piece
+// of at most ShortEndingWords words (". Cutie!") joins the piece before it: each piece waits until more words than that follow
+// it (or a line, the reply or a piece with nothing to say ends). Null breaks at every sentence end and never joins pieces.
+internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string? silentWord = null,
     IReadOnlyList<VoiceTag>? tags = null, IReadOnlyList<string>? characterTags = null, SpeechBreaks? breaks = null,
     IReadOnlyList<string>? controlTags = null)
 {
-    internal const int FirstClauseMinimum = 24;
     internal const int LongPiece = 100;
-    private readonly bool commas = eagerFirstClause && (breaks?.Commas ?? true);
     private readonly bool periods = breaks?.Periods ?? true;
     private readonly bool questionMarks = breaks?.QuestionMarks ?? true;
     private readonly bool exclamationMarks = breaks?.ExclamationMarks ?? true;
@@ -43,7 +41,6 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
     private readonly List<SpeechCue> cues = [];
     private readonly StringBuilder candidateTag = new();
     private bool droppedTag;
-    private bool spoke;
     private bool pendingBoundary, fenced, suppressLine, atLineStart = true;
     private bool openingRun, markerAtLineStart, closingLine, closingWhitespace;
     private int markerRun, fenceLength, leadingSpaces, characters;
@@ -188,15 +185,15 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         }
     }
 
-    // Whether c ends a piece when whitespace follows it: a stop the persona keeps, or any stop once the piece is long.
+    // Whether c ends a piece when whitespace follows it: a sentence end the persona keeps, or any sentence end once the piece is
+    // long. Commas, semicolons and dashes never do.
     private bool IsStop(char c) => c switch
     {
         '.' => periods,
         '?' => questionMarks,
         '!' => exclamationMarks,
-        ',' or ';' or '\u2014' or '\u2013' => commas && !spoke && sentence.Length >= FirstClauseMinimum,
         _ => false
-    } || sentence.Length >= LongPiece && c is '.' or '?' or '!' or ',' or ';' or '\u2014' or '\u2013';
+    } || sentence.Length >= LongPiece && c is '.' or '?' or '!';
 
     internal IEnumerable<SpeechPiece> Finish()
     {
@@ -323,7 +320,6 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
             var own = pending.Where(c => c.Offset >= start && c.Offset < end)
                 .Select(c => c with { Offset = Math.Clamp(c.Offset - at, 0, part.Length) }).ToArray();
             start = at + part.Length;
-            spoke = true;
             yield return new(part, own.Length > 0 ? own : null);
         }
     }

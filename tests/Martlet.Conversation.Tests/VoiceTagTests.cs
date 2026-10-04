@@ -114,17 +114,17 @@ public sealed class VoiceTagTests
     {
         // The persona's default speech breaks hold a piece until more words follow it: without a tag, a one-piece reply goes
         // to the voice only when the reply ends.
-        var plain = new SpeechSegmenter(1536, 16_384, "pass", eagerFirstClause: true, breaks: SpeechBreaks.Default,
+        var plain = new SpeechSegmenter(1536, 16_384, "pass", breaks: SpeechBreaks.Default,
             controlTags: ChattinessTags.All);
         Assert.DoesNotContain(plain.Push(sentence), piece => piece.Text is not null);
         // As soon as what follows can only be a control tag, the sentence goes, before the tag's last token arrives.
-        var tagged = new SpeechSegmenter(1536, 16_384, "pass", eagerFirstClause: true, breaks: SpeechBreaks.Default,
+        var tagged = new SpeechSegmenter(1536, 16_384, "pass", breaks: SpeechBreaks.Default,
             controlTags: ChattinessTags.All);
         var early = tagged.Push(sentence).Concat(tagged.Push("[cha")).Where(piece => piece.Text is not null).Select(piece => piece.Text);
         Assert.Equal(["Whoa, nice combo!"], early);
         Assert.DoesNotContain(tagged.Push("ttiness:chatty]").Concat(tagged.Finish()), piece => piece.Text is not null);
         // A bracket that turns out not to be a tag leaves the sentence before it spoken as before.
-        var untagged = new SpeechSegmenter(1536, 16_384, "pass", eagerFirstClause: true, breaks: SpeechBreaks.Default,
+        var untagged = new SpeechSegmenter(1536, 16_384, "pass", breaks: SpeechBreaks.Default,
             controlTags: ChattinessTags.All);
         var all = untagged.Push(sentence).Concat(untagged.Push("[chat] Okay.")).Concat(untagged.Finish())
             .Where(piece => piece.Text is not null).Select(piece => piece.Text).ToArray();
