@@ -59,6 +59,14 @@ public sealed class SongContractsTests
         Assert.Equal([SongStage.Queued, SongStage.WritingMusic, SongStage.Separating, SongStage.MatchingVoice,
             SongStage.Mixing, SongStage.Aligning, SongStage.Delivering, SongStage.Completed], stages);
         Assert.Equal(6, song.StageTimings.Count);
+        Assert.Equal("fixture", song.WordTimingSource);
+        Assert.Equal(18, song.Words.Count);
+        Assert.Equal(("Morning", 0), (song.Words[0].Text, song.Words[0].LineIndex));
+        Assert.Equal(song.LyricTimestamps[0].Start, song.Words[0].Start);
+        Assert.All(song.Words, w => Assert.True(w.End > w.Start));
+        Assert.Equal(song.Words.OrderBy(w => w.Start).Select(w => w.Text), song.Words.Select(w => w.Text));
+        Assert.Equal(["sing", "it", "with", "me,"], song.Words.Where(w => w.LineIndex == 2).Select(w => w.Text).Take(4)
+            .Select(t => t.ToLowerInvariant()));
         Assert.Contains(song.Vocals.Pcm16.ToArray(), b => b != 0);
 
         var wave = song.Vocals.ToWave();
