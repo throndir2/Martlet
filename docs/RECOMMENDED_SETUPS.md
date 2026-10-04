@@ -105,7 +105,7 @@ VRAM in this order:
 | Goal | LLM | STT | TTS | Why |
 | --- | --- | --- | --- | --- |
 | Best answers | Large hosted model (OpenRouter, NVIDIA Build, OpenAI) | CPU or API | Local GPU | Frontier-size models without VRAM limits |
-| Fastest responses | Small or mid-size model on a **dedicated local GPU** | CPU | API, Windows voices, or GPU TTS on another machine | No internet round trip or provider queue for the slowest stage |
+| Fastest responses | A **small** local model that hears (Gemma 4 E2B) on the GPU | Parakeet on the CPU, or none (the model hears) | Cloned voice on the same GPU | No internet round trip or provider queue; a small model answers soonest |
 | Private or offline | Local | Local | Local | Nothing leaves your machines |
 | Gaming on the Martlet PC | Hosted or on another machine | API, CPU or another machine | API or another machine | The game keeps the GPU |
 
@@ -148,20 +148,23 @@ like; the prefilled defaults also see your screen, and NVIDIA Build's
 `google/diffusiongemma-26b-a4b-it` is a fast Free Endpoint), local CPU STT, local GPU TTS with your voice, and local Audio2Face.
 Microphone audio and your voice stay at home, and the GPU goes where it helps most.
 
-**Fastest responses on one PC:** give the whole GPU to the LLM, and serve it
-over loopback from Ollama, LM Studio or llama.cpp. Use STT on the CPU, and use
-API speech or Windows voices for TTS, so nothing else competes for the GPU.
-Use loudness lip-sync. Choose the smallest model whose answers you like, and
-keep every layer in VRAM: spilling layers to system RAM makes generation much
-slower.
+**Fastest responses on one PC (the advisor's *Fastest* goal):** a small model
+that hears, **Gemma 4 E2B in Ollama on this PC** (about 3.3 GB), beside your
+cloned voice (Chatterbox Turbo, streaming) on the same graphics card, and
+Parakeet speech-to-text on the processor. Measured on an RTX 4070 12 GB: about
+0.73-0.81 s from the end of the recording to the first audio; with *Let
+Thinking hear my voice* on, *Send my voice straight to Thinking* skips the
+transcript on the way to the reply. Bigger models are smarter but slower (E4B, 12B: 100-200 ms more to
+the first sentence), and one that overfills the card pages into system memory
+and stalls. Keep every layer in VRAM ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)).
 
 | VRAM | Fast local LLM (all layers on GPU, room for context) |
 | --- | --- |
-| 8 GB | 3-4B, or 7-8B Q4 with a short context |
-| 12 GB | 7-8B Q4-Q6 |
-| 16 GB | 7-8B Q8, or 12-14B Q4 |
-| 24 GB | 12-14B Q4-Q8 |
-| 32 GB+ | 24-32B Q4, or a faster 12-14B at higher precision |
+| 8 GB | Gemma 4 E2B (voice on another machine or the API), or 3-4B |
+| 12 GB | Gemma 4 E2B beside the cloned voice (smarter: E4B or 7-8B Q4, slower) |
+| 16 GB | Gemma 4 E2B beside the voice (smarter: 12-14B Q4) |
+| 24 GB | Gemma 4 E2B beside the voice (smarter: 12-14B Q4-Q8) |
+| 32 GB+ | Gemma 4 E2B beside the voice (smarter: 24-32B Q4) |
 
 ## 4. Two machines
 

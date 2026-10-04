@@ -170,6 +170,16 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
      model anyway).
    - A model that turns tools down is remembered on this PC for a week, so it
      isn't asked with tools (and again without) on every first reply.
+6. **Latency-first defaults.** The recommended model in Ollama on this PC is
+   Gemma 4 E2B on every graphics card (it was the largest the card fits: E4B on
+   12 GB, 12B on 16 GB, 26B on 24 GB); Companion › Thinking still offers the
+   largest that fits as *smartest that fits here*, smarter but slower. The setup
+   advisor's *Fastest* goal now suggests a small model beside the cloned voice
+   on one graphics card and Parakeet on this PC for speech-to-text (it
+   suggested sizing the model up to the card and the planned Windows
+   recognizer). Chatterbox Turbo, streaming, stays the default voice; the
+   800 ms end-of-speech pause, Thinking steps Off and Thinking longer On are
+   unchanged.
 
 Thinking longer, measured through a disposable desktop with Thinking on a
 single-slot loopback fixture (one request at a time with a one-slot prompt
@@ -340,6 +350,31 @@ so the voice stays Chatterbox.
 `[sigh]` and `[laugh]` (real-time factor 0.43-0.63), and 800 ms for a
 two-word piece.
 
+**Voice engines compared** (2026-10-04 01:05-01:45, same card, starter voice
+*Annie*, the tts bench texts with Dia's own `(sighs)` and `(laughs)` cues,
+three runs after a warm-up; medians in ms; GPU memory added by a fresh copy):
+
+| Engine (how Martlet runs it) | Short | Sentence | Sigh | Laugh | Long (12 s) | Real-time factor | GPU memory | Sighs and laughs |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Chatterbox Turbo** (role image `:4`, streaming, CUDA graph) | **494** | **459** | **446** | **513** | **421** | 0.38-0.71 | about 3.6 GB (4.1 at peak) | Yes (`[sigh]`, `[laugh]`) |
+| F5-TTS v1 base (role image `martlet-f5:1`, whole pieces) | 1,409 | 1,469 | 1,582 | 1,990 | 2,169 | 0.20-1.66 | about 0.9 GB | No (no cues) |
+| Dia 1.6B 0626 (Martlet's worker code, float16, whole pieces) | 903,000 (spilled) | | | | | | about 3.7 GB loaded, more while generating | Yes (`(sighs)`, `(laughs)`) |
+
+Chatterbox Turbo is the fastest to the first audio by about 1 s and stays the
+default. F5 makes whole pieces quickly (a 12 s piece in 2.2 s) but has no
+sighs or laughs. **Dia didn't fit**: beside the resident host roles (about
+4.4 GB) and Gemma 4 E2B, which another client kept reloading into Ollama
+every few minutes, the card ran out and Windows moved Dia's memory to system
+memory: its first 3 s piece took 15 minutes. Dia's own README gives 1.3x
+real time in float16 without `torch.compile` on an RTX 4090 (about 4.4 GB),
+and Martlet's Dia worker doesn't stream within a piece, so its first audio
+is the whole first piece: even at that speed a 3.8 s sentence would take
+about 3 s before anything plays, and a 4070 is slower. The
+saved audio is in each run's `-files` folder (`results\20261004-010545-tts`
+for Chatterbox, `20261004-013029-tts` for F5, `20261004-010633-tts-dia` for
+the one Dia piece). XTTS-v2 and GPT-SoVITS: NOT RUN (no image or weights on
+this PC; building them means installing a new role).
+
 **Whole turn** (Gemma 4 E2B on Ollama, Chatterbox role, medians in ms). First
 beside a live session using the same card (16 turns), then again with the
 card quiet (32 turns):
@@ -377,7 +412,8 @@ from a host whose desktop uses Parakeet (about 2 GB back), and choose E2B
 on this PC hear for models it says hear, and finds out what any Thinking model
 hears and sees from its server's metadata or a test word
 ([Thinking models that hear and see](CONVERSATION.md#thinking-models-that-hear-and-see)),
-the first step toward the omni flow. The Qwen, Voxtral,
+and sends the recording straight to a model that hears, with the transcript
+beside the reply (*Send my voice straight to Thinking*). The Qwen, Voxtral,
 Phi-4 and MiniCPM-o models are in the bench only: Martlet's local selector
 runs Ollama, which serves none of them, and none beat Gemma 4 E2B here.
 

@@ -1,0 +1,12 @@
+# Dia 1.6B through Martlet's own dia worker code (voicebench.diabench), never the dia host role.
+# Installed into its own environment with: Install-VoiceBench.ps1 -Dia (torch comes from PyTorch's CUDA 12.8 index).
+# descript-audio-codec 1.0.0 is the codec version the dia role pins.
+descript-audio-codec==1.0.0
+# What dia/*.py at the pinned commit imports, at the versions the dia role pins (workers/dia/host/requirements.in).
+pydantic==2.11.3
+safetensors==0.5.3
+huggingface-hub==0.30.2
+numpy
+soundfile
+soxr
+nvidia-ml-py
