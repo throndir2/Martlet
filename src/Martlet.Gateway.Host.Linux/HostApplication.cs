@@ -229,8 +229,8 @@ internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory director
     }
 }
 
-/// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner): its own activity and, when the
-/// owner made it the log host, every computer's lines. Not part of the approved configuration.</summary>
+/// <summary>Keeps the gateway's log in logs.json beside host.json (0600, service owner): its own activity and every
+/// computer's lines the owner's desktops share with it. Not part of the approved configuration.</summary>
 internal sealed class ControlLogStorage(LinuxControlDirectory directory) : IGatewayLogStorage
 {
     private readonly object gate = new();
@@ -426,7 +426,7 @@ internal static class HostApplication
                         _ => "In no Martlet network yet: the first desktop that pairs adds this host to its network."
                     });
                     AttachCommands(owner, directory);
-                    owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles (for example as the log host)."
+                    owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles."
                         : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
                 }
                 await owner.StartAsync(cancellation);

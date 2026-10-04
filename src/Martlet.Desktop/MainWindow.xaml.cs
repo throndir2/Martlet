@@ -197,7 +197,7 @@ public partial class MainWindow : ThemedWindow
         StartCreations();
         StartHomeShare();
         StartNodeAgent();
-        StartLogShipping();
+        StartLogSharing();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (Role == DeviceRole.Companion &&
             homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt) is { RouteType: SetupRouteType.LocalParakeet } listening)

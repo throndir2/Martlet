@@ -43,7 +43,7 @@ internal sealed class LinuxControlDirectory : IDisposable
     /// <summary>The token the gateway writes at each start; only the host computer itself can read it, so the Martlet app
     /// that presents it runs there and may take this host's commands.</summary>
     internal const string AgentToken = "agent.token", AgentTokenStaging = "agent.staging";
-    /// <summary>The gateway's log: its own activity and, as the owner's log host, the lines paired desktops send.</summary>
+    /// <summary>The gateway's log: its own activity and every computer's lines paired desktops share with it.</summary>
     internal const string Logs = "logs.json", LogsStaging = "logs.staging";
     internal const int MaximumLogsBytes = 2_097_152;
     /// <summary>The Martlet network roster this host accepted (not part of the approved configuration).</summary>

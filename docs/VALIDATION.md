@@ -201,7 +201,7 @@ The controls it offers:
 - **Doctor** (`doctor_status`, `doctor_list`, `doctor_run`): the diagnostic probes
   and their report, headless.
 - **Status and checks** for the subsystems: `voices_status`, `cluster_status`,
-  `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`,
+  `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`,
   `latency_report`, `api_keys_status`, `smart_home_status`, `prompts_status`,
   `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `chattiness_status`,
   `context_check`, `thinking_steps_check` and more. They read the same disposable
