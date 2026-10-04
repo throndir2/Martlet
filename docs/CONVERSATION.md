@@ -855,9 +855,9 @@ the conversation keeps them. Ollama on this PC reuses its cache only for a
 request that continues a whole earlier one, and a request that carried a
 recording is never continued by the next reply (its recording isn't sent
 again), on either path. The after-reply request (remembering and learning
-names), which continues the reply's request with the words in place of the
-recording, keeps the conversation in the cache for the next reply; [Voice
-latency](VOICE_LATENCY.md#straight-to-thinking-measured) has the measured share.
+names, when either runs), which continues the reply's request with the words in
+place of the recording, keeps the conversation in the cache for the next reply;
+[Voice latency](VOICE_LATENCY.md#straight-to-thinking-measured) has the measured share.
 
 **Logs.** Each reply with your recording logs *Voice path: straight to Thinking
 (your recording alone, no transcript)...* or *Voice path: transcribe first
