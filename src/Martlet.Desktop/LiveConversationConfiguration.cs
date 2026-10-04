@@ -585,7 +585,7 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
     /// spoken.</summary>
-    internal const string SilentReply = "pass";
+    internal const string SilentReply = StayQuiet.Marker;
 
     /// <summary>Replies to always listening: the microphone hears the room, so the model decides whether to answer.</summary>
     internal static string? Listening(PromptSettings? prompts) =>

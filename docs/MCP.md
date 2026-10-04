@@ -1248,7 +1248,9 @@ default 60): `reduceEcho` (the saved choice, on by default) with
 `reduceEchoSource` (`saved` or `default`), `bargeIn` (*Let me interrupt Martlet
 by talking*, optional and off by default) with `bargeInSource` (`saved`,
 `default`, or `reset` for a file saved before barge-in became opt-in that had
-it on only by the old default), and `canceller` (`WebRTC AEC3` once
+it on only by the old default), `wordCheck` (*Word check*: `Relaxed`, `Normal`
+by default, or `Sensitive`) with `wordCheckSource` (`saved` or `default`), and
+`canceller` (`WebRTC AEC3` once
 the native canceller loads, otherwise null with `cancellerProblem` and `ok`
 false). Its `rehearsal` runs the production microphone path
 (`MicrophoneCapture`, `EchoReducer`, the WebRTC canceller, the capture
@@ -1266,8 +1268,10 @@ while the speakers played, the user's voice included), and per part the levels
 `firstSecondsReducedDb` (0-1.5 s, while the canceller learns the room),
 `userOnly.keptDb` and `bothTalking.userAloneDb`, plus `speechFrames*`: the
 20 ms frames Martlet's own voice-activity detector counted as speech. Its
-`talkOver` runs the barge-in gate (`TalkOverDetector`, `requiredMs` 1000 and
-`gapMs` 500, with the capture's own `EchoTimeline`, `speakersRemovedDb` 10)
+`talkOver` runs the voice gate (`TalkOverDetector`, `requiredMs` 1000 and
+`gapMs` 500, with the capture's own `EchoTimeline`, `speakersRemovedDb` 10),
+which tells the user's own voice from the speakers' sound (what actually stops
+Martlet is real words: `utterance_filter_check`),
 over the cleaned recording the way always listening does, for `martletOnly`,
 `userOnly`, `shortSound` (the first 0.8 s of the user alone) and
 `bothTalking`: `userFrames` and `speakerFrames` (loud 20 ms frames that were
@@ -1278,6 +1282,49 @@ without reduction but not with it, it still heard the user alone (kept within
 3 dB) and over Martlet, and `talkOver.ok`: Martlet's echo and the short sound
 never talked over it, while the user over Martlet did, no sooner than
 `requiredMs`. It contacts nothing.
+
+`utterance_filter_check` checks [listening for words](CONVERSATION.md#listening-for-words)
+and barge-in (Companion › Listening › **Word check**; optional absolute
+`dataDirectory`, default the current user's, `sensitivity` `relaxed`, `normal`
+or `sensitive` to override the saved choice, `audio` default true, absolute
+`speechDirectory` where Parakeet is downloaded, default the current user's,
+and absolute `martletDirectory` for the sherpa-onnx runtime, which the script
+fills with this checkout's Desktop build). It runs the production
+`UtteranceFilter` and `BargeInPolicy` on `samples` (up to 64 of `text` with
+optional `voicedMs`, `meanProbability`, `minimumProbability`,
+`noSpeechProbability`, `averageLogProbability`, `engine`, `afterQuestion`,
+`persona`, `playback` `reply` or `song`, and `expectKeep`/`expectInterrupt`),
+by default a fixed set with the outcome Normal must give (fillers, laughter,
+sound tags, "Thank you." from noise or said clearly, subtitle credits, lone
+words, short answers, stop words, backchannels, too many words for the voice,
+a whisper loop, Martlet's name, a song that only stops when asked, and the
+"Yeah." Parakeet and whisper.cpp wrote for coughs on this PC with their
+measured evidence; another sensitivity only reports what it makes of them).
+Each sample returns `keep`, `kind`, `Reason`, `Words`, `shown` (the talk
+window's *Ignored ...* note), `interrupts` and `interruptReason`. It returns
+`wordCheck` (the one used) with `savedWordCheck`/`savedWordCheckSource`,
+`bargeIn` (the saved choice), `limits` (`UtteranceFilter.For`),
+`bargeInPolicy` (`voiceBeforeCheckMs`, `firstRecheckMs`, `recheckMs`,
+`pauseMs`, `wordsToInterrupt`) and `filterCost` (`microsecondsPerCall` over
+thousands of calls: what the filter adds to a reply). With `audio` and
+Parakeet downloaded, `audio` runs fixtures through the real local
+speech-to-text path (`ParakeetEngine`, the desktop's model): "Stop!", "Wait,
+hold on a second.", "Can you tell me more about that?", "Yes." (after a
+question), "Yeah.", "Mmmmmm.", "Hmm." and "Ha ha ha ha!" said by a Windows
+voice (System.Speech, rendered to memory, never played), plus a hum, two
+coughs, a breath, typing, music and noise, each after 0.3 s and before 1 s of
+faint noise. Per fixture: `voicedMs` (loud frames by the production
+voice-activity detector), Parakeet's `transcript`, `evidence` and
+`transcribeMs`, the filter's verdict, and `bargeIn`: the production
+`BargeInGate` fed 20 ms at a time as if Martlet were speaking, each quick check
+transcribing the stretch so far (no other check starts while one runs, as in
+the listener) with its `quick` transcripts, probabilities and milliseconds,
+`interrupted`, `reason` and `afterMs` (from the start of the voice to the
+decision). `stopDelayMs` summarizes the fixtures that stopped Martlet. `ok`
+needs every expectation met: words kept, non-words and noise dropped, stop
+words and the question stopping Martlet, backchannels and non-words never.
+Nothing is recorded or played and nothing leaves this PC; without Parakeet,
+`audio.ran` is false with the reason.
 
 `pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
 (Companion › Listening › Watch along › **Hear what this PC plays**; optional
@@ -2147,13 +2194,27 @@ retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
 is a passive click: it only stops a reply, recording or vision. Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
-always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
+always listening, the same card has `TalkWordCheck` (*Word check*: *Relaxed*,
+*Normal (recommended)* or *Sensitive*; returned as the chosen option, and
+`ui_select` on it needs `--allow-ui-effects` because it saves
+`talk-preferences.json`; an open talk window restarts listening with it) and
+`TalkWordCheckAbout` (returned: that Martlet ignores sounds that aren't words
+and words speech-to-text makes up from noise, what Relaxed and Sensitive change,
+that short answers and Martlet's name always count and that ignored sounds show
+faded in the talk window; `utterance_filter_check` runs the filter itself),
+then `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
 `talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
 and off by default, and what talking over
-Martlet takes, about a second of your voice on the microphone, never a short
-sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
+Martlet takes: real words, a word like "stop" or "wait" right away, never a hum,
+a cough, laughter, a quick "yeah" or what this PC plays, checked while you talk
+with Parakeet on this PC and otherwise once you pause; `utterance_filter_check`
+rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate). In the
+talk window, what always listening ignored shows in `LiveHistory` as a faded
+note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
+*Always listening ignored what it heard: ...* and *Barge-in: Martlet stopped its
+reply N ms after you started talking over it (...)*, never the words. Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
@@ -2325,9 +2386,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status` and `voices_engine_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `thinking_steps_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -449,11 +449,59 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Martlet voice plays on the fixture speakers and reaches the fixture microphone through a simulated room (delayMs, " +
             "default 60), with the user's synthesized voice alone and over it. Returns how much quieter Martlet's echo got, how much " +
             "of the user's voice was kept and what Martlet's voice-activity detector heard, with and without echo reduction, and " +
-            "talkOver: what the barge-in gate (TalkOverDetector with the capture's echo timeline) heard in each part: Martlet's own " +
-            "echo must never talk over it, and the user's voice over it must, only after the required second of voice.", new
+            "talkOver: what the voice gate (TalkOverDetector with the capture's echo timeline, which tells the user's voice over the " +
+            "speakers' sound) heard in each part: Martlet's own echo must never count as the user, and the user's voice over it must, " +
+            "only after the required second of voice. wordCheck is the saved Word check (what stops Martlet is real words; see " +
+            "utterance_filter_check).", new
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
+        }),
+        Tool("utterance_filter_check", "Companion > Listening > Word check: runs the production utterance filter (UtteranceFilter: " +
+            "fillers like mm, hmm, uh-huh, laughter, sound tags, punctuation, a lone word, more words than the voice could hold, and " +
+            "phrases speech-to-text makes up from noise such as 'Thank you.' when the evidence is weak) and barge-in policy " +
+            "(BargeInPolicy: only real words stop a reply; a stop word or Martlet's name at once, a backchannel never; a song only " +
+            "when asked to stop) on samples (text with optional voicedMs, meanProbability, minimumProbability, noSpeechProbability, " +
+            "averageLogProbability, afterQuestion, persona, playback reply|song, expectKeep, expectInterrupt; default: a fixed set " +
+            "with the outcome Normal must give, including evidence measured from whisper.cpp and Parakeet on this PC). " +
+            "With audio (default true) and Parakeet downloaded on this PC (speechDirectory, default the current user's; the sherpa " +
+            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, yes, " +
+            "yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production voice-activity detector, " +
+            "Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
+            "decision with its reason, the filter's cost per call, the saved Word check (sensitivity overrides it: relaxed, normal, " +
+            "sensitive) and ok. Nothing is recorded or played; nothing leaves this PC.", new
+        {
+            dataDirectory = new { type = "string" },
+            martletDirectory = new { type = "string" },
+            speechDirectory = new { type = "string" },
+            sensitivity = new { type = "string", @enum = new[] { "relaxed", "normal", "sensitive" } },
+            audio = new { type = "boolean" },
+            samples = new
+            {
+                type = "array", maxItems = 64,
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        name = new { type = "string", maxLength = 64 },
+                        text = new { type = "string", maxLength = 1000 },
+                        voicedMs = new { type = "number", minimum = 0 },
+                        meanProbability = new { type = "number", minimum = 0, maximum = 1 },
+                        minimumProbability = new { type = "number", minimum = 0, maximum = 1 },
+                        noSpeechProbability = new { type = "number", minimum = 0, maximum = 1 },
+                        averageLogProbability = new { type = "number" },
+                        engine = new { type = "string", maxLength = 32 },
+                        afterQuestion = new { type = "boolean" },
+                        persona = new { type = "string", maxLength = 64 },
+                        playback = new { type = "string", @enum = new[] { "reply", "song" } },
+                        expectKeep = new { type = "boolean" },
+                        expectInterrupt = new { type = "boolean" }
+                    },
+                    required = new[] { "text" },
+                    additionalProperties = false
+                }
+            }
         }),
         Tool("pc_audio_check", "Companion > Listening > Hear what this PC plays: the saved choice (off by default) with HandsFree and " +
             "ReduceEcho, which outputs are in use (sessions only) and what Martlet would hear (every app but Martlet, or only the output " +
@@ -638,6 +686,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name,
                     OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
+                "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
+                    SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
@@ -702,6 +752,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             parakeet = Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speech),
             roster
         };
+    }
+
+    /// <summary>The optional absolute speechDirectory argument (where Parakeet is downloaded), or the current user's.</summary>
+    private static string SpeechDirectory(JsonElement arguments)
+    {
+        var speech = OptionalString(arguments, "speechDirectory") ??
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Martlet", "speech");
+        if (!Path.IsPathFullyQualified(speech)) throw new ArgumentException("speechDirectory must be an absolute path.");
+        return speech;
     }
 
     /// <summary>The optional absolute martletDirectory argument (a folder with Martlet.Desktop.exe), or the installed release's.</summary>

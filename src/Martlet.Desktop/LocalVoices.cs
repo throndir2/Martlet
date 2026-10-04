@@ -243,13 +243,13 @@ internal sealed class ParakeetListener(string root) : ILocalTranscriber, IDispos
     internal bool Installed => ParakeetEngine.Installed(root);
     internal string Root => root;
 
-    public Task<string> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken)
+    public Task<LocalTranscript> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken)
     {
         if (modelId != SherpaComponents.ParakeetModelId) throw new InvalidOperationException("Unknown local speech-to-text model.");
         var samples = Pcm.ToFloats(pcm16kMono.Span);
         return Task.Run(() =>
         {
-            try { return Engine().Transcribe(samples).Text; }
+            try { return Engine().Transcribe(samples).ToLocal(); }
             finally { Array.Clear(samples); }
         }, cancellationToken);
     }
@@ -281,6 +281,15 @@ internal sealed class ParakeetListener(string root) : ILocalTranscriber, IDispos
 
 internal static class Pcm
 {
+    /// <summary>Parakeet's transcript with what the model said about it (its token probabilities and when it heard them), for
+    /// the utterance filter.</summary>
+    internal static LocalTranscript ToLocal(this ParakeetTranscript heard) => new(heard.Text, new TranscriptionEvidence
+    {
+        Engine = "parakeet", MeanProbability = heard.Confidence, MinimumProbability = heard.Minimum,
+        WordsStart = heard.FirstToken is { } first ? TimeSpan.FromSeconds(first) : null,
+        WordsEnd = heard.LastToken is { } last ? TimeSpan.FromSeconds(last) : null
+    });
+
     internal static float[] ToFloats(ReadOnlySpan<byte> pcm16)
     {
         var samples = new float[pcm16.Length / 2];

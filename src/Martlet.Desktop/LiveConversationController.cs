@@ -17,15 +17,20 @@ namespace Martlet.Desktop;
 internal sealed record LiveConversationStatus(string Code, bool Finished = false, bool Quarantined = false,
     PolicyReason? Policy = null, ProviderFailureCode? ProviderFailure = null, ErrorCode? AudioFailure = null);
 
+/// <summary>Talking over Martlet stopped it: why (<see cref="BargeInPolicy"/>), how long after the user's voice began that was
+/// decided, how many quick checks of their words it took and when (controller clock) their voice began.</summary>
+internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt);
+
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
 // is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice). BargeIn: keep listening while
-// Martlet speaks, so talking over a reply (a sustained voice on the microphone, TalkOverDetector) stops it. ReduceEcho: what
+// Martlet speaks, so talking over a reply with real words (BargeInPolicy) stops it. ReduceEcho: what
 // the PC plays (Martlet's voice included) is removed from the
 // microphone first (Companion › Listening › Reduce echo from my speakers), so speakers work without headphones. Pc: listens to
 // what this PC plays instead of the microphone (Companion › Listening › Hear what this PC plays): never Voice ID, voice
-// recognition, a recording for Thinking or memory.
+// recognition, a recording for Thinking or memory. WordCheck: how readily what was heard counts as words (Companion › Listening ›
+// Word check; UtteranceFilter and BargeInPolicy).
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
-    bool BargeIn = false, bool ReduceEcho = false, bool Pc = false)
+    bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -134,9 +139,22 @@ internal sealed class LiveConversationOperation
     /// <summary>Speech longer than a cough or click is being recorded right now.</summary>
     internal bool Hearing { get => Volatile.Read(ref hearing) != 0; set => Volatile.Write(ref hearing, value ? 1 : 0); }
     private int talkingOver;
-    /// <summary>The microphone has heard the user's own voice for long enough to stop Martlet talking
-    /// (<see cref="TalkOverDetector"/>): never a short sound, and never what this PC plays.</summary>
+    /// <summary>The user has talked over Martlet with real words (<see cref="BargeInPolicy"/>, from a quick transcript of what
+    /// they said so far): never a hum, a cough, laughter or what this PC plays.</summary>
     internal bool TalkingOver { get => Volatile.Read(ref talkingOver) != 0; set => Volatile.Write(ref talkingOver, value ? 1 : 0); }
+    /// <summary>Why talking over Martlet stopped it, and how long after the user's voice began that was decided.</summary>
+    internal TalkOverResult? TalkOver { get => Volatile.Read(ref talkOver); set => Volatile.Write(ref talkOver, value); }
+    private TalkOverResult? talkOver;
+    /// <summary>What this utterance's sound was: how much was a voice (loud 20 ms frames the speakers don't explain).</summary>
+    internal TimeSpan? Voiced { get; set; }
+    /// <summary>The controller-clock timestamp the utterance's voice began at (0 when unknown).</summary>
+    internal long SpeechStartedAt { get; set; }
+    /// <summary>Always listening dropped this utterance (it wasn't words); the transcript is kept only to show it as ignored.</summary>
+    internal UtteranceDecision? Ignored { get; set; }
+    /// <summary>The utterance's words, said over Martlet, stop it (where speech-to-text isn't on this PC, or a quick check missed them).</summary>
+    internal BargeInDecision? Interrupts { get; set; }
+    /// <summary>What this reply is, said aloud: a reply (stops for real words) or a song (stops only when asked to).</summary>
+    internal PlaybackMode Playback { get; init; } = PlaybackMode.Reply;
     /// <summary>Frame by frame, whether this utterance's sound was what the speakers played (echo reduction only).</summary>
     [JsonIgnore] internal EchoTimeline? Echo { get; set; }
     internal Voiceprint? Voiceprint { get; init; }
@@ -226,6 +244,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly OpenAiTranscriptionAdapter transcription;
     private readonly HostTranscriptionAdapter hostTranscription;
     private readonly LocalTranscriptionAdapter? localTranscription;
+    // Parakeet on this PC, also used for the quick check of what is said over Martlet (BargeInGate): free and private.
+    private readonly ILocalTranscriber? localWords;
+    // When Martlet last finished a reply that asked something (controller clock; 0: not lately), so a short answer counts.
+    private long askedAt;
     private readonly LocalVoices? voices;
     private readonly ParticipationPolicy policy;
     private readonly ConversationContextBuffer context;
@@ -349,6 +371,43 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>The one output hearing what this PC plays heard last time (another output was in use, or Windows can't leave
     /// Martlet out), or null.</summary>
     internal string? PcOutput => pcAudio?.Output;
+    /// <summary>The controller's clock, for timing what it measured (such as when the user's voice began).</summary>
+    internal TimeProvider Clock => clock;
+
+    /// <summary>How long after Martlet asks something a short answer ("yes", "mm-hmm") counts as one.</summary>
+    internal static TimeSpan AnswerWindow => TimeSpan.FromSeconds(30);
+
+    /// <summary>What Martlet is saying aloud right now (a reply or remark, or a song), or null while it isn't speaking.</summary>
+    internal PlaybackMode? Speaking
+    {
+        get
+        {
+            lock (gate)
+                return active is { Worker: not null } current && !current.OwnershipReleased &&
+                    current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true } ? current.Playback : null;
+        }
+    }
+
+    /// <summary>What the utterance filter and barge-in policy know besides the words: the voice, the engine's evidence, whether
+    /// Martlet just asked something, and the persona's name (which, like "Martlet", addresses it).</summary>
+    private UtteranceContext WordsContext(LiveConversationOperation operation, TimeSpan? voiced, TranscriptionEvidence? evidence)
+    {
+        var asked = Interlocked.Read(ref askedAt);
+        return new()
+        {
+            Voiced = voiced, Evidence = evidence,
+            AfterQuestion = asked != 0 && clock.GetElapsedTime(asked) < AnswerWindow,
+            Names = operation.Authorization.Configuration.Persona?.Name is { Length: > 0 } name ? [name] : []
+        };
+    }
+
+    /// <summary>A reply that ends by asking something: its last sentence has a question mark.</summary>
+    internal static bool AsksSomething(string reply)
+    {
+        var text = reply.TrimEnd().TrimEnd('"', '\'', ')', ']', '*', '\u201D', '\u2019', ' ');
+        var last = text.LastIndexOfAny(['.', '!', '\n']);
+        return text.EndsWith('?') || last >= 0 && last < text.Length - 1 && text[(last + 1)..].Contains('?');
+    }
 
     // Logs each change of state once (on the capture's worker thread), never the audio or device names.
     private void EchoReported(EchoReductionReport report)
@@ -393,6 +452,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.runtimeFactory = runtimeFactory;
         this.dataDirectory = dataDirectory;
         localTranscription = localListener is null ? null : new(localListener, this.clock);
+        localWords = localListener;
         context = new();
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
@@ -526,7 +586,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
-        ReplyTimeline? timeline = null)
+        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -559,7 +619,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen,
-                PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(),
+                PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
                     : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
             };
@@ -754,9 +814,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private static HeardSpeech Result(LiveConversationOperation utterance) => new(utterance.Status,
-        utterance.Status.Code == "listen.heard" ? utterance.Transcript : null, utterance.Transcription?.Confidence, utterance.Heard,
+        utterance.Status.Code is "listen.heard" or "listen.ignored" ? utterance.Transcript : null, utterance.Transcription?.Confidence, utterance.Heard,
         utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null,
-        utterance.LatencyTimeline);
+        utterance.LatencyTimeline, utterance.Status.Code == "listen.ignored" ? utterance.Ignored : null,
+        utterance.Status.Code == "listen.heard" ? utterance.Interrupts : null, utterance.SpeechStartedAt);
 
     // Voice ID, then speech-to-text, one utterance after another (so what you said stays in order) while the next is recorded.
     private async Task TranscribeHeardAsync(Task previous, LiveListener listening, LiveConversationOperation utterance, byte[] speech,
@@ -786,9 +847,27 @@ internal sealed class LiveConversationController : IAsyncDisposable
             }
             if (result is null) return;
             utterance.LatencyTimeline?.Mark("speech-to-text");
+            utterance.Transcript = result.Text;
+            // What isn't words (mm, a cough, "Thank you." made up from noise) never becomes a turn or stops Martlet. Local and
+            // instant: it adds nothing to the time until Martlet answers.
+            var options = listening.Options;
+            var words = WordsContext(utterance, utterance.Voiced, result.Evidence);
+            if (UtteranceFilter.Check(result.Text, words, options.WordCheck) is { Keep: false } ignored)
+            {
+                utterance.Ignored = ignored;
+                if (!pc)
+                    ErrorLog.Info($"Always listening ignored what it heard: {ignored.Reason} ({ignored.Kind}" +
+                        (utterance.Voiced is { } voiced ? $", {voiced.TotalMilliseconds:0} ms of voice" : "") +
+                        (result.Evidence is { } evidence ? ", " + Describe(evidence) : "") + $", word check {options.WordCheck}).");
+                utterance.Publish(new("listen.ignored", Finished: true));
+                return;
+            }
+            // Said over Martlet: its words may stop the reply (a quick check while it was said may already have decided).
+            if (options is { BargeIn: true, Pc: false } && Speaking is { } mode)
+                utterance.Interrupts = utterance.TalkOver?.Decision ??
+                    (BargeInPolicy.Decide(result.Text, words, options.WordCheck, mode) is { Interrupt: true } decision ? decision : null);
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
             if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
-            utterance.Transcript = result.Text;
             if (listening.Options.Hear) utterance.Recording = audio;
             utterance.Publish(new("listen.heard", Finished: true));
         }
@@ -893,21 +972,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
             ("what", attention?.Describe() ?? ""), ("silent", LiveConversationConfiguration.SilentReply))!;
     }
 
-    internal static bool IsSilentReply(string text)
-    {
-        var trimmed = text.Trim();
-        return trimmed.Length == 0 || trimmed.StartsWith("[" + LiveConversationConfiguration.SilentReply, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(trimmed.Trim('[', ']', '(', ')', '<', '>', '*', '"', '\'', '.', '!', ' '),
-                LiveConversationConfiguration.SilentReply, StringComparison.OrdinalIgnoreCase);
-    }
+    internal static bool IsSilentReply(string text) => StayQuiet.IsQuiet(text);
 
     /// <summary>A reply still streaming that may turn out to be [pass]; it isn't shown until it clearly isn't.</summary>
-    internal static bool MaybeSilent(string text)
-    {
-        var trimmed = text.Trim();
-        return IsSilentReply(trimmed) || ("[" + LiveConversationConfiguration.SilentReply + "]").StartsWith(trimmed, StringComparison.OrdinalIgnoreCase) ||
-            LiveConversationConfiguration.SilentReply.StartsWith(trimmed, StringComparison.OrdinalIgnoreCase);
-    }
+    internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
         Chattiness chattiness, bool camera, CancellationToken worker)
@@ -1259,6 +1327,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             // What always listening heard may not have been meant for Martlet: the model answers [pass] and stays quiet.
             var passed = operation.Spoken && terminal.State == ConversationState.Completed && IsSilentReply(turn.Content.Text);
             operation.Passed = passed;
+            // A reply that ends by asking something makes a short answer to it ("yes", "mm-hmm") count as words for a while.
+            if (terminal.State == ConversationState.Completed && !passed && !string.IsNullOrWhiteSpace(turn.Content.Text))
+                Interlocked.Exchange(ref askedAt, AsksSomething(turn.Content.Text) ? clock.GetTimestamp() : 0);
             if (terminal.State == ConversationState.Completed && !string.IsNullOrWhiteSpace(turn.Content.Text))
             {
                 lock (gate)
@@ -1651,6 +1722,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     private static string? Join(params string?[] parts) =>
         parts.Where(part => part is not null).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
+
+    /// <summary>The engine's evidence in a few numbers for the log (never the words).</summary>
+    internal static string Describe(TranscriptionEvidence evidence) => string.Join(", ", new[]
+    {
+        evidence.MeanProbability is { } mean ? $"{evidence.Engine} mean probability {mean:0.00}" : null,
+        evidence.MinimumProbability is { } least ? $"lowest {least:0.00}" : null,
+        evidence.NoSpeechProbability is { } silence ? $"no-speech {silence:0.00}" : null,
+        evidence.AverageLogProbability is { } average ? $"average log probability {average:0.00}" : null
+    }.OfType<string>());
 
     // Recognition runs alongside speech-to-text and is usually done first; a slow one never holds the reply back for long.
     private async Task<HeardVoices?> HeardAsync(LiveConversationOperation operation, CancellationToken worker)
@@ -2057,12 +2137,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // Reads the capture's own 20 ms frames (no second audio queue) and releases it when the speaker pauses.
     // Returns the speech range to send, or null when nobody spoke before the idle restart. With echo reduction, sound that is
     // mostly what the speakers played (Martlet's own voice, a video) is let go like a cough: it is never you. Only the
-    // microphone talks over Martlet, and only with a sustained voice (TalkOverDetector).
+    // microphone talks over Martlet, and only with real words: while Martlet speaks, BargeInGate has what was said so far
+    // transcribed by Parakeet on this PC and BargeInPolicy decides (elsewhere the utterance's own transcript decides).
     private async Task<SpeechRange?> EndpointAsync(LiveConversationOperation operation, CaptureRun run)
     {
         var settings = operation.Listening!.Activity;
         var detector = new EnergyVoiceActivityDetector(settings);
         var talkOver = operation.Listening.Pc ? null : new TalkOverDetector();
+        var bargeIn = operation is { Listen: true, Listening: { Pc: false, BargeIn: true } } && WordsCheck(operation) is { } check
+            ? (Gate: new BargeInGate(operation.Listening.WordCheck), Check: check) : default;
+        Task? checking = null;
         var echo = operation.Echo;
         var minimumFrames = (int)(ListeningOptions.MinimumUtterance.TotalMilliseconds / 20);
         var frame = new byte[EnergyVoiceActivityDetector.FrameBytes];
@@ -2088,7 +2172,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     var loud = detector.LastFrameLoud;
                     userSum.Add(userSum[^1] + (loud && !speakers ? 1 : 0));
                     speakerSum.Add(speakerSum[^1] + (loud && speakers ? 1 : 0));
-                    if (talkOver?.Process(loud, speakers) == true) operation.TalkingOver = true;
+                    talkOver?.Process(loud, speakers);
+                    // Talking over Martlet: once the voice has gone on long enough (or a short word just ended), what was said so
+                    // far is checked for words without waiting for the pause.
+                    if (bargeIn.Gate?.Process(loud, speakers, checking is { IsCompleted: false }) == true && !operation.TalkingOver &&
+                        Speaking is { } mode)
+                        checking = CheckWordsAsync(operation, run, bargeIn.Gate, bargeIn.Check, index, mode);
                     if (transition == VoiceActivityTransition.SpeechStarted)
                     {
                         if (accepted < 0) operation.Publish(new("mic.hearing_speech"));
@@ -2101,7 +2190,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             operation.Publish(new("mic.listening"));
                             continue;
                         }
-                        if (accepted < 0) accepted = Onset();
+                        if (accepted < 0) Accept();
                         operation.Hearing = true;
                         if (!operation.Listening.Pc)
                         {
@@ -2116,7 +2205,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     }
                     if (detector.Speaking && accepted < 0 && index - detector.SpeechStartFrame >= minimumFrames && Voice())
                     {
-                        accepted = Onset();
+                        Accept();
                         operation.Hearing = true;
                     }
                 }
@@ -2142,7 +2231,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 await Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock)).ConfigureAwait(false);
             }
             // Duration limit or Finish: send everything from the onset to the end of the recording.
-            if (accepted < 0 && detector.Speaking && Voice()) accepted = Onset();
+            if (accepted < 0 && detector.Speaking && Voice()) Accept();
             if (accepted >= 0) operation.Hearing = true;
             return accepted < 0 ? null : Range(accepted, 0) with { EndSampleExclusive = int.MaxValue };
         }
@@ -2150,6 +2239,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             CryptographicOperations.ZeroMemory(frame);
             operation.VoiceLevel = -100;
+        }
+
+        // The utterance starts here: when its voice began, on the controller's clock (each frame is 20 ms of it).
+        void Accept()
+        {
+            accepted = Onset();
+            operation.SpeechStartedAt = clock.GetTimestamp() - (long)((index - accepted) * 0.02 * clock.TimestampFrequency);
         }
 
         // The speech under way is someone's voice, not mostly what the speakers played (or the user has talked over them).
@@ -2160,9 +2256,60 @@ internal sealed class LiveConversationController : IAsyncDisposable
         int Onset() => SpeakersMostly(detector.SpeechStartFrame) && talkOver is { StretchStartFrame: >= 0 } over
             ? Math.Max(detector.SpeechStartFrame, over.StretchStartFrame) : detector.SpeechStartFrame;
 
-        SpeechRange Range(int startFrame, int endFrame) => new(
-            Math.Max(0, startFrame * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll)),
-            endFrame * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail));
+        // What is sent, and how much of it was the user's voice (loud frames the speakers don't explain).
+        SpeechRange Range(int startFrame, int endFrame)
+        {
+            var last = Math.Clamp(endFrame <= startFrame ? userSum.Count - 1 : endFrame, 0, userSum.Count - 1);
+            operation.Voiced = TimeSpan.FromMilliseconds((userSum[last] - userSum[Math.Clamp(startFrame, 0, last)]) * 20);
+            return new(
+                Math.Max(0, startFrame * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll)),
+                endFrame * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail));
+        }
+    }
+
+    /// <summary>The quick words check for talking over Martlet: Parakeet on this PC (free, private and fast), or null when
+    /// Listening uses a host or the cloud, or only the user's voice may be answered (Voice ID needs the whole utterance), where
+    /// the utterance's own transcript decides instead.</summary>
+    private Func<ReadOnlyMemory<byte>, CancellationToken, Task<LocalTranscript>>? WordsCheck(LiveConversationOperation operation)
+    {
+        var configured = operation.Authorization.Configuration;
+        if (localWords is not { } local || !configured.LocalStt() || operation.Voiceprint is not null) return null;
+        var model = configured.Route(SetupRole.Stt).ModelId;
+        return (pcm, token) => local.TranscribeAsync(model, pcm, token);
+    }
+
+    // One quick check of what was said over Martlet so far (the current stretch of voice with its pre-roll): Parakeet transcribes
+    // it off the microphone loop and BargeInPolicy decides. Real words stop Martlet (TalkingOver); a hum, a cough or laughter
+    // never does. Decided only while the utterance is still being recorded: after that, its own transcript decides.
+    private Task CheckWordsAsync(LiveConversationOperation operation, CaptureRun run, BargeInGate gate,
+        Func<ReadOnlyMemory<byte>, CancellationToken, Task<LocalTranscript>> check, int index, PlaybackMode mode)
+    {
+        var options = operation.Listening!;
+        var from = Math.Max(0, gate.StretchStartFrame - EnergyVoiceActivityDetector.Samples(options.Activity.PreRoll) /
+            EnergyVoiceActivityDetector.FrameSamples);
+        var pcm = new byte[(index - from) * EnergyVoiceActivityDetector.FrameBytes];
+        var frames = 0;
+        for (var frame = from; frame < index; frame++, frames++)
+            if (!run.TryCopyMonoFrame(frame, pcm.AsSpan(frames * EnergyVoiceActivityDetector.FrameBytes, EnergyVoiceActivityDetector.FrameBytes)))
+                break;
+        var voice = gate.Voice;
+        var checks = gate.Checks;
+        var startedAt = clock.GetTimestamp() - (long)((index - gate.StretchStartFrame) * 0.02 * clock.TimestampFrequency);
+        return Task.Run(async () =>
+        {
+            try
+            {
+                if (frames == 0) return;
+                var heard = await check(pcm.AsMemory(0, frames * EnergyVoiceActivityDetector.FrameBytes), operation.OriginalCaller).ConfigureAwait(false);
+                var decision = BargeInPolicy.Decide(heard.Text, WordsContext(operation, voice, heard.Evidence), options.WordCheck, mode);
+                if (!decision.Interrupt || run.Completion.IsCompleted || operation.Authorization.IsCanceled) return;
+                operation.TalkOver = new(decision, clock.GetElapsedTime(startedAt), checks, startedAt);
+                operation.TalkingOver = true;
+            }
+            // A check that fails (the model unloading, a stop) just doesn't stop Martlet; the utterance's transcript still decides.
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+            finally { CryptographicOperations.ZeroMemory(pcm); }
+        });
     }
 
     private async Task<BoundedWaveAudio?> CaptureAsync(LiveConversationOperation operation)
