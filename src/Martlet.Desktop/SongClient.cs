@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Avatar.Hosting;
 using Martlet.Core.Singing;
 
 namespace Martlet.Desktop;
@@ -56,7 +57,8 @@ internal sealed record SingingPreferences(SongQuality Quality = SongQuality.Fast
 /// <summary>
 /// The desktop's <see cref="ISongMaker"/>: makes songs with the singing role of a paired Martlet host (route
 /// <c>martlet.gateway.song.v1</c>) through its pinned gateway, reading the pairing secret from Windows Credential Manager
-/// for each song. The first paired host that offers the route sings. Songs are sung in a voice of the shared voice library
+/// for each song. The paired host the desktop last saw singing (<see cref="SingingPreferences.Host"/>) sings, else the first
+/// that offers the route. Songs are sung in a voice of the shared voice library
 /// (usually <see cref="SpeakingVoiceId"/>); when that host lacks the voice's recording, it is sent once from this PC's voice
 /// store. Setting <c>MARTLET_SINGING_FIXTURE=1</c> before Martlet starts makes Singing use the FIXTURE - NOT AI
 /// <see cref="FixtureSongMaker"/> instead (for automated checks).
@@ -82,6 +84,36 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     /// <summary>The shared-library ID of the voice Martlet speaks with on this PC (its reference revision), or null.</summary>
     internal static string? SpeakingVoiceId(string dataDirectory) => F5Voices.Applied(dataDirectory)?.ReferenceRevision;
 
+    /// <summary>What a computer's singing service reports through its gateway: its state (ready, busy, loading or
+    /// not_provisioned), its engine (song, or fixture) and the voice matches set up there (soulx, and vevosing once added).</summary>
+    internal sealed record SingingService(string? State, string? Engine, IReadOnlyList<SongVoiceMatch> VoiceMatches, string? Error)
+    {
+        internal bool Has(SongVoiceMatch match) => VoiceMatches.Contains(match);
+
+        internal static SingingService Parse(IReadOnlyList<JsonElement> answer)
+        {
+            var service = answer.Count == 1 ? answer[0] : default;
+            string? Text(string name) => service.ValueKind == JsonValueKind.Object && service.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            var matches = new List<SongVoiceMatch> { SongVoiceMatch.SoulX };
+            if (service.ValueKind == JsonValueKind.Object && service.TryGetProperty("voice_matches", out var list) &&
+                list.ValueKind == JsonValueKind.Array && list.EnumerateArray().Any(m => m.ValueKind == JsonValueKind.String && m.GetString() == "vevosing"))
+                matches.Add(SongVoiceMatch.VevoSing);
+            return new(Text("state"), Text("engine"), matches, Text("error"));
+        }
+    }
+
+    /// <summary>Reads <paramref name="host"/>'s singing service through its gateway (song route, status operation); null when
+    /// that computer doesn't offer Singing.</summary>
+    internal static async Task<SingingService?> ReadServiceAsync(AvatarRemoteHost host, CancellationToken token)
+    {
+        using var connection = ClusterSync.Connect(host);
+        var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
+        if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) is not { } route) return null;
+        return SingingService.Parse(await connection.SongOperationAsync(route,
+            new Dictionary<string, object> { ["operation"] = "status" }, token).ConfigureAwait(false));
+    }
+
     public async Task<SongMakerAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
     {
         try
@@ -99,14 +131,9 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
             {
                 return SongMakerAvailability.Unavailable($"Singing on {singing.Host.HostId} isn't ready ({error.Message}).");
             }
-            var service = status.Count == 1 ? status[0] : default;
-            var matches = new List<SongVoiceMatch> { SongVoiceMatch.SoulX };
-            if (service.ValueKind == JsonValueKind.Object && service.TryGetProperty("voice_matches", out var list) &&
-                list.ValueKind == JsonValueKind.Array && list.EnumerateArray().Any(m => m.GetString() == "vevosing"))
-                matches.Add(SongVoiceMatch.VevoSing);
-            var fixture = service.ValueKind == JsonValueKind.Object && service.TryGetProperty("engine", out var engine) &&
-                engine.GetString() == "fixture";
-            return new SongMakerAvailability(true, null, singing.Host.HostId, [SongQuality.Fast, SongQuality.HighQuality], matches, fixture);
+            var service = SingingService.Parse(status);
+            return new SongMakerAvailability(true, null, singing.Host.HostId, [SongQuality.Fast, SongQuality.HighQuality], service.VoiceMatches,
+                service.Engine == "fixture");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error) when (ClusterSync.IsHostFailure(error))
@@ -146,11 +173,12 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
         }
     }
 
-    /// <summary>The first paired host whose gateway offers the singing route, connected (the caller disposes the
-    /// connection), or null.</summary>
+    /// <summary>The paired host whose gateway offers the singing route (the one the desktop last saw singing first), connected
+    /// (the caller disposes the connection), or null.</summary>
     private async Task<(PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)?> FindAsync(CancellationToken token)
     {
-        foreach (var host in HostRegistry.Load(dataDirectory))
+        var saved = SingingPreferences.Load(dataDirectory).Host;
+        foreach (var host in HostRegistry.Load(dataDirectory).OrderBy(h => h.HostId == saved ? 0 : 1))
         {
             Audio2FaceHostConnection? connection = null;
             try

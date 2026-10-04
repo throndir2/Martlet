@@ -13,21 +13,31 @@ using Martlet.Gateway.Singing;
 namespace Martlet.NodeLinkCheck;
 
 /// <summary>
-/// singing_check: makes one song through the production path: the singing role's relay
-/// (<see cref="SongRelayWorker"/>, the one the Linux host creates for the role) inside a real gateway on 127.0.0.1 (Kestrel,
-/// pinned TLS, pairing), the gateway's shared speaking-voice list holding a starter voice, and the desktop's paired client
-/// (<see cref="Audio2FaceHostConnection.MakeSongAsync"/>, what <c>SongClient</c> runs). The singing service is a live one on a
-/// numeric loopback endpoint, or (with "fixture") this checkout's workers/singing service started here with the FIXTURE -
-/// NOT AI engine. Nothing is played or recorded. Reports the service's own status before and after, every stage seen with
-/// when, the host's stage timings, and the three tracks.
+/// singing_check: makes one song through the production path. With a loopback endpoint (or "fixture"), the singing role's
+/// relay (<see cref="SongRelayWorker"/>, the one the Linux host creates for the role) runs inside a real gateway on 127.0.0.1
+/// (Kestrel, pinned TLS, pairing), the gateway's shared speaking-voice list holding a starter voice, and the desktop's paired
+/// client (<see cref="Audio2FaceHostConnection.MakeSongAsync"/>, what <c>SongClient</c> runs) makes the song; the singing
+/// service is a live one on a numeric loopback endpoint, or this checkout's workers/singing service started here with the
+/// FIXTURE - NOT AI engine. With "paired:&lt;data directory&gt;" it goes through a real paired host instead, exactly as the
+/// desktop does: the host from that desktop data directory's hosts.json that offers Singing (or the one named), its own
+/// gateway and singing role, a voice from that gateway's shared speaking-voice list (nothing is added to the list), the
+/// pairing secret read from Windows Credential Manager only to sign the requests (never printed). Nothing is played or
+/// recorded. Reports the service's own status before and after, every stage seen with when, the host's stage timings, and
+/// the three tracks.
 /// </summary>
 internal static class SingingCheck
 {
+    internal const string PairedPrefix = "paired:";
+
     internal static async Task<(bool Ok, object Report)> RunAsync(string endpointText, int seconds, string quality, string voiceMatch,
-        string? saveDirectory, string? voiceRecording, string? voiceTranscript, int? bpm, string? key, CancellationToken token)
+        string? saveDirectory, string? voiceRecording, string? voiceTranscript, int? bpm, string? key, CancellationToken token,
+        string? voiceId = null, string? hostId = null)
     {
         if (seconds is < SongRequest.MinimumDurationSeconds or > SongRequest.MaximumDurationSeconds)
             throw new ArgumentException($"seconds must be {SongRequest.MinimumDurationSeconds} to {SongRequest.MaximumDurationSeconds}.");
+        if (endpointText.StartsWith(PairedPrefix, StringComparison.Ordinal))
+            return await PairedAsync(endpointText[PairedPrefix.Length..], hostId, voiceId, seconds, quality, voiceMatch, saveDirectory,
+                voiceRecording, bpm, key, token);
         FixtureService? fixture = null;
         Uri endpoint;
         if (endpointText == "fixture")
@@ -37,10 +47,10 @@ internal static class SingingCheck
         }
         else if (!Uri.TryCreate(endpointText, UriKind.Absolute, out endpoint!) || endpoint.Scheme != Uri.UriSchemeHttp ||
             !IPAddress.TryParse(endpoint.Host, out var address) || !IPAddress.IsLoopback(address) || endpoint.AbsolutePath != "/")
-            throw new ArgumentException("endpoint must be \"fixture\" or a numeric loopback address such as http://127.0.0.1:50085/.");
+            throw new ArgumentException("endpoint must be \"fixture\", \"paired:<data directory>\" or a numeric loopback address such as http://127.0.0.1:50085/.");
 
         var voice = F5BundledVoices.Default;
-        var voiceId = SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript);
+        var starterId = SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript);
         var voices = SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters);
         var voiceName = voice.Key;
         byte[]? recording = null;
@@ -54,36 +64,188 @@ internal static class SingingCheck
             var transcript = string.IsNullOrWhiteSpace(voiceTranscript) ? "A recording of my voice." : voiceTranscript.Trim();
             voices = voices.Add("Singing check voice", transcript, sha256, (int)(frames * 1000L / rate), SpeakingVoiceRights.OwnVoice,
                 "singing-check", DateTimeOffset.UtcNow);
-            voiceId = SpeakingVoiceLibrary.ReferenceId(sha256, transcript);
+            starterId = SpeakingVoiceLibrary.ReferenceId(sha256, transcript);
             voiceName = Path.GetFileName(voiceRecording);
         }
-        var request = new SongRequest
+        try
         {
-            Lyrics = "[verse]\nMorning light is on the window\nCoffee steaming by the door\nEvery little thing feels easy\n" +
-                "When you're laughing like before\n\n[chorus]\nSing it with me, sing it slowly\nLet the quiet carry on\n" +
-                "Hold the moment, hold it softly\nWe'll be dancing till the dawn",
-            Style = "gentle acoustic pop ballad, warm female lead vocal, acoustic guitar, soft piano",
-            VoiceId = voiceId,
-            DurationSeconds = seconds,
-            Seed = 42,
-            // As Martlet's own model writes them; without a tempo or key the host's music planner runs first.
-            Bpm = bpm,
-            Key = key,
-            Quality = quality == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
-            VoiceMatch = voiceMatch == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
-        };
+            return await SongAsync(fixture is null ? endpoint.ToString() : "fixture (workers/singing, FIXTURE - NOT AI)", seconds, quality,
+                voiceMatch, bpm, key, saveDirectory, async open =>
+                {
+                    var host = await VoiceEngineCheck.LiveHost.StartAsync(new SongRelayWorker(endpoint));
+                    try
+                    {
+                        var connection = await host.PairAsync("singing-check-desktop", open);
+                        var route = (await connection.ReadRoutesAsync(open)).Single(r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
+                        // The gateway resolves a song's voice from its shared speaking-voice list, as a paired desktop keeps it.
+                        await connection.MergeSpeakingVoicesAsync(voices, open);
+                        return new Opened(connection, route, host, starterId, voiceName, null);
+                    }
+                    catch
+                    {
+                        await host.DisposeAsync();
+                        throw;
+                    }
+                }, _ => Task.FromResult<byte[]?>(recording ?? voice.ReadAudio()), token);
+        }
+        finally
+        {
+            if (fixture is not null) await fixture.DisposeAsync();
+        }
+    }
+
+    /// <summary>A connection ready to make a song: its route, what owns the gateway (a check's own, or none for a paired
+    /// host), the voice to sing in and anything else to report.</summary>
+    private sealed record Opened(Audio2FaceHostConnection Connection, HostRoute Route, IAsyncDisposable? Owner, string VoiceId,
+        string VoiceName, object? Extra);
+
+    /// <summary>Through a real paired host: the one in <paramref name="dataDirectory"/>'s hosts.json that offers Singing (or
+    /// <paramref name="hostId"/>), in a voice of its gateway's shared list (<paramref name="voiceId"/>, the full ID or a unique
+    /// prefix of 8+ characters; default the first live voice). When the host lacks the voice's recording it is sent once, from
+    /// <paramref name="voiceRecording"/> or that data directory's voice store, checked against the voice's SHA-256.</summary>
+    private static async Task<(bool Ok, object Report)> PairedAsync(string dataDirectory, string? hostId, string? voiceId, int seconds,
+        string quality, string voiceMatch, string? saveDirectory, string? voiceRecording, int? bpm, string? key, CancellationToken token)
+    {
+        if (!Path.IsPathFullyQualified(dataDirectory) || !Directory.Exists(dataDirectory))
+            throw new ArgumentException("paired: needs the absolute path of a Martlet desktop data directory.");
+        var hosts = PairedHosts(dataDirectory).Where(h => hostId is null || h.HostId == hostId).ToList();
+        if (hosts.Count == 0)
+            throw new ArgumentException(hostId is null ? "That data directory has no paired hosts." : $"{hostId} isn't paired in that data directory.");
+        string? audioSha256 = null;
+        var tried = new List<object>();
+        return await SongAsync("paired", seconds, quality, voiceMatch, bpm, key, saveDirectory, async open =>
+        {
+            foreach (var candidate in hosts)
+            {
+                Audio2FaceHostConnection? connection = null;
+                try
+                {
+                    connection = Connect(candidate);
+                    var routes = await connection.ReadRoutesAsync(open);
+                    if (routes.FirstOrDefault(r => r.RouteId == Audio2FaceHostConnection.SongRouteId) is not { } route)
+                    {
+                        tried.Add(new { host = candidate.HostId, singing = false });
+                        continue;
+                    }
+                    var shared = await connection.ReadSpeakingVoicesAsync(open);
+                    var live = shared.Library.Live;
+                    var voice = voiceId is null ? live.FirstOrDefault()
+                        : live.Where(v => v.Id == voiceId || voiceId.Length >= 8 && v.Id.StartsWith(voiceId, StringComparison.Ordinal))
+                            .ToArray() is [var single] ? single : null;
+                    if (voice is null)
+                        throw new Audio2FaceHostException("voice.missing",
+                            voiceId is null ? $"{candidate.HostId}'s shared voice list has no voices." : $"{candidate.HostId}'s shared voice list has no single voice {voiceId}.");
+                    audioSha256 = voice.AudioSha256;
+                    var opened = new Opened(connection, route, null, voice.Id, voice.Name ?? voice.Id[..12], new
+                    {
+                        host = candidate.HostId, route = route.RouteId, model = route.ModelId,
+                        voice = new
+                        {
+                            id = voice.Id, name = voice.Name, seconds = Math.Round(voice.DurationMilliseconds / 1000d, 1),
+                            rights = voice.Rights?.ToString(), recordingOnHost = voice.AudioSha256 is { } sha && shared.Present.Contains(sha)
+                        },
+                        skipped = tried
+                    });
+                    connection = null;
+                    return opened;
+                }
+                catch (Exception error) when (error is HttpRequestException or IOException or InvalidOperationException ||
+                    error is Audio2FaceHostException { Code: not "voice.missing" })
+                {
+                    tried.Add(new { host = candidate.HostId, problem = error.Message });
+                }
+                finally { connection?.Dispose(); }
+            }
+            throw new Audio2FaceHostException(SongErrorCodes.Unavailable, "No paired host in that data directory offers Singing: " +
+                JsonSerializer.Serialize(tried));
+        }, async read =>
+        {
+            if (audioSha256 is null) return null;
+            byte[]? audio = null;
+            if (voiceRecording is not null) audio = await File.ReadAllBytesAsync(voiceRecording, read);
+            else
+            {
+                var store = Path.Combine(dataDirectory, "f5-voices", "audio");
+                var file = Directory.Exists(store)
+                    ? Directory.EnumerateFiles(store, audioSha256 + ".wav", SearchOption.AllDirectories).FirstOrDefault() : null;
+                if (file is not null) audio = await File.ReadAllBytesAsync(file, read);
+            }
+            return audio is not null && Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(audio)) == audioSha256 ? audio : null;
+        }, token);
+    }
+
+    /// <summary>The paired hosts in a desktop data directory's hosts.json (nonsecret pairing identities).</summary>
+    internal static IReadOnlyList<Martlet.Avatar.Hosting.AvatarRemoteHost> PairedHosts(string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, "hosts.json");
+        if (!File.Exists(path)) return [];
+        using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+        var hosts = new List<Martlet.Avatar.Hosting.AvatarRemoteHost>();
+        foreach (var entry in document.RootElement.GetProperty("hosts").EnumerateArray())
+        {
+            var pairing = entry.GetProperty("pairing");
+            var host = new Martlet.Avatar.Hosting.AvatarRemoteHost
+            {
+                Origin = pairing.GetProperty("origin").GetString()!, HostId = pairing.GetProperty("hostId").GetString()!,
+                SpkiFingerprint = pairing.GetProperty("spkiFingerprint").GetString()!, DeviceId = pairing.GetProperty("deviceId").GetString()!,
+                CredentialId = pairing.GetProperty("credentialId").GetString()!
+            };
+            host.Validate();
+            hosts.Add(host);
+        }
+        return hosts;
+    }
+
+    /// <summary>A connection to a paired host signed with the device secret its desktop saved in Windows Credential Manager
+    /// (as the desktop's ClusterSync.Connect reads it); the secret is only used to sign requests.</summary>
+    internal static Audio2FaceHostConnection Connect(Martlet.Avatar.Hosting.AvatarRemoteHost host)
+    {
+        using var read = new Martlet.Credentials.Windows.WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
+        if (read.Error != Martlet.Core.Settings.CredentialError.None || read.Secret is null)
+            throw new InvalidOperationException($"This PC has no pairing secret for {host.HostId} from that data directory ({read.Error}).");
+        Audio2FaceHostConnection? connection = null;
+        read.Secret.Use(secret => connection = new Audio2FaceHostConnection(new Audio2FaceHostPairing
+        {
+            Origin = host.Origin, HostId = host.HostId, SpkiFingerprint = host.SpkiFingerprint, DeviceId = host.DeviceId,
+            CredentialId = host.CredentialId
+        }, secret));
+        return connection!;
+    }
+
+    /// <summary>Makes the song through what <paramref name="open"/> connects to and reports it.</summary>
+    private static async Task<(bool Ok, object Report)> SongAsync(string endpointLabel, int seconds, string quality, string voiceMatch,
+        int? bpm, string? key, string? saveDirectory, Func<CancellationToken, Task<Opened>> open,
+        Func<CancellationToken, Task<byte[]?>> recording, CancellationToken token)
+    {
         var stages = new List<object>();
         var watch = Stopwatch.StartNew();
-        object? before = null, after = null, host_ = null;
+        object? before = null, after = null, host_ = null, extra = null;
+        string? voiceName = null;
         SongResult? song = null;
         string? failure = null, problem = null;
         try
         {
-            await using var host = await VoiceEngineCheck.LiveHost.StartAsync(new SongRelayWorker(endpoint));
-            using var connection = await host.PairAsync("singing-check-desktop", token);
-            var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
-            // The gateway resolves a song's voice from its shared speaking-voice list, as a paired desktop keeps it.
-            await connection.MergeSpeakingVoicesAsync(voices, token);
+            var opened = await open(token);
+            await using var owner = opened.Owner;
+            using var connection = opened.Connection;
+            var route = opened.Route;
+            voiceName = opened.VoiceName;
+            extra = opened.Extra;
+            var request = new SongRequest
+            {
+                Lyrics = "[verse]\nMorning light is on the window\nCoffee steaming by the door\nEvery little thing feels easy\n" +
+                    "When you're laughing like before\n\n[chorus]\nSing it with me, sing it slowly\nLet the quiet carry on\n" +
+                    "Hold the moment, hold it softly\nWe'll be dancing till the dawn",
+                Style = "gentle acoustic pop ballad, warm female lead vocal, acoustic guitar, soft piano",
+                VoiceId = opened.VoiceId,
+                DurationSeconds = seconds,
+                Seed = 42,
+                // As Martlet's own model writes them; without a tempo or key the host's music planner runs first.
+                Bpm = bpm,
+                Key = key,
+                Quality = quality == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
+                VoiceMatch = voiceMatch == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
+            };
             before = await StatusAsync(connection, route, token);
             var progress = new SynchronousProgress(p => stages.Add(new
             {
@@ -91,8 +253,7 @@ internal static class SingingCheck
                 atMs = Math.Round(watch.Elapsed.TotalMilliseconds)
             }));
             watch.Restart();
-            song = await connection.MakeSongAsync(route, request, _ => Task.FromResult<byte[]?>(recording ?? voice.ReadAudio()), progress, token,
-                TimeSpan.FromMilliseconds(500));
+            song = await connection.MakeSongAsync(route, request, recording, progress, token, TimeSpan.FromMilliseconds(500));
             host_ = await JobReportAsync(connection, route, song.JobId, token);
             after = await StatusAsync(connection, route, token);
             if (saveDirectory is not null)
@@ -113,10 +274,6 @@ internal static class SingingCheck
         {
             failure = error is Audio2FaceHostException host ? host.Code : error.GetType().Name;
             problem = error.Message;
-        }
-        finally
-        {
-            if (fixture is not null) await fixture.DisposeAsync();
         }
         var elapsed = watch.Elapsed;
         object? Track(SongTrack? track)
@@ -145,8 +302,9 @@ internal static class SingingCheck
         return (ok, new
         {
             ok,
-            endpoint = fixture is null ? endpoint.ToString() : "fixture (workers/singing, FIXTURE - NOT AI)",
+            endpoint = endpointLabel,
             route = Audio2FaceHostConnection.SongRouteId,
+            paired = extra,
             voice = voiceName,
             request = new { seconds, quality, voiceMatch, bpm, key },
             statusBefore = before,

@@ -82,20 +82,29 @@ if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceTex
     Console.WriteLine(JsonSerializer.Serialize(voiceReport));
     return voiceOk ? 0 : 1;
 }
-// With "singing-check <endpoint|fixture> <seconds> <quality> <voice match> [save directory|-] [voice WAV|-] [transcript|-] [bpm|-]
-// [key|-]" it makes one song with a singing service through the singing role's real relay and gateway (SingingCheck), optionally
-// in the voice of a recording copy, with a tempo and key, and saving its WAVs, and prints its report.
+// With "singing-check <endpoint|fixture|paired:<data directory>> <seconds> <quality> <voice match> [save directory|-]
+// [voice WAV|-] [transcript|-] [bpm|-] [key|-] [voice ID|-] [host ID|-]" it makes one song with a singing service through the
+// singing role's real relay and gateway (SingingCheck; paired: through a paired host's own gateway, as the desktop does),
+// optionally in the voice of a recording copy or a shared voice, with a tempo and key, and saving its WAVs, and prints its report.
 if (args is ["singing-check", var singingEndpoint, var singingSeconds, var singingQuality, var singingMatch, .. var singingMore] &&
-    singingMore.Length <= 5)
+    singingMore.Length <= 7)
 {
     string? Optional(int index) => singingMore.Length > index && singingMore[index] is { Length: > 0 } value && value != "-" ? value : null;
     var (singingOk, singingReport) = await Martlet.NodeLinkCheck.SingingCheck.RunAsync(singingEndpoint,
         int.Parse(singingSeconds, System.Globalization.CultureInfo.InvariantCulture), singingQuality, singingMatch,
         Optional(0), Optional(1), Optional(2),
         Optional(3) is { } singingBpm ? int.Parse(singingBpm, System.Globalization.CultureInfo.InvariantCulture) : null, Optional(4),
-        CancellationToken.None);
+        CancellationToken.None, Optional(5), Optional(6));
     Console.WriteLine(JsonSerializer.Serialize(singingReport));
     return singingOk ? 0 : 1;
+}
+// With "singing-status <data directory>" it reads Singing on every host paired in that desktop data directory through each
+// host's own gateway (SingingStatus) and prints it.
+if (args is ["singing-status", var singingData])
+{
+    var singingStatus = await Martlet.NodeLinkCheck.SingingStatus.RunAsync(singingData, CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(singingStatus));
+    return 0;
 }
 var steps = new List<object>();
 var passed = true;

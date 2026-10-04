@@ -2190,6 +2190,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
         job.Report(BackgroundJobState.Running, "Checking the singing computer");
         var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
         if (!availability.Available) return BackgroundJobOutcome.Failed(availability.Reason ?? "singing isn't available right now");
+        // VevoSing chosen where only SoulX-Singer is set up (Companion > Voice > Singing offers Add VevoSing there): sing with SoulX.
+        var voiceMatch = setup.VoiceMatch;
+        if (!availability.VoiceMatches.Contains(voiceMatch))
+        {
+            ErrorLog.Info($"Singing: {voiceMatch} isn't set up on {availability.Host}; {job.Id} uses SoulX-Singer.");
+            voiceMatch = SongVoiceMatch.SoulX;
+        }
         WrittenSong? written;
         string? problem;
         if (writer is not null)
@@ -2240,7 +2247,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         var request = new SongRequest
         {
             Lyrics = written.Lyrics, Style = written.Style, VoiceId = setup.VoiceId, DurationSeconds = arguments.Seconds,
-            Bpm = written.Bpm, Key = written.Key, Quality = setup.Quality, VoiceMatch = setup.VoiceMatch
+            Bpm = written.Bpm, Key = written.Key, Quality = setup.Quality, VoiceMatch = voiceMatch
         };
         SongResult result;
         try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job), token).ConfigureAwait(false); }
