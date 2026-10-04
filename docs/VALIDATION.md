@@ -203,7 +203,7 @@ The controls it offers:
 - **Status and checks** for the subsystems: `voices_status`, `cluster_status`,
   `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`,
   `latency_report`, `api_keys_status`, `smart_home_status`, `prompts_status`,
-  `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`,
+  `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `chattiness_status`,
   `context_check`, `thinking_steps_check` and more. They read the same disposable
   data directory the desktop uses.
 - **Desktop UI automation** (`ui_connect`, `ui_snapshot`, `ui_click`, `ui_select`,

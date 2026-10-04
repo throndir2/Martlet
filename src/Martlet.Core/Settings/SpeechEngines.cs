@@ -60,8 +60,9 @@ public sealed record SpeechEngine(
 }
 
 /// <summary>What a tag does: a non-word sound or a tone of voice the engine performs, or (never sent to an engine) a
-/// character tag such as <c>{blush}</c> that makes the desktop character act.</summary>
-public enum VoiceTagKind { Sound, Emotion, Character }
+/// character tag such as <c>{blush}</c> that makes the desktop character act, or a control tag such as
+/// <c>[chattiness:quiet]</c> that tells Martlet something about the reply (<see cref="ChattinessTags"/>).</summary>
+public enum VoiceTagKind { Sound, Emotion, Character, Control }
 
 /// <summary>One tag an engine understands, written exactly as the engine expects it (Chatterbox <c>[laugh]</c>, Dia
 /// <c>(laughs)</c>), with one line telling the Thinking model when to use it. <see cref="Cue"/> is what it means across

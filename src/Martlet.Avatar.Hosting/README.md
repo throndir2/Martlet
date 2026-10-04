@@ -150,7 +150,13 @@ and pan never push it above the overlay's top edge (the renderer reports where
 the head's top is for the loaded Live2D or VRM model). When zoomed in,
 Ctrl+drag or middle-drag pans.
 Right-click the character for **Zoom in**, **Zoom out**, **Reset zoom** and
-**Reset position and size**. After clicking the character, use arrow keys for
+**Reset position and size**, and for **Mute voice** (**Unmute voice** while
+muted). Muting is the same choice as **Speak Martlet's replies aloud**
+(Companion > Voice), so it is saved and shared with your other computers like
+it: Martlet stops saying a reply at once and later replies aren't spoken, while
+their words still show in the talk window and in the speech bubble (and
+subtitles, when on), one sentence after another for about as long as reading
+it takes. No voice is asked and no speakers are opened until you unmute it. After clicking the character, use arrow keys for
 10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, +/- to
 zoom, 0 to reset zoom, or Home to return to the primary screen at the default
 size. The overlay has no buttons, panel or title bar; its other controls live
@@ -176,6 +182,16 @@ character shows there again after it is hidden or Martlet restarts (at the
 default spot, still locked, if that place is no longer on a screen). Unlocked,
 position is session-only. This is not a global click-through or game-injected
 overlay. Exclusive-fullscreen applications may cover it.
+
+The character's head and eyes follow the mouse. Martlet can also send the overlay
+a `gaze` command (`RendererGaze`): a point on the desktop in physical screen
+pixels, as Martlet's screenshots measure it, and how long to look there (0.5 to
+30 seconds); then the eyes follow the mouse again, and a `gaze` without a point
+returns them at once. The overlay converts the face's position to physical pixels
+for it (`LogicalToPhysicalPointForPerMonitorDPI`) and replies with `RendererLook`:
+what it looks at (`mouse` or `point`) and the head and eye direction it gave the
+model (-1 to 1, +x right, +y up). Companion › Vision › **Where the character
+looks** uses it while Martlet decides ([Screen commentary](../../docs/SCREEN_COMMENTARY.md#where-the-character-looks)).
 
 **Hide character** in the main window, Alt+F4, or Escape while the overlay has
 focus closes only the renderer; normal voice playback continues. **Show

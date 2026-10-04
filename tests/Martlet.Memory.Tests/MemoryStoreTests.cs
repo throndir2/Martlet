@@ -35,7 +35,8 @@ public sealed class MemoryStoreTests
             ExpectedRevision = fact.Revision,
             Content = "The auroraneedle launch code is amber.",
             Provenance = editor,
-            Retention = MemoryRetention.UntilDeleted()
+            Retention = MemoryRetention.UntilDeleted(),
+            VoiceId = null
         });
         Assert.Equal(2, edited.Fact.Revision);
         Assert.Equal(created, edited.Fact.CreatedFrom);
@@ -78,7 +79,8 @@ public sealed class MemoryStoreTests
             ExpectedRevision = saved.Fact.Revision,
             Content = "Current exact value.",
             Provenance = MemoryFixtures.Provenance(clock),
-            Retention = MemoryRetention.UntilDeleted()
+            Retention = MemoryRetention.UntilDeleted(),
+            VoiceId = null
         });
 
         await MemoryFixtures.FailureAsync(MemoryFailure.Conflict, async () =>
@@ -88,7 +90,8 @@ public sealed class MemoryStoreTests
                 ExpectedRevision = saved.Fact.Revision,
                 Content = "Stale overwrite.",
                 Provenance = MemoryFixtures.Provenance(clock),
-                Retention = MemoryRetention.UntilDeleted()
+                Retention = MemoryRetention.UntilDeleted(),
+                VoiceId = null
             }));
         await MemoryFixtures.FailureAsync(MemoryFailure.Conflict, async () =>
             await store.DeleteAsync(new()
@@ -138,6 +141,64 @@ public sealed class MemoryStoreTests
         Assert.Equal(Enumerable.Range(1, 32).Select(value => (long)value),
             receipts.Select(receipt => receipt.StoreRevision).Order());
         Assert.Equal(32, inspection.StoreRevision);
+    }
+
+    [Fact]
+    public async Task FactsKeepWhoseTheyAreThroughEditsReopenAndSyncJson()
+    {
+        using var scope = new TestScope();
+        var clock = new ManualClock();
+        const string sam = "5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7";
+        Guid samId, plainId;
+        using (var store = scope.Open(clock))
+        {
+            var saved = await store.SaveAsync(MemoryFixtures.Save(clock, "Sam's dog is called Biscuit.") with { VoiceId = sam });
+            Assert.Equal(sam, saved.Fact.VoiceId);
+            samId = saved.Fact.Id;
+            plainId = (await store.SaveAsync(MemoryFixtures.Save(clock, "The wifi router is upstairs."))).Fact.Id;
+
+            // An edit says whose the fact is afterwards: the same, another voice or no one.
+            var kept = await store.EditAsync(new()
+            {
+                Id = samId, ExpectedRevision = 1, Content = "Sam's dog Biscuit is four.", Provenance = MemoryFixtures.Provenance(clock),
+                Retention = MemoryRetention.UntilDeleted(), VoiceId = sam
+            });
+            Assert.Equal(sam, kept.Fact.VoiceId);
+            foreach (var invalid in new[] { "", "has space", "../x", new string('a', MemoryLimits.MaximumVoiceIdCharacters + 1), "\u00e9t\u00e9" })
+            {
+                await MemoryFixtures.FailureAsync(MemoryFailure.InvalidData, async () =>
+                    await store.SaveAsync(MemoryFixtures.Save(clock, "Rejected voice.") with { VoiceId = invalid }));
+                await MemoryFixtures.FailureAsync(MemoryFailure.InvalidData, async () => await store.EditAsync(new()
+                {
+                    Id = samId, ExpectedRevision = 2, Content = "Rejected voice.", Provenance = MemoryFixtures.Provenance(clock),
+                    Retention = MemoryRetention.UntilDeleted(), VoiceId = invalid
+                }));
+            }
+        }
+
+        // Facts without a voice are written exactly as before voices existed.
+        var persisted = await File.ReadAllTextAsync(scope.StorePath);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(persisted, "\"voice_id\""));
+        using var reopened = scope.Open(clock);
+        var facts = (await reopened.InspectAsync()).Facts;
+        Assert.Equal(sam, facts.Single(f => f.Id == samId).VoiceId);
+        Assert.Null(facts.Single(f => f.Id == plainId).VoiceId);
+        var shared = MemoryFactJson.Write(facts.Single(f => f.Id == samId));
+        Assert.Contains($"\"voice_id\":\"{sam}\"", shared);
+        Assert.Equal(sam, MemoryFactJson.Read(shared).VoiceId);
+        Assert.DoesNotContain("voice_id", MemoryFactJson.Write(facts.Single(f => f.Id == plainId)));
+        Assert.Throws<MemoryException>(() => MemoryFactJson.Read(shared.Replace(sam, "not a voice", StringComparison.Ordinal)));
+
+        var cleared = await reopened.EditAsync(new()
+        {
+            Id = samId, ExpectedRevision = 2, Content = "A dog called Biscuit lives here.", Provenance = MemoryFixtures.Provenance(clock),
+            Retention = MemoryRetention.UntilDeleted(), VoiceId = null
+        });
+        Assert.Null(cleared.Fact.VoiceId);
+        Assert.DoesNotContain("voice_id", await File.ReadAllTextAsync(scope.StorePath));
+        var preview = await reopened.CreateExportPreviewAsync();
+        Assert.DoesNotContain("voice_id", System.Text.Encoding.UTF8.GetString(preview.Preview()));
+        preview.Dispose();
     }
 
     [Fact]

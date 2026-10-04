@@ -43,8 +43,11 @@ verified connections or spending permission. **Audio setup (local only)** offers
 output selection and separately confirmed bounded local capture/tone tests.
 Opening it does not enumerate or open devices. Historical local checkpoints
 are not device readiness. Always listening runs from **Start listening** on Home (or the notification-area
-menu) until **Stop listening**, with or without the talk window open; Settings ›
-*Startup and closing* can show the character and start listening as Martlet
+menu) until **Stop listening**, and vision (when Companion turns it on) runs from
+**Start watching** until **Stop watching**; each has its own button on Home, in the
+notification-area menu and in the talk window, works without the other and runs
+with or without the talk window open. Settings ›
+*Startup and closing* can show the character and start listening (and watching) as Martlet
 starts, including with Windows. Acoustic wake words,
 automatic name/group listening and supported end-user deployment
 are not available. A PC microphone does not automatically
@@ -86,10 +89,16 @@ has Martlet's own **Terminal** (off by default): turn it on and Martlet can run
 PowerShell or Command Prompt commands when you ask, hidden and never as
 administrator, asking before each one unless you change that. See [MCP](docs/MCP.md).
 
-**Thinking longer** (Companion > Replies, on by default): replies answer right
+**Thinking longer** (Companion > Deep thinking, on by default): replies answer right
 away, and when a task really needs thought (song lyrics, a story, a plan, tricky
 math or code) Martlet says it'll think it over, works it out in the background
 with Thinking steps on while you keep talking, then brings it up when it's done.
+**Deep thinking** always does that thinking in parallel, so it needs a model of
+its own: another of your computers, a cloud provider, a second model in Ollama on
+this PC (when both fit on the graphics card), or Thinking's own model when its
+provider answers several requests at once. Without one (say, a single PC whose
+Thinking model is local) Martlet doesn't offer to think things over, and *Where
+it thinks* › *Off* turns it off.
 See [Thinking longer](docs/CONVERSATION.md#thinking-longer-and-background-work).
 
 **Voices (F5)**: add your own voice recordings on **Companion > Voice >
@@ -153,6 +162,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
 | [Memory](docs/MEMORY.md) | ON-by-default local memory: automatic recall each turn, remembering lasting facts from conversations, Desktop fact management, privacy/deletion/export and remaining qualification gates |
 | [Lorebooks](docs/LOREBOOKS.md) | SillyTavern-style World Info: keyword-triggered lore added to replies, persona scope, budget and recursion, the editor and its local test, SillyTavern/character card import and export |
+| [Creations](docs/CREATIONS.md) | Everything Martlet makes (songs, later more): kinds and their handlers, FLAC assets stored by SHA-256, limits and cleanup, sharing with every computer through the hosts, `list_creations`/`perform_creation`, and the Creations page (no Play button: Martlet performs them itself) |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

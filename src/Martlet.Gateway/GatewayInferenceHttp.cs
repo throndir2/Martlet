@@ -53,10 +53,41 @@ internal sealed partial class GatewayHttpApplication
         }
         context.Items[RouteItem] = route.RouteId;
         context.Items[DeviceItem] = principal.Caller;
+        var made = route.Kind == GatewayInferenceKind.F5Synthesis ? new SpeechMade() : null;
         var started = clock.GetTimestamp();
-        if (await StreamInferenceAsync(context, traceId, job).ConfigureAwait(false) is null)
+        if (await StreamInferenceAsync(context, traceId, job, made).ConfigureAwait(false) is null)
+        {
+            var took = clock.GetElapsedTime(started);
             Logs.Own(LogLevels.Info, $"{route.RouteId} request from {principal.Caller} finished in " +
-                $"{clock.GetElapsedTime(started).TotalMilliseconds:0} ms.");
+                $"{took.TotalMilliseconds:0} ms{(made is null ? "" : DescribeSpeech(made, started, took))}.");
+        }
+    }
+
+    // The f5 worker protocol's speech (every voice engine's route): 24 kHz mono 16-bit PCM.
+    private const int SpeechSampleRate = 24_000;
+
+    /// <summary>What a voice reply made, for this host's log: when its first audio left and how much speech it held.</summary>
+    private sealed class SpeechMade
+    {
+        internal long? FirstAudioAt { get; set; }
+        internal long Samples { get; set; }
+    }
+
+    /// <summary>": 4.10 s of speech, first audio after 380 ms" and, when the speech after its first audio took longer to make
+    /// than to play (a busy or small graphics card), how long the desktop's speakers had to wait for it at least. Never the
+    /// words.</summary>
+    private string DescribeSpeech(SpeechMade speech, long started, TimeSpan took)
+    {
+        var seconds = speech.Samples / (double)SpeechSampleRate;
+        var text = FormattableString.Invariant($": {seconds:0.00} s of speech");
+        if (speech.FirstAudioAt is not { } first) return text;
+        var firstAudio = clock.GetElapsedTime(started, first);
+        text += FormattableString.Invariant($", first audio after {firstAudio.TotalMilliseconds:0} ms");
+        var behind = took - firstAudio - TimeSpan.FromSeconds(seconds);
+        if (seconds > 0 && behind > TimeSpan.Zero)
+            text += FormattableString.Invariant(
+                $"; made slower than real time, so the speakers waited at least {behind.TotalMilliseconds:0} ms for it");
+        return text;
     }
 
     private async ValueTask InvokeInferenceCancellationAsync(
@@ -95,11 +126,13 @@ internal sealed partial class GatewayHttpApplication
     }
 
     /// <summary>Streams the job's events; returns null when it finished normally, otherwise the failure code already
-    /// written to the stream (a failure before the response started is thrown).</summary>
+    /// written to the stream (a failure before the response started is thrown). For a voice reply, <paramref name="speech"/>
+    /// learns when its first audio left and how much speech it held.</summary>
     private async ValueTask<string?> StreamInferenceAsync(
         HttpContext context,
         Guid traceId,
-        GatewayInferenceRouteRegistry.GatewayInferenceJob job)
+        GatewayInferenceRouteRegistry.GatewayInferenceJob job,
+        SpeechMade? speech = null)
     {
         var request = job.Request;
         var remaining = request.DeadlineUtc - clock.GetUtcNow();
@@ -323,6 +356,8 @@ internal sealed partial class GatewayHttpApplication
                         publishedSequence++;
                         responseBytes = checked(
                             responseBytes + serialized.Length + 1);
+                        if (speech is not null && item.Kind == GatewayInferenceEventKind.AudioFrame)
+                            speech.FirstAudioAt ??= clock.GetTimestamp();
                     }
                 }
             }
@@ -459,6 +494,7 @@ internal sealed partial class GatewayHttpApplication
                 startResponse: !responseStarted,
                 job: job,
                 validatePublication: streamState.ValidatePublication).ConfigureAwait(false);
+            if (speech is not null) speech.Samples = streamState.F5FinalSampleCount;
             return null;
         }
         catch (GatewayProtocolException error)

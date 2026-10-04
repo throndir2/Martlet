@@ -28,6 +28,12 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string CharacterModelChunkPrefix = "character-model-chunk-", CharacterModelChunkSuffix = ".bin";
     internal const string CharacterModelChunkStaging = "character-model-chunk.staging";
     internal const int MaximumCharacterModelChunkBytes = 3 * 1024 * 1024;
+    /// <summary>Martlet's creations; each piece of a live creation's assets is creation-chunk-&lt;sha256&gt;.bin.</summary>
+    internal const string Creations = "creations.json", CreationsStaging = "creations.staging";
+    internal const int MaximumCreationsBytes = Martlet.Core.Creations.CreationLibrary.MaximumBytes;
+    internal const string CreationChunkPrefix = "creation-chunk-", CreationChunkSuffix = ".bin";
+    internal const string CreationChunkStaging = "creation-chunk.staging";
+    internal const int MaximumCreationChunkBytes = Martlet.Core.Creations.CreationLibrary.ChunkBytes;
     /// <summary>The shared Home Assistant connection, including the access token, for paired desktops.</summary>
     internal const string HomeAssistant = "home-assistant.json", HomeAssistantStaging = "home-assistant.staging";
     internal const int MaximumHomeAssistantBytes = 16 * 1024;
@@ -111,8 +117,8 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
-            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
+        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+            !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
         if (before is null) return null;
@@ -245,6 +251,46 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces agent.token (0600, service owner).</summary>
     internal void WriteAgentToken(byte[] bytes) => ReplaceRecovering(AgentToken, AgentTokenStaging, bytes, 128);
+
+    /// <summary>Atomically replaces creations.json (0600, service owner).</summary>
+    internal void WriteCreations(byte[] bytes) => ReplaceRecovering(Creations, CreationsStaging, bytes, MaximumCreationsBytes);
+
+    /// <summary>The file name of the creation piece with <paramref name="sha256"/> (lower-case hex).</summary>
+    internal static string CreationChunk(string sha256) =>
+        sha256 is { Length: 64 } && sha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')
+            ? CreationChunkPrefix + sha256 + CreationChunkSuffix
+            : throw Error(GatewayPersistenceFailure.InvalidPath);
+
+    private static bool IsCreationChunk(string name) =>
+        name.Length == CreationChunkPrefix.Length + 64 + CreationChunkSuffix.Length &&
+        name.StartsWith(CreationChunkPrefix, StringComparison.Ordinal) && name.EndsWith(CreationChunkSuffix, StringComparison.Ordinal) &&
+        name[CreationChunkPrefix.Length..^CreationChunkSuffix.Length].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    /// <summary>Whether the creation piece with <paramref name="sha256"/> is kept here (a regular service-owner file), without
+    /// reading it.</summary>
+    internal bool HasCreationChunk(string sha256)
+    {
+        var name = CreationChunk(sha256);
+        Validate();
+        if (fs.StatAt(DirectoryFd, name) is not { } found) return false;
+        LinuxOwnedDirectory.CheckFile(fs, found, chain[^1].Identity);
+        return true;
+    }
+
+    /// <summary>Atomically writes a creation piece (0600, service owner).</summary>
+    internal void WriteCreationChunk(string sha256, byte[] bytes) =>
+        ReplaceRecovering(CreationChunk(sha256), CreationChunkStaging, bytes, MaximumCreationChunkBytes);
+
+    /// <summary>Deletes a piece no live creation uses; false when there was none.</summary>
+    internal bool RemoveCreationChunk(string sha256)
+    {
+        var name = CreationChunk(sha256);
+        if (!HasCreationChunk(sha256)) return false;
+        Validate();
+        fs.Unlink(DirectoryFd, name);
+        fs.Flush(DirectoryFd);
+        return true;
+    }
 
     private void ReplaceRecovering(string name, string staging, byte[] bytes, int maximum)
     {

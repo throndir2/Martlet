@@ -44,13 +44,26 @@ internal sealed class HostTextClient : IHostTextClient
         var route = routes.FirstOrDefault(r => r.RouteId == HostRoute.OllamaChatRouteId && r.ModelId == model.UpstreamModelId) ??
             throw Failed("reply", ProviderFailureCode.ModelNotFound, $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();
+        // A host older than background thinks takes at most 4,096 output tokens and a minute a request (its route says how long):
+        // a think there is held to that, and the host should be updated.
+        var outputTokens = limits.MaxOutputTokens;
+        if (route.MaximumDuration <= LegacyRouteDuration && outputTokens > LegacyOutputTokens)
+        {
+            outputTokens = LegacyOutputTokens;
+            ErrorLog.Info($"Martlet host {target.HostId} takes at most {LegacyOutputTokens:N0} tokens and " +
+                $"{route.MaximumDuration.TotalSeconds:0} s a request (an older version); update it to this Martlet version for longer thinks.");
+        }
         await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.PersonalityWithNotes, history, input.UserText,
-            generation?.Temperature ?? HostTextGenerationStream.Temperature, limits.MaxOutputTokens, limits.MaxContextTokens,
+            generation?.Temperature ?? HostTextGenerationStream.Temperature, outputTokens, limits.MaxContextTokens,
             input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
             yield return deltas.Current;
     }
+
+    /// <summary>What a host's Ollama route took before background thinks: at most this long a request and this many tokens.</summary>
+    internal static readonly TimeSpan LegacyRouteDuration = TimeSpan.FromMinutes(2);
+    internal const int LegacyOutputTokens = 4_096;
 
     internal static Audio2FaceHostConnection Connect(HostTextTarget target)
     {

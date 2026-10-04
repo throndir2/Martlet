@@ -68,10 +68,21 @@ public static class BargeInPolicy
         if (cue is not null) return new(true, "a stop word", words);
         if (addressed) return new(true, "Martlet's name", words);
         if (said.All(Backchannels.Contains)) return new(false, "a quick backchannel", words);
-        return words.Words >= WordsToInterrupt(sensitivity)
-            ? new(true, $"{words.Words} words", words)
-            : new(false, "too few words", words);
+        // One word said over and over counts once: a laugh's "ha ha ha" often comes out as a word repeated ("One, one, one.").
+        var count = Math.Min(words.Words, said.Distinct(StringComparer.Ordinal).Count());
+        // A few words the engine was far from sure of are often its guess at laughter or a noise (Parakeet's English models
+        // write "Come on." or "Cosmos was" for a laugh): they don't stop a reply on their count alone. A later check of the same
+        // voice, or a stop word or Martlet's name, still does.
+        if (count <= 3 && Unsure(context.Evidence, sensitivity)) return new(false, "speech-to-text wasn't sure of the words", words);
+        return count >= WordsToInterrupt(sensitivity)
+            ? new(true, $"{count} words", words)
+            : new(false, count < words.Words ? "repeated words" : "too few words", words);
     }
+
+    // Both the mean and the least sure token's probability are low (engines that report both: Parakeet today).
+    private static bool Unsure(TranscriptionEvidence? evidence, ListeningSensitivity sensitivity) =>
+        evidence is { MeanProbability: { } mean, MinimumProbability: { } least } &&
+        mean < UtteranceFilter.For(sensitivity).MinimumProbability + 0.2 && least < UtteranceFilter.For(sensitivity).MinimumProbability * 0.8;
 }
 
 /// <summary>When to check the words of someone talking over Martlet (<see cref="BargeInPolicy"/>): once their voice has gone
@@ -92,7 +103,7 @@ public sealed class BargeInGate(ListeningSensitivity sensitivity)
     private readonly int gateFrames = Frames(BargeInPolicy.VoiceBeforeCheck(sensitivity));
     private static readonly int FirstRecheckFrames = Frames(FirstRecheck), RecheckFrames = Frames(Recheck),
         PauseFrames = Frames(Pause), GapFrames = Frames(Gap);
-    private int voiced, quiet, checkedAt;
+    private int voiced, quiet, checkedAt, heard;
 
     private static int Frames(TimeSpan time) => (int)(time.TotalMilliseconds / FrameMilliseconds);
 
@@ -102,6 +113,9 @@ public sealed class BargeInGate(ListeningSensitivity sensitivity)
     public int StretchStartFrame { get; private set; } = -1;
     /// <summary>Of the current stretch, how much was a voice.</summary>
     public TimeSpan Voice => TimeSpan.FromMilliseconds(voiced * FrameMilliseconds);
+    /// <summary>How long the current stretch has gone on, leaving out frames what this PC plays explains
+    /// (<see cref="UtteranceContext.Speech"/>).</summary>
+    public TimeSpan Speech => TimeSpan.FromMilliseconds(heard * FrameMilliseconds);
     /// <summary>Checks asked for in the current stretch.</summary>
     public int Checks { get; private set; }
 
@@ -117,9 +131,10 @@ public sealed class BargeInGate(ListeningSensitivity sensitivity)
         }
         else if (++quiet > GapFrames && voiced > 0)
         {
-            voiced = checkedAt = Checks = 0;
+            voiced = checkedAt = Checks = heard = 0;
             StretchStartFrame = -1;
         }
+        if (StretchStartFrame >= 0 && !speakers) heard++;
         Processed++;
         if (busy || StretchStartFrame < 0 || Checks >= MaximumChecks) return false;
         // Grown: enough voice for the first check, or more of it since the last. Paused: a short word just ended.

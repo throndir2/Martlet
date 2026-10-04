@@ -133,19 +133,21 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || DiagnosticsPage is null || SettingsPage is null) return;
+        if (HomePage is null || DevicesPage is null || CompanionPage is null || CreationsPage is null || DiagnosticsPage is null || SettingsPage is null) return;
         if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
+            : ReferenceEquals(sender, NavCreations) ? CreationsPage
             : ReferenceEquals(sender, NavDiagnostics) ? DiagnosticsPage
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
         openTab = null;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, DiagnosticsPage, SettingsPage })
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, CreationsPage, DiagnosticsPage, SettingsPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        if (ReferenceEquals(page, CreationsPage)) RenderCreations();
         // Windows' own Startup apps switch can change while Martlet runs.
         if (ReferenceEquals(page, SettingsPage))
         {
@@ -274,6 +276,18 @@ public partial class MainWindow
 
     // ---------- home ----------
 
+    /// <summary>Said after a job change the open conversation follows by itself (<see cref="FollowSavedSetup"/>).</summary>
+    private const string OpenConversationFollows = " An open conversation switches over before its next reply.";
+
+    /// <summary>The talk window takes a setup saved here between replies, keeping what was said so far, so switching a job's
+    /// engine, model or computer never needs the conversation reopened. Nothing happens when it already uses
+    /// <paramref name="revision"/>.</summary>
+    private void FollowSavedSetup(string? revision, string reason = "Your setup changed.")
+    {
+        if (openConversation is { } talking && revision is not null && conversation?.Configuration?.Revision != revision)
+            talking.ReloadWhenIdle(reason);
+    }
+
     private async Task RefreshHomeAsync()
     {
         if (store is null || setupService is null || closing || refreshingHome || setupOperations.IsRunning) return;
@@ -283,6 +297,9 @@ public partial class MainWindow
             var loaded = await setupService.LoadAsync(lifetime.Token);
             homeSettings = await LeaveRetiredSampleAsync(loaded, lifetime.Token) ?? loaded.Settings;
             SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
+            // No voice goes by the companion's own name: one learned by mistake is dropped (names the owner typed stay).
+            localVoices.DropCompanionNames(Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name),
+                homeSettings?.Companion?.Personas.Select(p => p.Text)));
             homeSettingsState = loaded.State;
             homeSettingsProblem = loaded.Error?.Summary;
             // The talk window stays open while you change things in Companion: it picks up a saved change once Martlet is free.

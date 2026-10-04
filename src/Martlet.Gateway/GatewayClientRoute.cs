@@ -27,7 +27,8 @@ public sealed partial class GatewayInferenceRoute
             capability.RouteId == expected.Item1 && capability.Path == expected.Item2 &&
             capability.ContractId == expected.Item3 && capability.ContractVersion == expected.Item4 &&
             capability.MaximumConcurrency == 1 && capability.Streaming &&
-            capability.MaximumDurationMilliseconds is > 0 and <= 120_000, "worker.invalid");
+            capability.MaximumDurationMilliseconds > 0 &&
+            capability.MaximumDurationMilliseconds <= GatewayInferenceProtocol.MaximumJobDuration.TotalMilliseconds, "worker.invalid");
         return new(capability.Kind, capability.RequiredRole, capability.RouteId, capability.Path,
             capability.ContractId, capability.ContractVersion, capability.DestinationId, capability.WorkerId,
             capability.AdapterVersion, capability.ModelId, capability.ModelRevision, capability.ModelSha256,

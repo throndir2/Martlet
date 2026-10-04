@@ -208,7 +208,7 @@ internal static class GatewayInferenceJson
         GatewayRules.Require(double.IsFinite(temperature) &&
             temperature is >= 0 and <= 2, "request.invalid");
         var outputTokens = checked((int)Integer(
-            fields, "maximum_output_tokens", 1, 4_096));
+            fields, "maximum_output_tokens", 1, GatewayInferenceProtocol.MaximumOllamaOutputTokens));
         var contextTokens = checked((int)Integer(
             fields, "maximum_context_tokens", 1, 32_768));
         GatewayRules.Require(outputTokens <= contextTokens, "request.invalid");

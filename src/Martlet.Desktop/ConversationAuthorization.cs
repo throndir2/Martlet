@@ -11,7 +11,7 @@ internal sealed class LiveActionException(string code) : Exception("The live act
 }
 
 // One human action, not persisted consent. Each exact runtime demand consumes an independent reservation.
-internal sealed class ConversationAuthorization : IConversationAuthorizationSource
+internal sealed class ConversationAuthorization : IConversationAuthorizationSource, ICredentialAuthority
 {
     private readonly object gate = new();
     private readonly TimeProvider clock;
@@ -278,10 +278,13 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         }
     }
 
+    Task<BoundProviderCredential?> ICredentialAuthority.ResolveAsync(ProviderCredentialBinding binding, CancellationToken token) =>
+        ResolveAsync(binding, token);
+
     public override string ToString() => nameof(ConversationAuthorization);
 }
 
-internal sealed class ConversationCredentialSource(Func<ConversationAuthorization?> active) : IProviderCredentialSource
+internal sealed class ConversationCredentialSource(Func<ICredentialAuthority?> active) : IProviderCredentialSource
 {
     public ValueTask<BoundProviderCredential?> ResolveAsync(ProviderCredentialBinding binding, CancellationToken token)
     {

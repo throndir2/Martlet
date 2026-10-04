@@ -19,7 +19,7 @@ namespace Martlet.Avatar.RendererHost;
 internal sealed class RendererWindow : Window
 {
     private readonly Stream input, output;
-    // Menu choices Martlet itself carries out (hide, open, talk, settings); null when started without it (tests).
+    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute); null when started without it (tests).
     private readonly Stream? requests;
     private readonly SemaphoreSlim requesting = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -263,6 +263,25 @@ internal sealed class RendererWindow : Window
 
     // Locked, the overlay can't be dragged, nudged, sent home or resized from here; only Martlet's window unlocks it.
     private bool placementLocked;
+    // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
+    private bool voiceMuted;
+    private MenuItem? muteItem;
+
+    private void UseVoice(bool muted)
+    {
+        if (voiceMuted == muted) return;
+        voiceMuted = muted;
+        ShowVoice();
+        ErrorLog.Info(muted ? "Martlet's voice is muted." : "Martlet's voice is unmuted.");
+    }
+
+    // The menu item carries the state: Mute voice while Martlet speaks, Unmute voice while it is muted.
+    private void ShowVoice()
+    {
+        if (muteItem is null) return;
+        muteItem.Header = voiceMuted ? "Unmute _voice" : "Mute _voice";
+        AutomationProperties.SetName(muteItem, voiceMuted ? "Unmute voice" : "Mute voice");
+    }
 
     private RendererPlacement Placement() =>
         new(placementLocked, Math.Round(Left, 2), Math.Round(Top, 2), Math.Round(FrameWidth, 2), Math.Round(Height, 2));
@@ -281,8 +300,8 @@ internal sealed class RendererWindow : Window
         viewport.PlacementLocked = placementLocked;
         viewport.Cursor = placementLocked ? Cursors.Arrow : Cursors.SizeAll;
         AutomationProperties.SetName(viewport, placementLocked
-            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom and hide options."
-            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom, position, lock and hide options.");
+            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom and hide options."
+            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock and hide options.");
     }
 
     /// <summary>Puts the overlay back where it was locked, at that size, when the character's frame would still be on a screen;
@@ -409,6 +428,8 @@ internal sealed class RendererWindow : Window
             if (item.Parent is ContextMenu { IsOpen: true } owner) owner.IsOpen = false;
         }
         var talk = Item("_Talk to Martlet", "CharacterTalk", null, () => Request("talk"));
+        // Muting goes through Martlet, which saves it (Speak Martlet's replies aloud) and silences a reply it is speaking.
+        var mute = muteItem = Item("Mute _voice", "CharacterMuteVoice", null, () => Request(voiceMuted ? "unmute" : "mute"));
         var open = Item("Open _Martlet", "CharacterOpenMartlet", null, () => Request("open"));
         var settings = Item("Character _settings", "CharacterSettings", null, () => Request("settings"));
         var zoomIn = Item("Zoom _in", "CharacterZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
@@ -425,7 +446,7 @@ internal sealed class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, open, settings, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
+            Items = { talk, mute, open, settings, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -433,7 +454,8 @@ internal sealed class RendererWindow : Window
         menu.Opened += (_, _) =>
         {
             // Until Martlet has loaded the character there is no one to ask; Hide still closes the overlay then.
-            talk.IsEnabled = open.IsEnabled = settings.IsEnabled = placeLock.IsEnabled = CanRequest;
+            talk.IsEnabled = mute.IsEnabled = open.IsEnabled = settings.IsEnabled = placeLock.IsEnabled = CanRequest;
+            ShowVoice();
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
             reset.IsEnabled = CanResetZoom;
@@ -714,6 +736,7 @@ internal sealed class RendererWindow : Window
             var load = RendererProtocol.Data<RendererLoad>(message);
             ApplyOverlayTheme(load.DarkTheme, load.ThemeColors);
             if (load.Placement is { Locked: true } locked) RestorePlacement(locked);
+            UseVoice(load.VoiceMuted);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
             foreach (var asset in assets.Assets) resources.Add(RendererResourcePolicy.CanonicalName("asset/" + asset.Name), asset);
@@ -798,8 +821,13 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "snapshot"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "snapshot" or "gaze"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "gaze")
+                {
+                    await ReplyAsync("look", Gaze(RendererProtocol.Data<RendererGaze>(message)));
+                    continue;
+                }
                 if (message.Kind == "home")
                 {
                     ResetToDefault();
@@ -810,6 +838,12 @@ internal sealed class RendererWindow : Window
                 {
                     LockPlacement(RendererProtocol.Data<RendererLock>(message).Locked);
                     await ReplyAsync("placement", Placement());
+                    continue;
+                }
+                if (message.Kind == "voice")
+                {
+                    UseVoice(RendererProtocol.Data<RendererVoice>(message).Muted);
+                    await ReplyAsync("ok", new { });
                     continue;
                 }
                 if (message.Kind == "zoom")
@@ -877,40 +911,95 @@ internal sealed class RendererWindow : Window
         lifetime.Cancel();
     }
 
-    // The character's head and eyes follow the mouse cursor; messages are fire-and-forget and never replied to.
+    // The character's head and eyes follow the mouse cursor, or for a while a point on the desktop Martlet asked it to look at
+    // ("gaze"); messages to the browser are fire-and-forget and never replied to.
     private void StartLookTracking()
     {
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        double lastX = double.NaN, lastY = double.NaN;
         timer.Tick += (_, _) =>
         {
-            if (closed || failure.Failed || browser.CoreWebView2 is null) { timer.Stop(); return; }
-            if (!GetCursorPos(out var cursor)) return;
-            Point face;
-            // The face sits at 30% height when unzoomed; follow it through the camera zoom, within the character's frame.
-            var faceX = (viewX + 1) / 2;
-            var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
-            try
-            {
-                face = viewport.PointToScreen(new Point(FrameOffset(viewport.ActualWidth) + viewport.ActualWidth * FrameFraction * faceX,
-                    viewport.ActualHeight * faceY));
-            }
-            catch (InvalidOperationException) { return; }
-            var x = Math.Clamp((cursor.X - face.X) / 700, -1, 1);
-            var y = Math.Clamp((face.Y - cursor.Y) / 700, -1, 1);
-            if (Math.Abs(x - lastX) < 0.01 && Math.Abs(y - lastY) < 0.01) return;
-            lastX = x;
-            lastY = y;
-            try
-            {
-                browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "look", data = new { x, y } },
-                    RendererProtocol.Json));
-            }
-            catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException)
-            { timer.Stop(); }
+            if (closed || failure.Failed || browser.CoreWebView2 is null || !Look()) timer.Stop();
         };
         Closed += (_, _) => timer.Stop();
         timer.Start();
+    }
+
+    // Where Martlet asked the character to look (physical screen pixels, like its screenshots) and until when; the direction
+    // the browser was last given (+x right, +y up, -1 to 1) and whether that was toward the point.
+    private Point? gazePoint;
+    private long gazeUntil;
+    private double lookX = double.NaN, lookY = double.NaN;
+    private bool lookingAtPoint;
+
+    /// <summary>Turns the head and eyes toward the mouse, or toward the asked-for point while it holds. False once the browser
+    /// can't take messages any more.</summary>
+    private bool Look(bool always = false)
+    {
+        if (LookDirection() is not { } look) return true;
+        if (!always && Math.Abs(look.X - lookX) < 0.01 && Math.Abs(look.Y - lookY) < 0.01) return true;
+        lookX = look.X;
+        lookY = look.Y;
+        if (browser.CoreWebView2 is null || failure.Failed) return true;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "look", data = new { x = look.X, y = look.Y } },
+                RendererProtocol.Json));
+            return true;
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { return false; }
+    }
+
+    private (double X, double Y)? LookDirection()
+    {
+        Point face;
+        // The face sits at 30% height when unzoomed; follow it through the camera zoom, within the character's frame.
+        var faceX = (viewX + 1) / 2;
+        var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
+        try
+        {
+            face = viewport.PointToScreen(new Point(FrameOffset(viewport.ActualWidth) + viewport.ActualWidth * FrameFraction * faceX,
+                viewport.ActualHeight * faceY));
+        }
+        catch (InvalidOperationException) { return null; }
+        Point target;
+        lookingAtPoint = gazePoint is not null && Environment.TickCount64 < gazeUntil;
+        if (lookingAtPoint)
+        {
+            target = gazePoint!.Value;
+            face = Physical(face);
+        }
+        else
+        {
+            gazePoint = null;
+            if (!GetCursorPos(out var cursor)) return null;
+            target = new(cursor.X, cursor.Y);
+        }
+        return (Math.Clamp((target.X - face.X) / 700, -1, 1), Math.Clamp((face.Y - target.Y) / 700, -1, 1));
+    }
+
+    /// <summary>A screen point as this window's process sees it, in physical pixels (unchanged where Windows doesn't scale it).</summary>
+    private Point Physical(Point point)
+    {
+        var native = new CursorPoint { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) };
+        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        return handle != IntPtr.Zero && LogicalToPhysicalPointForPerMonitorDPI(handle, ref native) ? new(native.X, native.Y) : point;
+    }
+
+    /// <summary>Looks at the asked-for point for a while (or the mouse again without one) and says what the character looks at.</summary>
+    internal RendererLook Gaze(RendererGaze gaze)
+    {
+        if (gaze.X is null && gaze.Y is null) gazePoint = null;
+        else if (gaze.X is { } x && gaze.Y is { } y && double.IsFinite(x) && double.IsFinite(y) && Math.Abs(x) < 1_000_000 &&
+            Math.Abs(y) < 1_000_000 && double.IsFinite(gaze.Seconds))
+        {
+            gazePoint = new(x, y);
+            gazeUntil = Environment.TickCount64 +
+                (long)(Math.Clamp(gaze.Seconds, RendererGaze.MinimumSeconds, RendererGaze.MaximumSeconds) * 1000);
+        }
+        else throw new InvalidDataException("Gaze is invalid.");
+        Look(always: true);
+        return new(lookingAtPoint ? "point" : "mouse", double.IsFinite(lookX) ? Math.Round(lookX, 3) : 0,
+            double.IsFinite(lookY) ? Math.Round(lookY, 3) : 0);
     }
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -919,6 +1008,10 @@ internal sealed class RendererWindow : Window
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out CursorPoint point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool LogicalToPhysicalPointForPerMonitorDPI(IntPtr window, ref CursorPoint point);
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct NativeRect { public int Left, Top, Right, Bottom; }

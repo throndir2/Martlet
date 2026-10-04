@@ -114,14 +114,14 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.31.0, )",
-          "Martlet.Core": "[0.31.0, )"
+          "Martlet.Avatars": "[0.33.0, )",
+          "Martlet.Core": "[0.33.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.31.0, )"
+          "Martlet.Core": "[0.33.0, )"
         }
       },
       "martlet.core": {
