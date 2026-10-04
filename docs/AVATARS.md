@@ -3,7 +3,9 @@
 **Default character shipped, 2026-09-28.** Official builds bundle the Live2D
 Cubism runtime and the Hiyori sample model. **Show character** on the main window
 opens her as a transparent desktop overlay: authored idle motions, eye blink,
-breathing, physics, cursor look-at and lip-sync. Automatic lip-sync uses a local
+breathing, physics, cursor look-at and lip-sync (while Martlet watches your screen
+it can [decide where she looks](SCREEN_COMMENTARY.md#where-the-character-looks):
+your mouse, something that just popped up, or what it remarks on). Automatic lip-sync uses a local
 Audio2Face service when one is running on the PC, else a paired Martlet host that
 runs Audio2Face on its NVIDIA GPU (host role installed with [`martlet-host add audio2face`](../deploy/host/README.md)),
 else the loudness of Martlet's own voice; no microphone or upload is used. Users can switch
@@ -80,6 +82,12 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **Where it looks**: the head and eyes follow the mouse, or with Companion ›
+  Vision › **Where the character looks** set to *Martlet decides*, glance at
+  something that just changed on the watched screen or at the part of it a
+  screen glance's Thinking model names with a look tag (`{look top right}`).
+  Look tags are never emotes; see
+  [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 

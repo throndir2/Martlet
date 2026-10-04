@@ -181,16 +181,18 @@ what it prints go to the Thinking model.
 
 ### Thinking longer
 
-**Companion > Deep thinking > Thinking longer** (on by default) gives every reply on a
-route that does function calling Martlet's own `think_longer` (`task`, the
-complete instruction, and an optional `reason`) and `cancel_thinking` (optional
-`id`). The call never asks first and returns at once; the task is worked out in
-a background request with Thinking steps on, by Deep thinking (the Thinking
-model, another of your computers, Ollama on this PC or a cloud provider, chosen
-on each PC), and brought up when it's done
+**Companion > Deep thinking > Thinking longer** (on by default; *Where it thinks* ›
+*Off* turns it off) gives every reply on a route that does function calling
+Martlet's own `think_longer` (`task`, the complete instruction, and an optional
+`reason`) and `cancel_thinking` (optional `id`), while Deep thinking can run where
+it is set to think. The call never asks first and returns at once; the task is
+worked out in parallel, in a background request with Thinking steps on, by Deep
+thinking (the Thinking model when its provider answers several requests at once,
+another of your computers, a second model in Ollama on this PC or a cloud
+provider, chosen on each PC), and brought up when it's done
 ([Thinking longer and background work](CONVERSATION.md#thinking-longer-and-background-work)).
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
-started think-1`); the desktop log notes each start, pause and end without the
+started think-1`); the desktop log notes each start, fit check and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
 
 ### Searching past conversations
@@ -717,6 +719,30 @@ Thinking model is sent). With `answer`, a simulated Thinking reply such as
 `1: blush | - | when shy`, `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
+
+`character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
+(Companion › Vision › Where the character looks): `saved` (`mouse`, the
+default, or `martlet decides`, from `DecideGaze` in the `dataDirectory`'s
+`talk-preferences.json`), the change `grid` (32×18 cells, `ChangeThreshold`
+and the stronger `CharacterChangeThreshold` under the character's overlay) and
+`holdSeconds` (`glance`, `chosen` and the `gap` between glances), then
+`scenarios`: the production `GazeDirector` on generated 1920×1080 pictures
+(NOT screenshots; nothing is captured or shown), each with its `expected` and
+actual `verdict` and the `spot` looked at (`x`, `y` in physical pixels,
+`Place`, `reason`, `holdSeconds`): `still`, a `notification` popping up near
+the lower-right corner (a glance at the bottom right),
+`anotherChangeRightAfter` (`TooSoon`), `sameSpotAgainSoon` (`Seen`),
+`sameSpotAgainLater` (a glance), `notificationBehindTheCharacter` (a glance),
+`onlyTheCharacterMoved` and `speechBubble` (`OnlyCharacter`), `newScene`
+(`Everywhere`), `byTheMouse` (`ByMouse`) and `changesAllOver` (`Scattered`);
+`ok` is true when every verdict is as expected. `tags` gives where each look tag
+points on one screen and on two side by side, `notTags` lists tags that aren't
+look tags, `prompt` is what a screen glance is told (`instructions`, with the
+data directory's edited prompts, and `tags`; null when *Where the character
+looks* is emptied) and `replies` shows what the production segmenter makes of
+glance answers (`answer` replaces the samples): `spoken`, `shown`, `quiet`
+(a `[pass]`) and `looks` (each look cue's tag, `place` and `afterPiece`, -1 for
+a look without words). Read-only; it contacts nothing.
 
 `character_theme` makes a character model's colors and palettes the way
 Settings › Appearance does ([Character palettes](UI_DESIGN.md#character-palettes)),
@@ -1410,24 +1436,27 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 
 `think_longer_status` shows Companion › **Deep thinking** as replies use it
 (optional absolute `dataDirectory`, default the current user's): `settings`,
-`thinkLonger` (`enabled`, on by default; `effort` *Medium* or *High*; `minutes`
-2, 5 or 10; `perHour` 3, 6 or 12; `delivery` *WhenFree* or *NextMessage*;
-`chosen`), `thinking` (the Thinking route's `routeType`, `model`,
-`supportsTools`, `toolsRejected` from `tools-unsupported.json`, `offered`,
+`thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
+*Off*; `effort` *Medium* or *High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12;
+`delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
+route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
+`tools-unsupported.json`, `offered` (only where Deep thinking can run),
 `onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
 *loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
 `model`, `hostId`, an endpoint's `origin`, `ownKey` and `usesThinkingKey`
-(never a key), `parallel`/`waitsForQuiet` and `why` from the production
-`DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at that
-effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
+(never a key), `available` (and `parallel`, the same: a think always runs
+alongside the conversation), `checksFit` (a second model in Ollama on this PC,
+checked to fit beside Thinking's before each think) and `why` from the
+production `DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at
+that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
 `outputTokens` and `carriesTools`, true only with the Thinking model), `tools`
 (`think_longer` and `cancel_thinking` exactly as the model gets them), the
 filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
 `resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
-`startedLastHour`; and the running think's `where`, `parallel`, `why`,
-`waitsForQuiet`, `attempts` and `pauses`),
+`startedLastHour`; and the running think's `where`, `available`, `checksFit`,
+`why`, `parallel` and `attempts`),
 never a task or result. Read-only.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
@@ -1448,25 +1477,31 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped). `local`: a think for a model on this PC waits
-for a quiet moment without sending anything, stops its request when the
-conversation needs the model (`stoppedAfterMs`), sends nothing while paused and
-then finishes from the same request (`attempts` 2, `pauses` 1,
-`sameRequestAgain`). `plans`: the production `DeepThinkingPlan` for eight setups
-(Same as Thinking with Thinking local or on OpenRouter; OpenRouter, or Ollama on
-this PC, with Thinking local; Ollama on this PC with the voice on another
-computer or in this PC's host service; a paired computer that does nothing else,
-or also speaks), each `parallel` against `expected` with its `why`.
-`parallel`: a think on a destination of its own (the plan says parallel; a
-second fixture endpoint stands in for the other machine) keeps working while
-three replies go to the conversation's endpoint (`replyFirstWordsMs`), is never
-stopped (`attempts` 1, `pauses` 0) and its request has no tools, Thinking steps
-on and the conversation then the task. `hostFit`: a 160-message conversation
+the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
+for eleven setups (Same as Thinking with Thinking on this PC, on OpenRouter or
+on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
+another model or Thinking's own beside Thinking local, or with the voice on
+another computer or in this PC's host service; a paired computer that does
+nothing else, also speaks, or also does Thinking), each `available` against
+`expected` with `checksFit` and its `why`.
+`parallel`: a think on a destination of its own (a second fixture endpoint
+stands in for the other machine) keeps working while three replies go to the
+conversation's endpoint (`replyFirstWordsMs`), is never stopped (`attempts` 1)
+and its request has no tools, Thinking steps on and the conversation then the
+task. `sideBySide`: the production `OllamaSideBySide` reads a fixture Ollama's
+`/api/ps` and `/api/tags` (`readFromOllama`, `loaded`, `downloads`) and decides
+whether a second model fits beside Thinking's (`decisions`, each `fits` against
+`expected` with `needGb`, `roomGb` and `why`: a large model on a 24 GB and a
+12 GB card, a small one on a 12 GB card free or filled by a game, only
+Windows' total known, graphics memory unknown, Thinking's own model, a model
+not downloaded, both already loaded, Thinking's already partly on the
+processor), and once the think's model has loaded
+whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
+each `stops` against `expected`). `hostFit`: a 160-message conversation
 fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
 kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
-this PC the tool returned in 5 ms, a paused think's request was gone 123-140 ms
-later (the fixture writes every 50 ms) and replies beside a parallel think
-answered in 2 ms. Loopback only; reads no credentials.
+this PC the tool returned in 33 ms and replies beside a parallel think answered
+in 2-7 ms. Loopback only; reads no credentials.
 
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
@@ -1656,7 +1691,7 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Where the character looks: *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -2373,7 +2408,12 @@ looks once you're done talking.*, *Noticed a notification at 10:17 PM but
 didn't look: you seem away.*) and whether your last message went with the
 picture (*Your message at 10:14 PM went with it.*); it never contains window
 titles; to rehearse a flash, show any test window minimized and call
-`FlashWindowEx` on it), `LiveContext` (*Keeps the last N
+`FlashWindowEx` on it), `LiveGaze` (while Martlet decides where the character
+looks and watches your screen: what its eyes are on now, *Looking at your
+mouse: nothing new on screen.*, *Glancing at something new at the bottom right
+of your screen.* or *Looking at the top right of your screen, where Martlet
+chose to look.*, and when they last looked away; never what is on screen),
+`LiveContext` (*Keeps the last N
 exchanges in mind, about T tokens of its C-token context.*, or *Replies send the
 newest that fit its C-token context.* once they outgrow it, followed by *Last
 reply: P% of its N input tokens came from the model's cache.* once the Thinking
@@ -2386,8 +2426,8 @@ forgets them so the next reply starts fresh, adds the note *Context refreshed.*
 to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
 works in the background or a finished job waits to be brought up: *Working in
 the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
-it.*, *think-1 waiting for a quiet moment*, *think-1 paused while you talk
-(0:30)*, *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
+it.*, *think-1 checking it fits beside Thinking* (a second model in Ollama on
+this PC, before it starts), *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
 *... when you talk next.*; never what a job is about), each job's chip
 `LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
 so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
@@ -2396,31 +2436,43 @@ line reading *Starting to think it over in the background…* while
 `think_longer` runs and *Martlet is bringing up what it worked on…* while
 Martlet's own report is on its way; Companion › **Deep thinking**'s
 `DeepThinkingNow` (*Thinks on diva (gemma4:27b), in parallel with the
-conversation.*, *Thinks on the Thinking model (gemma4:e4b), in quiet moments.*,
-or *Off. When on, it thinks on ...*) and `DeepThinkingParallel` (why: *Thinking
-runs on this PC and its server answers one request at a time, so a think waits
-for quiet moments.*, *diva does none of the conversation's jobs, so a think runs
-there alongside the conversation.*), `ThinkLongerOn` (*Let Martlet think longer
-when it needs to*; `checkedState` is the saved choice), `ThinkLongerStatus`
+conversation.*, *On, but it can't think on the Thinking model (gemma4:e4b), so
+Martlet doesn't offer to think things over. Choose another place below.*, or
+*Off. Martlet answers everything right away and never thinks in the
+background.*) and `DeepThinkingParallel` (why: *Thinking's model (gemma4:e4b)
+runs on this PC and can't think something over while it answers you. ...*,
+*It runs as a second model beside Thinking's gemma4:e4b on this PC, ...*, *diva
+does none of the conversation's jobs, so a think runs there alongside the
+conversation.*), `ThinkLongerStatus`
 (*On. When a task needs it, Martlet says it'll think it over and works on it in
 the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
 talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
 from working: no Thinking, a paired host's model, a model that turned tools
-down) and the choices `ThinkLongerEffort`, `ThinkLongerTime`,
-`ThinkLongerPerHour` and `ThinkLongerDelivery` (returned; `ui_toggle` and
-`ui_select` on them save the reply settings, so they need
+down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
+`ThinkLongerTime`, `ThinkLongerPerHour` and `ThinkLongerDelivery` (returned;
+`ui_select` on them saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
-`DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
-`DeepPlace-Cloud` (each only shows its card): each paired computer's
+`DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
+`DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what
+Same as Thinking thinks with, or why Thinking's own model can't think here),
+each paired computer's
 `DeepThinkingHost-<host ID>` (*diva: Ollama runs gemma4:27b.*, *Thinks here
 (...)*, *Ollama isn't installed there...*) or `DeepThinkingHosts` when none is
-paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded) and
-`DeepThinkingKeyStatus` (what the key field will do; never a key or typed base
-URL). `DeepThinkingUseSame`, `DeepThinkingUseHost-<host ID>` (checks that
-computer and saves its Ollama route), `DeepThinkingUseLocal` and
-`DeepThinkingSaveCloud` (with `DeepThinkingProvider`, `DeepThinkingBaseUrl`,
-`DeepThinkingModel`, `DeepThinkingKey` and `DeepThinkingConsent`) save
-`deep-thinking.json` and need `--allow-ui-effects`; the next think uses it.
+paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
+`DeepThinkingLocalFit` (whether the model in `DeepThinkingLocalModel` fits
+beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
+`/api/tags` and the NVIDIA driver without loading anything: *Fits: gemma4:e2b
+(about 5.3 GB) fits beside ...*, *Doesn't fit: ... Choose a smaller model.*,
+*... is Thinking's own model ...*, or *Thinking runs elsewhere, so ... has
+Ollama on this PC to itself ...*) and `DeepThinkingKeyStatus` (what the key
+field will do; never a key or typed base URL). `DeepThinkingTurnOff` (Off;
+saves the reply settings), `DeepThinkingUseSame`, `DeepThinkingUseHost-<host
+ID>` (checks that computer and saves its Ollama route), `DeepThinkingUseLocal`
+(refuses Thinking's own model) and `DeepThinkingSaveCloud` (with
+`DeepThinkingProvider`, `DeepThinkingBaseUrl`, `DeepThinkingModel`,
+`DeepThinkingKey` and `DeepThinkingConsent`) save `deep-thinking.json` (and turn
+Deep thinking back on when it was off) and need `--allow-ui-effects`; an open
+conversation's next reply and think use it.
 Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
@@ -2671,7 +2723,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check` and `parakeet_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

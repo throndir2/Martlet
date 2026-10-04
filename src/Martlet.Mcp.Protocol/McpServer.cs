@@ -303,6 +303,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
             answer = new { type = "string" }
         }),
+        Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
+            "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
+            "decides), then a rehearsal of the production decision (Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
+            "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
+            "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
+            "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
+            "the spot looked at (ok: all as expected). Also where each look tag points on one and two screens, the screen glance's " +
+            "look instructions (the data directory's edited prompts included) and what the production segmenter makes of glance " +
+            "answers that start with a look tag (spoken, shown, quiet, the look cue); answer replaces the sample answers. Reads " +
+            "only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }
+        }),
         Tool("character_theme", "A character model's colors and palettes as Settings > Appearance makes them (docs/UI_DESIGN.md " +
             "\"Character palettes\"): modelPath (a .model3.json or .vrm on this PC), else the model dataDirectory's avatar.json shows, " +
             "else the built-in character. Returns the main colors read from its textures (hex, share, kind, name), the colors the " +
@@ -617,16 +630,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
-        Tool("think_longer_status", "Companion > Replies > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
+        Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
-            "(on by default, effort, time limit, hourly limit, when it shares the result) and whether any was chosen, the Thinking " +
-            "route (whether it does function calling, whether the model turned tools down), Companion > Deep thinking (this PC's " +
-            "deep-thinking.json: same as Thinking, an endpoint or a paired computer, never a key; whether a think runs in parallel " +
-            "with the conversation or waits for quiet moments and why, and what it sends for Thinking steps at that effort), " +
-            "think_longer and cancel_thinking exactly as the Thinking model gets them with the Thinking longer prompt, and the " +
-            "desktop's background-jobs.json: each running or finished job's id, kind, state, progress, times, result length, " +
-            "problem and delivery (never its task or result), how many thinks started in the last hour, and the running think's " +
-            "requests and pauses. Read-only.", new
+            "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
+            "was chosen, the Thinking route (whether it does function calling, whether the model turned tools down, whether " +
+            "think_longer is offered), Companion > Deep thinking (this PC's deep-thinking.json: same as Thinking, an endpoint or a " +
+            "paired computer, never a key; whether a think can run there alongside the conversation and why: Deep thinking needs a " +
+            "model of its own, never Thinking's own model on this PC or a paired computer; whether a second model in Ollama on this " +
+            "PC is checked to fit beside Thinking's first; and what it sends for Thinking steps at that effort), think_longer and " +
+            "cancel_thinking exactly as the Thinking model gets them with the Thinking longer prompt, and the desktop's " +
+            "background-jobs.json: each running or finished job's id, kind, state, progress, times, result length, problem and " +
+            "delivery (never its task or result), how many thinks started in the last hour, and where the running think works. " +
+            "Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -636,11 +651,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "calls think_longer (the call returns at once and the reply completes), the background request (Thinking steps on, its " +
             "own output budget, the reply's instructions, tools and messages unchanged before the task), delivery as a message at " +
             "the end of the conversation (as soon as Martlet is free, or in the notes of the next message), the limits (one think " +
-            "at a time beside a song job, the hourly limit, Cancel, Martlet's cancel, the time limit, the conversation ending) and, " +
-            "for a model on this PC, a think waiting for a quiet moment, stopping at once when the conversation needs the model " +
-            "and starting again from the same request; the production Deep thinking plan for eight setups (parallel or waiting); a " +
+            "at a time beside a song job, the hourly limit, Cancel, Martlet's cancel, the time limit, the conversation ending); the " +
+            "production Deep thinking plan for eleven setups (whether a think can run there, and whether it is checked to fit); a " +
             "think on a destination of its own running in parallel while replies go to the conversation's endpoint (no tools, " +
-            "Thinking steps on, never stopped); and a long conversation fitted into a paired computer's 16 KiB and 16 messages. " +
+            "Thinking steps on, never stopped); the production side-by-side check for a second model in Ollama on this PC (a " +
+            "fixture Ollama's /api/ps and /api/tags, graphics cards of several sizes, and stopping when loading it pushed " +
+            "Thinking's model off the card); and a long conversation fitted into a paired computer's 16 KiB and 16 messages. " +
             "reasoningMs (200-3000, default 1200) is how long the fixture's hidden " +
             "reasoning takes. Loopback only; reads no credentials.", new
         {
@@ -769,6 +785,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
+                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "answer"), OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), OptionalString(arguments, "name"),

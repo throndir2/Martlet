@@ -36,6 +36,7 @@ public static class PromptCatalog
     public const string GlanceCamera = "glance_camera";
     public const string GlanceRemarks = "glance_remarks";
     public const string GlanceAttention = "glance_attention";
+    public const string GlanceLook = "glance_look";
     public const string CommentaryScreen = "commentary_screen";
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
@@ -142,6 +143,13 @@ public static class PromptCatalog
         "Write a tag exactly as shown, for example \"Oh, stop it {example} you're too kind.\" Use one when it fits how you feel or " +
         "what you do: at most two in a reply, and many replies need none. The character acts the tags out; they are never shown " +
         "or spoken. Never write tags that aren't listed.";
+
+    public const string DefaultGlanceLookInstructions =
+        "You also appear on the user's screen as an animated character whose eyes follow their mouse. When something specific " +
+        "in the picture catches your eye, start your reply with the tag for where it is, and the character looks there for a " +
+        "moment:\n{tags}\nIt works before a remark and before [{silent}]. Use at most one, and only for something worth a look " +
+        "(something new, something moving, or what you remark on); otherwise write none and the character keeps watching their " +
+        "mouse. The tags are never shown or spoken.";
 
     public const string DefaultCharacterActionNamingInstructions =
         "You set up an animated desktop character (a Live2D or VRM model) for Martlet, a voice companion. Each numbered item is one " +
@@ -354,6 +362,12 @@ public static class PromptCatalog
             "(Screen glance: {what}. Active window: \"{title}\".{remarks} If it is a message, call or reminder they would want to " +
             "know about, give a quick heads-up: who or which app it is from, never the message itself. Otherwise reply [{silent}].)",
             ["what", "title", "remarks", "silent"]),
+        new(GlanceLook, VisionGroup, "Where the character looks",
+            "Added to screen glances while Companion › Vision › Where the character looks is Martlet decides and the character " +
+            "shows, so the Thinking model can turn the character's eyes to a part of the picture. {tags} lists the nine look tags, " +
+            "one per line with where each looks; {silent} is the word for staying quiet. Empty it and only what changes on screen " +
+            "draws the character's eyes.",
+            DefaultGlanceLookInstructions, ["tags", "silent"]),
         new(SeenWithMessage, VisionGroup, "Screen with your message",
             "Added to replies while vision is on: the newest picture of what Martlet watches goes with what you type or say. " +
             "{source} says what the picture shows.",
