@@ -141,6 +141,9 @@ internal static class VoiceEngineCheck
                 : null;
             object? runtime = root.TryGetProperty("worker", out var worker) && worker.ValueKind == JsonValueKind.Object &&
                 worker.TryGetProperty("runtime", out var r) && r.ValueKind == JsonValueKind.Object ? r.Clone() : null;
+            // Chatterbox's idle check (checks, every_seconds, fastest_ms, last_ms): how long running the model briefly took
+            // while nobody spoke; a slow one means the card was busy or Windows had moved the model out of graphics memory.
+            object? idleCheck = root.TryGetProperty("idle_check", out var idle) && idle.ValueKind == JsonValueKind.Object ? idle.Clone() : null;
             return new
             {
                 answered = true,
@@ -148,7 +151,8 @@ internal static class VoiceEngineCheck
                 state = Text("state"),
                 ready = root.TryGetProperty("ready", out var ready) && ready.ValueKind == JsonValueKind.True,
                 error = Text("error"),
-                runtime
+                runtime,
+                idleCheck
             };
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)

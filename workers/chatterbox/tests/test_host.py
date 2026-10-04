@@ -191,12 +191,12 @@ class EngineFailureTests(unittest.TestCase):
         import martlet_chatterbox_host as host
         cls.host = host
 
-    def run_job(self, generate):
+    def run_job(self, generate, chunks=None):
         host = self.host
         engine = host.EngineHost()
         engine.model, engine.engine_kind, engine.state = object(), "chatterbox", "busy"
         engine.identity = host._identity("chatterbox")
-        request = host._parse_request(request_body(chunks=[{"index": 0, "chunk_id": "a", "text": "hello"}]))
+        request = host._parse_request(request_body(chunks=chunks or [{"index": 0, "chunk_id": "a", "text": "hello"}]))
         job = host.Job(request, engine.identity)
         engine.active = job
         original = host._real_generate_pcm
@@ -244,9 +244,127 @@ class EngineFailureTests(unittest.TestCase):
         self.assertEqual(error["code"], "internal_failure")
         self.assertIn("ValueError: bad tensor shape", error["summary"])
         self.assertNotIn("second line", error["summary"])
+        self.assertNotIn("restarting", error["summary"])
         self.assertEqual(engine.state, "failed")
         self.assertIsNone(engine.model)
         self.assertIn("ValueError: bad tensor shape", engine.error)
+        self.assertFalse(engine.restarting)
+
+    def test_a_broken_graphics_context_restarts_the_service(self):
+        host = self.host
+        restarts = []
+        saved = host._cuda_broken, host._restart_process, host.RESTART_DELAY_SECONDS
+        host._cuda_broken = lambda device: "AcceleratorError: CUDA error: an illegal memory access was encountered"
+        host._restart_process = lambda: restarts.append(time.monotonic())
+        host.RESTART_DELAY_SECONDS = 0.01
+        try:
+            def generate(model, text, path):
+                raise RuntimeError("CUDA error: an illegal memory access was encountered")
+            engine, events = self.run_job(generate)
+            deadline = time.monotonic() + 5
+            while not restarts and time.monotonic() < deadline:
+                time.sleep(0.01)
+        finally:
+            host._cuda_broken, host._restart_process, host.RESTART_DELAY_SECONDS = saved
+        # The reply still says why it failed, then the service exits so Docker starts it with a fresh CUDA context; meanwhile it
+        # loads nothing (a reload in the broken context would fail every reply) and refuses replies with why.
+        self.assertEqual(events[-1]["kind"], "failed")
+        self.assertIn("the voice service is restarting", events[-1]["error"]["summary"])
+        self.assertEqual(len(restarts), 1)
+        self.assertTrue(engine.restarting)
+        self.assertEqual(engine.state, "failed")
+        self.assertIn("CUDA context broke", engine.error)
+        engine.start_loading()
+        self.assertFalse(engine.loading)
+
+    def test_quotation_marks_are_not_spoken(self):
+        host = self.host
+        self.assertEqual(host._speakable("\"Hello,\" she said.  \u201cIt's fine!\u201d"), "Hello, she said. It's fine!")
+        spoken = []
+        def generate(model, text, path):
+            spoken.append(text)
+            return b"\x01\x00" * 480
+        _, events = self.run_job(generate, chunks=[{"index": 0, "chunk_id": "a", "text": "\u201c \u201d"},
+                                                   {"index": 1, "chunk_id": "b", "text": "He said \"hi\"."}])
+        # A piece of nothing but quotation marks completes empty instead of the library's "You need to add some text" line.
+        self.assertEqual(spoken, ["He said hi."])
+        self.assertEqual([e["chunk_index"] for e in events if e["kind"] == "chunk_completed"], [0, 1])
+        self.assertEqual(events[-1]["kind"], "completed")
+
+
+class IdleCheckTests(unittest.TestCase):
+    """The idle check that keeps the model in graphics memory while nobody speaks, in process with a stand-in for the model
+    (FIXTURE - NOT AI)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT))
+        import martlet_chatterbox_host as host
+        cls.host = host
+
+    def engine(self, idle_pass):
+        class Fast:
+            def idle_pass(self, cancelled):
+                idle_pass(cancelled)
+
+        engine = self.host.EngineHost()
+        engine.model, engine.fast, engine.engine_kind, engine.state = object(), Fast(), "chatterbox", "ready"
+        engine.last_activity = time.monotonic() - self.host.IDLE_CHECK_SECONDS - 1
+        return engine
+
+    def test_runs_only_after_the_model_was_idle(self):
+        calls = []
+        engine = self.engine(lambda cancelled: calls.append(1))
+        self.assertTrue(engine.idle_check())
+        self.assertFalse(engine.idle_check())  # it just ran: not idle long enough again
+        self.assertEqual(len(calls), 1)
+        status = engine.status()["idle_check"]
+        self.assertEqual(status["checks"], 1)
+        self.assertIsNotNone(status["last_ms"])
+        engine.last_activity -= self.host.IDLE_CHECK_SECONDS + 1
+        engine.active = object()  # a reply is being spoken
+        self.assertFalse(engine.idle_check())
+        self.assertEqual(len(calls), 1)
+
+    def test_a_reply_stops_the_idle_check_at_once(self):
+        running = threading.Event()
+        def idle_pass(cancelled):
+            running.set()
+            deadline = time.monotonic() + 10
+            while not cancelled() and time.monotonic() < deadline:
+                time.sleep(0.005)
+        engine = self.engine(idle_pass)
+        thread = threading.Thread(target=engine.idle_check)
+        thread.start()
+        self.assertTrue(running.wait(5))
+        started = time.monotonic()
+        engine.wait_admissible(5)
+        waited = time.monotonic() - started
+        thread.join(5)
+        self.assertLess(waited, 1.0)
+        self.assertIsNone(engine.idle)
+        self.assertEqual(engine.status()["idle_check"]["checks"], 0)  # a stopped check isn't a measurement
+
+    def test_a_broken_graphics_context_found_while_idle_restarts_the_service(self):
+        host = self.host
+        restarts = []
+        saved = host._cuda_broken, host._restart_process, host.RESTART_DELAY_SECONDS
+        host._cuda_broken = lambda device: "AcceleratorError: CUDA error: unspecified launch failure"
+        host._restart_process = lambda: restarts.append(1)
+        host.RESTART_DELAY_SECONDS = 0.01
+        try:
+            def idle_pass(cancelled):
+                raise RuntimeError("CUDA error: unspecified launch failure")
+            engine = self.engine(idle_pass)
+            self.assertTrue(engine.idle_check())
+            deadline = time.monotonic() + 5
+            while not restarts and time.monotonic() < deadline:
+                time.sleep(0.01)
+        finally:
+            host._cuda_broken, host._restart_process, host.RESTART_DELAY_SECONDS = saved
+        self.assertEqual(restarts, [1])
+        self.assertTrue(engine.restarting)
+        self.assertIsNotNone(engine.model)
 
 
 def _have(*modules):
@@ -320,6 +438,106 @@ class FastTurboTests(unittest.TestCase):
         fast.model = Model()
         fast._warm_watermarker()
         self.assertEqual(calls, [("float32", (24_000,), 24_000)])
+
+    def test_closing_lets_go_of_the_model(self):
+        class T3:
+            def inference_turbo(self):
+                return "library"
+
+        class Model:
+            t3 = T3()
+
+        fast = object.__new__(self.host.FastTurbo)
+        fast.model, fast.conditionals, fast.graph, fast.warm_conds = Model(), {"voice": object()}, object(), object()
+        fast.model.t3.inference_turbo = fast._inference_turbo  # what __init__ installs: t3 -> fast -> model -> t3
+        fast.close()
+        self.assertNotIn("inference_turbo", vars(fast.model.t3))
+        self.assertEqual(fast.model.t3.inference_turbo(), "library")
+        self.assertIsNone(fast.graph)
+        self.assertEqual(fast.conditionals, {})
+
+    def _graph(self, logits_for):
+        """A _T3Graph over stand-ins: replay() makes the logits logits_for(step) (FIXTURE - NOT AI)."""
+        import torch
+
+        vocabulary, width = 64, 8
+        graph = object.__new__(self.host._T3Graph)
+        replays = []
+
+        class Graph:
+            def replay(self):
+                replays.append(1)
+                graph.out = logits_for(len(replays))
+
+        class Hp:
+            start_speech_token, stop_speech_token = 0, vocabulary - 1
+
+        class T3:
+            hp = Hp()
+            speech_emb = torch.nn.Embedding(vocabulary, width)
+
+            def prepare_input_embeds(self, t3_cond, text_tokens, speech_tokens, cfg_weight):
+                return torch.zeros(1, 4, width), None
+
+        graph.torch, graph.t3, graph.cuda_graph, graph.capped = torch, T3(), Graph(), False
+        graph.x, graph.position = torch.zeros(1, 1, width), torch.zeros(1, dtype=torch.long)
+        graph._prefill = lambda embeds: logits_for(0)
+        return graph, replays, vocabulary
+
+    @staticmethod
+    def _only(token, vocabulary):
+        import torch
+
+        logits = torch.full((1, 1, vocabulary), -float("inf"))
+        logits[..., token] = 0.0
+        return logits
+
+    @unittest.skipUnless(_have("torch", "transformers"), "needs PyTorch and transformers")
+    def test_the_stop_token_ends_a_piece_though_the_gpu_is_asked_only_every_few_tokens(self):
+        import torch
+
+        vocabulary = 64
+        graph, replays, _ = self._graph(lambda step: self._only(vocabulary - 1 if step == 30 else 5, vocabulary))
+        chunks = list(graph.chunks(None, torch.zeros(1, 3, dtype=torch.long)))
+        tokens, last = chunks[-1]
+        # The first token and the 29 drawn before the stop token at the 30th step; nothing after it, though a few more were drawn
+        # before the GPU was asked.
+        self.assertTrue(last)
+        self.assertEqual(tokens.shape[1], 30)
+        self.assertNotIn(vocabulary - 1, tokens[0].tolist())
+        self.assertLess(len(replays), 30 + self.host.CHECK_EVERY)
+        self.assertFalse(graph.capped)
+        self.assertEqual([chunk[0].shape[1] for chunk in chunks[:-1]], [15])
+
+    @unittest.skipUnless(_have("torch", "transformers"), "needs PyTorch and transformers")
+    def test_a_piece_that_never_stops_ends_at_its_budget(self):
+        import torch
+
+        vocabulary = 64
+        graph, replays, _ = self._graph(lambda step: self._only(5, vocabulary))
+        text = torch.zeros(1, 3, dtype=torch.long)
+        text[0, 0] = self.host.TAG_TOKEN_FIRST  # one tag and two words
+        budget = graph.budget(text)
+        self.assertEqual(budget, self.host.SPEECH_TOKENS_BASE + 2 * self.host.SPEECH_TOKENS_PER_TEXT_TOKEN +
+                         self.host.SPEECH_TOKENS_PER_TAG)
+        tokens, last = list(graph.chunks(None, text))[-1]
+        self.assertTrue(last)
+        self.assertTrue(graph.capped)
+        self.assertEqual(tokens.shape[1], budget + 1)
+        self.assertEqual(len(replays), budget)
+
+    @unittest.skipUnless(_have("torch", "transformers"), "needs PyTorch and transformers")
+    def test_a_step_without_any_possible_token_ends_the_piece(self):
+        import torch
+
+        vocabulary = 64
+        nothing = torch.full((1, 1, vocabulary), -float("inf"))
+        graph, _, _ = self._graph(lambda step: nothing if step == 8 else self._only(5, vocabulary))
+        tokens, last = list(graph.chunks(None, torch.zeros(1, 3, dtype=torch.long)))[-1]
+        # The library stops when every logit is -inf; here that step draws the stop token without asking the GPU.
+        self.assertTrue(last)
+        self.assertEqual(tokens.shape[1], 8)
+        self.assertFalse(graph.capped)
 
 
 if __name__ == "__main__":

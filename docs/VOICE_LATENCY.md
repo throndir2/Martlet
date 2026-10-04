@@ -117,6 +117,12 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
 - The GPU is shared with the character renderer, NVIDIA Broadcast and games.
   With the character showing, the same synthesis took about twice as long as
   on an idle card: Windows time-slices the GPU between them.
+- When the card's memory is overfilled, Windows moves the idle programs'
+  memory out instead of failing, and the voice's next reply waits for it
+  (0.6 s measured on the RTX 4070, 51 s once in use). The Chatterbox service's
+  idle check brings it back first, and Martlet warns about a Windows computer
+  whose voice shares its card with other roles
+  ([Chatterbox](CHATTERBOX_VOICE.md#sharing-the-graphics-card)).
 - The desktop's own work before the request is small: 115 ms in a fresh
   profile (preparing 29, memory 45, building 17, authorization 24).
 

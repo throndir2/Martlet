@@ -247,9 +247,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("host_service_status", "Read this PC's own Martlet host service on Docker Desktop the way the host dashboard does: its stage " +
             "(DockerMissing, DockerNotRunning, NotSetUp, Stopped, Running), Martlet version, host ID, whether its published address is " +
-            "still this PC's and answers, the installed roles, and the Martlet network it joined (state and the desktops paired " +
-            "with it). Reads Docker and the gateway's nonsecret files only (never its agent token, keys or pairings); returns no " +
-            "addresses and changes nothing.", new { }),
+            "still this PC's and answers, the installed roles, the Martlet network it joined (state and the desktops paired " +
+            "with it) and sharedGpu, the warning Martlet shows when its voice engine shares the graphics card with other roles. Reads " +
+            "Docker and the gateway's nonsecret files only (never its agent token, keys or pairings); returns no addresses and " +
+            "changes nothing.", new { }),
         Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
             "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
@@ -1581,6 +1582,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             published = state.Address is not null, addressOnThisPc = state.AddressOnThisPc, answering = state.Answering,
             roles = state.Roles, network = state.Network,
             desktops = state.Desktops.Select(d => new { id = d.Id, name = d.Name }).ToArray(),
+            // The warning Companion › Voice and Devices show when this PC's voice engine shares the card with other roles.
+            sharedGpu = SharedGpu.Warning("This PC", onWindows: true, SharedGpu.VoiceName(state.Roles), SharedGpu.Neighbours(state.Roles, false)),
             problem = state.Problem
         };
     }

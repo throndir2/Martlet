@@ -39,6 +39,8 @@ public partial class MainWindow
         DetailContent.Children.Add(DetailHeader(node));
         if (node.PairedHostId is { } updating && hostUpdates.Notes.GetValueOrDefault(updating) is { } update)
             DetailContent.Children.Add(Callout(update, "SelectedDeviceUpdate"));
+        if (node.SharedGpu is { } shared)
+            DetailContent.Children.Add(Callout(shared, "SelectedDeviceSharedGpu"));
 
         var rows = node.Roles.Where(r => r.Component != DeviceComponent.App).OrderBy(r => ComponentRank(r.Component)).ToList();
         var components = rows.Select(r => r.Component).OfType<string>().ToHashSet(StringComparer.Ordinal);

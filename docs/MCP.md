@@ -1063,8 +1063,10 @@ sentence with the engine's first sound tag, such as `[laugh]`, when it has
 tags). It returns `{exitCode, report}` with `ok` (no failure, at least 0.5 s
 of audible audio), `engine`, `route`, `voice`, `text`, `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
-`error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions,
-or why it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
+`error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions
+and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)), or why it could not be read),
+`seconds` of 24 kHz audio, `firstAudioMs`,
 `elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`, and `failure`
 and `problem` (the client's error code and message, for example
 `worker.unavailable` when nothing answers or the model could not load). A
@@ -1209,7 +1211,10 @@ once the network gave this PC another address than the one set up),
 records, for example `["audio2face","f5","stt"]`; null until the gateway runs),
 `network` (`unbound`, `bound`, `removed` or `unreadable`), `desktops` (`{id,
 name}` of the active desktops in the host's Martlet network, that is the
-computers paired with it, including this PC when it is one) and `problem`
+computers paired with it, including this PC when it is one), `sharedGpu` (the
+warning Companion › Voice and Devices show when the host's voice engine shares
+this PC's graphics card with its other roles, or null; see
+[Chatterbox](CHATTERBOX_VOICE.md#sharing-the-graphics-card)) and `problem`
 (Docker's first error line). It runs `docker container inspect` on
 `martlet-host-gateway` and `martlet-host-net` and one `docker exec` that lists
 the role records and prints `host_id` and `network.json`; it never reads the
@@ -2155,7 +2160,9 @@ example *Asked Martlet on gpu-pc to update to 0.22.0 ...*, *Waiting to update
 to Martlet 0.22.0: that host is busy (...)* or *Another update of that host was
 already running (...)*, then *Updated to Martlet 0.22.0 (seen at 9:41 PM).* once
 the host announces it, a check finds it current or another route of this
-Martlet updated it). Each row title
+Martlet updated it). `SelectedDeviceSharedGpu` (shown only then) warns that the
+computer runs on Windows and its voice engine shares the graphics card with its
+other roles (the same wording as `SpeakingEngineSharedGpu`). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
 `character`, `audio`, `host-service`, `host`, `users`, `member`, `role-<role>`, `offer`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
@@ -2720,6 +2727,11 @@ confirmation; kept when failover keeps the same engine there as a backup).
 computer still runs besides the one that speaks, for example a host set up before
 that rule; `SpeakingEngineRelease` stops them after a confirmation
 (`martlet-host remove`, downloads kept) and needs `--allow-ui-effects`.
+`SpeakingEngineSharedGpu` (shown only then) warns that the shown computer runs
+on Windows and its graphics card also does other jobs (its other roles, and
+Thinking in Ollama on this PC), so its voice can fall behind
+([Chatterbox](CHATTERBOX_VOICE.md#sharing-the-graphics-card)); it names the
+voice engine there, or says one would share the card before one is set up.
 `f5_voices` returns the chosen engine as `chosenEngine`.
 
 Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a

@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using Martlet.Core.Cluster;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
@@ -94,6 +95,26 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(idle, "SpeakingEngineOthers");
             stack.Add(idle);
             stack.Add(Row(PageButton($"Stop {names}", () => StopIdleVoiceEnginesAsync(target.HostId, speaking).Forget(), id: "SpeakingEngineRelease")));
+        }
+
+        // A Windows computer whose graphics card also does other work: Windows moves memory out instead of failing when the
+        // card fills, and the voice falls behind.
+        if (target is not null)
+        {
+            var check = hostChecks.GetValueOrDefault(target.HostId);
+            var here = target.HostId == thisPc?.HostId;
+            var voiceKind = speakingHost == target.HostId && speaking is not null ? speaking.HostRoleKind
+                : check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks);
+            var thinkingHere = here && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm));
+            if (SharedGpu.Warning(here ? "This PC" : target.HostId, SharedGpu.OnWindows(here, HardwareStore?.Find(target.HostId)),
+                    voiceKind is null ? null : SpeechEngines.ForRoleKind(voiceKind)?.Name, SharedGpu.Neighbours(check?.Offers?.Keys, thinkingHere))
+                is { } shared)
+            {
+                var note = Note(shared, new Thickness(0, 10, 0, 0));
+                note.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+                AutomationProperties.SetAutomationId(note, "SpeakingEngineSharedGpu");
+                stack.Add(note);
+            }
         }
 
         if (!onThisPc)
