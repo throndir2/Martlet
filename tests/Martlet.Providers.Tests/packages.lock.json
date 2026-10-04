@@ -93,7 +93,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.31.0, )"
+          "Martlet.Core": "[0.32.0, )"
         }
       }
     }
