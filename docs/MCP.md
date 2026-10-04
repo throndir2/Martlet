@@ -1920,18 +1920,51 @@ quote is kept). `ok` is true when all hold, every sample came out as expected
 and the fixture's Martlet-free source was used. It reads no credentials and
 contacts nothing.
 
-`logs_timeline` reads this PC's logs as the desktop's
-[Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) shows
-them (optional absolute `dataDirectory`, default the current user's):
-`desktop`, `avatar-renderer` and `host-runs` with their rotated copies, parsed
-into one timeline, newest first, of `{at, level, component, seq, message}`
-(a stack trace or output lines stay in their line's `message`). Optional
-filters: `level` (`all`, `warnings`, `errors`), `component`, `contains` (at
-most 200 characters) and `lines` (1-1000, default 200). It also returns
+`logs_timeline` reads the logs as the desktop's
+[Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-shared-logs) shows
+them (optional absolute `dataDirectory`, default the current user's): this PC's
+`desktop`, `avatar-renderer` and `host-runs` with their rotated copies and the
+other computers' lines log sharing collected (`logs\network-logs.json`: other
+desktops' parts and every host's `gateway`), merged into one timeline, newest
+first, of `{at, level, source, component, seq, relayedBy, message}` (a stack
+trace or output lines stay in their line's `message`; `relayedBy` names the
+desktop that passed a line on). Optional filters: `level` (`all`, `warnings`,
+`errors`), `component` (also `gateway`), `source` (a computer's ID), `contains`
+(at most 200 characters) and `lines` (1-1000, default 200). It also returns
 `device` (this PC's ID as a log source), `logsFolder`, `total`, `errors`,
-`warnings`, per-`components` counts, `matching`, and `logHost` (the `logs`
-entry of `cluster.json`, null when nobody collects logs; `plan` is `none`,
-`loaded` or `unreadable`). Read-only; it contacts no host.
+`warnings`, per-`components` and per-`sources` counts, `network` (`state`:
+`none`, `loaded` or `unreadable`, and its `lines`) and `matching`. Read-only;
+it contacts no host.
+
+`logs_export` is Diagnostics' **Save logs to share** without the window:
+`outputPath` (required; absolute, ending `.zip`, in an existing folder; an
+existing file is never replaced) and optional `dataDirectory`. It writes the
+same ZIP with the production writer (`LogBundle`): `about.txt` and
+`martlet-logs.txt` with every line once, oldest first, from this PC's logs and
+`network-logs.json`. It returns `path`, `bytes`, `files` (name and size),
+`lines`, `computers`, `errors` and `warnings` (last 24 hours), `oldest`,
+`newest`, `network` and `about` (the text of `about.txt`). It writes only that
+file and contacts nothing.
+
+`logs_share_selftest` (no arguments) rehearses shared logs end to end with the
+production code (`src\Martlet.NodeLinkCheck`, mode `logs`, `LogRehearsal.cs`;
+returns `{exitCode, report}`): two real gateways (`lab-logs-1`, `lab-logs-2`;
+Kestrel, pinned TLS, signed requests, an in-memory `logs.json`) and three
+simulated desktops (`lab-desktop-a..c`) with real logs folders (`desktop.log`
+in Martlet's format, read with `LocalLogs`), the desktop's paired client
+(`HostLogPeer`) and the real sharing engine (`Martlet.Core.Logs.LogShare`). Its
+steps: A's lines (an error with its stack trace among them) reach both hosts
+and A holds both hosts' own lines; C, which reaches only `lab-logs-2`, has its
+lines passed on to `lab-logs-1` by A (recorded as passed on by A), and each
+host's own lines reach the other; a new desktop B holds every computer's lines
+and C gets them through `lab-logs-2`; repeated runs keep every line once on
+every host and desktop; a host that was down catches up after restarting with
+its saved log (the run while it was down says *Waiting for lab-logs-1*); B's
+`network-logs.json` survives a restart; Save logs to share on B holds every
+computer's lines once in `about.txt` and `martlet-logs.txt`; a host that
+comes back from a power cut without its newest lines (it restarts from an older
+saved `logs.json`) is read from the start again and gets them back; an unsigned
+request is refused. Synthetic lines; loopback only; the folder is deleted.
 
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
@@ -2279,8 +2312,9 @@ clicking one only selects it, and `LogDetail` then returns the whole line
 gateway*, part, who passed it on and every following line).
 `LogSummary` says how many lines are shown of how many, from how many
 computers (this PC's app and host service count once), the last 24 hours'
-errors and warnings and where remote lines came
-from (the log host, each paired host's own log, or why not). The filters are
+errors and warnings. Lines from other computers come from this PC's copy of
+everyone's lines (`logs\network-logs.json`, which `logs_timeline` also reads).
+The filters are
 pills that only filter: `LogLevel-all`, `LogLevel-warnings`, `LogLevel-errors`,
 `LogPart-<part>` (`all`, `desktop`, `avatar-renderer`, `host-runs`, `gateway`)
 and `LogSource-<computer>` (`all`, this PC's device ID such as
@@ -2289,15 +2323,19 @@ computer's ID); each returns its label as its value (*From: All computers*,
 *From: This PC (desktop-diva, diva-host)*, *From: gpu-pc*). All are passive clicks, and snapshots
 report which is chosen in `selected`. `LogSearch` needs `ui_set_text` (and so
 `--allow-ui-effects`). `LogsRefresh` reads the logs again and sends nothing, so
-it is passive; `LogsCopy` (clipboard) and `LogsOpenFolder` (Explorer) are not.
-`LogHostChoice` returns the chosen log host (*None (each computer keeps its
-own)*, a host ID, or *<host> (not paired with this PC)*); changing it with
-`ui_select` changes the shared plan and needs `--allow-ui-effects`.
-`LogHostStatus` says what this PC last sent to the log host and which hosts
-didn't answer or need a Martlet update. To see lines on a
+it is passive (it reads each paired host's new lines); `LogsCopy` (clipboard),
+`LogsOpenFolder` (Explorer) and `LogsSave` (*Save logs to share...*: a save
+dialog, then the ZIP written and shown in Explorer; `logs_export` writes the
+same ZIP headlessly) are not. There is no log host to choose: `LogShareStatus`
+says how sharing with every paired host went (*Sharing logs with 2 of 3 hosts.
+Waiting for gpu-box. Update old-box to share its logs. Checked at 1:40 AM.*),
+or that no host is paired yet (*Checking your hosts...* until the first run).
+To see lines on a
 disposable data directory, write `logs\desktop.log` (lines like
 `2026-10-01 22:15:44.974 -07:00 WARN [1] message`), `logs\avatar-renderer.log`
-or `logs\host-runs.log` before launching. Home's `HealthOpen-errors-diagnostics`
+or `logs\host-runs.log` before launching (other computers' lines come from
+`logs\network-logs.json`: `{"schema_version": 1, "entries": [{"source",
+"component", "seq", "at", "level", "message"}]}`). Home's `HealthOpen-errors-diagnostics`
 and `HealthOpen-crash-diagnostics` open this page.
 
 `ui_snapshot` reports `selected` (true or false) for controls that are chosen
@@ -3136,7 +3174,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

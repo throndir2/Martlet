@@ -77,7 +77,7 @@ internal static class ClusterSync
         var memory = hardware.GroupBy(h => h.HostId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Max(h => h.BestGpu?.MemoryMb ?? 0), StringComparer.Ordinal);
         return probes.Where(p => p.HostId != failed && p.Serves(job))
-            .OrderBy(p => plan.Assignments.Count(a => a.Job != job && a.HostId == p.HostId))
+            .OrderBy(p => plan.Assignments.Count(a => a.Job != job && ClusterJobs.All.Contains(a.Job) && a.HostId == p.HostId))
             .ThenByDescending(p => memory.GetValueOrDefault(p.HostId))
             .ThenBy(p => p.HostId, StringComparer.Ordinal)
             .Select(p => p.HostId)

@@ -66,6 +66,13 @@ if (args is ["memories"])
     Console.WriteLine(JsonSerializer.Serialize(memoriesReport));
     return memoriesOk ? 0 : 1;
 }
+// With "logs" it rehearses shared logs: every computer's log lines reaching every host and desktop (LogRehearsal).
+if (args is ["logs"])
+{
+    var (logsOk, logsReport) = await Martlet.NodeLinkCheck.LogRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(logsReport));
+    return logsOk ? 0 : 1;
+}
 // With "voice-engine <engine> <endpoint> [text]" it speaks one sentence with a live voice engine's loopback service through
 // the engine's real relay and gateway (VoiceEngineCheck) and prints its report.
 if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceText] && voiceText.Length <= 1)

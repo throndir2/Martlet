@@ -31,8 +31,8 @@ public static class LogComponents
 
 /// <summary>One line of activity from any of the owner's computers. <see cref="Source"/> is the computer (a desktop's
 /// device ID or a host ID) and <see cref="Component"/> the part of Martlet that wrote it; together they form a stream in
-/// which <see cref="Seq"/> only grows, so a log host keeps each line once however many times it is delivered.
-/// <see cref="RelayedBy"/> is set by the log host when another device delivered the line. Never holds keys or
+/// which <see cref="Seq"/> only grows, so every host keeps each line once however many times it is delivered.
+/// <see cref="RelayedBy"/> is set by a host when another device delivered the line. Never holds keys or
 /// conversation content: the writers log metadata, errors and status only.</summary>
 public sealed record LogRecord
 {
@@ -77,7 +77,7 @@ public sealed record LogStream
     public required string Component { get; init; }
 }
 
-/// <summary>The newest <see cref="Seq"/> a log host holds for one stream (0 when it holds none).</summary>
+/// <summary>The newest <see cref="Seq"/> a host holds for one stream (0 when it holds none).</summary>
 public sealed record LogMark
 {
     public required string Source { get; init; }
@@ -85,8 +85,8 @@ public sealed record LogMark
     public required long Seq { get; init; }
 }
 
-/// <summary>What a desktop sends its log host: lines from its own logs and lines it relays from other hosts, plus the
-/// streams whose marks it wants back so the next batch starts where the log host left off.</summary>
+/// <summary>What a desktop gives a host: lines from its own logs and the other computers' lines it holds, plus the streams
+/// whose marks it wants back so the next batch starts where that host left off (<see cref="LogShare"/>).</summary>
 public sealed record LogBatch
 {
     public const int MaximumBytes = 393_216;
@@ -112,7 +112,7 @@ public sealed record LogBatch
         {
             ContractRules.Require(entry is not null, "A log line is missing.");
             entry!.Validate();
-            ContractRules.Require(entry.RelayedBy is null, "Only the log host records who relayed a line.");
+            ContractRules.Require(entry.RelayedBy is null, "Only a host records who relayed a line.");
         }
     }
 

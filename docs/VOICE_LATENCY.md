@@ -350,29 +350,31 @@ so the voice stays Chatterbox.
 `[sigh]` and `[laugh]` (real-time factor 0.43-0.63), and 800 ms for a
 two-word piece.
 
-**Voice engines compared** (2026-10-04 01:05-01:45, same card, starter voice
-*Annie*, the tts bench texts with Dia's own `(sighs)` and `(laughs)` cues,
-three runs after a warm-up; medians in ms; GPU memory added by a fresh copy):
+**Voice engines compared.** Chatterbox Turbo against Dia 1.6B, each **alone
+on an otherwise empty card** (2026-10-04 02:13-02:25, RTX 4070, Ollama stopped,
+about 1 GB in use before each; starter voice *Annie*, the tts bench texts with
+Dia's own `(sighs)` and `(laughs)` cues, three runs after a warm-up; medians in
+ms, p90 in brackets), with F5 from an earlier run beside the resident roles:
 
-| Engine (how Martlet runs it) | Short | Sentence | Sigh | Laugh | Long (12 s) | Real-time factor | GPU memory | Sighs and laughs |
+| Engine (how Martlet runs it) | Short | Sentence | Sigh | Laugh | Long | Real-time factor | GPU memory | Sighs and laughs |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Chatterbox Turbo** (role image `:4`, streaming, CUDA graph) | **494** | **459** | **446** | **513** | **421** | 0.38-0.71 | about 3.6 GB (4.1 at peak) | Yes (`[sigh]`, `[laugh]`) |
+| **Chatterbox Turbo** (role image `:5`, streaming, CUDA graph) | **522** (600) | **451** (505) | **417** (479) | **458** (480) | **560** (566) | 0.43-0.75 | 3.7 GB loaded, 4.2 GB at peak | Yes (`[sigh]`, `[laugh]`) |
+| Dia 1.6B 0626 (Martlet's worker code, float16, whole pieces) | 16,969 (17,132) | 19,538 (19,851) | 28,193 (31,263) | 38,210 (41,994) | 60,363 (68,889) | 5.5-6.6 | 9.8 GB at peak | Yes (`(sighs)`, `(laughs)`) |
 | F5-TTS v1 base (role image `martlet-f5:1`, whole pieces) | 1,409 | 1,469 | 1,582 | 1,990 | 2,169 | 0.20-1.66 | about 0.9 GB | No (no cues) |
-| Dia 1.6B 0626 (Martlet's worker code, float16, whole pieces) | 903,000 (spilled) | | | | | | about 3.7 GB loaded, more while generating | Yes (`(sighs)`, `(laughs)`) |
 
-Chatterbox Turbo is the fastest to the first audio by about 1 s and stays the
-default. F5 makes whole pieces quickly (a 12 s piece in 2.2 s) but has no
-sighs or laughs. **Dia didn't fit**: beside the resident host roles (about
-4.4 GB) and Gemma 4 E2B, which another client kept reloading into Ollama
-every few minutes, the card ran out and Windows moved Dia's memory to system
-memory: its first 3 s piece took 15 minutes. Dia's own README gives 1.3x
-real time in float16 without `torch.compile` on an RTX 4090 (about 4.4 GB),
-and Martlet's Dia worker doesn't stream within a piece, so its first audio
-is the whole first piece: even at that speed a 3.8 s sentence would take
-about 3 s before anything plays, and a 4070 is slower. The
-saved audio is in each run's `-files` folder (`results\20261004-010545-tts`
-for Chatterbox, `20261004-013029-tts` for F5, `20261004-010633-tts-dia` for
-the one Dia piece). XTTS-v2 and GPT-SoVITS: NOT RUN (no image or weights on
+Chatterbox Turbo starts every piece in about half a second, 30-100x sooner
+than Dia, and stays the default. Dia doesn't stream within a piece, so its
+first audio is the whole piece, and here it made audio at about a sixth of real
+time (3 s of speech in 17 s, 11 s in 60 s): the graphics card was busy only
+about 30% of the time, so its step-by-step decoding is held back by the
+processor (no `torch.compile` in this Windows bench; Dia's README gives 1.3x
+real time on an RTX 4090 without it). It also took 9.8 GB at its peak, so it
+can't share a 12 GB card with Thinking or the character. Beside the resident
+roles and a model in Ollama it ran out of memory entirely (an earlier run: 15
+minutes for the first piece). F5 makes whole pieces quickly but has no sighs
+or laughs. The audio is saved with each run (`results\20261004-021450-tts` for
+Chatterbox, `20261004-021539-tts-dia` for Dia, `20261004-013029-tts` for F5)
+for a listening check. XTTS-v2 and GPT-SoVITS: NOT RUN (no image or weights on
 this PC; building them means installing a new role).
 
 **Whole turn** (Gemma 4 E2B on Ollama, Chatterbox role, medians in ms). First
