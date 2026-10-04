@@ -17,6 +17,10 @@ Martlet.Core.Tests.SetupAdvisorTests.CustomVoiceWithoutAnyGpuExplainsWhy
 Martlet.Core.Tests.SetupTests.PostDeleteSaveFailureKeepsRetryMarkerAndExplainsIrreversibility
 Martlet.Desktop.Tests.AppearanceTests.EveryDesktopWindowInheritsSharedTheme
 Martlet.Desktop.Tests.AudioSetupDispatcherTests.InputFailureHasSpecificRemedyAndNeverRearms
+# Intermittent on a loaded PC ("Bounded audio condition not reached"; a settings .tmp file still open when the fixture is
+# deleted); both fail on a clean export of origin/main a5d678c alone (FailedCapture... in 3 of 3 runs).
+Martlet.Desktop.Tests.AudioSetupDispatcherTests.FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay
+Martlet.Desktop.Tests.AudioSetupDispatcherTests.FailedOutputCannotBeConfirmedOrAutoReplaced
 Martlet.Desktop.Tests.AvatarIntegrationTests.Automatic_lip_sync_uses_a_detected_audio2face_service_with_the_built_in_mouth_mapping
 Martlet.Desktop.Tests.AvatarIntegrationTests.Idle_renderer_failure_is_reported_without_waiting_for_next_voice_segment
 Martlet.Desktop.Tests.AvatarIntegrationTests.Real_conversation_pcm_stream_protocol_composer_and_renderer_boundary_preserve_voice

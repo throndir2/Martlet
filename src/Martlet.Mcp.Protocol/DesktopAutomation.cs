@@ -240,7 +240,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // interrupts; the questions an exit asks first (what Martlet is still busy with: work kinds, run window titles,
         // a host ID or an update version, never paths, keys or conversation text) and before Exit now (the step).
         // ClosingExitNow and the dialogs' ConfirmationYes exit Martlet, so they need --allow-ui-effects.
-        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion"
+        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion",
+        // Companion › Thinking › This PC's Use Ollama on this PC, for a model Ollama doesn't have yet: the download question
+        // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
+        // it, so it needs --allow-ui-effects.
+        "LocalModelDownloadQuestion"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
