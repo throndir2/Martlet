@@ -499,7 +499,7 @@ public sealed record SetupRoute : IContract
                 break;
             case SetupRouteType.LocalParakeet:
                 ContractRules.Require(Role == SetupRole.Stt && ProviderAlias == LocalSpeechSetup.ParakeetAlias &&
-                    Origin == SelfHostSetup.LocalOrigin && ModelId == LocalSpeechSetup.ParakeetModelId && VoiceId is null &&
+                    Origin == SelfHostSetup.LocalOrigin && LocalSpeechSetup.IsParakeetModel(ModelId) && VoiceId is null &&
                     CredentialId is null && Gateway is null && GatewayDeviceId is null && GatewaySnapshot is null &&
                     Reference is null && LocalStt is null,
                     "Parakeet on this PC requires its exact local selection, never a cloud credential or gateway route.");

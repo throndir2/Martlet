@@ -325,7 +325,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
         // or "...: not made yet" for a Thinking palette not made).
-        "AppearanceColor-", "AppearancePreview-"];
+        "AppearanceColor-", "AppearancePreview-",
+        // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
+        // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
+        // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>
+        // button downloads (after a confirmation) and switches Listening, so it needs --allow-ui-effects.
+        "ListenParakeetModel"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

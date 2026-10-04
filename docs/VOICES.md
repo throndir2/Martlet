@@ -157,25 +157,46 @@ longer read.
 
 ## Parakeet on this PC (Listening)
 
-Companion › Listening › This PC now offers **Parakeet in Martlet** next to
-whisper. NVIDIA Parakeet TDT 0.6B v3 (int8 ONNX export) runs inside Martlet on
-the processor through the same sherpa-onnx runtime: no Docker, no host
-service. *Download and use Parakeet* asks once, downloads about 670 MB from
-Hugging Face at a pinned revision into `speech\` in Martlet's data folder,
-checks each file (a file that doesn't match is deleted) and switches Listening
-to the `LocalParakeet` route (`local-parakeet`, model `parakeet-tdt-0.6b-v3-int8`).
-It runs on the sherpa-onnx runtime that ships with Martlet.
-It needs about 1 GB of memory while Martlet runs.
+Companion › Listening › This PC offers **Parakeet in Martlet** next to
+whisper: NVIDIA Parakeet runs inside Martlet on the processor through the same
+sherpa-onnx runtime that ships with Martlet, with no Docker and no host
+service. It offers three models (`ParakeetModels` in Martlet.Sherpa); each
+downloads once, on request, after one confirmation that names it and its size:
 
-AudioTranscriber measured it on 48 public English clips: 6.85% word error rate
-against 10.56% for whisper large-v3-turbo, 14x faster than real time on two
-threads. It detects 25 European languages by itself (bg, cs, da, de, el, en,
-es, et, fi, fr, hr, hu, it, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, uk);
-use whisper for others. The utterance is transcribed in memory on this PC with
-the same one-use audio authorization as the other routes, bound to
-`local://windows` and the model; nothing is sent anywhere and there is no
-charge. Locally, a 6-7 s utterance transcribed in about 0.8 s on an
-i7-13700K.
+| Model (route `ModelId`) | What it is for | Download | Memory |
+| --- | --- | --- | --- |
+| **Parakeet TDT 110M** (`parakeet-tdt-110m-en`, English) | *Fastest in English*: about 0.1 s for a short turn, the default for an English Windows display language. Less accurate with noise or a distant microphone | 477 MB (fp32 ONNX) | about 0.6 GB |
+| **Parakeet TDT 0.6B v2** (`parakeet-tdt-0.6b-v2-int8`, English) | *Most accurate in English (about 0.2 s slower)*: holds up best in noisy rooms and on distant microphones | 661 MB (int8 ONNX) | about 0.9 GB |
+| **Parakeet TDT 0.6B v3** (`parakeet-tdt-0.6b-v3-int8`) | *25 languages*: bg, cs, da, de, el, en, es, et, fi, fr, hr, hu, it, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, uk, detected by itself; the default when Windows' display language isn't English | 670 MB (int8 ONNX) | about 0.9 GB |
+
+The card marks the recommended model (110M for English, v3 otherwise) and the
+one in use. Martlet downloads from Hugging Face at a pinned revision into
+`speech\models\<model ID>\` in Martlet's data folder, checks each file's exact
+size and SHA-256 (a file that doesn't match is deleted), writes the model's
+NOTICE beside it (`speech\models\Parakeet-TDT-110M-NOTICE.txt`,
+`Parakeet-TDT-0.6B-v2-NOTICE.txt`, `Parakeet-NOTICE.txt` for v3) and switches
+Listening to the `LocalParakeet` route (`local-parakeet`) with that model.
+Choosing a model that is already downloaded switches at once. One model is
+loaded at a time; switching unloads the other. A Listening route saved before
+these choices keeps v3: Martlet never changes a model you chose.
+
+Why these three (measured with sherpa-onnx 1.13.8 on this PC's processor; see
+[voice latency](VOICE_LATENCY.md#local-options-measured-voicebench)): 110M took 86-140 ms
+per short turn and brought a cascade into Gemma 4 E2B to its first audio in
+734 ms against 931 ms with v3, but misheard 11% of the words on a desk
+microphone and 14% on AMI's headsets; v2 misheard 1.2% and 8.6% (20% on AMI's
+room microphone) in 208-420 ms; v3 took 234-454 ms with 10.7% on the desk
+microphone. Speed comes first for the default, so English starts with 110M.
+
+The utterance is transcribed in memory on this PC with the same one-use audio
+authorization as the other routes, bound to `local://windows` and the model;
+nothing is sent anywhere and there is no charge. With Parakeet as Listening,
+talking over Martlet is checked with the same model (see
+[Conversation](CONVERSATION.md)). *Keep Martlet the same on all my computers*
+shares the chosen model with your other computers; one that hasn't downloaded
+it keeps listening as before and *Settings for all devices* says which model
+to download in Companion › Listening (nothing downloads by itself), and a
+model a newer Martlet added waits for the update.
 
 ## Limits
 
@@ -210,8 +231,21 @@ it off and on was reflected by `voices_status`.
 
 `voices_engine_check` runs the bundled engine on any 16 kHz mono PCM16 WAV
 files you give it. To run the native tests, point `MARTLET_SPEECH_FIXTURES` at
-a folder with `a1.wav`, `a2.wav` (one speaker) and `b1.wav` (another), 16 kHz
-mono PCM16, and for Parakeet `MARTLET_SPEECH_ROOT` at a speech folder with
-Parakeet downloaded, then run `LocalSpeechNativeTests`. They use the runtime
-and models the build places beside the tests, skip otherwise and never
-download.
+a folder with `a1.wav`, `a2.wav` (one speaker) and `b1.wav` (another, saying
+"sister"), 16 kHz mono PCM16, and for Parakeet `MARTLET_SPEECH_ROOT` at a
+speech folder with one or more Parakeet models downloaded, then run
+`LocalSpeechNativeTests`: it transcribes `b1.wav` with each downloaded model in
+turn through the desktop's listener, which unloads one before loading the
+next. They use the runtime and models the build places beside the tests, skip
+otherwise and never download. MCP's `parakeet_check` loads every downloaded
+model through the production engine and transcribes Windows-voice phrases with
+it, and `voices_status` lists the models, which are downloaded and which one
+Listening uses.
+
+When the three Parakeet models were added, the 110M and v2 models were
+downloaded through Companion › Listening on a disposable data directory (MCP
+clicked *Download and use* and confirmed; each file matched its pin), Listening
+switched to each and back without another download, `parakeet_check` ran all
+three on four phrases (no word errors from v2 and v3, one from 110M, which
+wrote "to morrow"; 110M transcribed about 2.5 times faster), and
+`utterance_filter_check` passed with each model as Listening's.

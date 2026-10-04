@@ -190,8 +190,8 @@ public partial class MainWindow : ThemedWindow
         StartLogShipping();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.
         if (Role == DeviceRole.Companion &&
-            homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt)?.RouteType == SetupRouteType.LocalParakeet)
-            parakeet?.WarmAsync().Forget();
+            homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Stt) is { RouteType: SetupRouteType.LocalParakeet } listening)
+            parakeet?.WarmAsync(listening.ModelId).Forget();
         if (!closing) await StartUpdatesAsync();
     }
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();

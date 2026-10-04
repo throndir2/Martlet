@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -138,7 +139,7 @@ public partial class MainWindow
             Heading("How it listens on this PC"),
             Note("Choose a local speech recognizer. Speech stays on this PC and recordings aren't saved.",
                 new Thickness(0, 0, 0, 4)),
-            Option(ParakeetOption(parakeetInUse), parakeetInUse),
+            Option(ParakeetOption(route), parakeetInUse),
             Note(advice is null ? "Checking this PC's graphics card..."
                 : advice.GpuNote + $" Recommended: {(advice.UseGpu ? "the graphics card" : "the processor")}, because {advice.Reason}.",
                 new Thickness(0, 10, 0, 0)),
@@ -167,64 +168,120 @@ public partial class MainWindow
 
     // ---------- Listening › This PC › Parakeet ----------
 
-    private bool installingParakeet;
+    /// <summary>The Parakeet model downloading now, or null.</summary>
+    private string? installingParakeet;
+    /// <summary>The downloading model's line on the Listening card and how far its download is, updated as it downloads.</summary>
+    private TextBlock? parakeetState;
+    private string? parakeetProgress;
 
-    /// <summary>Parakeet inside Martlet: no Docker or host service, the most accurate of the local choices (AudioTranscriber's
-    /// default engine).</summary>
-    private List<UIElement> ParakeetOption(bool inUse)
+    /// <summary>What each Parakeet model is for, as the Listening card says it (measured with Martlet's runtime on the processor;
+    /// docs/VOICE_LATENCY.md): a short title, what it is good at and the memory it takes while Martlet runs.</summary>
+    private static (string Title, string About) ParakeetChoice(ParakeetModel model) => model.Id switch
     {
-        var installed = parakeet?.Installed == true;
-        var button = PageButton(installingParakeet ? "Downloading..." : inUse ? "In use" : installed ? "Use Parakeet" : "Download and use Parakeet",
-            () => UseParakeetAsync().Forget(), primary: !inUse, id: "SetupListenParakeet");
-        button.IsEnabled = !inUse && !installingParakeet && parakeet is not null && SherpaComponents.RuntimeDirectory() is not null;
-        var title = OptionTitle("Parakeet in Martlet", inUse ? "in use" : installed ? "accurate, no Docker, downloaded" : "accurate, no Docker");
+        ParakeetModels.Tdt110mEnglishId => ("Fastest in English",
+            "Replies start sooner: a short sentence becomes text in about 0.1 s. Less accurate with background noise or a distant " +
+            "microphone. Uses about 0.6 GB of memory."),
+        ParakeetModels.V2EnglishId => ("Most accurate in English (about 0.2 s slower)",
+            "Hears noisy rooms and distant microphones best. Uses about 0.9 GB of memory."),
+        _ => ("25 languages",
+            "For English and 24 other European languages, which it recognizes by itself. Uses about 0.9 GB of memory.")
+    };
+
+    /// <summary>A Parakeet model's name for status lines: "Parakeet TDT 110M (English)", or the ID of one this Martlet doesn't know.</summary>
+    private static string ParakeetName(string modelId) => ParakeetModels.Find(modelId)?.ToString() ?? modelId;
+
+    /// <summary>Why this PC can't listen yet with the Parakeet model another computer chose (Settings for all devices): it isn't
+    /// downloaded here (the owner downloads it in Listening; nothing downloads by itself) or a newer Martlet chose it. Null when
+    /// it can.</summary>
+    internal static string? SharedParakeetWaiting(string modelId, Func<string, bool> installed) =>
+        ParakeetModels.Find(modelId) is not { } model ? "It was chosen on a newer Martlet. Update this PC to use it."
+        : installed(model.Id) ? null
+        : $"{model} isn't downloaded on this PC yet. Download it in Companion › Listening › Parakeet in Martlet.";
+
+    /// <summary>Parakeet inside Martlet: no Docker or host service. Three models, each with what it is for, its download and the
+    /// one recommended for Windows' display language (the fastest for English, v3 otherwise); each downloads once on request.</summary>
+    private List<UIElement> ParakeetOption(SetupRoute? route)
+    {
+        var inUse = route?.RouteType == SetupRouteType.LocalParakeet ? route.ModelId : null;
+        var recommended = LocalSpeechSetup.RecommendedParakeetModel(CultureInfo.CurrentUICulture);
+        var runtime = SherpaComponents.RuntimeDirectory() is not null;
+        var title = OptionTitle("Parakeet in Martlet", inUse is not null ? "in use" : installingParakeet is not null ? "downloading" : "no Docker");
         AutomationProperties.SetAutomationId(title, "ListenParakeetStatus");
-        return
-        [
+        var option = new List<UIElement>
+        {
             title,
-            Note("Accurate local listening with no Docker. It uses about 1 GB of memory while Martlet runs" +
-                (installed ? "." : $" and downloads once: {SherpaComponents.Megabytes(SherpaComponents.ParakeetDownloadBytes)}."),
-                new Thickness(0, 2, 0, 6)),
-            Row(button)
-        ];
+            Note("Local listening inside Martlet, on the processor, with no Docker. Choose a model; each downloads once.",
+                new Thickness(0, 2, 0, 0))
+        };
+        foreach (var model in ParakeetModels.All)
+        {
+            var installed = parakeet?.Installed(model.Id) == true;
+            var used = inUse == model.Id;
+            var downloading = installingParakeet == model.Id;
+            var (heading, about) = ParakeetChoice(model);
+            var name = OptionTitle(heading, used ? "in use" : model.Id == recommended ? "recommended" : null, 14);
+            AutomationProperties.SetAutomationId(name, "ListenParakeetModel-" + model.Id);
+            var state = Note($"{model}. {about} " + (downloading ? parakeetProgress ?? "Downloading..."
+                    : installed ? "Downloaded." : $"Downloads once: {SherpaComponents.Megabytes(model.DownloadBytes)}."),
+                new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetAutomationId(state, "ListenParakeetModelState-" + model.Id);
+            if (downloading) parakeetState = state;
+            var button = PageButton(downloading ? "Downloading..." : used ? "In use" : installed ? "Use it" : "Download and use",
+                () => UseParakeetAsync(model).Forget(), primary: inUse is null && model.Id == recommended,
+                id: "SetupListenParakeet-" + model.Id);
+            button.IsEnabled = !used && installingParakeet is null && parakeet is not null && runtime;
+            var choice = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+            choice.Children.Add(name);
+            choice.Children.Add(state);
+            choice.Children.Add(Row(button));
+            option.Add(choice);
+        }
+        return option;
     }
 
-    /// <summary>Listening with Parakeet on this PC: one confirmation for the download (when needed), then the route switches.</summary>
-    private async Task UseParakeetAsync()
+    /// <summary>Listening with Parakeet <paramref name="model"/> on this PC: one confirmation for its download (when needed),
+    /// then the route switches to it.</summary>
+    private async Task UseParakeetAsync(ParakeetModel model)
     {
-        if (store is null || setupService is null || parakeet is null || closing || installingParakeet) return;
+        if (store is null || setupService is null || parakeet is null || closing || installingParakeet is not null) return;
         var root = parakeet.Root;
-        if (!parakeet.Installed)
+        if (!parakeet.Installed(model.Id))
         {
-            var size = SherpaComponents.Megabytes(SherpaComponents.ParakeetDownloadBytes);
+            var size = SherpaComponents.Megabytes(model.DownloadBytes);
             if (!ConfirmationDialog.Confirm(this,
-                    $"Download Parakeet ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved.",
+                    $"Download {model} ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved.",
                     "Download and use"))
                 return;
-            installingParakeet = true;
+            installingParakeet = model.Id;
+            parakeetProgress = null;
             RenderTab();
             try
             {
-                await SherpaComponents.InstallParakeetAsync(root, new Progress<SherpaProgress>(p => ActionText.Text =
-                    "Downloading speech recognition: " +
-                    $"{p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}..."), lifetime.Token);
+                await SherpaComponents.InstallParakeetAsync(root, model, new Progress<SherpaProgress>(p =>
+                {
+                    parakeetProgress = $"Downloading: {p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}...";
+                    ActionText.Text = $"{model.Name}: {parakeetProgress}";
+                    if (parakeetState is { } line) line.Text = $"{model}. {ParakeetChoice(model).About} {parakeetProgress}";
+                }), lifetime.Token);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
                 System.Net.Http.HttpRequestException or InvalidOperationException)
             {
-                ActionText.Text = "Couldn't download Parakeet. " + error.Message + " Listening didn't change.";
+                ActionText.Text = $"Couldn't download {model.Name}. " + error.Message + " Listening didn't change.";
                 return;
             }
             finally
             {
-                installingParakeet = false;
+                installingParakeet = null;
+                parakeetState = null;
+                parakeetProgress = null;
                 if (!closing && openTab == CompanionTab.Listening) RenderTab();
             }
         }
-        parakeet.WarmAsync().Forget();
-        await SaveSectionRouteAsync(HostJob.Listening, LocalSpeechSetup.SelectParakeet, key: null,
-            "Martlet now listens with Parakeet on this PC. Speech stays on this PC.");
+        parakeet.WarmAsync(model.Id).Forget();
+        await SaveSectionRouteAsync(HostJob.Listening, settings => LocalSpeechSetup.SelectParakeet(settings, model.Id), key: null,
+            $"Martlet now listens with {model} on this PC. Speech stays on this PC.");
         if (!closing && openTab == CompanionTab.Listening) RenderTab();
     }
 

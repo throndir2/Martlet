@@ -583,7 +583,15 @@ voice pipeline never waits for a whole reply:
   `utterance_filter_check`, Windows-voice fixtures, Normal) "Stop!" stopped a
   reply 440-590 ms after the voice began, "Wait, hold on a second." about
   590 ms and "Can you tell me more about that?" about 440 ms; each check took
-  about 100-250 ms of Parakeet on the processor. With a host's or a cloud
+  about 100-250 ms of Parakeet on the processor. The check uses Listening's
+  own Parakeet model; a few words it was far from sure of (its mean and its
+  least sure token probability both low: under 0.65 and 0.36 on Normal) don't
+  stop a reply on their count alone, since Parakeet's English models write
+  "Come on." or "Cosmos was" for a laugh, and a word said over and over
+  counts once (v2 wrote "One, one, one." for "ha ha ha"), while a stop word or
+  Martlet's name still does. With each of the three Parakeet models, `utterance_filter_check`
+  stopped for "Stop!", "Wait, ..." and the question and never for laughter, a
+  hum or noise. With a host's or a cloud
   speech-to-text there is no quick check (it would be a second upload): the
   utterance's own transcript decides once you pause, so Martlet stops after
   your pause and the transcription. Each stop writes *Barge-in: Martlet stopped

@@ -426,7 +426,8 @@ public partial class MainWindow
     {
         var problem = coverage.FirstOrDefault(c => c.Job == job.Job && c.IsProblem);
         var routeName = route is null ? "" : route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice on this PC"
-            : route.RouteType is SetupRouteType.LocalParakeet or SetupRouteType.LocalWhisper ? PlaceName(route)
+            : route.RouteType == SetupRouteType.LocalParakeet ? $"{PlaceName(route)}: {ParakeetName(route.ModelId)}"
+            : route.RouteType == SetupRouteType.LocalWhisper ? PlaceName(route)
             : $"{PlaceName(route)}: {route.ModelId}";
         var status = route is null
             ? section == CompanionTab.Voice

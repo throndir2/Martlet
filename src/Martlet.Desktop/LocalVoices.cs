@@ -277,48 +277,75 @@ internal sealed class LocalVoices : IDisposable
 }
 
 /// <summary>Parakeet on this PC as the conversation's speech-to-text: the utterance is transcribed in memory here and nothing
-/// is sent anywhere. The model loads on the first utterance (or when Listening switches to it) and stays loaded.</summary>
+/// is sent anywhere. The Listening route's model (one of <see cref="ParakeetModels"/>) loads on the first utterance (or when
+/// Listening switches to it) and stays loaded; one model is loaded at a time, so asking for another one unloads the first.</summary>
 internal sealed class ParakeetListener(string root) : ILocalTranscriber, IDisposable
 {
     private readonly object gate = new();
     private ParakeetEngine? engine;
+    private bool disposed;
 
-    internal bool Installed => ParakeetEngine.Installed(root);
+    /// <summary>The model is downloaded here and Martlet's folder has the speech runtime.</summary>
+    internal bool Installed(string modelId) => ParakeetEngine.Installed(root, modelId);
     internal string Root => root;
+    /// <summary>The model loaded (or loading) now; null before the first use.</summary>
+    internal string? Loaded { get { lock (gate) return engine?.Model.Id; } }
 
     public Task<LocalTranscript> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken)
     {
-        if (modelId != SherpaComponents.ParakeetModelId) throw new InvalidOperationException("Unknown local speech-to-text model.");
+        if (ParakeetModels.Find(modelId) is null) throw new InvalidOperationException("Unknown local speech-to-text model.");
         var samples = Pcm.ToFloats(pcm16kMono.Span);
         return Task.Run(() =>
         {
-            try { return Engine().Transcribe(samples).ToLocal(); }
+            try
+            {
+                try { return Engine(modelId).Transcribe(samples).ToLocal(); }
+                // Another model took its place while this waited for it: the current one transcribes it instead.
+                catch (ObjectDisposedException) when (!disposed) { return Engine(modelId).Transcribe(samples).ToLocal(); }
+            }
             finally { Array.Clear(samples); }
         }, cancellationToken);
     }
 
-    /// <summary>Loads the model in the background so the first utterance is not slower.</summary>
-    internal Task WarmAsync() => Task.Run(() =>
+    /// <summary>Loads <paramref name="modelId"/> in the background so the first utterance is not slower.</summary>
+    internal Task WarmAsync(string modelId) => Task.Run(() =>
     {
-        try { if (Installed) Engine().Warm(); }
+        try { if (Installed(modelId)) Engine(modelId).Warm(); }
         catch (Exception error) when (error is SherpaException or DllNotFoundException or BadImageFormatException or InvalidOperationException)
         {
             ErrorLog.Warn("Loading Parakeet failed.", error);
         }
     });
 
-    private ParakeetEngine Engine()
+    private ParakeetEngine Engine(string modelId)
     {
-        lock (gate) return engine ??= new ParakeetEngine(root);
+        ParakeetEngine? replaced = null;
+        ParakeetEngine current;
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (engine is not null && engine.Model.Id != modelId)
+            {
+                replaced = engine;
+                engine = null;
+            }
+            current = engine ??= new ParakeetEngine(root, modelId);
+        }
+        // Unloading waits for a transcription still running on the old model, so it happens outside the gate.
+        replaced?.Dispose();
+        return current;
     }
 
     public void Dispose()
     {
+        ParakeetEngine? loaded;
         lock (gate)
         {
-            engine?.Dispose();
+            disposed = true;
+            loaded = engine;
             engine = null;
         }
+        loaded?.Dispose();
     }
 }
 
