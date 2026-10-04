@@ -1935,12 +1935,15 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
     internal DesktopMemoryService Memory { get; }
+    /// <summary>The voices Martlet knows (voices.json in the fixture's folder), when the test asked for them.</summary>
+    internal LocalVoices? Voices { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
-        IPcAudioSourceFactory? pcAudio = null)
+        IPcAudioSourceFactory? pcAudio = null, bool voices = false)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
+        Voices = voices ? new LocalVoices(DirectoryPath, "desk-test") : null;
         Output = output ?? new();
         var vault = new WindowsCredentialStore(Native);
         Settings = new(new SetupService(Store, vault));
@@ -1952,7 +1955,7 @@ internal sealed class LiveFixture : IAsyncDisposable
                     target.Keyless ? null : credentials, clock)),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
-            memory: Memory, voiceIdentity: voiceIdentity,
+            memory: Memory, voiceIdentity: voiceIdentity, voices: Voices,
             pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock));
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
@@ -1962,9 +1965,9 @@ internal sealed class LiveFixture : IAsyncDisposable
         };
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
-        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null)
+        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -2023,11 +2026,11 @@ internal sealed class LiveFixture : IAsyncDisposable
         }
         await idle;
     }
-    internal async Task<Martlet.Memory.MemoryMutationReceipt> SaveMemoryFact(string content)
+    internal async Task<Martlet.Memory.MemoryMutationReceipt> SaveMemoryFact(string content, string? voiceId = null)
     {
         var loaded = await Store.LoadAsync();
         return await Memory.SaveFactAsync(loaded.Settings!.Memory!.ConfigurationRevision,
-            content, Martlet.Memory.MemoryRetention.UntilDeleted());
+            content, Martlet.Memory.MemoryRetention.UntilDeleted(), voiceId);
     }
     /// <summary>Opens the talk window; by default with push-to-talk and text-only replies, so nothing listens or speaks
     /// unless a test asks for it.</summary>
@@ -2077,6 +2080,7 @@ internal sealed class LiveFixture : IAsyncDisposable
         Capture.DisposeBlock?.Set();
         await Controller.DisposeAsync();
         Memory.Dispose();
+        Voices?.Dispose();
         if (System.IO.Directory.Exists(DirectoryPath)) System.IO.Directory.Delete(DirectoryPath, true);
     }
     internal sealed class NativeFixture : ICredentialNative

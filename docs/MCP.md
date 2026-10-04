@@ -386,6 +386,19 @@ of those each computer wrote) and `forgotten` (the tombstones every computer
 agreed on). It reads only `memory-sync.json` (IDs, revisions, digests and device
 IDs), never a fact, and contacts nothing.
 
+`memory_status` reads what Martlet remembers and [whose](MEMORY.md#whose-memories)
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
+`on (default)` for settings from before memory, `not set up`), `storage`
+(`Martlet folder` or `custom folder`), `state` (`none` without a store file,
+`loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
+`unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
+`everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
+by its tag such as `V3`, with `named`, `owner` and `facts`) and
+`forgottenVoices`. It reads the store's file as JSON without opening or
+locking the store (the desktop can keep running), and never returns a fact's
+text, a name, a voice ID or a path. It contacts nothing.
+
 `memory_sync_selftest` (no arguments) rehearses shared memories end to end with
 the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
 `MemoryRehearsal.cs`; returns `{exitCode, report}`): two real gateways
@@ -396,7 +409,9 @@ paired client (`HostMemories.cs`) and the real sync engine
 (`Martlet.Core.Sync.MemorySyncNode`) wired as the desktop wires them. Its steps:
 A remembers a typed and a conversation fact and both hosts keep them; B takes
 them (same IDs, revisions and provenance) and recalls the cat fact; B edits it
-and A takes revision 2; A forgets a fact and every computer forgets it for good;
+and A takes revision 2; A remembers a fact that belongs to a voice, B takes it
+as that voice's and makes it everyone's, and A takes that (a fact with no voice
+has no `voice_id` field); A forgets a fact and every computer forgets it for good;
 offline edits on A and B of different facts (both kept) and of the same fact
 (the later edit wins); a host that was down while A remembered a fact gets it
 after restarting; a new computer with a fact of its own takes everything and
@@ -1019,7 +1034,11 @@ clicks, as are the character window's `AvatarAdvanced` and
 *Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
 response styles at zero, or *Choose your model file: an existing .vrm or
 .model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
-character's state (*Character is showing. ...*, *Character hidden.*). Their
+character's state (*Character is showing. ...*, *Character hidden.*). Memory's
+`MemoryFactStatus` reads how many facts it remembers, how many belong to how
+many people Martlet knows by voice and how many to forgotten voices, how many
+its *Show* choice (`MemoryPersonFilter`) lists (*Showing N.*) and what the last
+action did, never a fact or a name. Their
 fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
 the *Where the voice pauses* check boxes `CompanionBreakCommas`,
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
@@ -1028,8 +1047,11 @@ the *Where the voice pauses* check boxes `CompanionBreakCommas`,
 `CompanionPersona`, which also makes the chosen persona the one Martlet uses,
 `CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
 `AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
-`MemoryEnable`) save, and `ShowCharacter`/`StopAvatar` show or hide the
-character, so they need `--allow-ui-effects`. Typing a persona name or text and
+`MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
+(*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
+choosing in `MemoryPersonFilter` (it only filters the list) still goes through
+`ui_select`, so these need `--allow-ui-effects`; `ShowCharacter`/`StopAvatar` show or hide the
+character, so they need `--allow-ui-effects` too. Typing a persona name or text and
 closing at once still saves it; closing with a change that can't be saved asks
 with `ConfirmationYes` (close and drop it) or `ConfirmationNo` (stay). With the
 character showing, choosing another model or lip-sync mode switches it right
@@ -1557,7 +1579,10 @@ its field loses focus, on Enter or two seconds after typing stops, then syncs);
 like `PeopleRecognize` (ticked by default; a shared setting),
 `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). On Devices, `Node-<id>`
+switch of its own: the list follows `ClusterSync`). Each voice's
+`PeopleMemories-3` (*What Martlet remembers about them*) only opens Memory
+showing that voice's facts, so it is a passive click; read `MemoryFactStatus`
+there (*Showing N.*) or `memory_status` for whose facts are. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `Node-pc:<device ID>` for another Martlet computer that runs no host service,
 `Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
@@ -2537,7 +2562,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

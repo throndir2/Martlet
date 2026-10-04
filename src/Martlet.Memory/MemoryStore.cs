@@ -207,6 +207,7 @@ public sealed class MemoryStore : IDisposable
             await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
             var now = CurrentUtc();
             ValidateWrite(request?.Content, request?.Provenance, request?.Retention, now);
+            MemoryFact.ValidateVoiceId(request!.VoiceId);
             StoreState current;
             lock (gate)
             {
@@ -223,7 +224,8 @@ public sealed class MemoryStore : IDisposable
                 UpdatedAtUtc = now,
                 CreatedFrom = request.Provenance,
                 LastModifiedBy = request.Provenance,
-                Retention = request.Retention
+                Retention = request.Retention,
+                VoiceId = request.VoiceId
             };
             var facts = current.Facts.Values.Append(fact).ToArray();
             var committed = await CommitFactsAsync(current, facts, now, cancellationToken);
@@ -246,6 +248,7 @@ public sealed class MemoryStore : IDisposable
             await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
             var now = CurrentUtc();
             ValidateWrite(request!.Content, request.Provenance, request.Retention, now);
+            MemoryFact.ValidateVoiceId(request.VoiceId);
             StoreState current;
             MemoryFact existing;
             lock (gate)
@@ -263,7 +266,8 @@ public sealed class MemoryStore : IDisposable
                 // A fact another computer stamped ahead of this clock stays in order.
                 UpdatedAtUtc = now > existing.UpdatedAtUtc ? now : existing.UpdatedAtUtc,
                 LastModifiedBy = request.Provenance,
-                Retention = request.Retention
+                Retention = request.Retention,
+                VoiceId = request.VoiceId
             };
             var facts = current.Facts.Values.Select(fact => fact.Id == updated.Id ? updated : fact).ToArray();
             var committed = await CommitFactsAsync(current, facts, now, cancellationToken);
