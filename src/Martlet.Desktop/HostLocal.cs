@@ -44,7 +44,9 @@ internal static partial class HostLocal
     /// turned on, and when Windows must restart, <paramref name="resume"/> continues after the next sign-in. A Docker Desktop
     /// that was already open while Windows changed is restarted (it doesn't notice new WSL by itself), and so is one that
     /// gave up starting (unable to start, or "Virtualization support not detected") although Windows is ready: it checked
-    /// Windows too early, before the restart or while Windows was still starting. Stops when it gives up again after that.</summary>
+        /// Windows too early, before the restart or while Windows was still starting. When Docker Desktop says WSL or Virtual
+        /// Machine Platform is missing and Martlet's own Windows check couldn't read it (for example it timed out), Docker
+        /// Desktop's word counts and Windows is set up. Stops when it gives up again after that.</summary>
     internal static async Task EnsureDockerAsync(HostRunWindow run, ContinueSetupKind resume)
     {
         Action<string> status = run.Status;
@@ -55,33 +57,55 @@ internal static partial class HostLocal
         output.Report("Checking Docker Desktop...");
         var desktop = new DockerDesktopLog();
         var probe = await ProbeEngineAsync(token);
+        var windowsReady = false;
         if (!probe.Answered)
         {
             if (probe.Failed) output.Report("Docker Desktop reported: " + probe.Error);
-            // Docker Desktop's WSL 2 engine can't start until Windows' virtualization is on.
-            var changed = await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume);
+            // What Docker Desktop's last start said is missing (its previous session when it isn't open): it stands in for
+            // Windows facts Martlet can't read, so a slow Windows check can't hide "wsl is not installed".
+            var check = probe.Precondition ?? await DockerDesktopStatus.ReadPreconditionAsync(token);
+            var handled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var restarted = false;
-            if (changed)
+            while (true)
             {
-                desktop.Restarted();
-                restarted = await RestartDockerDesktopAsync(output, token);
+                if (check is not null) handled.Add(check);
+                // Docker Desktop's WSL 2 engine can't start until Windows' virtualization is on.
+                var windows = await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume, check);
+                windowsReady = windows.Ready;
+                if (windows.Changed)
+                {
+                    desktop.Restarted();
+                    restarted = await RestartDockerDesktopAsync(output, token);
+                }
+                else if (probe.Failed && MachineInfo.DockerDesktopRunning())
+                {
+                    output.Report(windows.Ready
+                        ? "Martlet finds nothing missing in Windows, so Docker Desktop checked too early. Restarting Docker Desktop..."
+                        : "Docker Desktop gave up starting. Restarting Docker Desktop once in case it checked Windows too early...");
+                    desktop.Restarted();
+                    restarted = await RestartDockerDesktopAsync(output, token);
+                }
+                if (windows.Changed || restarted) probe = probe with { UnableToStart = false, Precondition = null };
+                probe = await WaitForEngineAsync(run, probe, desktop, restarted, windows.Ready,
+                    failed => !handled.Contains(failed) && WindowsVirtualization.WindowsCanFix(failed));
+                if (!probe.Answered && probe.Precondition is { } next && !handled.Contains(next) && WindowsVirtualization.WindowsCanFix(next))
+                {
+                    output.Report($"Docker Desktop says \"{next}\". Martlet sets up Windows for it.");
+                    check = next;
+                    continue;
+                }
+                break;
             }
-            else if (probe.Failed && MachineInfo.DockerDesktopRunning())
-            {
-                output.Report("Martlet finds nothing missing in Windows, so Docker Desktop checked too early. Restarting Docker Desktop...");
-                desktop.Restarted();
-                restarted = await RestartDockerDesktopAsync(output, token);
-            }
-            if (changed || restarted) probe = probe with { UnableToStart = false, Precondition = null };
-            probe = await WaitForEngineAsync(run, probe, desktop, restarted);
         }
         if (probe.Failed)
         {
             if (probe.Error is not null) output.Report("Docker Desktop reported: " + probe.Error);
             await desktop.ReportAsync(output, token);
             throw new InvalidOperationException(probe.Precondition is { } check
-                ? $"Docker Desktop still says \"{check}\", although Martlet finds nothing missing in Windows. Restart Windows, then try " +
-                  "again. If Docker Desktop keeps saying so, check that Task Manager > Performance > CPU shows Virtualization: Enabled."
+                ? windowsReady
+                    ? $"Docker Desktop still says \"{check}\", although Martlet finds nothing missing in Windows. Restart Windows, then try " +
+                      "again. If Docker Desktop keeps saying so, check that Task Manager > Performance > CPU shows Virtualization: Enabled."
+                    : $"Docker Desktop still says \"{check}\". Restart Windows, then try again; Martlet checks Windows again and sets up what is missing."
                 : "Docker Desktop couldn't start. Open Docker Desktop Troubleshoot or restart Windows, then try again.");
         }
         HostSetupResume.Clear();
@@ -106,9 +130,12 @@ internal static partial class HostLocal
     /// every 30 seconds (or when the reason changes) shows the reason and Docker Desktop's own new messages. Windows is
     /// ready by now, so when Docker Desktop gives up starting (unable to start, or its start check failed: "Virtualization
     /// support not detected"), it checked Windows too early and is restarted once; and when it is open but reports its engine
-    /// stopped at two checks in a row, it is restarted once too (unless <paramref name="restarted"/>). Returns the failed
-    /// check when it gives up again after a restart. Throws after ten minutes.</summary>
-    private static async Task<EngineProbe> WaitForEngineAsync(HostRunWindow run, EngineProbe probe, DockerDesktopLog desktop, bool restarted)
+    /// stopped at two checks in a row, it is restarted once too (unless <paramref name="restarted"/>). A failed check that
+    /// <paramref name="windowsFix"/> accepts (WSL or Virtual Machine Platform missing) is returned at once, for Martlet to
+    /// set Windows up instead of restarting Docker Desktop. Returns the failed check when it gives up again after a restart.
+    /// Throws after ten minutes.</summary>
+    private static async Task<EngineProbe> WaitForEngineAsync(HostRunWindow run, EngineProbe probe, DockerDesktopLog desktop, bool restarted,
+        bool windowsReady, Func<string, bool> windowsFix)
     {
         Action<string> status = run.Status;
         var (output, token) = (run.Output, run.Token);
@@ -150,9 +177,11 @@ internal static partial class HostLocal
             if (probe.Failed || desktop.Precondition is not null)
             {
                 probe = probe with { Precondition = probe.Precondition ?? desktop.Precondition };
-                if (restarted) return probe;
+                if (restarted || probe.Precondition is { } fixable && windowsFix(fixable)) return probe;
                 output.Report((probe.Precondition is { } check ? $"Docker Desktop says \"{check}\"" : $"Docker Desktop says it is unable to start ({probe.Error})") +
-                    ", but Martlet finds nothing missing in Windows: Docker Desktop checked too early (before Windows restarted, or while it was still starting).");
+                    (windowsReady
+                        ? ", but Martlet finds nothing missing in Windows: Docker Desktop checked too early (before Windows restarted, or while it was still starting)."
+                        : ". Restarting Docker Desktop once in case it checked Windows too early."));
                 status("Restarting Docker Desktop...");
                 // Taken before the restart: "docker desktop restart" waits while the new session runs its start check.
                 desktop.Restarted();

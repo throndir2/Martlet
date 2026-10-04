@@ -1181,13 +1181,23 @@ Docker Desktop (optional absolute `dataDirectory`, default the current user's):
 `Running`, `Stopped`, `Disabled`, `Absent` or `Unknown`, `restartPending`
 (Windows component servicing or Windows Update needs a restart, or null when
 unreadable), `restartRequired`, `virtualMachine`, `summary`,
-`dockerDesktop {installed, running, engine, failedStartCheck}` (`engine` is what
+`dockerDesktop {installed, running, engine, failedStartCheck,
+windowsCanFixFailedStartCheck, failedStartCheckNeedsWindowsChanges}` (`engine` is what
 `docker desktop status` reports, for example `running`, `starting` or
 `stopped`, or null when Docker Desktop doesn't answer within 15 seconds;
 `failedStartCheck` is the Windows check Docker Desktop's engine last failed in
 its current session, in Docker's words from its warning and error log, for
 example `Virtual Machine Platform not enabled` or `No virtualization available`
-(its window then says *Virtualization support not detected*), or null; a
+(its window then says *Virtualization support not detected*), or null;
+`windowsCanFixFailedStartCheck` is true when that check names something
+Martlet's Windows setup installs (WSL missing or too old, for example
+`checking WSL version: wsl is not installed`, or Virtual Machine Platform not
+enabled), and `failedStartCheckNeedsWindowsChanges` when, in addition, the
+Windows checks could not read that fact themselves (they timed out or were
+unavailable): Docker Desktop's word then counts, `needsWindowsChanges` is true
+and `problems` quotes it, so a slow Windows probe never hides missing WSL; a
+run window then sets up Windows (one administrator prompt) instead of
+restarting Docker Desktop; a
 run window restarts Docker Desktop once when it is open but its engine stays
 `stopped` at two checks in a row or its start check failed while Windows is
 ready, and always after Martlet changed Windows for

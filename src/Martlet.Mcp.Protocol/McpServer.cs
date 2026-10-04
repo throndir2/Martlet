@@ -1515,7 +1515,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
     private static async Task<object> VirtualizationStatusAsync(JsonElement arguments, CancellationToken cancellation)
     {
         var directory = DataDirectory(arguments);
-        var state = await WindowsVirtualization.ProbeAsync(cancellation);
+        var failedStartCheck = await DockerDesktopStatus.ReadPreconditionAsync(cancellation);
+        var state = await WindowsVirtualization.ProbeAsync(cancellation) with { DockerPrecondition = failedStartCheck };
         var note = ContinueSetup.Read(directory, DateTimeOffset.Now);
         bool startsAtSignIn;
         try
@@ -1561,7 +1562,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     "Docker", "Docker", "Docker Desktop.exe")),
                 running = Running("com.docker.backend") || Running("Docker Desktop"),
                 engine = await DockerDesktopStatus.ReadAsync(cancellation),
-                failedStartCheck = await DockerDesktopStatus.ReadPreconditionAsync(cancellation)
+                failedStartCheck,
+                windowsCanFixFailedStartCheck = WindowsVirtualization.WindowsCanFix(failedStartCheck),
+                failedStartCheckNeedsWindowsChanges = state.DockerNeedsWindows
             },
             continueSetup = new
             {

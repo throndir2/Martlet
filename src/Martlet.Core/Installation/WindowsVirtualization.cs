@@ -14,10 +14,33 @@ public enum WslStatusState { Unknown, Available, Unavailable, RestartRequired, F
 /// <summary>What Docker Desktop's WSL 2 engine needs from Windows, read without administrator rights
 /// (<see cref="ProbeAsync"/>): virtualization turned on in the firmware (UEFI/BIOS), the Virtual Machine Platform and
 /// Windows Subsystem for Linux features, their host services, the Windows hypervisor and WSL <see cref="MinimumWsl"/> or later.
-/// Unknown facts never count as a known blocker, but cannot establish readiness.</summary>
-public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, WindowsFeatureState MachinePlatform,
+/// Unknown facts never count as a known blocker, but cannot establish readiness, except where Docker Desktop's own failed
+/// start check says what is missing (<see cref="DockerPrecondition"/>).</summary>
+public sealed partial record WindowsVirtualization(bool? Firmware, bool? Hypervisor, WindowsFeatureState MachinePlatform,
     WindowsFeatureState Subsystem, string? Wsl, bool VirtualMachine)
 {
+    [System.Text.RegularExpressions.GeneratedRegex(@"\bwsl\b.*?(?:not installed|update required|needs? (?:an )?update|too old|outdated)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex DockerWslPattern();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"virtual machine platform (?:is )?not enabled",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex DockerPlatformPattern();
+
+    /// <summary>Whether Docker Desktop's failed start check (<see cref="DockerDesktopStatus.Precondition"/>) names something
+    /// Martlet's Windows setup installs: WSL (missing or too old) or Virtual Machine Platform.</summary>
+    public static bool WindowsCanFix(string? dockerPrecondition) => dockerPrecondition is { Length: > 0 } check &&
+        (DockerWslPattern().IsMatch(check) || DockerPlatformPattern().IsMatch(check));
+
+    /// <summary>The start check Docker Desktop's engine failed (for example "checking WSL version: wsl is not installed"),
+    /// or null. It only stands in for facts the probe could not read: a probe that timed out must not hide what Docker
+    /// Desktop says is missing.</summary>
+    public string? DockerPrecondition { get; init; }
+
+    /// <summary>Docker Desktop says WSL or Virtual Machine Platform is missing, and the probe could not read that fact.</summary>
+    public bool DockerNeedsWindows => DockerPrecondition is { Length: > 0 } check &&
+        (Wsl is null && DockerWslPattern().IsMatch(check) || MachinePlatform == WindowsFeatureState.Unknown && DockerPlatformPattern().IsMatch(check));
+
     /// <summary>The oldest WSL Docker Desktop supports.</summary>
     public static readonly Version MinimumWsl = new(2, 1, 5);
 
@@ -59,7 +82,7 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         (HypervisorOff || WslMissing || RuntimeUnavailable));
 
     /// <summary>Something Windows itself can fix (with one administrator approval, and usually a restart).</summary>
-    public bool NeedsChanges => !FirmwareOff && !RestartRequired && (FeaturesOff || WslMissing || HypervisorOff);
+    public bool NeedsChanges => !FirmwareOff && !RestartRequired && (FeaturesOff || WslMissing || HypervisorOff || DockerNeedsWindows);
 
     public bool Blocked => FirmwareOff || NeedsChanges || RestartRequired || RuntimeUnavailable;
 
@@ -102,6 +125,7 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
         if (IsOff(MachinePlatform)) problems.Add("Virtual Machine Platform is off");
         if (IsOff(Subsystem)) problems.Add("Windows Subsystem for Linux is off");
         if (WslMissing) problems.Add(Wsl == NoWsl ? "WSL isn't installed" : $"WSL {Wsl} is older than {MinimumWsl}");
+        if (DockerNeedsWindows && !FirmwareOff) problems.Add($"Docker Desktop says \"{DockerPrecondition}\"");
         // Without firmware virtualization, the hypervisor, services and WSL 2 can't run yet: no separate problems.
         if (FirmwareOff) return problems;
         if (HypervisorOff && !FeaturesOff) problems.Add("the Windows hypervisor isn't running yet");
@@ -141,7 +165,8 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
             $"Windows Subsystem for Linux {Feature(Subsystem)}; WSL {wsl}; WSL 2 {status}; " +
             $"Host Compute Service {ComputeService.ToString().ToLowerInvariant()}; Host Network Service {NetworkService.ToString().ToLowerInvariant()}; " +
             $"Windows restart {restart}" + (VirtualMachine ? "; this PC is a virtual machine" : "") +
-            (ProbeIssues.Count > 0 ? "; checks unavailable: " + string.Join(", ", ProbeIssues) : "");
+            (ProbeIssues.Count > 0 ? "; checks unavailable: " + string.Join(", ", ProbeIssues) : "") +
+            (DockerPrecondition is { Length: > 0 } check ? $"; Docker Desktop says \"{check}\"" : "");
     }
 
     /// <summary>Reads the facts as a standard user: Win32_OptionalFeature, Win32_ComputerSystem and Win32_Processor through
@@ -232,8 +257,21 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
     }
 
     /// <summary>Runs <see cref="ProbeScript"/> in a hidden Windows PowerShell (no administrator rights, no network).
-    /// Returns <see cref="Unknown"/> off Windows, when PowerShell can't start or after a minute without an answer.</summary>
+    /// Returns <see cref="Unknown"/> off Windows, when PowerShell can't start or when it twice gets no answer within a
+    /// minute (Windows can be that slow just after sign-in, when Martlet continues setup).</summary>
     public static async Task<WindowsVirtualization> ProbeAsync(CancellationToken token)
+    {
+        var state = await ProbeOnceAsync(token);
+        return ReferenceEquals(state, TimedOut) ? await ProbeOnceAsync(token) switch
+        {
+            var again when ReferenceEquals(again, TimedOut) => Unknown with { ProbeIssues = ["Windows prerequisite probe timed out twice after one minute"] },
+            var again => again
+        } : state;
+    }
+
+    private static readonly WindowsVirtualization TimedOut = Unknown with { ProbeIssues = ["Windows prerequisite probe timed out after one minute"] };
+
+    private static async Task<WindowsVirtualization> ProbeOnceAsync(CancellationToken token)
     {
         if (!OperatingSystem.IsWindows()) return Unknown with { ProbeIssues = ["requires Windows"] };
         var start = new ProcessStartInfo(PowerShellPath)
@@ -266,7 +304,7 @@ public sealed record WindowsVirtualization(bool? Firmware, bool? Hypervisor, Win
                 try { process.Kill(entireProcessTree: true); }
                 catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
                 if (token.IsCancellationRequested) throw;
-                return Unknown with { ProbeIssues = ["Windows prerequisite probe timed out after one minute"] };
+                return TimedOut;
             }
         }
     }
