@@ -20,12 +20,15 @@ internal interface ISongSource
 
 /// <summary>Where songs come from on this PC. Until Companion › Voice › Singing's client is part of this build, only the
 /// FIXTURE - NOT AI song maker is available (when <see cref="FixtureVariable"/> is 1 before Martlet starts, for automated
-/// checks); otherwise singing isn't set up.</summary>
+/// checks); otherwise singing isn't set up. In fixture mode songs also play into <see cref="SilentSongOutput"/>, so automated
+/// checks never sound.</summary>
 internal sealed class DesktopSongSource : ISongSource
 {
     internal const string FixtureVariable = "MARTLET_SINGING_FIXTURE";
 
-    public bool SetUp => Environment.GetEnvironmentVariable(FixtureVariable) == "1";
+    internal static bool Fixture => Environment.GetEnvironmentVariable(FixtureVariable) == "1";
+
+    public bool SetUp => Fixture;
 
     public (SongSetup? Setup, string? Problem) Current() => SetUp
         ? (new SongSetup(new FixtureSongMaker(TimeSpan.FromMilliseconds(400)), "fixture-voice", SongQuality.Fast, SongVoiceMatch.SoulX,
@@ -33,6 +36,32 @@ internal sealed class DesktopSongSource : ISongSource
         : (null, "singing isn't set up on any of your computers (Companion › Voice › Singing).");
 
     public override string ToString() => nameof(DesktopSongSource);
+}
+
+/// <summary>FIXTURE: an output that takes a song's audio at real-time pace and plays nothing, for automated checks of the
+/// desktop's singing (MARTLET_SINGING_FIXTURE=1); positions, captions and stops behave as on real speakers.</summary>
+internal sealed class SilentSongOutput : IPlaybackDeviceFactory
+{
+    public IPlaybackDevice Open(OutputSelection selection, Martlet.Core.Audio.PcmFormat format, CancellationToken cancellationToken) =>
+        new Device(format.SampleRate);
+
+    private sealed class Device(int rate) : IPlaybackDevice
+    {
+        private long written;
+        private System.Diagnostics.Stopwatch? clock;
+        public PlaybackDeviceInfo Info { get; } = new(rate, 2, 16, DeviceSampleEncoding.IntegerPcm, rate / 20, false);
+        private long Consumed => clock is null ? 0 : Math.Min(written, (long)(clock.Elapsed.TotalSeconds * rate));
+        public int GetPadding(CancellationToken cancellationToken) => (int)(written - Consumed);
+        public int Write(ReadOnlySpan<byte> pcm, CancellationToken cancellationToken)
+        {
+            var frames = Math.Clamp(pcm.Length / 4, 0, Info.BufferCapacitySamples - GetPadding(cancellationToken));
+            written += frames;
+            return frames;
+        }
+        public void Start(CancellationToken cancellationToken) => clock = System.Diagnostics.Stopwatch.StartNew();
+        public void StopAndReset() { }
+        public void Dispose() { }
+    }
 }
 
 /// <summary>Martlet singing in the conversation: the song library in the data directory, the song playing (one at a time,
@@ -294,6 +323,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
         return JsonSerializer.Serialize(new
         {
             updatedAt = clock.GetUtcNow(), offered = Offered, songs = Library?.List().Count ?? 0,
+            output = devices is SilentSongOutput ? "silent fixture output (MARTLET_SINGING_FIXTURE)" : devices is null ? "none" : "Martlet's voice output",
             playing = current is null ? null : Playing(current),
             lastStop = stopped is null ? null : new
             {

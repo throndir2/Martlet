@@ -1335,6 +1335,49 @@ this PC the tool returned in 5 ms, a paused think's request was gone 123-140 ms
 later (the fixture writes every 50 ms) and replies beside a parallel think
 answered in 2 ms. Loopback only; reads no credentials.
 
+`songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
+(optional absolute `dataDirectory`, default the current user's):
+`backgroundWork` (Thinking longer, which the song tools come with), `library`
+(`songs\`: `count`, `kept` 20, and each song's `id`, `durationSeconds`, `lines`,
+`sections`, `bpm`, `beatsPerBar`, `beats`, `downbeats`, `titleCharacters`,
+`lyricsCharacters`, `generator`, `converter`, `quality`, `voiceMatch`, `fixture`
+and `createdAt`; never a title or words), `desktop` (the desktop's
+`songs-status.json`: `offered`, `songs`, `output` (*Martlet's voice output*, or
+the silent fixture output under `MARTLET_SINGING_FIXTURE=1`), `playing` with
+`songId`, `state` (*Starting*, *LeadIn*, *Singing*, *Stopping*...),
+`positionSeconds`, `durationSeconds`, `line`, `lines`, `section`, `from`,
+`leadInBars`, `leadInSeconds`, `fadeInMs`, `vamps`, `ducked`, its `stop` plan
+(`musical`, `requestedSeconds`, `vocalsEndSeconds`, `vocalsFadeMs`,
+`backingFromSeconds`, `backingFadeMs`, `silentAfterSeconds`) and `failure`;
+`lastStop` with `songId`, `atSeconds`, `line`, `lines`, `section`, `nextLine`,
+`cause` (*UserWords*, *Button*, *Martlet*, *Ended*, *Failed*), `ended`,
+`wordsCharacters` and a button's `reason`; and `noteWaiting`), the song job
+`kind` (one at a time, 4 an hour, 15 minutes, `offer`, *Making a song*), the
+three `tools` exactly as the Thinking model gets them and the filled Singing
+`prompt`. Read-only.
+
+`song_playback_check` runs the production playback (`SongTransport`,
+`SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster
+than real time and keeps what it is given; nothing is played aloud) on the
+FIXTURE - NOT AI tone song (40 s, 96 BPM, ten lines in verse, chorus, verse 2 and
+chorus 2), or on a stored song (`songId` with its `dataDirectory`), and measures
+what it produced. `resolve`: where `from` points for start, a section, *second
+verse*, `line:3`, a time and two misses. `leadIn` (resuming line 4, rendered from
+the backing alone and the vocals alone): `entrySeconds` on a downbeat,
+`leadInBars`, `fadeInMs`, the backing's gain in its first 10 ms, at half the fade
+(equal power: 0.707) and after it, and the vocals' peak before the gate (0) and
+level after the onset. `vamp`: Martlet still talking at the line, the band
+repeats the bar twice and the vocals are first heard two bars later
+(`vocalsFirstHeardAfterSeconds` against `expectedAfterSeconds`). `duck`: -12 dB.
+`played`: sung from the top and stopped musically mid-line by the user's words
+(`musicalStop`: the stop record's line and section, the word's end, the beat the
+band fades from and over how long, the planned and measured silence and the
+note), then resumed (`resume`: the line where it stopped, its lead-in, 2 vamps,
+the states *LeadIn*, *Singing*, *Stopped*) and stopped with Esc (`quickStop`: a
+300 ms fade from where the audio already handed to the output ends). Each part
+has an `ok`; on this PC the musical stop went silent 0.88 s after the request
+(planned 9.375 s, measured 9.370 s) and Esc 0.4 s after it.
+
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
 `dataDirectory`, default the current user's, and optional `delayMs` 0-300,
@@ -2237,7 +2280,18 @@ it.*, *think-1 waiting for a quiet moment*, *think-1 paused while you talk
 *... when you talk next.*; never what a job is about), each job's chip
 `LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
 so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
-only stops that job, and the next thing you say tells Martlet), with the status
+only stops that job, and the next thing you say tells Martlet), the song panel
+`LiveSongPanel` (shown while Martlet sings or has a song to offer): `LiveSong`
+(*Singing song-1a2b3c · 0:22 of 1:00 · verse line 4 of 12.*, *Starting
+song-1a2b3c line 4 where you stopped: a bar of the band first · 0:08 of 0:40.*,
+*Stopping song-1a2b3c at 0:10: finishing the word, then the band rings out on the
+beat.*, *Stopped song-1a2b3c at 0:17 (verse 2 line 7 of 10): you pressed Stop
+singing. Resume picks up that line.* or *Song song-1a2b3c is ready (0:40, 10
+lines). Martlet offers it, or press Play.*; never the title or words, which
+`LiveSongLine` holds), `LiveSongStop` (*Stop singing*, a passive click: it only
+ends the song musically) and `LiveSongPlay` (its name says *Sing it from the top*
+or *Resume singing where it stopped*; clicking it sings aloud, so it needs
+`--allow-ui-effects`), with the status
 line reading *Starting to think it over in the background…* while
 `think_longer` runs and *Martlet is bringing up what it worked on…* while
 Martlet's own report is on its way; Companion › **Deep thinking**'s
@@ -2301,7 +2355,8 @@ verification, save a fixed microphone that does not exist in the disposable
 data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
 retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
-is a passive click: it only stops a reply, recording or vision. Changing How
+is a passive click: it only stops a reply, recording, vision or a song (with a
+quick fade). Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkWordCheck` (*Word check*: *Relaxed*,
@@ -2517,7 +2572,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

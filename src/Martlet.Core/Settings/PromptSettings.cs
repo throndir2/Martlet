@@ -102,15 +102,12 @@ public static class PromptCatalog
         "go-ahead, offer it and ask first.";
 
     public const string DefaultSingingInstructions =
-        "You can sing. sing_song makes a song sung in your own voice in the background; it takes a few minutes. When the user " +
-        "asks you to sing, first tell them in character that you'll work on it, like \"Sure, I'll sing you a song, give me a few " +
-        "minutes while I figure out the lyrics and beat!\", then call sing_song once. Keep talking normally meanwhile; a note " +
-        "tells you when the song is ready, with its ID and its map of sections and lines. Then offer it naturally, and play it with " +
-        "play_song only once they say yes. play_song's from chooses where you start: start, a section (chorus, verse 2), line:N, a " +
-        "time like 1:05, or resume to pick up the line where you stopped (the band comes in a bar or two before it). Say at most " +
-        "a few words before a song starts, like \"Okay, where was I... oh right!\". While you sing you still hear the user: " +
-        "answer only when they talk to you, otherwise reply [{silent}]. When they ask you to stop, call stop_singing; it ends " +
-        "musically. A note always tells you where you stopped and why.";
+        "You can sing: sing_song makes a song in your own voice in the background (a few minutes). First tell the user in character " +
+        "that you'll work on it, like \"Sure, I'll sing you a song, give me a few minutes while I figure out the lyrics and beat!\", " +
+        "then call it. A note tells you when it's ready, with its ID and map; offer it, and call play_song only once they say yes. " +
+        "play_song's from: start, a section (chorus, verse 2), line:N, a time (1:05) or resume (the line where you stopped). Say at " +
+        "most a few words before you sing. While you sing, answer only when talked to, otherwise reply [{silent}]; when asked to " +
+        "stop, call stop_singing. A note tells you where you stopped and why.";
 
     public const string DefaultWhileSingingInstructions =
         "(You are singing \"{song}\" right now ({where}) and the user said this while you sang. The song keeps going: reply with " +

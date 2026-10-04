@@ -92,9 +92,10 @@ public partial class MainWindow : ThemedWindow
         if (setupService is not null)
         {
             var microphones = new WasapiCaptureDeviceFactory();
-            // Martlet sings through the same output as its voice; the character's mouth follows the vocals.
-            var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(), new WasapiDeviceFactory(), captions.Feed,
-                avatar.SingAsync);
+            // Martlet sings through the same output as its voice; the character's mouth follows the vocals. (The FIXTURE song
+            // maker's songs play into a silent output, so automated checks never sound.)
+            var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(),
+                DesktopSongSource.Fixture ? new SilentSongOutput() : new WasapiDeviceFactory(), captions.Feed, avatar.SingAsync);
             conversation = new(setupOperations, setupService, vault, microphones, new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,

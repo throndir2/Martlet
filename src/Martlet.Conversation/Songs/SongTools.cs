@@ -32,21 +32,17 @@ public static class SongTools
     public static BackgroundJobKind Kind { get; } = new(KindName, 1, PerHour, TimeSpan.FromMinutes(15), Offer: true, Doing: "Making a song");
 
     public const string SingParametersJson =
-        """{"type":"object","properties":{"about":{"type":"string","description":"What the song is about, as the user asked, with any details they gave."},"lyrics":{"type":"string","description":"Only when the user gave the words: the full lyrics with [verse], [chorus] and [bridge] tags, one sung line per line. Leave out to have them written."},"style":{"type":"string","description":"Optional genre, instruments, mood and vocal style, like \"upbeat acoustic pop\"."},"duration":{"type":"integer","minimum":15,"maximum":180,"description":"Seconds, 60 unless asked."}},"required":["about"],"additionalProperties":false}""";
+        """{"type":"object","properties":{"about":{"type":"string","description":"What it's about, with the user's details."},"lyrics":{"type":"string","description":"Only if the user gave the words: lines with [verse]/[chorus] tags."},"style":{"type":"string","description":"Optional genre and mood."},"duration":{"type":"integer","minimum":15,"maximum":180,"description":"Seconds, default 60."}},"required":["about"],"additionalProperties":false}""";
 
     public const string PlayParametersJson =
-        """{"type":"object","properties":{"song_id":{"type":"string","description":"Such as song-1a2b3c, from the note that said it's ready."},"from":{"type":"string","description":"start (default), resume, \"resume section\", a section such as chorus or verse 2, line:N, or a time like 1:05."}},"required":["song_id"],"additionalProperties":false}""";
+        """{"type":"object","properties":{"song_id":{"type":"string","description":"From the note, like song-1a2b3c."},"from":{"type":"string","description":"start, resume, a section, line:N or a time like 1:05."}},"required":["song_id"],"additionalProperties":false}""";
 
     public const string StopParametersJson =
-        """{"type":"object","properties":{"reason":{"type":"string","description":"Why, in a few words."}},"additionalProperties":false}""";
+        """{"type":"object","properties":{"reason":{"type":"string"}},"additionalProperties":false}""";
 
-    public const string SingDescription =
-        "Make a song sung in your own voice, in the background (a few minutes). Tell the user first that you'll work on it. " +
-        "Returns at once; a note brings the song's ID and map when it's ready. One at a time.";
-    public const string PlayDescription =
-        "Sing a finished song now, from the start or from anywhere in it (the band comes in a bar or two before). Only after " +
-        "the user said yes.";
-    public const string StopDescription = "Stop singing, musically (the word ends, the band rings out on the beat).";
+    public const string SingDescription = "Make a song sung in your voice, in the background (minutes). Tell the user first. One at a time.";
+    public const string PlayDescription = "Sing a finished song now, from any point (the band leads in). Only after the user said yes.";
+    public const string StopDescription = "Stop singing, musically.";
 
     /// <summary>sing_song, play_song and stop_singing, always in that order.</summary>
     public static IReadOnlyList<TextToolDefinition> Definitions { get; } =

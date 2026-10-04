@@ -155,9 +155,9 @@ public sealed class SongLibrary
             System.IO.Directory.CreateDirectory(staging);
             try
             {
-                File.WriteAllBytes(Path.Combine(staging, MixFile), result.Mix.ToWave());
-                File.WriteAllBytes(Path.Combine(staging, VocalsFile), result.Vocals.ToWave());
-                File.WriteAllBytes(Path.Combine(staging, BackingFile), result.Backing.ToWave());
+                WriteWave(Path.Combine(staging, MixFile), result.Mix);
+                WriteWave(Path.Combine(staging, VocalsFile), result.Vocals);
+                WriteWave(Path.Combine(staging, BackingFile), result.Backing);
                 File.WriteAllText(Path.Combine(staging, SongFile), JsonSerializer.Serialize(song, Json));
                 System.IO.Directory.Move(staging, Path.Combine(Directory, id));
             }
@@ -215,32 +215,62 @@ public sealed class SongLibrary
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException) { return null; }
     }
 
-    // A 48 kHz 16-bit PCM WAV with the expected channel count, as SongTrack.ToWave writes it.
+    // The track as a canonical PCM WAV (like SongTrack.ToWave), written straight from its samples without another copy.
+    private static void WriteWave(string path, SongTrack track)
+    {
+        Span<byte> header = stackalloc byte[44];
+        "RIFF"u8.CopyTo(header);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[4..], checked((uint)(36 + track.Pcm16.Length)));
+        "WAVEfmt "u8.CopyTo(header[8..]);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[16..], 16);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[20..], 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[22..], (ushort)track.Channels);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[24..], (uint)track.SampleRate);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[28..], (uint)(track.SampleRate * track.Channels * 2));
+        BinaryPrimitives.WriteUInt16LittleEndian(header[32..], (ushort)(track.Channels * 2));
+        BinaryPrimitives.WriteUInt16LittleEndian(header[34..], 16);
+        "data"u8.CopyTo(header[36..]);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[40..], (uint)track.Pcm16.Length);
+        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65_536);
+        file.Write(header);
+        file.Write(track.Pcm16.Span);
+    }
+
+    // A 48 kHz 16-bit PCM WAV with the expected channel count, as SongTrack.ToWave writes it, read straight into samples.
     private static short[]? ReadWave(string path, int channels)
     {
         if (!File.Exists(path)) return null;
-        var bytes = File.ReadAllBytes(path);
-        if (bytes.Length < 44 || !bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) || !bytes.AsSpan(8, 4).SequenceEqual("WAVE"u8)) return null;
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65_536);
+        Span<byte> chunk = stackalloc byte[8];
+        Span<byte> riff = stackalloc byte[12];
+        Span<byte> format = stackalloc byte[64];
+        if (file.ReadAtLeast(riff, 12, throwOnEndOfStream: false) < 12 || !riff[..4].SequenceEqual("RIFF"u8) || !riff[8..].SequenceEqual("WAVE"u8))
+            return null;
         int? rate = null, count = null, bits = null;
-        var offset = 12;
-        while (offset + 8 <= bytes.Length)
+        while (file.ReadAtLeast(chunk, 8, throwOnEndOfStream: false) == 8)
         {
-            var id = bytes.AsSpan(offset, 4);
-            var size = (int)Math.Min(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(offset + 4)), (uint)(bytes.Length - offset - 8));
-            if (id.SequenceEqual("fmt "u8) && size >= 16)
+            var size = (long)BinaryPrimitives.ReadUInt32LittleEndian(chunk[4..]);
+            if (chunk[..4].SequenceEqual("fmt "u8) && size is >= 16 and <= 64)
             {
-                count = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(offset + 10));
-                rate = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(offset + 12));
-                bits = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(offset + 22));
+                var fields = format[..(int)size];
+                if (file.ReadAtLeast(fields, fields.Length, throwOnEndOfStream: false) < fields.Length) return null;
+                count = BinaryPrimitives.ReadUInt16LittleEndian(fields[2..]);
+                rate = (int)BinaryPrimitives.ReadUInt32LittleEndian(fields[4..]);
+                bits = BinaryPrimitives.ReadUInt16LittleEndian(fields[14..]);
+                if ((size & 1) == 1) file.Seek(1, SeekOrigin.Current);
             }
-            else if (id.SequenceEqual("data"u8))
+            else if (chunk[..4].SequenceEqual("data"u8))
             {
                 if (rate != SongTrack.SampleRateHz || count != channels || bits != 16) return null;
+                size = Math.Min(size, file.Length - file.Position);
                 var samples = new short[size / 2];
-                for (var i = 0; i < samples.Length; i++) samples[i] = BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(offset + 8 + i * 2));
+                var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(samples.AsSpan());
+                if (file.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false) < bytes.Length) return null;
+                if (!BitConverter.IsLittleEndian)
+                    for (var i = 0; i < samples.Length; i++) samples[i] = BinaryPrimitives.ReverseEndianness(samples[i]);
                 return samples;
             }
-            offset += 8 + size + (size & 1);
+            else file.Seek(size + (size & 1), SeekOrigin.Current);
         }
         return null;
     }

@@ -384,7 +384,99 @@ and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
 completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
 acting on the user's yes is an ordinary later tool call in that conversation
-(for a song, `sing_song` with the song's ID or the lyrics the think wrote).
+(for a song, `play_song` with the song's ID; see [Singing in
+conversation](#singing-in-conversation)).
+
+## Singing in conversation
+
+*"Martlet, sing me a song."* Martlet answers in character (*"Sure, I'll sing you
+a song, give me a few minutes while I figure out the lyrics and beat!"*), makes
+the song in the background while the conversation carries on, brings it up when
+it's ready (*"Nice job on killing that noob! Oh, and that song's ready, wanna
+hear?"*) and sings it on a yes. It is offered while Thinking longer is on, the
+Thinking route does function calling and singing is set up (Companion › Voice ›
+Singing, see [Singing](SINGING.md)); replies then always get the same three
+tools after `think_longer` and `cancel_thinking`, with the *Singing* prompt
+(Companion › Prompts), so the start of every request stays the same. Without
+singing set up, requests are exactly as before.
+
+**`sing_song(about, lyrics?, style?, duration?)`** starts a `song` job (one at a
+time, 4 an hour, 15 minutes at most; `Offer`, *Making a song*) and returns at
+once; the result tells Martlet to tell the user now if it hadn't. Without
+lyrics, the job first writes the title, style, tempo, key and tagged lyrics with
+a background think that continues the reply's request exactly like
+think_longer's (Thinking steps On, where Deep thinking thinks, in quiet moments
+when it shares the conversation's hardware, Companion › Prompts › *Singing:
+writing the song*; its own runtime and authorization, and *Thinking input (Song
+lyrics)* in the log; at most Thinking longer's time limit). Then the song maker
+(`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
+the Singing card's quality and voice match; the chip follows its stages
+(*Writing the lyrics*, *Writing the music*, *Matching the singing to the
+voice*...). The finished song is kept in the data folder's `songs\<id>\`
+(`song.json` with the title, lyrics, sections and lines with their times, the
+beat grid, voice and engine; `mix.wav`, `vocals.wav`, `backing.wav`), the newest
+20. The job's result gives the song's ID, title, length and map (each section and
+line with its start time) and says to offer it.
+
+**`play_song(song_id, from)`** plays a finished song through Martlet's voice
+output: the backing and vocals as two sample-aligned streams mixed on this PC
+into one stream beside the speech stream on the same output device (Windows'
+volume for Martlet applies to both), with the character's mouth following the
+vocals' loudness and the speech bubble or subtitles showing the line being sung.
+`from` is `start`, `resume` (the line where it stopped; `resume section` for
+its section), a section (`chorus`, `verse 2`, *second verse*), `line:N` or a
+time (`1:05`; a line starting within a bar of it is where it goes). From
+anywhere but the top it never starts hard in the middle of the music
+(`SongTransport.PlanStart`): the backing enters on the latest downbeat that
+leaves at least half a bar and 1.5 seconds before the singing (one bar before
+the line; two for a long pickup or short bars) with an equal-power fade-in over
+that bar, and the vocals stay muted until 80 ms before the line's onset. If
+Martlet is still talking when the lead-in reaches the line (*"Okay, where was
+I... oh right!"*), the band repeats that bar (at most 4 times, crossfaded on the
+downbeat) under its words and goes into the line once it's done. A song that
+had ended resumes from the top.
+
+**Stopping.** `stop_singing`, a stop request heard while it sings
+(`BargeInPolicy`'s song rule: a stop word with Martlet's name or with *sing*,
+*singing*, *song* or *music*, checked by the quick word check as it is said and
+by the transcript), the talk window's *Stop singing* and the talk button stop
+it musically (`SongTransport.PlanStop`): the vocals finish the word (the next
+dip in their loudness within 0.6 s, then a 150 ms fade) and the backing rings
+to the next beat and fades over one beat, about 1-1.5 s after the request. Stop
+(Esc) and ending the conversation fade both in 300 ms. Where it stopped is
+recorded at once (song time, section, line number and words, and why: the
+user's words, the button or Martlet's own call) and goes at the end of the
+conversation as a note with the next message, never rewriting anything before
+it: *You stopped singing "Morning Light" (song-1a2b3c) at 0:22, in verse line 4
+of 12, "When you're laughing like before" because the user said: "okay okay
+Martlet, stop singing". play_song with from=resume restarts that line.*
+`stop_singing`'s own result carries the note instead; a song that played to its
+end leaves *You finished singing ...*.
+
+**While it sings** the song keeps going (`PlaybackMode.Song`). Always listening
+keeps listening when barge-in or echo reduction is on (the song is taken out of
+what the microphone hears), otherwise it holds off as for a reply; hearing what
+this PC plays holds off unless Windows leaves Martlet out. What is heard passes
+the utterance filter and goes to the Thinking model with the *Said while you
+were singing* note (the song and where it is), so Martlet answers only when
+talked to and otherwise stays quiet (`[pass]`). When it does answer, or anything
+else speaks, the song is turned down 12 dB under the speech (60 ms ramps) and
+back up after; the character's mouth follows the speech meanwhile. Finished
+background work and screen glances wait until the song is over.
+
+**Latency.** Song work never holds up a reply: the job runs on its own runtime,
+the song maker on its own computer, and the lyrics think stops at once whenever
+the conversation needs a model on this PC. Playback never blocks the reply
+slot. The tools and prompt only change the request while singing is set up, and
+then they stay the same reply after reply, so they stay in the prompt cache.
+
+The talk window's song panel (`LiveSongPanel`) shows the song playing (`LiveSong`:
+its ID, state, position, line number and section; `LiveSongLine`: its title and
+the line being sung) with *Stop singing* (`LiveSongStop`), or the last song with
+*Play* or *Resume* (`LiveSongPlay`, which sings it without asking the model).
+`songs-status.json` in the data folder has the song playing and the last stop
+(never a title or words). MCP's `songs_status` and `song_playback_check` read and
+exercise it ([MCP](MCP.md)).
 
 [Memory](MEMORY.md) is ON by default (Companion › Memory turns it off). When
 on, each explicit typed/PTT/hands-free turn automatically recalls up to twelve
