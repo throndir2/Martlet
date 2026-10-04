@@ -93,6 +93,8 @@ internal static class GatewayInferenceJson
                     ParseAudio2Face(fields["payload"], route),
                 GatewayInferenceKind.Transcription =>
                     ParseTranscription(fields["payload"], route),
+                GatewayInferenceKind.Song =>
+                    ParseSong(fields["payload"], route, referenceAudio, referenceVoice),
                 _ => throw new GatewayProtocolException("request.invalid")
             };
             return new(
@@ -570,6 +572,118 @@ internal static class GatewayInferenceJson
                 ? "request.too_large" : "request.invalid");
         }
         return new(GatewayInferenceRoute.TranscriptionSampleRate, pcm);
+    }
+
+    // One operation on the host's song jobs. A start names its voice by the shared speaking-voice list's ID: the recording
+    // is the one this host keeps for that voice (reference.missing when it has none), or the one the request carries,
+    // which must be that voice's recording (its SHA-256). No path or URL is ever accepted.
+    private static GatewaySongPayload ParseSong(
+        JsonElement element,
+        GatewayInferenceRoute route,
+        Func<string, byte[]?>? referenceAudio,
+        Func<string, Martlet.Core.Voices.SpeakingVoice?>? referenceVoice)
+    {
+        GatewayRules.Require(element.ValueKind == JsonValueKind.Object, "request.invalid");
+        var operation = element.TryGetProperty("operation", out var operationElement) &&
+            operationElement.ValueKind == JsonValueKind.String ? operationElement.GetString() : null;
+        switch (operation)
+        {
+            case "status":
+            {
+                // Without a job: the singing service's own status (state, engine, voice matches, queue, models).
+                var fields = Object(element, ["operation"], ["job_id"]);
+                return new(GatewaySongOperation.Status, fields.ContainsKey("job_id") ? JobId(fields) : null);
+            }
+            case "cancel":
+            {
+                var fields = Object(element, ["operation", "job_id"], []);
+                return new(GatewaySongOperation.Cancel, JobId(fields));
+            }
+            case "result":
+            {
+                var fields = Object(element, ["operation", "job_id", "track", "offset_frames", "maximum_frames"], []);
+                var track = Text(fields, "track", 16);
+                GatewayRules.Require(track is "mix" or "vocals" or "backing", "request.invalid");
+                return new(GatewaySongOperation.Result, JobId(fields), track: track,
+                    offsetFrames: Integer(fields, "offset_frames", 0, 48_000L * Martlet.Core.Singing.SongRequest.MaximumDurationSeconds),
+                    maximumFrames: checked((int)Integer(fields, "maximum_frames", 1,
+                        GatewayInferenceRoute.SongMaximumPageBytes / 2)));
+            }
+            case "start":
+                break;
+            default:
+                throw new GatewayProtocolException("request.invalid");
+        }
+
+        var start = Object(element,
+            ["operation", "lyrics", "style", "duration_seconds", "language", "quality", "voice_match", "voice_id"],
+            ["bpm", "key", "seed", "reference_audio_base64"]);
+        var lyrics = Text(start, "lyrics", Martlet.Core.Singing.SongRequest.MaximumLyricsCharacters, allowNewLines: true);
+        var style = Text(start, "style", Martlet.Core.Singing.SongRequest.MaximumStyleCharacters);
+        var duration = checked((int)Integer(start, "duration_seconds", Martlet.Core.Singing.SongRequest.MinimumDurationSeconds,
+            Martlet.Core.Singing.SongRequest.MaximumDurationSeconds));
+        var language = Text(start, "language", 2);
+        GatewayRules.Require(language.Length == 2 && language.All(char.IsAsciiLetterLower), "request.invalid");
+        var quality = Text(start, "quality", 16);
+        GatewayRules.Require(quality is "fast" or "high_quality", "request.invalid");
+        var voiceMatch = Text(start, "voice_match", 16);
+        GatewayRules.Require(voiceMatch is "soulx" or "vevosing", "request.invalid");
+        var voiceId = Text(start, "voice_id", 128);
+        GatewayRules.Require(voiceId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or ':' or '.'), "request.invalid");
+        int? bpm = start.ContainsKey("bpm")
+            ? checked((int)Integer(start, "bpm", Martlet.Core.Singing.SongRequest.MinimumBpm, Martlet.Core.Singing.SongRequest.MaximumBpm))
+            : null;
+        string? key = null;
+        if (start.ContainsKey("key"))
+        {
+            key = Text(start, "key", 16);
+            GatewayRules.Require(key.All(c => char.IsAsciiLetterOrDigit(c) || c is ' ' or '#' or '♯' or '♭'), "request.invalid");
+        }
+        long? seed = start.ContainsKey("seed") ? Integer(start, "seed", 0, uint.MaxValue) : null;
+
+        var voice = referenceVoice?.Invoke(voiceId) ?? throw new GatewayProtocolException("voice.missing");
+        GatewayRules.Require(!voice.Removed && voice.AudioSha256 is { Length: 64 }, "voice.missing");
+        var audioSha256 = voice.AudioSha256!;
+        byte[] audio;
+        if (start.ContainsKey("reference_audio_base64"))
+        {
+            var encoded = Text(start, "reference_audio_base64", ((route.MaximumInputBytes + 2) / 3) * 4);
+            audio = Convert.FromBase64String(encoded);
+            if (Convert.ToBase64String(audio) != encoded)
+            {
+                CryptographicOperations.ZeroMemory(audio);
+                throw new GatewayProtocolException("request.invalid");
+            }
+        }
+        else
+        {
+            GatewayRules.Require(referenceAudio is not null, "request.invalid");
+            audio = referenceAudio!(audioSha256) ?? throw new GatewayProtocolException("reference.missing");
+        }
+        try
+        {
+            GatewayRules.Require(audio.Length <= route.MaximumInputBytes, "request.too_large");
+            GatewayRules.Require(Convert.ToHexStringLower(SHA256.HashData(audio)) == audioSha256, "request.invalid");
+            GatewayRules.Require(Martlet.Core.Voices.PcmWaveInfo.Inspect(audio, route.MaximumInputBytes).DurationMilliseconds is
+                >= Martlet.Core.Voices.SpeakingVoiceLibrary.MinimumDurationMilliseconds and
+                <= Martlet.Core.Voices.SpeakingVoiceLibrary.MaximumDurationMilliseconds, "request.invalid");
+            return new(GatewaySongOperation.Start,
+                start: new GatewaySongStart(lyrics, style, duration, language, bpm, key, seed, quality, voiceMatch, voiceId,
+                    audioSha256),
+                referenceAudio: audio);
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(audio);
+            throw;
+        }
+
+        static string JobId(IReadOnlyDictionary<string, JsonElement> fields)
+        {
+            var id = Text(fields, "job_id", 64);
+            GatewayRules.Require(id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'), "request.invalid");
+            return id;
+        }
     }
 
     // A mono PCM16 WAV within the reference store's bounds (1-30 s, 4 MB); whether the engine can clone it is checked apart.

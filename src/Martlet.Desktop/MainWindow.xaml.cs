@@ -99,6 +99,12 @@ public partial class MainWindow : ThemedWindow
             var simulated = SimulatedAudio.Microphone();
             ICaptureDeviceFactory microphones = simulated is null ? new WasapiCaptureDeviceFactory() : simulated;
             IPlaybackDeviceFactory speakers = SimulatedAudio.Speakers() is { } silent ? silent : new WasapiDeviceFactory();
+            // Martlet sings through the same output as its voice; the character's mouth follows the vocals. (The FIXTURE song
+            // maker's songs play into a silent output, so automated checks never sound.) Songs are kept as creations.
+            Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.SongCreations.Kind);
+            var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(store.DataDirectory),
+                DesktopSongSource.Fixture ? new SilentSongOutput() : speakers is SimulatedSpeakers ? speakers : new WasapiDeviceFactory(),
+                captions.Feed, avatar, (vocals, rate, token) => avatar.AnalyzeSongAsync(vocals, rate, OwnLipSyncEndpoint(), token));
             conversation = new(setupOperations, setupService, vault, microphones, speakers,
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
@@ -106,7 +112,7 @@ public partial class MainWindow : ThemedWindow
                 echoReducer: simulated is not null ? null
                     : new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
-                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory);
+                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
         }

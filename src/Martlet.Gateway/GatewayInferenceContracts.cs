@@ -30,7 +30,8 @@ public enum GatewayInferenceKind
     PerceptionOcr,
     PerceptionVlm,
     Audio2Face,
-    Transcription
+    Transcription,
+    Song
 }
 
 public enum GatewayInferenceEventKind
@@ -489,6 +490,57 @@ public sealed partial class GatewayInferenceRoute
     /// <summary>Final transcript bound: 4,096 characters of up to four UTF-8 bytes each.</summary>
     public const int TranscriptionMaximumTextBytes = 16 * 1024;
 
+    /// <summary>
+    /// The singing host role's song jobs (<c>workers/singing</c>): one short request per operation. <c>start</c> queues a
+    /// song from lyrics, style and a voice of the shared speaking-voice list (the gateway hands the worker that voice's
+    /// recording); <c>status</c> reports the stage; <c>result</c> pages one finished track's 48 kHz PCM16 out in JSON text
+    /// events; <c>cancel</c> stops the job. A song takes far longer than one request, so the job lives on the host and the
+    /// client polls it. Every event's text is one JSON object; job-level failures (busy, missing voice match) are such an
+    /// object with an <c>error</c>.
+    /// </summary>
+    public static GatewayInferenceRoute Song(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
+        string modelSha256)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        GatewayRules.Sha256(modelSha256);
+        return new(
+            GatewayInferenceKind.Song,
+            GatewayRole.Voice,
+            SongRouteId,
+            SongPath,
+            SongContractId,
+            SongContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(SongContractId, SongContractVersion, workerId, modelId, modelRevision, modelSha256),
+            maximumRequestBytes: GatewayInferenceProtocol.MaximumRequestBytes,
+            maximumInputBytes: Martlet.Core.Voices.SpeakingVoiceLibrary.MaximumAudioBytes,
+            maximumOutputBytes: SongMaximumPageBytes * 4 / 3 + 64 * 1024,
+            maximumEventBytes: SongMaximumEventPcmBytes * 4 / 3 + 4 * 1024,
+            maximumEvents: SongMaximumPageBytes / SongMaximumEventPcmBytes + 8,
+            maximumStreamBytes: 8 * 1024 * 1024,
+            maximumDuration: TimeSpan.FromSeconds(60),
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string SongRouteId = "martlet.gateway.song.v1";
+    public const string SongPath = "/martlet/v1/inference/song";
+    public const string SongContractId = "martlet.song-relay";
+    public const string SongContractVersion = "1.0";
+    /// <summary>At most this much PCM in one <c>result</c> page (whole 48 kHz stereo frames).</summary>
+    public const int SongMaximumPageBytes = 4_800_000;
+    /// <summary>At most this much PCM (base64 in the event's JSON text) per event of a <c>result</c> page.</summary>
+    public const int SongMaximumEventPcmBytes = 96_000;
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -737,6 +789,52 @@ public sealed class GatewayTranscriptionPayload : GatewayInferencePayload
     public int SampleRate { get; }
     public ReadOnlyMemory<byte> Pcm => pcm;
     internal override void Clear() => CryptographicOperations.ZeroMemory(pcm);
+}
+
+public enum GatewaySongOperation
+{
+    Start,
+    Status,
+    Result,
+    Cancel
+}
+
+/// <summary>One operation on the host's song jobs. <see cref="GatewaySongOperation.Start"/> carries the song request and the
+/// chosen voice's recording, which the gateway resolved from its shared speaking-voice list (or checked against it when the
+/// client sent it); the others name a job.</summary>
+public sealed class GatewaySongPayload : GatewayInferencePayload
+{
+    private readonly byte[] referenceAudio;
+
+    internal GatewaySongPayload(GatewaySongOperation operation, string? jobId = null, GatewaySongStart? start = null,
+        byte[]? referenceAudio = null, string? track = null, long offsetFrames = 0, int maximumFrames = 0)
+    {
+        Operation = operation;
+        JobId = jobId;
+        Start = start;
+        this.referenceAudio = referenceAudio ?? [];
+        Track = track;
+        OffsetFrames = offsetFrames;
+        MaximumFrames = maximumFrames;
+    }
+
+    public GatewaySongOperation Operation { get; }
+    public string? JobId { get; }
+    public GatewaySongStart? Start { get; }
+    /// <summary>The voice's recording (a mono 16-bit PCM WAV) for <see cref="GatewaySongOperation.Start"/>; empty otherwise.</summary>
+    public ReadOnlyMemory<byte> ReferenceAudio => referenceAudio;
+    /// <summary><c>mix</c>, <c>vocals</c> or <c>backing</c> for <see cref="GatewaySongOperation.Result"/>.</summary>
+    public string? Track { get; }
+    public long OffsetFrames { get; }
+    public int MaximumFrames { get; }
+    internal override void Clear() => CryptographicOperations.ZeroMemory(referenceAudio);
+}
+
+/// <summary>The song a <c>start</c> asks for (bounds as in <c>Martlet.Core.Singing.SongRequest</c>).</summary>
+public sealed record GatewaySongStart(string Lyrics, string Style, int DurationSeconds, string Language, int? Bpm, string? Key,
+    long? Seed, string Quality, string VoiceMatch, string VoiceId, string ReferenceAudioSha256)
+{
+    public override string ToString() => "Gateway song start (content omitted)";
 }
 
 public sealed class GatewayInferenceRequest
@@ -996,6 +1094,10 @@ public interface ITranscriptionGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface ISongGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -1042,11 +1144,13 @@ internal static class GatewayInferenceEventValidator
                 break;
             case GatewayInferenceEventKind.TextDelta:
                 GatewayRules.Require(
-                    request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription &&
+                    request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription
+                        or GatewayInferenceKind.Song &&
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     IsUtf8(item.Payload.Span) &&
-                    HasNoF5Metadata(item),
+                    HasNoF5Metadata(item) &&
+                    (request.Route.Kind != GatewayInferenceKind.Song || IsJsonObject(item.Payload)),
                     "stream.invalid");
                 break;
             case GatewayInferenceEventKind.AudioFrame:
@@ -1273,6 +1377,9 @@ internal static class GatewayInferenceEventValidator
                     break;
                 case GatewayInferenceKind.Transcription:
                     // No text means no speech was recognized; that is a completed transcription.
+                    break;
+                case GatewayInferenceKind.Song:
+                    GatewayRules.Require(dataEvents > 0, "stream.invalid");
                     break;
             }
         }

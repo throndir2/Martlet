@@ -45,6 +45,16 @@ a sentence for the model.
 A creation of a kind this Martlet doesn't know (made by a newer Martlet) is kept
 and passed on like any other; the page says to update Martlet to use it here.
 
+**Songs** (`SongCreations.Kind`, registered by the desktop at startup): assets
+`mix`, `vocals` and `backing` (FLAC, sample-aligned), `map` (JSON: the lines with
+their sections and times, the sung words with their times and the beat grid) and
+`mouth` (JSON, optional: the mouth track made once from the vocals for lip sync);
+metadata with what it is about, its style, voice, tempo, key, counts, where its
+word times and mouth track came from and the engine. `perform_creation` options:
+`{"from": "start"}`, or `resume`, a section such as `chorus`, `line:N` or a time
+like `1:05` (the same as `play_song`). Each conversation attaches the handler
+that sings it ([singing in conversation](CONVERSATION.md#singing-in-conversation)).
+
 ### Audio
 
 Audio assets are FLAC (`Martlet.Core.Audio.FlacCodec`, built into Martlet: 16-bit

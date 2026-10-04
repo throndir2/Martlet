@@ -427,6 +427,35 @@ internal sealed class McpServer(DesktopAutomation desktop)
             endpoint = new { type = "string", maxLength = 64 },
             text = new { type = "string", maxLength = 300 }
         }),
+        Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
+            "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
+            "voice matches set up (soulx, vevosing), queue, whether the worker process holds the graphics card, the card's memory " +
+            "and the idle release time) and, with a data directory, the Singing card's saved choices (singing.json: quality and " +
+            "voice match). Read-only; loopback only.", new
+        {
+            endpoint = new { type = "string", maxLength = 64 },
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("singing_check", "Make one song through the singing role's production path: its gateway relay inside a real gateway " +
+            "on 127.0.0.1 (pinned TLS, pairing, the shared speaking-voice list with a starter voice) and the desktop's paired song " +
+            "client. endpoint \"fixture\" (the default) starts this checkout's workers/singing service with the FIXTURE - NOT AI " +
+            "engine; a numeric loopback endpoint (for example http://127.0.0.1:50085/) uses a live singing service and its real " +
+            "models. Returns every stage seen and when, the host's stage timings, the three tracks (seconds, peak and RMS), the " +
+            "beat grid and timed lyric lines, the service status before and after (models, GPU memory), or the failure code and " +
+            "message, plus the host's word-timing source and sanity metric (median word start to vocal onset), the backing " +
+            "bleed removed from the vocals and its graphics-memory peak. Nothing is played; with saveDirectory (an absolute, " +
+            "disposable folder) it writes mix.wav, vocals.wav and backing.wav there for a report. voiceRecording (an absolute path " +
+            "to a copy of a mono 16-bit PCM WAV, 1-30 s) with its voiceTranscript sings in that voice instead of the starter voice. " +
+            "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
+        {
+            endpoint = new { type = "string", maxLength = 64 },
+            seconds = new { type = "integer", minimum = 15, maximum = 180 },
+            quality = new { type = "string", @enum = new[] { "fast", "high_quality" } },
+            voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
+            saveDirectory = new { type = "string", maxLength = 260 },
+            voiceRecording = new { type = "string", maxLength = 260 },
+            voiceTranscript = new { type = "string", maxLength = 4096 }
+        }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
             "header names, on/off, auto-approve, the MCP directory entry it was installed from and the secret names it uses. " +
@@ -728,6 +757,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         }),
+        Tool("songs_status", "Martlet singing in conversation (sing_song, play_song, stop_singing), from a data directory: whether " +
+            "background work (Thinking longer, which the song tools come with) is on; the song creations (each song's key, " +
+            "length, lines and timed words, tempo, engine, mouth track source, assets and whether it is the FIXTURE - NOT AI song; never its " +
+            "title or words); the desktop's songs-status.json (whether singing is offered, the song playing: state, position, line " +
+            "number and section, where it started, lead-in bars and fade-in, vamps, ducking, the mouth frames sent and how, and its " +
+            "stop plan; and the last stop: " +
+            "where, which line and section, and why, without the user's words); the song job kind's limits; and the three tools and " +
+            "Singing prompt exactly as the Thinking model gets them. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("song_playback_check", "Run Martlet's production song playback headlessly (SongTransport, SongMixer and SongPlayer " +
+            "pumping a fixture output ten times faster than real time; nothing is played aloud) on the FIXTURE - NOT AI tone song, " +
+            "or on a song creation (songId: its key, with its dataDirectory), and measure the transitions in the audio it produced: where " +
+            "play_song's from points (start, a section, line:N, a time, misses); the resume lead-in (entry downbeat, 1 or 2 bars, " +
+            "equal-power fade-in gain at its start, middle and end, vocals silent until just before the line); the band vamping " +
+            "twice while Martlet talks before the vocals come in; ducking (-12 dB); and a full run: sung from the top, stopped " +
+            "musically mid-line by the user's words (the stop record and its note, the word's end, the beat the band fades from, " +
+            "when the output went silent), resumed from that line with its lead-in, and stopped with Esc (a 300 ms fade); and lip sync: " +
+            "the mouth tracks made from the vocals stem (Audio2Face when a service answers on 127.0.0.1:52000, visemes from the sung " +
+            "words, loudness) with their offsets from the vocal onsets, and the mouth sent on the playback clock after a lead-in " +
+            "against the onsets of the vocals actually played.", new
+        {
+            dataDirectory = new { type = "string" },
+            songId = new { type = "string", maxLength = 32 }
+        }),
         Tool("conversation_history_status", "Companion > Memory > Conversation history, from a data directory: whether memory is " +
             "on, this PC's choices (conversation-history.json: keep a record of conversations, on by default; let Martlet search it " +
             "on its own, off by default), whether exchanges are recorded and recalled when a message mentions an earlier " +
@@ -869,6 +924,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
+                "singing_status" => await SingingStatusAsync(arguments, cancellation),
+                "singing_check" => await SingingCheckAsync(arguments, cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
@@ -901,6 +958,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
+                "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "song_playback_check" => await SongsCheck.RunAsync(
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "songId"),
+                    cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -1096,6 +1157,114 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ? ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text]
             : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/"];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(6), cancellation, command);
+    }
+
+    /// <summary>singing_check: Martlet.NodeLinkCheck's singing-check mode, with the fixture service or a live one on loopback.</summary>
+    private static async Task<object> SingingCheckAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var endpoint = OptionalString(arguments, "endpoint") ?? "fixture";
+        if (endpoint != "fixture" && (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
+            !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address)))
+            throw new ArgumentException("endpoint must be \"fixture\" or a numeric loopback address such as http://127.0.0.1:50085/.");
+        if (endpoint != "fixture") endpoint = new Uri(endpoint).GetLeftPart(UriPartial.Authority) + "/";
+        var seconds = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("seconds", out var value) &&
+            value.TryGetInt32(out var number) ? number : endpoint == "fixture" ? 20 : 30;
+        if (seconds is < 15 or > 180) throw new ArgumentException("seconds must be 15 to 180.");
+        var quality = OptionalString(arguments, "quality") ?? "fast";
+        var voiceMatch = OptionalString(arguments, "voiceMatch") ?? "soulx";
+        if (quality is not ("fast" or "high_quality")) throw new ArgumentException("quality must be fast or high_quality.");
+        if (voiceMatch is not ("soulx" or "vevosing")) throw new ArgumentException("voiceMatch must be soulx or vevosing.");
+        string[] command = ["singing-check", endpoint, seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), quality, voiceMatch];
+        var save = OptionalString(arguments, "saveDirectory") is { Length: > 0 } folder ? folder : null;
+        if (save is not null && !Path.IsPathFullyQualified(save)) throw new ArgumentException("saveDirectory must be an absolute folder.");
+        command = [.. command, save ?? "-"];
+        if (OptionalString(arguments, "voiceRecording") is { Length: > 0 } recording)
+        {
+            if (!Path.IsPathFullyQualified(recording) || !recording.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) || !File.Exists(recording))
+                throw new ArgumentException("voiceRecording must be the absolute path of an existing .wav file.");
+            command = [.. command, recording];
+            if (OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript) command = [.. command, transcript];
+        }
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(20), cancellation, command);
+    }
+
+    /// <summary>singing_status: the singing service's own /status over loopback (nothing secret: model IDs, licences, sizes,
+    /// state, queue, GPU memory) and the Singing card's saved choices in a data directory.</summary>
+    private static async Task<object> SingingStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var endpoint = OptionalString(arguments, "endpoint") ?? "http://127.0.0.1:50085/";
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
+            !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address))
+            throw new ArgumentException("endpoint must be a numeric loopback address such as http://127.0.0.1:50085/.");
+        object service;
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var response = await http.GetAsync(new Uri(new Uri(uri.GetLeftPart(UriPartial.Authority) + "/"), "status"), cancellation);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
+            var root = document.RootElement;
+            JsonElement? Field(string name) => root.TryGetProperty(name, out var field) ? field.Clone() : null;
+            var worker = root.TryGetProperty("worker", out var identity) && identity.ValueKind == JsonValueKind.Object ? identity : default;
+            var artifacts = worker.ValueKind == JsonValueKind.Object && worker.TryGetProperty("artifacts", out var list) &&
+                list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().ToArray() : [];
+            service = new
+            {
+                answered = true, state = Field("state"), ready = Field("ready"), engine = Field("engine"), error = Field("error"),
+                qualities = Field("qualities"), voiceMatches = Field("voice_matches"), queue = Field("queue"), running = Field("running"),
+                workerRunning = Field("worker_running"), restarts = Field("restarts"), idleReleaseSeconds = Field("idle_release_seconds"),
+                gpu = Field("gpu"),
+                evidence = worker.ValueKind == JsonValueKind.Object && worker.TryGetProperty("evidence", out var evidence) ? evidence.GetString() : null,
+                sources = worker.ValueKind == JsonValueKind.Object && worker.TryGetProperty("sources", out var sources) ? sources.Clone() : (JsonElement?)null,
+                models = artifacts.Select(a => new
+                {
+                    id = a.GetProperty("artifact_id").GetString(), revision = a.GetProperty("revision").GetString(),
+                    license = a.GetProperty("license_id").GetString(), bytes = a.GetProperty("bytes").GetInt64()
+                }),
+                modelBytes = artifacts.Sum(a => a.GetProperty("bytes").GetInt64())
+            };
+        }
+        catch (Exception error) when (error is System.Net.Http.HttpRequestException or TaskCanceledException or JsonException or
+            InvalidOperationException or KeyNotFoundException)
+        {
+            service = new { answered = false, problem = error.Message };
+        }
+        object? choices = null;
+        if (OptionalString(arguments, "dataDirectory") is { } directory)
+        {
+            var path = Path.Combine(directory, "singing.json");
+            try
+            {
+                using var saved = JsonDocument.Parse(File.ReadAllBytes(path));
+                var host = saved.RootElement.TryGetProperty("host", out var h) && h.ValueKind == JsonValueKind.String ? h.GetString() : null;
+                choices = new
+                {
+                    quality = saved.RootElement.TryGetProperty("quality", out var q) ? q.GetString() : null,
+                    voiceMatch = saved.RootElement.TryGetProperty("voiceMatch", out var m) ? m.GetString() : null,
+                    // The computer the desktop last saw running Singing; set up (SongClient.IsSetUp) while it is still paired.
+                    host,
+                    setUp = host is not null && PairedHostIds(directory).Contains(host)
+                };
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            {
+                choices = new { quality = "fast", voiceMatch = "soulx", saved = false };
+            }
+        }
+        return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices };
+    }
+
+    /// <summary>The host IDs in a data directory's hosts.json (nothing secret: pairing secrets stay in Credential Manager).</summary>
+    private static HashSet<string> PairedHostIds(string directory)
+    {
+        try
+        {
+            using var hosts = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "hosts.json")));
+            return hosts.RootElement.TryGetProperty("hosts", out var list) && list.ValueKind == JsonValueKind.Array
+                ? list.EnumerateArray().Select(h => h.TryGetProperty("pairing", out var pairing) && pairing.TryGetProperty("hostId", out var id)
+                    ? id.GetString() : null).OfType<string>().ToHashSet(StringComparer.Ordinal)
+                : [];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return []; }
     }
 
     /// <summary>Runs Martlet.NodeLinkCheck (built next to this server, in the same configuration) with <paramref name="arguments"/>

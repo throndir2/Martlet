@@ -342,6 +342,13 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "Dia needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "Dia needs an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("singing", Feature, "Singing: ACE-Step songs sung in a voice from your library (SoulX-Singer-SVC)",
+        [
+            Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
+            Impossible(Mac, Host, "the singing worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "singing needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "singing needs an NVIDIA GPU; phones and tablets have none")
+        ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
@@ -461,6 +468,7 @@ public static class PlatformCatalog
         "chatterbox" => "chatterbox",
         "gpt-sovits" => "gpt-sovits",
         "dia" => "dia",
+        "singing" => "singing",
         "audio2face" => "audio2face",
         _ => null
     };

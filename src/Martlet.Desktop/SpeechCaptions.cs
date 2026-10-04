@@ -115,7 +115,9 @@ internal sealed class SpeechCaptions : IDisposable
             await foreach (var line in Feed.Lines.ReadAllAsync(lifetime.Token))
             {
                 var id = ++current;
-                if (Preferences.SpeechBubbles && avatar.IsShowing) Say(line.Text);
+                // A sung line grows word by word in the subtitles (karaoke); the bubble shows the whole line once.
+                var bubble = line.Sung ?? line.Text;
+                if (Preferences.SpeechBubbles && avatar.IsShowing && (line.Sung is null || bubble != bubbleText)) Say(bubble);
                 if (Preferences.Subtitles) (overlay ??= new()).ShowLine(line.Text);
                 ClearAfterAsync(line.Finished, id).Forget();
             }

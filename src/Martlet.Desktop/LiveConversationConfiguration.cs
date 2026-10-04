@@ -483,9 +483,7 @@ internal sealed class LiveConversationConfiguration
                     usedLoreEntries = loreCount;
                     return new(prompted,
                         TextSelection(), TextLimits, Turn(tools is not null),
-                        voice ? new(SpeechSelection(),
-                            new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId),
-                            SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
+                        voice ? new(SpeechSelection(), SpeechOutput(), SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
                         voice ? WindowsVoiceTarget() : null,
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
@@ -496,6 +494,11 @@ internal sealed class LiveConversationConfiguration
         }
         throw new LiveActionException("conversation.input_limit");
     }
+
+    /// <summary>Where Martlet's voice plays (the chosen speakers or headphones, or Windows' default at the start); a song plays
+    /// there too.</summary>
+    internal OutputSelection SpeechOutput() =>
+        new(Audio!.Output.EndpointId is null ? OutputPolicy.DefaultAtStart : OutputPolicy.FixedEndpoint, Audio.Output.EndpointId);
 
     /// <summary>The generation settings a reply sends, with Thinking steps resolved (unset is Off). A paired host's Ollama loads
     /// at most <see cref="GenerationSettings.MaximumHostContextTokens"/>, so a larger saved context size is sent capped.</summary>

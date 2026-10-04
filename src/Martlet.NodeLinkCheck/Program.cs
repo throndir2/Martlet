@@ -75,6 +75,19 @@ if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceTex
     Console.WriteLine(JsonSerializer.Serialize(voiceReport));
     return voiceOk ? 0 : 1;
 }
+// With "singing-check <endpoint|fixture> <seconds> <quality> <voice match> [save directory|-] [voice WAV [transcript]]" it makes one
+// song with a singing service through the singing role's real relay and gateway (SingingCheck), optionally in the voice of a
+// recording copy and saving its WAVs, and prints its report.
+if (args is ["singing-check", var singingEndpoint, var singingSeconds, var singingQuality, var singingMatch, .. var singingMore] &&
+    singingMore.Length <= 3)
+{
+    string? Optional(int index) => singingMore.Length > index && singingMore[index] is { Length: > 0 } value && value != "-" ? value : null;
+    var (singingOk, singingReport) = await Martlet.NodeLinkCheck.SingingCheck.RunAsync(singingEndpoint,
+        int.Parse(singingSeconds, System.Globalization.CultureInfo.InvariantCulture), singingQuality, singingMatch,
+        Optional(0), Optional(1), Optional(2), CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(singingReport));
+    return singingOk ? 0 : 1;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

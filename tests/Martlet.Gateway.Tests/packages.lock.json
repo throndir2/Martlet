@@ -114,14 +114,14 @@
         "dependencies": {
           "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )",
-          "Martlet.Avatars": "[0.21.0, )",
-          "Martlet.Core": "[0.21.0, )"
+          "Martlet.Avatars": "[0.31.0, )",
+          "Martlet.Core": "[0.31.0, )"
         }
       },
       "martlet.avatars": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.21.0, )"
+          "Martlet.Core": "[0.31.0, )"
         }
       },
       "martlet.core": {
@@ -130,58 +130,64 @@
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.21.0, )"
+          "Martlet.Core": "[0.31.0, )"
         }
       },
       "martlet.gateway": {
         "type": "Project",
         "dependencies": {
-          "Martlet.F5": "[0.21.0, )",
-          "Martlet.Perception": "[0.21.0, )",
-          "Martlet.Providers": "[0.21.0, )"
+          "Martlet.F5": "[0.31.0, )",
+          "Martlet.Perception": "[0.31.0, )",
+          "Martlet.Providers": "[0.31.0, )"
         }
       },
       "martlet.gateway.audio2face": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Avatar.Audio2Face": "[0.21.0, )",
-          "Martlet.Gateway": "[0.21.0, )"
+          "Martlet.Avatar.Audio2Face": "[0.31.0, )",
+          "Martlet.Gateway": "[0.31.0, )"
         }
       },
       "martlet.gateway.dia": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.F5": "[0.21.0, )"
+          "Martlet.Gateway.F5": "[0.31.0, )"
         }
       },
       "martlet.gateway.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.21.0, )"
+          "Martlet.Gateway": "[0.31.0, )"
         }
       },
       "martlet.gateway.gptsovits": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.F5": "[0.21.0, )"
+          "Martlet.Gateway.F5": "[0.31.0, )"
         }
       },
       "martlet.gateway.ollama": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.21.0, )"
+          "Martlet.Gateway": "[0.31.0, )"
+        }
+      },
+      "martlet.gateway.singing": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Gateway": "[0.31.0, )"
         }
       },
       "martlet.gateway.stt": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.21.0, )"
+          "Martlet.Gateway": "[0.31.0, )"
         }
       },
       "martlet.gateway.xtts": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway.F5": "[0.21.0, )"
+          "Martlet.Gateway.F5": "[0.31.0, )"
         }
       },
       "martlet.perception": {
@@ -190,7 +196,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.21.0, )"
+          "Martlet.Core": "[0.31.0, )"
         }
       },
       "Google.Protobuf": {

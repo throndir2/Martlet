@@ -79,6 +79,24 @@
                         <StackPanel x:Name="JobChips" Margin="0,2,0,0"/>
                     </StackPanel>
                 </Border>
+                <!-- The song Martlet sings (sing_song, play_song): where it is, the line being sung, and Stop singing. Only Martlet
+                     performs songs (asked in conversation); nothing here plays one. It keeps going while you talk; Stop (Esc) ends
+                     it with a quick fade, Stop singing musically. -->
+                <Border x:Name="SongPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="14" Padding="12,8" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveSongPanel">
+                    <DockPanel>
+                        <Button x:Name="SongStopButton" DockPanel.Dock="Right" VerticalAlignment="Center" Content="Stop singing" Click="SongStop_Click"
+                                Padding="12,3" Margin="10,0,0,0" Visibility="Collapsed"
+                                ToolTip="Martlet finishes the word and the band rings out on the beat. Martlet hears where it stopped."
+                                AutomationProperties.AutomationId="LiveSongStop"/>
+                        <StackPanel>
+                            <TextBlock x:Name="SongText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveSong"/>
+                            <TextBlock x:Name="SongLineText" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       AutomationProperties.AutomationId="LiveSongLine"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
                 <!-- A tool call waiting for your answer: inline, so answering never leaves (or revokes) the conversation. -->
                 <Border x:Name="ToolApprovalPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
                         CornerRadius="14" Padding="14,10" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveToolApproval">
