@@ -148,7 +148,7 @@ public static class SongCreations
     /// <summary>The song kind: sung by Martlet in conversation (play_song, or perform_creation with the same from).</summary>
     public static CreationKind Kind { get; } = new()
     {
-        Name = KindName, Noun = "song", Plural = "songs", Verb = "sing", Glyph = "\uEC4F",
+        Name = KindName, Noun = "song", Plural = "songs", Verb = "sing", Glyph = "\uE8D6",
         Assets =
         [
             new(Mix, [FlacCodec.MediaType], Audio), new(Vocals, [FlacCodec.MediaType], Audio), new(Backing, [FlacCodec.MediaType], Audio),
