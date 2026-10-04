@@ -6,6 +6,7 @@ using Martlet.Audio;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Creations;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Participation;
@@ -1225,11 +1226,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
-            // is on), only for the user's own turns (and Martlet's reports of its background work) and routes that do function
-            // calling. While Thinking longer is on they are always offered, the same way, so every request starts the same.
+            // is on, list_creations and perform_creation while any kind of creation is registered), only for the user's own turns
+            // (and Martlet's reports of its background work) and routes that do function calling. Martlet's own are always
+            // offered the same way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
-            var builtIns = configured.OffersThinkLonger ? BuiltIns(operation, configured) : null;
+            var builtIns = BuiltIns(operation, configured);
             if ((own is not null || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
                 configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
@@ -1460,16 +1462,53 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     // ---------- background work (think_longer) ----------
 
-    /// <summary>Martlet's own tools for one reply while Thinking longer is on: think_longer and cancel_thinking, always both, in
-    /// that order, with the Thinking longer prompt, so the start of every request stays the same.</summary>
-    private BuiltInTools BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured)
+    /// <summary>Martlet's own tools for one reply: think_longer and cancel_thinking while Thinking longer is on, then
+    /// list_creations and perform_creation while any kind of creation is registered (CreationRegistry), always in that order
+    /// with the same texts, so the start of every request stays the same. Null when there are none.</summary>
+    private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured)
     {
-        var settings = configured.ThinkLonger;
-        var definitions = ThinkLonger.Definitions(settings);
-        return new([
-            (definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)),
-            (definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call)))
-        ], ThinkLonger.Instructions(settings, configured.Prompts));
+        var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
+        string? guidance = null;
+        if (configured.OffersThinkLonger)
+        {
+            var settings = configured.ThinkLonger;
+            var definitions = ThinkLonger.Definitions(settings);
+            own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
+            own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
+            guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+        }
+        var kinds = Creations.Kinds;
+        if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
+        {
+            var definitions = CreationTools.Definitions(kinds);
+            own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
+            own.Add((definitions[1], PerformCreationAsync));
+        }
+        return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>The kinds of creation Martlet knows and what performs them (docs/CREATIONS.md).</summary>
+    internal CreationRegistry Creations { get; init; } = CreationRegistry.Shared;
+
+    /// <summary>list_creations: what Martlet made, from this PC's copy of the shared list (read only when called).</summary>
+    private ConversationToolResult ListCreations(TextToolCall call)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = CreationTools.List(library, Creations, call.ArgumentsJson, c => CreationStore.IsComplete(dataDirectory!, c));
+        tools?.Record("Martlet", CreationTools.ListName, result.IsError ? "invalid arguments" : $"{library.Live.Count} creations", "", result.IsError);
+        return result;
+    }
+
+    /// <summary>perform_creation: hands the creation to its kind's handler (a song is sung by the conversation that attached the
+    /// song handler), or says clearly why it can't.</summary>
+    private async ValueTask<ConversationToolResult> PerformCreationAsync(TextToolCall call, CancellationToken token)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = await CreationTools.PerformAsync(library, Creations, call.ArgumentsJson, c => CreationStore.Assets(dataDirectory!, c), token)
+            .ConfigureAwait(false);
+        tools?.Record("Martlet", CreationTools.PerformName, result.IsError ? "not performed" : "performed", "", result.IsError);
+        ErrorLog.Info($"Creations: perform_creation {(result.IsError ? "didn't start" : "started")}.");
+        return result;
     }
 
     /// <summary>think_longer: starts the background think and returns at once (never waits for it), telling the model to tell

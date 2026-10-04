@@ -14,7 +14,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
+        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
@@ -82,7 +82,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveJobCancel-",
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer") only show that place's card; its own
         // Use buttons commit (and need --allow-ui-effects).
-        "DeepPlace-"];
+        "DeepPlace-",
+        // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
+        // There is no Play, Show or Activate; its Rename and Delete change it on every computer, so they need --allow-ui-effects.
+        "Creation-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -240,7 +243,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // interrupts; the questions an exit asks first (what Martlet is still busy with: work kinds, run window titles,
         // a host ID or an update version, never paths, keys or conversation text) and before Exit now (the step).
         // ClosingExitNow and the dialogs' ConfirmationYes exit Martlet, so they need --allow-ui-effects.
-        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion"
+        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion",
+        // Creations: the fixed note ("Ask Martlet to sing or show any of these.") and empty state ("Things Martlet makes, like
+        // songs, appear here."), how many creations and how large, whether they are shared with the paired computers (with how
+        // many and when), and the selected creation's kind line (kind, length, size, when and on which computer it was made),
+        // where it is (this PC and which hosts hold it) and what to ask Martlet ("Ask Martlet to sing it."). Never a title, text,
+        // voice or personality: those are the owner's own (CreationTitle and the rename box are never returned).
+        "CreationsNote", "CreationsEmpty", "CreationsSummary", "CreationsStatus", "CreationKind", "CreationSync", "CreationAsk"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -297,7 +306,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
         // or "...: not made yet" for a Thinking palette not made).
-        "AppearanceColor-", "AppearancePreview-"];
+        "AppearanceColor-", "AppearancePreview-",
+        // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
+        // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
+        "CreationState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -127,6 +127,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeCharacterModelsAsync(context, rawTarget!).ConfigureAwait(false);
                 return;
             }
+            if (IsCreationsTarget(rawTarget!))
+            {
+                await InvokeCreationsAsync(context, rawTarget!).ConfigureAwait(false);
+                return;
+            }
             if (rawTarget == HomeAssistantPath)
             {
                 await InvokeHomeAssistantAsync(context).ConfigureAwait(false);

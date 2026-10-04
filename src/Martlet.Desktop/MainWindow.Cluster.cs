@@ -85,9 +85,10 @@ public partial class MainWindow
             QueueVoiceSync();
             QueueSpeakingVoiceSync();
             QueueCharacterModelSync();
+            QueueCreationSync();
             SyncHomeShareAsync().Forget();
         }
-        ActionText.Text = on ? "Martlet is now the same on all your computers: who does what, its settings, memories, people, voices, characters and Home Assistant stay in sync."
+        ActionText.Text = on ? "Martlet is now the same on all your computers: who does what, its settings, memories, people, voices, characters, creations and Home Assistant stay in sync."
             : "Sync is off. This PC keeps its own choices, settings and memories.";
         ShowClusterStatus();
         ShowSettingsStatus();

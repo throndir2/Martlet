@@ -192,6 +192,21 @@ on each PC), and brought up when it's done
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
 started think-1`); the desktop log notes each start, pause and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
+
+### Creations
+
+While at least one kind of creation is registered (songs, once singing lands),
+every reply on a route that does function calling also gets Martlet's own
+`list_creations` (optional `kind` and `query`) and `perform_creation` (`id` from
+the list, optional `options` object), after `think_longer` and `cancel_thinking`
+and always the same two with the same texts, so the start of every request stays
+the same. Neither asks first. `perform_creation` hands the creation to its kind's
+handler (a song is sung by the conversation); an unknown id, a kind this Martlet
+doesn't know, no handler or a creation still copying to this PC get a clear
+refusal for the model. The owner never presses Play: see
+[Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
+(`Martlet > perform_creation: performed`), never titles or options.
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -595,6 +610,51 @@ arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
 `model-file-outside-list`). Character names and file paths are never returned.
 Read-only; it contacts nothing.
+
+`creations_status` reads [Martlet's creations](CREATIONS.md) from a data
+directory (optional absolute `dataDirectory`; the script gives a disposable one):
+`state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
+`tombstones`, `totalBytes`, `revision`, `digest` (its first 16 hex digits),
+`kinds` (count and bytes per kind), and per live creation its `key` (the short id
+the tools and `Creation-<key>` use), `kind`, `kindVersion`, `bytes`,
+`durationMs`, `createdAt`, `createdOn` (device ID), `autoCleanup`, `assets`
+(name, media type, bytes, pieces), `completeHere` and `onHosts` (how many paired
+hosts held every piece at the last sync); `storage` (asset files in `creations`,
+their bytes, `unused` ones and copies still arriving in `creations-incoming`);
+`sync` from `creations-sync.json` (when, its summary and each host's `state`,
+`complete` and `missing`, or null before the first sync); and the `limits`.
+Never a title, text, voice or personality. Read-only; it contacts nothing.
+
+`creations_check` rehearses creations end to end with the production code and
+returns `{ok, tools, sync}`. `tools` checks `list_creations` and
+`perform_creation` (`Martlet.Conversation.CreationTools`) in process on a
+disposable folder with the production `CreationStore` and the FIXTURE - NOT AI
+test-tone kind: no tools without a registered kind, the same two tools and texts
+on every build, listing newest first with short ids and filtering by words and
+kind, performing through the kind's handler with options, and clear refusals for
+no handler, an unknown id, bad arguments and options, a creation still copying
+and an unknown kind. `sync` runs `src\Martlet.NodeLinkCheck` (mode `creations`,
+`CreationRehearsal.cs`) and returns `{exitCode, report}`: two real gateways on
+127.0.0.1 (pinned TLS, signed requests, in-memory `creations.json` and pieces)
+and three simulated desktops with the production `CreationStore` and
+`CreationSync` over the desktop's paired client (`HostCreationPeer`). Its steps:
+FLAC sizes for a 60 s music-like signal (stereo and mono with silences, decoded
+identical); a 40 s noisy tone in two 3 MiB pieces; a host taking the list and
+every piece; an unchanged host read by digest only; a new desktop taking both and
+relaying them to a host the first never reached; an interrupted copy resuming;
+another desktop performing a creation through the kind's handler from its own
+copy; a kind this Martlet doesn't know passing through; a rename reaching
+everyone; a delete reaching both hosts and every desktop (pieces and files
+deleted); a stale copy not bringing it back; a host restart; a wrong SHA-256, a
+piece no creation has and an oversized piece refused (`request.invalid`); an
+unsigned request refused; a kind's rules (unregistered kind, missing part, part
+too large); and the per-host record in `creations-sync.json`. With
+`seedDataDirectory` (an absolute folder under the temporary folder, never
+Martlet's own) it instead writes two FIXTURE - NOT AI test tones there and
+returns their keys, so the Creations page can be checked with `-Desktop
+-DataDirectory` on that folder. Nothing leaves loopback, folders are deleted and
+Windows Credential Manager is not touched; it does not cover the desktop window's
+30-second sync with real hosts, the Linux host's files, a real song or a real LAN.
 
 `character_actions` reads a character model's
 [emotes and motions](AVATARS.md#emotes-and-motions) the way Companion ›
@@ -1518,7 +1578,7 @@ Status fields include `VisionStatus` (Companion › Vision: whether the Thinking
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion`, `NavDiagnostics` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavCreations`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
@@ -1958,6 +2018,29 @@ typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
 file") joins the shared list as soon as it is saved (once it names an existing model file; there is no Save button) or shown (`ShowCharacter`), and the
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
+
+The **Creations** page (`NavCreations`, between Companion and Diagnostics; its
+content is `CreationsPage`) lists [what Martlet made](CREATIONS.md), newest first.
+`CreationsNote` reads the fixed "Ask Martlet to sing or show any of these.",
+`CreationsEmpty` the empty state "Things Martlet makes, like songs, appear
+here.", `CreationsSummary` how many creations and how large ("2 creations,
+1.2 MB on every computer.") and `CreationsStatus` whether they are shared with the
+paired computers ("Creations shared with 2 of 2 computers at 9:41 PM.", copies
+still arriving, hosts to update, or "No other Martlet computers are paired yet, so
+your creations stay on this PC."). Each creation is a choice card
+`Creation-<key>` (passive: it only shows that creation) with its line
+`CreationState-<key>` (kind, length, size, when and on which computer it was made,
+and whether it is on this PC and on how many hosts; never its title). The selected
+creation shows `CreationTitle` (never returned), `CreationKind` (the same line
+without where it is), `CreationSync` (this PC and which hosts hold it),
+`CreationAsk` ("Ask Martlet to sing it.", or that this Martlet doesn't know its
+kind yet), its text and details. There is no Play, Show or Activate for any kind.
+`CreationRenameText` with `CreationRename` (or Enter) renames it on every computer,
+and `CreationDelete` asks with `ConfirmationYes`/`ConfirmationNo` and deletes it
+everywhere (a tombstone travels); both need `--allow-ui-effects`.
+`creations_status` reads the same list headlessly, and `creations_check
+{"seedDataDirectory": ...}` fills a disposable folder with two test tones for
+checking the page.
 
 Companion › Character's *Emotes and motions* card lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
@@ -2517,7 +2600,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `creations_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

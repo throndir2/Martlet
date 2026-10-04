@@ -140,6 +140,7 @@ public partial class MainWindow : ThemedWindow
         InitializeVoiceSync();
         InitializeSpeakingVoices();
         InitializeCharacterModels();
+        InitializeCreations();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
@@ -182,6 +183,7 @@ public partial class MainWindow : ThemedWindow
         StartVoiceSync();
         StartSpeakingVoices();
         StartCharacterModels();
+        StartCreations();
         StartHomeShare();
         StartNodeAgent();
         StartLogShipping();

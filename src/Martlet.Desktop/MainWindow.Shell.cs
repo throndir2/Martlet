@@ -133,19 +133,21 @@ public partial class MainWindow
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomePage is null || DevicesPage is null || CompanionPage is null || DiagnosticsPage is null || SettingsPage is null) return;
+        if (HomePage is null || DevicesPage is null || CompanionPage is null || CreationsPage is null || DiagnosticsPage is null || SettingsPage is null) return;
         if (sender is RadioButton { IsChecked: false }) return;
         FrameworkElement page = ReferenceEquals(sender, NavDevices) ? DevicesPage
             : ReferenceEquals(sender, NavCompanion) ? CompanionPage
+            : ReferenceEquals(sender, NavCreations) ? CreationsPage
             : ReferenceEquals(sender, NavDiagnostics) ? DiagnosticsPage
             : ReferenceEquals(sender, NavSettings) ? SettingsPage
             : HomePage;
         openTab = null;
-        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, DiagnosticsPage, SettingsPage })
+        foreach (var candidate in new FrameworkElement[] { HomePage, DevicesPage, CompanionPage, CreationsPage, DiagnosticsPage, SettingsPage })
             candidate.Visibility = ReferenceEquals(candidate, page) ? Visibility.Visible : Visibility.Collapsed;
         if (ReferenceEquals(page, CompanionPage)) ShowCompanionTab(entering: true);
         else Motion.Enter(page);
         if (ReferenceEquals(page, DevicesPage)) RenderMap();
+        if (ReferenceEquals(page, CreationsPage)) RenderCreations();
         // Windows' own Startup apps switch can change while Martlet runs.
         if (ReferenceEquals(page, SettingsPage))
         {
