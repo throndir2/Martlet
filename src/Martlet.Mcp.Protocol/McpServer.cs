@@ -240,8 +240,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("virtualization_status", "Read whether Windows is ready for Docker Desktop's WSL 2 engine (virtualization in the firmware, " +
             "the Windows hypervisor, Virtual Machine Platform, Windows Subsystem for Linux, their host services, WSL version and status), " +
-            "pending and required restarts, blockers and recovery guidance, whether Docker Desktop is installed and running and its engine " +
-            "state, and any setup Martlet continues after a Windows restart. Read-only; starts no VM, changes nothing and returns no distribution names.", new
+            "pending and required restarts, blockers and recovery guidance, whether Docker Desktop is installed and running, its engine " +
+            "state and the Windows check its engine last failed when it started (\"Virtualization support not detected\"), and any setup " +
+            "Martlet continues after a Windows restart. Read-only; starts no VM, changes nothing and returns no distribution names.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1557,7 +1558,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 installed = File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                     "Docker", "Docker", "Docker Desktop.exe")),
                 running = Running("com.docker.backend") || Running("Docker Desktop"),
-                engine = await DockerDesktopStatus.ReadAsync(cancellation)
+                engine = await DockerDesktopStatus.ReadAsync(cancellation),
+                failedStartCheck = await DockerDesktopStatus.ReadPreconditionAsync(cancellation)
             },
             continueSetup = new
             {

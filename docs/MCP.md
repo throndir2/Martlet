@@ -1176,17 +1176,23 @@ Docker Desktop (optional absolute `dataDirectory`, default the current user's):
 `Running`, `Stopped`, `Disabled`, `Absent` or `Unknown`, `restartPending`
 (Windows component servicing or Windows Update needs a restart, or null when
 unreadable), `restartRequired`, `virtualMachine`, `summary`,
-`dockerDesktop {installed, running, engine}` (`engine` is what
+`dockerDesktop {installed, running, engine, failedStartCheck}` (`engine` is what
 `docker desktop status` reports, for example `running`, `starting` or
-`stopped`, or null when Docker Desktop doesn't answer within 15 seconds; a
+`stopped`, or null when Docker Desktop doesn't answer within 15 seconds;
+`failedStartCheck` is the Windows check Docker Desktop's engine last failed in
+its current session, in Docker's words from its warning and error log, for
+example `Virtual Machine Platform not enabled` or `No virtualization available`
+(its window then says *Virtualization support not detected*), or null; a
 run window restarts Docker Desktop once when it is open but its engine stays
-`stopped` at two checks in a row, and always after Martlet changed Windows for
+`stopped` at two checks in a row or its start check failed while Windows is
+ready, and always after Martlet changed Windows for
 it) and `continueSetup {pending, kind, task,
 created, startsAtSignIn}`: the setup Martlet continues after a Windows restart
 (`continue-setup.json` in the data directory, and whether the per-user `RunOnce`
 entry that starts Martlet at the next sign-in exists). It reads CIM facts,
 Windows services and pending-restart registry markers and runs `wsl --version`
-and `wsl --status` in a hidden Windows PowerShell, plus `docker desktop status`. It changes
+and `wsl --status` in a hidden Windows PowerShell, plus `docker desktop status`
+and `docker desktop logs --boot 0 --priority 1`. It changes
 nothing, starts no Linux VM and returns no paths or distribution names.
 `Available` means WSL's status command answered without a recognized WSL 2
 problem, not that a VM or GPU workload was tested. WSL 2 unavailability is
