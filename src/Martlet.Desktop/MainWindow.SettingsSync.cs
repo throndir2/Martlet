@@ -10,6 +10,7 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Credentials.Windows;
+using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
@@ -282,7 +283,8 @@ public partial class MainWindow
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
             var prefs = Talk;
-            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice, prefs.BargeIn, prefs.ScreenChattiness);
+            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice, prefs.BargeIn, prefs.ScreenChattiness,
+                prefs.WordCheck);
             var path = Path.Combine(directory, "talk-preferences.json");
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
@@ -292,7 +294,8 @@ public partial class MainWindow
             {
                 HandsFree = value.HandsFree, PauseIndex = Math.Clamp(value.PauseIndex, 0, TalkPreferences.Pauses.Length - 1),
                 SpeakReplies = value.SpeakReplies, HearVoice = value.HearVoice, BargeIn = value.BargeIn,
-                ScreenChattiness = Math.Clamp(value.ScreenChattiness, 0, 2)
+                ScreenChattiness = Math.Clamp(value.ScreenChattiness, 0, 2),
+                WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal
             });
             return Task.FromResult(SharedApply.Done);
         });
@@ -418,7 +421,8 @@ public partial class MainWindow
     private sealed record SharedHomePermissions(bool Control, bool AllowSensitive, bool ModelTools);
     private sealed record SharedUpdates(bool Checks, int IntervalMinutes, bool AutoInstall, bool AutoUpdateHosts);
 
-    private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness);
+    private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness,
+        ListeningSensitivity WordCheck = ListeningSensitivity.Normal);
 
     /// <summary>The character as it travels: which model (a bundled one; one of your characters by its ID, shown from each
     /// computer's own copy; or a model file at the same place on every computer), its renderer, its Audio2Face mapping and

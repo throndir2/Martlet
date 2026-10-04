@@ -20,6 +20,8 @@
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
     <!-- echo_check rehearses the production echo reduction (EchoReducer and the WebRTC canceller) with fixture devices. -->
     <ProjectReference Include="..\Martlet.EchoCancellation\Martlet.EchoCancellation.csproj" />
+    <!-- utterance_filter_check synthesizes its spoken fixtures with a Windows voice (nothing is played). -->
+    <PackageReference Include="System.Speech" />
     <!-- character_models reads the desktop's shared character list and copies (SharedCharacterModels). -->
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
   </ItemGroup>

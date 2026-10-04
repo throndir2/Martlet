@@ -31,11 +31,13 @@ internal static class EchoCheck
         if (delay is < 0 or > 300) throw new ArgumentException("delayMs must be 0-300.");
         var (reduceEcho, source) = ReduceEcho(dataDirectory);
         var (bargeIn, bargeInSource) = BargeIn(dataDirectory);
+        var (wordCheckValue, wordCheckSource, _) = UtteranceFilterCheck.Saved(dataDirectory);
+        var wordCheck = wordCheckValue.ToString();
         string? problem = null;
         try { WebRtcEchoCanceller.Create().Dispose(); }
         catch (Exception error) when (error is not OperationCanceledException) { problem = error.GetType().Name + ": " + error.Message; }
         if (problem is not null)
-            return new { ok = false, reduceEcho, reduceEchoSource = source, bargeIn, bargeInSource, canceller = (string?)null, cancellerProblem = problem };
+            return new { ok = false, reduceEcho, reduceEchoSource = source, bargeIn, bargeInSource, wordCheck, wordCheckSource, canceller = (string?)null, cancellerProblem = problem };
 
         var scene = Scene.Create(delay);
         var watch = Stopwatch.StartNew();
@@ -82,6 +84,8 @@ internal static class EchoCheck
             reduceEchoSource = source,
             bargeIn,
             bargeInSource,
+            wordCheck,
+            wordCheckSource,
             canceller = "WebRTC AEC3",
             rehearsal = new
             {

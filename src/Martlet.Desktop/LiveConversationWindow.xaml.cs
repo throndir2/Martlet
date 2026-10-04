@@ -315,7 +315,7 @@ public partial class LiveConversationWindow : ThemedWindow
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
-            before.ReduceEcho != next.ReduceEcho)
+            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -492,7 +492,7 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho);
+        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck);
 
     // ---------- always listening ----------
 
@@ -526,7 +526,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void KeepHearingPc()
     {
         if (!HearingPc || !Available || pcListener is not null || clock.GetTimestamp() < pcRetryAt) return;
-        try { pcListener = controller.Listen(ListeningOptions.PcAudio); }
+        try { pcListener = controller.Listen(ListeningOptions.PcAudio with { WordCheck = preferences.WordCheck }); }
         catch (LiveActionException error)
         {
             if (error.Code is not ("conversation.ownership_busy" or "conversation.controls_blocked")) pcProblem = ListenFailure(error.Code);
@@ -626,7 +626,8 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         pcProblem = speech.Status.ProviderFailure is not null ? ListenOutcome(speech.Status, controller.Configuration) : null;
-        if (speech.Text?.Trim() is not { Length: > 0 } text) return;
+        // What the PC played that isn't words (music, a sound) is simply let go.
+        if (speech.Ignored is not null || speech.Text?.Trim() is not { Length: > 0 } text) return;
         var now = clock.GetTimestamp();
         // In order: once one line waits for your words, the next waits behind it.
         if (MicBusy || pcHeld.Count > 0) pcHeld.Add((speech, text, now));
@@ -724,11 +725,19 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         micProblem = null;
+        // What isn't words (mm, a cough, "Thank you." made up from noise) shows only as a muted note, so you can see what was
+        // let go and tune Word check.
+        if (speech.Ignored is { } ignored)
+        {
+            ShowIgnored(ignored.Describe(speech.Text));
+            return;
+        }
         if (speech.Text?.Trim() is not { Length: > 0 } text)
         {
             notice = ListenOutcome(status, controller.Configuration) ?? notice;
             return;
         }
+        if (speech.Interrupt is { } stop) heardInterrupt = (stop, speech.SpeechStartedAt);
         var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
             ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
         lastHeard = clock.GetTimestamp();
@@ -755,18 +764,22 @@ public partial class LiveConversationWindow : ThemedWindow
         if (status.ProviderFailure is { } provider)
             return configuration?.SttHostTarget() is { } host && HostRemedy(provider, host.HostId, ProviderRole.Stt) is { } remedy
                 ? remedy : "Couldn't transcribe speech. " + ProviderRemedy(provider);
-        return status.Code is "listen.heard" or "listen.held" or "mic.no_speech" or "stt.NoSpeech" or "speaker.not_user" or
+        return status.Code is "listen.heard" or "listen.held" or "listen.ignored" or "mic.no_speech" or "stt.NoSpeech" or "speaker.not_user" or
             "speaker.too_short" or "conversation.canceled" or "conversation.revoked" or "conversation.expired" ? null : Remedy(status.Code);
     }
 
     // You kept talking before Martlet answered (you are talking now, or something new was heard since the reply was asked for):
     // that reply (or remark) stops, and once you pause, everything you said is answered together. A reply that already acted
     // (Home Assistant or a tool) finishes; what you add is answered after it. Once Martlet is speaking, only talking over it
-    // stops it: a sustained voice on the microphone (TalkOverDetector), never a short sound, a queued word or what this PC plays
-    // (the PC listener never interrupts anything).
+    // with real words stops it (BargeInPolicy): a quick check of what you are saying while you say it (Parakeet on this PC), or
+    // what you said once you paused; never a hum, a cough, laughter, a quick "yeah", a queued word or what this PC plays (the PC
+    // listener never interrupts anything).
     private void Interrupt()
     {
-        var over = listener is { TalkingOver: true };
+        var quick = listener is { TalkingOver: true } live ? live.TalkOver : null;
+        var said = heardInterrupt;
+        heardInterrupt = null;
+        var over = quick is not null || said is not null;
         var talking = over || listener is { Hearing: true } or { Transcribing: > 0 };
         if (!talking && heardQueue.Count == 0) return;
         pacer?.NoteConversation();
@@ -777,6 +790,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             yielded = speaking;
             controller.Stop(speaking, "conversation.interrupted", keepContext: true);
+            LogBargeIn(quick, said);
         }
         if (owned is { OwnershipReleased: false, Spoken: true } reply && answering is { } batch && !ReferenceEquals(yielded, reply) &&
             restarts < MaximumRestarts && Restartable(reply) && !Speaking(reply))
@@ -797,6 +811,34 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>Martlet is saying it (or may already have said some of it).</summary>
     private static bool Speaking(LiveConversationOperation operation) =>
         operation.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true };
+
+    // What you said, once you paused, that stops Martlet (BargeInPolicy), and when your voice began; taken by the next Interrupt.
+    private (BargeInDecision Decision, long StartedAt)? heardInterrupt;
+    // The muted "Ignored ..." note the last ignored sounds went into, while nothing else came after it.
+    private ChatMessage? ignoredNote;
+
+    /// <summary>The desktop log's barge-in line: how long after you started talking over Martlet it stopped (from when your voice
+    /// began to the stop), why, and how it knew (never what you said).</summary>
+    private void LogBargeIn(TalkOverResult? quick, (BargeInDecision Decision, long StartedAt)? said)
+    {
+        var startedAt = quick?.StartedAt ?? said?.StartedAt ?? 0;
+        if (startedAt == 0) return;
+        var stopped = controller.Clock.GetElapsedTime(startedAt);
+        ErrorLog.Info(quick is not null
+            ? $"Barge-in: Martlet stopped its reply {stopped.TotalMilliseconds:0} ms after you started talking over it " +
+              $"({quick.Decision.Reason}; decided {quick.After.TotalMilliseconds:0} ms in, after {quick.Checks} quick " +
+              $"check{(quick.Checks == 1 ? "" : "s")} of your words; word check {preferences.WordCheck})."
+            : $"Barge-in: Martlet stopped its reply {stopped.TotalMilliseconds:0} ms after you started talking over it " +
+              $"({said!.Value.Decision.Reason}; from what you said once you paused; word check {preferences.WordCheck}).");
+    }
+
+    // A sound always listening ignored shows as a muted note; ignored sounds in a row share one.
+    private void ShowIgnored(string line)
+    {
+        if (ignoredNote is not null && Messages.Count > 0 && ReferenceEquals(Messages[^1], ignoredNote) && ignoredNote.Text.Length < 300)
+            ignoredNote.Text += "  " + line;
+        else ignoredNote = Add(ChatRole.Note, line, "");
+    }
 
     private static bool Restartable(LiveConversationOperation reply) =>
         reply.HomeSummary is null && reply.Status.Code != "home.asking" &&

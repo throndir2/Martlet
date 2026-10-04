@@ -24,6 +24,15 @@ public partial class MainWindow
 
     private static readonly string[] PauseChoices = ["Short (0.5 s)", "Normal (0.8 s)", "Long (1.2 s)"];
     private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty"];
+    // Companion › Listening › Word check, in the order shown.
+    private static readonly string[] WordCheckChoices = ["Relaxed", "Normal (recommended)", "Sensitive"];
+    private static readonly ListeningSensitivity[] WordCheckOrder =
+        [ListeningSensitivity.Relaxed, ListeningSensitivity.Normal, ListeningSensitivity.Sensitive];
+    internal const string WordCheckAbout = "Martlet ignores sounds that aren't words (mm, hmm, uh, a cough, laughter) and the words " +
+        "speech-to-text often makes up from noise (\"Thank you.\"), so they never get a reply. Relaxed ignores more: Martlet needs " +
+        "clearer, longer speech to answer you or to stop. Sensitive also takes single short words. A short answer such as \"yes\", " +
+        "\"no\" or \"stop\" works with all three, especially right after Martlet asks something, and anything with Martlet's name " +
+        "counts. What Martlet ignored shows faded in the talk window.";
 
     private TalkPreferences Talk => talk ??= TalkPreferences.Load(store?.DataDirectory);
 
@@ -77,14 +86,31 @@ public partial class MainWindow
             children.Add(Note("Martlet listens again after each reply, with or without the talk window open. Stop listening ends it; locking Windows pauses it.",
                 new Thickness(0, 8, 0, 0)));
 
+            var wordCheck = new ComboBox { Width = 240, ItemsSource = WordCheckChoices, SelectedIndex = Array.IndexOf(WordCheckOrder, prefs.WordCheck) };
+            AutomationProperties.SetName(wordCheck, "Word check: how readily Martlet takes what it hears as words");
+            AutomationProperties.SetAutomationId(wordCheck, "TalkWordCheck");
+            wordCheck.SelectionChanged += (_, _) =>
+            {
+                if (wordCheck.SelectedIndex >= 0 && WordCheckOrder[wordCheck.SelectedIndex] != Talk.WordCheck)
+                    SaveTalk(Talk with { WordCheck = WordCheckOrder[wordCheck.SelectedIndex] });
+            };
+            var wordCheckRow = Labeled("Word check", wordCheck);
+            wordCheckRow.Margin = new Thickness(0, 12, 0, 0);
+            children.Add(wordCheckRow);
+            var wordCheckAbout = Note(WordCheckAbout, new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(wordCheckAbout, "TalkWordCheckAbout");
+            children.Add(wordCheckAbout);
+
             var bargeIn = new CheckBox { Content = "Let me interrupt Martlet by talking", IsChecked = prefs.BargeIn, Margin = new Thickness(0, 16, 0, 4) };
             AutomationProperties.SetAutomationId(bargeIn, "TalkBargeIn");
             bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
             var bargeInAbout = Note("Optional, off by default: Martlet doesn't listen while it speaks, and Stop (or Esc) in the talk window " +
-                "interrupts it. Turn this on and Martlet keeps listening while it speaks; talking over it for about a second stops the reply and answers " +
-                "what you say. Short sounds (a cough, a click, a quick \"mm-hmm\") and what this PC plays never stop it. " +
+                "interrupts it. Turn this on and Martlet keeps listening while it speaks; talking over it with real words stops the reply " +
+                "and answers what you say: a word like \"stop\" or \"wait\" (or Martlet's name) right away, otherwise a few words. A hum, a " +
+                "cough, laughter, a quick \"yeah\" or \"mm-hmm\" and what this PC plays never stop it. With Parakeet on this PC as Listening, " +
+                "Martlet checks your words while you talk; otherwise once you pause. " +
                 "With Reduce echo from my speakers on, this works through speakers too. If Martlet still stops itself, use headphones " +
                 "or turn this off.", new Thickness(0, 0, 0, 0));
             AutomationProperties.SetAutomationId(bargeInAbout, "TalkBargeInAbout");

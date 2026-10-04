@@ -1395,6 +1395,37 @@ public sealed class LiveConversationTests
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
 
+    [Fact]
+    public Task AlwaysListeningIgnoresSoundsThatArentWordsAndShowsThemFaded() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var transcripts = new ConcurrentQueue<string>(["Mmm.", "Thanks for watching!", "What do you think?"]);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json(
+            JsonSerializer.Serialize(new { text = transcripts.TryDequeue(out var next) ? next : "Again." })));
+        fixture.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(Harness.Trace("I think so.")));
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            await fixture.Advance(() => fixture.Stt.Calls == 1 && window.Messages.Any(m => m.IsNote && m.Text.Contains("Ignored", StringComparison.Ordinal)));
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            await fixture.Advance(() => fixture.Stt.Calls == 2 && window.Messages.Count(m => m.IsNote) == 1 &&
+                window.Messages.Single(m => m.IsNote).Text.Contains("Thanks for watching", StringComparison.Ordinal));
+            // Neither became a turn or reached Thinking; both share one faded note.
+            Assert.Equal(0, fixture.Llm.Calls);
+            Assert.DoesNotContain(window.Messages, m => m.IsUser);
+            Assert.Equal("Ignored \u201CMmm.\u201D (not words).  Ignored \u201CThanks for watching!\u201D (speech-to-text makes this up from noise).",
+                window.Messages.Single(m => m.IsNote).Text);
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "I think so."));
+            Assert.Equal(["What do you think?"], window.Messages.Where(m => m.IsUser).Select(m => m.Text));
+            Assert.Equal(1, fixture.Llm.Calls);
+        }
+        finally { window.Close(); }
+    });
+
     private static void EnqueueUtterance(ControlledCapture capture, int quietBefore, int speech, int quietAfter)
     {
         var sample = 0;

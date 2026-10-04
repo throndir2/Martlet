@@ -51,7 +51,8 @@ public sealed class LocalSpeechNativeTests
         using var listener = new ParakeetListener(Root);
         Assert.True(listener.Installed);
         var bytes = File.ReadAllBytes(Path.Combine(Fixtures!, "b1.wav"))[44..];
-        var text = await listener.TranscribeAsync(Martlet.Sherpa.SherpaComponents.ParakeetModelId, bytes, CancellationToken.None);
-        Assert.Contains("sister", text, StringComparison.OrdinalIgnoreCase);
+        var heard = await listener.TranscribeAsync(Martlet.Sherpa.SherpaComponents.ParakeetModelId, bytes, CancellationToken.None);
+        Assert.Contains("sister", heard.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("parakeet", heard.Evidence?.Engine);
     }
 }

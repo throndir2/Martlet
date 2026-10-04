@@ -8,10 +8,12 @@ namespace Martlet.Desktop;
 
 /// <summary>What always listening made of one utterance: the words heard, or why there are none (another voice for Voice ID,
 /// a speech-to-text or microphone failure). Text is set only when the utterance was transcribed; Recording only when Thinking may
-/// also hear it.</summary>
+/// also hear it. Ignored: the utterance filter dropped it (Text is what speech-to-text wrote, only to show it as ignored).
+/// Interrupt: its words, said over Martlet, stop it (BargeInPolicy); SpeechStartedAt is when its voice began (controller clock).</summary>
 internal sealed record HeardSpeech(LiveConversationStatus Status, string? Text, double? Confidence, HeardVoices? Voices,
     SpeakerCheck? SpeakerCheck, Voiceprint? Voiceprint, Martlet.Providers.BoundedWaveAudio? Recording = null,
-    ReplyTimeline? Timeline = null);
+    ReplyTimeline? Timeline = null, Martlet.Providers.UtteranceDecision? Ignored = null, BargeInDecision? Interrupt = null,
+    long SpeechStartedAt = 0);
 
 /// <summary>Always listening (<see cref="LiveConversationController.Listen"/>): one loop on its own slot beside replies. It
 /// records one utterance at a time and transcribes each in order while it already listens for the next, so nothing said while
@@ -39,9 +41,11 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     internal LiveConversationOperation? Utterance { get => Volatile.Read(ref utterance); set => Volatile.Write(ref utterance, value); }
     /// <summary>Someone is talking right now (longer than a cough or click).</summary>
     internal bool Hearing => Utterance is { Hearing: true };
-    /// <summary>The user has talked long enough to stop Martlet speaking: a sustained voice on the microphone, never a short
-    /// sound and never what this PC plays.</summary>
+    /// <summary>The user has talked over Martlet with real words (BargeInPolicy): never a hum, a cough, laughter or what this PC
+    /// plays.</summary>
     internal bool TalkingOver => Utterance is { TalkingOver: true };
+    /// <summary>Why the utterance being recorded stopped Martlet, and how long after its voice began that was decided.</summary>
+    internal TalkOverResult? TalkOver => Utterance?.TalkOver;
     /// <summary>Utterances recorded and still being checked or transcribed.</summary>
     internal int Transcribing => Volatile.Read(ref transcribing);
     /// <summary>Not listening for a moment: Martlet is speaking, or other setup work owns the microphone.</summary>

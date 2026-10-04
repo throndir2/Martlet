@@ -78,6 +78,27 @@ public sealed record TranscriptionUsage(
     public decimal? EstimatedCost => null;
 }
 
+/// <summary>What the speech-to-text engine itself said about one transcript, where it says anything: the model's own token
+/// probabilities (Parakeet, whisper), whisper's no-speech probability and average log probability, and when the words were
+/// heard. Uncalibrated engine output: <see cref="UtteranceFilter"/> weighs it to tell words from noise, but it is never the
+/// calibrated <see cref="TranscriptionResult.Confidence"/> the participation policy needs. Null fields are unknown.</summary>
+public sealed record TranscriptionEvidence
+{
+    /// <summary>Which engine said it ("parakeet", "whisper").</summary>
+    public string Engine { get; init; } = "";
+    /// <summary>The mean probability of the transcript's tokens (or words), 0-1.</summary>
+    public double? MeanProbability { get; init; }
+    /// <summary>The least likely token's (or word's) probability, 0-1.</summary>
+    public double? MinimumProbability { get; init; }
+    /// <summary>whisper: how likely the audio held no speech at all (the highest of its segments), 0-1.</summary>
+    public double? NoSpeechProbability { get; init; }
+    /// <summary>whisper: the average log probability of the decoded tokens (0 is certain; below -1 is a guess).</summary>
+    public double? AverageLogProbability { get; init; }
+    /// <summary>When the first and last words were heard, from the start of the audio.</summary>
+    public TimeSpan? WordsStart { get; init; }
+    public TimeSpan? WordsEnd { get; init; }
+}
+
 public sealed class TranscriptionResult
 {
     public ProviderRequestContext Context { get; }
@@ -88,12 +109,14 @@ public sealed class TranscriptionResult
     [JsonIgnore]
     public IReadOnlyList<string> Languages { get; }
     public double? Confidence => null;
+    /// <summary>What the engine said about the transcript (local engines only today), or null.</summary>
+    public TranscriptionEvidence? Evidence { get; }
     public TranscriptionUsage Usage { get; }
     public ProviderFailure? Failure { get; }
 
     internal TranscriptionResult(ProviderRequestContext context, EvidenceProvenance provenance,
         TranscriptionOutcome outcome, string? text = null, IReadOnlyList<string>? languages = null,
-        TranscriptionUsage? usage = null, ProviderFailure? failure = null)
+        TranscriptionUsage? usage = null, ProviderFailure? failure = null, TranscriptionEvidence? evidence = null)
     {
         Context = context;
         Provenance = provenance;
@@ -102,6 +125,7 @@ public sealed class TranscriptionResult
         Languages = languages ?? Array.Empty<string>();
         Usage = usage ?? TranscriptionUsage.Unknown;
         Failure = failure;
+        Evidence = evidence;
     }
 
     public ProviderEvent ToTerminalEvent() => new()
