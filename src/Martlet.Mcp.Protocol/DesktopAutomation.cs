@@ -84,8 +84,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
         "LiveJobCancel-",
-        // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer") only show that place's card; its own
-        // Use buttons commit (and need --allow-ui-effects).
+        // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
+        // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-"];
@@ -133,6 +133,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Vision › Where the character looks (its VisionGaze-Mouse and VisionGaze-Martlet choices save
+        // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
+        // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).
+        "VisionGazeStatus", "LiveGaze",
         // Companion › Listening › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
@@ -177,15 +181,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
         // it needs --allow-ui-effects) and how the Thinking route takes it.
         "RepliesThinking", "RepliesThinkingStatus",
-        // Companion › Deep thinking: where a think goes and whether it runs alongside the conversation or waits for quiet moments
-        // (and why); Thinking longer's state (on by default) or what keeps it from working, and the chosen effort, time limit,
-        // hourly limit and when it shares results (choosing one with ui_select, or the ThinkLongerOn check box, saves them, so
-        // they need --allow-ui-effects); what Ollama on this PC has downloaded and what an endpoint's key field will do (never a
-        // key or base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
+        // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
+        // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
+        // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
+        // --allow-ui-effects); what Ollama on this PC has downloaded, whether the model typed for it fits beside Thinking's on the
+        // graphics card, why Same as Thinking can or can't think here, and what an endpoint's key field will do (never a key or
+        // base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
         // background work line (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id>
         // holds that).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
-        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingKeyStatus", "LiveJobs",
+        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
+        "DeepThinkingKeyStatus", "LiveJobs",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",

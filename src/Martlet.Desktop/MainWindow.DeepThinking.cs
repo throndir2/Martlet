@@ -8,19 +8,22 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 using Martlet.Providers;
+using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
 /// <summary>Companion › Deep thinking: Thinking answers you; Deep thinking works out what Martlet hands it in the background
-/// (think_longer) while the conversation carries on. Whether Martlet may think longer, how hard, for how long, how often and
-/// when it shares the result (saved with the reply settings, so your computers share them), and where it thinks (this PC's own
-/// choice, deep-thinking.json): the Thinking model, another of your computers, Ollama on this PC or a cloud provider. On another
-/// machine a think runs alongside the conversation; on the hardware the conversation uses it waits for quiet moments.</summary>
+/// (think_longer) while the conversation carries on. Whether Martlet may think longer at all (Off, saved with the reply settings,
+/// so your computers share it), how hard, for how long, how often and when it shares the result, and where it thinks (this PC's
+/// own choice, deep-thinking.json): the Thinking model, another of your computers, a second model in Ollama on this PC or a
+/// cloud provider. A think always runs alongside the conversation, so it needs a model of its own (<see cref="DeepThinkingPlan"/>).</summary>
 public partial class MainWindow
 {
-    private enum DeepPlace { Same, Computer, ThisPc, Cloud }
+    private enum DeepPlace { Off, Same, Computer, ThisPc, Cloud }
 
     private DeepPlace? deepPlaceShown;
+    private SideBySideFit? deepLocalFit;
+    private string? deepLocalFitModel;
     private static readonly ThinkEffort[] ThinkEfforts = [ThinkEffort.Medium, ThinkEffort.High];
     private static readonly ThinkDelivery[] ThinkDeliveries = [ThinkDelivery.WhenFree, ThinkDelivery.NextMessage];
 
@@ -31,10 +34,10 @@ public partial class MainWindow
         CustomCloud
     ];
 
-    private static DeepPlace PlaceOf(DeepThinkingSettings deep) => deep.Place switch
+    private static DeepPlace PlaceOf(DeepThinkingSettings deep, bool on) => !on ? DeepPlace.Off : deep.Place switch
     {
         DeepThinkingPlace.Host => DeepPlace.Computer,
-        DeepThinkingPlace.Endpoint when deep.OnThisPc => DeepPlace.ThisPc,
+        DeepThinkingPlace.Endpoint when deep.Origin == LocalOllamaBaseUrl => DeepPlace.ThisPc,
         DeepThinkingPlace.Endpoint => DeepPlace.Cloud,
         _ => DeepPlace.Same
     };
@@ -45,27 +48,31 @@ public partial class MainWindow
         var deep = store is null ? new DeepThinkingSettings() : DeepThinkingSettings.Load(store.DataDirectory);
         var routes = homeSettings?.Setup?.Routes ?? [];
         var plan = DeepThinkingPlan.For(deep, routes);
-        var current = PlaceOf(deep);
+        var on = ThinkLongerSettings.Of(homeSettings?.Generation).On;
+        var current = PlaceOf(deep, on);
         var place = deepPlaceShown ?? current;
 
-        var now = new TextBlock { Text = DeepThinkingNow(deep, route, plan), FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        var now = new TextBlock { Text = DeepThinkingNow(deep, route, plan, on), FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(now, "DeepThinkingNow");
-        var why = Note(plan.Why, new Thickness(0, 4, 0, 0));
+        var why = Note(on ? plan.Why : "Turn it on by choosing where it thinks below.", new Thickness(0, 4, 0, 0));
+        if (on && !plan.Available) why.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(why, "DeepThinkingParallel");
         page.Children.Add(Card(Heading("Now"), now, why));
 
-        page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route));
+        page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route, plan));
 
         var where = new StackPanel();
         where.Children.Add(Heading("Where it thinks"));
-        where.Children.Add(Note("A think on another machine runs alongside the conversation, so Martlet keeps talking at full speed. " +
-            "One on the hardware the conversation uses waits for quiet moments and stops the moment you talk. This choice stays " +
-            "on this PC.", new Thickness(0, 0, 0, 10)));
+        where.Children.Add(Note("A think always runs alongside the conversation, so Martlet keeps talking at full speed. That needs a " +
+            "model of its own: another of your computers, a cloud provider, a second model on this PC, or Thinking's own model when " +
+            "its provider answers several requests at once. Off applies to all your computers; where it thinks stays on this PC.",
+            new Thickness(0, 0, 0, 10)));
         foreach (var (value, label, detail) in new (DeepPlace, string, string)[]
         {
-            (DeepPlace.Same, "Same as Thinking", "Thinking's own model thinks it through. Simple, and it shares Thinking's prompt cache."),
+            (DeepPlace.Off, "Off", "Martlet answers everything right away and never thinks in the background."),
+            (DeepPlace.Same, "Same as Thinking", "Thinking's own model thinks it through, when its provider answers several requests at once."),
             (DeepPlace.Computer, "Another of your computers", "A paired computer's Ollama thinks while this PC talks: local, private and parallel."),
-            (DeepPlace.ThisPc, "Ollama on this PC", "A model of its own on this PC. It shares this PC's graphics card with the conversation."),
+            (DeepPlace.ThisPc, "Ollama on this PC", "A second model of its own beside Thinking's, when both fit on the graphics card."),
             (DeepPlace.Cloud, "A cloud provider or server", "OpenRouter, OpenAI, NVIDIA Build or another compatible server. Requests may cost money.")
         })
         {
@@ -87,35 +94,49 @@ public partial class MainWindow
 
         page.Children.Add(place switch
         {
-            DeepPlace.Computer => DeepComputersCard(deep),
-            DeepPlace.ThisPc => DeepLocalCard(deep),
+            DeepPlace.Off => Card(Heading("Off"),
+                Note("Martlet answers everything right away and never offers to think something over in the background. Choose " +
+                    "this when no other computer or provider is free to think; your computers share it.", new Thickness(0, 0, 0, 0)),
+                Row(current == DeepPlace.Off ? null
+                    : PageButton("Turn Deep thinking off", () => TurnDeepThinkingAsync(false, "Deep thinking is off.").Forget(),
+                        primary: true, id: "DeepThinkingTurnOff"))),
+            DeepPlace.Computer => DeepComputersCard(deep, on),
+            DeepPlace.ThisPc => DeepLocalCard(deep, route),
             DeepPlace.Cloud => DeepCloudCard(deep, route),
-            _ => Card(Heading("Same as Thinking"),
-                Note(route is null ? "Set up Thinking first." : $"Thinks with {route.ModelId}, Thinking's model, with Thinking steps on.",
-                    new Thickness(0, 0, 0, 0)),
-                Row(current == DeepPlace.Same ? null
-                    : PageButton("Think with the Thinking model", () => SaveDeepThinkingAsync(new(), null, "Deep thinking now uses the Thinking model.").Forget(),
-                        primary: true, id: "DeepThinkingUseSame")))
+            _ => DeepSameCard(route, routes, current)
         });
     }
 
-    /// <summary>The Now card's line: where a think goes and whether Martlet may think longer at all.</summary>
-    private string DeepThinkingNow(DeepThinkingSettings deep, SetupRoute? route, DeepThinkingPlan plan)
+    /// <summary>Same as Thinking: Thinking's own model, which can think alongside the conversation only when its provider answers
+    /// several requests at once (not a model on this PC or a paired computer).</summary>
+    private Border DeepSameCard(SetupRoute? route, IReadOnlyList<SetupRoute> routes, DeepPlace current)
     {
-        var on = ThinkLongerSettings.Of(homeSettings?.Generation).On;
+        var same = DeepThinkingPlan.For(new(), routes);
+        var note = Note(route is null ? "Set up Thinking first."
+            : same.Available ? $"Thinks with {route.ModelId}, Thinking's model, with Thinking steps on." : same.Why, new Thickness(0, 0, 0, 0));
+        AutomationProperties.SetAutomationId(note, "DeepThinkingSameStatus");
+        return Card(Heading("Same as Thinking"), note,
+            Row(current == DeepPlace.Same || !same.Available ? null
+                : PageButton("Think with the Thinking model", () => SaveDeepThinkingAsync(new(), null, "Deep thinking now uses the Thinking model.").Forget(),
+                    primary: true, id: "DeepThinkingUseSame")));
+    }
+
+    /// <summary>The Now card's line: whether Martlet may think longer, where a think goes and whether it can run there.</summary>
+    private static string DeepThinkingNow(DeepThinkingSettings deep, SetupRoute? route, DeepThinkingPlan plan, bool on)
+    {
+        if (!on) return "Off. Martlet answers everything right away and never thinks in the background.";
         var where = deep.Separate ? deep.Describe() : route is null ? "the Thinking model (not set up yet)" : $"the Thinking model ({route.ModelId})";
-        return (on ? "Thinks on " : "Off. When on, it thinks on ") + where + (plan.Parallel ? ", in parallel with the conversation." : ", in quiet moments.");
+        return plan.Available ? $"Thinks on {where}, in parallel with the conversation."
+            : $"On, but it can't think on {where}, so Martlet doesn't offer to think things over. Choose another place below.";
     }
 
     // ---------- Thinking longer (saved with the reply settings) ----------
 
-    /// <summary>Whether Martlet may decide, sparingly, to think a task through in the background (on by default), how hard, for
-    /// how long, how often and when it shares the result. It saves a moment after each change, with the reply settings.</summary>
-    private Border ThinkLongerCard(ThinkLongerSettings? saved, SetupRoute? route)
+    /// <summary>How hard Martlet thinks something over, for how long, how often and when it shares the result. Whether it may
+    /// at all is Where it thinks › Off. It saves a moment after each change, with the reply settings.</summary>
+    private Border ThinkLongerCard(ThinkLongerSettings? saved, SetupRoute? route, DeepThinkingPlan plan)
     {
         var current = saved ?? new ThinkLongerSettings();
-        var on = new CheckBox { Content = "Let Martlet _think longer when it needs to", IsChecked = current.On, Margin = new Thickness(0, 0, 0, 4) };
-        AutomationProperties.SetAutomationId(on, "ThinkLongerOn");
         var changed = (Action)(() => { });
         ComboBox Choice(string id, string name, IEnumerable<string> items, int selected)
         {
@@ -139,41 +160,44 @@ public partial class MainWindow
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         void Show(ThinkLongerSettings? settings)
         {
-            var (text, problem) = ThinkLongerStatus(settings ?? new(), route);
+            var (text, problem) = ThinkLongerStatus(settings ?? new(), route, plan);
             status.Text = text;
             status.SetResourceReference(TextBlock.ForegroundProperty, problem ? "WarningBrush" : "MutedBrush");
             foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = settings?.On ?? true;
         }
         Show(saved);
-        ThinkLongerSettings Read() => new()
+        ThinkLongerSettings Read(ThinkLongerSettings? loaded) => new()
         {
-            Enabled = on.IsChecked == true,
+            Enabled = loaded?.Enabled,
             Effort = ThinkEfforts[Math.Max(0, effort.SelectedIndex)],
             Minutes = minutes[Math.Max(0, time.SelectedIndex)],
             PerHour = hourly[Math.Max(0, perHour.SelectedIndex)],
             Delivery = ThinkDeliveries[Math.Max(0, when.SelectedIndex)]
         };
-        // There is no Save button: a change saves a moment later, into the newest saved reply settings.
+        // There is no Save button: a change saves a moment later, into the newest saved reply settings (whether it is on stays
+        // as saved: Where it thinks › Off turns it off).
         var autoSave = new AutoSave(() =>
         {
-            var next = ThinkLongerSettings.Normalize(Read());
-            return SaveRepliesAsync(loaded => GenerationSettings.Normalize((loaded ?? new()) with { ThinkLonger = next }), generation =>
+            ThinkLongerSettings? next = null;
+            return SaveRepliesAsync(loaded =>
+            {
+                next = ThinkLongerSettings.Normalize(Read(loaded?.ThinkLonger));
+                return GenerationSettings.Normalize((loaded ?? new()) with { ThinkLonger = next });
+            }, generation =>
             {
                 Show(generation?.ThinkLonger);
-                ErrorLog.Info($"Thinking longer: {(next?.On ?? true ? "on" : "off")}, {(next ?? new()).HowHard} effort, " +
-                    $"{BackgroundJobs.Duration((next ?? new()).TimeLimit)} limit, {(next ?? new()).Hourly} an hour, shares " +
-                    ((next ?? new()).When == ThinkDelivery.WhenFree ? "as soon as Martlet is free." : "when you talk next."));
+                var now = next ?? new();
+                ErrorLog.Info($"Thinking longer: {now.HowHard} effort, {BackgroundJobs.Duration(now.TimeLimit)} limit, {now.Hourly} an " +
+                    $"hour, shares {(now.When == ThinkDelivery.WhenFree ? "as soon as Martlet is free." : "when you talk next.")}");
             }, "Thinking longer saved. Reload an open conversation to use it.");
         });
         tabAutoSave = autoSave;
         changed = () => { tabEdited = true; autoSave.Changed(); };
-        on.Checked += (_, _) => { foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = true; changed(); };
-        on.Unchecked += (_, _) => { foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = false; changed(); };
         return Card(Heading("Thinking longer"),
             Note("Replies answer right away (Thinking steps are off by default). When a task really needs thought, such as writing " +
                 "song lyrics, a story or a plan, or tricky math or code, Martlet can say it'll think it over and work on it in the " +
                 "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8)),
-            on, status,
+            status,
             TerminalRow("How hard", effort), TerminalRow("Time limit", time), TerminalRow("How often", perHour),
             TerminalRow("Share it", when),
             Note("It thinks with Thinking steps on, whatever replies use; one think runs at a time. Stop (Esc) doesn't end it: its " +
@@ -182,8 +206,8 @@ public partial class MainWindow
     }
 
     /// <summary>Whether Martlet can think longer at all: Thinking hands the task off with a tool, so it needs a route that does
-    /// function calling.</summary>
-    private (string Text, bool Problem) ThinkLongerStatus(ThinkLongerSettings settings, SetupRoute? route)
+    /// function calling, and Deep thinking needs a model of its own to think on.</summary>
+    private (string Text, bool Problem) ThinkLongerStatus(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
     {
         if (!settings.On) return ("Off. Martlet answers everything right away and never thinks in the background.", false);
         if (route is null) return ("On. Set up Thinking so Martlet can use it.", true);
@@ -192,6 +216,8 @@ public partial class MainWindow
                 "OpenAI or a Chat Completions endpoint (such as Ollama on this PC) for Thinking.", true);
         if (mcpTools.IsUnsupported(McpToolService.ModelKey($"{route.RouteType}", route.Origin, route.ModelId)))
             return ($"On, but {route.ModelId} turned down tools, so it can't hand a task off. Choose a Thinking model that can use tools.", true);
+        if (!plan.Available)
+            return ($"On, but Deep thinking has nowhere to think in parallel, so Martlet doesn't offer to think things over. {plan.Why}", true);
         return ($"On. When a task needs it, Martlet says it'll think it over and works on it in the background ({settings.HowHard} " +
             $"effort, up to {BackgroundJobs.Duration(settings.TimeLimit)}, at most {settings.Hourly} an hour) while you keep talking, " +
             (settings.When == ThinkDelivery.WhenFree ? "then brings it up as soon as it's free." : "then brings it up when you talk next."), false);
@@ -200,7 +226,7 @@ public partial class MainWindow
     // ---------- where it thinks ----------
 
     /// <summary>Paired computers whose Ollama can think: each with what it offers and Use it.</summary>
-    private Border DeepComputersCard(DeepThinkingSettings deep)
+    private Border DeepComputersCard(DeepThinkingSettings deep, bool on)
     {
         var stack = new List<UIElement> { Heading("Another of your computers") };
         var hosts = NetworkMap.Hosts(Inputs());
@@ -214,7 +240,7 @@ public partial class MainWindow
         {
             var check = hostChecks.GetValueOrDefault(host.HostId);
             var model = check?.Offers?.GetValueOrDefault(HostRoles.Ollama);
-            var inUse = deep.Place == DeepThinkingPlace.Host && deep.HostId == host.HostId;
+            var inUse = on && deep.Place == DeepThinkingPlace.Host && deep.HostId == host.HostId;
             var detail = inUse ? $"Thinks here ({deep.ModelId})."
                 : model is not null ? $"Ollama runs {model}."
                 : check?.Reachable == true ? "Ollama isn't installed there. Add the Thinking role on Devices."
@@ -237,9 +263,9 @@ public partial class MainWindow
         stack.Add(Row(hosts.Count == 0 ? PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: true, id: "DeepThinkingAddComputer")
             : PageButton("Check computers", () => RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
         stack.Add(Note("The conversation so far (what fits in its 16 KiB) and the task go to that computer through its paired, pinned " +
-            "connection. While it thinks there, Thinking, the voice and listening keep working here at full speed; if that computer " +
-            "also does one of them, a think waits for quiet moments. A computer's model can only think as long as its Martlet allows: " +
-            "update it to this version for thinks over a minute.", new Thickness(0, 8, 0, 0)));
+            "connection. While it thinks there, Thinking, the voice and listening keep working here at full speed. A computer that " +
+            "also does Thinking for the conversation can't think alongside it. A computer's model can only think as long as its " +
+            "Martlet allows: update it to this version for thinks over a minute.", new Thickness(0, 8, 0, 0)));
         return Card([.. stack]);
     }
 
@@ -279,40 +305,91 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Ollama on this PC with a model of its own for thinking.</summary>
-    private Border DeepLocalCard(DeepThinkingSettings deep)
+    /// <summary>A second model in Ollama on this PC, beside Thinking's: Ollama runs each model in its own process, so it thinks in
+    /// parallel with the conversation while both fit on the graphics card (checked here, and before each think).</summary>
+    private Border DeepLocalCard(DeepThinkingSettings deep, SetupRoute? thinking)
     {
-        var model = new ComboBox { IsEditable = true, Width = 300, HorizontalAlignment = HorizontalAlignment.Left,
-            ItemsSource = (ollamaModels ?? []).Concat(LocalChatModels.Select(m => m.Id)).Distinct(StringComparer.Ordinal).ToArray(),
-            Text = deep.OnThisPc ? deep.ModelId ?? "" : homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } thinking &&
-                IsLocalOllama(thinking) ? thinking.ModelId : LocalChatModels[0].Id };
+        var beside = IsLocalOllama(thinking) ? thinking!.ModelId : null;
+        var choices = (ollamaModels ?? []).Concat(LocalChatModels.Select(m => m.Id)).Distinct(StringComparer.Ordinal).ToArray();
+        var model = new ComboBox { IsEditable = true, Width = 300, HorizontalAlignment = HorizontalAlignment.Left, ItemsSource = choices,
+            Text = deep.Place == DeepThinkingPlace.Endpoint && deep.Origin == LocalOllamaBaseUrl ? deep.ModelId ?? ""
+                : (ollamaModels ?? []).Concat(LocalChatModels.Select(m => m.Id)).FirstOrDefault(id => !OllamaSideBySide.Same(id, beside)) ?? "" };
         AutomationProperties.SetName(model, "Model for Deep thinking");
         AutomationProperties.SetAutomationId(model, "DeepThinkingLocalModel");
         var state = Note(ollamaModels is null ? "Check Ollama to see which models are downloaded."
             : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
             : $"Downloaded: {string.Join(", ", ollamaModels)}.", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(state, "DeepThinkingLocalStatus");
+        var fit = Note("", new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(fit, "DeepThinkingLocalFit");
+        AutomationProperties.SetLiveSetting(fit, AutomationLiveSetting.Polite);
+        void ShowFit(string text, bool problem)
+        {
+            fit.Text = text;
+            fit.SetResourceReference(TextBlock.ForegroundProperty, problem ? "WarningBrush" : "MutedBrush");
+        }
+        void Check(string id)
+        {
+            if (beside is null) ShowFit($"Thinking doesn't use Ollama on this PC, so {(id.Length > 0 ? id : "this model")} has it to " +
+                "itself and thinks alongside the conversation.", false);
+            else if (id.Length == 0) ShowFit("Choose a model.", true);
+            else if (OllamaSideBySide.Same(id, beside))
+                ShowFit($"{id} is Thinking's own model, which can't think something over while it answers you. Choose another model.", true);
+            else if (deepLocalFitModel == id && deepLocalFit is { } known) ShowFit((known.Fits ? "Fits: " : "Doesn't fit: ") + known.Why, !known.Fits);
+            else
+            {
+                ShowFit($"Checking whether {id} fits beside {beside} on the graphics card...", false);
+                CheckDeepFitAsync(beside, id, ShowFit).Forget();
+            }
+        }
+        Check(model.Text.Trim());
+        model.SelectionChanged += (_, _) => { if (model.SelectedItem is string chosen) Check(chosen); };
+        model.LostKeyboardFocus += (_, _) => Check(model.Text.Trim());
         return Card(Heading("Ollama on this PC"),
-            Note("A larger model can think here while a small, fast one answers you. Both share this PC's graphics card, so while " +
-                "Thinking or the voice runs on this PC a think waits for quiet moments; with Thinking elsewhere it runs alongside.",
-                new Thickness(0, 0, 0, 8)),
-            new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) }, model, state,
+            Note("A second model can think here while Thinking's answers you, such as a larger one beside a small, fast one. Ollama runs " +
+                "each model in its own process, so they answer at the same time, but only while both fit on the graphics card: Martlet " +
+                "checks before each think and doesn't think it over when they don't. They share the graphics card, so replies may start " +
+                "a little later while it thinks.", new Thickness(0, 0, 0, 8)),
+            new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) }, model, state, fit,
             Row(PageButton("Use Ollama on this PC", () =>
                 {
                     var id = model.Text.Trim();
                     try { ChatCompletionsSetup.ModelId(id); }
                     catch (ContractException error) { ActionText.Text = error.Message; return; }
+                    if (beside is not null && OllamaSideBySide.Same(id, beside))
+                    {
+                        ActionText.Text = $"{id} is Thinking's own model, which can't think something over while it answers you. Choose another model.";
+                        return;
+                    }
                     SaveDeepThinkingAsync(new() { Place = DeepThinkingPlace.Endpoint, Origin = LocalOllamaBaseUrl, ModelId = id, ChosenAt = DateTimeOffset.Now },
                         null, $"Deep thinking now uses {id} in Ollama on this PC." +
-                        (ollamaModels is { } known && !known.Contains(id, StringComparer.Ordinal) ? $" Download {id} on Thinking to use it." : "")).Forget();
+                        (ollamaModels is { } known && !LocalOllama.Serves(known, id) ? $" Download {id} on Thinking to use it." : "")).Forget();
                 }, primary: true, id: "DeepThinkingUseLocal"),
-                PageButton("Check Ollama", () => CheckOllamaAsync().Forget(), id: "DeepThinkingCheckOllama")));
+                PageButton("Check Ollama", () =>
+                {
+                    deepLocalFitModel = null;
+                    CheckOllamaAsync().Forget();
+                }, id: "DeepThinkingCheckOllama")));
     }
 
+    /// <summary>Checks whether <paramref name="deep"/> fits beside Thinking's <paramref name="thinking"/> in Ollama on this PC
+    /// (read-only: it loads nothing) and shows the result.</summary>
+    private async Task CheckDeepFitAsync(string thinking, string deep, Action<string, bool> show)
+    {
+        try
+        {
+            var fit = await LocalDeepThinking.CheckAsync(thinking, deep, loadThinking: false, lifetime.Token);
+            deepLocalFit = fit;
+            deepLocalFitModel = deep;
+            ErrorLog.Info($"Deep thinking: {deep} {(fit.Fits ? "fits" : "doesn't fit")} beside {thinking} in Ollama on this PC. {fit.Why}");
+            if (!closing) show((fit.Fits ? "Fits: " : "Doesn't fit: ") + fit.Why, !fit.Fits);
+        }
+        catch (OperationCanceledException) { }
+    }
     /// <summary>A cloud provider or any OpenAI-compatible server (HTTPS, or a server on this PC), with its own key or Thinking's.</summary>
     private Border DeepCloudCard(DeepThinkingSettings deep, SetupRoute? thinking)
     {
-        var saved = deep.Place == DeepThinkingPlace.Endpoint && !deep.OnThisPc ? deep : null;
+        var saved = deep.Place == DeepThinkingPlace.Endpoint && deep.Origin != LocalOllamaBaseUrl ? deep : null;
         var provider = new ComboBox { ItemsSource = DeepThinkingProviders, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(provider, "Deep thinking provider");
         AutomationProperties.SetAutomationId(provider, "DeepThinkingProvider");
@@ -427,9 +504,12 @@ public partial class MainWindow
                 await Task.Run(() => vault.Delete(oldBinding), CancellationToken.None);
             }
             deepPlaceShown = null;
+            conversation?.ReloadDeepThinking();
             var plan = DeepThinkingPlan.For(next, homeSettings?.Setup?.Routes ?? []);
-            ErrorLog.Info($"Deep thinking: now on {next.Describe()}; {(plan.Parallel ? "in parallel with the conversation" : "in quiet moments")}.");
-            ActionText.Text = done + (plan.Parallel ? " It thinks alongside the conversation." : " It thinks in quiet moments.");
+            ErrorLog.Info($"Deep thinking: now on {next.Describe()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
+            var turnedOn = !ThinkLongerSettings.Of(homeSettings?.Generation).On && await SetThinkLongerAsync(true);
+            ActionText.Text = done + (turnedOn ? " Deep thinking is on again." : "") +
+                (plan.Available ? " It thinks alongside the conversation." : " " + plan.Why);
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
@@ -441,5 +521,36 @@ public partial class MainWindow
             if (written is { } orphan) vault.Delete(orphan);
             if (!closing && openTab == CompanionTab.DeepThinking) RenderTab();
         }
+    }
+
+    /// <summary>Where it thinks › Off, or back on: Thinking longer's on/off, saved with the reply settings (your computers share
+    /// it). Shows <paramref name="done"/> once saved.</summary>
+    private async Task TurnDeepThinkingAsync(bool on, string done)
+    {
+        if (closing) return;
+        if (await SetThinkLongerAsync(on))
+        {
+            deepPlaceShown = null;
+            ErrorLog.Info($"Deep thinking: turned {(on ? "on" : "off")}.");
+            ActionText.Text = done + " Reload an open conversation to use it.";
+        }
+        if (!closing && openTab == CompanionTab.DeepThinking) RenderTab();
+    }
+
+    /// <summary>Saves whether Martlet may think longer into the newest reply settings, trying again shortly while another change
+    /// holds them. True once it is saved that way.</summary>
+    private async Task<bool> SetThinkLongerAsync(bool on)
+    {
+        for (var attempt = 0; attempt < 20 && !closing; attempt++)
+        {
+            if (await SaveRepliesAsync(loaded => GenerationSettings.Normalize((loaded ?? new()) with
+                {
+                    ThinkLonger = ThinkLongerSettings.Normalize((loaded?.ThinkLonger ?? new()) with { Enabled = on })
+                }), _ => { }, on ? "Deep thinking is on." : "Deep thinking is off."))
+                return ThinkLongerSettings.Of(homeSettings?.Generation).On == on;
+            try { await Task.Delay(TimeSpan.FromMilliseconds(250), lifetime.Token); }
+            catch (OperationCanceledException) { return false; }
+        }
+        return false;
     }
 }

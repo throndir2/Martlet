@@ -44,14 +44,32 @@ internal sealed class AvatarController : IAsyncDisposable
     internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
-        Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null)
+        Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null)
     {
         this.createRenderer = createRenderer ?? (() => new AvatarRendererProcess());
         this.allowControlledClock = allowControlledClock;
         this.openHost = openHost ?? GatewayAvatarHostLink.Open;
+        Gaze = new(this, gazeClock);
         _ = Task.Run(ActOnCuesAsync);
     }
     private void Publish(string value) => Volatile.Write(ref status, value);
+
+    // ---------- where the character looks ----------
+
+    /// <summary>Where the character looks: the mouse, or what Martlet decides while it watches the screen.</summary>
+    internal CharacterGazeService Gaze { get; }
+
+    /// <summary>The showing character's renderer process (its windows are the character's own), or null.</summary>
+    internal int? RendererProcessId => IsShowing && renderer is { } current ? current.ProcessId : null;
+
+    /// <summary>Turns the showing character's head and eyes toward a point on the desktop for a while, or back to the mouse.
+    /// Returns what it looks at now, or null while the character is hidden.</summary>
+    internal async Task<RendererLook?> GazeAsync(RendererGaze gaze, CancellationToken token)
+    {
+        if (renderer is not { HasExited: false } current || profile is null) return null;
+        var reply = await current.SendAsync("gaze", gaze, token).ConfigureAwait(false);
+        return reply.Kind == "look" ? RendererProtocol.Data<RendererLook>(reply) : null;
+    }
 
     // ---------- emotes and motions ----------
 
@@ -78,11 +96,25 @@ internal sealed class AvatarController : IAsyncDisposable
         {
             await foreach (var line in Cues.Lines.ReadAllAsync(cueLifetime.Token).ConfigureAwait(false))
             {
-                if (!IsShowing || Volatile.Read(ref actions)?.Invoke(profile?.ModelPath) is not { } catalog) continue;
+                if (!IsShowing) continue;
+                var catalog = Volatile.Read(ref actions)?.Invoke(profile?.ModelPath);
                 foreach (var cue in line.Cues)
-                    if (catalog.For(cue.Tag) is { Count: > 0 } sources)
-                        _ = ActLaterAsync(sources, cue, line.Finished);
+                {
+                    // A screen glance's look tag turns the eyes; it is never an emote.
+                    if (CharacterGaze.IsTag(cue.Tag)) _ = LookLaterAsync(cue);
+                    else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, cue, line.Finished);
+                }
             }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task LookLaterAsync(CharacterCue cue)
+    {
+        try
+        {
+            if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
+            Gaze.Chosen(cue.Tag);
         }
         catch (OperationCanceledException) { }
     }
