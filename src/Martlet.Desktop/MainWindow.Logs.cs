@@ -1,11 +1,11 @@
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Avatar.Audio2Face.Remote;
-using Martlet.Core.Cluster;
-using Martlet.Core.Contracts;
 using Martlet.Core.Logs;
 using Martlet.Diagnostics;
 
@@ -17,43 +17,35 @@ namespace Martlet.Desktop;
 internal sealed record LogRow(LogRecord Record, string Time, string Level, int Severity, string Where, string Origin, string Headline,
     string AutomationId, string Text);
 
-/// <summary>Diagnostics: every line Martlet's parts wrote (desktop app, avatar renderer, host runs, hosts' gateways), newest
-/// first, with level, computer, part and text filters. Each computer keeps its own logs. The owner can choose one paired host
-/// as the log host (the "logs" entry of the shared plan): every companion PC then sends it this PC's new lines and relays
-/// the other paired hosts' own lines every 30 seconds, so the page shows all computers' logs in one place. The log host
-/// keeps each line once (per computer and part, only lines newer than the ones it has).</summary>
+/// <summary>Diagnostics: every line Martlet's parts wrote on every computer of the owner's Martlet network (desktop apps, avatar
+/// renderers, host runs, hosts' gateways), newest first, with level, computer, part and text filters. Logs are shared between
+/// all the computers, with no choice to make: every 30 seconds this PC reads each paired host's new lines (every computer's)
+/// into its own copy and gives every host the lines it lacks, its own and every other computer's (<see cref="LogShare"/>), so
+/// each PC shows them all. Save logs to share puts everything in one ZIP (<see cref="LogBundle"/>).</summary>
 public partial class MainWindow
 {
-    private const int LogsPerStream = 400;
     private const int ShownLogLimit = 5_000;
-    private const int CachedRemoteLogLimit = 20_000;
-    private const int LogBatchBudget = 360 * 1024;
-    private readonly DispatcherTimer logShipTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer logShareTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly DispatcherTimer logViewTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly DispatcherTimer logSearchTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private IReadOnlyList<LogRecord> localLogs = [];
-    private readonly List<LogRecord> collectedLogs = [];
-    private string? collectedFrom;
-    private long collectedAfter;
-    private readonly Dictionary<string, List<LogRecord>> hostOwnLogs = new(StringComparer.Ordinal);
-    private Dictionary<string, long>? logMarks;
-    private string? logMarksHost;
+    private LogShare? logShare;
+    private Task<LogShare?>? logShareLoading;
     private string logLevel = "all", logSource = "all", logPart = "all";
-    private bool logsBusy, logsAgain, logShipBusy, choosingLogHost;
-    private string logShipStatus = "";
-    private string? logReadNote;
+    private bool logsBusy, logsAgain, logShareBusy, logShareSending, logShareSendAgain, logSaving;
+    private string logShareStatus = "";
     private string? lastLoggedStatus, lastLoggedShape;
     private DateTimeOffset lastLoggedAt;
     private string logRowsSignature = "";
-    private string? logHostSignature;
-
-    private string? LogHostId => clusterPlan.For(ClusterJobs.Logs)?.HostId;
 
     private string? LogDirectory => ErrorLog.Directory ?? (store is null ? null : LocalLogs.Directory(store.DataDirectory));
 
+    /// <summary>The other computers' lines this PC holds (empty until the saved copy is read).</summary>
+    private IReadOnlyList<LogRecord> NetworkLogLines => logShare?.Logs.Snapshot() ?? [];
+
     private void InitializeLogs()
     {
-        logShipTimer.Tick += (_, _) => ShipLogsAsync().Forget();
+        logShareTimer.Tick += (_, _) => ShareLogsAsync(send: true).Forget();
         logViewTimer.Tick += (_, _) => RefreshLogsAsync().Forget();
         logSearchTimer.Tick += (_, _) =>
         {
@@ -62,20 +54,20 @@ public partial class MainWindow
         };
         ErrorLog.ErrorRecorded += QueueLogRefresh;
         RenderLogFilters();
-        ShowLogHostStatus();
+        ShowLogShareStatus();
     }
 
-    private void StartLogShipping()
+    private void StartLogSharing()
     {
         if (store is null || closing) return;
-        logShipTimer.Start();
-        ShipLogsAsync().Forget();
+        logShareTimer.Start();
+        ShareLogsAsync(send: true).Forget();
     }
 
     private void StopLogs()
     {
         ErrorLog.ErrorRecorded -= QueueLogRefresh;
-        logShipTimer.Stop();
+        logShareTimer.Stop();
         logViewTimer.Stop();
         logSearchTimer.Stop();
     }
@@ -101,15 +93,14 @@ public partial class MainWindow
 
     private void EnterDiagnostics()
     {
-        RenderLogHostChoice();
-        ShowLogHostStatus();
+        ShowLogShareStatus();
         logViewTimer.Start();
         RefreshLogsAsync().Forget();
     }
 
     private void LeaveDiagnostics() => logViewTimer.Stop();
 
-    /// <summary>Reads the logs again (this PC's, and the log host's or each paired host's own); sends nothing.</summary>
+    /// <summary>Reads the logs again (this PC's, and each paired host's new lines); sends nothing.</summary>
     private void LogsRefresh_Click(object sender, RoutedEventArgs e) => RefreshLogsAsync().Forget();
 
     private void LogsOpenFolder_Click(object sender, RoutedEventArgs e)
@@ -132,9 +123,59 @@ public partial class MainWindow
             Clipboard.SetText(text);
             ActionText.Text = $"Copied {rows.Count:N0} log line{(rows.Count == 1 ? "" : "s")}.";
         }
-        catch (System.Runtime.InteropServices.ExternalException)
+        catch (ExternalException)
         {
             ActionText.Text = "Another app is using the clipboard. Try again.";
+        }
+    }
+
+    /// <summary>Saves every line this PC has, from every computer (all filters ignored), in one ZIP where the owner chooses
+    /// (the Desktop by default), then shows it in File Explorer so it can be attached to a message or an issue.</summary>
+    private async void LogsSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (logSaving) return;
+        var directory = LogDirectory;
+        var now = DateTimeOffset.Now;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save Martlet's logs to share",
+            Filter = "ZIP archive (*.zip)|*.zip",
+            DefaultExt = ".zip",
+            AddExtension = true,
+            OverwritePrompt = true,
+            FileName = LogBundle.SuggestedFileName(ClusterDevice, now),
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        var path = dialog.FileName;
+        logSaving = true;
+        LogsSaveButton.IsEnabled = false;
+        try
+        {
+            var share = await LogShareAsync();
+            var info = new LogBundleInfo(ClusterDevice, ThisPcSources(), AppVersions.Current, RuntimeInformation.OSDescription,
+                logShareStatus.Length > 0 ? logShareStatus : null, now);
+            var summary = await Task.Run(() =>
+            {
+                var own = directory is null ? [] : LocalLogs.Read(directory, ClusterDevice);
+                return LogBundle.Save(path, own.Concat(share?.Logs.Snapshot() ?? []), info, overwrite: true);
+            });
+            ErrorLog.Info($"Saved {summary.Lines:N0} log lines from {summary.Computers} computer{(summary.Computers == 1 ? "" : "s")} to share " +
+                $"({summary.Bytes:N0} bytes).");
+            ActionText.Text = $"Saved {summary.Lines:N0} lines from {summary.Computers} computer{(summary.Computers == 1 ? "" : "s")} in " +
+                $"{Path.GetFileName(path)}. Attach it to your message. It never holds keys or what you said, but can include local paths, " +
+                "computer names and provider error text.";
+            try { Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = false })?.Dispose(); }
+            catch (System.ComponentModel.Win32Exception) { }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            ActionText.Text = "Couldn't save the logs there: " + error.Message;
+        }
+        finally
+        {
+            logSaving = false;
+            if (!closing) LogsSaveButton.IsEnabled = true;
         }
     }
 
@@ -158,202 +199,98 @@ public partial class MainWindow
             (record.RelayedBy is { } by ? $" · passed on by {by}" : "") + Environment.NewLine + Environment.NewLine + record.Message;
     }
 
-    // ---------- the log host ----------
+    // ---------- sharing with every computer ----------
 
-    private void RenderLogHostChoice()
+    /// <summary>The log sharing engine, with the other computers' lines this PC saved (read once, off the UI thread).</summary>
+    private Task<LogShare?> LogShareAsync()
     {
-        var current = LogHostId;
-        var hosts = NetworkMap.Hosts(Inputs()).Select(host => (host.HostId,
-            Roles: clusterProbes.GetValueOrDefault(host.HostId)?.Routes is { } routes ? ClusterSync.Roles(routes).Count : -1)).ToArray();
-        var signature = current + "|" + string.Join(",", hosts.Select(h => h.HostId + ":" + h.Roles)) + "|" + (store is null);
-        if (LogHostChoice.IsDropDownOpen || signature == logHostSignature) return;
-        logHostSignature = signature;
-        choosingLogHost = true;
-        try
+        if (logShare is not null) return Task.FromResult<LogShare?>(logShare);
+        if (store is null || LogDirectory is not { } directory) return Task.FromResult<LogShare?>(null);
+        return logShareLoading ??= LoadLogShareAsync(directory);
+    }
+
+    private async Task<LogShare?> LoadLogShareAsync(string directory)
+    {
+        var device = ClusterDevice;
+        var share = await Task.Run(() => new LogShare(directory, device));
+        if (share.Logs.LoadState == "unreadable")
+            ErrorLog.Warn($"The copy of your other computers' logs ({NetworkLogs.FileName}) couldn't be read; it fills again from your hosts.");
+        logShare = share;
+        if (!closing && DiagnosticsPage.IsVisible)
         {
-            LogHostChoice.Items.Clear();
-            var none = new ComboBoxItem { Content = "None (each computer keeps its own)", Tag = null };
-            LogHostChoice.Items.Add(none);
-            var selected = none;
-            foreach (var (hostId, roles) in hosts)
-            {
-                var item = new ComboBoxItem { Content = hostId + (roles == 0 ? " (runs no jobs)" : ""), Tag = hostId };
-                LogHostChoice.Items.Add(item);
-                if (hostId == current) selected = item;
-            }
-            if (current is not null && ReferenceEquals(selected, none))
-            {
-                selected = new ComboBoxItem { Content = current + " (not paired with this PC)", Tag = current };
-                LogHostChoice.Items.Add(selected);
-            }
-            LogHostChoice.SelectedItem = selected;
-            LogHostChoice.IsEnabled = store is not null;
+            RenderLogFilters();
+            RenderLogRows();
         }
-        finally { choosingLogHost = false; }
+        return share;
     }
 
-    private void LogHost_Changed(object sender, SelectionChangedEventArgs e)
+    private void ShowLogShareStatus()
     {
-        if (choosingLogHost || store is null || LogHostChoice.SelectedItem is not ComboBoxItem { Tag: var tag }) return;
-        var hostId = tag as string;
-        if (hostId == LogHostId) return;
-        clusterPlan = clusterPlan.Assign(ClusterJobs.Logs, hostId, false, false, null, ClusterDevice, DateTimeOffset.UtcNow);
-        SaveClusterPlan();
-        QueueClusterSync();
-        logMarks = null;
-        logShipStatus = "";
-        ErrorLog.Info(hostId is null ? "Log host cleared: each computer keeps only its own logs."
-            : $"Log host set to {hostId}: companion PCs send it their logs and pass on every other host's log.");
-        ActionText.Text = hostId is null ? "Each computer keeps only its own logs now."
-            : $"{hostId} now collects logs from all your computers.";
-        ShowLogHostStatus();
-        ShipLogsAsync().Forget();
-        RefreshLogsAsync().Forget();
+        LogShareStatus.Text = store is null ? "Unavailable without a local data folder."
+            : logShareStatus.Length > 0 ? logShareStatus
+            : "Checking your hosts...";
     }
 
-    private void ShowLogHostStatus()
+    /// <summary>One sharing run with every paired host: reads their new lines into this PC's copy and, when
+    /// <paramref name="send"/>, gives each host what it lacks (this PC's own new lines and every other computer's). Never throws;
+    /// the outcome is shown on the Diagnostics page.</summary>
+    private async Task ShareLogsAsync(bool send)
     {
-        var host = LogHostId;
-        LogHostStatus.Text = store is null ? "Unavailable without a local data folder."
-            : host is null ? "No log host. Showing logs from this PC and its paired hosts."
-            : logShipStatus.Length > 0 ? logShipStatus
-            : $"{host} collects logs from all your computers.";
-    }
-
-    /// <summary>Sends this PC's new log lines to the log host and passes on each other paired host's own new lines, starting
-    /// after the newest line the log host already has from each (its marks). The first send from a PC includes at most the
-    /// last week. Never throws; the outcome is shown under the log host choice.</summary>
-    private async Task ShipLogsAsync()
-    {
-        if (logShipBusy || closing || store is null) return;
-        var hostId = LogHostId;
-        if (hostId is null)
+        if (closing || store is null) return;
+        if (logShareBusy)
         {
-            logShipStatus = "";
-            if (DiagnosticsPage.IsVisible) ShowLogHostStatus();
+            // A read for the page is running: the 30-second run follows it rather than waiting another 30 seconds.
+            if (send && !logShareSending) logShareSendAgain = true;
             return;
         }
-        var hosts = NetworkMap.Hosts(Inputs());
-        if (hosts.FirstOrDefault(h => h.HostId == hostId) is not { } target)
-        {
-            logShipStatus = $"{hostId} isn't paired with this PC, so this PC's logs stay here. Pair it in Devices › Add a computer.";
-            ShowLogHostStatus();
-            return;
-        }
-        logShipBusy = true;
+        logShareBusy = true;
+        logShareSending = send;
         var token = lifetime.Token;
+        var peers = Array.Empty<HostLogPeer>();
         try
         {
-            if (logMarksHost != hostId)
+            if (await LogShareAsync() is not { } share || closing) return;
+            var hosts = NetworkMap.Hosts(Inputs());
+            if (hosts.Count == 0)
             {
-                logMarks = null;
-                logMarksHost = hostId;
+                logShareStatus = "No Martlet hosts are paired with this PC yet, so it shows only its own logs. Pair one in Devices › Add a computer " +
+                    "and every computer's logs are shared.";
+                return;
             }
-            var others = hosts.Where(h => h.HostId != hostId).ToArray();
-            var streams = LogComponents.Local.Select(c => new LogStream { Source = ClusterDevice, Component = c })
-                .Concat(others.Select(h => new LogStream { Source = h.HostId, Component = LogComponents.Gateway }))
-                .Take(LogBatch.MaximumStreams).ToArray();
-            if (logMarks is null)
-            {
-                var (_, known) = await ClusterSync.WithConnectionAsync(target.Pairing,
-                    c => c.PushLogsAsync(new LogBatch { SchemaVersion = 1, Streams = streams }, token));
-                logMarks = known.ToDictionary(m => m.Source + "/" + m.Component, m => m.Seq, StringComparer.Ordinal);
-            }
-            var marks = logMarks;
+            peers = hosts.Select(h => new HostLogPeer(h.HostId, () => ClusterSync.Connect(h.Pairing))).ToArray();
             var directory = LogDirectory;
-            var since = DateTimeOffset.UtcNow - TimeSpan.FromDays(7);
-            var pending = new List<List<LogRecord>>();
-            if (directory is not null)
+            var device = ClusterDevice;
+            var list = peers;
+            var result = await Task.Run(async () =>
             {
-                var local = await Task.Run(() => LocalLogs.Read(directory, ClusterDevice, 512 * 1024), token);
-                foreach (var stream in local.GroupBy(r => r.Stream))
-                {
-                    var mark = marks.GetValueOrDefault(stream.Key);
-                    pending.Add(stream.Where(r => r.Seq > mark && (mark > 0 || r.At >= since)).OrderBy(r => r.Seq).Take(LogsPerStream).ToList());
-                }
-            }
-            var unreachable = new List<string>();
-            var older = new List<string>();
-            foreach (var host in others)
+                var local = send && directory is not null ? LocalLogs.Read(directory, device, 512 * 1024) : [];
+                return await share.RunAsync(list, local, send, DateTimeOffset.UtcNow, token);
+            }, token);
+            logShareStatus = result.Describe() + $" Checked at {DateTime.Now:t}.";
+            if (result.Received > 0 && !closing && DiagnosticsPage.IsVisible)
             {
-                try
-                {
-                    var page = await ClusterSync.WithConnectionAsync(host.Pairing,
-                        c => c.ReadOwnLogsAsync(marks.GetValueOrDefault(host.HostId + "/" + LogComponents.Gateway), LogsPerStream, token));
-                    pending.Add(page.Entries.Where(r => r.Source == host.HostId && r.Component == LogComponents.Gateway)
-                        .Select(r => r with { RelayedBy = null }).OrderBy(r => r.Seq).ToList());
-                }
-                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-                catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
-                {
-                    older.Add(host.HostId);
-                }
-                catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
-                {
-                    unreachable.Add(host.HostId);
-                }
+                RenderLogFilters();
+                RenderLogRows();
             }
-            var entries = FitLogBatch(pending);
-            var accepted = 0;
-            if (entries.Count > 0)
-            {
-                var (kept, updated) = await ClusterSync.WithConnectionAsync(target.Pairing,
-                    c => c.PushLogsAsync(new LogBatch { SchemaVersion = 1, Streams = streams, Entries = entries }, token));
-                accepted = kept;
-                foreach (var mark in updated) marks[mark.Source + "/" + mark.Component] = mark.Seq;
-            }
-            var waiting = pending.Sum(p => p.Count) - entries.Count;
-            logShipStatus = $"{hostId} collects logs from all your computers. Sent {accepted:N0} new line{(accepted == 1 ? "" : "s")} at {DateTime.Now:t}." +
-                (waiting > 0 ? $" {waiting:N0} more will follow." : "") +
-                (unreachable.Count > 0 ? $" Waiting for {string.Join(", ", unreachable)}." : "") +
-                (older.Count > 0 ? $" Update {string.Join(", ", older)} to share {(older.Count == 1 ? "its" : "their")} logs." : "");
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
-        {
-            logMarks = null;
-            logShipStatus = $"{hostId} needs a Martlet update to collect logs. Update it on Devices, or choose another host.";
-        }
-        catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
-        {
-            logMarks = null;
-            logShipStatus = $"Couldn't send logs to {hostId} at {DateTime.Now:t}. Martlet will try again.";
-        }
+        catch (OperationCanceledException) { }
         finally
         {
-            logShipBusy = false;
-            if (!closing) ShowLogHostStatus();
+            foreach (var peer in peers) peer.Dispose();
+            logShareBusy = false;
+            if (!closing && DiagnosticsPage.IsVisible) ShowLogShareStatus();
+            if (logShareSendAgain && !closing)
+            {
+                logShareSendAgain = false;
+                ShareLogsAsync(send: true).Forget();
+            }
         }
-    }
-
-    /// <summary>Takes the oldest pending lines across streams that fit one batch. Each stream gives a prefix of its lines (in
-    /// order), so the log host's mark never skips a line that wasn't sent.</summary>
-    private static List<LogRecord> FitLogBatch(List<List<LogRecord>> pending)
-    {
-        var result = new List<LogRecord>();
-        var next = new int[pending.Count];
-        var used = 0L;
-        while (result.Count < LogBatch.MaximumEntries)
-        {
-            var pick = -1;
-            for (var i = 0; i < pending.Count; i++)
-                if (next[i] < pending[i].Count && (pick < 0 || pending[i][next[i]].At < pending[pick][next[pick]].At)) pick = i;
-            if (pick < 0) break;
-            var record = pending[pick][next[pick]];
-            // JSON escapes non-ASCII text as \uXXXX, so a character can take six bytes.
-            var size = record.Message.Length * 6L + 320;
-            if (used + size > LogBatchBudget) break;
-            used += size;
-            result.Add(record);
-            next[pick]++;
-        }
-        return result;
     }
 
     // ---------- reading and showing ----------
 
-    /// <summary>Reads this PC's logs and, unless <paramref name="remote"/> is false, the new lines from the log host (or, with
-    /// no log host, each paired host's own log), then shows them.</summary>
+    /// <summary>Reads this PC's logs and, unless <paramref name="remote"/> is false, each paired host's new lines, then shows
+    /// them with every other computer's lines this PC holds.</summary>
     private async Task RefreshLogsAsync(bool remote = true)
     {
         if (closing) return;
@@ -371,7 +308,8 @@ public partial class MainWindow
                 logsAgain = false;
                 var directory = LogDirectory;
                 localLogs = directory is null ? [] : await Task.Run(() => LocalLogs.Read(directory, ClusterDevice));
-                if (remote && store is not null) await ReadRemoteLogsAsync();
+                if (remote && store is not null) await ShareLogsAsync(send: false);
+                else await LogShareAsync();
                 if (closing) return;
                 RenderLogFilters();
                 RenderLogRows();
@@ -385,85 +323,12 @@ public partial class MainWindow
         }
     }
 
-    private async Task ReadRemoteLogsAsync()
-    {
-        var token = lifetime.Token;
-        var hosts = NetworkMap.Hosts(Inputs());
-        var hostId = LogHostId;
-        if (hostId is not null)
-        {
-            if (collectedFrom != hostId)
-            {
-                collectedLogs.Clear();
-                collectedAfter = 0;
-                collectedFrom = hostId;
-            }
-            if (hosts.FirstOrDefault(h => h.HostId == hostId) is not { } target)
-            {
-                logReadNote = $"{hostId} isn't paired with this PC, so only this PC's logs are shown.";
-                return;
-            }
-            try
-            {
-                for (var page = 0; page < 40 && !closing; page++)
-                {
-                    var read = await ClusterSync.WithConnectionAsync(target.Pairing, c => c.ReadLogsAsync(collectedAfter, 1000, token));
-                    collectedLogs.AddRange(read.Entries);
-                    collectedAfter = read.Next;
-                    if (!read.More) break;
-                }
-                if (collectedLogs.Count > CachedRemoteLogLimit) collectedLogs.RemoveRange(0, collectedLogs.Count - CachedRemoteLogLimit);
-                logReadNote = $"Includes everything {hostId} collected (read {DateTime.Now:t}).";
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
-            {
-                logReadNote = $"{hostId} needs a Martlet update to collect logs. Showing this PC's logs.";
-            }
-            catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
-            {
-                logReadNote = $"{hostId} didn't answer. Showing this PC's logs and anything read earlier.";
-            }
-            return;
-        }
-        collectedLogs.Clear();
-        collectedFrom = null;
-        var problems = new List<string>();
-        foreach (var host in hosts)
-        {
-            var seen = hostOwnLogs.TryGetValue(host.HostId, out var list) ? list : hostOwnLogs[host.HostId] = [];
-            try
-            {
-                for (var page = 0; page < 10 && !closing; page++)
-                {
-                    var read = await ClusterSync.WithConnectionAsync(host.Pairing,
-                        c => c.ReadOwnLogsAsync(seen.Count == 0 ? 0 : seen[^1].Seq, 1000, token));
-                    seen.AddRange(read.Entries);
-                    if (!read.More) break;
-                }
-                if (seen.Count > 3000) seen.RemoveRange(0, seen.Count - 3000);
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Audio2FaceHostException error) when (error.Code is "request.invalid" or "request.not_found" or "route.not_found")
-            {
-                problems.Add($"{host.HostId} needs an update");
-            }
-            catch (Exception error) when (error is OperationCanceledException || ClusterSync.IsHostFailure(error))
-            {
-                problems.Add($"{host.HostId} didn't answer");
-            }
-        }
-        foreach (var gone in hostOwnLogs.Keys.Where(k => hosts.All(h => h.HostId != k)).ToArray()) hostOwnLogs.Remove(gone);
-        logReadNote = hosts.Count == 0 ? null
-            : $"Includes each paired host's own log." + (problems.Count > 0 ? $" {string.Join("; ", problems)}." : "");
-    }
-
     /// <summary>Every known line once (this PC's own copy wins), newest first.</summary>
     private List<LogRecord> AllLogs()
     {
         var seen = new HashSet<(string, long)>();
         var all = new List<LogRecord>();
-        foreach (var record in localLogs.Concat(collectedLogs).Concat(hostOwnLogs.Values.SelectMany(v => v)))
+        foreach (var record in localLogs.Concat(NetworkLogLines))
             if (seen.Add((record.Stream, record.Seq))) all.Add(record);
         all.Sort((a, b) => b.At != a.At ? b.At.CompareTo(a.At) : b.Seq.CompareTo(a.Seq));
         return all;
@@ -497,7 +362,7 @@ public partial class MainWindow
 
     private void RenderLogFilters()
     {
-        var all = localLogs.Concat(collectedLogs).Concat(hostOwnLogs.Values.SelectMany(v => v)).ToArray();
+        var all = localLogs.Concat(NetworkLogLines).ToArray();
         var thisPc = ThisPcSources();
         var sources = all.Select(r => Computer(r.Source, thisPc)).Append(ClusterDevice).Distinct(StringComparer.Ordinal)
             .OrderBy(s => s != ClusterDevice).ThenBy(s => s, StringComparer.Ordinal).ToArray();
@@ -582,7 +447,6 @@ public partial class MainWindow
         LogSummary.Text = (all.Count == 0 ? "No log lines yet." :
             $"Showing {shown.Count:N0} of {all.Count:N0} lines from {computers} computer{(computers == 1 ? "" : "s")}" +
             (matching.Count > shown.Count ? $" (the newest {ShownLogLimit:N0} that match)" : "") +
-            $". Last 24 hours: {errors:N0} error{(errors == 1 ? "" : "s")}, {warnings:N0} warning{(warnings == 1 ? "" : "s")}.") +
-            (logReadNote is { } note ? " " + note : "");
+            $". Last 24 hours: {errors:N0} error{(errors == 1 ? "" : "s")}, {warnings:N0} warning{(warnings == 1 ? "" : "s")}.");
     }
 }

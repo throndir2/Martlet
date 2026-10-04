@@ -42,17 +42,36 @@ internal sealed class McpServer(DesktopAutomation desktop)
             contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
             dataDirectory = new { type = "string" }
         }),
-        Tool("logs_timeline", "Read this PC's logs as the desktop's Diagnostics page shows them: desktop, avatar-renderer and host-runs " +
-            "(with rotated copies) parsed into one timeline of {at, level, component, seq, message}, newest first, with counts of " +
-            "errors and warnings and the log host chosen in the shared plan. Filters: level (all, warnings, errors), component, " +
+        Tool("logs_timeline", "Read the logs as the desktop's Diagnostics page shows them: this PC's desktop, avatar-renderer and host-runs " +
+            "(with rotated copies) and the other computers' lines log sharing collected (network-logs.json: other desktops and every host's " +
+            "gateway), merged into one timeline of {at, level, source, component, seq, relayedBy, message}, newest first, with counts of " +
+            "errors and warnings per component and source. Filters: level (all, warnings, errors), component, source (a computer's ID), " +
             "contains. Read-only; contacts no host.", new
         {
             level = new { type = "string", @enum = LogTimeline.Levels },
-            component = new { type = "string", @enum = Martlet.Core.Logs.LogComponents.Local },
+            component = new { type = "string", @enum = LogTimeline.Components },
+            source = new { type = "string", maxLength = 64 },
             contains = new { type = "string", maxLength = LogTail.MaximumFilterLength },
             lines = new { type = "integer", minimum = 1, maximum = LogTimeline.MaximumLines },
             dataDirectory = new { type = "string" }
         }),
+        Tool("logs_export", "Diagnostics > Save logs to share, from a data directory: every log line it has (this PC's logs and the other " +
+            "computers' lines log sharing collected) saved in one new ZIP at outputPath (absolute, ending .zip, in an existing folder; an " +
+            "existing file is never replaced) with about.txt (where and when, computers and parts, what logs can contain) and " +
+            "martlet-logs.txt (every line once, oldest first). Returns the files, line, computer, error and warning counts and about.txt's " +
+            "text. Writes only that file; contacts nothing.", new
+        {
+            outputPath = new { type = "string" },
+            dataDirectory = new { type = "string" }
+        }, ["outputPath"]),
+        Tool("logs_share_selftest", "Rehearse shared logs (Diagnostics: every computer's logs on every computer) end to end with the " +
+            "production code: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory logs.json) and three simulated " +
+            "desktops with real log folders, the desktop's paired client and the real log sharing engine (Martlet.Core.Logs.LogShare). " +
+            "Walks a desktop's lines reaching both hosts, a desktop that reaches only one host whose lines still reach the other, each " +
+            "host's own gateway lines reaching the other host and every desktop, every line kept once however often it is delivered, a " +
+            "host that was down catching up, a host that lost its newest lines in a power cut getting them back, the copy of everyone's " +
+            "lines surviving a restart, Save logs to share holding every computer " +
+            "and an unsigned request refused. Synthetic lines only; loopback only; the folder is deleted.", new { }),
         Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
             "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +
             "speech-to-text, preparing, Thinking connection, hidden reasoning, first sentence, voice synthesis, speakers...), the " +
@@ -457,6 +476,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "bleed removed from the vocals and its graphics-memory peak. Nothing is played; with saveDirectory (an absolute, " +
             "disposable folder) it writes mix.wav, vocals.wav and backing.wav there for a report. voiceRecording (an absolute path " +
             "to a copy of a mono 16-bit PCM WAV, 1-30 s) with its voiceTranscript sings in that voice instead of the starter voice. " +
+            "bpm (default 90; 0 for none) and key (default \"G major\"; empty for none) are sent as Martlet's own model writes " +
+            "them; without either the host's music planner runs first. " +
             "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
@@ -465,7 +486,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
             saveDirectory = new { type = "string", maxLength = 260 },
             voiceRecording = new { type = "string", maxLength = 260 },
-            voiceTranscript = new { type = "string", maxLength = 4096 }
+            voiceTranscript = new { type = "string", maxLength = 4096 },
+            bpm = new { type = "integer", minimum = 0, maximum = 240 },
+            key = new { type = "string", maxLength = 16 }
         }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
@@ -515,14 +538,37 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
             "directory, or modelId): the model's name-based hearing, the route's (the production decision: only Chat Completions routes, " +
             "Ollama on this PC included, then what model-abilities.json says, then the name), savedAbility (what Martlet found out about " +
-            "the saved model and where) and whether Companion > Listening > Let Thinking hear " +
-            "my voice is on. Then rehearses the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned " +
+            "the saved model and where), whether Companion > Listening > Let Thinking hear my voice is on, voicePath (When Thinking can " +
+            "hear you: straight, the default, or transcribeFirst), straightApplies (always listening sends the recording alone right " +
+            "away) and lastTurn: which way the newest spoken reply went, from the desktop log's Voice path line, with the background " +
+            "transcript's timing (transcriptReadyAfterReplyStartMs, speechToTextMs) and where its words went (never the words). Then " +
+            "rehearses the production Chat Completions adapter against " +
+            "a fixture endpoint on 127.0.0.1 (canned " +
             "reply, NOT AI) with a synthesized speech-like clip (never microphone audio, nothing played): the clip goes as an " +
             "input_audio WAV part beside the transcript, is refused without its own audio permission before any request, and is " +
             "left out of a transcript-only retry. Loopback only; reads no credentials.", new
         {
             dataDirectory = new { type = "string" },
             modelId = new { type = "string", maxLength = 128 }
+        }),
+        Tool("straight_voice_check", "Companion > Listening > When Thinking can hear you > Send my voice straight to Thinking, " +
+            "rehearsed headless with the production conversation runtime and Chat Completions adapter, the desktop's own SpokenWords " +
+            "(the words of a recording sent alone) and ConversationContextBuffer (what each next request carries). Three utterances " +
+            "synthesized by a Windows voice (never a microphone, nothing played) go one turn at a time as the recording alone: each " +
+            "request must carry an input_audio WAV and only the stand-in text, never the transcript. Speech-to-text runs beside the " +
+            "reply (Parakeet on this PC when downloaded in speechDirectory with the sherpa runtime from martletDirectory, else a " +
+            "fixture transcriber), its words replace the recording in the conversation and every next request carries them (no " +
+            "recordings or stand-ins in history). Then the same utterances transcribed first (the transcript, then both), and a model " +
+            "that refuses the recording: the reply waits for the words and asks again with them. Returns per turn the first-words " +
+            "time, when the transcript was ready after the reply started, speech-to-text time and the prompt cache (input and cached " +
+            "tokens), and the medians of both ways. With live=true Thinking is Ollama on this PC (model, default gemma4:e2b, must " +
+            "hear) through a loopback relay that records each request; otherwise a fixture endpoint (canned replies, NOT AI). " +
+            "Nothing leaves this PC; reads no credentials.", new
+        {
+            live = new { type = "boolean" },
+            model = new { type = "string", maxLength = 128 },
+            martletDirectory = new { type = "string" },
+            speechDirectory = new { type = "string" }
         }),
         Tool("model_ability_check", "What Thinking models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
@@ -857,7 +903,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "logs_tail" => LogTail.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "log"),
                     OptionalInt(arguments, "lines"), OptionalString(arguments, "contains")),
                 "logs_timeline" => LogTimeline.Read(OptionalString(arguments, "dataDirectory"), OptionalString(arguments, "level"),
-                    OptionalString(arguments, "component"), OptionalString(arguments, "contains"), OptionalInt(arguments, "lines")),
+                    OptionalString(arguments, "component"), OptionalString(arguments, "contains"), OptionalInt(arguments, "lines"),
+                    OptionalString(arguments, "source")),
+                "logs_export" => LogTimeline.Export(OptionalString(arguments, "dataDirectory"), RequiredString(arguments, "outputPath")),
+                "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
@@ -925,6 +974,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "straight_voice_check" => await StraightVoiceCheck.RunAsync(MartletDirectory(arguments), SpeechDirectory(arguments),
+                    OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"), cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
@@ -1165,13 +1216,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var save = OptionalString(arguments, "saveDirectory") is { Length: > 0 } folder ? folder : null;
         if (save is not null && !Path.IsPathFullyQualified(save)) throw new ArgumentException("saveDirectory must be an absolute folder.");
         command = [.. command, save ?? "-"];
-        if (OptionalString(arguments, "voiceRecording") is { Length: > 0 } recording)
-        {
-            if (!Path.IsPathFullyQualified(recording) || !recording.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) || !File.Exists(recording))
-                throw new ArgumentException("voiceRecording must be the absolute path of an existing .wav file.");
-            command = [.. command, recording];
-            if (OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript) command = [.. command, transcript];
-        }
+        var recording = OptionalString(arguments, "voiceRecording") is { Length: > 0 } wav ? wav : null;
+        if (recording is not null && (!Path.IsPathFullyQualified(recording) || !recording.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(recording)))
+            throw new ArgumentException("voiceRecording must be the absolute path of an existing .wav file.");
+        var bpm = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("bpm", out var tempo) && tempo.TryGetInt32(out var beats)
+            ? beats : 90;
+        if (bpm is not 0 and (< 40 or > 240)) throw new ArgumentException("bpm must be 0 (none) or 40 to 240.");
+        var key = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("key", out var keyValue) ? keyValue.GetString() ?? "" : "G major";
+        command = [.. command, recording ?? "-", OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript ? transcript : "-",
+            bpm == 0 ? "-" : bpm.ToString(System.Globalization.CultureInfo.InvariantCulture), key.Length == 0 ? "-" : key];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(20), cancellation, command);
     }
 

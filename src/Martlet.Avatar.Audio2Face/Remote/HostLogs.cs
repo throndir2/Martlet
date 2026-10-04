@@ -9,7 +9,7 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 /// <summary>One page of a host's log: the lines, the position to continue from and whether more are waiting.</summary>
 public sealed record HostLogPage(IReadOnlyList<LogRecord> Entries, long Next, bool More);
 
-/// <summary>A host's log: its own activity, and every computer's lines when it is the owner's log host.</summary>
+/// <summary>A host's log: its own activity and every computer's lines the owner's desktops share with it.</summary>
 public sealed partial class Audio2FaceHostConnection
 {
     private const string LogsPath = "/martlet/v1/logs";
@@ -26,7 +26,7 @@ public sealed partial class Audio2FaceHostConnection
         LogPageAsync($"{LogsPath}?own_after={afterSeq.ToString(CultureInfo.InvariantCulture)}&limit={limit.ToString(CultureInfo.InvariantCulture)}",
             cancellationToken);
 
-    /// <summary>Gives the host (as the log host) a batch of lines and returns how many it kept and its marks for the
+    /// <summary>Gives the host a batch of lines and returns how many it kept and its marks for the
     /// streams the batch names.</summary>
     public async Task<(int Accepted, IReadOnlyList<LogMark> Marks)> PushLogsAsync(LogBatch batch, CancellationToken cancellationToken = default)
     {
@@ -51,7 +51,7 @@ public sealed partial class Audio2FaceHostConnection
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
         {
-            throw new Audio2FaceHostException("response.invalid", "The log host's answer was invalid.");
+            throw new Audio2FaceHostException("response.invalid", "The host's answer about its log was invalid.");
         }
     }
 

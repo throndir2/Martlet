@@ -197,11 +197,15 @@ public partial class SetupAdvisorWindow : ThemedWindow
         advice = SetupAdvisor.Recommend(Answers);
         ResultStep.Children.Clear();
         Add(new TextBlock { Text = advice.Title, FontSize = 20, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        Add(Muted(advice.Summary, new Thickness(0, 4, 0, 12)));
+        var summary = Muted(advice.Summary, new Thickness(0, 4, 0, 12));
+        AutomationProperties.SetAutomationId(summary, "AdvisorSummary");
+        Add(summary);
 
         Add(Heading("What runs where"));
+        var number = 0;
         foreach (var role in advice.Roles)
         {
+            number++;
             var card = new StackPanel();
             var header = new DockPanel();
             var status = new TextBlock
@@ -215,7 +219,11 @@ public partial class SetupAdvisorWindow : ThemedWindow
             header.Children.Add(status);
             header.Children.Add(new TextBlock { Text = role.Role, FontSize = 16, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             card.Children.Add(header);
-            card.Children.Add(new TextBlock { Text = role.Choice, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) });
+            // What the plan picks for each role and its status, for MCP (AdvisorChoice-1, AdvisorChoice-2 ...).
+            var choice = new TextBlock { Text = role.Choice, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            AutomationProperties.SetAutomationId(choice, $"AdvisorChoice-{number}");
+            AutomationProperties.SetName(choice, $"{role.Role}: {role.Choice} ({role.Status})");
+            card.Children.Add(choice);
             card.Children.Add(Line("Runs on", role.Where));
             card.Children.Add(Line("What it does", role.WhatItDoes));
             card.Children.Add(Line("Why", role.Why));

@@ -15,10 +15,13 @@ namespace Martlet.Desktop;
 // character looks while it watches your screen (DecideGaze, off by default: the character follows the mouse). The talk
 // window's mic and vision buttons pause them there (Stop and Esc pause vision, never listening). A camera address is saved
 // without its user name or password.
+// Companion › Listening › When Thinking can hear you: with HearVoice on and a Thinking model that hears, what you said goes
+// straight to Thinking as the recording alone while speech-to-text runs beside the reply (the default), or TranscribeFirst
+// waits for the transcript and sends both.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
     bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false, bool BargeIn = false, bool ReduceEcho = true,
-    bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool DecideGaze = false)
+    bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool DecideGaze = false, bool TranscribeFirst = false)
 {
     private const string FileName = "talk-preferences.json";
     // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.

@@ -459,7 +459,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachCommandStorage(storage, agentToken);
     }
 
-    /// <summary>Keeps this host's log (its own activity and the lines desktops send it as the log host) in
+    /// <summary>Keeps this host's log (its own activity and every computer's lines the owner's desktops share with it) in
     /// <paramref name="storage"/>.</summary>
     public void AttachLogs(IGatewayLogStorage storage)
     {

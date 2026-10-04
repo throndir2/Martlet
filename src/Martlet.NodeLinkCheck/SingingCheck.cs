@@ -24,7 +24,7 @@ namespace Martlet.NodeLinkCheck;
 internal static class SingingCheck
 {
     internal static async Task<(bool Ok, object Report)> RunAsync(string endpointText, int seconds, string quality, string voiceMatch,
-        string? saveDirectory, string? voiceRecording, string? voiceTranscript, CancellationToken token)
+        string? saveDirectory, string? voiceRecording, string? voiceTranscript, int? bpm, string? key, CancellationToken token)
     {
         if (seconds is < SongRequest.MinimumDurationSeconds or > SongRequest.MaximumDurationSeconds)
             throw new ArgumentException($"seconds must be {SongRequest.MinimumDurationSeconds} to {SongRequest.MaximumDurationSeconds}.");
@@ -66,6 +66,9 @@ internal static class SingingCheck
             VoiceId = voiceId,
             DurationSeconds = seconds,
             Seed = 42,
+            // As Martlet's own model writes them; without a tempo or key the host's music planner runs first.
+            Bpm = bpm,
+            Key = key,
             Quality = quality == "high_quality" ? SongQuality.HighQuality : SongQuality.Fast,
             VoiceMatch = voiceMatch == "vevosing" ? SongVoiceMatch.VevoSing : SongVoiceMatch.SoulX
         };
@@ -145,7 +148,7 @@ internal static class SingingCheck
             endpoint = fixture is null ? endpoint.ToString() : "fixture (workers/singing, FIXTURE - NOT AI)",
             route = Audio2FaceHostConnection.SongRouteId,
             voice = voiceName,
-            request = new { seconds, quality, voiceMatch },
+            request = new { seconds, quality, voiceMatch, bpm, key },
             statusBefore = before,
             stages,
             elapsedMs = Math.Round(elapsed.TotalMilliseconds),
@@ -155,7 +158,7 @@ internal static class SingingCheck
                 jobId = song.JobId,
                 engine = song.Engine,
                 seconds = Math.Round(song.Duration.TotalSeconds, 2),
-                bpm = song.Bpm is { } bpm ? Math.Round(bpm, 1) : (double?)null,
+                bpm = song.Bpm is { } measured ? Math.Round(measured, 1) : (double?)null,
                 key = song.Key,
                 beatsPerBar = song.BeatsPerBar,
                 beats = song.Beats.Count,

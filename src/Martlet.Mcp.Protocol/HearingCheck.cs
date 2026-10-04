@@ -15,7 +15,7 @@ namespace Martlet.Mcp;
 /// a fixture endpoint on 127.0.0.1 (canned reply, NOT AI): a synthesized speech-like clip (never microphone audio, nothing
 /// played) goes out as an input_audio WAV part beside the transcript, is refused without its own audio permission before any
 /// request is sent, and is left out of a transcript-only retry. Nothing leaves loopback.</summary>
-internal static class HearingCheck
+internal static partial class HearingCheck
 {
     private const string LocalOllama = "http://127.0.0.1:11434/v1";
 
@@ -37,6 +37,8 @@ internal static class HearingCheck
         var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
             : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
                 thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
+        var hearVoice = TalkChoice(dataDirectory, "HearVoice");
+        var transcribeFirst = TalkChoice(dataDirectory, "TranscribeFirst");
         return new
         {
             model,
@@ -47,21 +49,60 @@ internal static class HearingCheck
             modelHearing = modelHearing.ToString(),
             routeHearing = routeHearing?.ToString(),
             savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Source, saved.CheckedAt },
-            hearVoice = HearVoice(dataDirectory),
+            hearVoice,
+            // Companion › Listening › When Thinking can hear you (shown while Thinking hears): straight (the default) or transcribe
+            // first. Straight applies to always listening when the route hears; push-to-talk and messages with what the PC
+            // played, said over Martlet or for Home Assistant's Assist are transcribed first.
+            voicePath = transcribeFirst ? "transcribeFirst" : "straight",
+            straightApplies = hearVoice && !transcribeFirst && routeHearing == HearingSupport.Supported,
+            lastTurn = LastTurn(dataDirectory),
             fixture = await FixtureAsync(model, cancellation)
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearVoice is off unless saved on.
-    private static bool HearVoice(string directory)
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearVoice and TranscribeFirst are off unless saved on.
+    private static bool TalkChoice(string directory, string name)
     {
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return document.RootElement.TryGetProperty("HearVoice", out var value) && value.ValueKind == JsonValueKind.True;
+            return document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return false; }
     }
+
+    /// <summary>Which way the newest spoken reply's message went to Thinking, from the desktop log (never what was said): its
+    /// "Voice path:" line, and for a straight one the "Background transcript" line (how long after the reply started the words
+    /// were ready, how long speech-to-text took) and the "Straight to Thinking:" line (where the words went).</summary>
+    internal static object? LastTurn(string dataDirectory)
+    {
+        var directory = Martlet.Diagnostics.LocalLogs.Directory(dataDirectory);
+        if (!Directory.Exists(directory)) return null;
+        var lines = Martlet.Diagnostics.LocalLogs.Read(directory, Martlet.Diagnostics.LocalLogs.ThisDeviceId())
+            .Where(r => r.Component == "desktop").OrderBy(r => r.At).ToArray();
+        var path = lines.LastOrDefault(r => r.Message.StartsWith("Voice path: ", StringComparison.Ordinal));
+        if (path is null) return null;
+        var after = lines.Where(r => r.At >= path.At).ToArray();
+        var transcript = after.FirstOrDefault(r => r.Message.StartsWith("Background transcript", StringComparison.Ordinal));
+        var kept = after.FirstOrDefault(r => r.Message.StartsWith("Straight to Thinking: ", StringComparison.Ordinal));
+        var timing = transcript is null ? null : TranscriptTiming().Match(transcript.Message);
+        double? Ms(string group) => timing is { Success: true } && timing.Groups[group].Success &&
+            double.TryParse(timing.Groups[group].Value, System.Globalization.CultureInfo.InvariantCulture, out var ms) ? ms : null;
+        var before = timing is { Success: true } && timing.Groups["when"].Value == "before";
+        return new
+        {
+            at = path.At,
+            path = path.Message.StartsWith("Voice path: straight", StringComparison.Ordinal) ? "straight" : "transcribeFirst",
+            line = path.Message,
+            transcriptReadyAfterReplyStartMs = Ms("after") is { } readyMs ? before ? -readyMs : readyMs : (double?)null,
+            speechToTextMs = Ms("stt"),
+            transcriptLine = transcript?.Message,
+            wordsLine = kept?.Message
+        };
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"ready (?<after>\d+) ms (?<when>after|before) the reply started \(speech-to-text (?<stt>\d+) ms")]
+    private static partial System.Text.RegularExpressions.Regex TranscriptTiming();
 
     private static async Task<object> FixtureAsync(string model, CancellationToken cancellation)
     {
