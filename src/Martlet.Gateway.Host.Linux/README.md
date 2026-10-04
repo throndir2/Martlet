@@ -94,11 +94,10 @@ including their cloud API keys, live in `shared-settings.json` (at most 2 MiB,
 through `shared-settings.staging`), and everything Martlet remembers
 ([one memory on every computer](../../docs/MEMORY.md#one-memory-on-every-computer))
 in `memories.json` (at most 12 MiB, through `memories.staging`). All are 0600 service-owner files and none is part
-of approval. Its log (own activity plus, as the owner's
-[log host](../../docs/DIAGNOSTICS.md#diagnostics-page-and-the-log-host), every
-computer's lines) is kept the same way in `logs.json` (at most 2 MiB, through
-`logs.staging`); a missing or malformed log starts empty. A host with no roles
-is valid and can serve purely as the log host.
+of approval. Its log (own activity plus every computer's lines the owner's desktops
+[share with it](../../docs/DIAGNOSTICS.md#diagnostics-page-and-shared-logs)) is
+kept the same way in `logs.json` (at most 2 MiB, through `logs.staging`); a
+missing or malformed log starts empty. A host with no roles is valid.
 The [Martlet network](../../docs/NETWORK.md) roster this host accepted is kept
 in `network.json` (same 0600 custody, through `network.staging`); it is not
 approved configuration either. Missing means the host is in no network; an

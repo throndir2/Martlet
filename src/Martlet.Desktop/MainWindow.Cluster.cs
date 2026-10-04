@@ -128,13 +128,6 @@ public partial class MainWindow
     {
         clusterProbes.Remove(hostId);
         if (store is null) return;
-        if (clusterPlan.For(ClusterJobs.Logs)?.HostId == hostId)
-        {
-            clusterPlan = clusterPlan.Assign(ClusterJobs.Logs, null, false, false, null, ClusterDevice, DateTimeOffset.UtcNow);
-            ErrorLog.Info($"Log host {hostId} was forgotten, so nobody collects logs now.");
-            SaveClusterPlan();
-            QueueClusterSync();
-        }
         if (clusterPlan.Node(hostId) is not { Removed: false }) return;
         clusterPlan = clusterPlan.Observe(hostId, null, [], true, ClusterDevice, DateTimeOffset.UtcNow);
         SaveClusterPlan();
@@ -186,8 +179,8 @@ public partial class MainWindow
         clusterBusy = true;
         var events = new List<string>();
         var followed = false;
-        // A host PC uses no jobs: it receives the plan (so it knows the log host and shows who does what) and passes on its own
-        // changes (the log host choice), but never records, fails over or follows a job.
+        // A host PC uses no jobs: it receives the plan (so it shows who does what) and passes it on, but never records, fails
+        // over or follows a job.
         var host = Role == DeviceRole.Host;
         try
         {
@@ -202,7 +195,6 @@ public partial class MainWindow
 
             var now = DateTimeOffset.UtcNow;
             var before = clusterPlan.Digest();
-            var logHost = LogHostId;
             var plan = clusterPlan;
             foreach (var probe in probes)
                 if (probe.Plan is { } copy) plan = ClusterPlan.Merge(plan, copy);
@@ -222,15 +214,6 @@ public partial class MainWindow
                 }
             clusterPlan = host ? plan : Failover(plan, probes, now, events);
             if (clusterPlan.Digest() != before) SaveClusterPlan();
-            if (LogHostId != logHost)
-            {
-                var by = clusterPlan.For(ClusterJobs.Logs)?.UpdatedBy;
-                ErrorLog.Info(LogHostId is { } collector
-                    ? $"Log host is now {collector}{(by is null || by == ClusterDevice ? "" : $", as chosen on {by}")}: this PC sends it its logs and shows what it collected."
-                    : $"Nobody collects logs now{(by is null || by == ClusterDevice ? "" : $" (cleared on {by})")}: each computer keeps its own.");
-                logMarks = null;
-                ShipLogsAsync().Forget();
-            }
             if (!host && !assigningRole && !setupOperations.IsRunning && homeSettings?.Setup is not null) followed = await FollowClusterAsync(events);
             await PushClusterAsync(probes);
         }
@@ -247,11 +230,6 @@ public partial class MainWindow
                 if (events.Count > 0) ActionText.Text = string.Join(" ", events);
                 if (followed) RenderHome();
                 ShowClusterStatus();
-                if (DiagnosticsPage.IsVisible)
-                {
-                    RenderLogHostChoice();
-                    ShowLogHostStatus();
-                }
                 var signature = ClusterSignature();
                 if (followed || signature != clusterSignature)
                 {

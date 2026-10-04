@@ -36,6 +36,9 @@ public sealed class ClusterSyncTests
         var hardware = new[] { Hardware("gpu-b", 24_000), Hardware("gpu-c", 8_000), Hardware("gpu-d", 12_000) };
 
         Assert.Equal("gpu-d", ClusterSync.FailoverTarget(plan, ClusterJobs.Thinking, "gpu-a", probes, hardware));
+        // The logs entry older desktops may have left in the plan is not a job: it doesn't make its host look busier.
+        var withLogs = plan.Assign(ClusterJobs.Logs, "gpu-d", false, false, null, "desktop-old", Now);
+        Assert.Equal("gpu-d", ClusterSync.FailoverTarget(withLogs, ClusterJobs.Thinking, "gpu-a", probes, hardware));
         Assert.Null(ClusterSync.FailoverTarget(plan, ClusterJobs.Listening, "gpu-a", probes, hardware));
         Assert.Null(ClusterSync.FailoverTarget(plan, ClusterJobs.Thinking, "gpu-a", [Probe("gpu-a", false), Probe("gpu-e", true)], hardware));
     }

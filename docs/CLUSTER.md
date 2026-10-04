@@ -7,7 +7,7 @@ the same API keys. Each computer is either a **companion PC** (where you talk
 to Martlet) or a **host PC** (it lends its graphics card), and you can switch a
 computer between the two in one click. Adding a host to your
 [Martlet network](NETWORK.md) adds what it can do (thinking, listening,
-speaking, lip-sync, Home Assistant, collecting logs) to the whole app; jobs move
+speaking, lip-sync, Home Assistant, keeping everyone's logs) to the whole app; jobs move
 between hosts on the spot and fail over when a host stops answering.
 
 What differs from one computer to the next is only what belongs to that
@@ -29,14 +29,14 @@ another host** choice.
 
 | The same on every computer | How it travels | Details |
 | --- | --- | --- |
-| Who does each job (thinking, listening, speaking, lip-sync) and the log host | The cluster plan | [Model](#model) |
+| Who does each job (thinking, listening, speaking, lip-sync) | The cluster plan | [Model](#model) |
 | How Martlet thinks, listens and speaks with the API keys, the Thinking fallback, the personality, replies, prompts, memory on or off, lorebooks, the character and its emotes and motions, how you talk, speech bubbles and subtitles, the theme, recognizing voices, Voice ID, what Martlet may do with Home Assistant, app updates | Shared settings | [One Martlet on every computer](#one-martlet-on-every-computer) |
 | What Martlet remembers | Shared memories | [MEMORY](MEMORY.md#one-memory-on-every-computer) |
 | The people and voices Martlet recognizes | The shared voice list | [The shared voice list](#the-shared-voice-list) |
 | The voices Martlet speaks with and their recordings | Shared speaking voices | [The shared speaking voices](#the-shared-speaking-voices) |
 | Your characters (Live2D and VRM models) | Shared character models | [The shared character models](#the-shared-character-models) |
 | The Home Assistant connection | Shared Home Assistant | [The shared Home Assistant connection](#the-shared-home-assistant-connection) |
-| Which computers belong, API keys for other apps, commands between computers, logs | Always on: the [network](NETWORK.md), [API keys](API.md), [commands](#commands-between-your-computers), [log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) | Security and diagnostics, not settings |
+| Which computers belong, API keys for other apps, commands between computers, logs | Always on: the [network](NETWORK.md), [API keys](API.md), [commands](#commands-between-your-computers), [shared logs](DIAGNOSTICS.md#diagnostics-page-and-shared-logs) | Security and diagnostics, not settings |
 
 ## Model
 
@@ -51,10 +51,10 @@ another host** choice.
     **fails over**; and `moved_from`, the host a failover moved it away from;
   - one entry per **host**: its address and the roles (with models) it was
     last seen running, or a `removed` tombstone after you forget it.
-  - the `logs` entry: the paired host that collects every computer's logs
-    (the [log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host)), or
-    nobody. It is not a role: it never moves, fails over or follows a Setup
-    choice, and desktops older than shared logs pass it through untouched.
+  - the `logs` entry, left by desktops older than
+    [shared logs](DIAGNOSTICS.md#diagnostics-page-and-shared-logs): the single
+    host they send every computer's logs to. Newer desktops share logs with every
+    host and never set or use it; it is not a role and never moves or fails over.
 - Every entry is a last-writer-wins register stamped with a hybrid revision,
   `max(newest revision known + 1, current Unix milliseconds)`, and the writer's
   device ID. Merging keeps, per job and per host, the entry with the highest
@@ -104,25 +104,21 @@ updated from a version where sync was off by default: on their first check
 they adopt the newest change from any computer.
 
 A PC set up as a host (*Use as a Martlet host*) uses no jobs, so it only takes
-steps 2, 3 and 7: it receives the plan (so it knows the
-[log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host) and shows who does
-what) and passes on its own changes, such as choosing the log host on its
-Diagnostics page. It never records, fails over or follows a job. Its Devices
+steps 2, 3 and 7: it receives the plan (so it shows who does what) and passes it
+on. It never records, fails over or follows a job. Its Devices
 map draws each job where the plan puts it for your companion PCs (on the host
 that does it, on the cloud service of the shared route, or on the companion
 PCs for a route that runs on each of them), so it shows the same picture as
 your main PC rather than the Setup choice it kept from before it became a host.
 Before this, a
-host PC skipped the sync entirely and never learned the log host chosen
-elsewhere.
+host PC skipped the sync entirely.
 
 ## Failover
 
 With failover on for a job, when its host misses two consecutive checks
 (about 30 seconds) the desktop moves the job to another paired host that
 answered and advertises the job's route (the role is installed and its model
-ready). Candidates are ranked by fewest other jobs (being the log host counts
-as one), then most GPU memory
+ready). Candidates are ranked by fewest other jobs, then most GPU memory
 (from the host's hardware report), then host ID, so desktops that see the same
 hosts pick the same one. The move is stamped with `moved_from` and shared; the
 row says where it came from.

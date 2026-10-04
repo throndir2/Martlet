@@ -393,7 +393,7 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- Diagnostics: every part's activity, warnings and errors, from this PC and (with a log host) all the owner's computers (MainWindow.Logs.cs) -->
+            <!-- Diagnostics: every part's activity, warnings and errors from every computer of the owner's Martlet network, shared between them all (MainWindow.Logs.cs) -->
             <Grid x:Name="DiagnosticsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="DiagnosticsPage">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -409,29 +409,25 @@
                                 AutomationProperties.AutomationId="LogsRefresh" AutomationProperties.Name="Refresh the logs"/>
                         <Button Content="_Copy shown" Click="LogsCopy_Click" Margin="0,0,10,0"
                                 AutomationProperties.AutomationId="LogsCopy" AutomationProperties.Name="Copy the shown log lines"/>
-                        <Button Content="Open logs _folder" Click="LogsOpenFolder_Click"
+                        <Button Content="Open logs _folder" Click="LogsOpenFolder_Click" Margin="0,0,10,0"
                                 AutomationProperties.AutomationId="LogsOpenFolder" AutomationProperties.Name="Open this PC's logs folder"/>
+                        <Button x:Name="LogsSaveButton" Content="_Save logs to share..." Click="LogsSave_Click" Style="{DynamicResource PrimaryButton}"
+                                AutomationProperties.AutomationId="LogsSave"
+                                AutomationProperties.Name="Save the logs of all your computers in one file to share"/>
                     </StackPanel>
                     <StackPanel>
                         <TextBlock Text="Diagnostics" Style="{DynamicResource PageTitle}"/>
-                        <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0"
-                                   Text="Activity, warnings and errors from Martlet and your paired computers."/>
+                        <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
+                                   Text="Activity, warnings and errors from Martlet on all your computers."/>
                     </StackPanel>
                 </DockPanel>
-                <Border Grid.Row="1" Style="{DynamicResource CardStyle}" Padding="20,14" AutomationProperties.Name="Log host">
+                <Border Grid.Row="1" Style="{DynamicResource CardStyle}" Padding="20,14" AutomationProperties.Name="Logs from all your computers">
                     <StackPanel>
-                        <DockPanel>
-                            <ComboBox x:Name="LogHostChoice" DockPanel.Dock="Right" MinWidth="260" VerticalAlignment="Center"
-                                      SelectionChanged="LogHost_Changed" AutomationProperties.AutomationId="LogHostChoice"
-                                      AutomationProperties.Name="Computer that collects the logs of all your computers"/>
-                            <StackPanel Margin="0,0,14,0">
-                                <TextBlock Text="Collect logs from all my computers on" FontWeight="SemiBold"/>
-                                <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0"
-                                           Text="Choose a paired host to keep everyone's logs in one place."/>
-                            </StackPanel>
-                        </DockPanel>
-                        <TextBlock x:Name="LogHostStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0"
-                                   AutomationProperties.AutomationId="LogHostStatus" AutomationProperties.LiveSetting="Polite"/>
+                        <TextBlock Text="Logs from all your computers" FontWeight="SemiBold"/>
+                        <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
+                                   Text="Every computer in your Martlet network shares its logs with all the others, so each one shows them all. To get help, Save logs to share makes one file with everything."/>
+                        <TextBlock x:Name="LogShareStatus" Style="{DynamicResource Muted}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="LogShareStatus" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </Border>
                 <StackPanel Grid.Row="2" Margin="0,2,0,6">

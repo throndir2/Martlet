@@ -17,5 +17,7 @@
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
     <!-- memories (memory_sync_selftest) keeps real memory stores the same through the hosts. -->
     <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
+    <!-- logs (logs_share_selftest) reads real log folders and saves the share bundle. -->
+    <ProjectReference Include="..\Martlet.Diagnostics\Martlet.Diagnostics.csproj" />
   </ItemGroup>
 </Project>

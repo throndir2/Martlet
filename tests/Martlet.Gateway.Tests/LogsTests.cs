@@ -22,7 +22,7 @@ public sealed class LogsTests
     }
 
     [Fact]
-    public async Task Log_host_keeps_each_line_once_and_serves_every_computer()
+    public async Task Host_keeps_each_shared_line_once_and_serves_every_computer()
     {
         await using var host = await GatewayTestHost.StartAsync();
         var storage = new MemoryStorage();
