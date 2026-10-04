@@ -398,6 +398,14 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachCharacterModelStorage(storage);
     }
 
+    /// <summary>Keeps Martlet's creations, and their pieces, paired desktops share through this host in
+    /// <paramref name="storage"/>.</summary>
+    public void AttachCreations(IGatewayCreationStorage storage)
+    {
+        RequireOpen();
+        server!.AttachCreationStorage(storage);
+    }
+
     /// <summary>Keeps the shared Home Assistant connection paired desktops sync through this host in <paramref name="storage"/>.</summary>
     public void AttachHomeAssistant(IGatewayHomeAssistantStorage storage)
     {

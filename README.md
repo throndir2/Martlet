@@ -158,6 +158,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Voice Studio research and setup](docs/VOICE_STUDIO.md) | Five-engine implementation research, guided setup, audio imports, A/B previews, training and staged acceptance |
 | [Memory](docs/MEMORY.md) | ON-by-default local memory: automatic recall each turn, remembering lasting facts from conversations, Desktop fact management, privacy/deletion/export and remaining qualification gates |
 | [Lorebooks](docs/LOREBOOKS.md) | SillyTavern-style World Info: keyword-triggered lore added to replies, persona scope, budget and recursion, the editor and its local test, SillyTavern/character card import and export |
+| [Creations](docs/CREATIONS.md) | Everything Martlet makes (songs, later more): kinds and their handlers, FLAC assets stored by SHA-256, limits and cleanup, sharing with every computer through the hosts, `list_creations`/`perform_creation`, and the Creations page (no Play button: Martlet performs them itself) |
 
 The broader plan documents remain future specifications except for the current
 implementation/acceptance ledger in [DELIVERY](docs/DELIVERY.md) and the

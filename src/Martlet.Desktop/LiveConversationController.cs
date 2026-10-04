@@ -6,6 +6,7 @@ using Martlet.Audio;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Creations;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Participation;
@@ -68,6 +69,7 @@ internal sealed class LiveConversationOperation
     private LiveConversationStatus status = new("conversation.authorizing");
     private CaptureRun? capture;
     private ConversationTurn? turn;
+    private bool voiceMuted;
     private int releasedPress;
     private int executionFinished;
     private string? cancellationReason;
@@ -218,8 +220,26 @@ internal sealed class LiveConversationOperation
     }
     internal void Attach(ConversationTurn run)
     {
-        Volatile.Write(ref turn, run);
+        bool mute;
+        lock (gate)
+        {
+            Volatile.Write(ref turn, run);
+            mute = voiceMuted;
+        }
         if (Authorization.IsCanceled) run.StopAsync().Forget();
+        else if (mute) run.MuteVoice();
+    }
+    /// <summary>Martlet's voice was muted while this reply ran: its turn (now, or once it starts) stops saying it aloud, and the
+    /// rest shows as text.</summary>
+    internal void MuteVoice()
+    {
+        ConversationTurn? attached;
+        lock (gate)
+        {
+            voiceMuted = true;
+            attached = Volatile.Read(ref turn);
+        }
+        attached?.MuteVoice();
     }
     internal void ReleasePress()
     {
@@ -1186,6 +1206,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         operation.Cancel(reason);
     }
 
+    /// <summary>Martlet's voice was muted (Speak Martlet's replies aloud turned off): the reply or comment running now stops
+    /// saying it aloud and finishes as text, with the rest in the captions. Nothing is canceled or forgotten, and what comes
+    /// next is text only because it starts without a voice.</summary>
+    internal void MuteVoice()
+    {
+        LiveConversationOperation? running;
+        lock (gate) running = active is { OwnershipReleased: false } ? active : null;
+        running?.MuteVoice();
+    }
+
     private async Task SuperviseAsync(LiveConversationOperation operation)
     {
         while (!operation.Worker.Completion.IsCompleted && !operation.ExecutionFinished)
@@ -1296,8 +1326,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
-            // is on and Deep thinking can run where it is set to think), only for the user's own turns (and Martlet's reports of
-            // its background work) and routes that do function calling. While they are on they are always offered, the same
+            // is on and Deep thinking can run where it is set to think, search_conversations while it is allowed, list_creations
+            // and perform_creation while any kind of creation is registered), only for the user's own turns (and Martlet's reports
+            // of its background work) and routes that do function calling. While they are on they are always offered, the same
             // way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
@@ -1574,7 +1605,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
     /// prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
-    /// off by default). Null when there are none.</summary>
+    /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
+    /// docs/CREATIONS.md). Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
@@ -1589,6 +1621,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
             own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
+        var kinds = Creations.Kinds;
+        if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
+        {
+            var definitions = CreationTools.Definitions(kinds);
+            own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
+            own.Add((definitions[1], PerformCreationAsync));
+        }
         return own.Count == 0 ? null : new(own, guidance);
     }
 
@@ -1597,6 +1636,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         var (result, outcome) = await history!.SearchAsync(call, conversation, token).ConfigureAwait(false);
         tools?.Record("Martlet", PastConversations.ToolName, outcome, ConversationHistory.Preview(call.ArgumentsJson, 120), result.IsError);
+        return result;
+    }
+
+    /// <summary>The kinds of creation Martlet knows and what performs them (docs/CREATIONS.md).</summary>
+    internal CreationRegistry Creations { get; init; } = CreationRegistry.Shared;
+
+    /// <summary>list_creations: what Martlet made, from this PC's copy of the shared list (read only when called).</summary>
+    private ConversationToolResult ListCreations(TextToolCall call)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = CreationTools.List(library, Creations, call.ArgumentsJson, c => CreationStore.IsComplete(dataDirectory!, c));
+        tools?.Record("Martlet", CreationTools.ListName, result.IsError ? "invalid arguments" : $"{library.Live.Count} creations", "", result.IsError);
+        return result;
+    }
+
+    /// <summary>perform_creation: hands the creation to its kind's handler (a song is sung by the conversation that attached the
+    /// song handler), or says clearly why it can't.</summary>
+    private async ValueTask<ConversationToolResult> PerformCreationAsync(TextToolCall call, CancellationToken token)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = await CreationTools.PerformAsync(library, Creations, call.ArgumentsJson, c => CreationStore.Assets(dataDirectory!, c), token)
+            .ConfigureAwait(false);
+        tools?.Record("Martlet", CreationTools.PerformName, result.IsError ? "not performed" : "performed", "", result.IsError);
+        ErrorLog.Info($"Creations: perform_creation {(result.IsError ? "didn't start" : "started")}.");
         return result;
     }
 

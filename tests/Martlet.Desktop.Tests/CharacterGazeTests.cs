@@ -202,7 +202,8 @@ public sealed class CharacterGazeTests
         public Task Exited => exited.Task;
         public event Action<string>? Requested { add { } remove { } }
         private readonly Guid activation = Guid.NewGuid();
-        public Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, CancellationToken token)
+        public Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted,
+            CancellationToken token)
         {
             Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", -10, 10, 0, ["Mouth"])]);
             return Task.CompletedTask;

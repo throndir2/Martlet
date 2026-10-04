@@ -241,6 +241,8 @@ public interface IConversationAuthorizationSource
     ValueTask<AuthorizedSpeechOperation?> AuthorizeSpeechAsync(SpeechAuthorizationAction action, CancellationToken cancellationToken);
 }
 
+// VoiceMuted: the user muted the voice while this reply spoke (ConversationTurn.MuteVoice). Like a voice failure it ended only
+// what was said aloud and the rest showed in the captions, but it is not a failure (SpeechFailure stays None).
 public sealed record ConversationSnapshot(
     Guid SessionId, Guid TurnId, Guid TextRequestId, long TurnEpoch, long CurrentEpoch, ConversationState State,
     ConversationFailure Failure, ProviderFailureCode? ProviderFailure, SequenceIssueInfo? SequenceFailure,
@@ -253,7 +255,7 @@ public sealed record ConversationSnapshot(
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
     TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false,
     ConversationFailure SpeechFailure = ConversationFailure.None, ConversationTimings? Timings = null, long? InputTokens = null,
-    long? CachedInputTokens = null, bool ReasoningRejected = false)
+    long? CachedInputTokens = null, bool ReasoningRejected = false, bool VoiceMuted = false)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
