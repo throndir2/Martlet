@@ -171,4 +171,23 @@ public sealed class HostRolesTests
         Assert.Null(NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, quiet, [wsl], hosts))
             .Single(n => n.Id == "host:diva-host").SharedGpu);
     }
+
+    [Fact]
+    public void Add_a_computer_offers_only_ways_to_add_one_each_saying_what_it_does()
+    {
+        NetworkNode Add(DeviceRole role) =>
+            NetworkMap.Build(new(MachineInfo.Unknown, role, null, null, false, new Dictionary<string, HostCheck>())).Single(n => n.Kind == NodeKind.Add);
+
+        // Nothing in its details only looks like a button: no job rows or notes, just choices, each a card with a line on what it does.
+        var add = Add(DeviceRole.Companion);
+        Assert.Empty(add.Roles);
+        Assert.Empty(add.Notes);
+        Assert.Equal([NodeAction.AddComputer, NodeAction.PrepareComputer, NodeAction.HostThisPc], add.Commands.Select(c => c.Action));
+        Assert.All(add.Commands, c => Assert.False(string.IsNullOrWhiteSpace(c.Detail)));
+        Assert.True(add.Commands.Single(c => c.Primary).Action == NodeAction.AddComputer);
+        Assert.Contains("one-use code", add.Commands[0].Detail, StringComparison.Ordinal);
+
+        // A host PC already runs host services, so it isn't offered to run them.
+        Assert.DoesNotContain(Add(DeviceRole.Host).Commands, c => c.Action == NodeAction.HostThisPc);
+    }
 }

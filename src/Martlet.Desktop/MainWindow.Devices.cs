@@ -37,6 +37,11 @@ public partial class MainWindow
         DetailContent.Children.Clear();
         AutomationProperties.SetName(DetailContent, $"{node.Title}, {node.Subtitle}");
         DetailContent.Children.Add(DetailHeader(node));
+        if (node.Kind == NodeKind.Add)
+        {
+            AddChoices(node);
+            return;
+        }
         if (node.PairedHostId is { } updating && hostUpdates.Notes.GetValueOrDefault(updating) is { } update)
             DetailContent.Children.Add(Callout(update, "SelectedDeviceUpdate"));
         if (node.SharedGpu is { } shared)
@@ -50,9 +55,8 @@ public partial class MainWindow
 
         if (rows.Count > 0)
         {
-            var add = node.Kind == NodeKind.Add;
-            DetailContent.Children.Add(DetailSection(add ? "What a host does" : "What it does",
-                add || rows.All(r => r.Component is DeviceComponent.Host or DeviceComponent.Member) ? null
+            DetailContent.Children.Add(DetailSection("What it does",
+                rows.All(r => r.Component is DeviceComponent.Host or DeviceComponent.Member) ? null
                 : node.Kind == NodeKind.Missing ? "Not set up yet." : "Change these jobs here."));
             foreach (var role in rows)
             {
@@ -63,16 +67,11 @@ public partial class MainWindow
         }
 
         var loose = node.Commands.Where(c => Placed(c) is null && !(c.Action == NodeAction.CheckHost && node.Kind != NodeKind.ThisPc)).ToList();
-        if (node.Kind == NodeKind.Add)
-            AddCommandSection("Get started", null, loose);
-        else
-        {
-            var give = loose.Where(c => GiveActions.Contains(c.Action)).ToList();
-            var roles = loose.Where(c => c.Action is NodeAction.InstallRole or NodeAction.RemoveRole).ToList();
-            AddCommandSection("Give it more to do", node.Kind == NodeKind.ThisPc ? "Run more of Martlet on this PC." : "Assign a job or add a role.",
-                give, roles);
-            AddCommandSection("Manage", null, loose.Where(c => !GiveActions.Contains(c.Action) && !roles.Contains(c)).ToList());
-        }
+        var give = loose.Where(c => GiveActions.Contains(c.Action)).ToList();
+        var roles = loose.Where(c => c.Action is NodeAction.InstallRole or NodeAction.RemoveRole).ToList();
+        AddCommandSection("Give it more to do", node.Kind == NodeKind.ThisPc ? "Run more of Martlet on this PC." : "Assign a job or add a role.",
+            give, roles);
+        AddCommandSection("Manage", null, loose.Where(c => !GiveActions.Contains(c.Action) && !roles.Contains(c)).ToList());
 
         var notes = node.Notes.Distinct(StringComparer.Ordinal)
             .Where(n => node.PairedHostId is null || n != hostUpdates.Notes.GetValueOrDefault(node.PairedHostId)).ToList();
@@ -149,8 +148,21 @@ public partial class MainWindow
         var glyph = Glyph(node.Glyph, 24, default);
         glyph.SetResourceReference(TextBlock.ForegroundProperty, node.Kind == NodeKind.ThisPc ? "OnAccentBrush" : "AccentBrush");
         bubble.Child = glyph;
-        DockPanel.SetDock(bubble, Dock.Left);
-        header.Children.Add(bubble);
+        FrameworkElement icon = bubble;
+        if (node.Kind == NodeKind.Add && node.Commands.FirstOrDefault(c => c.Primary) is { } start)
+        {
+            // Add a computer's + is a button that adds one, like the first choice under it.
+            var button = new Button { Tag = node.Glyph, Margin = bubble.Margin, ToolTip = start.Label };
+            button.SetResourceReference(StyleProperty, "BubbleButton");
+            AutomationProperties.SetAutomationId(button, "SelectedDeviceAdd");
+            AutomationProperties.SetName(button, start.Label);
+            var action = start.Action;
+            var argument = start.Argument;
+            button.Click += (_, _) => RunNodeAction(action, argument);
+            icon = button;
+        }
+        DockPanel.SetDock(icon, Dock.Left);
+        header.Children.Add(icon);
 
         var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
         var title = new TextBlock { Text = node.Title, FontSize = 22, FontWeight = FontWeights.SemiBold };
@@ -191,7 +203,6 @@ public partial class MainWindow
         DeviceComponent.LipSync or "role:" + HostRoles.Audio2Face => "\uE76E",
         DeviceComponent.Character => "\uE77B",
         DeviceComponent.Audio => "\uE7F6",
-        DeviceComponent.Offer => NetworkMap.AddGlyph,
         DeviceComponent.Member => NetworkMap.ThisPcGlyph,
         _ => NetworkMap.ComputerGlyph
     };
@@ -329,6 +340,55 @@ public partial class MainWindow
         button.Padding = new Thickness(14, 6, 14, 6);
         button.MinHeight = 34;
         button.Margin = new Thickness(0, 10, 8, 0);
+    }
+
+    // ---------- Add a computer ----------
+
+    /// <summary>Add a computer's details are only the ways to add one: each is a whole clickable card that says what it does.</summary>
+    private void AddChoices(NetworkNode node)
+    {
+        DetailContent.Children.Add(DetailSection("Choose how", null));
+        foreach (var command in node.Commands) DetailContent.Children.Add(ChoiceCard(command));
+    }
+
+    private static string ChoiceGlyph(NodeAction action) => action switch
+    {
+        NodeAction.AddComputer => NetworkMap.AddGlyph,
+        NodeAction.HostThisPc => NetworkMap.ThisPcGlyph,
+        _ => NetworkMap.ComputerGlyph
+    };
+
+    private Button ChoiceCard(NodeCommand command)
+    {
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = command.Label, FontSize = 16, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        if (command.Detail is { } detail)
+        {
+            var line = new TextBlock { Text = detail, Margin = new Thickness(0, 2, 0, 0) };
+            line.SetResourceReference(StyleProperty, "Muted");
+            text.Children.Add(line);
+        }
+        var content = new DockPanel();
+        var chevron = Glyph("\uE76C", 14, new Thickness(16, 0, 0, 0));
+        chevron.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        DockPanel.SetDock(chevron, Dock.Right);
+        content.Children.Add(chevron);
+        content.Children.Add(text);
+
+        var card = new Button { Content = content, Tag = ChoiceGlyph(command.Action), Margin = new Thickness(0, 0, 0, 10) };
+        card.SetResourceReference(StyleProperty, "CardButton");
+        if (command.Primary)
+        {
+            card.SetResourceReference(BorderBrushProperty, "AccentBrush");
+            card.BorderThickness = new Thickness(1.5);
+        }
+        AutomationProperties.SetAutomationId(card, $"NodeAction-{command.Action}");
+        AutomationProperties.SetName(card, command.Label);
+        if (command.Detail is not null) AutomationProperties.SetHelpText(card, command.Detail);
+        var action = command.Action;
+        var argument = command.Argument;
+        card.Click += (_, _) => RunNodeAction(action, argument);
+        return card;
     }
 
     // ---------- details ----------
