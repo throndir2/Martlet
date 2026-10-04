@@ -66,6 +66,10 @@
                                         <Button x:Name="PrimaryStageButton" Style="{DynamicResource PrimaryButton}" Content="Set up thinking"
                                                 Click="PrimaryStage_Click" Padding="22,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="PrimaryStageAction"/>
+                                        <!-- A new PC: join your other computers first and use their hosts (MainWindow.Health.cs) -->
+                                        <Button x:Name="ConnectComputersButton" Content="Connect to your other computers" Click="ConnectComputers_Click"
+                                                Padding="20,12" FontSize="15" Margin="0,0,12,8" Visibility="Collapsed"
+                                                AutomationProperties.AutomationId="HomeConnectComputers"/>
                                         <Button x:Name="ListenButton" Content="Start _listening" Click="Listen_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="HomeListen"
                                                 AutomationProperties.Name="Start listening"/>

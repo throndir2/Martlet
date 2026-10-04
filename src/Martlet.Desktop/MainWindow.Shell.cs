@@ -444,6 +444,11 @@ public partial class MainWindow
 
     private void PrimaryStage_Click(object sender, RoutedEventArgs e) => (stageFix ?? (() => OpenCompanion(CompanionTab.Thinking)))();
 
+    /// <summary>Home's first steps on a new PC: Add a computer, which opens on Martlet on your network.</summary>
+    private HealthFix ConnectComputersFix() => new("network", "Connect to your other computers", () => RunNodeAction(NodeAction.AddComputer), Passive: true);
+
+    private void ConnectComputers_Click(object sender, RoutedEventArgs e) => ConnectComputersFix().Run();
+
     // ---------- host dashboard ----------
 
     private HostSetupTarget ThisPcTarget() => new(HostSetupMethod.ThisPcDocker, "",
