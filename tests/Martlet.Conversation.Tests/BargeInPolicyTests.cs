@@ -36,6 +36,18 @@ public sealed class BargeInPolicyTests
     }
 
     [Fact]
+    public void A_word_said_over_and_over_counts_once()
+    {
+        // Parakeet TDT 0.6B v2 on a Windows voice laughing "Ha ha ha ha!".
+        var laugh = BargeInPolicy.Decide("One, one, one.", Heard(900, 0.75, 0.46), ListeningSensitivity.Normal);
+        Assert.False(laugh.Interrupt);
+        Assert.Equal("repeated words", laugh.Reason);
+        Assert.True(BargeInPolicy.Decide("No, no, no.", Heard(900, 0.75, 0.46), ListeningSensitivity.Normal).Interrupt);
+        Assert.True(BargeInPolicy.Decide("Go, go, go.", Heard(900, 0.9, 0.8), ListeningSensitivity.Sensitive).Interrupt);
+        Assert.True(BargeInPolicy.Decide("Go back, go back", Heard(900, 0.9, 0.8), ListeningSensitivity.Normal).Interrupt);
+    }
+
+    [Fact]
     public void Stop_words_names_and_longer_speech_stop_a_reply_however_unsure()
     {
         Assert.Equal("a stop word", BargeInPolicy.Decide("Stop.", Heard(300, 0.52, 0.24), ListeningSensitivity.Normal).Reason);

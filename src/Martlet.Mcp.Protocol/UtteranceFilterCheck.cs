@@ -147,6 +147,8 @@ internal static class UtteranceFilterCheck
         // sure of, kept as words but not enough to stop a reply; the start of a real question is.
         new("parakeet-en-laughter", "Come on.", Context(300) with
             { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.50, MinimumProbability = 0.18 } }, true, false),
+        new("parakeet-en-laughter-repeated", "One, one, one.", Context(900) with
+            { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.75, MinimumProbability = 0.46 } }, true, false),
         new("parakeet-en-two-words-said", "Can you", Context(300) with
             { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.80, MinimumProbability = 0.43 } }, true, true),
         // whisper.cpp on this PC's martlet-stt (large-v3-turbo, verbose_json): "Yeah." it wrote for two coughs, and "Stop." said.
