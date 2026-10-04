@@ -278,9 +278,9 @@ public static class PromptCatalog
             "Thinking longer shares results when you talk next). {results} lists each finished job.",
             DefaultBackgroundDoneNotesInstructions, ["results"]),
         new(Singing, ConversationGroup, "Singing",
-            "Added to every reply offered sing_song, play_song and stop_singing (while Thinking longer is on and singing is set up " +
-            "in Companion › Voice › Singing), after the Thinking longer prompt. It stays the same from reply to reply. {silent} is " +
-            "the word the model answers to stay quiet.",
+            "Added to every reply offered sing_song, play_song and stop_singing (while singing is set up in Companion › Voice › " +
+            "Singing and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from " +
+            "reply to reply. {silent} is the word the model answers to stay quiet.",
             DefaultSingingInstructions, ["silent"]),
         new(WhileSinging, ConversationGroup, "Said while you were singing",
             "Goes in the notes of what always listening heard while Martlet sings. {song} is the song's title, {where} where the " +

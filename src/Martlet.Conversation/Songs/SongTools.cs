@@ -141,6 +141,12 @@ public static class SongTools
     public static string Unavailable(string reason) =>
         $"Not started: {reason} Tell the user, in character, that you can't sing right now and why, in a few words.";
 
+    /// <summary>What the model is told when the lyrics can't be written in the background (no Deep thinking place).</summary>
+    public static string WriteLyricsYourself(string why) =>
+        $"Not started: the lyrics can't be written in the background here ({why.TrimEnd('.')}). Write them yourself now, short and " +
+        "singable, tagged [verse] and [chorus] with one sung line per line, and call sing_song again with them as lyrics. Don't " +
+        "show or say them.";
+
     /// <summary>The lyrics step's task: what the background think writes.</summary>
     public static string WritingTask(PromptSettings? prompts, SingArguments arguments) =>
         PromptSettings.Fill(prompts, PromptCatalog.SongLyrics, ("about", arguments.About),

@@ -426,22 +426,26 @@ conversation](#singing-in-conversation)).
 a song, give me a few minutes while I figure out the lyrics and beat!"*), makes
 the song in the background while the conversation carries on, brings it up when
 it's ready (*"Nice job on killing that noob! Oh, and that song's ready, wanna
-hear?"*) and sings it on a yes. It is offered while Thinking longer is on, the
-Thinking route does function calling and singing is set up (Companion › Voice ›
-Singing, see [Singing](SINGING.md)); replies then always get the same three
-tools after `think_longer` and `cancel_thinking`, with the *Singing* prompt
-(Companion › Prompts), so the start of every request stays the same. Without
-singing set up, requests are exactly as before.
+hear?"*) and sings it on a yes. It is offered while singing is set up (Companion
+› Voice › Singing, see [Singing](SINGING.md)) and the Thinking route does
+function calling; replies then always get the same three tools after Martlet's
+other own tools (`think_longer` and `cancel_thinking` while Deep thinking can
+think), with the *Singing* prompt (Companion › Prompts), so the start of every
+request stays the same. Without singing set up, requests are exactly as before.
 
 **`sing_song(about, lyrics?, style?, duration?)`** starts a `song` job (one at a
 time, 4 an hour, 15 minutes at most; `Offer`, *Making a song*) and returns at
 once; the result tells Martlet to tell the user now if it hadn't. Without
 lyrics, the job first writes the title, style, tempo, key and tagged lyrics with
-a background think that continues the reply's request exactly like
-think_longer's (Thinking steps On, where Deep thinking thinks, in quiet moments
-when it shares the conversation's hardware, Companion › Prompts › *Singing:
-writing the song*; its own runtime and authorization, and *Thinking input (Song
-lyrics)* in the log; at most Thinking longer's time limit). Then the song maker
+a background think on Deep thinking that continues the reply's request exactly
+like think_longer's (Thinking steps On, alongside the conversation, checking a
+second model in Ollama on this PC fits beside Thinking's first; Companion ›
+Prompts › *Singing: writing the song*; its own runtime and authorization, and
+*Thinking input (Song lyrics)* in the log; at most Thinking longer's time limit).
+Where Deep thinking can't think (Thinking's own model on this PC or a paired
+computer, which can't think something over while it answers), the result asks
+the reply to write the lyrics itself and call `sing_song` again with them. Then
+the song maker
 (`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
 the Singing card's quality and voice match; the chip follows its stages
 (*Writing the lyrics*, *Writing the music*, *Matching the singing to the
@@ -526,8 +530,8 @@ own the face while they play; the song's mouth takes it back (with a new
 playback identity) when they stop, and pauses while Martlet talks over the song.
 
 **Latency.** Song work never holds up a reply: the job runs on its own runtime,
-the song maker on its own computer, and the lyrics think stops at once whenever
-the conversation needs a model on this PC. Playback never blocks the reply
+the song maker on its own computer, and the lyrics are written only where Deep
+thinking runs alongside the conversation. Playback never blocks the reply
 slot. The tools and prompt only change the request while singing is set up, and
 then they stay the same reply after reply, so they stay in the prompt cache.
 
