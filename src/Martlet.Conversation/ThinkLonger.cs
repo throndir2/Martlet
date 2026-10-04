@@ -270,6 +270,8 @@ public sealed class BackgroundThink
     public TimeProvider Clock { get; }
     /// <summary>Raised after the request ended (for the desktop log's Thinking input line).</summary>
     public Action<ConversationSnapshot>? AttemptFinished { get; init; }
+    /// <summary>What the job chip says while the request runs ("Writing the lyrics"); null says nothing.</summary>
+    public string? Doing { get; init; }
     /// <summary>How many requests it sent (one, once it started).</summary>
     public int Attempts { get; private set; }
 
@@ -282,7 +284,7 @@ public sealed class BackgroundThink
         var left = job.Kind.TimeLimit - job.Elapsed;
         // Too little time left to be worth asking: the job's time limit ends it.
         if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
-        job.Report(BackgroundJobState.Running);
+        job.Report(BackgroundJobState.Running, Doing);
         var (request, authorization) = Prepare(left);
         var started = Runtime.Start(request, authorization, token);
         Attempts++;

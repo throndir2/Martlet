@@ -31,9 +31,12 @@ internal static class Audio2FaceAutoMapping
         }
         else
         {
+            // VRM's vowel shapes: the jaw for aa, rounded lips for oh and ou, spread lips for ee and (less) ih.
             Add("jawOpen", Find("aa"));
             Add("mouthFunnel", Find("oh"));
             Add("mouthPucker", Find("ou"));
+            Add("mouthSmileLeft", Find("ee"));
+            Add("mouthStretchLeft", Find("ih"));
         }
         if (mappings.Count == 0) return null;
         return new()
