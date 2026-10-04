@@ -409,8 +409,8 @@ don't redo everything, and tell the network what this PC can do.*
   up), plus 1 approval on the other PC.
 - **Edge cases**:
   - No member is open to approve: "Open Martlet on any of your computers to
-    approve." Join code path works with a member open later (code valid 10
-    minutes).
+    approve." Join code path works with a member open later (the code doesn't
+    expire; it works until it's used or withdrawn).
   - Not on the same LAN (VPN, other subnet): join code path.
   - Network found but versions differ: offer *Update this PC first* inline.
   - Same machine name already in the network: B5 (replace).

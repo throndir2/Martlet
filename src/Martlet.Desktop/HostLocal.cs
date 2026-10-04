@@ -428,7 +428,7 @@ internal static partial class HostLocal
 
     /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair", which shows this PC's
     /// address and a short one-use code; <paramref name="shown"/> receives both. The code never reaches
-    /// <paramref name="output"/> (or the run log). The engine waits up to five minutes for that desktop to type it;
+    /// <paramref name="output"/> (or the run log). The engine waits until that desktop types it (the code has no deadline);
     /// canceling withdraws the code.</summary>
     internal static async Task<int> PairOtherAsync(HostSetupTarget target, Action<string, string> shown,
         IProgress<string> output, CancellationToken token, string codeNote = "(shown above)")

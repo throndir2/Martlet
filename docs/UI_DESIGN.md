@@ -111,7 +111,12 @@ The hero card says how Martlet is doing overall:
 
 *Show character* sits next to the primary action at every stage; *Not sure
 what you need? Get a recommendation* (the advisor) shows while thinking isn't
-set up.
+set up. On a new PC (nothing saved yet and no other computer paired), *Connect
+to your other computers* sits next to *Set up thinking* and in that item's
+fixes: it opens *Add a computer* on *Martlet on your network*, so a PC that
+joins your other computers uses your hosts and the setup they share without
+setting anything up itself. Pairing never waits for Setup: hosts are paired,
+and who does what is followed, before this PC saves any settings.
 
 Below the hero, **Needs attention** (*All good* when nothing does) lists every
 item with what it means and its fixes, most serious first:
