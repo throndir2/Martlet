@@ -8,15 +8,20 @@ button reads **Show conversation** while it is open and brings it back to the
 front. How Martlet listens, speaks and sees is chosen in Companion (Listening,
 Voice and Vision), and an open talk window follows a change there at once.
 Always listening starts only when you press **Start listening** (on Home, in the
-notification-area menu or in the window) and stops with **Stop listening**. It
-doesn't need the talk window: Home's **Start listening** runs the conversation
-hidden, Home's listening indicator says what it is doing (*Listening*, *Hearing
-you…*, *Martlet is replying…* or why it can't listen), **Show conversation**
+notification-area menu or in the window) and stops with **Stop listening**.
+Vision works the same way with its own button: once Companion › Vision turns it
+on, **Start watching** (on Home, in the notification-area menu or in the window)
+starts looking and **Stop watching** stops it; neither button starts or stops
+the other. Neither needs the talk window: Home's **Start listening** and
+**Start watching** run the conversation
+hidden, Home's listening and watching indicators say what each is doing (*Listening*, *Hearing
+you…*, *Watching your active window.*, *Taking a look…* or why it can't), **Show conversation**
 shows its history, and closing the window while Martlet listens or watches only
 hides it (**End the conversation** in the notification-area menu ends it). A
 Home Assistant or tool question shows the window. Settings › *Startup and
-closing* › *When Martlet starts, show the character and start listening* does
-both on every start, including Start with Windows in the notification area. A
+closing* › *When Martlet starts, show the character and start listening (and
+watching, while vision is on)* does that on every start, including Start with
+Windows in the notification area. A
 PC used as a Martlet host never talks, listens or shows the character: switching
 it to a host ends a running conversation and hides the character, and at start
 it skips this choice, the character's *Show at startup* and Parakeet's warm-up
@@ -34,8 +39,8 @@ Only explicit A2F mouth/expression mapping is currently wired; alternatives and
 other aspects require explicit omission, not automatic fallback.
 
 **Vision** (Companion › Vision, off by default) lets Martlet glance at your
-active window, screen or a camera while the talk window is open and occasionally
-comment; it needs a Thinking model that can see images. See
+active window, screen or a camera while you have it watching (**Start watching**)
+and occasionally comment; it needs a Thinking model that can see images. See
 [Screen commentary](SCREEN_COMMENTARY.md).
 
 ## First configured action
@@ -75,7 +80,7 @@ comment; it needs a Thinking model that can see images. See
    **Stop listening**. With **Push-to-talk**, hold the talk button with the mouse or Space,
    then release to send (invoking it starts a recording and invoking it again
    sends). **Stop (Esc)** stays in the header at every size: it stops the reply,
-   discards a recording instead of sending it, and pauses vision. It never
+   discards a recording instead of sending it, and stops watching. It never
    stops always listening, so Martlet doesn't miss what you say next; only
    **Stop listening** does.
    Escape works anywhere in the window and does not close it or send anything.
@@ -507,8 +512,8 @@ permission. The policy lease remains owned until actual runtime
 `OwnershipRelease`, not merely `Completion`.
 
 Stop, losing the held control, session lock and Close stop only this operation.
-Unlocking resumes the listening and vision chosen in Companion (unless paused
-in the window); a paused mic or vision button stays paused until clicked. Native/credential/HTTP work and cleanup
+Unlocking resumes the listening and watching you had started; a stopped mic or
+watching button stays stopped until clicked. Native/credential/HTTP work and cleanup
 run off the dispatcher; the UI remains responsive. Noncooperative native work
 or callbacks can outlive a timeout or closed observer. The shared slot remains
 reserved; failed cleanup is quarantined rather than replaced with a fresh
@@ -517,7 +522,7 @@ This is not a measured 250 ms physical-stop guarantee.
 
 The fixed **Stop (Esc)** control also drops a typed message still waiting to be
 sent, and what always listening heard that was still waiting for a reply, and
-pauses vision; listening itself carries on. Escape works from the message box, the
+stops watching (*Start watching* turns it back on); listening itself carries on. Escape works from the message box, the
 history and the held talk button. Releasing Space after Escape cannot send that
 discarded recording or rearm PTT. Stop during settings loading or a slow worker
 requests cancellation without releasing the shared ownership slot early.

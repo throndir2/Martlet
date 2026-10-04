@@ -1426,6 +1426,131 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task WatchingStartsOnlyFromStartWatchingAndStopsFromItsOwnButton() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var glancer = new CountingGlancer();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true), glancer);
+        try
+        {
+            await Loaded(window);
+            await Ticks(fixture);
+            // Vision on in Companion only offers watching: opening the window doesn't look.
+            Assert.True(window.VisionOn);
+            Assert.False(window.IsWatching);
+            Assert.False(window.WatchingStarted);
+            Assert.Equal(0, glancer.Captures);
+            Assert.Equal("Start watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal(("Not watching", false), window.WatchingStatus);
+
+            Click(window, "VisionChip");
+            Assert.True(window.IsWatching);
+            Assert.Equal("Stop watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.StartsWith("Watching. ", System.Windows.Automation.AutomationProperties.GetName(Control<Button>(window, "VisionChip")));
+            Assert.Equal(("Watching your active window.", false), window.WatchingStatus);
+            await fixture.Advance(() => glancer.Captures > 0);
+
+            Click(window, "VisionChip");
+            Assert.False(window.IsWatching);
+            Assert.False(window.WatchingStarted);
+            Assert.Equal("Start watching", Control<TextBlock>(window, "VisionText").Text);
+            // A capture already under way may still finish; nothing new starts after that.
+            await Ticks(fixture);
+            var seen = glancer.Captures;
+            await Ticks(fixture);
+            Assert.Equal(seen, glancer.Captures);
+
+            // Home's and the notification-area menu's Start watching and Stop watching; neither touches listening.
+            window.WatchWhenReady();
+            Assert.True(window.IsWatching);
+            Assert.False(window.ListeningStarted);
+            window.StopWatchingNow();
+            Assert.False(window.IsWatching);
+            Assert.False(window.WatchingStarted);
+
+            // Stop (Esc) stops watching too, and it stays stopped.
+            window.WatchWhenReady();
+            Escape(window, "InputText");
+            Assert.False(window.WatchingStarted);
+            Assert.False(window.IsWatching);
+
+            // Locking Windows stops looking for a moment; unlocking carries on.
+            window.WatchWhenReady();
+            fixture.Events.Signal(true);
+            await Until(() => !window.IsWatching);
+            Assert.True(window.WatchingStarted);
+            fixture.Events.Signal(false);
+            await Until(() => window.IsWatching);
+
+            // Pause Martlet stops it and Resume brings it back.
+            window.Pause();
+            Assert.False(window.IsWatching);
+            Assert.False(window.WatchingStarted);
+            window.Resume();
+            Assert.True(window.IsWatching);
+
+            // Turning vision off in Companion stops it; turning it on again only offers Start watching.
+            var preferences = new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true);
+            window.UsePreferences(preferences with { Watch = false }, null);
+            Assert.False(window.IsWatching);
+            window.UsePreferences(preferences, null);
+            await Ticks(fixture);
+            Assert.False(window.IsWatching);
+            Assert.False(window.WatchingStarted);
+        }
+        finally { window.End(); }
+    });
+
+    [Fact]
+    public Task WatchingThatCantStartSaysWhyAndStaysStopped() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var glancer = new CountingGlancer();
+        var camera = new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true, ScreenScope: (int)WatchKind.Camera);
+        var window = fixture.Open(camera, glancer);
+        try
+        {
+            await Loaded(window);
+            Click(window, "VisionChip");
+            Assert.False(window.IsWatching);
+            Assert.False(window.WatchingStarted);
+            Assert.Equal("Can't see", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal(("Choose a camera in Companion › Vision.", true), window.WatchingStatus);
+            // Choosing a camera clears the problem but doesn't start looking by itself.
+            window.UsePreferences(camera with { CameraId = "camera-1", CameraName = "Test camera" }, null);
+            Assert.Equal("Start watching", Control<TextBlock>(window, "VisionText").Text);
+            Assert.Equal(("Not watching", false), window.WatchingStatus);
+            Assert.False(window.IsWatching);
+            Assert.Equal(0, glancer.Captures);
+        }
+        finally { window.Close(); }
+    });
+
+    /// <summary>Lets the window's timer run while the clock passes a few capture ticks.</summary>
+    private static async Task Ticks(LiveFixture fixture)
+    {
+        for (var i = 0; i < 10; i++)
+        {
+            fixture.Clock.Advance(ScreenCommentaryPacer.Tick);
+            await Task.Delay(30);
+        }
+    }
+
+    /// <summary>A screen that always shows only Martlet: it counts captures and never offers a picture to look at.</summary>
+    private sealed class CountingGlancer : IScreenGlancer
+    {
+        private int captures;
+        internal int Captures => Volatile.Read(ref captures);
+        public GlanceResult Capture(ScreenScope scope)
+        {
+            Interlocked.Increment(ref captures);
+            return new(null, GlanceSkip.MartletInFront);
+        }
+        public TimeSpan UserIdle => TimeSpan.Zero;
+        public void Release() { }
+    }
+
     private static void EnqueueUtterance(ControlledCapture capture, int quietBefore, int speech, int quietAfter)
     {
         var sample = 0;
@@ -2199,10 +2324,10 @@ internal sealed class LiveFixture : IAsyncDisposable
     }
     /// <summary>Opens the talk window; by default with push-to-talk and text-only replies, so nothing listens or speaks
     /// unless a test asks for it.</summary>
-    internal LiveConversationWindow Open(TalkPreferences? preferences = null)
+    internal LiveConversationWindow Open(TalkPreferences? preferences = null, IScreenGlancer? glancer = null)
     {
         var window = new LiveConversationWindow(Settings, Runner, Controller, Events, clock: Clock,
-            preferences: preferences ?? new TalkPreferences(HandsFree: false, SpeakReplies: false))
+            glancer: glancer, preferences: preferences ?? new TalkPreferences(HandsFree: false, SpeakReplies: false))
         { ShowActivated = false, ShowInTaskbar = false };
         window.Show();
         return window;

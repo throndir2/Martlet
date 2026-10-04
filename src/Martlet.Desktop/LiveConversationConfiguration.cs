@@ -735,19 +735,18 @@ internal sealed class LiveConversationConfiguration
     {
         var tuning = ScreenCommentaryPacer.AtMost(chattiness);
         var destination = route is null ? "the Thinking model" : LlmDestinationName(route);
-        // What you type or say while vision is on goes with the newest picture.
-        const string withMessages = "While vision is on, what you type or say also goes with the newest picture, so replies see " +
+        // What you type or say while Martlet watches goes with the newest picture.
+        const string withMessages = "While it watches, what you type or say also goes with the newest picture, so replies see " +
             "what you see; that makes each reply larger and may cost more. ";
         if (!source.IsScreen)
-            return $"When vision is on, Martlet checks {source.Label} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to " +
+            return $"While Martlet watches, it checks {source.Label} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to " +
                 $"{tuning.LooksPerHour} images per hour to {destination}. " + withMessages +
                 (source.Kind == WatchKind.Camera ? "The camera light may turn on. " : "") +
                 "Anyone in view may be seen; tell them. " +
                 "Images are never saved or added to Memory. Provider requests may use quota or cost money. " +
-                (source.Kind == WatchKind.Url ? "Passwords in camera addresses are never saved. " : "") +
-                "Stop, Esc, locking Windows or closing the talk window stops vision.";
+                (source.Kind == WatchKind.Url ? "Passwords in camera addresses are never saved. " : "") + WhenItWatches;
         var whole = source.Kind == WatchKind.ActiveScreen;
-        return "When vision is on, Martlet checks " +
+        return "While Martlet watches, it checks " +
             (whole ? "your whole screen (every monitor, the taskbar and pop-up notifications)" : "your active window") +
             $" every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds and may send up to {tuning.LooksPerHour} screenshots per hour to {destination}. " +
             (whole ? "When a notification pops up or a taskbar button flashes, it looks right away (within the same limit) and sends " +
@@ -756,8 +755,12 @@ internal sealed class LiveConversationConfiguration
             "Screenshots include the window title, persona, matching lorebooks and recent conversation. " +
             "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. " +
             "Screenshots are never saved or added to Memory. " +
-            "Provider requests may use quota or cost money. Stop, Esc, locking Windows or closing the talk window stops vision.";
+            "Provider requests may use quota or cost money. " + WhenItWatches;
     }
+
+    /// <summary>Vision being on in Companion never starts watching by itself.</summary>
+    private const string WhenItWatches = "Martlet only looks after you press Start watching (on Home, in the talk window or from the " +
+        "notification-area icon). Stop watching, Stop, Esc, Pause, locking Windows or ending the conversation stops it.";
     /// <summary>A screen glance's or camera look's instructions: the look's prompt, then the chattiness line, or, while Martlet
     /// decides how chatty it is (<paramref name="decides"/>), what the levels are and how to switch them
     /// (<see cref="ChattinessDecides"/>), the same at every level so the instructions stay the same when it switches; the level

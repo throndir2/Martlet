@@ -14,11 +14,15 @@ your setup can't.
    decides](#martlet-decides-how-chatty-it-is); the same choice sets how often
    it reacts to [what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)),
    and says exactly what is captured and where it is sent.
-2. Click **Turn vision on** (off by default). From then on, opening **Start
-   talking** starts looking; the talk window's **Watching** button and its
-   title show it. It keeps going in the background (while you play) until you
-   click that button, Stop or Esc, lock Windows or close the talk window.
-   **Turn vision off** in Companion stops it for good.
+2. Click **Turn vision on** (off by default). That only allows it: Martlet
+   starts looking when you press **Start watching** (on Home, in the talk
+   window or from the notification-area icon), with or without the talk window
+   open, and Home's watching indicator, the talk window's **Stop watching**
+   button and its title show it. It keeps going in the background (while you
+   play) until you press **Stop watching**, Stop or Esc, pause Martlet, lock
+   Windows (it carries on when you unlock) or end the conversation. Listening
+   has its own Start listening / Stop listening button; neither starts or stops
+   the other. **Turn vision off** in Companion stops it for good.
 3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
    Duplication, falling back to GDI; kept only in memory) and compares a 16x9
    grey thumbnail with the last one to notice change. The active window is
@@ -26,8 +30,8 @@ your setup can't.
    side as Windows arranges them, each at most 1024 px and the picture at most
    2048 px, so the taskbar, the notification area and pop-up notifications are
    in it; it doesn't need a window in front (the desktop counts). The
-   **Watching** button's dot blinks on each capture (it twinkles
-   and reads **Looking…** while a look is with the model), and a line under the
+   **Stop watching** button's dot blinks on each capture (it twinkles
+   while a look is with the model), and a line under the
    talk window's status says what it sees (*Watching your whole screen (2
    monitors).*), how the last look went (*nothing worth saying*, *said
    something*), why it is holding off (you're talking, you seem away, the
@@ -354,7 +358,8 @@ Companion › Vision always states the result for the **current** Thinking selec
 
 Other edges: a host running an older Martlet refuses the larger request; the
 look fails and the message says to update the host. A failed or expired look
-never retries; it stops looking and the talk window says why. A settings change
+never retries; it stops watching, the talk window and Home's watching indicator
+say why, and **Start watching** tries again. A settings change
 made elsewhere (a synced change or a failover) restarts looking with the new
 choices once Martlet is free.
 
