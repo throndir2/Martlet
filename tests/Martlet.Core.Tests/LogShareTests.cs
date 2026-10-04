@@ -33,6 +33,15 @@ public sealed class LogShareTests : IDisposable
 
         internal void Own(DateTimeOffset at, string message) => Keep(Line(hostId, LogComponents.Gateway, at, message), null);
 
+        /// <summary>An unclean restart: the host comes back with only its first <paramref name="keep"/> lines and their marks, and
+        /// numbers new lines from there.</summary>
+        internal void Crash(int keep)
+        {
+            Entries.RemoveRange(keep, Entries.Count - keep);
+            marks.Clear();
+            foreach (var entry in Entries) marks[entry.Stream] = Math.Max(marks.GetValueOrDefault(entry.Stream), entry.Seq);
+        }
+
         public Task<(IReadOnlyList<LogRecord> Entries, long Next, bool More)> ReadAsync(long after, int limit, CancellationToken token)
         {
             Check();
@@ -165,6 +174,33 @@ public sealed class LogShareTests : IDisposable
         Assert.Equal(10, second.Sent);
         Assert.Equal(0, second.Waiting);
         Assert.Equal(lines.Length - 1, host.Entries.Count);
+    }
+
+    [Fact]
+    public async Task A_host_that_restarts_without_saving_is_read_again_and_gets_what_it_lost()
+    {
+        var host = new FakeHost("gpu-a");
+        host.Own(Now.AddMinutes(-9), "Gateway gpu-a started.");
+        var a = new LogShare(null, "desktop-a");
+        var b = new LogShare(null, "desktop-b");
+        LogRecord[] aLines = [Line("desktop-a", LogComponents.Desktop, Now.AddMinutes(-5), "A one"), Line("desktop-a", LogComponents.Desktop, Now.AddMinutes(-4), "A two")];
+        LogRecord[] bLines = [Line("desktop-b", LogComponents.Desktop, Now.AddMinutes(-3), "B one")];
+        await a.RunAsync([host], aLines, send: true, Now, CancellationToken.None);
+        await b.RunAsync([host], bLines, send: true, Now, CancellationToken.None);
+        await a.RunAsync([host], aLines, send: true, Now, CancellationToken.None);
+        Assert.Equal(4, host.Entries.Count);
+
+        // The host loses everything after its first line, then numbers new lines from there: its own line and another of B's.
+        host.Crash(keep: 1);
+        host.Own(Now.AddMinutes(-2), "Gateway gpu-a started again.");
+        LogRecord[] bMore = [.. bLines, Line("desktop-b", LogComponents.Desktop, Now.AddMinutes(-1), "B two")];
+        await b.RunAsync([host], bMore, send: true, Now, CancellationToken.None);
+        await a.RunAsync([host], aLines, send: true, Now, CancellationToken.None);
+
+        Assert.All(new[] { "A one", "A two", "B one", "B two", "Gateway gpu-a started again." },
+            text => Assert.Single(host.Entries, e => e.Message == text));
+        Assert.Contains(a.Logs.Snapshot(), l => l.Message == "B two");
+        Assert.Contains(a.Logs.Snapshot(), l => l.Message == "Gateway gpu-a started again.");
     }
 
     [Fact]

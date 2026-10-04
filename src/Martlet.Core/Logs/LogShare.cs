@@ -213,8 +213,9 @@ public sealed class NetworkLogs
 /// each other, so each desktop carries the lines: every run it reads each paired host's new lines (every computer's lines that
 /// host holds, its own gateway's included) into <see cref="Logs"/>, then gives every host the lines it lacks, from this
 /// computer's own logs and from every other computer's lines it holds. Each host keeps only lines newer than its mark per
-/// stream (computer and part), so a line delivered by several desktops, twice or after a restart is kept once, and a host that
-/// was away catches up from whichever desktop reaches it. One run at a time.
+/// stream (computer and part), so a line delivered by several desktops, twice or after a restart is kept once, a host that
+/// was away catches up from whichever desktop reaches it, and a host that came back without its newest lines (a power cut
+/// before it saved) is read again from the start and given back what it lost. One run at a time.
 /// </summary>
 public sealed class LogShare
 {
@@ -299,25 +300,47 @@ public sealed class LogShare
     {
         try
         {
-            // The first contact asks for the host's marks, so the first batch carries only what it lacks.
+            var lines = new List<LogRecord>();
+            var checkedPosition = false;
+            for (var page = 0; page < MaximumPagesPerRun; page++)
+            {
+                // The first page starts one line early, at the last line read: a host that restarted without saving its last
+                // lines (a power cut, a kill) numbers new lines from an older position and holds older marks. Then this PC reads
+                // that host again from the start and asks for its marks again, so nothing it lost or wrote since is missed.
+                var check = !checkedPosition && peer.LastRead is not null && peer.After > 0;
+                var (entries, next, more) = await host.ReadAsync(check ? peer.After - 1 : peer.After, PageSize, token).ConfigureAwait(false);
+                if (check)
+                {
+                    checkedPosition = true;
+                    if (entries.Count == 0 || (entries[0].Stream, entries[0].Seq) != peer.LastRead)
+                    {
+                        peer.After = 0;
+                        peer.LastRead = null;
+                        peer.MarksKnown = false;
+                        continue;
+                    }
+                    entries = entries.Skip(1).ToArray();
+                }
+                lines.AddRange(entries);
+                if (entries.Count > 0)
+                {
+                    peer.After = next;
+                    peer.LastRead = (entries[^1].Stream, entries[^1].Seq);
+                }
+                if (!more) break;
+            }
+            // The first contact (and the first after a failure or a restart) asks for the host's marks, so the first batch
+            // carries only what it lacks.
             if (send && !peer.MarksKnown)
             {
-                var named = own.Select(r => r.Stream).Concat(Logs.Snapshot().Select(r => r.Stream))
+                var named = own.Select(r => r.Stream).Concat(Logs.Snapshot().Select(r => r.Stream)).Concat(lines.Select(r => r.Stream))
                     .Where(s => s != OwnStream(host.HostId)).Distinct(StringComparer.Ordinal).Take(LogBatch.MaximumStreams).ToArray();
                 var (_, marks) = await host.PushAsync(new LogBatch { SchemaVersion = 1, Streams = named.Select(StreamOf).ToArray() }, token)
                     .ConfigureAwait(false);
-                peer.Raise(marks);
+                peer.Replace(marks);
                 peer.MarksKnown = true;
             }
-            var lines = new List<LogRecord>();
-            for (var page = 0; page < MaximumPagesPerRun; page++)
-            {
-                var (entries, next, more) = await host.ReadAsync(peer.After, PageSize, token).ConfigureAwait(false);
-                lines.AddRange(entries);
-                foreach (var entry in entries) peer.Raise(entry.Stream, entry.Seq);
-                peer.After = Math.Max(peer.After, next);
-                if (!more || entries.Count == 0) break;
-            }
+            foreach (var line in lines) peer.Raise(line.Stream, line.Seq);
             return (host, LogShareState.Shared, lines);
         }
         catch (LogHostException error)
@@ -407,12 +430,14 @@ public sealed class LogShare
         return new() { Source = stream[..split], Component = stream[(split + 1)..] };
     }
 
-    /// <summary>What this computer knows of one host: the store position read up to and, per stream, the newest line the host
-    /// holds at least (<see cref="MarksKnown"/> once the host itself said so this session).</summary>
+    /// <summary>What this computer knows of one host: the store position read up to and the line read there, and, per stream,
+    /// the newest line the host holds at least (<see cref="MarksKnown"/> once the host itself said so since the last failure
+    /// or restart).</summary>
     private sealed class Peer
     {
         private readonly Dictionary<string, long> marks = new(StringComparer.Ordinal);
         internal long After;
+        internal (string Stream, long Seq)? LastRead;
         internal bool MarksKnown;
 
         internal long Mark(string stream) => marks.GetValueOrDefault(stream);
@@ -425,6 +450,13 @@ public sealed class LogShare
         internal void Raise(IEnumerable<LogMark> values)
         {
             foreach (var mark in values) Raise(mark.Source + "/" + mark.Component, mark.Seq);
+        }
+
+        /// <summary>The host's own marks, which can be older than the ones known here after it restarted without saving.</summary>
+        internal void Replace(IEnumerable<LogMark> values)
+        {
+            marks.Clear();
+            Raise(values);
         }
     }
 }

@@ -179,6 +179,29 @@ internal static class LogRehearsal
                     $"files: {every}; markers present: {markers}; a line once: {once}");
             });
 
+            await Run("A host that comes back without its newest lines (a power cut before it saved) is read from the start again and gets them back", async () =>
+            {
+                await h2.StopAsync();
+                await h2.StartAsync();
+                foreach (var desktop in new[] { a, b, c }) await desktop.PairAsync(h2);
+                var saved = h2.Saved;
+                a.Write("INFO", "A: Line lab-logs-2 lost in a power cut.");
+                c.Write("INFO", "C: Line lab-logs-2 lost in a power cut.");
+                await c.ShareAsync([h2], token);
+                await a.ShareAsync(both, token);
+                var had = Count(await a.ReadHostAsync(h2, token), "lost in a power cut");
+                // The power cut: lab-logs-2 starts again from what it saved before those lines and numbers new lines from there.
+                await h2.StopAsync();
+                h2.Saved = saved;
+                await h2.StartAsync();
+                foreach (var desktop in new[] { a, b, c }) await desktop.PairAsync(h2);
+                var lost = Count(await a.ReadHostAsync(h2, token), "lost in a power cut");
+                var result = await a.ShareAsync(both, token);
+                var back = Count(await a.ReadHostAsync(h2, token), "lost in a power cut");
+                return (had == 2 && lost == 0 && back == 2 && result.Shared == 2,
+                    $"lab-logs-2 held the two lines: {had}; after the power cut: {lost}; after A's next run: {back} (\"{result.Describe()}\")");
+            });
+
             await Run("A request for a host's logs without a paired device's signature is refused", async () =>
             {
                 using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
@@ -283,11 +306,13 @@ internal static class LogRehearsal
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
-        private byte[]? saved;
         internal GatewayServer Server { get; private set; } = null!;
         internal GatewayHostIdentity Identity { get; private set; } = null!;
         internal string HostId { get; private init; } = "";
         internal string Origin { get; private set; } = "";
+
+        /// <summary>The saved logs.json; setting it stands in for a host that comes back with an older save.</summary>
+        internal byte[]? Saved { get; set; }
 
         internal static async Task<LabHost> StartAsync(string hostId)
         {
@@ -320,8 +345,8 @@ internal static class LogRehearsal
             listener = null;
         }
 
-        public byte[]? Load() => saved;
-        public void Save(byte[] bytes) => saved = (byte[])bytes.Clone();
+        public byte[]? Load() => Saved;
+        public void Save(byte[] bytes) => Saved = (byte[])bytes.Clone();
         public void Record(GatewayAuditEvent gatewayEvent) { }
 
         public async ValueTask DisposeAsync()

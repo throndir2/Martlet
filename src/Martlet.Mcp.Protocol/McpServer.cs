@@ -69,7 +69,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "desktops with real log folders, the desktop's paired client and the real log sharing engine (Martlet.Core.Logs.LogShare). " +
             "Walks a desktop's lines reaching both hosts, a desktop that reaches only one host whose lines still reach the other, each " +
             "host's own gateway lines reaching the other host and every desktop, every line kept once however often it is delivered, a " +
-            "host that was down catching up, the copy of everyone's lines surviving a restart, Save logs to share holding every computer " +
+            "host that was down catching up, a host that lost its newest lines in a power cut getting them back, the copy of everyone's " +
+            "lines surviving a restart, Save logs to share holding every computer " +
             "and an unsigned request refused. Synthetic lines only; loopback only; the folder is deleted.", new { }),
         Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
             "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +

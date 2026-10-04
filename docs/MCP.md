@@ -1939,7 +1939,9 @@ and C gets them through `lab-logs-2`; repeated runs keep every line once on
 every host and desktop; a host that was down catches up after restarting with
 its saved log (the run while it was down says *Waiting for lab-logs-1*); B's
 `network-logs.json` survives a restart; Save logs to share on B holds every
-computer's lines once in `about.txt` and `martlet-logs.txt`; an unsigned
+computer's lines once in `about.txt` and `martlet-logs.txt`; a host that
+comes back from a power cut without its newest lines (it restarts from an older
+saved `logs.json`) is read from the start again and gets them back; an unsigned
 request is refused. Synthetic lines; loopback only; the folder is deleted.
 
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same

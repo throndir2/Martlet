@@ -73,7 +73,10 @@ the newest 6,000 lines (about 1.8 MB) and saves at most every 30 seconds and
 when it stops. A desktop that reaches only some hosts still reaches every
 computer: another desktop that reaches both passes the lines on. A host that
 stops answering only delays lines; they wait on each computer and reach it when
-it answers again. The card under the title says how sharing went: *Sharing logs
+it answers again. A host that comes back without its newest lines (a power cut
+before it saved) is noticed on each desktop's next run: the line it read last is
+no longer where it was, so it reads that host again from the start, asks for its
+marks again and gives it back what it lost. The card under the title says how sharing went: *Sharing logs
 with 2 of 3 hosts. Waiting for gpu-box. Update old-box to share its logs.
 Checked at 1:40 AM.*, or that no host is paired yet (then the page shows only
 this PC's logs). The `logs` entry older Martlet desktops kept in the
@@ -95,7 +98,8 @@ Windows machine through Martlet MCP (`logs_timeline`, `logs_export` and the
 desktop's Diagnostics controls). Sharing was rehearsed with `logs_share_selftest`:
 two real gateways on loopback and three simulated desktops with the production
 sharing engine, including a desktop that reaches only one host, a host that was
-down and the saved copy after a restart; the gateway endpoint (marks,
+down, a host that lost its newest lines in a power cut and the saved copy
+after a restart; the gateway endpoint (marks,
 deduplication, relaying, paging, persistence and refused requests) in-process.
 Sharing between real computers over a network is **NOT RUN**.
 
