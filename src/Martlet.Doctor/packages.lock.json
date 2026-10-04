@@ -5,7 +5,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.34.0, )"
+          "Martlet.Core": "[0.35.0, )"
         }
       },
       "martlet.core": {
@@ -14,7 +14,7 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.34.0, )"
+          "Martlet.Core": "[0.35.0, )"
         }
       }
     },
@@ -36,7 +36,7 @@
         "type": "Project",
         "dependencies": {
           "Concentus": "[2.2.2, )",
-          "Martlet.Core": "[0.34.0, )",
+          "Martlet.Core": "[0.35.0, )",
           "NAudio.Wasapi": "[3.1.0, )",
           "NVorbis": "[0.10.5, )"
         }
@@ -47,7 +47,7 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.34.0, )"
+          "Martlet.Core": "[0.35.0, )"
         }
       },
       "Concentus": {
