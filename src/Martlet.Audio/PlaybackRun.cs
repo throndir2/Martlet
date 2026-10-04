@@ -26,6 +26,8 @@ public sealed class PlaybackRun
     private bool inputCompleted, prebuffered, started, drained, terminal;
     private bool deviceOpened, deviceReleased;
     private long? underrunAt;
+    private int underruns;
+    private TimeSpan underrunTime;
     private PlaybackState state = PlaybackState.Starting;
     private PlaybackState stopOutcome = PlaybackState.Canceled;
     private MartletError? error;
@@ -145,6 +147,7 @@ public sealed class PlaybackRun
             stopOutcome = outcome;
             error = failure;
             state = PlaybackState.Stopping;
+            EndUnderrun();
             InvalidateClock(PlaybackClockState.Stopped);
             queue.Clear();
             history.Clear();
@@ -261,7 +264,7 @@ public sealed class PlaybackRun
                     {
                         if (underrunAt is not null && !stop.Task.IsCompleted)
                         {
-                            underrunAt = null;
+                            EndUnderrun();
                             state = PlaybackState.Playing;
                             Emit(PlaybackEventKind.Resumed);
                         }
@@ -283,6 +286,7 @@ public sealed class PlaybackRun
                         if (underrunAt is null && !inputCompleted && !stop.Task.IsCompleted)
                         {
                             underrunAt = time.GetTimestamp();
+                            underruns++;
                             InvalidateClock(PlaybackClockState.Underrun);
                             state = PlaybackState.Underrun;
                             Emit(PlaybackEventKind.Underrun);
@@ -434,6 +438,7 @@ public sealed class PlaybackRun
                 error = PlaybackErrors.Create(ErrorCode.StreamTruncated);
             }
             terminal = true;
+            EndUnderrun();
             InvalidateClock(PlaybackClockState.Stopped);
             queue.Clear();
             history.Clear();
@@ -463,7 +468,19 @@ public sealed class PlaybackRun
 
     private PlaybackSnapshot GetSnapshot() => new(request.Ids, request.Epoch, state, accepted, read,
         submitted, consumed, terminal || stop.Task.IsCompleted ? 0 : accepted - read,
-        queue.Count, drained, deviceReleased, Interlocked.Read(ref droppedEvents), error);
+        queue.Count, drained, deviceReleased, Interlocked.Read(ref droppedEvents), error)
+    {
+        Underruns = underruns,
+        UnderrunTime = underrunTime + (underrunAt is { } since ? time.GetElapsedTime(since) : TimeSpan.Zero)
+    };
+
+    // Ends the wait for more audio that is going on, adding how long it lasted. Called with the gate held.
+    private void EndUnderrun()
+    {
+        if (underrunAt is not { } since) return;
+        underrunTime += time.GetElapsedTime(since);
+        underrunAt = null;
+    }
 
     private void Emit(PlaybackEventKind kind) => events.Writer.TryWrite(new(++eventSequence,
         time.GetUtcNow(), time.GetElapsedTime(startedAt), kind, GetSnapshot(), deviceInfo));

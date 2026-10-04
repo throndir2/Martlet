@@ -17,11 +17,18 @@ namespace Martlet.Mcp;
 /// runtime (ConversationRuntime, the Chat Completions adapter, the host voice stream and the playback sink). A fixture Chat
 /// Completions endpoint on 127.0.0.1 streams a canned reply (NOT AI) one sentence at a time, like OpenRouter; a fixture Martlet
 /// host voice (a quiet tone, NOT AI) fails on the failAt-th piece it is asked to say the way a paired host's worker does
-/// (server: worker.failed, unavailable: worker.unavailable, stall: no audio until the voice's time runs out); a fixture speaker
-/// opens no device and plays nothing. The reply's whole text must still arrive and the turn complete; only the voice stops.</summary>
+/// (server: worker.failed, unavailable: worker.unavailable, stall: no audio until the voice's time runs out); slow makes every
+/// piece slower than real time instead, half its audio, then a pause longer than that audio and the old 1 s underrun limit,
+/// then the rest, as Chatterbox streams on a busy graphics card; a fixture speaker opens no device and plays nothing. The
+/// reply's whole text must still arrive and the turn complete; only the voice stops (with slow, nothing stops: every piece is
+/// spoken whole, and the reply latency line says how often and how long the voice paused).
+/// muted: the user mutes Martlet's voice (ConversationTurn.MuteVoice, as the character's Mute voice does) as the failAt-th piece
+/// is asked; text-only: the reply has no voice (Speak Martlet's replies aloud off). Either way the captions show the rest.</summary>
 internal static class SpokenReplyCheck
 {
-    internal static readonly string[] Failures = ["server", "unavailable", "stall", "none"];
+    internal static readonly string[] Failures = ["server", "unavailable", "stall", "slow", "none", "muted", "text-only"];
+    // How long a slow voice keeps the speakers waiting in the middle of each piece.
+    internal static readonly TimeSpan SlowGap = TimeSpan.FromMilliseconds(1_500);
     private const string Model = "fixture-model";
     private const string VoiceModel = "chatterbox-turbo";
     private static readonly string[] Sentences =
@@ -34,10 +41,12 @@ internal static class SpokenReplyCheck
 
     /// <summary>With <paramref name="reply"/>, that text is streamed a word at a time instead of the four canned sentences.
     /// <paramref name="breaks"/> are the persona's speech breaks the reply is spoken with, the defaults when null, as the desktop
-    /// always passes them (<paramref name="persona"/> names the saved persona they came from, if any).</summary>
+    /// always passes them (<paramref name="persona"/> names the saved persona they came from, if any). With
+    /// <paramref name="chattiness"/>, the reply is offered the chattiness tags as the desktop offers them while Martlet decides
+    /// how chatty it is; they must never be shown or spoken.</summary>
     internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, CancellationToken cancellation,
         int? reasoningMs = null, int? voiceDelayMs = null, string? reply = null, SpeechBreaks? breaks = null, string? persona = null,
-        string? thinkingSteps = null, bool refuseThinking = false)
+        string? thinkingSteps = null, bool refuseThinking = false, bool chattiness = false)
     {
         if (thinkingSteps is not (null or "off" or "on")) throw new ArgumentException("'thinkingSteps' must be off or on.");
         if (refuseThinking && thinkingSteps is null) throw new ArgumentException("'refuseThinking' needs thinkingSteps.");
@@ -76,13 +85,15 @@ internal static class SpokenReplyCheck
                 FirstAudioTimeout = TimeSpan.FromSeconds(failure == "stall" ? 3 : 20),
                 MaxRequestTime = TimeSpan.FromSeconds(failure == "stall" ? 4 : 20)
             };
-            var speech = new SpeechOutput(new SpeechSynthesisSelection(SelfHostSetup.GatewayF5Alias, VoiceModel, preset.ToString("N"),
+            var textOnly = failure == "text-only";
+            var speech = textOnly ? null : new SpeechOutput(new SpeechSynthesisSelection(SelfHostSetup.GatewayF5Alias, VoiceModel, preset.ToString("N"),
                 SpeechOutputFormat.Pcm24KhzMono16Le), new OutputSelection(OutputPolicy.DefaultAtStart), limits);
             var request = new ConversationRequest(new BoundedTextInput("Say hi.", "Fixture check."),
                 new TextModelSelection(ChatCompletionsSetup.Alias, Model), new TextGenerationLimits(),
                 new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
-                speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: target, speechBreaks: breaks,
-                generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" });
+                speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: textOnly ? null : target, speechBreaks: breaks,
+                generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" },
+                controlTags: chattiness ? ChattinessTags.All : null);
             // What the speech bubble and subtitles are given: each line as its playback starts, or, once the voice failed, each
             // sentence it couldn't say, shown one after another for its reading time.
             var captions = new SpokenTextFeed();
@@ -95,12 +106,14 @@ internal static class SpokenReplyCheck
             var startedAt = TimeProvider.System.GetTimestamp();
             timeline.Mark("building the request", startedAt);
             var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
+            voice.Turn.TrySetResult(turn);
             var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
             await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
             var latencyLine = ReplyLatency.Describe(timeline, startedAt, TimeProvider.System, terminal,
                 $"Thinking {Model}, voice {VoiceModel}");
             var latency = latencyLine is null ? null : LatencyReport.Parse(DateTimeOffset.Now, latencyLine);
-            string[] expectedSteps = failure == "none"
+            var everyPiece = failure is "none" or "slow";
+            string[] expectedSteps = everyPiece
                 ? [ReplyLatency.ThinkingAuthorization, ReplyLatency.ThinkingConnection,
                     reasoning > TimeSpan.Zero ? ReplyLatency.HiddenReasoning : ReplyLatency.ThinkingFirstWords, ReplyLatency.FirstSentence,
                     ReplyLatency.VoiceAuthorization, ReplyLatency.VoiceSynthesis, ReplyLatency.PlaybackStart, ReplyLatency.Speakers]
@@ -114,17 +127,26 @@ internal static class SpokenReplyCheck
             var thinkingOk = thinkingSteps is null ? sentControl.All(control => !control) && !terminal.ReasoningRejected
                 : refuseThinking ? terminal.ReasoningRejected && sentControl is [true, false]
                 : !terminal.ReasoningRejected && sentControl is [true];
-            var latencyOk = failure != "none" || latency is { TotalMs: { } total } && missingSteps.Length == 0 &&
+            var latencyOk = !everyPiece || latency is { TotalMs: { } total } && missingSteps.Length == 0 &&
                 Math.Abs(stepsSum - total) <= latency.Steps.Count + 1 &&
                 (reasoning == TimeSpan.Zero || latency.Steps.GetValueOrDefault(ReplyLatency.HiddenReasoning) >= reasoning.TotalMilliseconds * 0.8) &&
-                latency.Steps.GetValueOrDefault(ReplyLatency.VoiceSynthesis) >= voiceDelay.TotalMilliseconds * 0.8;
+                latency.Steps.GetValueOrDefault(ReplyLatency.VoiceSynthesis) >= voiceDelay.TotalMilliseconds * 0.8 &&
+                // A slow voice's pauses are said in the line: at least one per piece, each about as long as its gap.
+                (failure != "slow" || latency.VoicePauses >= voice.Calls &&
+                    latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8);
             var text = turn.Content.Text;
             var served = string.Concat(chunks);
-            var full = text == served;
+            // The chat and captions never show a control tag the reply was offered (VoiceTags.Strip without them leaves them be).
+            var expectedText = chattiness ? VoiceTags.Strip(served, controlTags: ChattinessTags.All) : served;
+            var full = text == expectedText;
+            var controls = turn.Controls;
+            string[] pieces = voice.Pieces;
+            var tagsHidden = !chattiness || !ChattinessTags.All.Any(tag =>
+                text.Contains(tag, StringComparison.OrdinalIgnoreCase) || pieces.Any(piece => piece.Contains(tag, StringComparison.OrdinalIgnoreCase)));
             // Captions of unsaid sentences keep coming after the reply ends, one per reading time.
             bool Covered()
             {
-                lock (shown) return Words(string.Join(" ", shown.Select(line => line.Text))) == Words(served);
+                lock (shown) return Words(string.Join(" ", shown.Select(line => line.Text))) == Words(expectedText);
             }
             var waited = System.Diagnostics.Stopwatch.StartNew();
             while (!Covered() && waited.Elapsed < TimeSpan.FromSeconds(25)) await Task.Delay(100, cancellation);
@@ -135,19 +157,31 @@ internal static class SpokenReplyCheck
                 "unavailable" => ProviderFailureCode.ModelNotFound,
                 _ => (ProviderFailureCode?)null
             };
-            var voiceOk = failure == "none"
-                ? !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls > 0
-                : terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls >= at &&
-                  (expected is null || terminal.ProviderFailure == expected && terminal.FailedProvider == ProviderRole.Tts);
+            var voiceOk = failure switch
+            {
+                _ when everyPiece => !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls > 0,
+                // Muting ends what is said aloud at that piece: nothing more is asked of the voice, and it isn't a failure.
+                "muted" => terminal.VoiceMuted && !terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls == at,
+                "text-only" => !terminal.VoiceMuted && !terminal.SpeechFailed && voice.Calls == 0 && speakers.Opens == 0,
+                _ => terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls >= at &&
+                    (expected is null || terminal.ProviderFailure == expected && terminal.FailedProvider == ProviderRole.Tts)
+            };
             (string Text, long AtMs, bool Spoken)[] lines;
             lock (shown) lines = [.. shown];
             return new
             {
                 ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk &&
-                    thinkingOk,
+                    thinkingOk && tagsHidden,
                 voiceFailure = failure,
-                failAt = failure == "none" ? (int?)null : at,
+                failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
+                chattiness = chattiness ? new
+                {
+                    offered = ChattinessTags.All,
+                    found = controls,
+                    switchesTo = ChattinessTags.Last(controls) is { } level ? ChattinessTags.Name(level) : null,
+                    hidden = tagsHidden
+                } : null,
                 thinking = new
                 {
                     ok = thinkingOk,
@@ -184,6 +218,7 @@ internal static class SpokenReplyCheck
                 {
                     stopped = terminal.SpeechFailed,
                     why = terminal.SpeechFailure.ToString(),
+                    muted = terminal.VoiceMuted,
                     provider = terminal.ProviderFailure?.ToString(),
                     failedJob = terminal.FailedProvider?.ToString(),
                     piecesAsked = voice.Calls,
@@ -194,7 +229,10 @@ internal static class SpokenReplyCheck
                     speechLimitReached = terminal.SpeechLimitReached,
                     speakerOpens = speakers.Opens,
                     samplesPlayed = speakers.Samples,
-                    mayHavePlayed = terminal.MayHavePlayed
+                    mayHavePlayed = terminal.MayHavePlayed,
+                    // How often and how long the speakers ran dry mid-piece waiting for the voice's next audio.
+                    pauses = terminal.Timings?.VoiceWaits ?? 0,
+                    pausedMs = Math.Round((terminal.Timings?.VoiceWaited ?? TimeSpan.Zero).TotalMilliseconds)
                 },
                 captions = new
                 {
@@ -291,12 +329,16 @@ internal static class SpokenReplyCheck
         internal int Started => Volatile.Read(ref started);
         // The fixture reply's pieces it was asked to say, in order.
         internal string[] Pieces { get { lock (pieces) return [.. pieces]; } }
+        // The reply being spoken, which "muted" mutes as the failAt-th piece is asked.
+        internal TaskCompletionSource<ConversationTurn> Turn { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async IAsyncEnumerable<byte[]> StreamAsync(HostSpeechTarget target, BoundedSpeechInput input, CorrelationIds ids,
             long epoch, DateTimeOffset deadline, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             var call = Interlocked.Increment(ref calls);
             lock (pieces) pieces.Add(input.Text);
+            // The user mutes Martlet's voice while this piece is being made: it is canceled before any of its audio.
+            if (call == failAt && failure == "muted") (await Turn.Task.WaitAsync(cancellationToken)).MuteVoice();
             await Task.Delay(TimeSpan.FromMilliseconds(50) + delay, cancellationToken);
             if (call == failAt)
             {
@@ -305,12 +347,20 @@ internal static class SpokenReplyCheck
                 if (failure == "unavailable") throw new HostTextException(ProviderFailureCode.ModelNotFound);
                 if (failure == "stall") await Task.Delay(Timeout.Infinite, cancellationToken);
             }
-            // FIXTURE, NOT AI: a quarter second of a quiet 220 Hz tone per piece, written only to the fixture speaker.
-            var pcm = new byte[6_000 * 2];
+            // FIXTURE, NOT AI: a quarter second of a quiet 220 Hz tone per piece (half a second for a slow voice, said in two
+            // quarter-second bursts so playback has started before the pause), written only to the fixture speaker.
+            var pcm = new byte[(failure == "slow" ? 12_000 : 6_000) * 2];
             for (var i = 0; i < pcm.Length / 2; i++)
                 BitConverter.TryWriteBytes(pcm.AsSpan(i * 2), (short)(Math.Sin(2 * Math.PI * 220 * i / 24_000.0) * 3000));
             Interlocked.Increment(ref started);
-            yield return pcm;
+            if (failure == "slow")
+            {
+                // Slower than real time: half the piece, then a pause longer than all of its audio, then the rest.
+                yield return pcm[..(pcm.Length / 2)];
+                await Task.Delay(SlowGap, cancellationToken);
+                yield return pcm[(pcm.Length / 2)..];
+            }
+            else yield return pcm;
             Interlocked.Increment(ref spoken);
         }
     }

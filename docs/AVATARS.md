@@ -3,7 +3,9 @@
 **Default character shipped, 2026-09-28.** Official builds bundle the Live2D
 Cubism runtime and the Hiyori sample model. **Show character** on the main window
 opens her as a transparent desktop overlay: authored idle motions, eye blink,
-breathing, physics, cursor look-at and lip-sync. Automatic lip-sync uses a local
+breathing, physics, cursor look-at and lip-sync (while Martlet watches your screen
+it can [decide where she looks](SCREEN_COMMENTARY.md#where-the-character-looks):
+your mouse, something that just popped up, or what it remarks on). Automatic lip-sync uses a local
 Audio2Face service when one is running on the PC, else a paired Martlet host that
 runs Audio2Face on its NVIDIA GPU (host role installed with [`martlet-host add audio2face`](../deploy/host/README.md)),
 else the loudness of Martlet's own voice; no microphone or upload is used. Users can switch
@@ -80,6 +82,12 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **Where it looks**: the head and eyes follow the mouse, or with Companion ›
+  Vision › **Where the character looks** set to *Martlet decides*, glance at
+  something that just changed on the watched screen or at the part of it a
+  screen glance's Thinking model names with a look tag (`{look top right}`).
+  Look tags are never emotes; see
+  [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 
@@ -233,6 +241,7 @@ from `RuntimeReadiness`. Record readiness and performance independently.
 | Audio2Face + Live2D with approved mouth/face parameters | Requires mapping / degraded | Approve per-model reduction and masks; retain only expressible channels. Do not claim generic Cubism ARKit support. |
 | Amplitude + existing Live2D mouth or VRM mouth expression | Implemented default (loudness lip-sync) | Uses the model's `LipSync` group / `ParamMouthOpenY` (Live2D) or `aa` (VRM); no viseme or detailed-emotion quality claim. |
 | Audio2Face + amplitude both owning mouth | Arbitrated | Automatic mode sends both; renderers apply loudness only while no Audio2Face frame arrived in the last 250 ms. Explicit Audio2Face-only activation stops loudness. |
+| Song mouth track + speech | Arbitrated | A song's mouth track (made once from its vocals stem: offline Audio2Face, visemes from the sung words, or vocal loudness; see [singing in conversation](CONVERSATION.md#singing-in-conversation)) is sent on the song's playback clock through the same composition and reset/apply frames (Automatic mode with a mouth mapping; the built-in VRM mapping also maps `mouthSmileLeft` to `ee` and `mouthStretchLeft` to `ih`), or as the loudness mouth otherwise. One playback identity owns the face at a time: a reply's Audio2Face frames take it while they play and the song resets a new identity when they stop; the song's mouth also pauses while Martlet talks over the song. |
 | Audio2Face mouth + idle non-mouth/pose | Compatible in principle only with disjoint actual targets | Mask clip/expression mouth writes and respect rig overrides. First-slice facial parts only; pose/body integration remains planned. |
 | VRMA + capable VRM | Format-compatible; first-slice playback unsupported | Implement A02d/version-aware retargeting, masks and local motion qualification before enabling. |
 | VRMA directly + Live2D | Unsupported | Use an authored Cubism motion or implement and qualify an explicit conversion/mapping; selecting a resolver cannot make skeletal data into Live2D motion. |

@@ -8,8 +8,8 @@
         PreviewKeyDown="Window_PreviewKeyDown"
         AutomationProperties.Name="Talk with Martlet">
     <!-- The talk window is only the conversation: its history and the message box. It doesn't block the rest of Martlet.
-         How Martlet listens, speaks and sees is chosen in Companion; Start listening turns always listening on here (it is
-         off when the window opens), and the vision button pauses or resumes what is on. -->
+         How Martlet listens, speaks and sees is chosen in Companion; Start listening and Start watching turn always listening and
+         watching on here (both are off when the window opens), and each stops from its own button. -->
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel>
@@ -31,7 +31,7 @@
                     </Button>
                     <Button x:Name="StopButton" Content="S_top (Esc)" Click="Stop_Click" IsEnabled="False" Padding="14,6" MinHeight="34"
                             AutomationProperties.AutomationId="LiveStop" AutomationProperties.AcceleratorKey="Esc"
-                            AutomationProperties.HelpText="Stops the reply, recording and vision. Listening stays on." />
+                            AutomationProperties.HelpText="Stops the reply, recording and watching. Listening stays on." />
                 </StackPanel>
                 <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">
@@ -42,9 +42,15 @@
                     <!-- While vision is on: what Martlet is watching, how its last look went and why it is holding off. -->
                     <TextBlock x:Name="VisionStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveVisionStatus"/>
+                    <!-- While Martlet decides where the character looks (Companion › Vision): what its eyes are on now. -->
+                    <TextBlock x:Name="GazeStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveGaze"/>
                     <!-- While Hear what this PC plays is on: whether Martlet hears the PC now, or why it can't. -->
                     <TextBlock x:Name="PcAudioText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LivePcAudio"/>
+                    <!-- While Martlet decides how chatty it is and vision or hearing this PC is on: the level it picked. -->
+                    <TextBlock x:Name="ChattinessText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveChattiness"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes). -->
                     <!-- Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <StackPanel x:Name="ContextRow" Orientation="Horizontal" Margin="0,2,0,0" Visibility="Collapsed">
@@ -72,6 +78,24 @@
                                    AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveJobs"/>
                         <StackPanel x:Name="JobChips" Margin="0,2,0,0"/>
                     </StackPanel>
+                </Border>
+                <!-- The song Martlet sings (sing_song, play_song): where it is, the line being sung, and Stop singing. Only Martlet
+                     performs songs (asked in conversation); nothing here plays one. It keeps going while you talk; Stop (Esc) ends
+                     it with a quick fade, Stop singing musically. -->
+                <Border x:Name="SongPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="14" Padding="12,8" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveSongPanel">
+                    <DockPanel>
+                        <Button x:Name="SongStopButton" DockPanel.Dock="Right" VerticalAlignment="Center" Content="Stop singing" Click="SongStop_Click"
+                                Padding="12,3" Margin="10,0,0,0" Visibility="Collapsed"
+                                ToolTip="Martlet finishes the word and the band rings out on the beat. Martlet hears where it stopped."
+                                AutomationProperties.AutomationId="LiveSongStop"/>
+                        <StackPanel>
+                            <TextBlock x:Name="SongText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveSong"/>
+                            <TextBlock x:Name="SongLineText" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       AutomationProperties.AutomationId="LiveSongLine"/>
+                        </StackPanel>
+                    </DockPanel>
                 </Border>
                 <!-- A tool call waiting for your answer: inline, so answering never leaves (or revokes) the conversation. -->
                 <Border x:Name="ToolApprovalPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"

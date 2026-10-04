@@ -14,14 +14,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
+        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
-        // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
-        // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
-        "LiveStop", "LiveRefreshContext",
+        // The talk window's Stop (Esc) only stops work (a reply, a recording, vision, a song); it starts nothing and never pauses
+        // listening. Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops
+        // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song.
+        "LiveStop", "LiveRefreshContext", "LiveSongStop",
+        // Companion › Replies' Open Deep thinking only opens that page.
+        "RepliesOpenDeepThinking",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
@@ -31,9 +34,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
-        // like OpenLiveConversation, Pause Martlet only stops work and End the conversation closes the talk window like CloseLive.
-        // Start listening, Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
-        "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
+        // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
+        // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
+        // Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
+        "TrayOpen", "TrayTalk", "TrayPause", "TrayStopListening", "TrayStopWatching", "TrayEndTalk",
         // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
         // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
         // or page, like TrayTalk and TrayOpen. Its zoom, position, Keep on top and Hide character items need --allow-ui-effects.
@@ -55,6 +59,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // never writes anything that wasn't already changed. The Character window's sections only expand.
         "OpenCompanion", "OpenAvatar", "OpenLorebooks", "OpenMemory", "CompanionClose", "AvatarClose", "LorebookClose", "MemoryClose",
         "AvatarAdvanced", "RemoteHostSection",
+        // Companion › Memory's Open conversation history opens the record's window, Close closes it, and Search and Show all
+        // only filter what it lists (from memory; nothing is written). Its two choices save conversation-history.json, typing a
+        // search is ui_set_text, and Delete asks first; those need --allow-ui-effects.
+        "OpenHistory", "HistoryClose", "HistorySearchRun", "HistoryShowAll",
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
         "ProblemClose",
@@ -77,16 +85,25 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
-        "LiveJobCancel-"];
+        "LiveJobCancel-",
+        // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
+        // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
+        "DeepPlace-",
+        // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
+        "PeopleMemories-",
+        // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
+        // There is no Play, Show or Activate; its Rename and Delete change it on every computer, so they need --allow-ui-effects.
+        "Creation-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
-        // listens); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start talking.",
-        // "Hearing you…", "Not listening" or why Martlet can't listen).
-        "OpenLiveConversation", "HomeListen", "HomeListeningStatus",
+        // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
+        // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
+        // and watching indicator ("Watching your active window.", "Taking a look…", "Not watching" or why Martlet can't see).
+        "OpenLiveConversation", "HomeListen", "HomeListeningStatus", "HomeWatch", "HomeWatchingStatus",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
@@ -97,6 +114,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // CharacterLockPosition ("Lock position" / "Position locked: unlock in Martlet"). Clicking any of them saves
         // character-placement.json, so it needs --allow-ui-effects.
         "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
+        // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
+        // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
+        "CharacterMuteVoice",
         // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
@@ -110,12 +130,22 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
         // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
         // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
-        // forgotten on other computers (never a fact).
-        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus",
+        // forgotten on other computers (never a fact). MemoryFactStatus (the Memory window): how many facts it remembers, how
+        // many belong to people Martlet knows by voice or to forgotten voices, how many the Show choice lists, and what the
+        // last action did (never a fact or a name).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus",
+        // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
+        // (conversations, exchanges, since when); the history window's status line (counts, or what a search found). Never what
+        // was said: the window's list and text (HistoryConversations, HistoryExchanges) are not readable values.
+        "HistoryStatus", "HistoryWindowStatus",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Vision › Where the character looks (its VisionGaze-Mouse and VisionGaze-Martlet choices save
+        // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
+        // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).
+        "VisionGazeStatus", "LiveGaze",
         // Companion › Listening › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
@@ -147,6 +177,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
+        // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
+        // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and
+        // the talk window's line while Martlet decides and vision is on or it hears this PC (the level it picked and since when).
+        "VisionChattiness", "VisionChattinessStatus", "TalkPcChattiness", "TalkPcChattinessStatus", "LiveChattiness",
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects) and, under Another
         // of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads through the
@@ -160,12 +195,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
         // it needs --allow-ui-effects) and how the Thinking route takes it.
         "RepliesThinking", "RepliesThinkingStatus",
-        // Companion › Replies › Thinking longer: what it does on the Thinking route (on by default) or what keeps it from
-        // working, and the chosen effort, time limit, hourly limit and when it shares results (choosing one with ui_select, or the
-        // RepliesThinkLonger check box, saves it, so it needs --allow-ui-effects). In the talk window, the background work line
-        // (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id> holds that).
-        "RepliesThinkLongerStatus", "RepliesThinkLongerEffort", "RepliesThinkLongerTime", "RepliesThinkLongerPerHour",
-        "RepliesThinkLongerDelivery", "LiveJobs",
+        // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
+        // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
+        // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
+        // --allow-ui-effects); what Ollama on this PC has downloaded, whether the model typed for it fits beside Thinking's on the
+        // graphics card, why Same as Thinking can or can't think here, and what an endpoint's key field will do (never a key or
+        // base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
+        // background work line (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id>
+        // holds that). The song panel's line (the song's id, state, position, line number and section, lead-in, vamps, ducking, or
+        // where and why it stopped; never its title or words: LiveSongLine holds those).
+        "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
+        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
+        "DeepThinkingKeyStatus", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -179,6 +220,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
         // what its key field will do.
         "FallbackNow", "FallbackKeyStatus",
+        // Companion › Thinking, Voice and Listening: the job's Now line (where it runs and the model, as "Ollama on this PC:
+        // gemma4:12b") and, under A cloud provider, what the key field will do: keep the saved key, use again a key set aside
+        // when the job left that provider, or ask for one (never the key). Its Use button (SetupCloudSave-<page>) and
+        // SetupUseLocalThinking save the route, so they need --allow-ui-effects.
+        "SetupJobNow-Thinking", "SetupJobNow-Voice", "SetupJobNow-Listening",
+        "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
@@ -232,7 +279,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // interrupts; the questions an exit asks first (what Martlet is still busy with: work kinds, run window titles,
         // a host ID or an update version, never paths, keys or conversation text) and before Exit now (the step).
         // ClosingExitNow and the dialogs' ConfirmationYes exit Martlet, so they need --allow-ui-effects.
-        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion"
+        "ClosingStatus", "ClosingSlow", "ExitBusyQuestion", "ExitNowQuestion",
+        // Companion › Thinking › This PC's Use Ollama on this PC, for a model Ollama doesn't have yet: the download question
+        // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
+        // it, so it needs --allow-ui-effects.
+        "LocalModelDownloadQuestion",
+        // Creations: the fixed note ("Ask Martlet to sing or show any of these.") and empty state ("Things Martlet makes, like
+        // songs, appear here."), how many creations and how large, whether they are shared with the paired computers (with how
+        // many and when), and the selected creation's kind line (kind, length, size, when and on which computer it was made),
+        // where it is (this PC and which hosts hold it) and what to ask Martlet ("Ask Martlet to sing it."). Never a title, text,
+        // voice or personality: those are the owner's own (CreationTitle and the rename box are never returned).
+        "CreationsNote", "CreationsEmpty", "CreationsSummary", "CreationsStatus", "CreationKind", "CreationSync", "CreationAsk"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -284,10 +341,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.").
+        "DeepThinkingHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
         // or "...: not made yet" for a Thinking palette not made).
-        "AppearanceColor-", "AppearancePreview-"];
+        "AppearanceColor-", "AppearancePreview-",
+        // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
+        // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
+        // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>
+        // button downloads (after a confirmation) and switches Listening, so it needs --allow-ui-effects.
+        "ListenParakeetModel",
+        // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
+        // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
+        "CreationState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

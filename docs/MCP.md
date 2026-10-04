@@ -181,15 +181,47 @@ what it prints go to the Thinking model.
 
 ### Thinking longer
 
-**Companion > Replies > Thinking longer** (on by default) gives every reply on a
-route that does function calling Martlet's own `think_longer` (`task`, the
-complete instruction, and an optional `reason`) and `cancel_thinking` (optional
-`id`). The call never asks first and returns at once; the task is worked out in
-a background request with Thinking steps on and brought up when it's done
+**Companion > Deep thinking > Thinking longer** (on by default; *Where it thinks* ›
+*Off* turns it off) gives every reply on a route that does function calling
+Martlet's own `think_longer` (`task`, the complete instruction, and an optional
+`reason`) and `cancel_thinking` (optional `id`), while Deep thinking can run where
+it is set to think. The call never asks first and returns at once; the task is
+worked out in parallel, in a background request with Thinking steps on, by Deep
+thinking (the Thinking model when its provider answers several requests at once,
+another of your computers, a second model in Ollama on this PC or a cloud
+provider, chosen on each PC), and brought up when it's done
 ([Thinking longer and background work](CONVERSATION.md#thinking-longer-and-background-work)).
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
-started think-1`); the desktop log notes each start, pause and end without the
+started think-1`); the desktop log notes each start, fit check and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
+
+### Searching past conversations
+
+**Companion > Memory > Conversation history > Let Martlet search the record on
+its own** (off by default) gives every reply on a route that does function
+calling Martlet's own `search_conversations` (`query`, words to look for, and/or
+`when`: today, yesterday, 3 days ago, last week, a weekday or YYYY-MM-DD), after
+`think_longer` and `cancel_thinking`, always worded the same. It never asks
+first, searches the [record of conversations](MEMORY.md#conversation-history)
+on this PC from memory (other conversations than the one going on) and returns
+at most six exchanges with their dates, as data, never instructions. *Recent
+tool use* lists each call (`Martlet > search_conversations: found 2`); the
+desktop log notes how many were found, never what (`Past conversations:`).
+
+### Creations
+
+While at least one kind of creation is registered (songs, once singing lands),
+every reply on a route that does function calling also gets Martlet's own
+`list_creations` (optional `kind` and `query`) and `perform_creation` (`id` from
+the list, optional `options` object), after `think_longer`, `cancel_thinking` and
+`search_conversations` and always the same two with the same texts, so the start of every request stays
+the same. Neither asks first. `perform_creation` hands the creation to its kind's
+handler (a song is sung by the conversation); an unknown id, a kind this Martlet
+doesn't know, no handler or a creation still copying to this PC get a clear
+refusal for the model. The owner never presses Play: see
+[Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
+(`Martlet > perform_creation: performed`), never titles or options.
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -235,10 +267,55 @@ computers* is on, from `cluster-sync.txt`),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
-the voice models (`included`: `found`, `runtime`, `voiceModels`), whether
-Parakeet is downloaded, and counts from `voices.json` (voices, named, owner, with
-learned names, merged, tombstones). It never returns names, voiceprints or audio and
-runs no model.
+the voice models (`included`: `found`, `runtime`, `voiceModels`), whether any
+Parakeet model is downloaded (`parakeet`), `parakeetModels` (Companion ›
+Listening › *Parakeet in Martlet*: `listening`, the Listening route type with
+its `parakeetModel`, whether this Martlet `known`s it and whether it is
+`downloaded`; `displayLanguage` and the `recommended` model for it,
+`parakeet-tdt-110m-en` for English and `parakeet-tdt-0.6b-v3-int8` otherwise;
+and `models`, each with `id`, `name`, `languages`, `englishOnly`,
+`downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
+`recommended` and `inUse`), and counts from `voices.json` (voices, named, owner, with
+learned names, `withCompanionName`: voices that learned one of the companion's
+own names from the saved personas, which Martlet drops when it next hears them,
+`mostNames`: the most names one voice has, merged, tombstones). It never returns
+names, voiceprints or audio and runs no model.
+
+`voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
+with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
+voice list's name rules) on a fixture voice list in memory: V1 is the owner
+(typed Robert, learned Bob) and not heard; V2 (typed Sammy, learned Sam and, by
+mistake, Jane) and V3 (new, speaking) are heard; the fixture companion is the
+persona "Jane Doe" ("You are Jane, ..."). Its `scenarios` (each `passed` with a
+`detail`; `passed` is all of them) check that the companion's names, a word of
+them and a name Martlet's reply gives itself are refused, a heard voice drops
+Jane, a voice learns a name, keeps five names and shows the one it asked for
+(CALL), a wrong learned name is dropped (NOT) but a typed one is kept, a voice
+not heard gets no name, and SAME merges V3 into the owner's voice once per
+exchange. With a `dataDirectory` whose settings have personas,
+`companionNames` lists their names (`companionSource`) and one more scenario
+refuses a saved persona's name. An optional `answer` (NAME/CALL/NOT/SAME lines
+about V1-V3, at most 8192 characters) and `reply` are checked against the same
+fixture: `answer.updates`, `refused` (line and reason), `applied` (what the talk
+window would say) and the fixture `voices` afterwards. It never reads or writes
+the saved voice list and uses no audio, model or network.
+
+`parakeet_check` runs Companion › Listening › *Parakeet in Martlet*'s models
+the way the desktop does (optional absolute `dataDirectory`; `speechDirectory`,
+default the data directory's `speech` folder, where the desktop downloads
+them; `martletDirectory` for the sherpa-onnx runtime, which the script fills
+with this checkout's Desktop build). It loads each downloaded model (or those
+named in `models`) through the production `ParakeetEngine` and transcribes
+`phrases` (default four English sentences without numbers or names; up to 8)
+said by a Windows voice (System.Speech rendered to memory, never played) after
+0.3 s and before 1 s of faint noise. Per model it returns `loadMs`,
+`memoryMb` (process memory the model added), each phrase's `transcript`,
+`wordErrors`, `words`, `transcribeMs` and `meanProbability`, the
+`wordErrorRate` and `medianTranscribeMs`, and `ok` (at most 20% word errors);
+`ok` overall needs every model to pass, and `status` is `voices_status`'s
+`parakeetModels`. Without the runtime or a downloaded model, `ran` is false
+with the reason. Nothing is downloaded, recorded or played, and nothing leaves
+this PC.
 
 `voices_engine_check` runs the voice recognition engine that ships in a Martlet
 folder (same optional `martletDirectory`) the way the desktop does: it loads the
@@ -335,9 +412,10 @@ tags kept), `suppressedPieces` and `shown` (the chat and caption text, every
 tag stripped). The pieces break where the persona's [speech
 breaks](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in) allow:
 `dataDirectory`'s saved persona named `persona` (else the one Martlet uses,
-else the defaults), with any of `breaks`' `commas`, `periods`,
+else the defaults), with any of `breaks`' `periods`,
 `questionMarks`, `exclamationMarks` (booleans) and `shortEndingWords` (0-5)
-on top; `persona` and `breaks` (with `isDefault`) say what was used.
+on top; `persona` and `breaks` (with `isDefault`) say what was used. Commas,
+semicolons and dashes never break a piece.
 With `characterTags` (the character's [emote and motion
 tags](AVATARS.md#emotes-and-motions), such as `["{blush}"]`), those are stripped
 too and `characterCues` lists the cues the character acts on: each one's
@@ -384,6 +462,46 @@ of those each computer wrote) and `forgotten` (the tombstones every computer
 agreed on). It reads only `memory-sync.json` (IDs, revisions, digests and device
 IDs), never a fact, and contacts nothing.
 
+`memory_status` reads what Martlet remembers and [whose](MEMORY.md#whose-memories)
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
+`on (default)` for settings from before memory, `not set up`), `storage`
+(`Martlet folder` or `custom folder`), `state` (`none` without a store file,
+`loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
+`unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
+`everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
+by its tag such as `V3`, with `named`, `owner` and `facts`) and
+`forgottenVoices`. It reads the store's file as JSON without opening or
+locking the store (the desktop can keep running), and never returns a fact's
+text, a name, a voice ID or a path. It contacts nothing.
+
+`conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
+from a data directory (optional absolute `dataDirectory`; the disposable one in
+`Invoke-MartletMcp.ps1`): `memory` (`on`, `off` or `not chosen`), `preferences`
+(`conversation-history.json`: `keep`, on by default, and `search`, off by
+default), `recording` and `recallWhenMentioned` (memory on and `keep`), `tool`
+(whether replies are offered `search_conversations`, whether the Thinking route
+does function calling, and the tool exactly as the model gets it with its
+`utf8Bytes` and `estimatedTokens`), `prompt` (Companion > Prompts > *Past
+conversations* as sent) and `record` (`files`, `bytes`, `conversations`,
+`exchanges`, `skippedLines`, `notIndexed`, `oldest`, `newest`). Never what was
+said; it contacts nothing.
+
+`conversation_history_check` (optional `bulkExchanges`, 1,000-100,000, default
+20,000) rehearses the record with the production code (`ConversationHistory`
+and `PastConversations` in `src\Martlet.Conversation`) on synthetic
+conversations in a disposable folder and returns `{passed, failures, steps,
+tool}`: recording exchanges into month files, a line cut short by a crash
+skipped after a restart, an ordinary message recalling nothing, *Do you
+remember what I said about Kyoto?* and *What did we talk about yesterday?*
+bringing back the right exchanges (never the conversation going on) with the
+notes' size, `search_conversations` by words and by time and what it tells the
+model, deleting one conversation and everything, and reading `bulkExchanges`
+exchanges with the time recall takes (`recallMedianMs`, `recallMaxMs`) and the
+time an ordinary message's check takes (`ordinaryMessageCheckMs`). It is not a
+real conversation or Thinking model; the desktop's tests and `ui_*` tools cover
+the talk window.
+
 `memory_sync_selftest` (no arguments) rehearses shared memories end to end with
 the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
 `MemoryRehearsal.cs`; returns `{exitCode, report}`): two real gateways
@@ -394,7 +512,9 @@ paired client (`HostMemories.cs`) and the real sync engine
 (`Martlet.Core.Sync.MemorySyncNode`) wired as the desktop wires them. Its steps:
 A remembers a typed and a conversation fact and both hosts keep them; B takes
 them (same IDs, revisions and provenance) and recalls the cat fact; B edits it
-and A takes revision 2; A forgets a fact and every computer forgets it for good;
+and A takes revision 2; A remembers a fact that belongs to a voice, B takes it
+as that voice's and makes it everyone's, and A takes that (a fact with no voice
+has no `voice_id` field); A forgets a fact and every computer forgets it for good;
 offline edits on A and B of different facts (both kept) and of the same fact
 (the later edit wins); a host that was down while A remembered a fact gets it
 after restarting; a new computer with a fact of its own takes everything and
@@ -594,6 +714,51 @@ arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `model-file-outside-list`). Character names and file paths are never returned.
 Read-only; it contacts nothing.
 
+`creations_status` reads [Martlet's creations](CREATIONS.md) from a data
+directory (optional absolute `dataDirectory`; the script gives a disposable one):
+`state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
+`tombstones`, `totalBytes`, `revision`, `digest` (its first 16 hex digits),
+`kinds` (count and bytes per kind), and per live creation its `key` (the short id
+the tools and `Creation-<key>` use), `kind`, `kindVersion`, `bytes`,
+`durationMs`, `createdAt`, `createdOn` (device ID), `autoCleanup`, `assets`
+(name, media type, bytes, pieces), `completeHere` and `onHosts` (how many paired
+hosts held every piece at the last sync); `storage` (asset files in `creations`,
+their bytes, `unused` ones and copies still arriving in `creations-incoming`);
+`sync` from `creations-sync.json` (when, its summary and each host's `state`,
+`complete` and `missing`, or null before the first sync); and the `limits`.
+Never a title, text, voice or personality. Read-only; it contacts nothing.
+
+`creations_check` rehearses creations end to end with the production code and
+returns `{ok, tools, sync}`. `tools` checks `list_creations` and
+`perform_creation` (`Martlet.Conversation.CreationTools`) in process on a
+disposable folder with the production `CreationStore` and the FIXTURE - NOT AI
+test-tone kind: no tools without a registered kind, the same two tools and texts
+on every build, listing newest first with short ids and filtering by words and
+kind, performing through the kind's handler with options, and clear refusals for
+no handler, an unknown id, bad arguments and options, a creation still copying
+and an unknown kind. `sync` runs `src\Martlet.NodeLinkCheck` (mode `creations`,
+`CreationRehearsal.cs`) and returns `{exitCode, report}`: two real gateways on
+127.0.0.1 (pinned TLS, signed requests, in-memory `creations.json` and pieces)
+and three simulated desktops with the production `CreationStore` and
+`CreationSync` over the desktop's paired client (`HostCreationPeer`). Its steps:
+FLAC sizes for a 60 s music-like signal (stereo and mono with silences, decoded
+identical); a 40 s noisy tone in two 3 MiB pieces; a host taking the list and
+every piece; an unchanged host read by digest only; a new desktop taking both and
+relaying them to a host the first never reached; an interrupted copy resuming;
+another desktop performing a creation through the kind's handler from its own
+copy; a kind this Martlet doesn't know passing through; a rename reaching
+everyone; a delete reaching both hosts and every desktop (pieces and files
+deleted); a stale copy not bringing it back; a host restart; a wrong SHA-256, a
+piece no creation has and an oversized piece refused (`request.invalid`); an
+unsigned request refused; a kind's rules (unregistered kind, missing part, part
+too large); and the per-host record in `creations-sync.json`. With
+`seedDataDirectory` (an absolute folder under the temporary folder, never
+Martlet's own) it instead writes two FIXTURE - NOT AI test tones there and
+returns their keys, so the Creations page can be checked with `-Desktop
+-DataDirectory` on that folder. Nothing leaves loopback, folders are deleted and
+Windows Credential Manager is not touched; it does not cover the desktop window's
+30-second sync with real hosts, the Linux host's files, a real song or a real LAN.
+
 `character_actions` reads a character model's
 [emotes and motions](AVATARS.md#emotes-and-motions) the way Companion ›
 Character › Emotes and motions uses them: `modelPath` (a `.model3.json` or
@@ -614,6 +779,30 @@ Thinking model is sent). With `answer`, a simulated Thinking reply such as
 `1: blush | - | when shy`, `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
+
+`character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
+(Companion › Vision › Where the character looks): `saved` (`mouse`, the
+default, or `martlet decides`, from `DecideGaze` in the `dataDirectory`'s
+`talk-preferences.json`), the change `grid` (32×18 cells, `ChangeThreshold`
+and the stronger `CharacterChangeThreshold` under the character's overlay) and
+`holdSeconds` (`glance`, `chosen` and the `gap` between glances), then
+`scenarios`: the production `GazeDirector` on generated 1920×1080 pictures
+(NOT screenshots; nothing is captured or shown), each with its `expected` and
+actual `verdict` and the `spot` looked at (`x`, `y` in physical pixels,
+`Place`, `reason`, `holdSeconds`): `still`, a `notification` popping up near
+the lower-right corner (a glance at the bottom right),
+`anotherChangeRightAfter` (`TooSoon`), `sameSpotAgainSoon` (`Seen`),
+`sameSpotAgainLater` (a glance), `notificationBehindTheCharacter` (a glance),
+`onlyTheCharacterMoved` and `speechBubble` (`OnlyCharacter`), `newScene`
+(`Everywhere`), `byTheMouse` (`ByMouse`) and `changesAllOver` (`Scattered`);
+`ok` is true when every verdict is as expected. `tags` gives where each look tag
+points on one screen and on two side by side, `notTags` lists tags that aren't
+look tags, `prompt` is what a screen glance is told (`instructions`, with the
+data directory's edited prompts, and `tags`; null when *Where the character
+looks* is emptied) and `replies` shows what the production segmenter makes of
+glance answers (`answer` replaces the samples): `spoken`, `shown`, `quiet`
+(a `[pass]`) and `looks` (each look cue's tag, `place` and `afterPiece`, -1 for
+a look without words). Read-only; it contacts nothing.
 
 `character_theme` makes a character model's colors and palettes the way
 Settings › Appearance does ([Character palettes](UI_DESIGN.md#character-palettes)),
@@ -768,9 +957,10 @@ to ... didn't finish* followed by the installer log's last lines), and
 `foreground` (launch the desktop with `-DesktopArguments '--after-update'`).
 Steps `resume: ...` check the note Martlet leaves itself as it closes to install
 (`updates\resume.txt`, `AppUpdateResume`), so the restarted Martlet shows the
-character and starts listening again: it is read once
+character and starts listening and watching again: it is read once
 (`picks-up-character-and-listening-once`), carries only what was on
-(`only-what-was-on`), leaves nothing when nothing was on
+(`only-what-was-on`, `watching-alone`), still reads a note from a Martlet that
+didn't save watching yet (`reads-note-without-watching`), leaves nothing when nothing was on
 (`nothing-on-leaves-no-note`) and is ignored after 15 minutes, when you started
 Martlet yourself rather than the update (`stale-note-ignored`).
 
@@ -782,9 +972,9 @@ transcribed, a modal question, or work exiting would cut short; then
 `AppUpdateStatus` reads *Martlet x.y.z is downloaded and installs as soon as
 Martlet isn't busy. Waiting: <what>.* and the next one-minute tick tries again.
 Installing logs *Installing Martlet x.y.z automatically, with no installer
-window. Martlet closes and restarts into it[, showing the character and
-listening again].*, and the restarted Martlet logs *Martlet restarted after its
-update and is showing the character [and listening] again, as before the
+window. Martlet closes and restarts into it[, showing the character, listening
+and watching again].* (only what was on), and the restarted Martlet logs *Martlet restarted after its
+update and is showing the character[, listening and watching] again, as before the
 update.* To exercise this without GitHub or a real install, set
 `MARTLET_SIMULATE_APP_UPDATE` to a version newer than the build (for example
 `9.9.9`) before launching the desktop (FIXTURE): checks find that version
@@ -994,7 +1184,7 @@ data directory (optional absolute `dataDirectory`, default the current
 user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 `problem`; `active`, the persona Martlet uses; and each persona's `name`,
 `active`, `instructionCharacters`, `styles` weights and `speechBreaks`
-(`commas`, `periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
+(`periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
 and `isDefault`), never its
 instructions), `character` (from `avatar.json`: `model` `built-in` with
 `builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
@@ -1002,7 +1192,11 @@ instructions), `character` (from `avatar.json`: `model` `built-in` with
 `lipSyncHost`, the paired host's ID), `placement` (from
 `character-placement.json`, this PC only: `state` `none` when the character's
 position is unlocked, or `loaded` with `locked`, `left`, `top`, `width` and
-`height` in device-independent pixels; see the character overlay below) and
+`height` in device-independent pixels; see the character overlay below), `voice`
+(from `talk-preferences.json`: `state` `none`, `loaded` or `unreadable`,
+`speakReplies`, Companion › Voice's *Speak Martlet's replies aloud*, on unless
+saved off, and `muted`, its opposite, which the overlay menu's *Mute voice* and
+*Unmute voice* change; see below) and
 `lorebooks` (`books`, `on` and
 `entries` counts). Those editors have no Save button; each change saves on its
 own into the newest saved file, keeping what was saved elsewhere meanwhile
@@ -1012,22 +1206,40 @@ own into the newest saved file, keeping what was saved elsewhere meanwhile
 (the character itself doesn't show), and their `CompanionClose`,
 `AvatarClose`, `LorebookClose` and `MemoryClose` close them; these are passive
 clicks, as are the character window's `AvatarAdvanced` and
-`RemoteHostSection` expanders. Each editor's footer line, `CompanionSaveState`,
+`RemoteHostSection` expanders. Companion > Memory's *Conversation history* card
+shows `HistoryStatus` (text: whether Martlet keeps a record and may search it,
+and how many conversations and exchanges it holds since when; never what was
+said) and the checkboxes `HistoryKeep` and `HistorySearch` (toggling either
+saves `conversation-history.json`, so it needs `--allow-ui-effects`).
+`OpenHistory` opens the history window and `HistoryClose` closes it;
+`HistorySearchRun` and `HistoryShowAll` only filter what it lists. Its
+`HistoryWindowStatus` reads as text (counts, or what a search found);
+`HistorySearchText` takes a search through `ui_set_text`, while the list
+(`HistoryConversations`) and what was said (`HistoryExchanges`) are not
+readable values. `HistoryDeleteConversation` and `HistoryDeleteAll` ask first
+(No by default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSaveState`,
 `AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
 *Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
 response styles at zero, or *Choose your model file: an existing .vrm or
 .model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
-character's state (*Character is showing. ...*, *Character hidden.*). Their
+character's state (*Character is showing. ...*, *Character hidden.*). Memory's
+`MemoryFactStatus` reads how many facts it remembers, how many belong to how
+many people Martlet knows by voice and how many to forgotten voices, how many
+its *Show* choice (`MemoryPersonFilter`) lists (*Showing N.*) and what the last
+action did, never a fact or a name. Their
 fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
-the *Where the voice pauses* check boxes `CompanionBreakCommas`,
+the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
 `CompanionBreakExclamations` (their `checkedState` is the persona's choice) and
 `CompanionShortEnding` (its value reads *Never*, *1 word* or *Up to N words*),
 `CompanionPersona`, which also makes the chosen persona the one Martlet uses,
 `CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
 `AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
-`MemoryEnable`) save, and `ShowCharacter`/`StopAvatar` show or hide the
-character, so they need `--allow-ui-effects`. Typing a persona name or text and
+`MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
+(*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
+choosing in `MemoryPersonFilter` (it only filters the list) still goes through
+`ui_select`, so these need `--allow-ui-effects`; `ShowCharacter`/`StopAvatar` show or hide the
+character, so they need `--allow-ui-effects` too. Typing a persona name or text and
 closing at once still saves it; closing with a change that can't be saved asks
 with `ConfirmationYes` (close and drop it) or `ConfirmationNo` (stay). With the
 character showing, choosing another model or lip-sync mode switches it right
@@ -1107,31 +1319,48 @@ sentence at a time, the way OpenRouter streams; a fixture Martlet host voice (a
 quiet tone, NOT AI) fails on the `failAt`-th piece (1-4, default 1) it is asked
 to say, as `voiceFailure`: `server` (default; the host's voice worker failed,
 `worker.failed`), `unavailable` (it is reloading, `worker.unavailable`),
-`stall` (no audio until the voice's time runs out, shortened to a few seconds)
-or `none`; a fixture speaker opens no device and plays nothing. It returns
+`stall` (no audio until the voice's time runs out, shortened to a few seconds),
+`slow` (every piece slower than real time: half of its audio, a 1.5 s pause,
+then the rest, as Chatterbox streams on a busy host's graphics card)
+or `none`; `muted` instead has the user mute Martlet's voice (what the
+character's *Mute voice* does, `ConversationTurn.MuteVoice`) as the
+`failAt`-th piece is asked, and `text-only` sends the reply with no voice at
+all (*Speak Martlet's replies aloud* off); a fixture speaker opens no device and plays nothing. It returns
 `reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
-turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
+turn's `SpeechFailure`), `muted` (the turn's `VoiceMuted`), `provider` and `failedJob`, `piecesAsked`,
 `piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
-`mayHavePlayed`) and `captions`, what the speech bubble and subtitles were
+`mayHavePlayed`, and `pauses` and `pausedMs`: how often and how long the
+speakers ran dry mid-piece waiting for the voice's next audio) and `captions`, what the speech bubble and subtitles were
 given (`complete`, `shown`, `spoken`, `unsaid` and each line's `text`, `atMs`
 and `spoken`): a line as each piece starts playing and, after the voice
 failed, every sentence it couldn't say, one after another for its reading
 time (2-20 s). `ok` is true when the reply completed with all of its text,
 only the voice stopped, at the chosen piece with the expected provider code
 (or, with `none`, every piece was spoken), and the captions together showed
-the whole reply. Before the fix this reported `Partial` with only the text up
+the whole reply. With `muted`, `ok` needs the voice muted at that piece
+(`voice.muted`, no `SpeechFailure`, nothing more asked of the voice) and, with
+`text-only`, no voice request or speaker at all; both still need the whole
+text and captions that show all of it (every line unsaid for `text-only`).
+Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
 is streamed a word at a time instead, like a model's tokens, and spoken with
 speech breaks chosen like `voice_tags`' (`dataDirectory`'s `persona`, else the
 one Martlet uses, else the defaults; `breaks` on top); `voice.pieces` lists
 exactly what the voice was asked to say, in order, with `voice.persona` and
-`voice.breaks`. Use `voiceFailure` `none` to hear every piece. It reads no
+`voice.breaks`. Use `voiceFailure` `none` to hear every piece. With `slow`,
+`ok` needs every piece spoken whole, nothing stopped, and the reply latency
+line saying *The voice paused N times for X ms in all, waiting for its next
+audio.* with at least one pause per piece of about the gap each. Before the
+playback fix, a pause that long ended the voice after 1 s
+(`PlaybackFailed`, `StreamTruncated`): a paired host making speech slower than
+real time cut each reply short. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
-only the beginning was spoken.* under the reply.
+only the beginning was spoken.* under the reply, and a reply muted partway
+*Muted partway, so only the beginning was spoken.*
 
 With `reasoningMs` (0-5000) the fixture endpoint first streams a hidden
 reasoning delta (as OpenRouter streams a reasoning model's thinking) and waits
@@ -1167,6 +1396,35 @@ asked once more without it (`sentControl` `[true, false]`,
 `reasoningRejected`) and still completed; before this, a refused Off failed
 the reply (or handed it to the Thinking fallback when one was set).
 
+With `chattiness` the reply is offered the chattiness tags the desktop offers
+while [Martlet decides how chatty it is](SCREEN_COMMENTARY.md#martlet-decides-how-chatty-it-is)
+(`ConversationRequest.ControlTags`). `chattiness` returns `offered`, `found`
+(the tags the reply wrote, in order, from `ConversationTurn.Controls`),
+`switchesTo` (the level the last one picks) and `hidden`; `ok` also needs every
+tag out of `reply.text`, `voice.pieces` and the captions, and `reply.fullText`
+compares with the served text without its tags. For example
+`{"voiceFailure":"none","chattiness":true,"reply":"Sure, I will keep it down. Tell me if you need me. [chattiness: quiet]"}`
+returned `switchesTo` *quiet*, the two sentences as the only pieces, and the
+same `firstWordsMs` (about 2 ms) and `firstAudioMs` (340-470 ms) as the reply
+without its tag: a tag at the end never holds back the first words.
+
+`chattiness_status` reads Companion › Vision › **How often it comments** (the
+same choice as Listening › Watch along) from a data directory's
+`talk-preferences.json` (optional absolute `dataDirectory`, default the current
+user's): `choice` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*), `saved`
+and `source` (`saved` or `default`), `martletDecides`, `visionOn` and
+`hearPcOn` (replies are told about Martlet decides only while one of them is
+on), `startsAt` (*normal*), `tags` (every spelling a reply switches with) and
+`prompts` (`state` of settings.json, `decides`: Companion › Prompts ›
+*Chattiness: Martlet decides* exactly as it is sent, and `notes`: *Chattiness
+right now* for each level). Its `rehearsal` sends sample replies (or `reply`,
+up to 1,024 characters of one line) through the production speech segmenter
+and chat stripper with those tags offered: `spoken`, `shown`, `silent` (the
+shown text is `[pass]`), `tags` and `switchesTo`. The level a running
+conversation picked shows in the talk window's `LiveChattiness` line and in
+`logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
+Martlet decides).* It reads no credentials and contacts nothing.
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from
@@ -1181,7 +1439,10 @@ to the total: *end of speech*, *recording*, *Voice ID*, *speech-to-text*,
 *voice authorization*, *voice synthesis*, *playback start* and *speakers*
 (steps that didn't happen are left out). It goes on with the time to the first
 words and audio from the reply's start, the number of spoken pieces, how much
-speech the first piece held and how long it took to make, and the model IDs
+speech the first piece held and how long it took to make, when the speakers ran
+dry mid-reply waiting for a voice made slower than real time how often and how
+long (*The voice paused 2 times for 3120 ms in all, waiting for its next
+audio.*; left out below 100 ms), and the model IDs
 (`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
 is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
 
@@ -1192,9 +1453,11 @@ user's) for the newest `replies` (1-500, default 20) and returns `measured`
 audio from the reply's start), `firstAudio` (from the moment that counts for
 you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
 Median, P90, Min, Max}` in ms), `steps` (the same for every step),
-`slowestSteps` (the five with the largest median) and `newest` (each reply's
+`slowestSteps` (the five with the largest median), `voicePauses` (`replies`
+whose voice paused, `pauses` in all and `pausedMs` statistics) and `newest` (each reply's
 `at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
-`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `models`,
+`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
+`voicePausedMs`, `models`,
 `interrupted`, `legacy`). It only reads the log: no audio, network or provider
 request.
 
@@ -1273,21 +1536,29 @@ with first words after about 0.1 s and 16 tokens against about 1-3 s and
 and nothing leaves loopback. A paired host's `think` (desktop client, gateway,
 Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN.
 
-`think_longer_status` shows Companion › Replies › **Thinking longer** as replies
-use it (optional absolute `dataDirectory`, default the current user's):
-`settings`, `thinkLonger` (`enabled`, on by default; `effort` *Medium* or
-*High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12; `delivery` *WhenFree* or
-*NextMessage*; `chosen`), `thinking` (the route's `routeType`, `model`,
-`supportsTools`, `toolsRejected` from `tools-unsupported.json`, `offered`,
-`onThisPc`/`waitsForQuiet` for a model on this PC, its Thinking steps `use`,
-what a background think `sends` at that effort, such as
-`{"reasoning_effort":"medium"}`, and its `outputTokens`), `tools`
+`think_longer_status` shows Companion › **Deep thinking** as replies use it
+(optional absolute `dataDirectory`, default the current user's): `settings`,
+`thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
+*Off*; `effort` *Medium* or *High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12;
+`delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
+route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
+`tools-unsupported.json`, `offered` (only where Deep thinking can run),
+`onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
+*loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
+`model`, `hostId`, an endpoint's `origin`, `ownKey` and `usesThinkingKey`
+(never a key), `available` (and `parallel`, the same: a think always runs
+alongside the conversation), `checksFit` (a second model in Ollama on this PC,
+checked to fit beside Thinking's before each think) and `why` from the
+production `DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at
+that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
+`outputTokens` and `carriesTools`, true only with the Thinking model), `tools`
 (`think_longer` and `cancel_thinking` exactly as the model gets them), the
 filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
 `resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
-`startedLastHour`; and the running think's `local`, `attempts` and `pauses`),
+`startedLastHour`; and the running think's `where`, `available`, `checksFit`,
+`why`, `parallel` and `attempts`),
 never a task or result. Read-only.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
@@ -1308,13 +1579,91 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped). `local`: a think for a model on this PC waits
-for a quiet moment without sending anything, stops its request when the
-conversation needs the model (`stoppedAfterMs`), sends nothing while paused and
-then finishes from the same request (`attempts` 2, `pauses` 1,
-`sameRequestAgain`). Each part has an `ok`; on this PC the tool returned in
-5 ms and a paused think's request was gone 123-140 ms later (the fixture writes
-every 50 ms). Loopback only; reads no credentials.
+the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
+for eleven setups (Same as Thinking with Thinking on this PC, on OpenRouter or
+on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
+another model or Thinking's own beside Thinking local, or with the voice on
+another computer or in this PC's host service; a paired computer that does
+nothing else, also speaks, or also does Thinking), each `available` against
+`expected` with `checksFit` and its `why`.
+`parallel`: a think on a destination of its own (a second fixture endpoint
+stands in for the other machine) keeps working while three replies go to the
+conversation's endpoint (`replyFirstWordsMs`), is never stopped (`attempts` 1)
+and its request has no tools, Thinking steps on and the conversation then the
+task. `sideBySide`: the production `OllamaSideBySide` reads a fixture Ollama's
+`/api/ps` and `/api/tags` (`readFromOllama`, `loaded`, `downloads`) and decides
+whether a second model fits beside Thinking's (`decisions`, each `fits` against
+`expected` with `needGb`, `roomGb` and `why`: a large model on a 24 GB and a
+12 GB card, a small one on a 12 GB card free or filled by a game, only
+Windows' total known, graphics memory unknown, Thinking's own model, a model
+not downloaded, both already loaded, Thinking's already partly on the
+processor), and once the think's model has loaded
+whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
+each `stops` against `expected`). `hostFit`: a 160-message conversation
+fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
+kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
+this PC the tool returned in 33 ms and replies beside a parallel think answered
+in 2-7 ms. Loopback only; reads no credentials.
+
+`songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
+(optional absolute `dataDirectory`, default the current user's):
+`backgroundWork` (Thinking longer, which the song tools come with), `creations`
+(the song creations in the shared Creations library: `count`, and each song's
+`id` (its key), `durationSeconds`, `lines`, `words`, `wordsEstimated`,
+`wordTimingSource`, `bpm`, `titleCharacters`, `lyricsCharacters`, `generator`,
+`converter`, `quality`, `voiceMatch`, `fixture`, `mouthSource` (*Audio2Face*,
+*Visemes* or *Loudness*) and `mouthNote`, its `assets` (name, media type, bytes),
+whether they are all `here` on this computer, `createdBy` and `createdAt`; never
+a title or words), `desktop` (the desktop's
+`songs-status.json`: `offered`, `songs`, `output` (*Martlet's voice output*, or
+the silent fixture output under `MARTLET_SINGING_FIXTURE=1`), `playing` with
+`songId`, `state` (*Starting*, *LeadIn*, *Singing*, *Stopping*...),
+`positionSeconds`, `durationSeconds`, `line`, `lines`, `section`, `from`,
+`leadInBars`, `leadInSeconds`, `fadeInMs`, `vamps`, `ducked`, `lipSync` (the
+mouth track's `source`, `frames` and `channels`, how many mouth frames were
+`sent` to the character, their `averageSendMs`, and the `route`: *mapped mouth
+shapes* through the character's mouth mapping or *mouth opening*), its `stop` plan
+(`musical`, `requestedSeconds`, `vocalsEndSeconds`, `vocalsFadeMs`,
+`backingFromSeconds`, `backingFadeMs`, `silentAfterSeconds`) and `failure`;
+`lastStop` with `songId`, `atSeconds`, `line`, `lines`, `section`, `nextLine`,
+`cause` (*UserWords*, *Button*, *Martlet*, *Ended*, *Failed*), `ended`,
+`wordsCharacters` and a button's `reason`; and `noteWaiting`), the song job
+`kind` (one at a time, 4 an hour, 15 minutes, `offer`, *Making a song*), the
+three `tools` exactly as the Thinking model gets them and the filled Singing
+`prompt`. Read-only.
+
+`song_playback_check` runs the production playback (`SongTransport`,
+`SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster
+than real time and keeps what it is given; nothing is played aloud) on the
+FIXTURE - NOT AI tone song (40 s, 96 BPM, ten lines in verse, chorus, verse 2 and
+chorus 2), or on a song creation (`songId`: its key, with its `dataDirectory`), and measures
+what it produced. `resolve`: where `from` points for start, a section, *second
+verse*, `line:3`, a time and two misses. `leadIn` (resuming line 4, rendered from
+the backing alone and the vocals alone): `entrySeconds` on a downbeat,
+`leadInBars`, `fadeInMs`, the backing's gain in its first 10 ms, at half the fade
+(equal power: 0.707) and after it, and the vocals' peak before the gate (0) and
+level after the onset. `vamp`: Martlet still talking at the line, the band
+repeats the bar twice and the vocals are first heard two bars later
+(`vocalsFirstHeardAfterSeconds` against `expectedAfterSeconds`). `duck`: -12 dB.
+`played`: sung from the top and stopped musically mid-line by the user's words
+(`musicalStop`: the stop record's line and section, the word's end, the beat the
+band fades from and over how long, the planned and measured silence and the
+note), then resumed (`resume`: the line where it stopped, its lead-in, 2 vamps,
+the states *LeadIn*, *Singing*, *Stopped*) and stopped with Esc (`quickStop`: a
+300 ms fade from where the audio already handed to the output ends). `lipSync`:
+the mouth tracks Martlet makes from the vocals stem and how far each opens from
+the vocal onsets (`onsets`, `matched`, `medianOffsetMs`, `meanAbsoluteOffsetMs`,
+`p90AbsoluteOffsetMs`, `good`): `audio2Face` (run once over the vocals when a
+service answers on 127.0.0.1:52000, otherwise *NOT RUN* with why), `visemes`
+(from the sung words, `words.estimated` when spread over each line's singing),
+`loudness`, a song creation's own `stored` track, which one was `used`, and
+`playback`: the player resuming line 4 with its lead-in on the vocals alone,
+the mouth it sends on the playback clock (`mouthUpdates`), whether it stayed
+`closedDuringLeadIn`, and the offsets between the mouth opening and the onsets of
+the vocals it actually played. Each part has an `ok`; on this PC the musical stop
+went silent 0.88 s after the request (planned 9.375 s, measured 9.370 s), Esc
+0.4 s after it, the viseme track opened +10 ms from all 10 onsets and, played
+after a lead-in, within 1-4 ms median (90% within 20 ms).
 
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
@@ -1363,16 +1712,20 @@ and barge-in (Companion › Listening › **Word check**; optional absolute
 `dataDirectory`, default the current user's, `sensitivity` `relaxed`, `normal`
 or `sensitive` to override the saved choice, `audio` default true, absolute
 `speechDirectory` where Parakeet is downloaded, default the current user's,
+`parakeetModel` to choose the model, default Listening's when it is downloaded,
+else v3, else the one downloaded,
 and absolute `martletDirectory` for the sherpa-onnx runtime, which the script
 fills with this checkout's Desktop build). It runs the production
 `UtteranceFilter` and `BargeInPolicy` on `samples` (up to 64 of `text` with
-optional `voicedMs`, `meanProbability`, `minimumProbability`,
+optional `voicedMs`, `speechMs` (how long the voice went on; `voicedMs` when
+absent), `meanProbability`, `minimumProbability`,
 `noSpeechProbability`, `averageLogProbability`, `engine`, `afterQuestion`,
 `persona`, `playback` `reply` or `song`, and `expectKeep`/`expectInterrupt`),
 by default a fixed set with the outcome Normal must give (fillers, laughter,
 sound tags, "Thank you." from noise or said clearly, subtitle credits, lone
-words, short answers, stop words, backchannels, too many words for the voice,
-a whisper loop, Martlet's name, a song that only stops when asked, and the
+words, short answers, stop words, backchannels, too many words for the speech,
+"I'm gonna make it public." with little loud voice in a second of speech, a
+whisper loop, Martlet's name, a song that only stops when asked, and the
 "Yeah." Parakeet and whisper.cpp wrote for coughs on this PC with their
 measured evidence; another sensitivity only reports what it makes of them).
 Each sample returns `keep`, `kind`, `Reason`, `Words`, `shown` (the talk
@@ -1383,17 +1736,22 @@ window's *Ignored ...* note), `interrupts` and `interruptReason`. It returns
 `pauseMs`, `wordsToInterrupt`) and `filterCost` (`microsecondsPerCall` over
 thousands of calls: what the filter adds to a reply). With `audio` and
 Parakeet downloaded, `audio` runs fixtures through the real local
-speech-to-text path (`ParakeetEngine`, the desktop's model): "Stop!", "Wait,
+speech-to-text path (`ParakeetEngine` with the chosen model, named in `model`
+and `engine`): "Stop!", "Wait,
 hold on a second.", "Can you tell me more about that?", "Yes." (after a
 question), "Yeah.", "Mmmmmm.", "Hmm." and "Ha ha ha ha!" said by a Windows
-voice (System.Speech, rendered to memory, never played), plus a hum, two
+voice (System.Speech, rendered to memory, never played), "I'm gonna make it
+public." said quietly over a fan's hum (`quiet-room`: only about half of it is
+as loud as a voice must be to start), plus a hum, two
 coughs, a breath, typing, music and noise, each after 0.3 s and before 1 s of
 faint noise. Per fixture: `voicedMs` (loud frames by the production
-voice-activity detector), Parakeet's `transcript`, `evidence` and
+voice-activity detector) and `speechMs` (from its onset to the silence after
+it), Parakeet's `transcript`, `evidence` and
 `transcribeMs`, the filter's verdict, and `bargeIn`: the production
 `BargeInGate` fed 20 ms at a time as if Martlet were speaking, each quick check
 transcribing the stretch so far (no other check starts while one runs, as in
-the listener) with its `quick` transcripts, probabilities and milliseconds,
+the listener) with its `quick` transcripts, probabilities, voice and speech
+(`VoicedMs`, `SpeechMs`) and milliseconds,
 `interrupted`, `reason` and `afterMs` (from the start of the voice to the
 decision). `stopDelayMs` summarizes the fixtures that stopped Martlet. `ok`
 needs every expectation met: words kept, non-words and noise dropped, stop
@@ -1495,11 +1853,11 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Where the character looks: *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus` as *the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupLocalRecommendation` (the local Ollama model recommended for this PC's graphics card, leaving about 5 GB for a game and Martlet's character), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunCancel` cancels a running run (or closes the window afterwards) and needs `--allow-ui-effects`. On a fresh data directory, a voice engine's setup first needs saved settings (*Complete Setup first.*): `VoiceEngineUse-windows` (a Windows voice) saves them. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion`, `NavDiagnostics` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavCreations`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
 expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
@@ -1510,15 +1868,27 @@ dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus` (on, off, or that the installation
 lacks the voice recognition files), `PeopleSyncStatus` and
-`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus`; snapshots return
+`PeopleVoiceCount`, and Listening shows `ListenParakeetStatus` (*Parakeet in
+Martlet* with *in use*, *downloading* or *no Docker*) and, for each Parakeet
+model, `ListenParakeetModel-<model ID>` (what it is for, with *recommended*
+or *in use*: "Fastest in English  ·  recommended") and
+`ListenParakeetModelState-<model ID>` (its name, languages, what it is good
+at, its memory and *Downloaded.*, *Downloads once: 477 MB.* or, while it
+downloads, *Downloading: 46% of 477 MB...*); snapshots return
 these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
 `PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
 its field loses focus, on Enter or two seconds after typing stops, then syncs);
 like `PeopleRecognize` (ticked by default; a shared setting),
-`PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
+`PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet-<model ID>` (*Download
+and use* asks one confirmation, `ConfirmationYes`, then downloads that model
+and switches Listening to it; *Use it* switches to a downloaded model at once),
+they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). On Devices, `Node-<id>`
+switch of its own: the list follows `ClusterSync`). Each voice's
+`PeopleMemories-3` (*What Martlet remembers about them*) only opens Memory
+showing that voice's facts, so it is a passive click; read `MemoryFactStatus`
+there (*Showing N.*) or `memory_status` for whose facts are. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `Node-pc:<device ID>` for another Martlet computer that runs no host service,
 `Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
@@ -1845,17 +2215,38 @@ expand/collapse, so `ui_click` on it opens (or closes again) the character's
 right-click menu with no flag; opened this way, the menu stays open until a
 choice or another `MoveAvatar` click. While it is open, snapshots list
 `CharacterMenu` and its items: `CharacterTalk` (*Talk to Martlet*, like
-`TrayTalk`), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
+`TrayTalk`), `CharacterMuteVoice` (*Mute voice*, or *Unmute voice* while
+Martlet's voice is muted; see below), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
 `TrayOpen`, also from the notification area) and `CharacterSettings`
-(*Character settings*, opens Companion › Character), which are passive clicks;
+(*Character settings*, opens Companion › Character), which are passive clicks
+(except `CharacterMuteVoice`);
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
 the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
 this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
-the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
+the same), which need `--allow-ui-effects`. Talk, Mute, Open, Settings and Hide are
 carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
+**Muting Martlet's voice**: the overlay menu's `CharacterMuteVoice` (in
+`SafeValues`: its name, *Mute voice* or *Unmute voice*, carries the state)
+asks Martlet to mute (*The character's menu chose 'mute'.*) or unmute it. It is
+the same choice as Companion › Voice's `SpeakReplies` check box (*Speak
+Martlet's replies aloud*), so it needs `--allow-ui-effects`: it saves
+`talk-preferences.json` (`character_status`'s `voice.muted`), is shared with the
+paired computers like the check box, and the desktop log records *Martlet's
+voice is muted: replies show as text only.* (or *... unmuted ...*; a choice
+from the menu also logs the window's *Status: Martlet's voice is muted: ...*
+or *Status: Martlet's voice is on again: ...*) while
+`avatar-renderer` records *Martlet's voice is muted.* once the overlay's menu
+follows; muting or unmuting there, in Companion or from another computer
+changes the menu's item too, and a newly shown character starts with it.
+Muting silences a reply Martlet is saying at once (its turn's `VoiceMuted`;
+`spoken_reply_check` `voiceFailure` `muted` rehearses it), and the rest of its
+words, like every reply while muted, show in the talk window and as speech
+bubble and subtitle captions, one sentence per reading time
+(`spoken_reply_check` `text-only`).
 
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
@@ -1939,6 +2330,29 @@ typed into `AvatarModelPath` (after `ui_select CharacterChoice` "My own model
 file") joins the shared list as soon as it is saved (once it names an existing model file; there is no Save button) or shown (`ShowCharacter`), and the
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
+
+The **Creations** page (`NavCreations`, between Companion and Diagnostics; its
+content is `CreationsPage`) lists [what Martlet made](CREATIONS.md), newest first.
+`CreationsNote` reads the fixed "Ask Martlet to sing or show any of these.",
+`CreationsEmpty` the empty state "Things Martlet makes, like songs, appear
+here.", `CreationsSummary` how many creations and how large ("2 creations,
+1.2 MB on every computer.") and `CreationsStatus` whether they are shared with the
+paired computers ("Creations shared with 2 of 2 computers at 9:41 PM.", copies
+still arriving, hosts to update, or "No other Martlet computers are paired yet, so
+your creations stay on this PC."). Each creation is a choice card
+`Creation-<key>` (passive: it only shows that creation) with its line
+`CreationState-<key>` (kind, length, size, when and on which computer it was made,
+and whether it is on this PC and on how many hosts; never its title). The selected
+creation shows `CreationTitle` (never returned), `CreationKind` (the same line
+without where it is), `CreationSync` (this PC and which hosts hold it),
+`CreationAsk` ("Ask Martlet to sing it.", or that this Martlet doesn't know its
+kind yet), its text and details. There is no Play, Show or Activate for any kind.
+`CreationRenameText` with `CreationRename` (or Enter) renames it on every computer,
+and `CreationDelete` asks with `ConfirmationYes`/`ConfirmationNo` and deletes it
+everywhere (a tombstone travels); both need `--allow-ui-effects`.
+`creations_status` reads the same list headlessly, and `creations_check
+{"seedDataDirectory": ...}` fills a disposable folder with two test tones for
+checking the page.
 
 Companion › Character's *Emotes and motions* card lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
@@ -2185,13 +2599,24 @@ needs `--allow-ui-effects`) and `HomeListeningStatus` (the listening
 indicator: *Not listening*, *Getting ready to listen…*, *Listening. Just start
 talking.*, *Hearing you…*, *Martlet is replying…*, *Martlet is speaking…*,
 *Paused…* or why it can't listen, such as *Set up Thinking in Companion, then
-come back to talk.*). While Martlet listens or watches, the talk window's close
+come back to talk.*), Home's `HomeWatch` (*Start watching* / *Stop watching*,
+shown while vision is on in Companion; it runs the conversation hidden and
+starts screen or camera capture, so it needs `--allow-ui-effects`; Stop watching
+only stops it) and `HomeWatchingStatus` (the watching indicator: *Not
+watching*, *Getting ready to watch…*, *Watching your active window.* (or *your
+whole screen*, a camera), *Taking a look…*, *Paused…* or why Martlet can't see,
+such as *Choose a camera in Companion › Vision.*). Listening and watching are
+separate: neither button starts or stops the other, and opening the talk window
+or turning vision on in Companion starts neither. While Martlet listens or watches, the talk window's close
 button only hides it (`ui_snapshot` stops listing *Talk with Martlet*;
 `OpenLiveConversation` shows it again),
-`LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
+`LiveVision` (the talk window's *Start watching* / *Stop watching* button, or
+*Can't see* with the reason; its value starts with the state: *Not watching*,
+*Watching*, *Looking* while a look is with the model, or *Can't see*, then when
 it last checked the screen; it checks every 3 s, and with the whole screen it
 also says it looks right away at pop-up notifications and flashing taskbar
-buttons), `LiveVisionStatus` (while
+buttons; clicking it to start captures the screen or camera, so it needs
+`--allow-ui-effects`), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*
 or *Watching your whole screen (2 monitors).*, then the last look's outcome or
 why it is holding off, what wanted your attention (*Last look 10:17 PM (a
@@ -2200,7 +2625,12 @@ looks once you're done talking.*, *Noticed a notification at 10:17 PM but
 didn't look: you seem away.*) and whether your last message went with the
 picture (*Your message at 10:14 PM went with it.*); it never contains window
 titles; to rehearse a flash, show any test window minimized and call
-`FlashWindowEx` on it), `LiveContext` (*Keeps the last N
+`FlashWindowEx` on it), `LiveGaze` (while Martlet decides where the character
+looks and watches your screen: what its eyes are on now, *Looking at your
+mouse: nothing new on screen.*, *Glancing at something new at the bottom right
+of your screen.* or *Looking at the top right of your screen, where Martlet
+chose to look.*, and when they last looked away; never what is on screen),
+`LiveContext` (*Keeps the last N
 exchanges in mind, about T tokens of its C-token context.*, or *Replies send the
 newest that fit its C-token context.* once they outgrow it, followed by *Last
 reply: P% of its N input tokens came from the model's cache.* once the Thinking
@@ -2213,26 +2643,64 @@ forgets them so the next reply starts fresh, adds the note *Context refreshed.*
 to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
 works in the background or a finished job waits to be brought up: *Working in
 the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
-it.*, *think-1 waiting for a quiet moment*, *think-1 paused while you talk
-(0:30)*, *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
+it.*, *think-1 checking it fits beside Thinking* (a second model in Ollama on
+this PC, before it starts), *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
 *... when you talk next.*; never what a job is about), each job's chip
 `LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
 so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
-only stops that job, and the next thing you say tells Martlet), with the status
+only stops that job, and the next thing you say tells Martlet), the song panel
+`LiveSongPanel` (shown while Martlet sings or has a song to offer; it has no Play
+button, since only Martlet performs songs): `LiveSong`
+(*Singing 3fa2c19b0d71 · 0:22 of 1:00 · verse line 4 of 12.*, *Starting
+3fa2c19b0d71 line 4 where you stopped: a bar of the band first · 0:08 of 0:40.*,
+*Stopping 3fa2c19b0d71 at 0:10: finishing the word, then the band rings out on the
+beat.*, *Stopped 3fa2c19b0d71 at 0:17 (verse 2 line 7 of 10): you pressed Stop
+singing. Ask Martlet to pick up where it left off.* or *Song 3fa2c19b0d71 is ready
+(0:40, 10 lines). Martlet will offer it.*; never the title or words, which
+`LiveSongLine` holds, word by word as they are sung) and `LiveSongStop` (*Stop
+singing*, a passive click: it only ends the song musically), with the status
 line reading *Starting to think it over in the background…* while
 `think_longer` runs and *Martlet is bringing up what it worked on…* while
-Martlet's own report is on its way; Companion › Replies' `RepliesThinkLonger`
-(*Let Martlet think longer when it needs to*; `checkedState` is the saved
-choice), `RepliesThinkLongerStatus` (*On. When a task needs it, Martlet says
-it'll think it over and works on it in the background (Medium effort, up to 5
-minutes, at most 6 an hour) while you keep talking, then brings it up as soon as
-it's free.*, with *Its model is on this PC, so it thinks only while you aren't
-talking and pauses for every reply.* for a model on this PC, *Off. ...*, or what
-keeps it from working: no Thinking, a paired host's model, a model that turned
-tools down) and the choices `RepliesThinkLongerEffort`, `RepliesThinkLongerTime`,
-`RepliesThinkLongerPerHour` and `RepliesThinkLongerDelivery` (returned;
-`ui_toggle` and `ui_select` on them save the reply settings, so they need
-`--allow-ui-effects`)
+Martlet's own report is on its way; Companion › **Deep thinking**'s
+`DeepThinkingNow` (*Thinks on diva (gemma4:27b), in parallel with the
+conversation.*, *On, but it can't think on the Thinking model (gemma4:e4b), so
+Martlet doesn't offer to think things over. Choose another place below.*, or
+*Off. Martlet answers everything right away and never thinks in the
+background.*) and `DeepThinkingParallel` (why: *Thinking's model (gemma4:e4b)
+runs on this PC and can't think something over while it answers you. ...*,
+*It runs as a second model beside Thinking's gemma4:e4b on this PC, ...*, *diva
+does none of the conversation's jobs, so a think runs there alongside the
+conversation.*), `ThinkLongerStatus`
+(*On. When a task needs it, Martlet says it'll think it over and works on it in
+the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
+talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
+from working: no Thinking, a paired host's model, a model that turned tools
+down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
+`ThinkLongerTime`, `ThinkLongerPerHour` and `ThinkLongerDelivery` (returned;
+`ui_select` on them saves the reply settings, so it needs
+`--allow-ui-effects`); *Where it thinks* with the passive options
+`DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
+`DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what
+Same as Thinking thinks with, or why Thinking's own model can't think here),
+each paired computer's
+`DeepThinkingHost-<host ID>` (*diva: Ollama runs gemma4:27b.*, *Thinks here
+(...)*, *Ollama isn't installed there...*) or `DeepThinkingHosts` when none is
+paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
+`DeepThinkingLocalFit` (whether the model in `DeepThinkingLocalModel` fits
+beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
+`/api/tags` and the NVIDIA driver without loading anything: *Fits: gemma4:e2b
+(about 5.3 GB) fits beside ...*, *Doesn't fit: ... Choose a smaller model.*,
+*... is Thinking's own model ...*, or *Thinking runs elsewhere, so ... has
+Ollama on this PC to itself ...*) and `DeepThinkingKeyStatus` (what the key
+field will do; never a key or typed base URL). `DeepThinkingTurnOff` (Off;
+saves the reply settings), `DeepThinkingUseSame`, `DeepThinkingUseHost-<host
+ID>` (checks that computer and saves its Ollama route), `DeepThinkingUseLocal`
+(refuses Thinking's own model) and `DeepThinkingSaveCloud` (with
+`DeepThinkingProvider`, `DeepThinkingBaseUrl`, `DeepThinkingModel`,
+`DeepThinkingKey` and `DeepThinkingConsent`) save `deep-thinking.json` (and turn
+Deep thinking back on when it was off) and need `--allow-ui-effects`; an open
+conversation's next reply and think use it.
+Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,
@@ -2261,12 +2729,14 @@ and the test run's output says so.
 The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
 with `enabled` (false while a modal dialog such as Audio setup blocks it), and
 the main window stays enabled while the talk window is open. Opening the talk
-window never opens the microphone; `LiveMic` does with always listening on. For
+window never opens the microphone or looks at the screen; `LiveMic` does the
+first with always listening on, `LiveVision` the second with vision on. For
 verification, save a fixed microphone that does not exist in the disposable
 data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
 retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
-is a passive click: it only stops a reply, recording or vision. Changing How
+is a passive click: it only stops a reply, recording, vision or a song (with a
+quick fade). Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
 always listening, the same card has `TalkWordCheck` (*Word check*: *Relaxed*,
@@ -2304,7 +2774,18 @@ voice.*, *On. <another output> is in use too (a virtual cable there can carry
 your own voice), so Martlet hears only what plays on <your output> and stops
 hearing it while it speaks.*, or why it doesn't apply: push-to-talk, echo
 reduction off, or Martlet's voice can't be left out; the card reads which
-outputs are in use, never their sound); `pc_audio_check` reads the same choice. With it on
+outputs are in use, never their sound); `pc_audio_check` reads the same choice.
+The card also has `TalkPcChattiness`, the same choice as Vision's
+`VisionChattiness` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*; returned,
+and `ui_select` saves `talk-preferences.json`, so it needs
+`--allow-ui-effects`), each with its `...Status` line (`TalkPcChattinessStatus`,
+`VisionChattinessStatus`: what the level means, or what Martlet decides means
+and, while a conversation runs, *Right now it is quiet.*); `chattiness_status`
+reads the same choice. While Martlet decides and vision or hearing the PC is
+on, the talk window's `LiveChattiness` line (returned) says *Martlet decides
+how chatty it is: normal right now.*, then *quiet right now (since 10:14 PM).*
+once a reply switched it, and `LiveHistory` gets a note such as *Martlet went
+quiet about what it sees and hears.* With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
 what this PC plays (not Martlet's own voice).*, *Also hearing what this PC
@@ -2379,11 +2860,18 @@ desktop log records *Read N colors from the character's textures.* and
 *Applied the Character dark palette (#D194AE accent on #161E24).*
 `character_theme` makes the same colors and palettes headlessly.
 On a Martlet host (Settings › *Use as a Martlet
-host*) the menu has no `TrayTalk`, `TrayStartListening` or `TrayCharacter`: a
-host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
-`OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
-(like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
-choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
+host*) the menu has no `TrayTalk`, `TrayStartListening`, `TrayStartWatching` or `TrayCharacter`: a
+host doesn't talk, listen, watch or show the character. With always listening the menu
+has `TrayStartListening` (*Start listening*) or, once started, `TrayStopListening`
+(*Stop listening*); with vision on in Companion it also has `TrayStartWatching`
+(*Start watching*) or, once started, `TrayStopWatching` (*Stop watching*), each
+working without the other. `TrayOpen`, `TrayTalk` (like
+`OpenLiveConversation`), `TrayPause` (it only stops work), `TrayStopListening`,
+`TrayStopWatching` (they only stop listening or watching) and `TrayEndTalk`
+(like `CloseLive`) are passive clicks; `TrayStartListening`, `TrayStartWatching`,
+`TrayResume`, `TrayCharacter`, the two
+choices and `TrayExit` need `--allow-ui-effects`. The menu's status line reads
+*Martlet is listening and watching* when both run. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
 `TrayExit` shows Martlet instead of exiting (the status line names the open
 window to close first). Settings › *Startup and closing* has
@@ -2391,9 +2879,11 @@ window to close first). Settings › *Startup and closing* has
 (the per-user Run entry `Martlet`: this executable, the same `--data-directory`
 and `--tray` when `StartInTray` is checked; verify with a disposable data
 directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
-(*When Martlet starts, show the character and start listening*; saves
+(*When Martlet starts, show the character and start listening (and watching,
+while vision is on)*; saves
 `background.json` and applies on every start, `--tray` included, so the
-desktop log records *Martlet started with the character and listening.*) and
+desktop log records *Martlet started with the character and listening.*, or
+*... and listening, and watching.* with vision on) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). On a Martlet host
@@ -2480,9 +2970,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check` and `parakeet_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

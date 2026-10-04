@@ -555,7 +555,7 @@ demonstration benchmark numbers as Martlet performance ([S16](RESEARCH.md#s16)).
 | LLM | 15 s first event, 10 s inter-event idle, 60 s total | Cancel; show partial text as partial, not a completed answer |
 | TTS | 20 s first audio, 10 s idle, 90 s total per response | Stop on timeout, preserve explicit partial state; no automatic duplicate playback |
 | Speech staging | 2 pending text segments; 5 s decoded playback buffer; 256-token output cap | Apply backpressure; if unsupported, cancel on bounded overflow rather than grow memory |
-| Playback | 150 ms initial prebuffer; at most 1 s recovery wait for underrun | Resume only contiguous current-turn samples; otherwise stop with remedy |
+| Playback | 150 ms initial prebuffer; at most 10 s recovery wait for underrun (a voice slower than real time pauses, not cut short) | Resume only contiguous current-turn samples; otherwise stop with remedy |
 | Optional context | 750 ms interactive deadline; one latest frame/query | Skip with visible context-unavailable indicator, never block voice indefinitely |
 | Perception | Off; opt-in proposal 0.2 frames/s, max 1 frame/s, longest edge 1280 px, 1 MiB payload | Latest-frame-wins, drop stale results; user preview/allowlist remains mandatory |
 | Worker concurrency | One synthesis job initially; per-model LLM limits; vision lower priority | `BUSY` plus retry hint, not unbounded host queues |

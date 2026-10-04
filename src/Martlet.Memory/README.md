@@ -22,6 +22,8 @@ The fixed store document is strict schema-1 JSON, atomically replaced from one
 owned pending file under an exclusive local lock. Mutations rebuild the lexical
 index, clear the revision-bound cache and invalidate in-flight results. No
 backup, network, provider, embedding, vector database, credential field, logger
-or transcript API exists.
+or transcript API exists. A fact may name whose it is (`VoiceId`, an opaque
+voice list ID the caller chooses; `EditFactRequest` requires it, so an edit
+never drops it by accident); a fact without one is written as before.
 
 See [the full contract, limits and remaining gates](../../docs/MEMORY.md).

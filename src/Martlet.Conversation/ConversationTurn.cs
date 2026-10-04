@@ -25,6 +25,8 @@ public sealed class ConversationTurn
     private readonly TaskCompletionSource<ConversationSnapshot> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly VoiceTagStripper shown;
+    // The control tags the reply wrote, in order (ConversationRequest.ControlTags); guarded by Sync like the text.
+    private readonly List<string> controls = [];
     private readonly Channel<SpeechPiece> segments = Channel.CreateBounded<SpeechPiece>(new BoundedChannelOptions(2)
     {
         FullMode = BoundedChannelFullMode.Wait, SingleWriter = true, SingleReader = false, AllowSynchronousContinuations = false
@@ -36,6 +38,9 @@ public sealed class ConversationTurn
     private Task callbacks = Task.CompletedTask, speechCallbacks = Task.CompletedTask;
     // Captions for words the voice couldn't say, shown one after another (ShowUnsaid).
     private Task unsaidCaptions = Task.CompletedTask;
+    // A reply that isn't spoken still shows in the captions (speech bubble, subtitles), each sentence once it is written.
+    private readonly SpeechSegmenter? captioner;
+    private bool captionsEnded;
     private CancellationToken originalCaller;
     private CancellationTokenRegistration callerRegistration;
     private MonotonicWindow? textWindow, speechWindow, playWindow;
@@ -46,6 +51,9 @@ public sealed class ConversationTurn
     private long? inputTokens, cachedInputTokens;
     private TimeSpan? textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
         firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter;
+    // Finished pieces' waits for the voice's next audio (playback underruns).
+    private int voiceWaits;
+    private TimeSpan voiceWaited;
     private bool synthesizing;
     private SpeechSegmenter? segmentation;
     private PlaybackRun? playback;
@@ -62,7 +70,7 @@ public sealed class ConversationTurn
     private string? refusal;
     private bool invalidated, userStopped, workFinished, released, quarantined, textComplete, refused, terminal, toolsRejected,
         audioRejected, imageRejected, reasoningRejected;
-    private bool speechLimitReached;
+    private bool speechLimitReached, voiceMuted;
     private int peakQueued, committed, suppressed, reservedBytes, toolCalls;
     private string? activeTool, fellBackAfter;
     private long reservedSamples, accepted, submitted, consumed, eventSequence, dropped;
@@ -77,6 +85,9 @@ public sealed class ConversationTurn
     public ChannelReader<ConversationEvent> Events => events.Reader;
     public ConversationSnapshot Snapshot { get { lock (Sync) return GetSnapshot(); } }
     public ConversationContent Content { get { lock (Sync) return new(text.ToString(), refusal); } }
+    /// <summary>The control tags (<see cref="ConversationRequest.ControlTags"/>) the reply wrote so far, in order, as the request
+    /// spelled them; never shown or spoken.</summary>
+    public IReadOnlyList<string> Controls { get { lock (Sync) return [.. controls]; } }
 
     internal ConversationTurn(ConversationRuntime owner, ConversationRequest request,
         IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech)
@@ -86,7 +97,12 @@ public sealed class ConversationTurn
         this.authorization = authorization;
         // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive.
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
-            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null);
+            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null,
+            request.ControlTags, controls.Add);
+        captioner = request.Speech is null && owner.SpokenText is not null
+            ? new SpeechSegmenter(BoundedSpeechInput.HardMaxUtf8Bytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
+                characterTags: request.CharacterTags, controlTags: request.ControlTags)
+            : null;
         Epoch = epoch;
         this.retryOf = retryOf;
         this.earlierSpeech = earlierSpeech;
@@ -210,7 +226,7 @@ public sealed class ConversationTurn
                 CancelByUser();
                 return;
             }
-            if (request.Speech is null || invalidated || workFinished || speechFailure != ConversationFailure.None) return;
+            if (request.Speech is null || invalidated || workFinished || voiceMuted || speechFailure != ConversationFailure.None) return;
             // The whole turn ran out of time before the text finished, which ends the reply too.
             if (whole.Expired && !textComplete)
             {
@@ -223,13 +239,33 @@ public sealed class ConversationTurn
                 providerFailure = provider;
                 failedProvider = ProviderRole.Tts;
             }
-            speechObservation?.Stop();
-            // Capture-scoped handle: never use sink-wide Stop.
-            _ = playback?.StopAsync();
-            speechCallbacks = speaking.CancelAsync();
-            if (!textComplete && state != ConversationState.Generating) SetState(ConversationState.Generating);
-            else Emit(ConversationEventKind.State);
+            EndSpeaking();
         }
+    }
+
+    /// <summary>Mutes the voice for the rest of this reply (the user muted Martlet's voice while it spoke): what is playing
+    /// stops now and nothing more is synthesized, while the text still streams to completion and each sentence not said aloud
+    /// shows in the captions, as after a voice failure. It is not a failure (<see cref="ConversationSnapshot.VoiceMuted"/>).
+    /// A no-op for a reply that isn't spoken, has finished or whose voice already stopped.</summary>
+    public void MuteVoice()
+    {
+        lock (Sync)
+        {
+            if (request.Speech is null || invalidated || workFinished || voiceMuted || speechFailure != ConversationFailure.None) return;
+            voiceMuted = true;
+            EndSpeaking();
+        }
+    }
+
+    private void EndSpeaking()
+    {
+        speechObservation?.Stop();
+        // Capture-scoped handle: never use sink-wide Stop.
+        _ = playback?.StopAsync();
+        speechCallbacks = speaking.CancelAsync();
+        // Muted before the text started: the turn is still authorizing its Thinking request.
+        if (!textComplete && textProvenance is not null && state != ConversationState.Generating) SetState(ConversationState.Generating);
+        else Emit(ConversationEventKind.State);
     }
 
     private void CheckSpeaking(MonotonicWindow window)
@@ -263,8 +299,8 @@ public sealed class ConversationTurn
     {
         var segmenter = request.Speech is { } voice
             ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
-                eagerFirstClause: true, tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId),
-                characterTags: request.CharacterTags, breaks: request.SpeechBreaks) : null;
+                tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId),
+                characterTags: request.CharacterTags, breaks: request.SpeechBreaks, controlTags: request.ControlTags) : null;
         try
         {
             var input = request.Input;
@@ -389,6 +425,7 @@ public sealed class ConversationTurn
                                 Emit(ConversationEventKind.Text, line);
                             }
                         }
+                        Caption(captions => captions.Push("\n"));
                         if (segmenter is not null) await StageAsync(segmenter.Push("\n"), whole).ConfigureAwait(false);
                     }
                     var results = await CallToolsAsync(tools, result.Calls, rounds).ConfigureAwait(false);
@@ -416,6 +453,7 @@ public sealed class ConversationTurn
                     }
                     textComplete = true;
                 }
+                Caption(captions => captions.Finish());
                 // The text is all shown; staging its last sentence for the voice can only end what is said aloud.
                 if (segmenter is not null)
                 {
@@ -506,6 +544,7 @@ public sealed class ConversationTurn
                         }
                     }
                     said.Append(chunk.Text);
+                    Caption(captions => captions.Push(chunk.Text));
                     if (segmenter is not null) await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false);
                 }
             }
@@ -667,7 +706,12 @@ public sealed class ConversationTurn
                 }
                 if (speechLimitReached) continue;
                 if (!await ready.WaitToWriteAsync(stop.Token).ConfigureAwait(false)) return;
-                if (speaking.IsCancellationRequested) continue;
+                // The voice stopped (failed or was muted) while this sentence waited for its turn: it goes to the captions too.
+                if (speaking.IsCancellationRequested)
+                {
+                    ready.TryWrite(new SpeechTake(piece.Text, 0, NewIds()) { CaptionOnly = true, Cues = piece.Cues });
+                    continue;
+                }
                 SpeechTake? take;
                 try { take = Reserve(piece.Text, voice, piece.Cues); }
                 catch (ConversationException error)
@@ -865,6 +909,19 @@ public sealed class ConversationTurn
         await shown.ConfigureAwait(false);
     }
 
+    // A reply that isn't spoken: each sentence goes to the captions once it is written, split and kept quiet ([pass]) the way
+    // the voice would say it. Captions never fail the reply: one that runs past its limits just stops showing.
+    private void Caption(Func<SpeechSegmenter, IEnumerable<SpeechPiece>> next)
+    {
+        if (captioner is null || captionsEnded) return;
+        try
+        {
+            foreach (var piece in next(captioner))
+                if (piece.Text is { } sentence) ShowUnsaid(sentence);
+        }
+        catch (ConversationException) { captionsEnded = true; }
+    }
+
     internal static TimeSpan ReadingTime(string caption) =>
         TimeSpan.FromSeconds(Math.Clamp(1.5 + caption.Length / 15.0, 2, 20));
 
@@ -920,6 +977,8 @@ public sealed class ConversationTurn
                 lock (Sync)
                 {
                     lastPlayback = finished;
+                    // A sentence that played entirely between two of the supervisor's looks was still heard, by now at the latest.
+                    if (finished.MayHavePlayed) firstAudioAfter ??= Clock.GetElapsedTime(startedAt);
                     Emit(ConversationEventKind.Playback);
                 }
                 await run.DeviceRelease.ConfigureAwait(false);
@@ -929,6 +988,8 @@ public sealed class ConversationTurn
                     accepted += final.AcceptedSamples;
                     submitted += final.SubmittedSamples;
                     consumed += final.DeviceConsumedSamples;
+                    voiceWaits += final.Underruns;
+                    voiceWaited += final.UnderrunTime;
                     mayHavePlayed |= final.MayHavePlayed;
                     quarantined |= !final.DeviceReleased || final.Error?.Code == ErrorCode.AudioPlaybackFailed;
                     lastPlayback = final;
@@ -1081,7 +1142,9 @@ public sealed class ConversationTurn
             Interlocked.Read(ref dropped), currentPlayback ?? lastPlayback, retryOf, earlierSpeech, toolCalls, activeTool, toolsRejected,
             speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
-                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter), inputTokens, cachedInputTokens,
-            reasoningRejected);
+                firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter,
+                voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero)),
+            inputTokens, cachedInputTokens,
+            reasoningRejected, voiceMuted);
     }
 }

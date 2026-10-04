@@ -120,7 +120,9 @@ public partial class MainWindow
 
     private string TrayStatusText() => closing ? $"Martlet is closing: {closingStep}"
         : openConversation is { } talk
-            ? talk.Paused ? "Martlet is paused" : talk.IsListening ? "Martlet is listening" : talk.IsWatching ? "Martlet is watching"
+            ? talk.Paused ? "Martlet is paused"
+                : talk.IsListening && talk.IsWatching ? "Martlet is listening and watching"
+                : talk.IsListening ? "Martlet is listening" : talk.IsWatching ? "Martlet is watching"
                 : talk.IsVisible ? "Martlet: talk window open" : "Martlet is running"
         : "Martlet is running";
 
@@ -158,6 +160,11 @@ public partial class MainWindow
             menu.Items.Add(TrayItem("TrayStopListening", "Stop _listening", () => { talk.ToggleListening(); UpdateTray(); }));
         else if (companion && (talk?.HandsFree ?? Talk.HandsFree))
             menu.Items.Add(TrayItem("TrayStartListening", "Start _listening", TrayStartListening, enabled: talk is not null || canTalk));
+        // Watching starts only from Start watching, here, on Home or in the talk window; it runs without the talk window too.
+        if (talk is { WatchingStarted: true })
+            menu.Items.Add(TrayItem("TrayStopWatching", "Stop w_atching", () => { talk.StopWatchingNow(); UpdateTray(); }));
+        else if (companion && (talk?.VisionOn ?? Talk.Watch))
+            menu.Items.Add(TrayItem("TrayStartWatching", "Start w_atching", TrayStartWatching, enabled: talk is not null || canTalk));
         if (talk is not null)
         {
             menu.Items.Add(talk.Paused
@@ -237,6 +244,19 @@ public partial class MainWindow
             return;
         }
         StartListening();
+        UpdateTray();
+    }
+
+    /// <summary>Start watching from the menu: Martlet watches without opening the talk window.</summary>
+    private void TrayStartWatching()
+    {
+        if (closing) return;
+        if (openConversation is null && !IsWindowEnabled(WindowHandle))
+        {
+            ShowFromTray();
+            return;
+        }
+        StartWatching();
         UpdateTray();
     }
 

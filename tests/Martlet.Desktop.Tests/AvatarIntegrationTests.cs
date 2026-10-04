@@ -32,8 +32,11 @@ public sealed class AvatarIntegrationTests
         internal TaskCompletionSource EnteredStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Guid activation = Guid.NewGuid();
         internal RendererParameter[] Parameters { get; init; } = [new("Jaw", -10, 10, 0, ["Mouth"])];
-        public async Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, CancellationToken token)
+        internal bool? StartedMuted { get; private set; }
+        public async Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted,
+            CancellationToken token)
         {
+            StartedMuted = voiceMuted;
             EnteredStart.TrySetResult();
             if (StartRelease is { } held) await held.Task;
             Capabilities = new(revision.ToLowerInvariant(), Parameters);
@@ -409,5 +412,43 @@ public sealed class AvatarIntegrationTests
         await Harness.Until(() => controller.Status.Contains("unavailable", StringComparison.Ordinal));
         Assert.False(controller.Observer.IsEnabled);
         Assert.False(controller.IsActive);
+    }
+
+    [Fact]
+    public async Task The_characters_menu_follows_whether_martlets_voice_is_muted()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderers = new List<Renderer>();
+        await using var controller = new AvatarController(createRenderer: () =>
+        {
+            var next = new Renderer();
+            renderers.Add(next);
+            return next;
+        });
+        // Hidden, muting only takes effect for the next showing.
+        await controller.SetVoiceMutedAsync(true, default);
+        Assert.True(controller.VoiceMuted);
+        await controller.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        Assert.True(Assert.Single(renderers).StartedMuted);
+        Assert.DoesNotContain(renderers[0].Messages, m => m.Kind == "voice");
+
+        // Showing, the overlay is told at once so its menu offers the other choice.
+        await controller.SetVoiceMutedAsync(false, default);
+        Assert.False(controller.VoiceMuted);
+        var told = Assert.Single(renderers[0].Messages, m => m.Kind == "voice");
+        Assert.False(RendererProtocol.Data<RendererVoice>(told).Muted);
+
+        await controller.StopAsync();
+        await controller.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        Assert.False(renderers[1].StartedMuted);
+    }
+
+    [Fact]
+    public void Mute_and_unmute_are_menu_choices_martlet_carries_out()
+    {
+        Assert.Contains("mute", RendererRequest.Actions);
+        Assert.Contains("unmute", RendererRequest.Actions);
+        var voice = RendererProtocol.Message("voice", Guid.NewGuid(), new RendererVoice(true));
+        Assert.True(RendererProtocol.Data<RendererVoice>(voice).Muted);
     }
 }

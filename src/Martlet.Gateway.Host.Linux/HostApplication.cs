@@ -174,6 +174,43 @@ internal sealed class ControlCharacterModelStorage(LinuxControlDirectory directo
     }
 }
 
+/// <summary>Keeps the gateway's copy of Martlet's creations in creations.json and each piece of a live creation's assets in
+/// creation-chunk-&lt;sha256&gt;.bin beside host.json (0600, service owner). Not part of the approved configuration.</summary>
+internal sealed class ControlCreationStorage(LinuxControlDirectory directory) : IGatewayCreationStorage
+{
+    private readonly object gate = new();
+
+    public byte[]? LoadLibrary()
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.Creations, LinuxControlDirectory.MaximumCreationsBytes);
+    }
+
+    public void SaveLibrary(byte[] bytes)
+    {
+        lock (gate) directory.WriteCreations(bytes);
+    }
+
+    public bool HasChunk(string sha256)
+    {
+        lock (gate) return directory.HasCreationChunk(sha256);
+    }
+
+    public byte[]? LoadChunk(string sha256)
+    {
+        lock (gate) return directory.Read(LinuxControlDirectory.CreationChunk(sha256), LinuxControlDirectory.MaximumCreationChunkBytes);
+    }
+
+    public void SaveChunk(string sha256, byte[] bytes)
+    {
+        lock (gate) directory.WriteCreationChunk(sha256, bytes);
+    }
+
+    public void RemoveChunk(string sha256)
+    {
+        lock (gate) directory.RemoveCreationChunk(sha256);
+    }
+}
+
 /// <summary>Keeps the shared Home Assistant connection in home-assistant.json beside host.json (0600, service owner).
 /// Contains the HA access token and is not part of the approved configuration.</summary>
 internal sealed class ControlHomeAssistantStorage(LinuxControlDirectory directory) : IGatewayHomeAssistantStorage
@@ -374,6 +411,7 @@ internal static class HostApplication
                     owner.AttachVoices(new ControlVoiceStorage(directory));
                     owner.AttachSpeakingVoices(new ControlSpeakingVoiceStorage(directory));
                     owner.AttachCharacterModels(new ControlCharacterModelStorage(directory));
+                    owner.AttachCreations(new ControlCreationStorage(directory));
                     owner.AttachHomeAssistant(new ControlHomeAssistantStorage(directory));
                     owner.AttachSettings(new ControlSettingsStorage(directory));
                     owner.AttachMemories(new ControlMemoryStorage(directory));

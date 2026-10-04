@@ -6,8 +6,8 @@ using Martlet.Providers;
 
 namespace Martlet.Conversation;
 
-/// <summary>Where a background job is: waiting for a quiet moment, working, paused (a local model is busy with the
-/// conversation), or finished one way or another.</summary>
+/// <summary>Where a background job is: waiting to start (such as checking it fits beside the conversation), working, paused,
+/// or finished one way or another.</summary>
 public enum BackgroundJobState { Waiting, Running, Paused, Succeeded, Failed, TimedOut, Canceled }
 
 /// <summary>A kind of background work Martlet starts during a conversation and brings up when it is done (think_longer's
@@ -79,7 +79,7 @@ public sealed class BackgroundJob
     public DateTimeOffset StartedUtc { get; }
     public DateTimeOffset? FinishedUtc { get; private set; }
     public BackgroundJobState State { get { lock (gate) return state; } }
-    /// <summary>What its runner says it is doing, in a few words (such as "waiting for a quiet moment"), or null.</summary>
+    /// <summary>What its runner says it is doing, in a few words (such as "checking it fits beside Thinking"), or null.</summary>
     public string? Progress { get { lock (gate) return progress; } }
     public string? Result { get { lock (gate) return result; } }
     public string? Problem { get { lock (gate) return problem; } }

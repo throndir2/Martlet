@@ -43,7 +43,7 @@
                      AutomationProperties.Name="Memory configuration status" />
 
             <TextBlock Text="Remembered facts" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock Text="Write a fact and add it, or select one to update or delete it." TextWrapping="Wrap" />
+            <TextBlock Text="Write a fact and add it, or select one to update or delete it. Each fact can belong to someone Martlet knows by voice (People): conversations save what someone says as theirs." TextWrapping="Wrap" />
             <WrapPanel>
                 <Button x:Name="RefreshFactsButton" Content="_Refresh facts" Click="RefreshFacts_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryRefreshFacts" />
@@ -53,6 +53,9 @@
             <Label Target="{Binding ElementName=FactContent}" Content="_Fact" />
             <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="90"
                      VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
+            <Label Target="{Binding ElementName=PersonChoice}" Content="Belongs _to" />
+            <ComboBox x:Name="PersonChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryPerson"
+                      AutomationProperties.Name="Whose fact it is" />
             <Label Target="{Binding ElementName=RetentionChoice}" Content="_Retention" />
             <ComboBox x:Name="RetentionChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryRetention" />
             <WrapPanel>
@@ -63,14 +66,18 @@
                 <Button x:Name="DeleteFactButton" Content="_Delete selected fact" Click="DeleteFact_Click"
                         Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryDeleteFact" />
             </WrapPanel>
+            <Label Target="{Binding ElementName=PersonFilter}" Content="_Show" />
+            <ComboBox x:Name="PersonFilter" MinHeight="30" SelectionChanged="PersonFilter_SelectionChanged"
+                      AutomationProperties.AutomationId="MemoryPersonFilter" AutomationProperties.Name="Whose facts to show" />
             <Label Target="{Binding ElementName=FactsList}" Content="Remembered _facts" />
-            <ListBox x:Name="FactsList" Height="150" DisplayMemberPath="Content" SelectionChanged="FactsList_SelectionChanged"
+            <ListBox x:Name="FactsList" Height="150" SelectionChanged="FactsList_SelectionChanged"
                      AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Saved local facts" />
             <Label Target="{Binding ElementName=FactDetails}" Content="Selected fact _details" />
             <TextBox x:Name="FactDetails" IsReadOnly="True" TextWrapping="Wrap" Height="100"
                      VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactDetails" />
+            <!-- No accessible name: a text block's name is its text, which screen readers announce and MCP reads (counts only). -->
             <TextBlock x:Name="FactStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.Name="Memory fact action status" />
+                       AutomationProperties.AutomationId="MemoryFactStatus" />
 
             <TextBlock Text="Export memory" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
             <TextBlock TextWrapping="Wrap"
