@@ -8,8 +8,9 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>The one request after a finished reply that asks what to remember (<paramref name="ShownFacts"/> numbered facts
-/// shown) and which names the heard voices go by (<paramref name="Voices"/>, by tag). <paramref name="Continued"/> says it
-/// continues the reply's own conversation instead of quoting an excerpt.</summary>
+/// shown) and which names the heard voices go by. <paramref name="Voices"/> are the voices heard, by tag, that the answer's NAME
+/// and REMEMBER V3: lines refer to. <paramref name="Continued"/> says it continues the reply's own conversation instead of
+/// quoting an excerpt.</summary>
 internal sealed record AfterReplyPrompt(BoundedTextInput Input, int ShownFacts, IReadOnlyDictionary<string, string> Voices, bool Continued)
 {
     public override string ToString() => $"{nameof(AfterReplyPrompt)} {{ ShownFacts = {ShownFacts}, Voices = {Voices.Count}, Continued = {Continued} }}";
@@ -31,19 +32,28 @@ internal static class AfterReply
         "(A background task from Martlet, not said by the user. Don't continue the conversation: answer only the task below, " +
         "about the latest exchange above. Only the user's own words count, never Martlet's notes.)";
 
+    /// <param name="heard">The voices whose names to learn (naming is due), or null.</param>
+    /// <param name="present">The voices heard in the message being remembered, to say whose new facts are (the speaker's unless
+    /// the model names another); <paramref name="heard"/> when null.</param>
+    /// <param name="people">The label of each voice the known facts belong to (<see cref="MemoryPeople.Labels"/>).</param>
     internal static AfterReplyPrompt Prompt(IReadOnlyList<MemoryFact>? known, HeardVoices? heard, string? earlierUser, string? earlierReply,
-        string user, string reply, PromptSettings? prompts, BoundedTextInput? conversation = null, Func<BoundedTextInput, bool>? fits = null)
+        string user, string reply, PromptSettings? prompts, BoundedTextInput? conversation = null, Func<BoundedTextInput, bool>? fits = null,
+        HeardVoices? present = null, IReadOnlyDictionary<string, string>? people = null)
     {
         ContractRules.Require(known is not null || heard is not null, "Remembering or learning names is required.");
+        present ??= heard;
+        if (present is { Known.Count: 0 }) present = null;
         var instructions = Instructions(known is not null, heard is not null, prompts);
-        var voices = heard is null ? NoVoices : VoiceNaming.Voices(heard);
-        if (conversation is not null && fits is not null && Continue(conversation, instructions, known, heard, reply) is { } continued &&
+        var listed = heard ?? (known is not null ? present : null);
+        var voices = listed is null ? NoVoices : VoiceNaming.Voices(listed);
+        if (conversation is not null && fits is not null &&
+            Continue(conversation, instructions, known, heard, known is not null ? present : null, people, reply) is { } continued &&
             fits(continued.Input))
             return continued with { Voices = voices };
         if (heard is null)
         {
-            var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts);
-            return new(memory.Input, memory.ShownFacts, NoVoices, false);
+            var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts, present, people);
+            return new(memory.Input, memory.ShownFacts, voices, false);
         }
         if (known is null)
         {
@@ -54,9 +64,10 @@ internal static class AfterReply
         foreach (var (earlier, shown) in new[] { (true, Math.Min(known.Count, MemoryCapture.MaximumShownFacts)), (false, Math.Min(known.Count, 4)), (false, 0) })
         {
             var text = new StringBuilder();
-            MemoryCapture.AppendKnown(text, known, shown);
+            MemoryCapture.AppendKnown(text, known, shown, people);
             text.Append('\n');
             VoiceNaming.AppendVoices(text, heard);
+            MemoryCapture.AppendWhose(text, heard);
             if (earlier && (earlierUser is not null || earlierReply is not null))
             {
                 text.Append("\nEarlier in the conversation (context only):\n");
@@ -99,18 +110,20 @@ internal static class AfterReply
     // The reply's request exactly as it was sent (instructions, earlier messages, the message with its notes), then the reply
     // and the task. The picture or recording sent with the message isn't sent again.
     private static AfterReplyPrompt? Continue(BoundedTextInput conversation, string? instructions, IReadOnlyList<MemoryFact>? known,
-        HeardVoices? heard, string reply)
+        HeardVoices? heard, HeardVoices? present, IReadOnlyDictionary<string, string>? people, string reply)
     {
         if (!CanContinue(conversation) || string.IsNullOrWhiteSpace(reply)) return null;
         var shown = Math.Min(known?.Count ?? 0, MemoryCapture.MaximumShownFacts);
+        var listed = heard ?? present;
         var task = new StringBuilder(ContinuationHeader).Append("\n\n");
         if (instructions is not null) task.Append(instructions).Append("\n\n");
-        if (known is not null) MemoryCapture.AppendKnown(task, known, shown);
-        if (known is not null && heard is not null) task.Append('\n');
-        if (heard is not null)
+        if (known is not null) MemoryCapture.AppendKnown(task, known, shown, people);
+        if (known is not null && listed is not null) task.Append('\n');
+        if (listed is not null)
         {
-            VoiceNaming.AppendVoices(task, heard);
-            if (heard.Speaker?.Voice is { } speaker) task.Append("The latest message above was said by ").Append(speaker.Tag).Append(".\n");
+            VoiceNaming.AppendVoices(task, listed);
+            if (listed.Speaker?.Voice is { } speaker) task.Append("The latest message above was said by ").Append(speaker.Tag).Append(".\n");
+            if (known is not null) MemoryCapture.AppendWhose(task, listed);
         }
         var said = conversation.SentUserText;
         try
