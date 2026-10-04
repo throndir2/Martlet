@@ -30,9 +30,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveToolDeny",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
         // shows; its Set up, Pair and role buttons do the work. The Devices map's Add a computer details open the same wizard
-        // from their + (SelectedDeviceAdd) and their first choice card.
-        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HostsStepWhere", "HostsStepInstall", "HostsStepPair",
-        "HostsStepRoles", "HostsBack", "HostsNext",
+        // from their + (SelectedDeviceAdd) and their first choice card, and so does Home's Connect to your other computers on a
+        // new PC (HomeConnectComputers).
+        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepWhere",
+        "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
@@ -157,6 +158,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // behind (SelectedDeviceSharedGpu, fixed wording with role and engine names).
         "SelectedDeviceRelease", "SelectedDeviceUpdate", "SelectedDeviceSharedGpu",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
+        // default, your active window, or a camera's name or host without its path or password) and how often it comments.
+        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
+        // (clicking it saves talk-preferences.json, so it needs --allow-ui-effects).
+        "VisionNow", "VisionToggle",
         // Companion › Listening › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
         // Thinking destination the page already shows.
@@ -226,6 +232,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // through the VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingEngineSharedGpu", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
+        // Settings › App updates: this PC's own host service following the app's version (shown only when this PC runs one):
+        // current, being updated in the background, busy (and when Martlet tries again), stopped, not running, or why the
+        // update stopped. Versions and fixed text only.
+        "OwnHostUpdateStatus",
         // Companion › Replies › Context size: the size replies use, where it comes from (the setting, Martlet's default, the
         // model's limit, the host's default or Ollama's context length) and what Martlet knows of the model's own limit. Its
         // Check model limit button (RepliesCheckContext) asks the Thinking model's server, so it needs --allow-ui-effects.
@@ -267,6 +277,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
+        // A run window's pairing panel: the note on how long the code works (fixed text) and its Copy code button's label
+        // ("Copy code", then "Copied" or "Couldn't copy"); never the code (HostRunPairCode). Clicking HostRunPairCopy puts the
+        // code on the clipboard, so it needs --allow-ui-effects.
+        "HostRunPairNote", "HostRunPairCopy",
         "NearbyStatus", "NearbyNumber", "NearbyShareStatus", "JoinRequestTitle", "JoinRequestText", "JoinRequestNumber", "JoinRequestExpiry",
         // The MCP directory's status line and the selected server's public directory facts (never what was typed into its fields).
         "McpDirectoryStatus", "McpDirectoryNoSelection", "McpDirectoryDetailTitle", "McpDirectoryDetailName", "McpDirectorySummary",
@@ -307,9 +321,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
-        // steps' heading ("This host is ready" or "Get this host running") and the line under it (how many steps are left and
-        // the next one, or "All set", and when Martlet last checked).
-        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary",
+        // steps' heading ("This host is ready" or "Get this host running"), the line under it (how many steps are left and
+        // the next one, or "All set", and when Martlet last checked) and the setup runs working now, side by side, each with
+        // its status line ("Start Docker Desktop: Waiting for Docker Desktop to start..."; run titles and status lines only,
+        // never output or pairing codes).
+        "HostServiceStatus", "HostStepsHeading", "HostStepsSummary", "HostRunsNow",
         // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
         // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
         "ConfirmationCopy", "HostInputCopy", "ProblemHeading",
@@ -563,11 +579,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
     }
 
-    internal async Task<object> ClickAsync(string id)
+    internal async Task<object> ClickAsync(string id, string? window = null)
     {
         if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
-        var element = Find(id);
+        var element = Find(id, window);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
         // Navigation items select a page and sections expand or collapse; neither starts work.
         if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
@@ -663,17 +679,25 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { moved = id, from = Box(before), to = Box(element.Current.BoundingRectangle) };
     }
 
-    private AutomationElement Find(string id)
+    /// <summary>The control with automation ID <paramref name="id"/>, in the window titled <paramref name="window"/> when given
+    /// (several run windows can be open side by side, each with the same controls).</summary>
+    private AutomationElement Find(string id, string? window = null)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("A control automation ID is required.");
-        var matches = Controls(ConnectedWindows()).Select(control => control.Element)
+        var windows = ConnectedWindows();
+        if (window is not null)
+        {
+            windows = windows.Where(candidate => string.Equals(candidate.Current.Name, window, StringComparison.Ordinal)).ToArray();
+            if (windows.Length == 0) throw new ArgumentException($"Window '{window}' is not open. Refresh the UI snapshot.");
+        }
+        var matches = Controls(windows).Select(control => control.Element)
             .Where(element => element.Current.AutomationId == id)
             .Take(2).ToArray();
         return matches.Length switch
         {
             1 => matches[0],
             0 => throw new ArgumentException($"Control '{id}' was not found. Refresh the UI snapshot."),
-            _ => throw new ArgumentException($"Control '{id}' is ambiguous across open windows.")
+            _ => throw new ArgumentException($"Control '{id}' is ambiguous across open windows; name the window.")
         };
     }
 

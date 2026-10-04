@@ -666,7 +666,7 @@ internal sealed class LiveConversationConfiguration
 
     internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities = null)
     {
-        if (route is null) return "Set up Thinking before turning on vision.";
+        if (route is null) return "Set up Thinking so Martlet can see.";
         if (IsChat(route) && ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
             return $"{retired.Name} retired this Thinking model. Choose {retired.DefaultModelId} in Companion › Thinking.";
         var found = abilities?.Find(route.Origin, route.ModelId) is { Sees: not null } ability ? $" ({Said(ability)})" : "";

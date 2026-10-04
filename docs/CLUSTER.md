@@ -563,12 +563,21 @@ Security:
   20 output lines, so commands survive a gateway restart (including the
   gateway's own update) and the agent finishes them afterwards.
 
-The agent also keeps its own host service on its Martlet version, so a host
-service from before commands existed (for example 0.14.1) is updated by itself
-the next time Martlet runs on that PC; from then on the main PC updates and
-manages it from here. With *Keep my Martlet hosts on this PC's version* on, the
-main PC sends `martlet.update` to such hosts in the background; it runs as soon
-as Martlet runs there.
+Martlet on a PC that runs a host service keeps it on its own Martlet version by
+itself, whatever *Keep my Martlet hosts on this PC's version* says. After
+Martlet installs its own update it comes back first (its window is usable at
+once) and then, in the background, builds the new `martlet-host` image and runs
+`update` (with `--yes`, as keeping this PC's host service current always has:
+the configuration it approves comes from the release this PC just installed;
+exit 75 *busy*: tried again three minutes later; it waits while Martlet
+replies or hears you, for this PC's own pending update, and for another route
+already updating it). It checks again every minute until the host service runs
+this version, for example once Docker Desktop starts; Settings › App updates
+says where that stands. So a host service from before commands existed (for
+example 0.14.1) is updated by itself the next time Martlet runs on that PC; from
+then on the main PC updates and manages it from here. With *Keep my Martlet
+hosts on this PC's version* on, the main PC sends `martlet.update` to such hosts
+in the background; it runs as soon as Martlet runs there.
 
 ### When updates and other work meet
 
@@ -629,7 +638,8 @@ loopback with the real gateway, desktop client and agent loop, including a
 command queued behind a running one and an update that waits and holds the
 queue; `host_engine_check` (MCP) runs the real `martlet-host` engine's lock in a
 disposable container; `host_update_check` (MCP) rehearses how one Martlet keeps
-its own host updates from colliding with its production update tracker;
+its own host updates from colliding with its production update tracker, and how
+this PC's own host service follows the app's version after an update;
 `app_update_check` (MCP) runs the desktop's real update helper with stand-ins for
 Martlet and the installer (it waits for Martlet to exit, runs the installer with
 no window, logs each step and restarts Martlet minimized). The same client and agent ran against a real Linux

@@ -77,9 +77,9 @@ public partial class MainWindow
     {
         if (settingsNode is null || settingsBusy || closing) return;
         // Pages, Setup and who does what change settings.json too; the next check runs once they are done.
-        if (assigningRole || savingTab || setupOperations.IsRunning) return;
+        if (changes.Busy || setupOperations.IsRunning) return;
         settingsBusy = true;
-        var holding = false;
+        ChangeTurns.Turn? turn = null;
         SharedSettingsResult? result = null;
         try
         {
@@ -87,10 +87,9 @@ public partial class MainWindow
             var hosts = shared ? NetworkMap.Hosts(Inputs()) : [];
             var reads = await Task.WhenAll(hosts.Select(ReadSettingsCopyAsync));
             if (closing) return;
-            if (assigningRole || savingTab || setupOperations.IsRunning) return;
-            assigningRole = holding = true;
+            if (setupOperations.IsRunning || (turn = changes.TryTake()) is null) return;
             result = await settingsNode.SyncAsync(reads.Select(r => r.Copy).OfType<SharedSettings>(), shared, DateTimeOffset.UtcNow, lifetime.Token);
-            assigningRole = holding = false;
+            turn.Dispose();
             if (shared) await PushSettingsAsync(reads, result.Document);
             if (shared) settingsCheckedAt = DateTimeOffset.UtcNow;
             var digest = settingsNode.Document.Digest();
@@ -112,7 +111,7 @@ public partial class MainWindow
         }
         finally
         {
-            if (holding) assigningRole = false;
+            turn?.Dispose();
             settingsBusy = false;
             if (!closing)
             {
@@ -499,18 +498,18 @@ public partial class MainWindow
         else if (!BundledLive2D.IsBuiltIn(path) && !File.Exists(path))
             return SharedApply.Waiting($"Its model file isn't on this PC ({Path.GetFileName(path)}). Add it in Companion › Character › Your " +
                 "characters on the computer that has it, so it is copied here.");
-        var loaded = await setupService!.LoadAsync(token);
-        if (loaded.Settings is not { } settings) return SharedApply.Waiting("Finish setting up Martlet on this PC first.");
-        var profiles = new AvatarProfileStore(directory);
-        var current = await profiles.LoadAsync(settings.Profile.Id, token);
-        var profile = current.Profile ?? AvatarProfile.BuiltIn(settings.Profile.Id);
+        // A new PC takes the character before anything else is set up on it (its first settings give the profile its ID).
+        AvatarProfile profile;
+        string? revision;
+        try { (profile, revision) = await Pairings().EnsureProfileAsync(token); }
+        catch (InvalidOperationException error) { return SharedApply.Waiting(error.Message); }
         var next = profile with
         {
             Renderer = value.Renderer, ModelPath = path, Configuration = value.Configuration.Clone(), AutoShow = value.AutoShow,
             ResourceRevision = null
         };
         next.Validate();
-        await profiles.SaveAsync(next, current.Revision, token);
+        await new AvatarProfileStore(directory).SaveAsync(next, revision, token);
         homeAvatar = next;
         characterChanged = profile.ModelPath != next.ModelPath || profile.Renderer != next.Renderer;
         return SharedApply.Done;

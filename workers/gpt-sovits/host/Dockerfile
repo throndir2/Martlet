@@ -6,7 +6,11 @@
 # martlet-gpt-sovits-models volume, mounted at GPT_SoVITS/pretrained_models.
 FROM python:3.11.13-slim-bookworm@sha256:86adf8dbadc3d6e82ee5dd2c74bec2e1c2467cdad47886280501df722372d2e1
 
-ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_ROOT_USER_ACTION=ignore
+ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_ROOT_USER_ACTION=ignore \
+    PIP_DEFAULT_TIMEOUT=60 PIP_RETRIES=10 PIP_RESUME_RETRIES=10
+# The base image's pip fails the whole build when a download stalls or the connection drops; pip 26.2.1 resumes it.
+RUN echo 'pip==26.2.1 --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e' > /tmp/pip.lock \
+ && python3.11 -m pip install --no-deps --require-hashes --no-compile -r /tmp/pip.lock && rm -f /tmp/pip.lock
 ARG GSV_COMMIT=d7c2210da8c013e81a94bfc7b811a477c99fd506
 ARG GSV_SHA256=467fc3baf29e9423d8741270b243cc78510773843db811eeafd47215c1e56d9c
 ARG NLTK_COMMIT=550b6625bcef1f2abff2ff770a5a0d272c9c6b2a

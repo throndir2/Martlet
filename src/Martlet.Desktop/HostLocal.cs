@@ -49,10 +49,24 @@ internal static partial class HostLocal
         /// Desktop's word counts and Windows is set up. Stops when it gives up again after that.</summary>
     internal static async Task EnsureDockerAsync(HostRunWindow run, ContinueSetupKind resume)
     {
-        Action<string> status = run.Status;
-        var (output, token) = (run.Output, run.Token);
+        // Docker Desktop being installed by another run (Install Docker Desktop, prerequisites): this run waits for it.
+        if (!MachineInfo.DockerDesktopInstalled())
+            await SharedSteps.WaitAsync(SharedSteps.DockerInstall, run.Status, run.Output, run.Token);
         if (!MachineInfo.DockerDesktopInstalled())
             throw new InvalidOperationException("Install Docker Desktop, open it once, then try again.");
+        // Several runs can need Docker Desktop at once (Start Docker Desktop, setting up the host service, adding a role):
+        // one starts it (and gets Windows ready for it) and the others wait for that one.
+        await SharedSteps.RunAsync(SharedSteps.DockerStart, run.Heading, "starting Docker Desktop", async () =>
+        {
+            await StartDockerAsync(run, resume);
+            return true;
+        }, run.Status, run.Output, run.Token);
+    }
+
+    private static async Task StartDockerAsync(HostRunWindow run, ContinueSetupKind resume)
+    {
+        Action<string> status = run.Status;
+        var (output, token) = (run.Output, run.Token);
         status("Checking Docker Desktop...");
         output.Report("Checking Docker Desktop...");
         var desktop = new DockerDesktopLog();
@@ -310,8 +324,16 @@ internal static partial class HostLocal
     }
 
     /// <summary>Installs Docker Desktop (WSL 2 based) with winget, without a console: Docker's own installer and Windows'
-    /// administrator prompt appear; the output streams into the run window. The owner already accepted the terms in Martlet.</summary>
-    internal static async Task InstallDockerDesktopAsync(Action<string> status, IProgress<string> output, CancellationToken token)
+    /// administrator prompt appear; the output streams into the run window. The owner already accepted the terms in Martlet.
+    /// Another run that installs it meanwhile waits for this one instead of starting a second installer.</summary>
+    internal static Task InstallDockerDesktopAsync(HostRunWindow run) =>
+        SharedSteps.RunAsync(SharedSteps.DockerInstall, run.Heading, "installing Docker Desktop", async () =>
+        {
+            await InstallDockerDesktopAsync(run.Status, run.Output, run.Token);
+            return true;
+        }, run.Status, run.Output, run.Token);
+
+    private static async Task InstallDockerDesktopAsync(Action<string> status, IProgress<string> output, CancellationToken token)
     {
         var winget = Winget() ?? throw new InvalidOperationException(
             "App Installer isn't available on this PC, so Martlet can't install Docker Desktop. " +
@@ -326,10 +348,26 @@ internal static partial class HostLocal
         output.Report("Docker Desktop is installed.");
     }
 
-    /// <summary>Builds martlet-host:&lt;version&gt; from this version's source (falling back to main) unless it exists.</summary>
-    internal static async Task EnsureImageAsync(HostSetupTarget target, Action<string> status, IProgress<string> output, CancellationToken token)
+    /// <summary>Builds martlet-host:&lt;version&gt; for <paramref name="run"/> unless it exists (or waits for the run building it).</summary>
+    internal static Task EnsureImageAsync(HostSetupTarget target, HostRunWindow run) =>
+        EnsureImageAsync(target, run.Status, run.Output, run.Token, run.Heading);
+
+    /// <summary>Builds martlet-host:&lt;version&gt; from this version's source (falling back to main) unless it exists. Runs
+    /// that need the same image meanwhile wait for the one building it (<paramref name="by"/> names this run for them).</summary>
+    internal static Task EnsureImageAsync(HostSetupTarget target, Action<string> status, IProgress<string> output, CancellationToken token,
+        string by)
     {
         var image = HostSetupCommands.Image(target);
+        return SharedSteps.RunAsync(SharedSteps.Image(image), by, "preparing the Martlet host", async () =>
+        {
+            await BuildImageAsync(target, image, status, output, token);
+            return true;
+        }, status, output, token);
+    }
+
+    private static async Task BuildImageAsync(HostSetupTarget target, string image, Action<string> status, IProgress<string> output,
+        CancellationToken token)
+    {
         if (await RunAsync(["image", "inspect", image], null, token) == 0) return;
         status("Preparing Martlet host. The first time can take a few minutes...");
         foreach (var reference in new[] { "v" + target.Version, "main" })
@@ -428,7 +466,7 @@ internal static partial class HostLocal
 
     /// <summary>Lets another desktop (for example the main PC) pair with this PC's host: runs "pair", which shows this PC's
     /// address and a short one-use code; <paramref name="shown"/> receives both. The code never reaches
-    /// <paramref name="output"/> (or the run log). The engine waits up to five minutes for that desktop to type it;
+    /// <paramref name="output"/> (or the run log). The engine waits until that desktop types it (the code has no deadline);
     /// canceling withdraws the code.</summary>
     internal static async Task<int> PairOtherAsync(HostSetupTarget target, Action<string, string> shown,
         IProgress<string> output, CancellationToken token, string codeNote = "(shown above)")

@@ -201,6 +201,28 @@ internal static class NetworkRehearsal
             return (h3.State == "bound" && a.State.Roster?.Host(h3.HostId) is { Removed: false } && works,
                 $"lab-host-3 {h3.State}; B paired with it: {b.Has(h3.HostId)}; request {(works ? "accepted" : "refused")}");
         });
+        await Run("A typed code doesn't expire: it still pairs 12 hours later, and only five wrong tries close one", async () =>
+        {
+            var clock = new LabClock();
+            await using var h4 = await LabHost.StartAsync("lab-host-4", clock);
+            using var keyF = NetworkKey.Create("lab-desktop-f");
+            var later = h4.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+            clock.Offset = TimeSpan.FromHours(12);
+            var stillOpen = h4.Server.Pairing.IsOpen(later.PairingId);
+            var (paired, _) = await Audio2FaceHostClient.PairWithCodeAsync(h4.Origin, later.Code.Reveal(), keyF.DeviceId, "LAB-F", token);
+            var used = h4.Server.Pairing.IsOpen(later.PairingId);
+            var guessed = h4.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+            var code = guessed.Code.Reveal();
+            var wrong = (code[0] == '2' ? "3" : "2") + code[1..];
+            var refusals = new List<string?>();
+            for (var attempt = 0; attempt < GatewayPairingService.MaximumFailedAttempts; attempt++)
+                refusals.Add(await FailureAsync(() => Audio2FaceHostClient.PairWithCodeAsync(h4.Origin, wrong, "lab-desktop-g", "LAB-G", token)));
+            var closed = await FailureAsync(() => Audio2FaceHostClient.PairWithCodeAsync(h4.Origin, code, "lab-desktop-g", "LAB-G", token));
+            return (stillOpen && paired.HostId == h4.HostId && !used && refusals.All(r => r == "pairing.invalid") &&
+                    !h4.Server.Pairing.IsOpen(guessed.PairingId) && closed == "pairing.closed",
+                $"12 hours later: code open {stillOpen}, F paired with {paired.HostId}, open after use {used}; " +
+                $"wrong tries: {string.Join(", ", refusals)}; the right code after that: {closed}");
+        });
         await Run("A removes B: every host revokes B, and B leaves the network and forgets its hosts", async () =>
         {
             a.Remove(NetworkKinds.Desktop, keyB.DeviceId);
@@ -232,6 +254,13 @@ internal static class NetworkRehearsal
     }
 
     private sealed record Step(string Name, bool Ok, string Detail);
+
+    /// <summary>The system clock moved forward by <see cref="Offset"/>, as hours passing on a host.</summary>
+    private sealed class LabClock : TimeProvider
+    {
+        internal TimeSpan Offset;
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
+    }
 
     /// <summary>A simulated desktop: its network key, its pairings (secrets in memory) and its network.json state.</summary>
     private sealed class LabDesktop(NetworkKey key, string name)
@@ -312,7 +341,7 @@ internal static class NetworkRehearsal
         internal string? NetworkId => Server.NetworkState.NetworkId;
         internal NetworkRoster? Roster => saved is null ? null : NetworkRoster.Parse(saved);
 
-        internal static async Task<LabHost> StartAsync(string hostId)
+        internal static async Task<LabHost> StartAsync(string hostId, TimeProvider? clock = null)
         {
             var host = new LabHost { HostId = hostId };
             try
@@ -321,9 +350,9 @@ internal static class NetworkRehearsal
                 host.Origin = $"https://127.0.0.1:{FreePort()}";
                 var origin = new GatewayOrigin(host.Origin);
                 var identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
-                host.Server = new GatewayServer(identity, origin, [], host);
+                host.Server = new GatewayServer(identity, origin, [], host, clock);
                 host.Server.AttachNetworkStorage(host);
-                host.listener = await host.Server.StartAsync(new GatewayTlsBinding(origin, identity, host.certificate), new KestrelGatewayListenerFactory());
+                host.listener = await host.Server.StartAsync(new GatewayTlsBinding(origin, identity, host.certificate, clock), new KestrelGatewayListenerFactory());
                 return host;
             }
             catch

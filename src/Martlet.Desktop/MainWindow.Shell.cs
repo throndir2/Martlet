@@ -30,7 +30,9 @@ public partial class MainWindow
     private AvatarProfile? homeAvatar;
     private IReadOnlyList<PairedHost> homeHosts = [];
     private bool renderingBoard;
-    private bool assigningRole;
+    /// <summary>Settings changes made here take turns (<see cref="ChangeTurns"/>): a change waits for the one saving before
+    /// it rather than being refused.</summary>
+    private readonly ChangeTurns changes = new();
     private readonly Dictionary<string, HostCheck> hostChecks = new(StringComparer.Ordinal);
     private readonly List<MapElement> mapElements = [];
     private Ellipse? mapGlow;
@@ -49,7 +51,6 @@ public partial class MainWindow
     private readonly System.Windows.Threading.DispatcherTimer hostProbeTimer = new() { Interval = HostProbeInterval };
     private WindowsVirtualization? virtualization;
     private bool refreshingHome;
-    private bool hostBusy;
     private readonly AudioDevicePresence audioPresence = new();
     private DependencyPropertyDescriptor? actionTextDescriptor;
 
@@ -67,10 +68,11 @@ public partial class MainWindow
         ErrorLog.Info($"This PC runs as a {(Role == DeviceRole.Host ? "host" : "companion")} PC{(deviceRole is null ? " (not chosen yet)" : "")}.");
         InitializeHealth();
         // The host dashboard reads this PC's host service by itself: at start, every 30 seconds while the window shows and
-        // whenever it shows again, so finished steps tick without a button.
+        // whenever it shows again, so finished steps tick without a button. It keeps reading while setup runs work, so a step
+        // another run finishes (Docker Desktop starting, for example) ticks and the next ones open up.
         hostProbeTimer.Tick += (_, _) =>
         {
-            if (!closing && Role == DeviceRole.Host && IsVisible && !hostBusy) CheckThisPcHostAsync().Forget();
+            if (!closing && Role == DeviceRole.Host && IsVisible) CheckThisPcHostAsync().Forget();
         };
         IsVisibleChanged += (_, _) =>
         {
@@ -78,6 +80,8 @@ public partial class MainWindow
                 CheckThisPcHostAsync().Forget();
         };
         hostProbeTimer.Start();
+        SharedSteps.Changed += SharedStepsChanged;
+        HostRunWindow.RunsChanged += ShowHostRuns;
         ApplyRole();
         RenderHome();
         if (deviceRole is null) ShowTour(TourWelcome);
@@ -87,8 +91,17 @@ public partial class MainWindow
     {
         actionTextDescriptor?.RemoveValueChanged(ActionText, ActionTextChanged);
         hostProbeTimer.Stop();
+        SharedSteps.Changed -= SharedStepsChanged;
+        HostRunWindow.RunsChanged -= ShowHostRuns;
         ReleaseHealth();
     }
+
+    /// <summary>A shared setup step (installing or starting Docker Desktop, for example) started or ended: the host dashboard
+    /// says so on its Docker Desktop step and offers what can go ahead meanwhile.</summary>
+    private void SharedStepsChanged() => Dispatcher.BeginInvoke(() =>
+    {
+        if (!closing) RenderHost();
+    });
 
     private void StartAmbientMotion()
     {
@@ -128,6 +141,16 @@ public partial class MainWindow
     }
 
     private void DismissStatus_Click(object sender, RoutedEventArgs e) => ActionText.Text = "";
+
+    /// <summary>This change's turn to save (<see cref="ChangeTurns"/>): at once when no other change is saving, otherwise
+    /// after the ones before it, saying so on the status line meanwhile. Dispose it as soon as the save is done; never hold
+    /// it while something long (an install, a host run) works.</summary>
+    private async Task<ChangeTurns.Turn> ChangeTurnAsync()
+    {
+        if (changes.TryTake() is { } now) return now;
+        ActionText.Text = "Waiting for the change before this one to finish saving...";
+        return await changes.TakeAsync(lifetime.Token);
+    }
 
     // ---------- navigation ----------
 
@@ -448,6 +471,11 @@ public partial class MainWindow
 
     private void PrimaryStage_Click(object sender, RoutedEventArgs e) => (stageFix ?? (() => OpenCompanion(CompanionTab.Thinking)))();
 
+    /// <summary>Home's first steps on a new PC: Add a computer, which opens on Martlet on your network.</summary>
+    private HealthFix ConnectComputersFix() => new("network", "Connect to your other computers", () => RunNodeAction(NodeAction.AddComputer), Passive: true);
+
+    private void ConnectComputers_Click(object sender, RoutedEventArgs e) => ConnectComputersFix().Run();
+
     // ---------- host dashboard ----------
 
     private HostSetupTarget ThisPcTarget() => new(HostSetupMethod.ThisPcDocker, "",
@@ -489,6 +517,33 @@ public partial class MainWindow
                   $" Martlet keeps checking it every {HostProbeInterval.TotalSeconds:0} seconds.{checkedAt}"
                 : $"{left.Count} step{(left.Count == 1 ? "" : "s")} left. Next: {left[0].Title}. Steps tick by themselves once " +
                   $"they're done; Martlet checks every {HostProbeInterval.TotalSeconds:0} seconds.{checkedAt}";
+        ShowHostRuns();
+    }
+
+    /// <summary>The setup runs working now under the host dashboard's steps, each with its status line ("Start Docker Desktop:
+    /// Waiting for Docker Desktop to start..."). They run side by side: what they share waits for the run doing it.</summary>
+    private void ShowHostRuns()
+    {
+        if (closing || Role != DeviceRole.Host) return;
+        var runs = HostRunWindow.Running;
+        HostRunsText.Visibility = runs.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        HostRunsText.Text = runs.Count == 0 ? ""
+            : (runs.Count == 1 ? "Working now: " : $"{runs.Count} runs working side by side: ") +
+              string.Join(" · ", runs.Select(run => run.CurrentStatus.Length == 0 ? run.Heading : $"{run.Heading}: {run.CurrentStatus}"));
+    }
+
+    /// <summary>Docker Desktop is being installed, Windows readied for it or it is being started, by a run working now.</summary>
+    private static bool DockerUnderway =>
+        HostsWindow.InstallingDocker || SharedSteps.IsRunning(SharedSteps.WindowsReady) || SharedSteps.IsRunning(SharedSteps.DockerStart);
+
+    /// <summary>What the runs working on Docker Desktop are doing now ("\"Start Docker Desktop\" is starting Docker Desktop"),
+    /// or null when none is.</summary>
+    private static string? DockerWork()
+    {
+        var working = SharedSteps.Now().Where(step => step.Key is SharedSteps.DockerInstall or SharedSteps.WindowsReady or SharedSteps.DockerStart)
+            .Select(step => $"\"{step.By}\" is {step.Doing}").ToList();
+        if (working.Count == 0 && HostRunWindow.IsRunningTitled(HostsWindow.InstallDockerTitle)) working.Add($"\"{HostsWindow.InstallDockerTitle}\" is working");
+        return working.Count == 0 ? null : string.Join("; ", working);
     }
 
     private string HostHeadline(LocalHostServiceState? state) => state?.Stage switch
@@ -511,6 +566,7 @@ public partial class MainWindow
         var done = state is not null && state.Stage is not (LocalHostServiceStage.DockerMissing or LocalHostServiceStage.DockerNotRunning);
         var windowsBlocks = !done && installed && virtualization?.Blocked == true;
         var engineWaiting = machine.DockerRunning && state?.Stage == LocalHostServiceStage.DockerNotRunning;
+        var underway = done ? null : DockerWork();
         var action = virtualization switch
         {
             { RestartRequired: true } => "Restart Windows",
@@ -520,6 +576,8 @@ public partial class MainWindow
         };
         return new("docker", "Docker Desktop",
             done ? "Running."
+                : underway is not null ? underway + ". You don't have to wait: other setup can go ahead meanwhile, and steps that need " +
+                    "Docker Desktop carry on once it runs."
                 : windowsBlocks ? string.Join("; ", virtualization!.Problems()) + ". " + virtualization.Recovery
                 : engineWaiting ? "Docker Desktop is open, but its engine isn't answering yet. The first start can take a few minutes."
                 : state is null && installed ? "Checking Docker Desktop's engine..."
@@ -535,9 +593,16 @@ public partial class MainWindow
     private HomeStep ServiceStep(LocalHostServiceState? state)
     {
         StepCommand SetUp(string label, bool primary = true) => new(label, () => SetUpHostServiceAsync().Forget(), primary);
+        // While Docker Desktop is still being installed or started, a host service Martlet hasn't seen set up can be set up
+        // already: its run waits for Docker Desktop and carries on as soon as it runs.
+        var early = state?.Stage is LocalHostServiceStage.DockerMissing or LocalHostServiceStage.DockerNotRunning && DockerUnderway &&
+            ThisPcHost() is null && thisPcHostVersion is null;
         (string Detail, StepCommand[] Commands) step = state?.Stage switch
         {
             null => ("Checking this PC's host service...", Array.Empty<StepCommand>()),
+            LocalHostServiceStage.DockerMissing or LocalHostServiceStage.DockerNotRunning when early =>
+                ("Runs in Docker Desktop. You don't have to wait for it: set it up now and it carries on as soon as Docker Desktop " +
+                 "runs. Windows may ask to allow private-network access.", [SetUp("Set up host service", primary: false)]),
             LocalHostServiceStage.DockerMissing or LocalHostServiceStage.DockerNotRunning =>
                 ("Runs in Docker Desktop. Martlet checks it again once Docker Desktop is running.", []),
             LocalHostServiceStage.NotSetUp =>
@@ -551,6 +616,9 @@ public partial class MainWindow
                  "again (pairings and roles stay).", [SetUp("Set up again", primary: false)]),
             _ => ($"Running and reachable on your network{(state.HostId is { } id ? $" as {id}" : "")}.", [])
         };
+        // A setup run working now says so (pressing its button again brings that run's window forward).
+        if (state?.Ready != true && HostRunWindow.IsRunningTitled(HostActions.ThisPcSetupTitle))
+            step.Detail = $"Being set up now (\"{HostActions.ThisPcSetupTitle}\"). " + step.Detail;
         return new("service", "Host service", step.Detail, state?.Ready == true, false, step.Commands);
     }
 
@@ -632,10 +700,15 @@ public partial class MainWindow
         if (state!.Version is not { } running)
             return new("update", "Keep it up to date", $"Updates the host service to Martlet {Version}. Pairings and roles stay.",
                 false, true, [update]);
-        return AppVersions.IsOlder(running, Version)
-            ? new("update", "Keep it up to date",
-                $"The host service runs Martlet {running}. Update it to {Version}. Pairings and roles stay.", false, true, [update with { Primary = true }])
-            : new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+        if (!AppVersions.IsOlder(running, Version))
+            return new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+        if (hostUpdates.IsUpdating(ThisPcHostId))
+            return new("update", "Keep it up to date",
+                $"Updating the host service from Martlet {running} to {Version}. Pairings and roles stay.", false, true, []);
+        return new("update", "Keep it up to date",
+            $"The host service runs Martlet {running}. Martlet updates it to {Version} by itself " +
+            (state.Stage == LocalHostServiceStage.Running ? "in the background" : "once it runs again") +
+            "; Update host service does it now. Pairings and roles stay.", false, true, [update with { Primary = true }]);
     }
 
     /// <summary>"A", "A and B", "A, B and C", "A, B, C and 2 more".</summary>
@@ -722,14 +795,14 @@ public partial class MainWindow
     };
 
     /// <summary>Runs a host-dashboard step on this PC's host service in a run window (never a console). Pairing shows the
-    /// one-use code for the main PC.</summary>
+    /// one-use code for the main PC. Steps run side by side: changes to the host service take turns in its engine lock (a
+    /// run waiting for another says so in its window), what they share (starting Docker Desktop, the host image) is done
+    /// once, and pressing a step that is still working brings its window forward.</summary>
     private void LaunchHost(HostAction action) => LaunchHostAsync(action).Forget();
 
     private async Task LaunchHostAsync(HostAction action)
     {
         if (closing || store is null) return;
-        if (hostBusy) { ActionText.Text = "Another host setup step is still running."; return; }
-        hostBusy = true;
         // Martlet's automatic host update leaves this PC's host service to this run rather than colliding with it.
         using var updating = action.Verb == HostVerb.Update ? hostUpdates.Begin(ThisPcHostId) : null;
         try
@@ -751,7 +824,6 @@ public partial class MainWindow
         }
         finally
         {
-            hostBusy = false;
             if (!closing)
             {
                 RenderHost();
@@ -764,20 +836,21 @@ public partial class MainWindow
 
     private async Task SetUpHostServiceAsync()
     {
-        if (hostBusy) return;
         var target = ThisPcTarget();
         if (!HostSetupCommands.IsPrivate(target.Address))
         {
             ActionText.Text = "Connect this PC to your home network first.";
             return;
         }
-        hostBusy = true;
         string? firewall;
-        try { firewall = await HostsWindow.OpenFirewallAsync(this, target.Address, text => ActionText.Text = text, lifetime.Token); }
+        try
+        {
+            firewall = await HostsWindow.OpenFirewallAsync(this, target.Address, text => ActionText.Text = text, lifetime.Token,
+                HostActions.ThisPcSetupTitle);
+        }
         catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         { firewall = $"Windows Firewall wasn't changed. Other PCs may not reach this host. {error.Message}"; }
         catch (OperationCanceledException) { return; }
-        finally { hostBusy = false; }
         await LaunchHostAsync(HostAction.Setup);
         if (firewall is not null) ActionText.Text = firewall + " " + ActionText.Text;
     }
@@ -792,18 +865,13 @@ public partial class MainWindow
     /// when needed, continues by starting Docker Desktop after the next sign-in.</summary>
     private async void PrepareWindows()
     {
-        if (hostBusy || closing) return;
-        hostBusy = true;
-        try
+        if (closing) return;
+        var done = await HostRunWindow.RunAsync(this, "Get Windows ready for Docker Desktop", async run =>
         {
-            var done = await HostRunWindow.RunAsync(this, "Get Windows ready for Docker Desktop", async run =>
-            {
-                await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
-                return "Docker Desktop is running.";
-            });
-            if (!closing) ActionText.Text = done ?? "Windows isn't ready for Docker Desktop yet. See the progress window for details.";
-        }
-        finally { hostBusy = false; }
+            await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
+            return "Docker Desktop is running.";
+        }, join: true);
+        if (!closing) ActionText.Text = done ?? "Windows isn't ready for Docker Desktop yet. See the progress window for details.";
         if (!closing) await ReadMachineAsync();
     }
 
@@ -831,18 +899,13 @@ public partial class MainWindow
 
     private async Task StartDockerAfterRestartAsync(string task)
     {
-        if (hostBusy || closing) return;
-        hostBusy = true;
-        try
+        if (closing) return;
+        var done = await HostRunWindow.RunAsync(this, "Start Docker Desktop", async run =>
         {
-            var done = await HostRunWindow.RunAsync(this, "Start Docker Desktop", async run =>
-            {
-                await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
-                return $"Docker Desktop is running. Continue: {task}.";
-            });
-            if (!closing) ActionText.Text = done ?? "Docker Desktop didn't start. See the progress window for details.";
-        }
-        finally { hostBusy = false; }
+            await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
+            return $"Docker Desktop is running. Continue: {task}.";
+        }, join: true);
+        if (!closing) ActionText.Text = done ?? "Docker Desktop didn't start. See the progress window for details.";
         if (!closing) await ReadMachineAsync();
     }
 
@@ -1136,10 +1199,10 @@ public partial class MainWindow
     private async Task AssignLipSyncAsync(string key)
     {
         if (store is null || setupService is null || closing) return;
-        if (assigningRole) { ActionText.Text = "Another device change is still finishing."; RenderMap(); return; }
-        assigningRole = true;
+        ChangeTurns.Turn? turn = null;
         try
         {
+            turn = await ChangeTurnAsync();
             PairedHost? host = null;
             var install = false;
             if (key.StartsWith("host:", StringComparison.Ordinal))
@@ -1186,7 +1249,7 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
+            turn?.Dispose();
             if (!closing)
             {
                 UpdateCharacterButton();
@@ -1365,9 +1428,12 @@ public partial class MainWindow
     private async Task HostTaskAsync(Func<CancellationToken, Task> action)
     {
         if (store is null || setupService is null || closing) return;
-        if (assigningRole) { ActionText.Text = "Another device change is still finishing."; return; }
-        assigningRole = true;
-        try { await action(lifetime.Token); }
+        ChangeTurns.Turn? turn = null;
+        try
+        {
+            turn = await ChangeTurnAsync();
+            await action(lifetime.Token);
+        }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or
             JsonException or ArgumentException)
@@ -1376,7 +1442,7 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
+            turn?.Dispose();
             if (!closing && DevicesPage.IsVisible) RenderMap();
         }
     }
@@ -1434,12 +1500,11 @@ public partial class MainWindow
 
     /// <summary>Sets up and pairs Martlet's host service on this PC in one click, in a run window; with
     /// <paramref name="andThen"/> it then continues straight into handing a job to it ("host:ID"). Whisper and F5 chain
-    /// their install into the same window instead (<see cref="SetUpJobHereAsync"/>).</summary>
+    /// their install into the same window instead (<see cref="SetUpJobHereAsync"/>). Started again (or by another flow)
+    /// while one runs, it waits for that setup and pairing instead of repeating them, then carries on with its own next step.</summary>
     private async Task SetUpThisPcHostAsync(Func<string, Task>? andThen = null)
     {
         if (store is null || setupService is null || closing) return;
-        if (hostBusy) { ActionText.Text = "This PC's host service is already being set up."; return; }
-        hostBusy = true;
         PairedHost? host;
         try
         {
@@ -1455,7 +1520,6 @@ public partial class MainWindow
             ActionText.Text = error.Message;
             return;
         }
-        finally { hostBusy = false; }
         if (closing || host is null) return;
         await ReadMachineAsync();
         await RefreshHomeAsync();

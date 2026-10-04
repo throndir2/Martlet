@@ -19,10 +19,12 @@ internal sealed record HostOptions(string Command, string ConfigPath)
           owner-init     create this new host identity and approve unattended serve of this configuration
           owner-approve  open the existing identity and approve unattended serve of this configuration
           owner-pair     ... [--roles voice]: start the listener, show this host's address and a one-use XXXX-XXXX code
-                         to type on a desktop (Devices > Add a computer > Pair), wait (bounded, 5 minutes) for one
-                         desktop to redeem it, then close. A "cancel" line on stdin stops waiting.
-          owner-pair     ... --device-id <id> --name <display name> [--roles voice]: as above, but for exactly that
-                         device, printing one machine-readable "pairing-code: martlet-pair-v1..." line instead.
+                         to type on a desktop (Devices > Add a computer > Pair), wait for one desktop to redeem it,
+                         then close. The code has no deadline: a "cancel" line or the end of stdin withdraws it, and
+                         five wrong tries close it.
+          owner-pair     ... --device-id <id> --name <display name> [--roles voice]: for exactly that device, printing
+                         one machine-readable "pairing-code: martlet-pair-v1..." line instead; it waits at most 5
+                         minutes, and a "cancel" line on stdin stops waiting.
           owner-network-reset  leave this host's Martlet network (removes network.json; pairings stay). Stop the
                          service first; the next desktop that pairs adds the host to its own network.
         Config alone grants no authority. Never put secrets in arguments, environment or logs.

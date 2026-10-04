@@ -220,25 +220,46 @@ internal static class HostRegistry
 }
 
 /// <summary>Reads, pairs, forgets and re-reaches Martlet hosts, keeping hosts.json, the lip-sync assignment in the avatar
-/// profile and the pairing secrets in step.</summary>
+/// profile and the pairing secrets in step. Pairing needs no Setup: a new PC joins your hosts first and then uses them for
+/// its jobs.</summary>
 internal sealed class HostPairings(string dataDirectory, AvatarProfileStore profiles, ISetupService settings)
 {
     internal string DataDirectory => dataDirectory;
 
-    internal async Task<(AvatarProfile Profile, string? Revision)> LoadProfileAsync(CancellationToken token)
+    /// <summary>This PC's character profile, or null before anything was saved on this PC (no settings yet, so no profile and
+    /// no lip-sync assignment). Throws only when the settings can't be read, as the profile they name is then unknown.</summary>
+    internal async Task<(AvatarProfile? Profile, string? Revision)> LoadProfileAsync(CancellationToken token)
     {
         var loaded = await settings.LoadAsync(token);
-        if (loaded.Settings is null) throw new InvalidOperationException("Complete Setup first.");
+        if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
+        if (loaded.Settings is null) return (null, null);
         var id = loaded.Settings.Profile.Id;
         var saved = await profiles.LoadAsync(id, token);
         return (saved.Profile ?? AvatarProfile.BuiltIn(id), saved.Revision);
     }
 
-    internal async Task<(IReadOnlyList<PairedHost> Hosts, AvatarProfile Profile)> LoadAsync(CancellationToken token)
+    /// <summary>This PC's character profile to change. On a PC where nothing was saved yet it first saves new settings (no
+    /// jobs chosen), which gives the profile its ID, so a change such as handing lip-sync to a host never waits for Setup.</summary>
+    internal async Task<(AvatarProfile Profile, string? Revision)> EnsureProfileAsync(CancellationToken token)
+    {
+        var (profile, revision) = await LoadProfileAsync(token);
+        if (profile is not null) return (profile, revision);
+        var saved = await settings.SaveAsync(SetupSettings.Begin(null), null, token);
+        // Another change may have saved this PC's first settings a moment earlier; use those.
+        if (!saved.Save.Saved && (await LoadProfileAsync(token)) is { Profile: { } existing } again) return (existing, again.Revision);
+        if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
+        return (AvatarProfile.BuiltIn(saved.Settings.Profile.Id), null);
+    }
+
+    internal async Task<(IReadOnlyList<PairedHost> Hosts, AvatarProfile? Profile)> LoadAsync(CancellationToken token)
     {
         var (profile, _) = await LoadProfileAsync(token);
-        return (HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress()), profile);
+        return (HostRegistry.Load(dataDirectory, profile?.RemoteHost, HostSetupCommands.ThisPcAddress()), profile);
     }
+
+    /// <summary>Throws when this PC's settings can't be read, before a one-use pairing code is spent on a pairing that
+    /// couldn't be kept. A PC with no settings yet pairs fine.</summary>
+    internal Task CheckCanKeepAsync(CancellationToken token) => LoadProfileAsync(token);
 
     /// <summary>Saves a new pairing. Pairing hands the host no job: it stands by until you hand it one (handing it lip-sync
     /// checks it runs Audio2Face, or installs it in the same step). Re-pairing a host keeps its role. A pairing the owner made
@@ -247,7 +268,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         CancellationToken token, string? sshHostKey = null, bool adopt = true)
     {
         var (profile, revision) = await LoadProfileAsync(token);
-        var hosts = HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress());
+        var hosts = HostRegistry.Load(dataDirectory, profile?.RemoteHost, HostSetupCommands.ThisPcAddress());
         var previous = hosts.FirstOrDefault(h => h.HostId == pairing.HostId);
         if (method == HostSetupMethod.OnHost) method = HostSetupMethod.Agent;
         var ssh = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
@@ -262,10 +283,10 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
         if (previous is not null) host = host with { WakeMac = previous.WakeMac };
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
-        var lipSync = profile.RemoteHost?.HostId == pairing.HostId;
-        if (lipSync) await profiles.SaveAsync(profile with { RemoteHost = pairing }, revision, token);
+        var lipSync = profile?.RemoteHost?.HostId == pairing.HostId;
+        if (lipSync) await profiles.SaveAsync(profile! with { RemoteHost = pairing }, revision, token);
         var store = new WindowsCredentialStore();
-        foreach (var old in new[] { previous?.Pairing, profile.RemoteHost?.HostId == pairing.HostId ? profile.RemoteHost : null })
+        foreach (var old in new[] { previous?.Pairing, lipSync ? profile!.RemoteHost : null })
             if (old is not null && old.CredentialId != pairing.CredentialId) store.DeleteAvatarHostSecret(old.HostId, old.CredentialId);
         if (adopt) NetworkIdentity.Adopt(dataDirectory, pairing.HostId);
         return (host, lipSync);
@@ -275,11 +296,11 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     internal async Task<PairedHost?> ForgetAsync(string hostId, CancellationToken token)
     {
         var (profile, revision) = await LoadProfileAsync(token);
-        var hosts = HostRegistry.Load(dataDirectory, profile.RemoteHost, HostSetupCommands.ThisPcAddress());
+        var hosts = HostRegistry.Load(dataDirectory, profile?.RemoteHost, HostSetupCommands.ThisPcAddress());
         var host = hosts.FirstOrDefault(h => h.HostId == hostId);
         if (host is null) return null;
         HostRegistry.Save(dataDirectory, hosts.Where(h => h.HostId != hostId).ToList());
-        if (profile.RemoteHost?.HostId == hostId) await profiles.SaveAsync(profile with { RemoteHost = null }, revision, token);
+        if (profile?.RemoteHost?.HostId == hostId) await profiles.SaveAsync(profile with { RemoteHost = null }, revision, token);
         new WindowsCredentialStore().DeleteAvatarHostSecret(host.Pairing.HostId, host.Pairing.CredentialId);
         try { new HostHardwareStore(dataDirectory).Forget(hostId); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
@@ -319,7 +340,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     /// <summary>Hands lip-sync to a paired host, to this PC's own Audio2Face service (null) or to nobody (voice loudness).</summary>
     internal async Task<(AvatarProfile Before, AvatarProfile After)> AssignLipSyncAsync(PairedHost? host, bool off, CancellationToken token)
     {
-        var (profile, revision) = await LoadProfileAsync(token);
+        var (profile, revision) = await EnsureProfileAsync(token);
         var next = off ? profile with { LipSync = AvatarLipSync.Loudness, RemoteHost = null }
             : host is not null ? profile with { LipSync = AvatarLipSync.Auto, RemoteHost = host.Pairing }
             : profile with { LipSync = profile.LipSync == AvatarLipSync.Audio2Face ? AvatarLipSync.Audio2Face : AvatarLipSync.Auto, RemoteHost = null };

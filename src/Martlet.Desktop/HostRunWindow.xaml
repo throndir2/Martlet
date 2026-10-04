@@ -43,11 +43,17 @@
                     <TextBlock x:Name="PairingAddressText" Grid.Column="1" FontSize="28" FontWeight="SemiBold" FontFamily="Consolas"
                                AutomationProperties.AutomationId="HostRunPairAddress"/>
                     <TextBlock Grid.Row="1" Text="Code" Style="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,24,0"/>
-                    <TextBlock x:Name="PairingCodeText" Grid.Row="1" Grid.Column="1" FontSize="40" FontWeight="Bold" FontFamily="Consolas"
-                               AutomationProperties.AutomationId="HostRunPairCode"/>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock x:Name="PairingCodeText" FontSize="40" FontWeight="Bold" FontFamily="Consolas" VerticalAlignment="Center"
+                                   AutomationProperties.AutomationId="HostRunPairCode"/>
+                        <Button x:Name="PairingCopyButton" Content="Copy code" Style="{DynamicResource CopyButton}" Click="CopyPairingCode_Click"
+                                VerticalAlignment="Center" Margin="16,0,0,0" ToolTip="Copy the code to paste it on your main PC"
+                                AutomationProperties.Name="Copy the pairing code" AutomationProperties.AutomationId="HostRunPairCopy"/>
+                    </StackPanel>
                 </Grid>
-                <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
-                           Text="The code works once and expires in five minutes."/>
+                <TextBlock x:Name="PairingNoteText" Style="{DynamicResource Muted}" Margin="0,10,0,0" TextWrapping="Wrap"
+                           AutomationProperties.AutomationId="HostRunPairNote"
+                           Text="The code works once and doesn't expire: it stays valid until your main PC uses it or you cancel here. This PC's host jobs pause until then."/>
             </StackPanel>
         </Border>
         <TextBox x:Name="OutputText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"

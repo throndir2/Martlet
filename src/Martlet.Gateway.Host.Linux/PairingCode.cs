@@ -5,9 +5,9 @@ namespace Martlet.Gateway.Host.Linux;
 
 /// <summary>
 /// How the host shows an invitation. <see cref="Describe"/> is for people: this host's address and a short one-use code
-/// to type on a desktop. <see cref="Format"/> is one machine-readable line carrying the whole card (origin, host ID, pin,
-/// pairing ID, token) that Martlet reads by itself when it pairs over SSH or on this PC. Both have the same secrecy: shown
-/// only on the owner's terminal or run, one use, five minutes.
+/// to type on a desktop; it works until a desktop uses it or it is withdrawn. <see cref="Format"/> is one machine-readable
+/// line carrying the whole card (origin, host ID, pin, pairing ID, token) that Martlet reads by itself when it pairs over
+/// SSH or on this PC, one use, five minutes. Both are shown only on the owner's terminal or run.
 /// </summary>
 internal static class PairingCode
 {
@@ -35,7 +35,8 @@ internal static class PairingCode
           In Martlet on the desktop: Devices > Add a computer > Enter a pairing code, then type
             Address:  {Address(card.Origin)}
             Code:     {card.Code.Reveal()}
-          The code works once and expires in five minutes. Type cancel to withdraw it.
+          The code works once and doesn't expire: it stays valid until a desktop uses it or you type cancel
+          (or press Ctrl+C). Until then this host's jobs are paused.
 
         Waiting for the desktop...
         """;

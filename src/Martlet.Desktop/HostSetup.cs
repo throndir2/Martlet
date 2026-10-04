@@ -277,29 +277,44 @@ internal static partial class HostSetupCommands
 
     /// <summary>The Martlet version of this PC's own host service (Docker Desktop), from its gateway container's image tag;
     /// null when it is not set up or Docker is not running.</summary>
-    internal static async Task<string?> ThisPcGatewayVersionAsync(CancellationToken token)
+    internal static async Task<string?> ThisPcGatewayVersionAsync(CancellationToken token) =>
+        (await ThisPcGatewayAsync(token))?.Version;
+
+    /// <summary>This PC's own host service (Docker Desktop) as its gateway container shows it: the Martlet version of its image
+    /// (null when the tag names none) and whether it runs. Null when it is not set up or Docker is not running.</summary>
+    internal static async Task<Martlet.Core.Nodes.OwnHostReading?> ThisPcGatewayAsync(CancellationToken token)
     {
         try
         {
             using var process = Process.Start(new ProcessStartInfo("docker",
-                "container inspect -f \"{{.Config.Image}}\" martlet-host-gateway")
+                "container inspect -f \"{{.State.Running}} {{.Config.Image}}\" martlet-host-gateway")
             {
                 UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
             });
             if (process is null) return null;
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
             limit.CancelAfter(TimeSpan.FromSeconds(15));
+            var error = process.StandardError.ReadToEndAsync(limit.Token);
             var output = await process.StandardOutput.ReadToEndAsync(limit.Token);
             await process.WaitForExitAsync(limit.Token);
-            var image = output.Trim();
-            return process.ExitCode == 0 && image.StartsWith("martlet-host:", StringComparison.Ordinal) &&
-                System.Version.TryParse(image["martlet-host:".Length..], out var version) ? version.ToString(3) : null;
+            await error;
+            return process.ExitCode == 0 ? ParseGateway(output) : null;
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException or
             OperationCanceledException or IOException)
         {
             return null;
         }
+    }
+
+    /// <summary>Reads "&lt;running&gt; &lt;image&gt;" as docker container inspect prints it for the gateway.</summary>
+    internal static Martlet.Core.Nodes.OwnHostReading? ParseGateway(string output)
+    {
+        var words = output.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
+        if (words is not [var running, var image] || running is not ("true" or "false")) return null;
+        var version = image.StartsWith("martlet-host:", StringComparison.Ordinal) &&
+            System.Version.TryParse(image["martlet-host:".Length..], out var parsed) ? parsed.ToString(3) : null;
+        return new(version, running == "true");
     }
 
     internal static bool IsPrivate(string? text) =>

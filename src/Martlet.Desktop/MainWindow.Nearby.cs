@@ -301,7 +301,7 @@ public partial class MainWindow
                 if (host.Target.Method == HostSetupMethod.ThisPcDocker)
                 {
                     await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
-                    await HostLocal.EnsureImageAsync(host.Target, run.Status, run.Output, token);
+                    await HostLocal.EnsureImageAsync(host.Target, run.Status, run.Output, token, run.Heading);
                     exit = await HostLocal.PairOtherAsync(host.Target, Shown, run.Output, token, note);
                 }
                 else
