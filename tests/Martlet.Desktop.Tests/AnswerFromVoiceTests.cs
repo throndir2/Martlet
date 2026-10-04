@@ -29,6 +29,17 @@ public sealed class AnswerFromVoiceTests
     }
 
     [Fact]
+    public void TheRecommendedLocalModelIsTheFastestOnEveryCardAndTheLargestThatFitsIsOfferedBeside()
+    {
+        foreach (var vram in new double?[] { null, 8, 11.6, 16, 24 })
+            Assert.Equal("gemma4:e2b", MainWindow.RecommendedLocalModel(vram).Id);
+        Assert.Equal("gemma4:e2b", MainWindow.LargestLocalModel(8).Id);
+        Assert.Equal("gemma4:e4b", MainWindow.LargestLocalModel(11.6).Id);
+        Assert.Equal("gemma4:12b", MainWindow.LargestLocalModel(16).Id);
+        Assert.Equal("gemma4:26b", MainWindow.LargestLocalModel(24).Id);
+    }
+
+    [Fact]
     public void TheListeningPageSaysWhetherMartletAnswersFromTheRecording()
     {
         var ollama = Thinking(MainWindow.LocalOllamaBaseUrl, "gemma4:e2b");

@@ -165,6 +165,27 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
      another server anyway).
    - A model that turns tools down is remembered on this PC for a week, so it
      isn't asked with tools (and again without) on every first reply.
+6. **Answer from my voice** (Companion › Listening, on by default): a Thinking
+   model that hears answers each utterance from its recording as soon as you
+   pause, with speech-to-text running beside it for the history, memory and the
+   [word check](CONVERSATION.md#listening-for-words), so transcription is off
+   the way to the first audio. It applies to models in Ollama on this PC without
+   further consent (the recording never leaves the PC) and to other models
+   that hear with *Let Thinking hear my voice* on; a cough or hum stops the
+   reply before it speaks
+   ([Answer from my voice](CONVERSATION.md#answer-from-my-voice)). The latency
+   line says *Answered from your recording* and `latency_report` compares
+   `firstAudioFromRecording` with `firstAudioFromWords`.
+7. **Latency-first defaults.** The recommended model in Ollama on this PC is
+   Gemma 4 E2B on every graphics card (it was the largest the card fits: E4B on
+   12 GB, 12B on 16 GB, 26B on 24 GB); Companion › Thinking still offers the
+   largest that fits as *smartest that fits here*, smarter but slower. The setup
+   advisor's *Fastest* goal now suggests a small model beside the cloned voice
+   on one graphics card and Parakeet on this PC for speech-to-text (it
+   suggested sizing the model up to the card and the planned Windows
+   recognizer). Chatterbox Turbo, streaming, stays the default voice; the
+   800 ms end-of-speech pause, Thinking steps Off and Thinking longer On are
+   unchanged.
 
 Thinking longer, measured through a disposable desktop with Thinking on a
 single-slot loopback fixture (one request at a time with a one-slot prompt
@@ -383,7 +404,8 @@ from a host whose desktop uses Parakeet (about 2 GB back), and choose E2B
 on this PC hear for models it says hear, and finds out what any Thinking model
 hears and sees from its server's metadata or a test word
 ([Thinking models that hear and see](CONVERSATION.md#thinking-models-that-hear-and-see)),
-the first step toward the omni flow. The Qwen, Voxtral,
+and answers from the recording with the transcript beside it (*Answer from my
+voice*, on by default). The Qwen, Voxtral,
 Phi-4 and MiniCPM-o models are in the bench only: Martlet's local selector
 runs Ollama, which serves none of them, and none beat Gemma 4 E2B here.
 
@@ -475,12 +497,10 @@ backchannel at once would make most of the rest feel instant.
    in about 150 ms from text and 220-240 ms from a recording (see
    [Local options measured](#local-options-measured-voicebench)). Keep the
    voice on the GPU that isn't rendering the character.
-6. **Omni for the reply, a transcript in parallel.** With a Thinking model that
-   hears (Gemma 4 in Ollama on this PC; Martlet now detects it), send the
-   recording and skip speech-to-text on the critical path; transcribe in
-   parallel for history and memory. For a model that can't hear, a smaller
-   transcriber (Parakeet 110M, about 90 ms) saves 150-250 ms over Parakeet v3,
-   at the cost of more mistakes on noisy audio.
+6. **Omni for the reply, a transcript in parallel: done** as *Answer from my
+   voice* (on by default; see [What changed](#what-changed)). For a model that
+   can't hear, a smaller transcriber (Parakeet 110M, about 90 ms) saves
+   150-250 ms over Parakeet v3, at the cost of more mistakes on noisy audio.
 7. **Mask the rest** with a cached backchannel in the cloned voice.
 8. Small desktop wins: wake the talk window when a transcript arrives
    instead of on its 100 ms tick; keep provider connections warm (pooled
