@@ -1039,8 +1039,10 @@ example `http://127.0.0.1:50085/`), `seconds` (15-180; default 20 for the fixtur
 `vevosing`), and optionally `voiceRecording` (the absolute path of a copy of a
 mono 16-bit PCM WAV, 1-30 s, such as one of the owner's voice recordings) with
 its `voiceTranscript`, which the check adds to the gateway's voice list as the
-desktop adds a recorded voice and sings in instead of the starter voice. It
-returns `{exitCode, report}` with `ok` (no failure, three
+desktop adds a recorded voice and sings in instead of the starter voice, and
+`bpm` (default 90; 0 for none) and `key` (default `G major`; empty for none),
+sent as Martlet's own model writes them (without either, the host's music
+planner runs first). It returns `{exitCode, report}` with `ok` (no failure, three
 sample-aligned tracks of the requested length and a beat grid), `stages` (each
 stage the client saw, with its fraction and `atMs`), `elapsedMs`,
 `realTimeFactor`, `song` (`engine` with `Fixture`, `seconds`, `bpm`, `key`,
@@ -1052,7 +1054,10 @@ lines and their sections, `stageTimings` from the host plus `Delivering`, and
 distance from word starts to vocal onsets before and after snapping,
 `lyricTimingSource`, `vocalBleedDb` (how loud the sound removed outside the sung
 phrases was, relative to the singing), `peakVramMib`, `plannedBpm`, the engine's
-planner and quantization, and the raw stage timings), `saved` (with
+planner, quantization, whether the music model stayed on the card (`dit_resident`)
+and is still warm there (`dit_warm_after`), the voice match's own report (`match`:
+octave shift, singer and voice pitch, load, pitch and convert seconds, whether
+its process was `warm`), and the raw stage timings, with `lyric_timestamps`), `saved` (with
 `saveDirectory`, an absolute disposable folder, the check writes `mix.wav`,
 `vocals.wav` and `backing.wav` there), `statusBefore`/`statusAfter` (the service's status through the
 gateway: state, engine, voice matches, queue, whether its worker holds the
