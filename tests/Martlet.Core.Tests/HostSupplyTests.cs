@@ -14,7 +14,7 @@ public sealed class HostSupplyTests
             DataStream = new MemoryStream(Encoding.UTF8.GetBytes(text))
         });
 
-    private static string Lock(string packages) => $$"""{"version":2,"dependencies":{{{packages}}}}""";
+    private static string Lock(string packages) => "{\"version\":2,\"dependencies\":{" + packages + "}}";
 
     private static string Archive(Action<TarWriter> write)
     {
@@ -110,7 +110,7 @@ public sealed class HostSupplyTests
     }
 
     [Fact]
-    public void Host_state_and_the_files_sent_round_trip()
+    public async Task Host_state_and_the_files_sent_round_trip()
     {
         var sum = new string('b', 128);
         var state = HostSupply.ReadState(["sdk 10.0.401", "source git", $"file {sum} nuget/a.1.0.0.nupkg", "file short x", "noise"]);
@@ -123,7 +123,7 @@ public sealed class HostSupplyTests
         {
             File.WriteAllText(file, "payload");
             using var stream = new MemoryStream();
-            HostSupply.WriteArchiveAsync(stream, [("nuget/a.1.0.0.nupkg", file)], CancellationToken.None).GetAwaiter().GetResult();
+            await HostSupply.WriteArchiveAsync(stream, [("nuget/a.1.0.0.nupkg", file)], CancellationToken.None);
             stream.Position = 0;
             using var reader = new TarReader(stream);
             var entry = reader.GetNextEntry()!;
