@@ -1,5 +1,8 @@
+using System.IO;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Nodes;
 
 namespace Martlet.Desktop;
 
@@ -84,10 +87,11 @@ internal sealed partial class HostRemote(HostShell shell)
     };
 
     /// <summary>Runs one martlet-host command unattended and streams its output. <paramref name="input"/> carries answers
-    /// (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...); it is ended with the "end" line here.</summary>
+    /// (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...); it is ended with the "end" line here. <paramref name="supplied"/>:
+    /// a native host without internet access that <see cref="SupplyIfOfflineAsync"/> sent its files to.</summary>
     internal async Task<HostShellResult> RunAsync(HostSetupTarget target, string engine, bool setup, bool sudo,
         IReadOnlyDictionary<string, string>? input, string? pinnedHostKey, IProgress<string> output, CancellationToken token,
-        Task<string?>? moreInput = null)
+        Task<string?>? moreInput = null, bool supplied = false)
     {
         var ssh = HostShellTarget.Parse(target.SshTarget);
         var text = string.Concat((input ?? new Dictionary<string, string>()).Select(pair =>
@@ -95,12 +99,81 @@ internal sealed partial class HostRemote(HostShell shell)
             if (pair.Value.Contains('\n') || pair.Value.Contains('\r')) throw new InvalidOperationException("Answers must be a single line.");
             return $"{pair.Key}={pair.Value}\n";
         })) + "end\n";
-        output.Report($"$ martlet-host {engine}  (on {ssh}, {(target.Method == HostSetupMethod.SshDocker ? "Docker" : "native Ubuntu")})");
+        output.Report($"$ martlet-host {engine}  (on {ssh}, {(target.Method == HostSetupMethod.SshDocker ? "Docker" : "native Ubuntu")}" +
+            $"{(supplied ? ", files from this PC" : "")})");
         return await shell.RunAsync(ssh, new()
         {
-            Command = HostSetupCommands.RemoteShell(target, engine, setup), Input = text, MoreInput = moreInput, Sudo = sudo,
-            PinnedHostKey = pinnedHostKey
+            Command = HostSetupCommands.RemoteShell(target, engine, setup, supplied: supplied), Input = text, MoreInput = moreInput,
+            Sudo = sudo, PinnedHostKey = pinnedHostKey
         }, output, token);
+    }
+
+    /// <summary>Whether the computer reaches the internet (GitHub over HTTPS within 8 seconds); null when it can't tell.</summary>
+    internal async Task<bool?> InternetAsync(HostShellTarget target, string? pinnedHostKey, CancellationToken token)
+    {
+        string? answer = null;
+        var sink = new LineSink(line =>
+        {
+            if (line.StartsWith("internet=", StringComparison.Ordinal)) answer = line["internet=".Length..].Trim();
+        });
+        await shell.RunAsync(target, new() { Command = HostCheckout.InternetProbe, PinnedHostKey = pinnedHostKey }, sink, token);
+        return answer switch { "yes" => true, "no" => false, _ => null };
+    }
+
+    /// <summary>Before a command that downloads (setup, update, add a role): when the computer has no internet access,
+    /// sends a native Ubuntu host what setup and update need from this PC (<see cref="HostSupplier"/>, cached under
+    /// <paramref name="dataDirectory"/>) and returns true, so the engine runs with those files. What Martlet can't send
+    /// yet (Docker hosts, roles) stops with a plain explanation instead of failing halfway.</summary>
+    internal async Task<bool> SupplyIfOfflineAsync(HostSetupTarget target, HostVerb verb, string dataDirectory, string? pinnedHostKey,
+        IProgress<string> output, CancellationToken token)
+    {
+        if (target.Method is not (HostSetupMethod.SshNative or HostSetupMethod.SshDocker) ||
+            verb is not (HostVerb.Setup or HostVerb.Update or HostVerb.Add)) return false;
+        var ssh = HostShellTarget.Parse(target.SshTarget);
+        if (await InternetAsync(ssh, pinnedHostKey, token) != false) return false;
+        if (OfflineBlocker(target.Method, verb, ssh.ToString()) is { } blocker) throw new InvalidOperationException(blocker);
+        output.Report($"{ssh} can't reach the internet, so Martlet downloads what it needs on this PC and sends it over SSH.");
+        var supplier = new HostSupplier(HostSupplies.OpenAsync, HostSupplies.Cache(dataDirectory), output);
+        try
+        {
+            var source = await supplier.SourceAsync(target.Version, token);
+            await supplier.SupplyAsync(new SupplyChannel(shell, ssh, pinnedHostKey, output), source, token);
+        }
+        catch (Exception error) when (error is HttpRequestException or InvalidDataException or FileNotFoundException ||
+            error is TaskCanceledException && !token.IsCancellationRequested)
+        {
+            throw new InvalidOperationException($"This PC couldn't download what {ssh} needs: {error.Message}", error);
+        }
+        return true;
+    }
+
+    /// <summary>Why a computer without internet access can't run <paramref name="verb"/> yet, or null when Martlet sends
+    /// what it needs.</summary>
+    internal static string? OfflineBlocker(HostSetupMethod method, HostVerb verb, string target) => (method, verb) switch
+    {
+        (_, HostVerb.Add) =>
+            $"{target} can't reach the internet. Martlet sends a computer without internet access what its gateway needs, " +
+            "but not yet the Docker images and models a role needs. Connect it to the internet to add this role.",
+        (HostSetupMethod.SshDocker, _) =>
+            $"{target} can't reach the internet. Martlet sends what a computer without internet access needs only with the " +
+            "native Ubuntu method: choose Another computer over SSH, native Ubuntu install.",
+        _ => null
+    };
+
+    /// <summary><see cref="HostSupplier"/>'s way to the host: Martlet's SSH runner.</summary>
+    private sealed class SupplyChannel(HostShell shell, HostShellTarget target, string? pinnedHostKey, IProgress<string> output)
+        : IHostSupplyChannel
+    {
+        public async Task<(int ExitCode, IReadOnlyList<string> Lines)> RunAsync(string command, CancellationToken token)
+        {
+            var lines = new List<string>();
+            var result = await shell.RunAsync(target, new() { Command = command, PinnedHostKey = pinnedHostKey },
+                new LineSink(line => { lock (lines) lines.Add(line); }), token);
+            lock (lines) return (result.ExitCode, lines.ToList());
+        }
+
+        public async Task<int> SendAsync(string command, Func<Stream, CancellationToken, Task> write, CancellationToken token) =>
+            (await shell.RunAsync(target, new() { Command = command, Write = write, PinnedHostKey = pinnedHostKey }, output, token)).ExitCode;
     }
 
     /// <summary>Pairs this PC with an SSH host without any console: runs "pair --device-id ... --name ..." there, reads the

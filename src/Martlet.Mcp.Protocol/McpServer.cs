@@ -266,6 +266,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "fake docker CLI it also checks the Docker method: setup does not replace the network holder while an engine session " +
             "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), and an engine " +
             "left in a replaced holder's namespace stops at once. Returns notRun when Docker or the image is missing.", new { }),
+        Tool("host_supply_check", "Check that Martlet sets up a native Ubuntu host without internet access by sending what it needs " +
+            "from this PC: with the production HostSupplier and HostCheckout and this checkout's real martlet-host, in one disposable " +
+            "ubuntu:24.04 container on an internal Docker network (a private LAN address, no way out; never pulled, removed " +
+            "afterwards). This PC downloads the .NET SDK and the gateway's NuGet packages for real (about 240 MB the first time, cached " +
+            "in cacheDirectory); the online command stops plainly (no git, no internet) instead of running a missing engine; the files " +
+            "arrive intact over a tar stream; setup builds the gateway, creates its identity and starts it healthy without internet; " +
+            "a second pass sends nothing and removes the installed SDK's archive; update rebuilds offline. FIXTURE systemctl and ip " +
+            "stand in for systemd and iproute2. Returns notRun when Docker or the image is missing.", new
+        {
+            cacheDirectory = new { type = "string", maxLength = 260 }
+        }),
         Tool("host_update_check", "Rehearse how Martlet coordinates its own host service updates, with the desktop's production " +
             "update tracker and busy reader: an Update host run window claims its host so the automatic pass leaves it to that run " +
             "(no second engine run that finds the host locked by Martlet's own update and reports it busy, for its pairing or as this " +
@@ -930,6 +941,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
                 "node_link_check" => await NodeLinkCheckAsync(cancellation),
                 "host_engine_check" => await HostEngineCheck.RunAsync(cancellation),
+                "host_supply_check" => await HostSupplyCheck.RunAsync(arguments, cancellation),
                 "host_update_check" => HostUpdateCheck.Run(),
                 "app_update_check" => await AppUpdateCheck.RunAsync(NodeLinkCheckProgram(), cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),

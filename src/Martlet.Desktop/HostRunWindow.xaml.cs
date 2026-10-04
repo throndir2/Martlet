@@ -193,6 +193,7 @@ internal static class HostActions
             run.Status($"Connecting to {ssh}...");
             var (probe, hostKey) = await remote.ProbeAsync(ssh, pinnedHostKey, run.Token);
             var sudo = HostRemote.NeedsSudo(target.Method, probe);
+            var supplied = await remote.SupplyIfOfflineAsync(target, action.Verb, dataDirectory, hostKey, run.Output, run.Token);
             var input = answers;
             if (role is not null && add && input is null)
             {
@@ -208,7 +209,8 @@ internal static class HostActions
                 add ? $"{role} is installing on {ssh}. This can take a while..."
                     : $"Removing {role} from {ssh}...");
             var output = new EngineOutput(run.Output);
-            var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, output, run.Token);
+            var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, output, run.Token,
+                supplied: supplied);
             if (output.Busy(result.ExitCode) is { } busy)
                 throw new InvalidOperationException($"{ssh} stayed busy with another change ({busy}), so nothing was changed. Try again when it finishes.");
             if (result.ExitCode != 0)
