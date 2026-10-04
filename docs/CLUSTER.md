@@ -14,7 +14,8 @@ What differs from one computer to the next is only what belongs to that
 computer itself: its microphone, speakers and cameras, its screens (where the
 character and its speech bubble sit), whether it is a companion or a host PC,
 how it starts, what it installed (Ollama models, Parakeet, a whisper package,
-Windows voices, MCP servers) and its own security choices. See
+Windows voices, MCP servers, the terminal it may use) and its own security
+choices. See
 [What stays with each computer](#what-stays-with-each-computer).
 
 Everything travels through your paired hosts: each keeps a private copy and
@@ -198,6 +199,7 @@ These describe the computer itself, so they never travel:
 | Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
 | Installed engines and models: Ollama models, Parakeet, a whisper package, Windows voices, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
+| The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 
 ### Conflicts and offline changes

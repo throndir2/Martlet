@@ -22,6 +22,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
         // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
         "LiveStop", "LiveRefreshContext",
+        // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
+        // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
+        "LiveToolDeny",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
         // shows; its Set up, Pair and role buttons do the work.
         "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
@@ -179,6 +182,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
+        // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
+        // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
+        // start folder's path is never returned), and the fixed question turning Ask before every command off asks. In the talk
+        // window, a waiting tool call's heading ("Run this command?") and question (which shell or server, and the seconds
+        // left); never the command or arguments (LiveToolApprovalArguments).
+        "ToolsTerminalStatus", "ToolsTerminalShell", "ToolsTerminalTimeLimit", "ToolsTerminalNoAskQuestion",
+        "LiveToolApprovalTitle", "LiveToolApprovalText",
         // Devices › Apps and API keys: how many keys and how many hosts have them; the created dialog's title, host addresses
         // with their public key pins, and the example request (it names $MARTLET_API_KEY, never the key). The key itself
         // (ApiKeyValue) is never returned.
@@ -553,16 +564,22 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     /// <summary>Martlet's notification-area icon: "status" reads whether the icon is shown and the main window visible; "open"
     /// and "menu" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu, at the mouse
-    /// pointer), granting it the foreground as Explorer does when this process may, then ui_snapshot lists the menu's Tray*
-    /// items; every action reports menuOpen. "close" presses the main window's close button, which hides Martlet in the
-    /// notification area by default and exits it when Keep running when closed is off, so it needs --allow-ui-effects.</summary>
-    internal object Tray(string action)
+    /// pointer or at x, y), granting it the foreground as Explorer does when this process may, then ui_snapshot lists the menu's
+    /// Tray* items; every action reports menuOpen and, while it is open, menuBounds. "close" presses the main window's close
+    /// button, which hides Martlet in the notification area by default and exits it when Keep running when closed is off, so it
+    /// needs --allow-ui-effects.</summary>
+    internal object Tray(string action, int? x = null, int? y = null)
     {
         if (!TrayActions.Contains(action)) throw new ArgumentException($"Unknown ui_tray action '{action}'.");
         if (action == "close" && !allowEffects)
             throw new InvalidOperationException("Closing Martlet's window can exit it, so it requires --allow-ui-effects.");
+        if ((x is null) != (y is null)) throw new ArgumentException("Give both x and y, or neither.");
+        if (x is not null && action is not ("open" or "menu")) throw new ArgumentException("x and y only apply to \"open\" and \"menu\".");
+        if (x is < short.MinValue or > short.MaxValue || y is < short.MinValue or > short.MaxValue)
+            throw new ArgumentOutOfRangeException(x is < short.MinValue or > short.MaxValue ? nameof(x) : nameof(y), "Screen pixels fit in 16 bits.");
         if (action == "status" && processId is int exited && !Running(exited))
-            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
+            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false,
+                menuBounds = (int[]?)null };
         var windows = ConnectedWindows();
         var pid = processId!.Value;
         var icon = TrayWindow(pid);
@@ -570,7 +587,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         {
             case "open" or "menu":
                 if (icon == 0) throw new InvalidOperationException("Martlet has no notification-area icon.");
-                GetCursorPos(out var pointer);
+                // Explorer passes where the click was in physical screen pixels, whatever the app's DPI awareness.
+                var pointer = x is int clickX && y is int clickY ? new NativePoint { X = clickX, Y = clickY } : PhysicalPointer();
                 var at = (nint)((pointer.Y & 0xFFFF) << 16 | (pointer.X & 0xFFFF));
                 // Explorer lets the clicked icon's app take the foreground; this only works while this process may take it itself.
                 AllowSetForegroundWindow(pid);
@@ -585,19 +603,34 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
         if (action != "status") Thread.Sleep(500);
         if (!Running(pid))
-            return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
+            return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false,
+                menuBounds = (int[]?)null };
         var now = Windows(pid);
         var visible = MainWindowVisible(now);
         icon = TrayWindow(pid);
+        var menu = TrayMenuWindow(now);
         return new { processId = pid, running = true, trayIcon = icon != 0 && GetProp(icon, TrayAddedProperty) != 0, mainWindowVisible = visible,
-            inTray = icon != 0 && !visible, menuOpen = TrayMenuOpen(now) };
+            inTray = icon != 0 && !visible, menuOpen = menu is not null,
+            menuBounds = menu is null ? null : Placement((nint)menu.Current.NativeWindowHandle).Bounds };
     }
 
-    /// <summary>The icon's menu is open: a Martlet popup window (not the main window) holds the TrayMenu.</summary>
-    private static bool TrayMenuOpen(AutomationElement[] windows) =>
-        windows.Where(window => window.Current.AutomationId != "MartletMainWindow").Any(window =>
+    /// <summary>The window holding the icon's open menu: a Martlet popup window (not the main window) with the TrayMenu.</summary>
+    private static AutomationElement? TrayMenuWindow(AutomationElement[] windows) =>
+        windows.Where(window => window.Current.AutomationId != "MartletMainWindow").FirstOrDefault(window =>
             window.Current.AutomationId == "TrayMenu" ||
             window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "TrayMenu")) is not null);
+
+    /// <summary>The mouse pointer in physical screen pixels, as Explorer reports it to the icon.</summary>
+    private static NativePoint PhysicalPointer()
+    {
+        var previous = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+        try
+        {
+            GetCursorPos(out var pointer);
+            return pointer;
+        }
+        finally { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+    }
 
     private static bool Running(int pid)
     {

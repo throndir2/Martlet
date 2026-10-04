@@ -81,7 +81,10 @@ IP camera address) or other video sources. See
 browser, a calendar and anything else with an MCP server. Add servers on
 **Companion > Tools**: browse and search the GitHub or official MCP Registry and
 install one with a click, or edit mcp.json (the standard `mcpServers` format); the
-talk window asks before each tool call unless you always allow it. See [MCP](docs/MCP.md).
+talk window asks before each tool call unless you always allow it. The same page
+has Martlet's own **Terminal** (off by default): turn it on and Martlet can run
+PowerShell or Command Prompt commands when you ask, hidden and never as
+administrator, asking before each one unless you change that. See [MCP](docs/MCP.md).
 
 **Voices (F5)**: add your own voice recordings on **Companion > Voice >
 Voices** and switch between them in one click. F5 copies a voice from a short
@@ -133,7 +136,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Prerequisites](docs/PREREQUISITES.md) | Every runtime prerequisite by feature and machine: what is bundled, what the installer and **Martlet prerequisites** tool install on request (WebView2, microphone access, Windows speech, Ollama, WSL 2 + Docker Desktop), what hosts install, and what you supply |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
-| [MCP: tools while you talk, and local MCP control](docs/MCP.md) | Martlet as an MCP client: MCP servers on this PC (stdio or streamable HTTP, standard `mcpServers` mcp.json) give replies tools, with per-call confirmations in the talk window and a tool log on Companion > Tools; plus Martlet's own stdio MCP server for headless diagnostics and desktop UI Automation |
+| [MCP: tools while you talk, and local MCP control](docs/MCP.md) | Martlet as an MCP client: MCP servers on this PC (stdio or streamable HTTP, standard `mcpServers` mcp.json) give replies tools, with per-call confirmations in the talk window and a tool log on Companion > Tools; the built-in Terminal (off by default; PowerShell or Command Prompt, asks before each command); plus Martlet's own stdio MCP server for headless diagnostics and desktop UI Automation |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |
