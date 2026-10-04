@@ -1,0 +1,21 @@
+# Martlet Deep thinking host service (Deep thinking's own model), loopback-only behind the Martlet gateway.
+# Official ollama/ollama image (MIT), pinned like the ollama role's, but a server of its own: it listens only on
+# 127.0.0.1:11435 (host loopback natively, the gateway's network namespace in Docker), keeps its models in the
+# Martlet-managed martlet-deep-thinking-models volume and answers beside the conversation model's server, so a think
+# never waits for a reply. "martlet-host add deep-thinking" adds compose.gpu.yaml when the role runs on this host's NVIDIA
+# GPU, then pulls the chosen model with "ollama pull". The Martlet gateway is the single LAN entry point.
+
+services:
+  ollama:
+    image: ollama/ollama:0.34.4
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11435
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - models:/root/.ollama
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-deep-thinking-models

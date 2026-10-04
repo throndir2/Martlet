@@ -31,6 +31,13 @@ if (args is ["api"])
     Console.WriteLine(JsonSerializer.Serialize(apiReport));
     return apiOk ? 0 : 1;
 }
+// With "deep-thinking" it rehearses the Deep thinking host role beside Thinking's (DeepThinkingRehearsal) and prints its report.
+if (args is ["deep-thinking"])
+{
+    var (deepOk, deepReport) = await Martlet.NodeLinkCheck.DeepThinkingRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(deepReport));
+    return deepOk ? 0 : 1;
+}
 // With "voices" it rehearses the shared speaking voices and their recordings (VoiceRehearsal) and prints its report.
 if (args is ["voices"])
 {

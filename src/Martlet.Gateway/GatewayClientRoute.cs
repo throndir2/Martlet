@@ -11,8 +11,12 @@ public sealed partial class GatewayInferenceRoute
         ArgumentNullException.ThrowIfNull(capability);
         var expected = capability.Kind switch
         {
-            GatewayInferenceKind.OllamaChat => ("martlet.gateway.ollama-chat.v1",
-                "/martlet/v1/inference/ollama-chat", OllamaChatAdapter.Protocol, "1.0"),
+            // The conversation model and the deep-thinking role's second Ollama share the native-chat contract.
+            GatewayInferenceKind.OllamaChat when capability.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId =>
+                (Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath,
+                    OllamaChatAdapter.Protocol, "1.0"),
+            GatewayInferenceKind.OllamaChat => (Martlet.Core.Settings.SelfHostSetup.OllamaRouteId,
+                Martlet.Core.Settings.SelfHostSetup.OllamaPath, OllamaChatAdapter.Protocol, "1.0"),
             // Each reference-voice engine has its own route; all speak F5's worker contract.
             GatewayInferenceKind.F5Synthesis when Martlet.Core.Settings.SpeechEngines.ForRoute(capability.RouteId) is { } engine =>
                 (engine.RouteId, engine.Path, F5WorkerProtocol.ContractId, F5ProtocolVersion.Current.ToString()),

@@ -5,8 +5,11 @@ using Martlet.Core.Settings;
 namespace Martlet.Providers;
 
 /// <summary>The paired Martlet host whose own conversation model (its Ollama role) answers, reached through the host's
-/// pinned gateway. <see cref="CredentialId"/> names the host pairing's device credential kept in the OS vault.</summary>
-public sealed record HostTextTarget(string Origin, string HostId, string SpkiFingerprint, string DeviceId, Guid CredentialId)
+/// pinned gateway. <see cref="CredentialId"/> names the host pairing's device credential kept in the OS vault;
+/// <see cref="RouteId"/> is the host route that answers: its conversation model's, or its Deep thinking role's
+/// (<see cref="SelfHostSetup.DeepThinkingRouteId"/>).</summary>
+public sealed record HostTextTarget(string Origin, string HostId, string SpkiFingerprint, string DeviceId, Guid CredentialId,
+    string RouteId = SelfHostSetup.OllamaRouteId)
 {
     public override string ToString() => nameof(HostTextTarget);
 }

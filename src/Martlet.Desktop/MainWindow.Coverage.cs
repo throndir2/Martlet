@@ -301,21 +301,37 @@ public partial class MainWindow
     private string HostCaveats(string hostId) =>
         string.Concat(PlatformCatalog.HostNotes(PlatformDevice.FromHost(hostId, HardwareStore?.Find(hostId))).Select(note => " " + note));
 
-    /// <summary>The job a host role does for this PC.</summary>
-    private static string JobForRole(string roleKind) => roleKind switch
+    /// <summary>The shared job a host role does for this PC; null for a role that does none (Singing, Deep thinking).</summary>
+    private static string? JobForRole(string roleKind) => roleKind switch
     {
         HostRoles.Ollama => ClusterJobs.Thinking,
         HostRoles.Stt => ClusterJobs.Listening,
+        HostRoles.Audio2Face => ClusterJobs.LipSync,
         _ when HostRoles.Speaks(roleKind) => ClusterJobs.Speaking,
-        _ => ClusterJobs.LipSync
+        _ => null
     };
 
     /// <summary>Removes a role from a host after saying what it takes away: the job moves by failover, goes back to its
     /// Setup choice first (named, with what it sends there) or nobody does it. Other computers following the shared plan
-    /// are named too.</summary>
+    /// are named too. A role that does no shared job says what it stops on this PC, if anything (Deep thinking there).</summary>
     private async Task RemoveHostRoleAsync(PairedHost host, HostRoleInfo role)
     {
-        var job = JobForRole(role.Kind);
+        if (JobForRole(role.Kind) is not { } job)
+        {
+            var deep = store is null ? null : DeepThinkingSettings.Load(store.DataDirectory);
+            if (role.Kind == HostRoles.DeepThinking && deep is { OnHostRole: true } && deep.HostId == host.HostId)
+            {
+                if (!ConfirmationDialog.Confirm(this, $"Remove {role.Name} from {host.HostId}? Deep thinking on this PC thinks there, so " +
+                        "Martlet won't think things over in the background until you choose another place in Companion > Deep thinking.",
+                        "Remove role"))
+                    return;
+                RunHostActionAsync(host, role.Remove, confirmed: true).Forget();
+            }
+            else LaunchOnHost(host, role.Remove);
+            RenderHome();
+            if (DevicesPage.IsVisible) RenderMap();
+            return;
+        }
         var situation = JobSituations().First(s => s.Job == job);
         var shared = clusterEnabled && clusterPlan.For(job)?.HostId == host.HostId;
         var lines = JobCoverageRules.RemoveRoleImpact(situation, host.HostId, shared);

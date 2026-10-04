@@ -304,14 +304,20 @@ which machine is free to think depends on the computer you talk to):
   Thinking fallback. Only when Thinking's provider answers several requests at
   once (a cloud provider), never Thinking's model on this PC or a paired
   computer.
-- *Another of your computers*: a paired computer's Ollama (its Thinking role)
-  through its pinned gateway with this PC's pairing. The conversation's newest
+- *Another of your computers*: a paired computer's own Deep thinking model (its
+  Deep thinking role: a second Ollama server of its own, route
+  `martlet.gateway.deep-thinking-chat.v1`) through its pinned gateway with this
+  PC's pairing, or, on a computer without that role, its Ollama (its Thinking
+  role). The page offers *Add Deep thinking* for a computer that lacks the role
+  (`DeepThinkingAddRole-<host>`) and switches Deep thinking to it once it runs.
+  The conversation's newest
   exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
   tools), and the computer loads 32,768 tokens of context for it. A computer's
   Martlet must be this version or later for thinks over a minute: an older one
   takes at most 60 seconds and 4,096 tokens a request (Martlet holds a think
-  there to that and logs that the computer should be updated). Not a computer
-  that also does Thinking for the conversation.
+  there to that and logs that the computer should be updated). A computer that
+  also does Thinking for the conversation thinks only with its Deep thinking
+  role, never with Thinking's own model.
 - *Ollama on this PC*: a second model of its own here, beside Thinking's (a
   larger one can think while a small, fast one answers you), never Thinking's
   own model. The page shows whether it fits beside Thinking's on the graphics
@@ -330,7 +336,9 @@ answer one request at a time per model (Ollama on this PC runs with
 cache, and a paired computer's gateway serves one request per job. There, Deep
 thinking isn't available: `think_longer` isn't offered, the page says why, and a
 single PC whose Thinking model is local simply doesn't think in the background
-until another place is chosen.
+until another place is chosen. A paired computer's Deep thinking role is a
+separate Ollama server with its own route, so it thinks in parallel even on the
+computer that does Thinking (they share its graphics card).
 
 **A second model on this PC.** Ollama runs each loaded model in a process of its
 own, so a second model answers at the same time as Thinking's, without touching

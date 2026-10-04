@@ -16,8 +16,11 @@ public sealed record HostRoute(
     int MaximumRequestBytes, int MaximumInputBytes, int MaximumOutputBytes, int MaximumEventBytes, int MaximumEvents,
     int MaximumStreamBytes, TimeSpan MaximumDuration, string Cancellation)
 {
-    public const string OllamaChatRouteId = "martlet.gateway.ollama-chat.v1";
-    public const string OllamaChatPath = "/martlet/v1/inference/ollama-chat";
+    public const string OllamaChatRouteId = SelfHostSetup.OllamaRouteId;
+    public const string OllamaChatPath = SelfHostSetup.OllamaPath;
+    /// <summary>The Deep thinking role's own Ollama: the same chat contract on a route and path of its own.</summary>
+    public const string DeepThinkingRouteId = SelfHostSetup.DeepThinkingRouteId;
+    public const string DeepThinkingPath = SelfHostSetup.DeepThinkingPath;
     public const string F5RouteId = "martlet.gateway.f5-synthesis.v1";
     public const string F5Path = "/martlet/v1/inference/f5-synthesis";
     public const string XttsRouteId = "martlet.gateway.xtts-synthesis.v1";
@@ -32,7 +35,8 @@ public sealed partial class Audio2FaceHostConnection
 {
     private static readonly JsonSerializerOptions ChatJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    /// <summary>Streams the reply of the host's own conversation model (its Ollama role) through the gateway relay.
+    /// <summary>Streams the reply of the host's own conversation model (its Ollama role, or its Deep thinking role's own Ollama)
+    /// through the gateway relay.
     /// Only text deltas are yielded; failures throw <see cref="Audio2FaceHostException"/> with the gateway's code.
     /// <paramref name="images"/> (base64 JPEG/PNG, at most one) ride with the current input for a vision model.
     /// <paramref name="sampling"/> adds the optional Ollama sampling settings; unset values are not sent, so a request
@@ -46,8 +50,9 @@ public sealed partial class Audio2FaceHostConnection
         ArgumentNullException.ThrowIfNull(ids);
         ArgumentNullException.ThrowIfNull(history);
         ids.Validate();
-        if (route.RouteId != HostRoute.OllamaChatRouteId || route.Path != HostRoute.OllamaChatPath)
-            throw new ArgumentException("The route is not the host's conversation model.", nameof(route));
+        if (!(route.RouteId == HostRoute.OllamaChatRouteId && route.Path == HostRoute.OllamaChatPath ||
+                route.RouteId == HostRoute.DeepThinkingRouteId && route.Path == HostRoute.DeepThinkingPath))
+            throw new ArgumentException("The route is not one of the host's conversation models.", nameof(route));
         var now = clock.GetUtcNow();
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
         if (deadline > latest) deadline = latest;
