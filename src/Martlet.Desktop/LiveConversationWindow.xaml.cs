@@ -584,8 +584,9 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- singing ----------
 
-    /// <summary>The song panel: the song playing (where it is, the line being sung, Stop singing) or the last one (Play, or
-    /// Resume where it stopped). Its first line says it without the song's title or words (MCP reads it).</summary>
+    /// <summary>The song panel: the song playing (where it is, the line being sung, Stop singing) or the last one (where and why
+    /// it stopped, or that it's ready for Martlet to offer). Only Martlet performs songs, so nothing here plays one. Its first
+    /// line says it without the song's title or words (MCP reads it).</summary>
     private void RenderSong()
     {
         var songs = controller.Singing;
@@ -601,13 +602,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var last = songs.Last is { } stopped && stopped.SongId == song?.Id ? stopped : null;
         SongText.Text = SongLine(playing ? player : null, song, last);
         var title = playing ? player!.Song.Title : song!.Title;
-        SongLineText.Text = playing && player!.Line is { } index && player.State != SongPlaybackState.Stopping
-            ? $"“{title}” · {player.Map.Lines[index].Text}" : $"“{title}”";
+        SongLineText.Text = playing && player!.Caption is { Length: > 0 } words && player.State != SongPlaybackState.Stopping
+            ? $"“{title}” · {words}" : $"“{title}”";
         SongStopButton.Visibility = playing && player!.State != SongPlaybackState.Stopping ? Visibility.Visible : Visibility.Collapsed;
-        SongPlayButton.Visibility = playing ? Visibility.Collapsed : Visibility.Visible;
-        var resume = last is { Ended: false };
-        SongPlayButton.Content = resume ? "Resume" : "Play";
-        AutomationProperties.SetName(SongPlayButton, resume ? "Resume singing where it stopped" : "Sing it from the top");
     }
 
     /// <summary>The song panel's line, without the song's title or words: its ID, state, position and line number.</summary>
@@ -630,7 +627,7 @@ public partial class LiveConversationWindow : ThemedWindow
             };
         }
         if (song is null) return "";
-        if (last is { Ended: true, Cause: SongStopCause.Ended }) return $"Sang {song.Id} to the end. Play sings it again.";
+        if (last is { Ended: true, Cause: SongStopCause.Ended }) return $"Sang {song.Id} to the end.";
         if (last is { } stopped)
         {
             var where = stopped.Line is { } index
@@ -644,16 +641,10 @@ public partial class LiveConversationWindow : ThemedWindow
                 _ => "another song started"
             };
             return $"Stopped {song.Id} at {SongLibrary.Clock(stopped.At)} ({where}): {why}." +
-                (stopped.Ended ? " Play starts it from the top." : " Resume picks up that line.");
+                (stopped.Ended ? "" : " Ask Martlet to pick up where it left off.");
         }
         return $"Song {song.Id} is ready ({SongLibrary.Clock(TimeSpan.FromSeconds(song.DurationSeconds))}, {song.Lines.Count} lines). " +
-            "Martlet offers it, or press Play.";
-    }
-
-    private void SongPlay_Click(object sender, RoutedEventArgs e)
-    {
-        if (controller.PlaySongNow() is { } problem) notice = problem;
-        RenderActions();
+            "Martlet will offer it.";
     }
 
     private void SongStop_Click(object sender, RoutedEventArgs e)

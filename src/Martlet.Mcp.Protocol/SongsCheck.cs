@@ -45,6 +45,7 @@ internal static class SongsCheck
                     bpm = song.Bpm, beatsPerBar = song.BeatsPerBar, beats = song.Beats.Count, downbeats = song.Downbeats.Count,
                     titleCharacters = song.Title.Length, lyricsCharacters = song.Lyrics.Length, generator = song.Generator,
                     converter = song.Converter, quality = song.Quality, voiceMatch = song.VoiceMatch, fixture = song.Fixture,
+                    words = song.Words.Count, wordsEstimated = song.WordsEstimated, mouthSource = song.MouthSource, mouthNote = song.MouthNote,
                     createdAt = song.CreatedAt
                 }).ToArray()
             },
@@ -100,9 +101,11 @@ internal static class SongsCheck
         var vamp = Vamp(map, audio, envelope);
         var duck = Duck(map, audio, envelope);
         var played = await PlayedAsync(song, map, audio, cancellation);
+        var stored = songId is not null && dataDirectory is not null ? SongLibrary.In(dataDirectory).LoadMouth(song) : null;
+        var lipSync = await LipSyncAsync(song, map, audio, envelope, stored, cancellation);
         return new
         {
-            ok = resolve.Ok && leadIn.Ok && vamp.Ok && duck.Ok && played.Ok,
+            ok = resolve.Ok && leadIn.Ok && vamp.Ok && duck.Ok && played.Ok && lipSync.Ok,
             song = new
             {
                 id = song.Id, fixture = song.Fixture, durationSeconds = Math.Round(map.Duration.TotalSeconds, 2), bpm = map.Bpm,
@@ -110,10 +113,113 @@ internal static class SongsCheck
                 sections = map.Sections
             },
             note = song.Fixture
-                ? "FIXTURE - NOT AI tone song; the transport, mixer, player and stop records are Martlet's own. Nothing is played aloud."
-                : "A stored song; the transport, mixer, player and stop records are Martlet's own. Nothing is played aloud.",
-            resolve = resolve.Report, leadIn = leadIn.Report, vamp = vamp.Report, duck = duck.Report, played = played.Report
+                ? "FIXTURE - NOT AI tone song; the transport, mixer, player, mouth tracks and stop records are Martlet's own. Nothing is played aloud."
+                : "A stored song; the transport, mixer, player, mouth tracks and stop records are Martlet's own. Nothing is played aloud.",
+            resolve = resolve.Report, leadIn = leadIn.Report, vamp = vamp.Report, duck = duck.Report, played = played.Report,
+            lipSync = lipSync.Report
         };
+    }
+
+    // The mouth: the tracks Martlet makes from the vocals stem (Audio2Face when one answers on this PC, visemes from the sung
+    // words, the vocals' loudness) and how far each opens from the vocal onsets; then the player resuming a line with its
+    // lead-in, the mouth it sends on the playback clock against the onsets of the vocals it actually played.
+    private static async Task<(bool Ok, object Report)> LipSyncAsync(StoredSong song, SongMap map, SongAudio audio, VocalEnvelope envelope,
+        SongMouthTrack? stored, CancellationToken cancellation)
+    {
+        var words = song.Words.Count > 0 && !song.WordsEstimated ? song.WordTimes() : null;
+        var spread = words ?? SongMouthTrack.Spread(map, envelope);
+        var visemes = SongMouthTrack.FromVisemes(map, envelope, spread, estimated: words is null);
+        var loudness = SongMouthTrack.FromLoudness(envelope, map.Duration);
+        object Track(SongMouthTrack track)
+        {
+            var timing = track.Measure(envelope);
+            return new
+            {
+                source = track.Source.ToString(), note = track.Note, frames = track.Frames, channels = track.Channels,
+                onsets = timing.Onsets, matched = timing.Matched, medianOffsetMs = timing.MedianOffsetMs,
+                meanAbsoluteOffsetMs = timing.MeanAbsoluteOffsetMs, p90AbsoluteOffsetMs = timing.P90AbsoluteOffsetMs, good = timing.Good
+            };
+        }
+        // Audio2Face, once over the vocals, when a service answers on this PC's default loopback endpoint.
+        object audio2Face;
+        SongMouthTrack? a2f = null;
+        var options = new Martlet.Avatar.Audio2Face.Audio2FaceOptions { Endpoint = new("http://127.0.0.1:52000/") };
+        if (await Martlet.Avatar.Audio2Face.Audio2FaceProbe.IsListeningAsync(options, TimeSpan.FromMilliseconds(300), cancellation))
+        {
+            try
+            {
+                var watch = Stopwatch.StartNew();
+                var faces = await Martlet.Avatar.Audio2Face.Audio2FaceSong.AnalyzeAsync(audio.Vocals, audio.SampleRate, options, cancellation);
+                a2f = SongMouthTrack.FromFrames(faces, map.Duration, "Audio2Face at 127.0.0.1:52000");
+                audio2Face = new { ran = true, seconds = Math.Round(watch.Elapsed.TotalSeconds, 1), faces = faces.Count, track = Track(a2f) };
+            }
+            catch (Exception error) when (error is Martlet.Avatar.Audio2Face.Audio2FaceException or InvalidOperationException or ArgumentException)
+            {
+                audio2Face = new { ran = false, why = (error as Martlet.Avatar.Audio2Face.Audio2FaceException)?.Failure.ToString() ?? error.GetType().Name };
+            }
+        }
+        else audio2Face = new { ran = false, why = "No Audio2Face service answers on 127.0.0.1:52000 (NOT RUN)." };
+
+        // Played: the vocals alone, resumed at line 4 with its lead-in, the mouth sent on the playback clock.
+        var mouth = stored ?? a2f ?? visemes;
+        var line = Math.Min(3, map.Lines.Count - 1);
+        var plan = SongTransport.PlanStart(map, new(line, null, $"line {line + 1}"));
+        var vocalsOnly = new SongAudio(new short[audio.Backing.Length], audio.Vocals);
+        var output = new FixtureOutput(4);
+        var sent = new List<(long Output, double Level)>();
+        await using (var player = new SongPlayer(song, map, vocalsOnly, plan, output, new OutputSelection(OutputPolicy.DefaultAtStart), () => false,
+            pumpWait: TimeSpan.FromMilliseconds(1), mouth: mouth, words: spread))
+        {
+            player.Played += (at, _, level) => { lock (sent) sent.Add((at, level)); };
+            player.Start();
+            var watch = Stopwatch.StartNew();
+            while (player.Active && player.Position < plan.Onset + TimeSpan.FromSeconds(8) && watch.Elapsed < TimeSpan.FromSeconds(20))
+                await Task.Delay(5, cancellation);
+            player.Stop(SongStopCause.Button, musical: false, reason: "check");
+            await player.Completion.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+        }
+        var heard = output.Played();
+        // The vocals' onsets in what was played (10 ms steps rising above a threshold after 120 ms of quiet).
+        var step = Rate / 100;
+        var rms = new double[heard.Length / 2 / step];
+        for (var i = 0; i < rms.Length; i++) rms[i] = Rms(heard, i * step, (i + 1) * step);
+        var threshold = rms.DefaultIfEmpty(0).Max() * 0.08;
+        var onsets = new List<long>();
+        for (int i = 0, quiet = 0; i < rms.Length; i++)
+        {
+            if (rms[i] < threshold) { quiet++; continue; }
+            if (quiet >= 12) onsets.Add((long)i * step);
+            quiet = 0;
+        }
+        (long Output, double Level)[] levels;
+        lock (sent) levels = [.. sent.OrderBy(s => s.Output)];
+        var offsets = new List<double>();
+        foreach (var onset in onsets)
+        {
+            var rise = levels.Zip(levels.Skip(1)).FirstOrDefault(pair => pair.Second.Output >= onset - Rate / 4 && pair.Second.Output <= onset + Rate / 4 &&
+                pair.First.Level < 0.25 && pair.Second.Level >= 0.25);
+            if (rise.Second.Output > 0) offsets.Add((rise.Second.Output - onset) * 1000.0 / Rate);
+        }
+        var leadIn = (long)((plan.VocalsFrom - plan.Entry - SongMixer.VocalRamp).TotalSeconds * Rate);
+        var closedInLeadIn = levels.Where(l => l.Output < leadIn).Select(l => l.Level).DefaultIfEmpty(0).Max();
+        var absolute = offsets.Select(Math.Abs).Order().ToArray();
+        var p90 = absolute.Length == 0 ? double.NaN : absolute[Math.Min(absolute.Length - 1, (int)(absolute.Length * 0.9))];
+        var visemeTiming = visemes.Measure(envelope);
+        var ok = visemeTiming.Good && closedInLeadIn == 0 && onsets.Count > 0 && offsets.Count >= onsets.Count * 0.8 && p90 <= 60 &&
+            (stored is null || stored.Measure(envelope).Matched > 0);
+        return (ok, new
+        {
+            used = stored is not null ? "the stored song's mouth track" : a2f is not null ? "Audio2Face" : "visemes",
+            stored = stored is null ? null : Track(stored), audio2Face, visemes = Track(visemes), loudness = Track(loudness),
+            words = new { count = spread.Count, estimated = words is null },
+            playback = new
+            {
+                from = $"line {line + 1} with {plan.LeadInBars} bar(s) of lead-in", source = mouth.Source.ToString(), mouthUpdates = levels.Length,
+                closedDuringLeadIn = closedInLeadIn == 0, vocalOnsets = onsets.Count, matched = offsets.Count,
+                medianOffsetMs = offsets.Count == 0 ? (double?)null : Math.Round(offsets.Order().ElementAt(offsets.Count / 2), 1),
+                p90AbsoluteOffsetMs = double.IsNaN(p90) ? (double?)null : Math.Round(p90, 1)
+            }
+        });
     }
 
     private static (StoredSong, SongAudio) Fixture()

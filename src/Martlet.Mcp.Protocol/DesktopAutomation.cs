@@ -21,8 +21,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "McpDirectoryClose", "McpDirectoryOptional",
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision, a song); it starts nothing and never pauses
         // listening. Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops
-        // nothing. Stop singing only ends the song playing (musically). Play (LiveSongPlay) sings aloud, so it needs
-        // --allow-ui-effects.
+        // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song.
         "LiveStop", "LiveRefreshContext", "LiveSongStop",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
@@ -174,10 +173,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // key or base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
         // background work line (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id>
         // holds that). The song panel's line (the song's id, state, position, line number and section, lead-in, vamps, ducking, or
-        // where and why it stopped; never its title or words: LiveSongLine holds those) and its Play button's label (Play or
-        // Resume).
+        // where and why it stopped; never its title or words: LiveSongLine holds those).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
-        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingKeyStatus", "LiveJobs", "LiveSong", "LiveSongPlay",
+        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingKeyStatus", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",

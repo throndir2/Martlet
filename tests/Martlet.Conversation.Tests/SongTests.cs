@@ -86,6 +86,24 @@ public sealed class SongTests
     }
 
     [Fact]
+    public void MouthTrackFollowsTheVocalOnsetsAndKeepsWithTheSong()
+    {
+        var (map, audio, _) = Fixture();
+        var envelope = new VocalEnvelope(audio.Vocals, audio.SampleRate);
+        var mouth = SongMouthTrack.FromVisemes(map, envelope, null);
+        Assert.Equal(SongMouthSource.Visemes, mouth.Source);
+        var timing = mouth.Measure(envelope);
+        Assert.True(timing.Good, $"{timing}");
+        Assert.Equal(0, mouth.LevelAt(TimeSpan.FromSeconds(1)));
+        var again = SongMouthTrack.FromJson(mouth.ToJson())!;
+        Assert.Equal(mouth.Frames, again.Frames);
+        Assert.Equal(mouth.LevelAt(TimeSpan.FromSeconds(10.3)), again.LevelAt(TimeSpan.FromSeconds(10.3)));
+        Assert.Equal(["closed", "ou", "open"], Visemes.Of("moon").Select(unit => unit.Name));
+        Assert.Equal(["closed", "ee"], Visemes.Of("me").Select(unit => unit.Name));
+        Assert.Equal(["open", "oh", "closed"], Visemes.Of("home").Select(unit => unit.Name));
+    }
+
+    [Fact]
     public void LibraryKeepsSongsWithTheirTracksAndMap()
     {
         var directory = Path.Combine(Path.GetTempPath(), "martlet-songs-" + Guid.NewGuid().ToString("N"));

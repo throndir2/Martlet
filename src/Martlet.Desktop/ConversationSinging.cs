@@ -64,6 +64,21 @@ internal sealed class SilentSongOutput : IPlaybackDeviceFactory
     }
 }
 
+/// <summary>Where a song's mouth goes: the character (its mouth mapping, or its loudness mouth). <see cref="SingAsync"/> runs on
+/// the song's playback clock; <see cref="RestAsync"/> closes the mouth when it stops.</summary>
+internal interface ISongFace
+{
+    Task SingAsync(long output, IReadOnlyDictionary<string, double> shape, double level, CancellationToken token);
+    Task RestAsync(CancellationToken token);
+    /// <summary>How the mouth reached the character last ("mapped mouth shapes", "mouth opening"), or null.</summary>
+    string? Route { get; }
+}
+
+/// <summary>Runs a song's vocals once through Audio2Face for its mouth track: the blendshape frames in song time and where
+/// they were made, or null when none is reachable.</summary>
+internal delegate Task<(IReadOnlyList<(TimeSpan At, IReadOnlyDictionary<string, double> Weights)> Faces, string Where)?> SongFaceAnalysis(
+    short[] vocals, int sampleRate, CancellationToken token);
+
 /// <summary>Martlet singing in the conversation: the song library in the data directory, the song playing (one at a time,
 /// through Martlet's voice output), where the last one stopped and why, and the note about it that waits for the conversation.
 /// Writes songs-status.json (states, times, line numbers and sections; never titles or words) for MCP's songs_status.</summary>
@@ -74,7 +89,8 @@ internal sealed class ConversationSinging : IAsyncDisposable
     private readonly string? dataDirectory;
     private readonly IPlaybackDeviceFactory? devices;
     private readonly SpokenTextFeed? captions;
-    private readonly Func<double, CancellationToken, Task>? mouth;
+    private readonly ISongFace? face;
+    private readonly SongFaceAnalysis? analysis;
     private readonly TimeProvider clock;
     private SongPlayer? player;
     private SongStopRecord? last;
@@ -84,15 +100,34 @@ internal sealed class ConversationSinging : IAsyncDisposable
     private readonly object statusGate = new();
 
     internal ConversationSinging(string? dataDirectory, ISongSource? source, IPlaybackDeviceFactory? devices, SpokenTextFeed? captions = null,
-        Func<double, CancellationToken, Task>? mouth = null, TimeProvider? clock = null)
+        ISongFace? face = null, SongFaceAnalysis? analysis = null, TimeProvider? clock = null)
     {
         this.dataDirectory = dataDirectory;
         Source = source;
         this.devices = devices;
         this.captions = captions;
-        this.mouth = mouth;
+        this.face = face;
+        this.analysis = analysis;
         this.clock = clock ?? TimeProvider.System;
         Library = dataDirectory is null ? null : SongLibrary.In(dataDirectory);
+    }
+
+    /// <summary>The mouth track and sung words for a song just made, from its vocals stem (never the mix): Audio2Face run once
+    /// over the vocals when one is reachable, otherwise visemes timed from the sung words (the song maker's, or the words of each
+    /// line spread over its singing), otherwise the vocals' loudness; and how well it follows the vocal onsets.</summary>
+    internal async Task<(SongMouthTrack Mouth, IReadOnlyList<SongWordTime> Words, bool Estimated, SongMouthTiming Timing)> MouthAsync(
+        SongResult result, IReadOnlyList<SongWordTime>? given, CancellationToken token)
+    {
+        var vocals = SongAudio.Mono(result.Vocals);
+        var envelope = new VocalEnvelope(vocals, result.Vocals.SampleRate);
+        var map = SongMap.Of(result);
+        var estimated = given is not { Count: > 0 };
+        var words = estimated ? SongMouthTrack.Spread(map, envelope) : given!;
+        SongMouthTrack? track = null;
+        if (analysis is not null && await analysis(vocals, result.Vocals.SampleRate, token).ConfigureAwait(false) is { Faces.Count: > 0 } faces)
+            track = SongMouthTrack.FromFrames(faces.Faces, map.Duration, faces.Where);
+        track ??= map.Lines.Count > 0 ? SongMouthTrack.FromVisemes(map, envelope, words, estimated) : SongMouthTrack.FromLoudness(envelope, map.Duration);
+        return (track, words, estimated, track.Measure(envelope));
     }
 
     internal ISongSource? Source { get; }
@@ -132,7 +167,8 @@ internal sealed class ConversationSinging : IAsyncDisposable
         if (target is null) return (null, problem);
         var plan = SongTransport.PlanStart(map, target);
         SongPlayer? stopping;
-        var started = new SongPlayer(song, map, audio, plan, devices, output, talking, captions);
+        var started = new SongPlayer(song, map, audio, plan, devices, output, talking, captions,
+            mouth: Library.LoadMouth(song), words: song.WordTimes());
         lock (gate)
         {
             stopping = player;
@@ -229,10 +265,10 @@ internal sealed class ConversationSinging : IAsyncDisposable
         Changed?.Invoke();
     }
 
-    // The character's mouth follows the vocals that are heard while the song plays.
+    // The character's mouth follows the song's mouth track at the song time being heard, on its playback clock (every 20 ms).
     private void StartMouth(SongPlayer playing)
     {
-        if (mouth is null) return;
+        if (face is null) return;
         CancellationTokenSource loop;
         lock (gate)
         {
@@ -241,30 +277,32 @@ internal sealed class ConversationSinging : IAsyncDisposable
         }
         _ = Task.Run(async () =>
         {
-            double sent = 0;
+            long sent = -1;
+            var moved = false;
             try
             {
                 while (!loop.IsCancellationRequested && playing.Active)
                 {
+                    var (output, _, shape, level) = playing.MouthNow;
                     // While Martlet talks over the song, its speech moves the mouth instead.
-                    if (!playing.Mixer.Ducked)
+                    if (!playing.Mixer.Ducked && output > sent && (level > 0 || moved))
                     {
-                        var level = Math.Round(playing.Mouth, 3);
-                        if (Math.Abs(level - sent) > 0.02 || level == 0 && sent != 0)
-                        {
-                            await mouth(level, loop.Token).ConfigureAwait(false);
-                            sent = level;
-                        }
+                        await face.SingAsync(output, shape, level, loop.Token).ConfigureAwait(false);
+                        sent = output;
+                        moved = level > 0;
+                        Interlocked.Increment(ref mouthFrames);
                     }
-                    await Task.Delay(TimeSpan.FromMilliseconds(33), loop.Token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMilliseconds(20), loop.Token).ConfigureAwait(false);
                 }
             }
             catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
-            if (sent != 0 && !loop.IsCancellationRequested)
-                try { await mouth(0, CancellationToken.None).ConfigureAwait(false); }
+            if (!loop.IsCancellationRequested)
+                try { await face.RestAsync(CancellationToken.None).ConfigureAwait(false); }
                 catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
         });
     }
+
+    private long mouthFrames;
 
     /// <summary>songs-status.json: the library's size, the song playing (state, position, line number and section, lead-in, vamps,
     /// ducking) and where the last one stopped and why; never a title or words.</summary>
@@ -310,6 +348,11 @@ internal sealed class ConversationSinging : IAsyncDisposable
                 section = p.Line is { } index ? p.Map.Lines[index].Section : null, from = Describe(plan),
                 leadInBars = plan.LeadInBars, leadInSeconds = Math.Round(plan.LeadIn.TotalSeconds, 2),
                 fadeInMs = Math.Round(plan.FadeIn.TotalMilliseconds), vamps = p.Mixer.Vamps, ducked = p.Mixer.Ducked,
+                lipSync = new
+                {
+                    source = p.MouthTrack.Source.ToString(), frames = p.MouthTrack.Frames, channels = p.MouthTrack.Channels.Count,
+                    sent = Interlocked.Read(ref mouthFrames), route = face?.Route
+                },
                 stop = stopping is null ? null : new
                 {
                     musical = stopping.Musical, requestedSeconds = Math.Round(stopping.Requested.TotalSeconds, 2),

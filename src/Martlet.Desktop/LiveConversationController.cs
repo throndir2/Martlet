@@ -1723,9 +1723,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
         SongResult result;
         try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job), token).ConfigureAwait(false); }
         catch (SongException error) { return BackgroundJobOutcome.Failed(SongProblem(error)); }
+        job.Report(BackgroundJobState.Running, "Timing the mouth to the singing");
+        var (mouth, words, estimated, timing) = await singing!.MouthAsync(result, null, token).ConfigureAwait(false);
         job.Report(BackgroundJobState.Running, "Saving the song");
-        var song = library.Save(result, written.Title, arguments.About, written.Lyrics, written.Style, clock.GetUtcNow());
-        singing?.Made(song);
+        var song = library.Save(result, written.Title, arguments.About, written.Lyrics, written.Style, clock.GetUtcNow(), words, estimated, mouth);
+        singing.Made(song);
+        ErrorLog.Info($"Singing: {song.Id} mouth track from {mouth.Note} ({mouth.Frames} frames): mouth opens {timing.MedianOffsetMs:+0;-0;0} ms " +
+            $"from the vocal onsets (median; mean {timing.MeanAbsoluteOffsetMs:0} ms, 90% within {timing.P90AbsoluteOffsetMs:0} ms; " +
+            $"{timing.Matched} of {timing.Onsets} onsets).");
         ErrorLog.Info($"Singing: {job.Id} made {song.Id} ({SongLibrary.Clock(TimeSpan.FromSeconds(song.DurationSeconds))}, " +
             $"{song.Lines.Count} lines, {song.Generator} + {song.Converter}{(song.Fixture ? ", FIXTURE - NOT AI" : "")}) after " +
             $"{BackgroundJobs.Duration(job.Elapsed)}: " + string.Join(", ", result.StageTimings.Select(stage => $"{stage.Stage} {stage.Duration.TotalSeconds:0.0} s")) + ".");
@@ -1794,17 +1799,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// which.</summary>
     internal SongStopRecord? StopSong(bool musical, string button) =>
         singing?.Stop(SongStopCause.Button, musical, reason: button);
-
-    /// <summary>The talk window's Play: Martlet sings the song shown there from the line where it stopped (or from the top),
-    /// without asking the Thinking model; where it stops is noted for the conversation like any stop. Returns why it can't.</summary>
-    internal string? PlaySongNow()
-    {
-        if (singing?.Current is not { } song) return "There's no song to play yet.";
-        if (Configuration is not { } configured) return "Martlet isn't set up to talk yet.";
-        var resume = singing.Last is { Ended: false } last && last.SongId == song.Id;
-        var (player, problem) = singing.Play(song, resume ? "resume" : "start", configured.SpeechOutput(), ReplySpeaking);
-        return player is null ? problem : null;
-    }
 
     // One attempt of a background think: a reply's request continued and fitted to where it thinks, with its own authorization
     // bound to exactly this request and the time left. When it waits for quiet moments it continues the latest exchange (the

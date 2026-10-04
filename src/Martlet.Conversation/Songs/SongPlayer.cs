@@ -24,20 +24,29 @@ public sealed class SongPlayer : IAsyncDisposable
     private readonly TimeSpan wait;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TaskCompletionSource<SongStopRecord> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly IReadOnlyList<SongWordTime> words;
+    private readonly int[][] lineWords;
     private TaskCompletionSource? caption;
     private Task? pump;
     private SongStopRecord? record;
     private SongPlaybackState state = SongPlaybackState.Starting;
     private TimeSpan position;
+    private long heardOutput;
     private int? line = -1;
+    private int sungWords = -1;
+    private string captionText = "";
     private double mouth;
+    private IReadOnlyDictionary<string, double> shape = new Dictionary<string, double>();
     private ErrorCode? failure;
 
     /// <param name="talking">Whether Martlet is saying something right now (a reply or remark), read every 10 ms.</param>
-    /// <param name="captions">Each sung line goes here as it is heard (the speech bubble and subtitles).</param>
+    /// <param name="captions">The line being sung goes here word by word as it is heard (the speech bubble and subtitles).</param>
+    /// <param name="mouth">The song's mouth track (made from its vocals when it was made); its vocals' loudness without one.</param>
+    /// <param name="words">The sung words with their times, for word-by-word captions; whole lines without them.</param>
     /// <param name="pumpWait">How long the pump waits between device checks (MCP's check runs it faster than real time).</param>
     public SongPlayer(StoredSong song, SongMap map, SongAudio audio, SongStartPlan plan, IPlaybackDeviceFactory devices,
-        OutputSelection output, Func<bool> talking, SpokenTextFeed? captions = null, TimeSpan? pumpWait = null)
+        OutputSelection output, Func<bool> talking, SpokenTextFeed? captions = null, TimeSpan? pumpWait = null,
+        SongMouthTrack? mouth = null, IReadOnlyList<SongWordTime>? words = null)
     {
         ArgumentNullException.ThrowIfNull(song);
         ArgumentNullException.ThrowIfNull(devices);
@@ -48,6 +57,16 @@ public sealed class SongPlayer : IAsyncDisposable
         Map = map;
         Envelope = new VocalEnvelope(audio.Vocals, audio.SampleRate);
         Mixer = new SongMixer(audio, map, Envelope, plan);
+        MouthTrack = mouth ?? SongMouthTrack.FromLoudness(Envelope, map.Duration);
+        this.words = words ?? [];
+        // Each line's words: those that start (a moment before) its next line.
+        lineWords = new int[map.Lines.Count][];
+        for (var l = 0; l < map.Lines.Count; l++)
+        {
+            var from = map.Lines[l].Start - TimeSpan.FromMilliseconds(250);
+            var to = l + 1 < map.Lines.Count ? map.Lines[l + 1].Start - TimeSpan.FromMilliseconds(250) : map.Duration;
+            lineWords[l] = [.. Enumerable.Range(0, this.words.Count).Where(w => this.words[w].Start >= from && this.words[w].Start < to)];
+        }
         this.devices = devices;
         this.output = output;
         this.talking = talking;
@@ -59,14 +78,27 @@ public sealed class SongPlayer : IAsyncDisposable
     public SongMap Map { get; }
     public SongMixer Mixer { get; }
     public VocalEnvelope Envelope { get; }
+    public SongMouthTrack MouthTrack { get; }
     public SongStartPlan Plan => Mixer.Plan;
     public SongPlaybackState State { get { lock (gate) return state; } }
     /// <summary>The song time being heard.</summary>
     public TimeSpan Position { get { lock (gate) return position; } }
+    /// <summary>How many frames the output has played (the playback clock the mouth is timed against; it never goes back,
+    /// even when the band repeats a bar).</summary>
+    public long HeardOutput { get { lock (gate) return heardOutput; } }
     /// <summary>The line being heard (0-based), or null in an instrumental stretch.</summary>
     public int? Line { get { lock (gate) return line < 0 ? null : line; } }
-    /// <summary>How open the character's mouth is for what is heard (0 to 1).</summary>
+    /// <summary>The line being sung, up to the word being heard (the whole line without word times).</summary>
+    public string Caption { get { lock (gate) return captionText; } }
+    /// <summary>How open the character's mouth is for what is heard (0 to 1): the mouth track at the song time heard, closed while
+    /// the vocals are muted (a lead-in) and fading with them.</summary>
     public double Mouth { get { lock (gate) return mouth; } }
+    /// <summary>The mouth's shape for what is heard: the mouth track's blendshapes at the song time heard, scaled like
+    /// <see cref="Mouth"/>, with the playback clock it belongs to.</summary>
+    public (long Output, TimeSpan At, IReadOnlyDictionary<string, double> Shape, double Level) MouthNow
+    {
+        get { lock (gate) return (heardOutput, position, shape, mouth); }
+    }
     public SongStopRecord? Record { get { lock (gate) return record; } }
     public ErrorCode? Failure { get { lock (gate) return failure; } }
     public bool Active => !completion.Task.IsCompleted;
@@ -74,6 +106,9 @@ public sealed class SongPlayer : IAsyncDisposable
     public Task<SongStopRecord> Completion => completion.Task;
     /// <summary>Raised on the player's thread when the heard line or state changes.</summary>
     public event Action? Changed;
+    /// <summary>Raised on the player's thread each time what is heard moves on: the playback clock, the song time and the mouth's
+    /// opening for it.</summary>
+    public event Action<long, TimeSpan, double>? Played;
 
     public void Start()
     {
@@ -186,27 +221,50 @@ public sealed class SongPlayer : IAsyncDisposable
         var at = Mixer.SourceAt(played);
         int? heard;
         bool changed;
+        double level;
         lock (gate)
         {
+            heardOutput = played;
             position = at;
             heard = Map.LineAt(at);
             var next = state is SongPlaybackState.Stopping or SongPlaybackState.Stopped or SongPlaybackState.Finished or SongPlaybackState.Failed
                 ? state : Mixer.Singing && (Plan.Top || at >= Plan.VocalsFrom) ? SongPlaybackState.Singing : SongPlaybackState.LeadIn;
+            // Karaoke: the line so far, word by word (the whole line without word times); nothing while the vocals are muted.
+            var sung = -1;
+            var text = "";
+            if (heard is { } index && next == SongPlaybackState.Singing)
+            {
+                var times = lineWords[index];
+                if (times.Length == 0) text = Map.Lines[index].Text;
+                else
+                {
+                    sung = times.Count(w => words[w].Start <= at + TimeSpan.FromMilliseconds(30));
+                    text = string.Join(' ', times.Take(Math.Max(1, sung)).Select(w => words[w].Text));
+                }
+            }
             changed = heard != line || next != state;
-            if (heard != line)
+            if (heard != line || sung != sungWords || text != captionText)
             {
                 caption?.TrySetResult();
                 caption = null;
-                if (heard is { } index && state != SongPlaybackState.Stopping && captions is not null)
+                if (text.Length > 0 && captions is not null)
                 {
                     caption = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                    captions.Post(Map.Lines[index].Text, caption.Task);
+                    captions.Post(text, caption.Task);
                 }
+                changed |= text != captionText;
             }
             line = heard ?? -1;
+            sungWords = sung;
+            captionText = text;
             state = next;
-            mouth = VocalEnvelope.Mouth(Envelope.At(at) * Mixer.VocalGain * Mixer.CurrentDuck);
+            // The mouth follows the vocals as they are heard: muted vocals (a lead-in, a stop's fade) close it.
+            var gain = Math.Clamp(Mixer.VocalGainAt(at), 0, 1);
+            var weights = MouthTrack.At(at);
+            shape = gain >= 0.999 ? weights : weights.ToDictionary(item => item.Key, item => item.Value * gain, StringComparer.Ordinal);
+            mouth = level = MouthTrack.LevelAt(at) * gain;
         }
+        Played?.Invoke(played, at, level);
         if (changed) Changed?.Invoke();
     }
 

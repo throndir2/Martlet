@@ -179,6 +179,19 @@ public sealed class SongMixer
         }
     }
 
+    /// <summary>The vocals' gain (0 muted to 1 full) at song time <paramref name="time"/>, as rendered: muted before the line
+    /// in a lead-in or vamp, and fading out with a stop. For the mouth, which follows what is heard rather than what is written
+    /// ahead.</summary>
+    public double VocalGainAt(TimeSpan time)
+    {
+        lock (gate)
+        {
+            if (!committed) return 0;
+            var at = Frame(time);
+            return Ramp(at) * Fade(at, vocalsEnd, vocalsFade);
+        }
+    }
+
     // The vocals open over 20 ms ending where the line's pre-roll starts (from the top they are simply on).
     private double Ramp(long at)
     {

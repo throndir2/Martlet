@@ -95,7 +95,8 @@ public partial class MainWindow : ThemedWindow
             // Martlet sings through the same output as its voice; the character's mouth follows the vocals. (The FIXTURE song
             // maker's songs play into a silent output, so automated checks never sound.)
             var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(),
-                DesktopSongSource.Fixture ? new SilentSongOutput() : new WasapiDeviceFactory(), captions.Feed, avatar.SingAsync);
+                DesktopSongSource.Fixture ? new SilentSongOutput() : new WasapiDeviceFactory(), captions.Feed, avatar,
+                (vocals, rate, token) => avatar.AnalyzeSongAsync(vocals, rate, OwnLipSyncEndpoint(), token));
             conversation = new(setupOperations, setupService, vault, microphones, new WasapiDeviceFactory(),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,

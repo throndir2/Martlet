@@ -181,13 +181,15 @@ public sealed class VocalEnvelope
             for (var n = i * step; n < end; n++) sum += (double)vocals[n] * vocals[n];
             rms[i] = (float)Math.Sqrt(sum / Math.Max(1, end - i * step)) / 32768f;
         }
-        var sorted = rms.Where(value => value > 0).Order().ToArray();
-        var loudest = rms.Length == 0 ? 0 : rms.Max();
+        var sorted = rms.Order().ToArray();
+        var loudest = sorted.Length == 0 ? 0 : sorted[^1];
         var quiet = sorted.Length == 0 ? 0 : sorted[(int)(sorted.Length * 0.3)];
-        Threshold = Math.Max(loudest * 0.08f, quiet * 1.5f);
+        // 8% of the loudest, or above the noise floor where the vocals are seldom silent, but never above a quarter of the loudest.
+        Threshold = Math.Max(loudest * 0.08f, Math.Min(quiet * 1.5f, loudest * 0.25f));
     }
 
-    /// <summary>Below this the vocals are between words (8% of the loudest, or 1.5 times a quiet moment).</summary>
+    /// <summary>Below this the vocals are between words (8% of the loudest, or 1.5 times a quiet moment, at most a quarter of the
+    /// loudest).</summary>
     public float Threshold { get; }
 
     public float At(TimeSpan time)

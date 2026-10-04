@@ -11,8 +11,12 @@ namespace Martlet.Conversation;
 /// when known, its words and its section ("verse", "chorus 2"; empty without tags).</summary>
 public sealed record StoredSongLine(double Start, double? End, string Text, string Section = "");
 
-/// <summary>A finished song kept in the song library (song.json beside its three WAV tracks): what it is, its lyrics, its map
-/// (lines with sections and times, and the beat grid) and how it was made. Times are seconds from the top.</summary>
+/// <summary>One sung word of a stored song and when it is sung (seconds from the top).</summary>
+public sealed record StoredSongWord(double Start, double End, string Text);
+
+/// <summary>A finished song kept in the song library (song.json beside its three WAV tracks and its mouth track): what it is,
+/// its lyrics, its map (lines and words with sections and times, and the beat grid), how it was made and where its mouth
+/// track came from. Times are seconds from the top.</summary>
 public sealed record StoredSong
 {
     public const int SchemaVersion1 = 1;
@@ -31,6 +35,13 @@ public sealed record StoredSong
     public IReadOnlyList<double> Beats { get; init; } = [];
     public IReadOnlyList<double> Downbeats { get; init; } = [];
     public IReadOnlyList<StoredSongLine> Lines { get; init; } = [];
+    /// <summary>The sung words with their times: the song maker's, or (<see cref="WordsEstimated"/>) spread over each line's
+    /// singing.</summary>
+    public IReadOnlyList<StoredSongWord> Words { get; init; } = [];
+    public bool WordsEstimated { get; init; }
+    /// <summary>Where the mouth track came from (<see cref="SongMouthSource"/>) and what made it.</summary>
+    public string? MouthSource { get; init; }
+    public string? MouthNote { get; init; }
     public string Generator { get; init; } = "";
     public string Converter { get; init; } = "";
     public string Quality { get; init; } = "";
@@ -45,6 +56,10 @@ public sealed record StoredSong
         [.. Beats.Select(TimeSpan.FromSeconds)], [.. Downbeats.Select(TimeSpan.FromSeconds)],
         [.. Lines.Select(line => new SongLyricLine(TimeSpan.FromSeconds(line.Start), line.End is { } end ? TimeSpan.FromSeconds(end) : null,
             line.Text, line.Section))]);
+
+    /// <summary>The sung words with their times.</summary>
+    public IReadOnlyList<SongWordTime> WordTimes() =>
+        [.. Words.Select(word => new SongWordTime(TimeSpan.FromSeconds(word.Start), TimeSpan.FromSeconds(word.End), word.Text))];
 
     public override string ToString() => $"{nameof(StoredSong)} {Id}";
 }
@@ -76,6 +91,13 @@ public sealed class SongAudio
         return new(Samples(result.Backing, 2), Samples(result.Vocals, 1), result.Backing.SampleRate);
     }
 
+    /// <summary>A track as mono samples (the vocals, for the mouth track).</summary>
+    public static short[] Mono(SongTrack track)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        return Samples(track, 1);
+    }
+
     private static short[] Samples(SongTrack track, int channels)
     {
         var span = track.Pcm16.Span;
@@ -105,7 +127,8 @@ public sealed class SongLibrary
 {
     public const int Kept = 20;
     public const string FolderName = "songs";
-    public const string SongFile = "song.json", MixFile = "mix.wav", VocalsFile = "vocals.wav", BackingFile = "backing.wav";
+    public const string SongFile = "song.json", MixFile = "mix.wav", VocalsFile = "vocals.wav", BackingFile = "backing.wav",
+        MouthFile = "mouth.json";
     private readonly object gate = new();
 
     internal static readonly JsonSerializerOptions Json = new()
@@ -130,9 +153,10 @@ public sealed class SongLibrary
     public static bool IsId(string? id) => id is { Length: >= 11 and <= 21 } && id.StartsWith("song-", StringComparison.Ordinal) &&
         id[5..].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
 
-    /// <summary>Saves a finished song with its three tracks and returns its record; the oldest songs beyond <see cref="Kept"/>
-    /// are removed.</summary>
-    public StoredSong Save(SongResult result, string title, string about, string lyrics, string style, DateTimeOffset now)
+    /// <summary>Saves a finished song with its three tracks, its sung words and its mouth track (made from its vocals when the
+    /// song was made) and returns its record; the oldest songs beyond <see cref="Kept"/> are removed.</summary>
+    public StoredSong Save(SongResult result, string title, string about, string lyrics, string style, DateTimeOffset now,
+        IReadOnlyList<SongWordTime>? words = null, bool wordsEstimated = false, SongMouthTrack? mouth = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         var id = "song-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(3));
@@ -145,6 +169,8 @@ public sealed class SongLibrary
             Downbeats = [.. result.Downbeats.Select(beat => Round(beat.TotalSeconds))],
             Lines = [.. result.LyricTimestamps.Select(line => new StoredSongLine(Round(line.Start.TotalSeconds),
                 line.End is { } end ? Round(end.TotalSeconds) : null, line.Text, line.Section))],
+            Words = [.. (words ?? []).Select(word => new StoredSongWord(Round(word.Start.TotalSeconds), Round(word.End.TotalSeconds), word.Text))],
+            WordsEstimated = wordsEstimated, MouthSource = mouth?.Source.ToString(), MouthNote = mouth?.Note,
             Generator = result.Engine.Generator, Converter = result.Engine.Converter, Quality = result.Engine.Quality.ToString(),
             VoiceMatch = result.Engine.VoiceMatch.ToString(), Fixture = result.Engine.Fixture, Seed = result.Seed, CreatedAt = now
         };
@@ -158,6 +184,7 @@ public sealed class SongLibrary
                 WriteWave(Path.Combine(staging, MixFile), result.Mix);
                 WriteWave(Path.Combine(staging, VocalsFile), result.Vocals);
                 WriteWave(Path.Combine(staging, BackingFile), result.Backing);
+                if (mouth is not null) File.WriteAllText(Path.Combine(staging, MouthFile), mouth.ToJson());
                 File.WriteAllText(Path.Combine(staging, SongFile), JsonSerializer.Serialize(song, Json));
                 System.IO.Directory.Move(staging, Path.Combine(Directory, id));
             }
@@ -187,6 +214,19 @@ public sealed class SongLibrary
     }
 
     public StoredSong? Find(string? id) => IsId(id) ? Read(Path.Combine(Directory, id!)) : null;
+
+    /// <summary>The song's mouth track, or null when it has none or it can't be read.</summary>
+    public SongMouthTrack? LoadMouth(StoredSong song)
+    {
+        ArgumentNullException.ThrowIfNull(song);
+        if (!IsId(song.Id)) return null;
+        try
+        {
+            var path = Path.Combine(Directory, song.Id, MouthFile);
+            return File.Exists(path) && new FileInfo(path).Length <= 16 * 1024 * 1024 ? SongMouthTrack.FromJson(File.ReadAllText(path)) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
 
     /// <summary>The song's backing and vocals, or null when its tracks can't be read.</summary>
     public SongAudio? LoadAudio(StoredSong song)
