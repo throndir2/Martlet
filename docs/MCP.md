@@ -1036,7 +1036,11 @@ service with the FIXTURE - NOT AI engine using the `python` on `PATH` or
 `MARTLET_PYTHON`; or a numeric loopback address of a live singing service, for
 example `http://127.0.0.1:50085/`), `seconds` (15-180; default 20 for the fixture,
 30 otherwise), `quality` (`fast` or `high_quality`) and `voiceMatch` (`soulx` or
-`vevosing`). It returns `{exitCode, report}` with `ok` (no failure, three
+`vevosing`), and optionally `voiceRecording` (the absolute path of a copy of a
+mono 16-bit PCM WAV, 1-30 s, such as one of the owner's voice recordings) with
+its `voiceTranscript`, which the check adds to the gateway's voice list as the
+desktop adds a recorded voice and sings in instead of the starter voice. It
+returns `{exitCode, report}` with `ok` (no failure, three
 sample-aligned tracks of the requested length and a beat grid), `stages` (each
 stage the client saw, with its fraction and `atMs`), `elapsedMs`,
 `realTimeFactor`, `song` (`engine` with `Fixture`, `seconds`, `bpm`, `key`,

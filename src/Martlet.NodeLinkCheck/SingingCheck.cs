@@ -24,7 +24,7 @@ namespace Martlet.NodeLinkCheck;
 internal static class SingingCheck
 {
     internal static async Task<(bool Ok, object Report)> RunAsync(string endpointText, int seconds, string quality, string voiceMatch,
-        string? saveDirectory, CancellationToken token)
+        string? saveDirectory, string? voiceRecording, string? voiceTranscript, CancellationToken token)
     {
         if (seconds is < SongRequest.MinimumDurationSeconds or > SongRequest.MaximumDurationSeconds)
             throw new ArgumentException($"seconds must be {SongRequest.MinimumDurationSeconds} to {SongRequest.MaximumDurationSeconds}.");
@@ -41,6 +41,22 @@ internal static class SingingCheck
 
         var voice = F5BundledVoices.Default;
         var voiceId = SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript);
+        var voices = SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters);
+        var voiceName = voice.Key;
+        byte[]? recording = null;
+        if (voiceRecording is not null)
+        {
+            // A copy of one of the owner's recordings (mono 16-bit PCM WAV), added to the gateway's list as the desktop adds a
+            // voice the owner recorded.
+            recording = await File.ReadAllBytesAsync(voiceRecording, token);
+            var (rate, frames) = WaveShape(recording);
+            var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(recording));
+            var transcript = string.IsNullOrWhiteSpace(voiceTranscript) ? "A recording of my voice." : voiceTranscript.Trim();
+            voices = voices.Add("Singing check voice", transcript, sha256, (int)(frames * 1000L / rate), SpeakingVoiceRights.OwnVoice,
+                "singing-check", DateTimeOffset.UtcNow);
+            voiceId = SpeakingVoiceLibrary.ReferenceId(sha256, transcript);
+            voiceName = Path.GetFileName(voiceRecording);
+        }
         var request = new SongRequest
         {
             Lyrics = "[verse]\nMorning light is on the window\nCoffee steaming by the door\nEvery little thing feels easy\n" +
@@ -64,7 +80,7 @@ internal static class SingingCheck
             using var connection = await host.PairAsync("singing-check-desktop", token);
             var route = (await connection.ReadRoutesAsync(token)).Single(r => r.RouteId == Audio2FaceHostConnection.SongRouteId);
             // The gateway resolves a song's voice from its shared speaking-voice list, as a paired desktop keeps it.
-            await connection.MergeSpeakingVoicesAsync(SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters), token);
+            await connection.MergeSpeakingVoicesAsync(voices, token);
             before = await StatusAsync(connection, route, token);
             var progress = new SynchronousProgress(p => stages.Add(new
             {
@@ -72,7 +88,7 @@ internal static class SingingCheck
                 atMs = Math.Round(watch.Elapsed.TotalMilliseconds)
             }));
             watch.Restart();
-            song = await connection.MakeSongAsync(route, request, _ => Task.FromResult<byte[]?>(voice.ReadAudio()), progress, token,
+            song = await connection.MakeSongAsync(route, request, _ => Task.FromResult<byte[]?>(recording ?? voice.ReadAudio()), progress, token,
                 TimeSpan.FromMilliseconds(500));
             host_ = await JobReportAsync(connection, route, song.JobId, token);
             after = await StatusAsync(connection, route, token);
@@ -128,7 +144,7 @@ internal static class SingingCheck
             ok,
             endpoint = fixture is null ? endpoint.ToString() : "fixture (workers/singing, FIXTURE - NOT AI)",
             route = Audio2FaceHostConnection.SongRouteId,
-            voice = voice.Key,
+            voice = voiceName,
             request = new { seconds, quality, voiceMatch },
             statusBefore = before,
             stages,
@@ -326,5 +342,31 @@ internal static class SingingCheck
             try { return ((IPEndPoint)probe.LocalEndpoint).Port; }
             finally { probe.Stop(); }
         }
+    }
+
+    /// <summary>The sample rate and frame count of a mono 16-bit PCM WAV.</summary>
+    private static (int Rate, long Frames) WaveShape(byte[] wave)
+    {
+        if (wave.Length < 44 || wave.AsSpan(0, 4).SequenceEqual("RIFF"u8) is false || wave.AsSpan(8, 4).SequenceEqual("WAVE"u8) is false)
+            throw new ArgumentException("voiceRecording must be a mono 16-bit PCM WAV file.");
+        int rate = 0, channels = 0, bits = 0;
+        for (var at = 12; at + 8 <= wave.Length;)
+        {
+            var size = BinaryPrimitives.ReadInt32LittleEndian(wave.AsSpan(at + 4, 4));
+            if (wave.AsSpan(at, 4).SequenceEqual("fmt "u8) && size >= 16)
+            {
+                channels = BinaryPrimitives.ReadInt16LittleEndian(wave.AsSpan(at + 10, 2));
+                rate = BinaryPrimitives.ReadInt32LittleEndian(wave.AsSpan(at + 12, 4));
+                bits = BinaryPrimitives.ReadInt16LittleEndian(wave.AsSpan(at + 22, 2));
+            }
+            else if (wave.AsSpan(at, 4).SequenceEqual("data"u8))
+            {
+                if (channels != 1 || bits != 16 || rate <= 0) break;
+                return (rate, Math.Min(size, wave.Length - at - 8) / 2);
+            }
+            if (size < 0) break;
+            at += 8 + size + (size & 1);
+        }
+        throw new ArgumentException("voiceRecording must be a mono 16-bit PCM WAV file.");
     }
 }

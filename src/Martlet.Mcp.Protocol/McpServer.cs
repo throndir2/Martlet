@@ -444,14 +444,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "beat grid and timed lyric lines, the service status before and after (models, GPU memory), or the failure code and " +
             "message, plus the host's word-timing source and sanity metric (median word start to vocal onset), the backing " +
             "bleed removed from the vocals and its graphics-memory peak. Nothing is played; with saveDirectory (an absolute, " +
-            "disposable folder) it writes mix.wav, vocals.wav and backing.wav there for a report. Runs Martlet.NodeLinkCheck; " +
-            "a real song can take minutes (the tool allows 20).", new
+            "disposable folder) it writes mix.wav, vocals.wav and backing.wav there for a report. voiceRecording (an absolute path " +
+            "to a copy of a mono 16-bit PCM WAV, 1-30 s) with its voiceTranscript sings in that voice instead of the starter voice. " +
+            "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
             seconds = new { type = "integer", minimum = 15, maximum = 180 },
             quality = new { type = "string", @enum = new[] { "fast", "high_quality" } },
             voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
-            saveDirectory = new { type = "string", maxLength = 260 }
+            saveDirectory = new { type = "string", maxLength = 260 },
+            voiceRecording = new { type = "string", maxLength = 260 },
+            voiceTranscript = new { type = "string", maxLength = 4096 }
         }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
@@ -1117,10 +1120,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         if (quality is not ("fast" or "high_quality")) throw new ArgumentException("quality must be fast or high_quality.");
         if (voiceMatch is not ("soulx" or "vevosing")) throw new ArgumentException("voiceMatch must be soulx or vevosing.");
         string[] command = ["singing-check", endpoint, seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), quality, voiceMatch];
-        if (OptionalString(arguments, "saveDirectory") is { Length: > 0 } save)
+        var save = OptionalString(arguments, "saveDirectory") is { Length: > 0 } folder ? folder : null;
+        if (save is not null && !Path.IsPathFullyQualified(save)) throw new ArgumentException("saveDirectory must be an absolute folder.");
+        command = [.. command, save ?? "-"];
+        if (OptionalString(arguments, "voiceRecording") is { Length: > 0 } recording)
         {
-            if (!Path.IsPathFullyQualified(save)) throw new ArgumentException("saveDirectory must be an absolute folder.");
-            command = [.. command, save];
+            if (!Path.IsPathFullyQualified(recording) || !recording.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) || !File.Exists(recording))
+                throw new ArgumentException("voiceRecording must be the absolute path of an existing .wav file.");
+            command = [.. command, recording];
+            if (OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript) command = [.. command, transcript];
         }
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(20), cancellation, command);
     }

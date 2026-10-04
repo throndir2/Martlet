@@ -15,8 +15,12 @@ Martlet can write a song and sing it in a voice from the owner's voice library (
 
 The result is three sample-aligned 48 kHz tracks (the mix, the dry vocals and the backing), the lyric lines with their
 sections and sung starts, the sung words (for lip sync), the beat grid, and the time each stage took. Songs are only
-ever performed by Martlet itself in conversation; the owner's "Creations" library keeps and shares them. Songs are made ahead of time, not in real time: a
-song takes about a minute on a 12 GB card when the models are loaded, a few more when they load first.
+ever performed by Martlet itself in conversation; the owner's "Creations" library keeps and shares them. Songs are made
+ahead of time, not in real time: with every model warm on a quiet card, the stages of a 30 s song took about 30-75 s in
+the spike (below); a song that loads the models first takes minutes more. The first real song through the role on the
+development PC (RTX 4070 12 GB with 5.6 GB held by the speaking and listening roles, and short of system memory) took
+11.7 minutes from a cold start for 30 s: loading 172 s, music 287 s (planner on the PyTorch backend), lyric timing 96 s,
+separation 9 s, voice match 105 s (40 s of it loading SoulX-Singer), mixing 0.4 s.
 
 ## Why this pipeline
 
