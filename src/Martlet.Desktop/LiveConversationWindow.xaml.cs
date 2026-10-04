@@ -492,7 +492,8 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         if (closed || !Available || Paused || reportHeld || controller.Configuration?.ThinkLonger.When != ThinkDelivery.WhenFree ||
             !controller.Jobs.HasNews || UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
-            commentary is { OwnershipReleased: false } || activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
+            commentary is { OwnershipReleased: false } || controller.Singing?.Playing == true ||
+            activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
             return false;
         try
         {
@@ -602,6 +603,77 @@ public partial class LiveConversationWindow : ThemedWindow
             handled = done;
             Finished(done);
         }
+    }
+
+    // ---------- singing ----------
+
+    /// <summary>The song panel: the song playing (where it is, the line being sung, Stop singing) or the last one (where and why
+    /// it stopped, or that it's ready for Martlet to offer). Only Martlet performs songs, so nothing here plays one. Its first
+    /// line says it without the song's title or words (MCP reads it).</summary>
+    private void RenderSong()
+    {
+        var songs = controller.Singing;
+        var player = songs?.Player;
+        var playing = player is { Active: true };
+        var song = songs?.Current;
+        if (songs is null || song is null && !playing)
+        {
+            SongPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SongPanel.Visibility = Visibility.Visible;
+        var last = songs.Last is { } stopped && stopped.SongId == song?.Id ? stopped : null;
+        SongText.Text = SongLine(playing ? player : null, song, last);
+        var title = playing ? player!.Song.Title : song!.Title;
+        SongLineText.Text = playing && player!.Caption is { Length: > 0 } words && player.State != SongPlaybackState.Stopping
+            ? $"“{title}” · {words}" : $"“{title}”";
+        SongStopButton.Visibility = playing && player!.State != SongPlaybackState.Stopping ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>The song panel's line, without the song's title or words: its ID, state, position and line number.</summary>
+    internal static string SongLine(SongPlayer? playing, StoredSong? song, SongStopRecord? last)
+    {
+        if (playing is { } player)
+        {
+            var at = $"{SongClock.Of(player.Position)} of {SongClock.Of(player.Map.Duration)}";
+            var line = player.Line is { } index
+                ? $" · {(player.Map.Lines[index].Section is { Length: > 0 } section ? section + " " : "")}line {index + 1} of {player.Map.Lines.Count}" : "";
+            return player.State switch
+            {
+                SongPlaybackState.Starting => $"Starting {player.Song.Id}…",
+                SongPlaybackState.LeadIn => $"Starting {player.Song.Id} {player.Plan.Target.Describe}: " +
+                    (player.Plan.Top ? "the intro" : $"{(player.Plan.LeadInBars == 1 ? "a bar" : $"{player.Plan.LeadInBars} bars")} of the band first") +
+                    (player.Mixer.Vamps > 0 ? $", waiting for Martlet to finish talking ({player.Mixer.Vamps})" : "") + $" · {at}.",
+                SongPlaybackState.Stopping => $"Stopping {player.Song.Id} at {SongClock.Of(player.Record?.At ?? player.Position)}: " +
+                    (player.Mixer.Stopping?.Musical == true ? "finishing the word, then the band rings out on the beat." : "fading out."),
+                _ => $"Singing {player.Song.Id} · {at}{line}" + (player.Mixer.Ducked ? " · turned down while Martlet talks." : ".")
+            };
+        }
+        if (song is null) return "";
+        if (last is { Ended: true, Cause: SongStopCause.Ended }) return $"Sang {song.Id} to the end.";
+        if (last is { } stopped)
+        {
+            var where = stopped.Line is { } index
+                ? $"{(stopped.Section is { Length: > 0 } section ? section + " " : "")}line {index + 1} of {stopped.Lines}" : "between lines";
+            var why = stopped.Cause switch
+            {
+                SongStopCause.UserWords => "you asked Martlet to stop",
+                SongStopCause.Button => $"you pressed {stopped.Reason ?? "Stop"}",
+                SongStopCause.Martlet => "Martlet stopped",
+                SongStopCause.Failed => "it couldn't play on this PC",
+                _ => "another song started"
+            };
+            return $"Stopped {song.Id} at {SongClock.Of(stopped.At)} ({where}): {why}." +
+                (stopped.Ended ? "" : " Ask Martlet to pick up where it left off.");
+        }
+        return $"Song {song.Id} is ready ({SongClock.Of(TimeSpan.FromSeconds(song.DurationSeconds))}, {song.Lines.Count} lines). " +
+            "Martlet will offer it.";
+    }
+
+    private void SongStop_Click(object sender, RoutedEventArgs e)
+    {
+        controller.StopSong(musical: true, "Stop singing");
+        RenderActions();
     }
 
     // A screen remark hands the app slot over right away; a reply in progress finishes first.
@@ -1294,6 +1366,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool StartPushToTalk()
     {
         if (closed || !Available) return false;
+        // Pressing talk while Martlet sings ends the song musically; you talk as it rings out.
+        controller.StopSong(musical: true, "the talk button");
         // You come first: talking stops a remark about your screen or a reply that is still playing.
         if (commentary is { OwnershipReleased: false } glance)
         {
@@ -1565,16 +1639,17 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         if (e.Key != Key.Escape) return;
         e.Handled = true;
-        StopAll("conversation.canceled");
+        StopAll("conversation.canceled", button: "Esc");
     }
 
-    /// <summary>Stop (Esc): Martlet's reply, any recording and watching stop right away, and what was heard but not yet answered
-    /// is dropped. Always listening carries on, so nothing you say next is missed; only the mic button pauses it. Start watching
-    /// turns watching back on; the conversation so far is kept unless the window closes.</summary>
-    private void StopAll(string reason, bool keepContext = true)
+    /// <summary>Stop (Esc): Martlet's reply, any recording, watching and a song stop right away (the song with a quick fade), and
+    /// what was heard but not yet answered is dropped. Always listening carries on, so nothing you say next is missed; only the
+    /// mic button pauses it. Start watching turns watching back on; the conversation so far is kept unless the window closes.</summary>
+    private void StopAll(string reason, bool keepContext = true, string button = "Stop")
     {
         mouseHeld = keyHeld = false;
         PttButton.ReleaseMouseCapture();
+        controller.StopSong(musical: false, button);
         if (pendingText is not null) pendingMessage?.AddNote("Not sent.");
         pendingText = null;
         pendingMessage = null;
@@ -1742,7 +1817,7 @@ public partial class LiveConversationWindow : ThemedWindow
 
         // Stop quiets Martlet; listening is paused only from its own button.
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||
-            pendingText is not null || heardQueue.Count > 0 || watching || loading is not null;
+            pendingText is not null || heardQueue.Count > 0 || watching || loading is not null || controller.Singing?.Playing == true;
         LevelMeter.Visibility = listening ? Visibility.Visible : Visibility.Collapsed;
         Title = watching ? $"Talk with Martlet (watching {watchSource.Label})" : "Talk with Martlet";
         ResultText.Text = notice ?? Activity();
@@ -1750,6 +1825,7 @@ public partial class LiveConversationWindow : ThemedWindow
             : pushToTalk ? "Type below, or hold the talk button to speak."
             : preferences.HandsFree && micUsable ? "Type below, or press Start listening to talk." : "Type a message below.";
         RenderJobs();
+        RenderSong();
     }
 
     /// <summary>The line under the status while vision or hearing what this PC plays is turned on: how chatty Martlet is about
@@ -2098,7 +2174,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool TryStartCommentary()
     {
         var frame = lookAttention is not null ? attentionFrame : latestFrame;
-        if (!lookWanted || !watching || closed || frame is null || operations.IsRunning) return false;
+        // While Martlet sings, a look waits until the song is over.
+        if (!lookWanted || !watching || closed || frame is null || operations.IsRunning || controller.Singing?.Playing == true) return false;
         lookWanted = false;
         var about = lookAttention;
         lookAttention = null;

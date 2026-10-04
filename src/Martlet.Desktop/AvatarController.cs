@@ -14,7 +14,7 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Desktop;
 
-internal sealed class AvatarController : IAsyncDisposable
+internal sealed partial class AvatarController : IAsyncDisposable
 {
     internal const string SourceId = Audio2FaceAdapter.SourceId;
     private readonly SemaphoreSlim changes = new(1, 1);
@@ -393,6 +393,7 @@ internal sealed class AvatarController : IAsyncDisposable
             var lifetime = new CancellationTokenSource();
             loudness = lifetime;
             observer.Enable();
+            Volatile.Write(ref automaticNow, automatic);
             loudnessWorker = RunCharacterAsync(target, automatic, lifetime.Token);
         }
     }
@@ -408,6 +409,7 @@ internal sealed class AvatarController : IAsyncDisposable
             running = loudnessWorker;
             loudness = null;
             loudnessWorker = null;
+            Volatile.Write(ref automaticNow, null);
             lifetime.Cancel();
             if (activation is null) observer.Disable();
         }
@@ -596,6 +598,8 @@ internal sealed class AvatarController : IAsyncDisposable
         var halt = StopSegmentAsync(segment, stop, target.Exited);
         AvatarComposition? composition = null;
         var started = false;
+        // This sentence's frames own the face while they play (a song's mouth waits for them).
+        var owner = new object();
         try
         {
             await foreach (var frame in frames.WithCancellation(stop.Token))
@@ -623,7 +627,7 @@ internal sealed class AvatarController : IAsyncDisposable
                 }
                 if (!started)
                 {
-                    await target.SendAsync("reset", identity, token);
+                    await FaceAsync(owner, () => target.SendAsync("reset", identity, token), token);
                     started = true;
                 }
                 PlaybackPosition? position;
@@ -647,8 +651,8 @@ internal sealed class AvatarController : IAsyncDisposable
                     throw new AvatarOperationException("frame cannot be synchronized: " + composed.Disposition);
                 var parameters = automatic.Targets.ToDictionary(t => t.Id,
                     t => composed.Parameters.TryGetValue(t.Id, out var value) ? value : t.Neutral, StringComparer.Ordinal);
-                await target.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
-                    position.SampleOffset, automatic.Config.ModelRevision, automatic.Config.MappingRevision, parameters), stop.Token);
+                await FaceAsync(owner, () => target.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
+                    position.SampleOffset, automatic.Config.ModelRevision, automatic.Config.MappingRevision, parameters), stop.Token), stop.Token);
                 if (Volatile.Read(ref lastAudio2FaceApply) == 0 || !Audio2FaceAnimating)
                     Publish($"Lip-sync is using Audio2Face at {where}.");
                 Volatile.Write(ref lastAudio2FaceApply, Stopwatch.GetTimestamp());
@@ -663,6 +667,7 @@ internal sealed class AvatarController : IAsyncDisposable
             if (started && !target.HasExited && !token.IsCancellationRequested)
                 try { await target.SendAsync("stop", new { }, token); }
                 catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or TimeoutException) { }
+            await ReleaseFaceAsync(owner);
         }
     }
 
