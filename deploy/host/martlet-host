@@ -25,8 +25,9 @@
 # role secrets and choice.<VAR>=<value> for role choices; values never appear in arguments, environment or logs.
 # Without --yes, a human on the host confirms each change by typing "yes".
 #
-# One change at a time: a command that changes this host waits for one already running, whoever started it, and
-# Martlet's automatic updates (no terminal, no --yes) stop with exit 75 and "MARTLET-BUSY ..." instead (see below).
+# Changes side by side: several changes run on this host at once (other roles install alongside each other); a change
+# waits only for one it truly collides with (the same role, setup or update, the gateway's own restart), whoever started
+# it, and Martlet's automatic updates (no terminal, no --yes) stop with exit 75 and "MARTLET-BUSY ..." instead (see below).
 #
 # Methods (same commands, same roles; see README.md):
 #   native  Ubuntu: ./deploy/host/martlet-host <command> (locally or over SSH)
@@ -112,17 +113,37 @@ unattended() { assume_yes && [[ ! -t 0 ]]; }
 # Background: nobody confirmed this run and nobody watches it (Martlet's automatic host updates: no terminal, no --yes).
 background() { ! assume_yes && [[ ! -t 0 ]]; }
 
-# ------------------------------------------------------------------ one change at a time
-# Every command that changes this host (setup, add, remove, pair, console, network-reset, machine, update) holds
-# ${CONF}/engine.lock while it runs, whoever started it: a console on this host, a desktop over SSH, Martlet on this
-# computer for a paired desktop, or an automatic update. The kernel drops the lock when its holder ends, however it
-# ends (finished, killed, a dropped SSH connection), so a stale lock is never left behind. A command that finds another
-# one running waits for it and says what it waits for, up to MARTLET_LOCK_WAIT seconds (default 7200). Background runs
-# default to MARTLET_LOCK_WAIT=0: they do not queue behind a long install, they stop at once, change nothing and exit
-# 75 with one line "MARTLET-BUSY <what is running>", and Martlet tries again a few minutes later.
+# ------------------------------------------------------------------ changes side by side
+# Several changes run on this host at once, whoever started them (a console on this host, a desktop over SSH, Martlet on
+# this computer for a paired desktop, an automatic update); only what truly collides waits:
+# - add and remove hold ${CONF}/engine.lock shared, so other roles change alongside them, plus their role's lock
+#   (locks/role-<role>.lock, or locks/group-<group>.lock for a role.conf exclusive=<group>, since adding one engine of a
+#   group stops the others), so two changes to one role (or group) take turns. They hold locks/gateway.lock only while
+#   they publish the change (role record, machine report, host.json, the gateway's approval and restart).
+# - pair, console, network-reset and machine hold engine.lock shared and locks/gateway.lock for their whole run.
+# - setup and update hold engine.lock exclusively: they wait for the changes running now, and changes asked for after them
+#   wait for them (a waiting setup or update holds engine.gate, which every change passes through first). So does a native
+#   add that first installs Docker Engine or the NVIDIA Container Toolkit, which restarts Docker under the other changes.
+# The kernel drops every lock when its holder ends, however it ends (finished, killed, a dropped SSH connection), so a stale
+# lock is never left behind. Each change records what it does in engine.holders/ (a record stays locked while its change
+# runs; unlocked ones are dropped), and engine.holder keeps the latest one for engines from before changes ran side by side
+# (those hold engine.lock exclusively, so they and newer engines never overlap). A change that must wait says what it waits
+# for, up to MARTLET_LOCK_WAIT seconds in all (default 7200). Background runs default to MARTLET_LOCK_WAIT=0: they do not
+# queue behind a long install, they stop at once, change nothing and exit 75 with one line "MARTLET-BUSY <what is running>",
+# and Martlet tries again a few minutes later.
 BUSY_EXIT=75
 ENGINE_LOCK="${CONF}/engine.lock"
+ENGINE_GATE="${CONF}/engine.gate"
 ENGINE_HOLDER="${CONF}/engine.holder"
+HOLDERS="${CONF}/engine.holders"
+LOCKS="${CONF}/locks"
+LOCKING=0
+GATEWAY_HELD=0
+LOCK_WAITED=0
+HOLDER_ID=""
+HOLDER_START=""
+CHANGE="another martlet-host change"
+CHANGE_SCOPE=""
 
 change_words() {
   local role="${2:-}"; role="${role//[^a-z0-9-]/}"; role="${role:0:32}"
@@ -139,8 +160,83 @@ change_words() {
   esac
 }
 
-# Who holds the lock, in words: "installing ollama (12 min so far; martlet-host-add-20261003-021239-9052, from Martlet)".
+# How long this run waits for changes it collides with, in seconds (MARTLET_LOCK_WAIT; background runs: 0).
+lock_patience() {
+  local patience="${MARTLET_LOCK_WAIT:-}"
+  if [[ ! "${patience}" =~ ^[0-9]{1,6}$ ]]; then if background; then patience=0; else patience=7200; fi; fi
+  printf '%s' "${patience}"
+}
+
+# The lock a change to role $1 takes: its own, or its exclusive=<group>'s (adding one engine of a group stops the others).
+role_slot() {
+  local role="${1:-}" group=""
+  role="${role//[^a-z0-9-]/}"; role="${role:0:32}"
+  [[ -n "${role}" && -f "${ROLES_DIR}/${role}/role.conf" ]] && group="$(conf_value "${ROLES_DIR}/${role}/role.conf" exclusive)"
+  if [[ "${group}" =~ ^[a-z0-9-]{1,32}$ ]]; then printf 'group-%s' "${group}"; else printf 'role-%s' "${role:-unknown}"; fi
+}
+
+# Natively, adding role $1 first installs Docker Engine or the NVIDIA Container Toolkit when they are missing, and that
+# restarts Docker (and so the other changes' containers and downloads): such an add runs alone.
+prepares_host() {
+  [[ "${MODE}" == native ]] || return 1
+  local role="${1:-}" conf gpu
+  role="${role//[^a-z0-9-]/}"; conf="${ROLES_DIR}/${role}/role.conf"
+  [[ -n "${role}" && -f "${conf}" ]] || return 1
+  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 || return 0
+  command -v nvidia-ctk >/dev/null 2>&1 && return 1
+  gpu="$(conf_value "${conf}" gpu)"
+  [[ "${gpu}" == required\|* || " $(conf_value "${conf}" requires) " == *" nvidia-toolkit "* ]] && return 0
+  [[ "${gpu}" == optional\|* ]] && command -v nvidia-smi >/dev/null 2>&1
+}
+
+# The changes recorded now (other than this one), one per line, tab-separated: scope (host, gateway, role:<slot>; a change
+# publishing its role adds gateway), state (waiting or running), the change in words ("installing ollama (12 min so far;
+# martlet-host-add-20261003-021239-9052, from Martlet)"), how it was started, when, and its session. A record whose change
+# ended, however it ended, is no longer locked and goes.
+holders() {
+  local file started words session how scope state minutes now
+  [[ -d "${HOLDERS}" ]] || return 0
+  now="$(date -u +%s)"
+  for file in "${HOLDERS}"/*; do
+    [[ -f "${file}" && "${file##*/}" != "${HOLDER_ID}" ]] || continue
+    if ( exec 8<"${file}" && flock -n 8 ) 2>/dev/null; then rm -f "${file}"; continue; fi
+    started=""; words=""; session=""; how=""; scope=""; state=""
+    { IFS= read -r started; IFS= read -r words; IFS= read -r session; IFS= read -r how; IFS= read -r scope; IFS= read -r state; } < "${file}" 2>/dev/null || true
+    [[ "${started}" =~ ^[0-9]{1,12}$ && -n "${words}" ]] || continue
+    minutes=$(( (now - started) / 60 )); (( minutes >= 0 )) || minutes=0
+    if [[ "${state}" == waiting ]]; then words+=" (waiting for the changes running now; ${session}, ${how})"
+    else words+=" (${minutes} min so far; ${session}, ${how})"; fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${scope}" "${state}" "${words}" "${how}" "${started}" "${session}"
+  done
+  return 0
+}
+
+# The changes this one waits for, in words ("; "-separated): every running one (all), the running ones of one scope (host,
+# gateway, role:<slot>), any setup or update including one still waiting its turn (host-any), or the waiting ones (waiting).
 holder_text() {
+  local filter="${1:-all}" scope state words how started session joined=""
+  while IFS=$'\t' read -r scope state words how started session; do
+    case "${filter}" in
+      all) [[ "${state}" != waiting ]] || continue ;;
+      waiting) [[ "${state}" == waiting ]] || continue ;;
+      host-any) [[ " ${scope} " == *" host "* ]] || continue ;;
+      *) [[ "${state}" != waiting && " ${scope} " == *" ${filter} "* ]] || continue ;;
+    esac
+    joined+="${joined:+; }${words}"
+  done < <(holders)
+  if [[ -z "${joined}" ]]; then
+    case "${filter}" in
+      waiting) ;;
+      all|host|host-any) joined="$(legacy_holder_text)" ;;
+      gateway) joined="another change updating the gateway" ;;
+      *) joined="another change to this host" ;;
+    esac
+  fi
+  printf '%s' "${joined}"
+}
+
+# engine.holder: the latest change that took engine.lock (all an engine from before changes ran side by side records).
+legacy_holder_text() {
   local started="" words="" session="" how="" minutes
   { IFS= read -r started; IFS= read -r words; IFS= read -r session; IFS= read -r how; } < "${ENGINE_HOLDER}" 2>/dev/null || true
   if [[ ! "${started}" =~ ^[0-9]{1,12}$ || -z "${words}" ]]; then printf 'another martlet-host change'; return; fi
@@ -148,14 +244,23 @@ holder_text() {
   printf '%s (%s min so far; %s, %s)' "${words}" "${minutes}" "${session}" "${how}"
 }
 
-# A console window closed while its engine waits for input leaves that engine running and holding the lock for good.
+# A console window closed while its engine waits for input leaves that engine running and holding its locks for good.
 holder_hint() {
-  local started="" words="" session="" how=""
+  local scope state words how started session found=0
+  while IFS=$'\t' read -r scope state words how started session; do
+    found=1
+    console_hint "${how}" "${started}" "${session}"
+  done < <(holders)
+  [[ ${found} == 0 ]] || return 0
   { IFS= read -r started; IFS= read -r words; IFS= read -r session; IFS= read -r how; } < "${ENGINE_HOLDER}" 2>/dev/null || return 0
-  [[ "${how}" == "in a console" && "${started}" =~ ^[0-9]{1,12}$ ]] || return 0
-  (( $(date -u +%s) - started >= STALE_MINUTES * 60 )) || return 0
-  if [[ "${MODE}" == docker ]]; then note "If that console was closed without finishing, stop it with: docker stop ${session}"
-  else note "If that console was closed without finishing, stop it with: kill ${session#process }"; fi
+  console_hint "${how}" "${started}" "${session}"
+}
+
+console_hint() {
+  [[ "$1" == "in a console" && "$2" =~ ^[0-9]{1,12}$ ]] || return 0
+  (( $(date -u +%s) - $2 >= STALE_MINUTES * 60 )) || return 0
+  if [[ "${MODE}" == docker ]]; then note "If that console was closed without finishing, stop it with: docker stop $3"
+  else note "If that console was closed without finishing, stop it with: kill ${3#process }"; fi
 }
 
 busy_stop() {
@@ -165,46 +270,115 @@ busy_stop() {
   exit ${BUSY_EXIT}
 }
 
-hold_engine_lock() {
-  [[ "${MARTLET_ENGINE_LOCKED:-}" != 1 ]] || return 0
-  command -v flock >/dev/null 2>&1 || { journal "flock is missing; running without the engine lock"; return 0; }
-  local change; change="$(change_words "$@")"
-  ( umask 077; mkdir -p "${CONF}" && : >> "${ENGINE_LOCK}" ) 2>/dev/null || true
-  exec 9>>"${ENGINE_LOCK}" || fail "Could not open ${ENGINE_LOCK}."
-  local status=0
-  flock -n -E ${BUSY_EXIT} 9 || status=$?
-  if (( status != 0 && status != BUSY_EXIT )); then journal "flock failed (${status}); running without the engine lock"; return 0; fi
-  if (( status == BUSY_EXIT )); then
-    local patience="${MARTLET_LOCK_WAIT:-}" waited=0 step what
-    if [[ ! "${patience}" =~ ^[0-9]{1,6}$ ]]; then if background; then patience=0; else patience=7200; fi; fi
-    what="$(holder_text)"
-    (( patience > 0 )) || busy_stop "${what}"
-    journal "busy, waiting: ${what}"
-    note "This host is busy: ${what}. Waiting for it to finish before ${change}..."
-    holder_hint
-    while :; do
-      step=$(( patience - waited )); (( step <= 60 )) || step=60
-      status=0
-      flock -w "${step}" -E ${BUSY_EXIT} 9 || status=$?
-      [[ ${status} == 0 ]] && break
-      (( status == BUSY_EXIT )) || { journal "flock failed (${status}) while waiting"; busy_stop "$(holder_text)"; }
-      waited=$(( waited + step ))
-      what="$(holder_text)"
-      (( waited < patience )) || busy_stop "${what}"
-      note "Still waiting: ${what}. Waited $(( waited / 60 )) min."
-      holder_hint
-    done
-    journal "lock free after waiting about ${waited} s"
-    note "That finished. Continuing with ${change}."
-  fi
-  export MARTLET_ENGINE_LOCKED=1
-  local session="process $$" how="automatic"
+# Records this change in engine.holders/ with its scope and state (waiting, then running), and in engine.holder once it
+# runs. The record is locked (fd 7) while this run lives, so readers drop it once it ends, however it ends.
+record_change() {
+  local scope="$1" state="$2" session="process $$" how="automatic" id
   [[ "${MODE}" == docker ]] && session="${MARTLET_ENGINE_NAME:-engine}"
   if [[ -t 0 ]]; then how="in a console"; elif assume_yes; then how="from Martlet"; fi
-  ( umask 077; printf '%s\n%s\n%s\n%s\n' "$(date -u +%s)" "${change}" "${session}" "${how}" > "${ENGINE_HOLDER}" ) 2>/dev/null || true
+  if [[ -z "${HOLDER_ID}" ]]; then
+    HOLDER_START="$(date -u +%s)"
+    id="$(printf '%s' "${session}" | tr -c 'A-Za-z0-9.-' '-')-${RANDOM}${RANDOM}"
+    ( umask 077; mkdir -p "${HOLDERS}" && : >> "${HOLDERS}/.${id}" ) 2>/dev/null || return 0
+    # Locked before it gets its name, so no reader finds it unlocked and drops it.
+    if exec 7>>"${HOLDERS}/.${id}" && flock -n 7 && mv -f "${HOLDERS}/.${id}" "${HOLDERS}/${id}"; then HOLDER_ID="${id}"
+    else rm -f "${HOLDERS}/.${id}"; return 0; fi
+  fi
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n' "${HOLDER_START}" "${CHANGE}" "${session}" "${how}" "${scope}" "${state}" > "${HOLDERS}/${HOLDER_ID}" 2>/dev/null || true
+  if [[ "${state}" == running ]]; then
+    ( umask 077; printf '%s\n%s\n%s\n%s\n' "${HOLDER_START}" "${CHANGE}" "${session}" "${how}" > "${ENGINE_HOLDER}" ) 2>/dev/null || true
+  fi
 }
 
-# Whether another change holds the lock right now (for status; takes nothing).
+# Takes flock $2 (-s shared, -x exclusive) on fd $1. While other changes hold it, waits with this run's patience (or stops
+# at once with MARTLET-BUSY) and says what it waits for: the changes holder_text $3 names.
+acquire() {
+  local fd="$1" mode="$2" filter="$3" patience step what status=0
+  flock -n "${mode}" -E ${BUSY_EXIT} "${fd}" || status=$?
+  [[ ${status} != 0 ]] || return 0
+  if (( status != BUSY_EXIT )); then journal "flock failed (${status}); running without that lock"; return 0; fi
+  patience="$(lock_patience)"
+  what="$(holder_text "${filter}")"
+  (( LOCK_WAITED < patience )) || busy_stop "${what}"
+  journal "busy, waiting: ${what}"
+  note "This host is busy: ${what}. Waiting for it to finish before ${CHANGE}..."
+  holder_hint
+  while :; do
+    step=$(( patience - LOCK_WAITED )); (( step <= 60 )) || step=60
+    status=0
+    flock -w "${step}" "${mode}" -E ${BUSY_EXIT} "${fd}" || status=$?
+    [[ ${status} != 0 ]] || break
+    (( status == BUSY_EXIT )) || { journal "flock failed (${status}) while waiting"; busy_stop "$(holder_text "${filter}")"; }
+    LOCK_WAITED=$(( LOCK_WAITED + step ))
+    what="$(holder_text "${filter}")"
+    (( LOCK_WAITED < patience )) || busy_stop "${what}"
+    note "Still waiting: ${what}. Waited $(( LOCK_WAITED / 60 )) min."
+    holder_hint
+  done
+  journal "lock free after waiting about ${LOCK_WAITED} s"
+  note "That finished. Continuing with ${CHANGE}."
+}
+
+# Takes the locks a change needs ("changes side by side" above) before it changes anything.
+hold_engine_locks() {
+  [[ "${MARTLET_ENGINE_LOCKED:-}" != 1 ]] || return 0
+  command -v flock >/dev/null 2>&1 || { journal "flock is missing; running without the engine lock"; return 0; }
+  CHANGE="$(change_words "$@")"
+  case "$1" in
+    setup|update) CHANGE_SCOPE=host ;;
+    add) if prepares_host "${2:-}"; then CHANGE_SCOPE=host; else CHANGE_SCOPE="role:$(role_slot "${2:-}")"; fi ;;
+    remove) CHANGE_SCOPE="role:$(role_slot "${2:-}")" ;;
+    *) CHANGE_SCOPE=gateway ;;
+  esac
+  ( umask 077; mkdir -p "${CONF}" "${LOCKS}" && : >> "${ENGINE_LOCK}" && : >> "${ENGINE_GATE}" ) 2>/dev/null || true
+  exec 9>>"${ENGINE_LOCK}" || fail "Could not open ${ENGINE_LOCK}."
+  exec 4>>"${ENGINE_GATE}" || fail "Could not open ${ENGINE_GATE}."
+  LOCKING=1
+  record_change "${CHANGE_SCOPE}" waiting
+  if [[ "${CHANGE_SCOPE}" == host ]]; then
+    acquire 4 -x host-any
+    acquire 9 -x all
+  else
+    acquire 4 -s host-any
+    acquire 9 -s host
+  fi
+  exec 4>&-
+  case "${CHANGE_SCOPE}" in
+    role:*)
+      ( umask 077; : >> "${LOCKS}/${CHANGE_SCOPE#role:}.lock" ) 2>/dev/null || true
+      exec 6>>"${LOCKS}/${CHANGE_SCOPE#role:}.lock" || fail "Could not open ${LOCKS}/${CHANGE_SCOPE#role:}.lock."
+      acquire 6 -x "${CHANGE_SCOPE}" ;;
+    gateway)
+      ( umask 077; : >> "${LOCKS}/gateway.lock" ) 2>/dev/null || true
+      exec 5>>"${LOCKS}/gateway.lock" || fail "Could not open ${LOCKS}/gateway.lock."
+      acquire 5 -x gateway
+      GATEWAY_HELD=1 ;;
+  esac
+  record_change "${CHANGE_SCOPE}" running
+  export MARTLET_ENGINE_LOCKED=1
+}
+
+# Runs "$@" holding locks/gateway.lock: one change at a time writes the role records, the machine report and host.json and
+# renews or restarts the gateway. pair, console, network-reset and machine hold it for their whole run already.
+with_gateway() {
+  if [[ ${LOCKING} != 1 || ${GATEWAY_HELD} == 1 ]]; then "$@"; return; fi
+  ( umask 077; : >> "${LOCKS}/gateway.lock" ) 2>/dev/null || true
+  exec 5>>"${LOCKS}/gateway.lock" || fail "Could not open ${LOCKS}/gateway.lock."
+  acquire 5 -x gateway
+  GATEWAY_HELD=1
+  record_change "${CHANGE_SCOPE} gateway" running
+  "$@"
+  record_change "${CHANGE_SCOPE}" running
+  exec 5>&-
+  GATEWAY_HELD=0
+}
+
+# Removes this run's record as it ends (one killed outright is dropped by the next reader: its record is no longer locked).
+finish_change() {
+  [[ -z "${HOLDER_ID}" ]] || rm -f "${HOLDERS}/${HOLDER_ID}" 2>/dev/null || true
+}
+
+# Whether any change holds the engine lock right now (for status; takes nothing).
 engine_busy() {
   [[ -f "${ENGINE_LOCK}" ]] && command -v flock >/dev/null 2>&1 || return 1
   local status=0
@@ -483,7 +657,7 @@ secure_data_parents() {
 
 # Builds the native gateway into $1. With supplied files the packages come only from ${SUPPLY}/nuget (no network).
 # No build servers or reusable MSBuild nodes outlive the build: they would keep the SSH session's output open (so Martlet's
-# run never ends) and, through 9>&-, must not inherit the engine lock either.
+# run never ends) and, through 4>&- 5>&- 6>&- 7>&- 9>&-, must not inherit the engine's locks either.
 publish_gateway() {
   local offline=()
   if [[ -n "${SUPPLY}" ]]; then
@@ -502,7 +676,7 @@ XML
   DOTNET_ROOT="${HOME}/.dotnet" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1 \
     DOTNET_CLI_USE_MSBUILD_SERVER=0 MSBUILDDISABLENODEREUSE=1 \
     "${DOTNET}" publish "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" \
-    -c Release -o "$1" -p:UseAppHost=false -nodeReuse:false -p:UseSharedCompilation=false "${offline[@]}" 9>&-
+    -c Release -o "$1" -p:UseAppHost=false -nodeReuse:false -p:UseSharedCompilation=false "${offline[@]}" 4>&- 5>&- 6>&- 7>&- 9>&-
 }
 
 # ------------------------------------------------------------------ gateway and its service (per method)
@@ -576,8 +750,9 @@ other_sessions() {
 }
 
 # Names what else uses this host's gateway state when an owner operation finds it busy, and stops abandoned Martlet
-# sessions (running ${STALE_MINUTES}+ minutes) so this one can finish. Newer sessions may still be in use by someone and
-# are only named. Returns 0 when it stopped one.
+# sessions (running ${STALE_MINUTES}+ minutes with a gateway process that holds the state) so this one can finish. Newer
+# sessions may still be in use by someone and are only named, and so are changes running alongside this one (an add
+# downloading for an hour holds no gateway state). Returns 0 when it stopped one.
 release_gateway_state() {
   if [[ "${MODE}" != docker ]]; then
     note "Gateway processes on this host:"
@@ -597,7 +772,9 @@ release_gateway_state() {
     IFS=$'\t' read -r name minutes what tool kind <<< "${line}"
     note "  ${name} (${kind}): ${what}; running ${minutes} min; gateway process: ${tool}"
     journal "gateway state busy; ${name} (${kind}): ${what}; running ${minutes} min; gateway process: ${tool}"
-    if [[ "${kind}" == session ]] && (( minutes >= STALE_MINUTES )); then stale+=("${name}"); fi
+    if [[ "${kind}" == session && "${tool}" != none ]] && (( minutes >= STALE_MINUTES )) && ! running_alongside "${name}"; then
+      stale+=("${name}")
+    fi
   done
   [[ ${#stale[@]} -gt 0 ]] || return 1
   note "Running ${STALE_MINUTES}+ minutes, ${stale[*]} is most likely left over from a closed console window and waits forever."
@@ -607,6 +784,15 @@ release_gateway_state() {
   journal "stopped abandoned sessions: ${stale[*]}"
   note "Stopped ${stale[*]}."
   return 0
+}
+
+# Whether engine session $1 is a change running alongside this one that nobody left open in a console.
+running_alongside() {
+  local scope state words how started session
+  while IFS=$'\t' read -r scope state words how started session; do
+    [[ "${session}" == "$1" && "${how}" != "in a console" ]] && return 0
+  done < <(holders)
+  return 1
 }
 
 # Runs a short owner operation (owner-init, owner-approve) with the service stopped. The gateway state allows one
@@ -1082,8 +1268,8 @@ holder_engines() {
 # times out ("did not start"). So setup waits for those sessions first, with the engine lock's patience (MARTLET_LOCK_WAIT;
 # a background run stops at once with MARTLET-BUSY).
 wait_for_holder_engines() {
-  local engines=() patience="${MARTLET_LOCK_WAIT:-}" waited=0 step=5 line what
-  if [[ ! "${patience}" =~ ^[0-9]{1,6}$ ]]; then if background; then patience=0; else patience=7200; fi; fi
+  local engines=() patience waited=0 step=5 line what
+  patience="$(lock_patience)"
   while :; do
     mapfile -t engines < <(holder_engines)
     if [[ ${#engines[@]} -eq 0 ]]; then
@@ -1285,7 +1471,7 @@ cmd_pair() {
   collect_machine
   service_stop
   # However pairing ends (including a dropped SSH connection or Ctrl+C), the gateway service comes back.
-  trap 'code=$?; trap - EXIT; service_start >/dev/null 2>&1 || true; journal "exit ${code}"' EXIT
+  trap 'code=$?; trap - EXIT; service_start >/dev/null 2>&1 || true; finish_change; journal "exit ${code}"' EXIT
   trap '' PIPE
   local status=0
   if [[ -n "${device}" ]]; then
@@ -1296,7 +1482,7 @@ cmd_pair() {
     # Shows this host's address and a one-use XXXX-XXXX code to type on the desktop, then waits for it.
     gateway owner-pair --config "${GW_CONFIG}" --roles "${roles}" || status=$?
   fi
-  trap 'journal "exit $?"' EXIT
+  trap 'code=$?; finish_change; journal "exit ${code}"' EXIT
   service_start
   [[ ${status} == 0 ]] || fail "Pairing did not complete."
   say "Paired. The gateway is serving again."
@@ -1449,12 +1635,41 @@ release_roles() {
   for other in "$@"; do
     note "Stopping ${other} so its model leaves the graphics card's memory..."
     role_compose "${other}" down || true
+  done
+  with_gateway unpublish_roles "${role}" "$@"
+  note "Stopped $*. Add one again to switch back; its downloads are kept."
+}
+
+unpublish_roles() {
+  local role="$1" other; shift
+  for other in "$@"; do
     rm -f "$(installed_file "${other}")"
     journal "stopped ${other} for ${role} (one engine of its group per host)"
   done
   collect_machine
   apply_config
-  note "Stopped $*. Add one again to switch back; its downloads are kept."
+}
+
+# Records role $1 as installed and publishes it: a gateway route (kind $2 on loopback port $3, model $4) or, for a
+# route-less role, its feature $5 in the machine report. Runs holding the gateway lock (with_gateway).
+publish_role() {
+  local role="$1" kind="$2" port="$3" model="$4" feature="$5"
+  if [[ -n "${kind}" ]]; then
+    ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
+    collect_machine
+    apply_config
+  else
+    ( umask 077; printf 'feature=%s\nport=%s\nnetwork=host\n' "${feature}" "${port}" > "$(installed_file "${role}")" )
+    collect_machine
+    publish_machine_report
+  fi
+}
+
+# Unpublishes role $1 (its gateway route when it had kind $2, otherwise its feature). Runs holding the gateway lock.
+unpublish_role() {
+  rm -f "$(installed_file "$1")"
+  collect_machine
+  if [[ -n "$2" ]]; then apply_config; else publish_machine_report; fi
 }
 
 cmd_add() {
@@ -1589,7 +1804,8 @@ cmd_add() {
       [[ -n "${value}" ]] || fail "${name} is required."
     fi
     if [[ -n "${value}" ]]; then
-      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/${name}" )
+      # Whole or not at all: another role's change running alongside may read the same secret.
+      ( umask 077; printf '%s' "${value}" > "${CONF}/secrets/.${name}.$$" && mv -f "${CONF}/secrets/.${name}.$$" "${CONF}/secrets/${name}" )
       note "Saved ${name} on this host (0600)."
     fi
     unset value
@@ -1691,17 +1907,13 @@ cmd_add() {
   if [[ -n "${kind}" ]]; then
     if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
     if [[ -f "$(installed_file "${role}")" ]]; then previous="$(conf_value "$(installed_file "${role}")" model)"; fi
-    ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
-    collect_machine
-    apply_config
+    with_gateway publish_role "${role}" "${kind}" "${port}" "${model}" ""
     retire_previous "${role}" "${conf}" "${previous}" "${model}"
     say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
   else
     [[ -n "${role_feature}" ]] || fail "role.conf declares no gateway_kind or feature."
     [[ "${role_network}" == host ]] || fail "Route-less roles must declare network=host."
-    ( umask 077; printf 'feature=%s\nport=%s\nnetwork=host\n' "${role_feature}" "${port}" > "$(installed_file "${role}")" )
-    collect_machine
-    publish_machine_report
+    with_gateway publish_role "${role}" "" "${port}" "" "${role_feature}"
     say "Role ${role} is running. Paired desktops see its ${role_feature} feature on Check connection."
   fi
 }
@@ -1716,9 +1928,7 @@ cmd_remove() {
   ask "Stop ${role} and remove it from the gateway (its data volumes are kept)?" || exit 0
   require_docker
   role_compose "${role}" down || true
-  rm -f "${record}"
-  collect_machine
-  if [[ -n "${had_kind}" ]]; then apply_config; else publish_machine_report; fi
+  with_gateway unpublish_role "${role}" "${had_kind}"
   say "Role ${role} removed."
 }
 
@@ -1774,14 +1984,18 @@ cmd_status() {
   else systemctl --user is-active "${SERVICE}.service" || true; fi
   gateway health --config "${GW_CONFIG}" || true
   if engine_busy; then
-    note "Busy now: $(holder_text). Other changes wait for it; Martlet's automatic updates try again later."
+    note "Busy now: $(holder_text all). Changes to other roles run alongside; one that collides with these (the same role, setup or update) waits, and Martlet's automatic updates try again later."
     holder_hint
   fi
+  local waiting; waiting="$(holder_text waiting)"
+  [[ -z "${waiting}" ]] || note "Waiting to start: ${waiting}."
   local name minutes what tool kind
   while IFS=$'\t' read -r name minutes what tool kind; do
     [[ "${kind}" == session ]] || continue
     note "Other martlet-host session: ${name}: ${what}; running ${minutes} min; gateway process: ${tool}"
-    if (( minutes >= STALE_MINUTES )); then note "  Most likely left over from a closed console window; stop it with: docker stop ${name}"; fi
+    if (( minutes >= STALE_MINUTES )) && ! running_alongside "${name}"; then
+      note "  Most likely left over from a closed console window; stop it with: docker stop ${name}"
+    fi
   done < <(other_sessions)
   if [[ -f "${JOURNAL}" ]]; then
     note "Recent martlet-host runs on this host (${JOURNAL}):"
@@ -1820,8 +2034,8 @@ case "${1:-help}" in
     if [[ "${MODE}" == docker ]]; then JOURNAL_SESSION="${MARTLET_ENGINE_NAME:-engine} ${IMAGE}"
     else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi
     journal "started: $*"
-    trap 'journal "exit $?"' EXIT
-    hold_engine_lock "$@"
+    trap 'code=$?; finish_change; journal "exit ${code}"' EXIT
+    hold_engine_locks "$@"
     ! engine_stranded || fail "$(stranded_text) Nothing was changed; run the command again." ;;
 esac
 

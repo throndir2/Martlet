@@ -326,26 +326,39 @@ internal static partial class HostLocal
         output.Report("Docker Desktop is installed.");
     }
 
+    /// <summary>Held while one task checks for (and builds) the martlet-host image, so tasks running side by side (commands from
+    /// other computers, run windows) build it once and the others wait for it.</summary>
+    private static readonly SemaphoreSlim ImageGate = new(1, 1);
+
     /// <summary>Builds martlet-host:&lt;version&gt; from this version's source (falling back to main) unless it exists.</summary>
     internal static async Task EnsureImageAsync(HostSetupTarget target, Action<string> status, IProgress<string> output, CancellationToken token)
     {
         var image = HostSetupCommands.Image(target);
-        if (await RunAsync(["image", "inspect", image], null, token) == 0) return;
-        status("Preparing Martlet host. The first time can take a few minutes...");
-        foreach (var reference in new[] { "v" + target.Version, "main" })
+        if (!await ImageGate.WaitAsync(0, token))
         {
-            output.Report($"$ docker build -t {image} -f deploy/host/Dockerfile {HostSetupCommands.Repository}#{reference}");
-            if (await RunAsync(["build", "-t", image, "-f", "deploy/host/Dockerfile", $"{HostSetupCommands.Repository}#{reference}"],
-                    output, token) == 0)
-                return;
+            status("Waiting for Martlet host to finish preparing for another task...");
+            await ImageGate.WaitAsync(token);
         }
-        throw new InvalidOperationException("Couldn't prepare the Martlet host. The output shows why.");
+        try
+        {
+            if (await RunAsync(["image", "inspect", image], null, token) == 0) return;
+            status("Preparing Martlet host. The first time can take a few minutes...");
+            foreach (var reference in new[] { "v" + target.Version, "main" })
+            {
+                output.Report($"$ docker build -t {image} -f deploy/host/Dockerfile {HostSetupCommands.Repository}#{reference}");
+                if (await RunAsync(["build", "-t", image, "-f", "deploy/host/Dockerfile", $"{HostSetupCommands.Repository}#{reference}"],
+                        output, token) == 0)
+                    return;
+            }
+            throw new InvalidOperationException("Couldn't prepare the Martlet host. The output shows why.");
+        }
+        finally { ImageGate.Release(); }
     }
 
     /// <summary>Runs one martlet-host command unattended in a container on this PC; returns its exit code.
     /// <paramref name="answers"/> are martlet-host answers (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...) sent over stdin.
-    /// The engine makes one change to this host at a time: a change waits for one already running (its output says what it
-    /// waits for) unless <paramref name="waitForOtherChanges"/> is false, when it stops at once with
+    /// Changes run side by side; one waits only for a change it collides with (the same role, or a setup or update; its
+    /// output says what it waits for) unless <paramref name="waitForOtherChanges"/> is false, when it stops at once with
     /// <see cref="HostEngineBusy.ExitCode"/> and changes nothing.</summary>
     internal static Task<int> EngineAsync(HostSetupTarget target, IReadOnlyList<string> engine, IProgress<string> output,
         CancellationToken token, Task<string?>? moreInput = null, IReadOnlyDictionary<string, string>? answers = null,

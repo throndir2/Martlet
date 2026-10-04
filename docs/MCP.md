@@ -885,34 +885,53 @@ refused, only the agent's local token takes and reports commands, output and
 outcomes reach the sender, secrets never appear in lists, commands or the saved
 copy, the shared Home Assistant connection (including token sharing, revision
 wins, tombstones, invalid bodies, restart storage and no token in gateway logs),
-cancel works (waiting and running), a command sent while another runs waits
-behind it and the sender's `HostCommandList.WaitingText` names what it waits
-for, an update that continues later (FIXTURE: "Martlet is in use here") stays
-first and holds the queue until it finishes and the waiting command runs right
-after it, commands survive a restart with a new token
-and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
+cancel works (waiting and running), commands run side by side
+(`runs-side-by-side`: the agent's `TakeAsync` starts a slow describe and two
+installs of different roles at once, each on its own connection, and the
+agent info says `parallel`), a second change to one role waits for the first
+and the sender's `HostCommandList.WaitingText` says so (`same-role-waits`)
+while a status runs beside them (`others-run-beside`), an update waits for
+what runs and holds what was sent after it (`update-waits-for-running`), the
+waiting change runs once the first ends (`same-role-runs-next`), the update
+then runs alone and the held command after it (`update-runs-alone-then-the-rest`),
+an agent from before commands ran side by side (no `running` list) still gets
+one at a time (`serial-agent-one-at-a-time`), an update that continues later
+(FIXTURE: "Martlet is in use here") stays first and holds the queue until it
+finishes and the waiting command runs right after it, commands survive a
+restart with a new token and the queue is bounded. It runs `src\Martlet.NodeLinkCheck` (built with
 `Martlet.Mcp`) as its own process, because the gateway needs the ASP.NET Core
 runtime; it takes no arguments and contacts nothing outside loopback. The same
 program's `live <pairing-code> <container>` mode checks a disposable Linux
 gateway container built from this checkout (not the real host service).
 
-`host_engine_check` (no arguments) checks that a host makes
-[one change at a time](../deploy/host/README.md#one-change-at-a-time) with this
+`host_engine_check` (no arguments) checks that a host runs
+[changes side by side](../deploy/host/README.md#changes-side-by-side) with this
 checkout's real `deploy\host\martlet-host`: it starts one disposable
 `ubuntu:24.04` container (`--network none`, `--pull never`, removed afterwards,
 the engine in native mode against a fixture setup under `/tmp`; Martlet's own
 host containers and volumes are never touched) and returns `{exitCode, report:
 {passed, total, image, engine, steps: [{name, ok, detail}]}}`. Steps: `flock`
 is present; a change (a `network-reset` waiting for a typed yes, like a console
-left open) holds `engine.lock` (0600) and records itself in `engine.holder`;
-`roles` still runs; `status` says `Busy now: ...`; an automatic `update` (no
-terminal, no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a
-`--yes update` with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and
-gives up with 75; a waiting `--yes remove` continues once the holder is killed
-(SIGKILL), and so does an `update` without a terminal or `--yes` that sets
-`MARTLET_LOCK_WAIT=60` (*Update hosts now*): it waits instead of stopping and
-then runs; the next automatic run is not blocked (no stale lock);
-`logs/engine.log` records the waits; and the desktop's reader
+left open) holds its locks (`engine.lock` 0600), records itself in
+`engine.holders/` (scope `gateway`, running) and in `engine.holder`; `roles`
+still runs; `status` says `Busy now: ...`; an automatic `update` (no terminal,
+no `--yes`) stops at once with exit 75 and `MARTLET-BUSY ...`; a `--yes update`
+with `MARTLET_LOCK_WAIT=3` waits, says what it waits for and gives up with 75;
+a role change runs alongside it without waiting (`role-change-runs-alongside`);
+`machine`, which restarts the gateway, waits for its lock and continues once the
+holder is killed (SIGKILL), and so does an `update` without a terminal or
+`--yes` that sets `MARTLET_LOCK_WAIT=60` (*Update hosts now*): it waits instead
+of stopping and then runs; the next automatic run is not blocked (no stale
+lock); `logs/engine.log` records the waits. With a fake `docker` CLI
+(`/tmp/nativebin`, nothing real runs) two adds of different roles run side by
+side, both stopped at their terms question (`role-changes-run-side-by-side`);
+a remove of the same role waits for its add (`same-role-waits`) and an add of
+another engine of the same `exclusive=` group waits too (`same-group-waits`);
+an automatic `update` stops with `MARTLET-BUSY` naming all three adds; a
+waiting `--yes update` holds back a role change asked for after it
+(`later-change-waits-for-update`); once the adds are killed every waiting
+change continues (`waiting-changes-continue`); and no records are left in
+`engine.holders/` (`ended-changes-leave-no-records`). The desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
 `/tmp/fake`): an automatic `setup` while an `add` engine session runs in the

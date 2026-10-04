@@ -101,7 +101,7 @@ without asking anything: for SSH hosts through Martlet's SSH runner (its own key
 the pinned host key and a sudo password only if you chose to remember one; no
 `--yes`), for this PC in Docker Desktop. A host that needs a password, a new host
 key, sudo or an approval fails that run without changing anything and keeps
-*Update host*. A host busy with another change (below) is not interrupted: the
+*Update host*. A host busy with other changes (below) is not interrupted: the
 background `update` stops at once without changing anything, its Devices card
 says what the host is busy with, and Martlet tries it again every three minutes
 until it is free. *Update hosts now* runs the same `update` but waits its turn:
@@ -112,25 +112,41 @@ this PC's own host service current) is left to that run, so its own update is
 never reported as "busy", and once a host is found up to date an earlier
 "waiting to update" note on its card says it is updated.
 
-### One change at a time
+### Changes side by side
 
-A host makes one change at a time, whoever asks for it: a console on the host,
-a desktop over SSH, Martlet on that computer for a paired desktop (commands
-between computers), another desktop's automatic update, or this PC's own. Every
-command that changes the host (`setup`, `add`, `remove`, `pair`, `console`,
-`network-reset`, `machine`, `update`) holds `engine.lock` in the config volume
-(natively `~/.config/martlet/host/`) with `flock` while it runs, and writes
-what it does to `engine.holder` beside it. The kernel drops the lock when the
-command ends however it ends (finished, killed, a dropped SSH connection), so no
-stale lock is ever left behind. Read-only commands (`roles`, `describe`,
-`status`, `config`) never wait.
+A host runs several changes at once, whoever asks for them: a console on the
+host, a desktop over SSH, Martlet on that computer for paired desktops
+(commands between computers), several desktops at once, another desktop's
+automatic update, or this PC's own. Installing deep thinking, singing and
+Audio2Face on one host from three run windows runs all three together. Only
+what truly collides waits, through kernel locks (`flock`) in the config volume
+(natively `~/.config/martlet/host/`):
 
-- A command that finds another one running **waits** for it and says so:
+| Command | Holds | So it waits for |
+| --- | --- | --- |
+| `add <role>`, `remove <role>` | `engine.lock` shared, `locks/role-<role>.lock` (or `locks/group-<group>.lock` for a role.conf `exclusive=<group>`, such as the voice engines, since adding one stops the others), and `locks/gateway.lock` only while it publishes the change (role record, machine report, `host.json`, the gateway's approval and restart) | another change to the same role or group; a setup or update; another change publishing at that moment |
+| `pair`, `console`, `network-reset`, `machine` | `engine.lock` shared and `locks/gateway.lock` for their whole run | a setup or update; another of these; an add or remove publishing at that moment |
+| `setup`, `update` | `engine.lock` exclusively | every change running now; changes asked for after them wait for them (a waiting setup or update holds `engine.gate`, which every change passes first, so a stream of installs never starves it) |
+| a native `add` that first installs Docker Engine or the NVIDIA Container Toolkit | `engine.lock` exclusively, like `update` | every change running now, because installing them restarts Docker under the other changes |
+
+The kernel drops a lock when its command ends however it ends (finished,
+killed, a dropped SSH connection), so no stale lock is ever left behind. Each
+change records what it does in `engine.holders/` (its scope and whether it runs
+or waits); a record stays locked while its change runs, and readers drop the
+records of changes that ended. `engine.holder` keeps the latest one for engines
+from before changes ran side by side, which hold `engine.lock` exclusively for
+every change, so older and newer engines on one host never overlap. Secrets a
+change saves are written whole (a temporary file renamed into place), since
+another role's change may read the same one. Read-only commands (`roles`,
+`describe`, `status`, `config`) never wait.
+
+- A command that collides with one running **waits** for it and says so:
   `This host is busy: installing ollama (12 min so far; martlet-host-add-..., from Martlet). Waiting for it to finish before updating this host...`,
-  then a line every minute, then `That finished. Continuing with ...`. Martlet's
-  run windows (and, for commands between computers, the computer that sent
-  the command) show these lines. It waits up to `MARTLET_LOCK_WAIT` seconds
-  (default 7200).
+  then a line every minute, then `That finished. Continuing with ...`. A
+  setup or update waiting its turn shows as `updating this host (waiting for
+  the changes running now; ...)`. Martlet's run windows (and, for commands
+  between computers, the computer that sent the command) show these lines. It
+  waits up to `MARTLET_LOCK_WAIT` seconds in all (default 7200).
 - A **background** run that nobody confirmed and nobody watches (no terminal
   and no `--yes`, as Martlet's automatic host updates run) does not queue
   behind a long install: it stops at once, changes nothing and exits **75**
@@ -139,9 +155,13 @@ stale lock is ever left behind. Read-only commands (`roles`, `describe`,
   attended run. A run that waited `MARTLET_LOCK_WAIT` seconds ends the same
   way. Martlet reads that line and tries again later instead of reporting a
   failure.
-- `status` shows `Busy now: ...` while a change runs. When the holder is a
-  console session open 10+ minutes, the waiting lines name the command that
-  stops it (a closed console window can leave its engine waiting for input).
+- `status` shows `Busy now: ...` with every change running and `Waiting to
+  start: ...` with those waiting their turn. When a holder is a console session
+  open 10+ minutes, the waiting lines name the command that stops it (a closed
+  console window can leave its engine waiting for input). An owner operation
+  that finds the gateway state busy stops only an abandoned session running a
+  gateway process, never a change running alongside it (a long download holds
+  no gateway state).
 - `engine.log` records each wait (`busy, waiting`, `lock free after waiting`)
   and each stop (`busy, stopped without changing anything`).
 - In the Docker method, `setup` replaces the network holder (`martlet-host-net`)

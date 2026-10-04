@@ -98,8 +98,9 @@ public partial class MainWindow
             busy.Add($"Downloading {Martlet.Sherpa.ParakeetModels.Find(downloading)?.Name ?? "Parakeet"} speech recognition");
         if (hostUpdatesRunning || hostUpdates.Running)
             busy.Add("Updating Martlet on your hosts");
-        if (!asked && nodeCommandRunning is { } command)
-            busy.Add($"A command from another computer: {NodeCommandAgent.Describe(command)}");
+        if (!asked)
+            foreach (var command in NodeCommandsRunning)
+                busy.Add($"A command from another computer: {NodeCommandAgent.Describe(command)}");
         foreach (var window in Application.Current.Windows.OfType<Window>())
         {
             if (window is HostRunWindow { IsRunning: true } run)

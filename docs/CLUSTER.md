@@ -512,19 +512,19 @@ sequenceDiagram
     loop every 5 s
         Agent->>GW: POST /commands/agent (agent token)
     end
-    GW-->>Agent: the command (and its secrets, once)
-    Agent->>Agent: runs martlet-host / installs the update
+    GW-->>Agent: every command that may start now (and its secrets, once)
+    Agent->>Agent: runs them side by side (martlet-host / the update)
     Agent->>GW: POST /commands/{id}/report (output, outcome)
     Main->>GW: GET /commands/{id} (follows output in a run window)
 ```
 
 | Endpoint (all over the paired, pinned, signed connection) | Who | What |
 | --- | --- | --- |
-| `GET /martlet/v1/commands` | any paired device | the agent (device, last seen, Martlet version, kinds it runs) and recent commands |
+| `GET /martlet/v1/commands` | any paired device | the agent (device, last seen, Martlet version, kinds it runs, whether it runs commands side by side) and recent commands |
 | `POST /martlet/v1/commands` | any paired device | send a command; the same one while it waits or runs returns that one |
 | `GET /martlet/v1/commands/{id}` | any paired device | one command with the last 120 lines of its output |
 | `POST /martlet/v1/commands/{id}/cancel` | any paired device | withdraw a waiting command, or ask the agent to stop a running one |
-| `POST /martlet/v1/commands/agent` | the agent (token) | take the next command, or resume one it took before restarting |
+| `POST /martlet/v1/commands/agent` | the agent (token) | take the next command that may start beside the ones it lists as `running`, or resume one it took before restarting (an agent that sends no `running` list gets one at a time) |
 | `POST /martlet/v1/commands/{id}/report` | the agent (token) | add output and, at the end, the outcome |
 
 Commands (`Martlet.Core.Nodes`, checked on both ends; anything else is
@@ -577,13 +577,17 @@ another computer's `martlet.update`, automatic host updates from any desktop)
 while a host may be busy installing a role, pairing or serving its console.
 Nothing is interrupted and nothing is lost:
 
-- **On the host, one change at a time.** Every route ends in the same
-  `martlet-host` engine, which holds a kernel lock while it changes the host
-  ([One change at a time](../deploy/host/README.md#one-change-at-a-time)). A
-  change asked for by someone (a run window, a command from another computer)
-  waits for the one already running and its output says what it waits for. An
-  automatic background update doesn't queue: it stops at once without changing
-  anything (exit 75, `MARTLET-BUSY ...`).
+- **On the host, changes side by side.** Every route ends in the same
+  `martlet-host` engine, whose kernel locks let changes to different roles run
+  at once and make only what truly collides wait
+  ([Changes side by side](../deploy/host/README.md#changes-side-by-side)): a
+  second change to the same role (or to another engine of its exclusive group,
+  such as the voice engines), a setup or update, which runs alone, and the
+  moment a change restarts the gateway to publish its role. A change asked for
+  by someone (a run window, a command from another computer) that collides
+  waits and its output says what it waits for. An automatic background update
+  doesn't queue: it stops at once without changing anything (exit 75,
+  `MARTLET-BUSY ...`).
 - **Automatic host updates try again.** A host found busy keeps its update
   pending, not failed: its Devices card says what the host is busy with, and
   Martlet tries it again every three minutes until it is free (this PC's own
@@ -601,13 +605,24 @@ Nothing is interrupted and nothing is lost:
   release it announces, or this PC reading its own host service), its retry
   goes and an earlier "waiting to update" note on its Devices card becomes
   *Updated to Martlet ...*.
-- **One command at a time per host PC.** Its Martlet takes the next command
-  only after the current one ends. An update that waits (until nothing needs
-  Martlet there, or while Martlet restarts into it) stays first, so a command
-  sent meanwhile runs right after it. The computer that sent it sees why it
-  waits: *Martlet on gpu-pc is updating first: Update to Martlet 0.22.0 (from
-  desktop-a). This runs right after it.* Sending (and the first look at the
-  host) keeps trying for up to five minutes while that host's gateway restarts.
+- **Commands side by side on a host PC.** Its Martlet takes every command
+  that may start now and runs each in the background, so several computers
+  (or one computer several times) can install different roles on it at once
+  (`NodeCommandSchedule` in `Martlet.Core.Nodes`). Only a true collision waits:
+  adding or removing a role waits for an earlier change to that same role
+  (*Martlet on gpu-pc is already changing singing: Install singing (from
+  desktop-a). This runs right after it; everything else runs side by side.*),
+  and an update runs alone: it waits for the commands already running, and
+  the commands sent after it wait for it, including while it waits until
+  nothing needs Martlet there and while Martlet restarts into it (*Martlet on
+  gpu-pc is updating first: Update to Martlet 0.22.0 (from desktop-a). This
+  runs right after it.*). Changes that collide only on the host itself (two
+  voice engines, the gateway's restart) wait inside the engine and say so in
+  their output. Sending (and the first look at the host) keeps trying for up
+  to five minutes while that host's gateway restarts. A host PC with an older
+  Martlet (no `running` list) still runs one command at a time, oldest first,
+  and an older gateway hands a newer Martlet one at a time; the sender's
+  explanation follows what the agent does (`parallel` in the agent info).
 - **Martlet installs its own update only when nothing needs it.** Besides you,
   the character and a conversation, that means no setup task, no host service
   update, no command from another computer running and no update check or
@@ -625,15 +640,19 @@ Nothing is interrupted and nothing is lost:
   within 20 seconds and stop offering or retrying an update it no longer needs.
 
 Checked locally: `node_link_check` (MCP) runs the protocol end to end on
-loopback with the real gateway, desktop client and agent loop, including a
-command queued behind a running one and an update that waits and holds the
-queue; `host_engine_check` (MCP) runs the real `martlet-host` engine's lock in a
-disposable container; `host_update_check` (MCP) rehearses how one Martlet keeps
+loopback with the real gateway, desktop client and agent loop, including three
+commands running side by side, a second change to one role waiting for the
+first, an update that waits for what runs and holds what was sent after it,
+and an older agent still getting one at a time; `host_engine_check` (MCP) runs
+the real `martlet-host` engine's locks in a disposable container (adds of
+different roles side by side, the same role or exclusive group waiting, setup
+and update running alone); `host_update_check` (MCP) rehearses how one Martlet keeps
 its own host updates from colliding with its production update tracker;
 `app_update_check` (MCP) runs the desktop's real update helper with stand-ins for
 Martlet and the installer (it waits for Martlet to exit, runs the installer with
 no window, logs each step and restarts Martlet minimized). The same client and agent ran against a real Linux
 gateway container built from this source (token read with `docker exec`,
 `commands.json` without secrets, a new token after restart). The desktop's own
-runner on a real host PC (installing an update, `martlet-host` runs), the
-engine lock on a real Docker-method host and two real computers are **NOT RUN**.
+runner on a real host PC (installing an update, `martlet-host` runs, real
+installs side by side), the engine locks on a real Docker-method host, an older
+gateway refusing the `running` list, and two real computers are **NOT RUN**.

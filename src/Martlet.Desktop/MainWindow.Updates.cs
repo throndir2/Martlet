@@ -263,7 +263,7 @@ public partial class MainWindow
     private string? HostWorkBlocker(bool asked = false) =>
         setupOperations.IsRunning ? "a setup task is running"
         : hostUpdatesRunning || hostUpdates.Running ? "a host service update is running"
-        : !asked && nodeCommandRunning is { } command ? $"Martlet is running {NodeCommandAgent.Describe(command)}"
+        : !asked && NodeCommandsRunning.Count > 0 ? $"Martlet is running {NodeCommandsRunningText}"
         : null;
 
     private bool CanInstallNow(bool asked = false) => InstallBlocker(asked) is null;

@@ -8,16 +8,17 @@ namespace Martlet.Mcp;
 
 /// <summary>host_engine_check: runs this checkout's real martlet-host engine (deploy\host\martlet-host) in one disposable
 /// ubuntu:24.04 container (no network, never pulled, removed afterwards; it never touches Martlet's own host containers or
-/// volumes) and checks that a host makes one change at a time: a change holds the engine lock, read-only commands still
-/// run, status names the holder, an automatic run (no terminal, no --yes) stops at once with exit 75 and MARTLET-BUSY,
-/// an attended run waits and gives up after MARTLET_LOCK_WAIT, a waiting run continues when the holder dies (SIGKILL), so
-/// does a run without a terminal or --yes that was told to wait (Update hosts now), no
-/// stale lock remains and the engine journal records it. The desktop's own reader (<see cref="HostEngineBusy"/>) then
-/// reads the engine's real busy line.</summary>
+/// volumes) and checks that a host runs changes side by side and makes only colliding ones wait: a change holds and records
+/// its locks, read-only commands still run, status names the holders, an automatic run (no terminal, no --yes) stops at
+/// once with exit 75 and MARTLET-BUSY, an attended run waits and gives up after MARTLET_LOCK_WAIT, adds of different roles
+/// run side by side while the same role or exclusive group waits, setup and update wait for every change and hold back
+/// later ones, a waiting run continues when the holder dies (SIGKILL), so does a run without a terminal or --yes that was
+/// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it. The desktop's own
+/// reader (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
 {
     internal const string Image = "ubuntu:24.04";
-    private static readonly TimeSpan Limit = TimeSpan.FromSeconds(100);
+    private static readonly TimeSpan Limit = TimeSpan.FromSeconds(150);
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
     {
@@ -76,7 +77,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 16;
+        const int expected = 24;
         if (steps.Count < expected)
         {
             passed = false;
@@ -150,15 +151,18 @@ internal static class HostEngineCheck
         if ! command -v flock >/dev/null; then step flock-present 0 "flock is missing in this image"; exit 0; fi
         step flock-present 1 "$(flock --version 2>&1 | head -n1)"
 
-        # A change that holds the lock and never finishes by itself: network-reset waiting for a typed yes (a console left open).
+        # A change that holds its locks and never finishes by itself: network-reset waiting for a typed yes (a console left
+        # open). It holds engine.lock shared and the gateway lock.
         mkfifo /tmp/hold.in
         ( exec 3<>/tmp/hold.in; exec "$E" network-reset <&3 >/tmp/hold.out 2>&1 ) &
         HOLDER=$!
         for _ in $(seq 1 100); do [[ -s /tmp/c/engine.holder ]] && break; sleep 0.1; done
         words="$(sed -n 2p /tmp/c/engine.holder 2>/dev/null)"; how="$(sed -n 4p /tmp/c/engine.holder 2>/dev/null)"
         mode="$(stat -c %a /tmp/c/engine.lock 2>/dev/null)"
-        [[ "$words" == "leaving the Martlet network" && "$how" == automatic && "$mode" == 600 ]] && ok=1 || ok=0
-        step holder-recorded "$ok" "holds the lock: '$words' ($how), engine.lock mode $mode"
+        record="$(ls /tmp/c/engine.holders 2>/dev/null | head -n1)"
+        scope="$(sed -n 5p "/tmp/c/engine.holders/$record" 2>/dev/null)"; state="$(sed -n 6p "/tmp/c/engine.holders/$record" 2>/dev/null)"
+        [[ "$words" == "leaving the Martlet network" && "$how" == automatic && "$mode" == 600 && "$scope" == gateway && "$state" == running ]] && ok=1 || ok=0
+        step holder-recorded "$ok" "holds its locks: '$words' ($how), engine.lock mode $mode, record in engine.holders: $scope, $state"
 
         timeout 15 "$E" roles </dev/null >/tmp/roles.out 2>&1; rc=$?
         [[ $rc == 0 ]] && has /tmp/roles.out fixture-role && ok=1 || ok=0
@@ -182,20 +186,28 @@ internal static class HostEngineCheck
           grep -q '^MARTLET-BUSY ' /tmp/gaveup.out && ok=1 || ok=0
         step attended-run-waits-then-gives-up "$ok" "--yes update with MARTLET_LOCK_WAIT=3: waited, exit $rc after ${took} s"
 
-        MARTLET_LOCK_WAIT=60 timeout 70 "$E" --yes remove fixture-missing-role </dev/null >/tmp/wait.out 2>&1 &
+        start=$(date +%s)
+        timeout 15 "$E" --yes remove fixture-missing-role </dev/null >/tmp/alongside.out 2>&1; rc=$?
+        took=$(( $(date +%s) - start ))
+        [[ $rc == 1 && $took -le 3 ]] && has /tmp/alongside.out "Unknown role 'fixture-missing-role'" && ! has /tmp/alongside.out "Waiting for it" &&
+          ok=1 || ok=0
+        step role-change-runs-alongside "$ok" "--yes remove of a role while network-reset runs: did not wait, exit $rc after ${took} s (unknown role)"
+
+        MARTLET_LOCK_WAIT=60 timeout 70 "$E" --yes machine </dev/null >/tmp/wait.out 2>&1 &
         WAITER=$!
+        for _ in $(seq 1 50); do has /tmp/wait.out "Waiting for it to finish" && break; sleep 0.1; done
         # Update hosts now: no terminal and no --yes like an automatic update, but told to wait (MARTLET_LOCK_WAIT).
         MARTLET_LOCK_WAIT=60 timeout 70 "$E" update </dev/null >/tmp/asked.out 2>&1 &
         ASKED=$!
-        for _ in $(seq 1 50); do has /tmp/wait.out "Waiting for it to finish" && has /tmp/asked.out "Waiting for it to finish" && break; sleep 0.1; done
-        waiting=0; has /tmp/wait.out "Waiting for it to finish before removing fixture-missing-role" && waiting=1
+        for _ in $(seq 1 50); do has /tmp/asked.out "Waiting for it to finish" && break; sleep 0.1; done
+        waiting=0; has /tmp/wait.out "This host is busy: leaving the Martlet network (" &&
+          has /tmp/wait.out "Waiting for it to finish before collecting the hardware report" && waiting=1
         asked=0; has /tmp/asked.out "Waiting for it to finish before updating this host" && asked=1
         kill -9 "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
         wait "$WAITER"; rc=$?
         wait "$ASKED"; arc=$?
-        [[ $waiting == 1 && $rc == 1 ]] && has /tmp/wait.out "That finished. Continuing with removing fixture-missing-role." &&
-          has /tmp/wait.out "Unknown role 'fixture-missing-role'" && ok=1 || ok=0
-        step waiting-run-continues-after-holder-dies "$ok" "holder killed (SIGKILL); the waiting remove continued and ended exit $rc (unknown role)"
+        [[ $waiting == 1 && $rc == 0 ]] && has /tmp/wait.out "That finished. Continuing with collecting the hardware report." && ok=1 || ok=0
+        step gateway-change-waits-then-runs "$ok" "machine (restarts the gateway) waited for network-reset's gateway lock; holder killed (SIGKILL), it continued and ended exit $rc"
         [[ $asked == 1 && $arc == 1 ]] && has /tmp/asked.out "That finished. Continuing with updating this host." &&
           has /tmp/asked.out "changes the gateway configuration" && ! grep -q '^MARTLET-BUSY' /tmp/asked.out && ok=1 || ok=0
         step asked-update-waits-then-runs "$ok" "update without a terminal or --yes but with MARTLET_LOCK_WAIT=60 (Update hosts now): waited instead of stopping, then ran (exit $arc at the fixture's unapproved configuration)"
@@ -208,6 +220,62 @@ internal static class HostEngineCheck
         has "$log" "busy, stopped without changing anything: leaving the Martlet network" && has "$log" "busy, waiting: leaving the Martlet network" &&
           has "$log" "lock free after waiting" && ok=1 || ok=0
         step journal-records-waits "$ok" "$(grep -c 'busy' "$log" 2>/dev/null || echo 0) busy lines in logs/engine.log"
+
+        # Role changes side by side. A fake docker CLI (/tmp/nativebin; every call succeeds, nothing real runs) gets adds past
+        # their requirements; each fixture role then asks to accept its terms and, with nobody answering (a fifo), stays there.
+        mkdir -p /tmp/nativebin
+        printf '#!/bin/sh\nexit 0\n' > /tmp/nativebin/docker; chmod 755 /tmp/nativebin/docker
+        for r in fixture-a fixture-b voice-x voice-y; do
+          mkdir -p "${E%/*}/roles/$r"
+          printf 'title=Fixture %s (FIXTURE, installs nothing)\nrequires=docker\nterms=FIXTURE terms of %s\n' "$r" "$r" > "${E%/*}/roles/$r/role.conf"
+        done
+        printf 'exclusive=fixture-voice\n' >> "${E%/*}/roles/voice-x/role.conf"
+        printf 'exclusive=fixture-voice\n' >> "${E%/*}/roles/voice-y/role.conf"
+        held() { mkfifo "/tmp/$1.in"; ( export PATH="/tmp/nativebin:$PATH"; exec 3<>"/tmp/$1.in"; exec "$E" add "$1" <&3 >"/tmp/$1.out" 2>&1 ) & }
+        later() { local out="$1"; shift; ( export PATH="/tmp/nativebin:$PATH"; MARTLET_LOCK_WAIT=60 exec timeout 70 "$E" --yes "$@" </dev/null >"$out" 2>&1 ) & }
+        held fixture-a; A=$!
+        held fixture-b; B=$!
+        for _ in $(seq 1 100); do has /tmp/fixture-a.out "FIXTURE terms of fixture-a" && has /tmp/fixture-b.out "FIXTURE terms of fixture-b" && break; sleep 0.1; done
+        PATH="/tmp/nativebin:$PATH" timeout 15 "$E" status </dev/null >/tmp/status2.out 2>&1
+        busy="$(grep -m1 -F 'Busy now:' /tmp/status2.out || echo 'no busy line')"
+        has /tmp/fixture-a.out "FIXTURE terms of fixture-a" && has /tmp/fixture-b.out "FIXTURE terms of fixture-b" &&
+          ! grep -q 'Waiting for it' /tmp/fixture-a.out /tmp/fixture-b.out && [[ "$busy" == *"installing fixture-a ("* && "$busy" == *"installing fixture-b ("* ]] && ok=1 || ok=0
+        step role-changes-run-side-by-side "$ok" "two adds of different roles both reached their terms, neither waited; $busy"
+
+        held voice-x; V=$!
+        for _ in $(seq 1 100); do has /tmp/voice-x.out "FIXTURE terms of voice-x" && break; sleep 0.1; done
+        later /tmp/same.out remove fixture-a; SAME=$!
+        later /tmp/group.out add voice-y; GROUP=$!
+        for _ in $(seq 1 100); do has /tmp/same.out "Waiting for it" && has /tmp/group.out "Waiting for it" && break; sleep 0.1; done
+        has /tmp/same.out "This host is busy: installing fixture-a (" && has /tmp/same.out "Waiting for it to finish before removing fixture-a" && ok=1 || ok=0
+        step same-role-waits "$ok" "$(grep -m1 -F 'This host is busy' /tmp/same.out || echo 'remove fixture-a did not wait')"
+        has /tmp/group.out "This host is busy: installing voice-x (" && has /tmp/group.out "Waiting for it to finish before installing voice-y" && ok=1 || ok=0
+        step same-group-waits "$ok" "$(grep -m1 -F 'This host is busy' /tmp/group.out || echo 'add voice-y did not wait for voice-x (exclusive=fixture-voice)')"
+
+        PATH="/tmp/nativebin:$PATH" timeout 15 "$E" update </dev/null >/tmp/auto2.out 2>&1; rc=$?
+        busy="$(grep -m1 '^MARTLET-BUSY ' /tmp/auto2.out || true)"
+        [[ $rc == 75 && "$busy" == *"installing fixture-a ("* && "$busy" == *"installing fixture-b ("* && "$busy" == *"installing voice-x ("* ]] && ok=1 || ok=0
+        step update-waits-for-changes-running "$ok" "automatic update while three adds run: exit $rc; ${busy:-no MARTLET-BUSY line}"
+
+        later /tmp/w.out update; W=$!
+        for _ in $(seq 1 100); do has /tmp/w.out "Waiting for it to finish before updating this host" && break; sleep 0.1; done
+        later /tmp/late.out remove fixture-late; LATE=$!
+        for _ in $(seq 1 100); do has /tmp/late.out "Waiting for it" && break; sleep 0.1; done
+        has /tmp/late.out "This host is busy: updating this host (waiting for the changes running now" && ok=1 || ok=0
+        step later-change-waits-for-update "$ok" "$(grep -m1 -F 'This host is busy' /tmp/late.out || echo 'remove fixture-late did not wait for the waiting update')"
+
+        kill -9 "$A" "$B" "$V" 2>/dev/null; wait "$A" "$B" "$V" 2>/dev/null
+        wait "$SAME"; src=$?; wait "$GROUP"; grc=$?; wait "$W"; wrc=$?; wait "$LATE"; lrc=$?
+        has /tmp/same.out "That finished. Continuing with removing fixture-a." && has /tmp/same.out "Role fixture-a is not installed." &&
+          has /tmp/group.out "That finished. Continuing with installing voice-y." &&
+          has /tmp/w.out "That finished. Continuing with updating this host." && has /tmp/late.out "That finished. Continuing with removing fixture-late." &&
+          has /tmp/late.out "Unknown role 'fixture-late'" && ok=1 || ok=0
+        step waiting-changes-continue "$ok" "adds killed (SIGKILL): remove fixture-a (exit $src), add voice-y (exit $grc), update (exit $wrc), then remove fixture-late (exit $lrc) each continued"
+
+        PATH="/tmp/nativebin:$PATH" timeout 15 "$E" status </dev/null >/tmp/status3.out 2>&1
+        left="$(ls /tmp/c/engine.holders 2>/dev/null | wc -l)"
+        [[ "$left" == 0 ]] && ! has /tmp/status3.out "Busy now:" && ok=1 || ok=0
+        step ended-changes-leave-no-records "$ok" "$left records left in engine.holders after finished and killed changes; status $(grep -c 'Busy now:' /tmp/status3.out) busy lines"
 
         # The Docker method against a fake docker CLI (its state in /tmp/fake; nothing real is touched): setup must not
         # replace the network holder (martlet-host-net) while an engine session (an add) runs in its namespace, and an

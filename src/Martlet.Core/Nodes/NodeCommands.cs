@@ -58,6 +58,43 @@ public sealed record NodeAgentInfo
     public required DateTimeOffset SeenAt { get; init; }
     public string? Version { get; init; }
     public IReadOnlyList<string> Kinds { get; init; } = [];
+    /// <summary>Whether it runs several commands side by side (<see cref="NodeCommandSchedule"/>); older agents run one at a
+    /// time.</summary>
+    public bool Parallel { get; init; }
+}
+
+/// <summary>When a host's agent starts a waiting command. One that runs commands side by side starts a waiting command as
+/// soon as nothing it truly collides with runs or waits ahead of it: an update runs alone (Martlet there may restart into
+/// it), so it waits for the commands already running and the commands sent after it wait for it; adding or removing a role
+/// waits for an earlier change to that same role. Everything else (other roles, status, reading what a role needs) runs at
+/// once, and the host's engine still makes changes that collide on the host wait for each other. An agent that runs one
+/// command at a time takes the oldest waiting command once the running one ends.</summary>
+public static class NodeCommandSchedule
+{
+    /// <summary>What <paramref name="waiting"/> waits for, or null when it may start now (or isn't waiting).</summary>
+    /// <param name="commands">The host's commands, oldest first (they may include <paramref name="waiting"/>).</param>
+    /// <param name="parallel">Whether the host's agent runs commands side by side.</param>
+    public static NodeCommand? Blocker(NodeCommand waiting, IReadOnlyList<NodeCommand> commands, bool parallel)
+    {
+        if (waiting.State != NodeCommandState.Queued) return null;
+        var index = -1;
+        for (var i = 0; i < commands.Count && index < 0; i++)
+            if (commands[i].Id == waiting.Id) index = i;
+        var running = commands.Where(c => c.State == NodeCommandState.Running && c.Id != waiting.Id).ToArray();
+        var earlier = commands.Where((c, i) => c.State == NodeCommandState.Queued && c.Id != waiting.Id &&
+            (index >= 0 ? i < index : c.RequestedAt < waiting.RequestedAt)).ToArray();
+        if (!parallel) return running.FirstOrDefault() ?? earlier.FirstOrDefault();
+        if (running.FirstOrDefault(c => c.Kind == NodeCommandKinds.Update) is { } update) return update;
+        if (waiting.Kind == NodeCommandKinds.Update) return running.FirstOrDefault() ?? earlier.FirstOrDefault();
+        if (earlier.FirstOrDefault(c => c.Kind == NodeCommandKinds.Update) is { } first) return first;
+        return running.Concat(earlier).FirstOrDefault(c => SameRole(c, waiting));
+    }
+
+    /// <summary>Whether two commands change the same role (adding or removing it).</summary>
+    public static bool SameRole(NodeCommand a, NodeCommand b) =>
+        Changes(a) && Changes(b) && a.Arguments.GetValueOrDefault("role") is { } role && role == b.Arguments.GetValueOrDefault("role");
+
+    private static bool Changes(NodeCommand command) => command.Kind is NodeCommandKinds.AddRole or NodeCommandKinds.RemoveRole;
 }
 
 /// <summary>The bounds and argument rules both ends enforce, and the JSON both ends write.</summary>
@@ -70,6 +107,8 @@ public static partial class NodeCommandRules
     public const int MaximumSecrets = 8;
     public const int MaximumSecretCharacters = 4096;
     public const int MaximumArgumentCharacters = 200;
+    /// <summary>The most commands a host keeps waiting or running at once (so also the most its agent runs side by side).</summary>
+    public const int MaximumActive = 8;
     /// <summary>The largest request body any command endpoint accepts.</summary>
     public const int MaximumRequestBytes = 160 * 1024;
     /// <summary>The largest response a command endpoint sends.</summary>
