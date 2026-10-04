@@ -26,7 +26,7 @@ internal static class ChattinessCheck
     {
         if (reply is not null && (string.IsNullOrWhiteSpace(reply) || reply.Length > 1024 || reply.Any(char.IsControl)))
             throw new ArgumentException("'reply' must be 1-1024 characters of one-line text.");
-        var (saved, source, watch, hearPc) = Saved(directory);
+        var (saved, source, watch, looksAt, hearPc) = Saved(directory);
         var choice = ChattinessTags.Choice(saved);
         var loaded = await new SettingsStore(directory).LoadAsync(cancellation);
         var prompts = loaded.Settings?.Prompts;
@@ -48,6 +48,7 @@ internal static class ChattinessCheck
             martletDecides = choice == ChattinessChoice.MartletDecides,
             // Replies are told about it only while there is something in the background: vision on, or hearing the PC.
             visionOn = watch,
+            visionLooksAt = looksAt,
             hearPcOn = hearPc,
             startsAt = ChattinessTags.Name(Chattiness.Normal),
             tags = ChattinessTags.All,
@@ -66,22 +67,35 @@ internal static class ChattinessCheck
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): ScreenChattiness is Normal (1) unless saved; Watch and HearPc are
-    // off unless saved on.
-    private static (int Saved, string Source, bool Watch, bool HearPc) Saved(string directory)
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): ScreenChattiness is Normal (1) unless saved; Watch is on and
+    // ScreenScope (Martlet.Desktop's WatchKind) is the whole screen unless saved otherwise; HearPc is off unless saved on.
+    private static (int Saved, string Source, bool Watch, string LooksAt, bool HearPc) Saved(string directory)
     {
+        const int wholeScreen = 1;
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
             var root = document.RootElement;
-            bool Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
-            var chosen = root.TryGetProperty("ScreenChattiness", out var number) && number.ValueKind == JsonValueKind.Number &&
-                number.TryGetInt32(out var value) ? value : (int?)null;
-            return (chosen ?? (int)ChattinessChoice.Normal, chosen is null ? "default" : "saved", Flag("Watch"), Flag("HearPc"));
+            bool Flag(string name, bool otherwise) => root.TryGetProperty(name, out var value) &&
+                value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : otherwise;
+            int? Number(string name) => root.TryGetProperty(name, out var number) && number.ValueKind == JsonValueKind.Number &&
+                number.TryGetInt32(out var value) ? value : null;
+            var chosen = Number("ScreenChattiness");
+            return (chosen ?? (int)ChattinessChoice.Normal, chosen is null ? "default" : "saved", Flag("Watch", true),
+                LooksAt(Number("ScreenScope") ?? wholeScreen), Flag("HearPc", false));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
-            return ((int)ChattinessChoice.Normal, "default", false, false);
+            return ((int)ChattinessChoice.Normal, "default", true, LooksAt(wholeScreen), false);
         }
     }
+
+    // As TalkPreferences.Load clamps it.
+    private static string LooksAt(int scope) => Math.Clamp(scope, 0, 3) switch
+    {
+        0 => "active window",
+        1 => "whole screen",
+        2 => "camera",
+        _ => "camera address"
+    };
 }
