@@ -87,6 +87,7 @@ public partial class MainWindow : ThemedWindow
         captions.Changed += () => ShowSpeechDisplay();
         avatar.LockedPlacement = CharacterPlacementStore.Load(store?.DataDirectory);
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
+        avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)

@@ -424,7 +424,8 @@ internal sealed class LiveConversationConfiguration
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
         string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false,
         string? voices = null, string? messageNotes = null,
-        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false)
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
+        CharacterActionPrompt? gaze = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -436,8 +437,12 @@ internal sealed class LiveConversationConfiguration
             selected.Styles.Distracted, selected.Styles.PlayfulTeasing }.Count(weight => weight > 0) == 1;
         // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off.
         var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
+        // A screen glance's look tags (where the character looks), when they fit beside the emote tags a request may carry.
+        if (gaze is not null && (character?.Tags.Count ?? 0) + gaze.Tags.Count > ConversationRequest.MaximumCharacterTags) gaze = null;
+        IReadOnlyList<string>? characterTags = gaze is null ? character?.Tags : [.. character?.Tags ?? [], .. gaze.Tags];
         var instructions = Join(persona, oneStyle ? styleNote : null, tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools),
-            tools?.Guidance, voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, closingInstructions);
+            tools?.Guidance, voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, gaze?.Instructions,
+            closingInstructions);
         if (oneStyle) styleNote = null;
         var facts = memory?.Facts ?? [];
         var hits = lore?.Included ?? [];
@@ -475,7 +480,7 @@ internal sealed class LiveConversationConfiguration
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
-                        character?.Tags, Persona?.SpokenBreaks ?? SpeechBreaks.Default);
+                        characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default);
                 }
             }
         }

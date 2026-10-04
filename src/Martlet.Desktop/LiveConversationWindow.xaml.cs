@@ -64,6 +64,8 @@ public sealed class ChatMessage : INotifyPropertyChanged
 public partial class LiveConversationWindow : ThemedWindow
 {
     internal SupportController? Support { get; init; }
+    /// <summary>Where the character looks: each new screenshot of your screen goes to it while Martlet decides.</summary>
+    internal CharacterGazeService? Gaze { get; init; }
     private readonly LiveSupportProjection supportProjection = new();
     private readonly ISetupService settings;
     private readonly SetupOperationRunner operations;
@@ -1657,6 +1659,10 @@ public partial class LiveConversationWindow : ThemedWindow
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // While Martlet decides where the character looks: what its eyes are on now.
+        var gazeShown = watching && watchSource.IsScreen && Gaze is { Decides: true };
+        GazeStatusText.Text = gazeShown ? Gaze!.Status : "";
+        GazeStatusText.Visibility = gazeShown && VisionStatusText.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         var pcLine = PcAudioLine();
         PcAudioText.Text = pcLine;
         PcAudioText.Visibility = available && preferences.HandsFree && pcLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1913,6 +1919,8 @@ public partial class LiveConversationWindow : ThemedWindow
             DropLatest();
             latestFrame = frame;
             latestAt = clock.GetTimestamp();
+            // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
+            if (source.IsScreen) Gaze?.Observe(frame);
             var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
             var idle = source.IsScreen ? glancer.UserIdle : TimeSpan.Zero;
@@ -2004,7 +2012,7 @@ public partial class LiveConversationWindow : ThemedWindow
             var image = frame.Encode();
             // An address's host is not useful to the model; a camera's or window's name is.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChattiness,
-                Voice, screenApproved: true, watchSource, attention: about);
+                Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true);
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
@@ -2086,6 +2094,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         watching = lookWanted = false;
         pacer = null;
+        Gaze?.Stop();
         DropAttentionFrame();
         DropLatest();
         attention = lookAttention = null;
@@ -2182,6 +2191,7 @@ public partial class LiveConversationWindow : ThemedWindow
         attentionWatcher.Stop();
         Task.Run(glancer.Release).Forget();
         Task.Run(video.Release).Forget();
+        Gaze?.Stop();
         closed = true;
         generation++;
         timer.Stop();

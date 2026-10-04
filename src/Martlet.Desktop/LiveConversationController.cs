@@ -169,6 +169,9 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal AttentionSignal? Attention { get; init; }
     /// <summary>The glance ended in silence: the model answered [pass].</summary>
     internal bool Passed { get; set; }
+    /// <summary>The glance offered the Thinking model the look tags that turn the character's eyes (Martlet decides where the
+    /// character looks).</summary>
+    internal bool LookOffered { get; set; }
     private double voiceLevel = -100;
     internal double VoiceLevel { get => Volatile.Read(ref voiceLevel); set => Volatile.Write(ref voiceLevel, value); }
     internal bool HandsFree => Listening?.HandsFree == true;
@@ -942,9 +945,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>One unprompted screen glance: the image, the window title and recent context go to the Thinking model,
     /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
-    /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look.</summary>
+    /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look. With
+    /// <paramref name="look"/> (Martlet decides where the character looks) the model may also start its answer with a look tag
+    /// that turns the character's eyes to part of the picture.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, Chattiness chattiness, bool voice,
-        bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null)
+        bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
+        bool look = false)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -969,7 +975,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             {
                 await published.Task.ConfigureAwait(false);
                 authorization.BindWorker(token);
-                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, token).ConfigureAwait(false);
+                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, look && !camera, token).ConfigureAwait(false);
             });
             if (worker is null)
             {
@@ -1002,7 +1008,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
-        Chattiness chattiness, bool camera, CancellationToken worker)
+        Chattiness chattiness, bool camera, bool look, CancellationToken worker)
     {
         YieldBackground();
         try
@@ -1023,7 +1029,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var history = context.Snapshot(sent: true);
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera, configured.Prompts),
-                    LiveConversationConfiguration.SilentReply, characterActions: characterActions);
+                    LiveConversationConfiguration.SilentReply, characterActions: characterActions,
+                    gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null);
+                operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
