@@ -86,7 +86,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveJobCancel-",
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer") only show that place's card; its own
         // Use buttons commit (and need --allow-ui-effects).
-        "DeepPlace-"];
+        "DeepPlace-",
+        // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
+        "PeopleMemories-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -119,8 +121,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
         // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
         // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
-        // forgotten on other computers (never a fact).
-        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus",
+        // forgotten on other computers (never a fact). MemoryFactStatus (the Memory window): how many facts it remembers, how
+        // many belong to people Martlet knows by voice or to forgotten voices, how many the Show choice lists, and what the
+        // last action did (never a fact or a name).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
         // (conversations, exchanges, since when); the history window's status line (counts, or what a search found). Never what
         // was said: the window's list and text (HistoryConversations, HistoryExchanges) are not readable values.

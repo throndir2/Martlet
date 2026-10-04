@@ -605,7 +605,10 @@ cache are untouched.
   the participation policy's confidence) and, for any engine that gives them,
   whisper's no-speech and average log probabilities. And always how much of
   the utterance was a voice: the loud 20 ms frames the speakers don't explain
-  (`LiveConversationOperation.Voiced`). Measured on this PC: Parakeet's
+  (`LiveConversationOperation.Voiced`), and how long that voice went on, from
+  its onset to the silence after it with short pauses included and the frames
+  the speakers explain left out (`LiveConversationOperation.Speech`;
+  `BargeInGate.Speech` for a quick check). Measured on this PC: Parakeet's
   "Yeah." for a cough had a mean of 0.67-0.70 but a lowest token of
   0.20-0.32, a Windows voice saying it 0.79 and 0.51; whisper.cpp's "Yeah."
   for two coughs had a word probability of 0.07. A paired host's whisper and
@@ -613,8 +616,12 @@ cache are untouched.
   probabilities) took about 65 ms longer per utterance on this PC (190 against
   255 ms), so Martlet doesn't ask for it, and there the voice decides (a phrase
   speech-to-text makes up needs 400 ms of voice on Normal).
-- **Too many words for the voice.** More than about seven words per second of
-  voice plus one ("I think the second one is better." from 250 ms of voice).
+- **Too many words for the speech.** More than about seven words per second of
+  speech plus one ("I think the second one is better." from 300 ms of
+  speech). It counts how long the voice went on, not only its loudest frames:
+  fluent speech is often under half that loud, so "I'm gonna make it public."
+  (460 ms of loud voice in about a second of speech, Parakeet sure of every
+  word) was once dropped as *5 words from 460 ms of voice*.
 - **Unsure and lone words.** A short utterance the engine was unsure of, a
   lone word that says nothing on its own ("the", "so", "you"), or a lone word
   shorter than 200 ms of voice. Short answers and commands ("yes", "no",
@@ -629,7 +636,7 @@ cache are untouched.
 - **What you see.** An ignored utterance shows as a faded note in the talk
   window, *Ignored "Mmm" (not words).*, several in a row sharing one note, and
   the desktop log records *Always listening ignored what it heard: reason
-  (kind, voice, evidence, word check)*, never the words. What the PC plays
+  (kind, voice in speech, evidence, word check)*, never the words. What the PC plays
   that isn't words is simply let go.
 - **Martlet stays quiet.** What passes the filter but isn't meant for Martlet
   (people talking in the room, a muttered word) still goes to the Thinking

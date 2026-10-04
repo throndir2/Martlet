@@ -399,6 +399,19 @@ of those each computer wrote) and `forgotten` (the tombstones every computer
 agreed on). It reads only `memory-sync.json` (IDs, revisions, digests and device
 IDs), never a fact, and contacts nothing.
 
+`memory_status` reads what Martlet remembers and [whose](MEMORY.md#whose-memories)
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the disposable one in `Invoke-MartletMcp.ps1`): `memory` (`on`, `off`,
+`on (default)` for settings from before memory, `not set up`), `storage`
+(`Martlet folder` or `custom folder`), `state` (`none` without a store file,
+`loaded` or `unreadable`), `voiceList` (`voices.json`: `none`, `loaded` or
+`unreadable`), `facts`, `typed`, `fromConversation`, `expiring` and `whose`:
+`everyone` (facts not tied to a voice), `voices` (each voice facts belong to,
+by its tag such as `V3`, with `named`, `owner` and `facts`) and
+`forgottenVoices`. It reads the store's file as JSON without opening or
+locking the store (the desktop can keep running), and never returns a fact's
+text, a name, a voice ID or a path. It contacts nothing.
+
 `conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
 from a data directory (optional absolute `dataDirectory`; the disposable one in
 `Invoke-MartletMcp.ps1`): `memory` (`on`, `off` or `not chosen`), `preferences`
@@ -436,7 +449,9 @@ paired client (`HostMemories.cs`) and the real sync engine
 (`Martlet.Core.Sync.MemorySyncNode`) wired as the desktop wires them. Its steps:
 A remembers a typed and a conversation fact and both hosts keep them; B takes
 them (same IDs, revisions and provenance) and recalls the cat fact; B edits it
-and A takes revision 2; A forgets a fact and every computer forgets it for good;
+and A takes revision 2; A remembers a fact that belongs to a voice, B takes it
+as that voice's and makes it everyone's, and A takes that (a fact with no voice
+has no `voice_id` field); A forgets a fact and every computer forgets it for good;
 offline edits on A and B of different facts (both kept) and of the same fact
 (the later edit wins); a host that was down while A remembered a fact gets it
 after restarting; a new computer with a fact of its own takes everything and
@@ -1070,7 +1085,11 @@ readable values. `HistoryDeleteConversation` and `HistoryDeleteAll` ask first
 *Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
 response styles at zero, or *Choose your model file: an existing .vrm or
 .model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
-character's state (*Character is showing. ...*, *Character hidden.*). Their
+character's state (*Character is showing. ...*, *Character hidden.*). Memory's
+`MemoryFactStatus` reads how many facts it remembers, how many belong to how
+many people Martlet knows by voice and how many to forgotten voices, how many
+its *Show* choice (`MemoryPersonFilter`) lists (*Showing N.*) and what the last
+action did, never a fact or a name. Their
 fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
 the *Where the voice pauses* check boxes `CompanionBreakCommas`,
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
@@ -1079,8 +1098,11 @@ the *Where the voice pauses* check boxes `CompanionBreakCommas`,
 `CompanionPersona`, which also makes the chosen persona the one Martlet uses,
 `CompanionNew`, `CompanionDuplicate`, `CompanionDelete`, `CharacterChoice`,
 `AvatarModelPath`, `LipSyncChoice`, `AutoShowCharacter`, the lorebook fields,
-`MemoryEnable`) save, and `ShowCharacter`/`StopAvatar` show or hide the
-character, so they need `--allow-ui-effects`. Typing a persona name or text and
+`MemoryEnable` and Memory's fact fields: `MemoryFactContent`, `MemoryPerson`
+(*Belongs to*), `MemoryRetention`, `MemorySaveFact`, `MemoryEditFact`) save, and
+choosing in `MemoryPersonFilter` (it only filters the list) still goes through
+`ui_select`, so these need `--allow-ui-effects`; `ShowCharacter`/`StopAvatar` show or hide the
+character, so they need `--allow-ui-effects` too. Typing a persona name or text and
 closing at once still saves it; closing with a change that can't be saved asks
 with `ConfirmationYes` (close and drop it) or `ConfirmationNo` (stay). With the
 character showing, choosing another model or lip-sync mode switches it right
@@ -1160,13 +1182,16 @@ sentence at a time, the way OpenRouter streams; a fixture Martlet host voice (a
 quiet tone, NOT AI) fails on the `failAt`-th piece (1-4, default 1) it is asked
 to say, as `voiceFailure`: `server` (default; the host's voice worker failed,
 `worker.failed`), `unavailable` (it is reloading, `worker.unavailable`),
-`stall` (no audio until the voice's time runs out, shortened to a few seconds)
+`stall` (no audio until the voice's time runs out, shortened to a few seconds),
+`slow` (every piece slower than real time: half of its audio, a 1.5 s pause,
+then the rest, as Chatterbox streams on a busy host's graphics card)
 or `none`; a fixture speaker opens no device and plays nothing. It returns
 `reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
 turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
 `piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
-`mayHavePlayed`) and `captions`, what the speech bubble and subtitles were
+`mayHavePlayed`, and `pauses` and `pausedMs`: how often and how long the
+speakers ran dry mid-piece waiting for the voice's next audio) and `captions`, what the speech bubble and subtitles were
 given (`complete`, `shown`, `spoken`, `unsaid` and each line's `text`, `atMs`
 and `spoken`): a line as each piece starts playing and, after the voice
 failed, every sentence it couldn't say, one after another for its reading
@@ -1180,7 +1205,13 @@ is streamed a word at a time instead, like a model's tokens, and spoken with
 speech breaks chosen like `voice_tags`' (`dataDirectory`'s `persona`, else the
 one Martlet uses, else the defaults; `breaks` on top); `voice.pieces` lists
 exactly what the voice was asked to say, in order, with `voice.persona` and
-`voice.breaks`. Use `voiceFailure` `none` to hear every piece. It reads no
+`voice.breaks`. Use `voiceFailure` `none` to hear every piece. With `slow`,
+`ok` needs every piece spoken whole, nothing stopped, and the reply latency
+line saying *The voice paused N times for X ms in all, waiting for its next
+audio.* with at least one pause per piece of about the gap each. Before the
+playback fix, a pause that long ended the voice after 1 s
+(`PlaybackFailed`, `StreamTruncated`): a paired host making speech slower than
+real time cut each reply short. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
@@ -1234,7 +1265,10 @@ to the total: *end of speech*, *recording*, *Voice ID*, *speech-to-text*,
 *voice authorization*, *voice synthesis*, *playback start* and *speakers*
 (steps that didn't happen are left out). It goes on with the time to the first
 words and audio from the reply's start, the number of spoken pieces, how much
-speech the first piece held and how long it took to make, and the model IDs
+speech the first piece held and how long it took to make, when the speakers ran
+dry mid-reply waiting for a voice made slower than real time how often and how
+long (*The voice paused 2 times for 3120 ms in all, waiting for its next
+audio.*; left out below 100 ms), and the model IDs
 (`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
 is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
 
@@ -1245,9 +1279,11 @@ user's) for the newest `replies` (1-500, default 20) and returns `measured`
 audio from the reply's start), `firstAudio` (from the moment that counts for
 you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
 Median, P90, Min, Max}` in ms), `steps` (the same for every step),
-`slowestSteps` (the five with the largest median) and `newest` (each reply's
+`slowestSteps` (the five with the largest median), `voicePauses` (`replies`
+whose voice paused, `pauses` in all and `pausedMs` statistics) and `newest` (each reply's
 `at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
-`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `models`,
+`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
+`voicePausedMs`, `models`,
 `interrupted`, `legacy`). It only reads the log: no audio, network or provider
 request.
 
@@ -1436,13 +1472,15 @@ or `sensitive` to override the saved choice, `audio` default true, absolute
 and absolute `martletDirectory` for the sherpa-onnx runtime, which the script
 fills with this checkout's Desktop build). It runs the production
 `UtteranceFilter` and `BargeInPolicy` on `samples` (up to 64 of `text` with
-optional `voicedMs`, `meanProbability`, `minimumProbability`,
+optional `voicedMs`, `speechMs` (how long the voice went on; `voicedMs` when
+absent), `meanProbability`, `minimumProbability`,
 `noSpeechProbability`, `averageLogProbability`, `engine`, `afterQuestion`,
 `persona`, `playback` `reply` or `song`, and `expectKeep`/`expectInterrupt`),
 by default a fixed set with the outcome Normal must give (fillers, laughter,
 sound tags, "Thank you." from noise or said clearly, subtitle credits, lone
-words, short answers, stop words, backchannels, too many words for the voice,
-a whisper loop, Martlet's name, a song that only stops when asked, and the
+words, short answers, stop words, backchannels, too many words for the speech,
+"I'm gonna make it public." with little loud voice in a second of speech, a
+whisper loop, Martlet's name, a song that only stops when asked, and the
 "Yeah." Parakeet and whisper.cpp wrote for coughs on this PC with their
 measured evidence; another sensitivity only reports what it makes of them).
 Each sample returns `keep`, `kind`, `Reason`, `Words`, `shown` (the talk
@@ -1456,14 +1494,18 @@ Parakeet downloaded, `audio` runs fixtures through the real local
 speech-to-text path (`ParakeetEngine`, the desktop's model): "Stop!", "Wait,
 hold on a second.", "Can you tell me more about that?", "Yes." (after a
 question), "Yeah.", "Mmmmmm.", "Hmm." and "Ha ha ha ha!" said by a Windows
-voice (System.Speech, rendered to memory, never played), plus a hum, two
+voice (System.Speech, rendered to memory, never played), "I'm gonna make it
+public." said quietly over a fan's hum (`quiet-room`: only about half of it is
+as loud as a voice must be to start), plus a hum, two
 coughs, a breath, typing, music and noise, each after 0.3 s and before 1 s of
 faint noise. Per fixture: `voicedMs` (loud frames by the production
-voice-activity detector), Parakeet's `transcript`, `evidence` and
+voice-activity detector) and `speechMs` (from its onset to the silence after
+it), Parakeet's `transcript`, `evidence` and
 `transcribeMs`, the filter's verdict, and `bargeIn`: the production
 `BargeInGate` fed 20 ms at a time as if Martlet were speaking, each quick check
 transcribing the stretch so far (no other check starts while one runs, as in
-the listener) with its `quick` transcripts, probabilities and milliseconds,
+the listener) with its `quick` transcripts, probabilities, voice and speech
+(`VoicedMs`, `SpeechMs`) and milliseconds,
 `interrupted`, `reason` and `afterMs` (from the start of the voice to the
 decision). `stopDelayMs` summarizes the fixtures that stopped Martlet. `ok`
 needs every expectation met: words kept, non-words and noise dropped, stop
@@ -1588,7 +1630,10 @@ its field loses focus, on Enter or two seconds after typing stops, then syncs);
 like `PeopleRecognize` (ticked by default; a shared setting),
 `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). On Devices, `Node-<id>`
+switch of its own: the list follows `ClusterSync`). Each voice's
+`PeopleMemories-3` (*What Martlet remembers about them*) only opens Memory
+showing that voice's facts, so it is a passive click; read `MemoryFactStatus`
+there (*Showing N.*) or `memory_status` for whose facts are. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `Node-pc:<device ID>` for another Martlet computer that runs no host service,
 `Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
@@ -2568,7 +2613,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

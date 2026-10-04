@@ -527,19 +527,56 @@ public sealed class PlaybackTests
         var run = sink.Start(request);
         run.Submit(Frame(request, samples: 10));
         await Until(() => run.Snapshot.State == PlaybackState.Underrun);
-        time.Advance(TimeSpan.FromMilliseconds(900));
+        // A voice slower than real time keeps its pause: several seconds without audio is still a pause, not the end.
+        time.Advance(TimeSpan.FromSeconds(9));
         Assert.False(run.Completion.IsCompleted);
         run.Submit(Frame(request, 1, 10, 10));
         await Until(() => run.Snapshot.DeviceConsumedSamples == 20 && run.Snapshot.State == PlaybackState.Underrun);
-        time.Advance(TimeSpan.FromSeconds(1));
+        time.Advance(TimeSpan.FromSeconds(10));
         var result = await End(run);
         Assert.Equal(PlaybackState.Failed, result.State);
         Assert.Equal(ErrorCode.StreamTruncated, result.Error!.Code);
         Assert.Equal(20, result.SubmittedSamples);
+        Assert.Equal(2, result.Underruns);
+        Assert.InRange(result.UnderrunTime, TimeSpan.FromSeconds(19), TimeSpan.FromSeconds(20));
         var kinds = new List<PlaybackEventKind>();
         while (run.Events.TryRead(out var item)) kinds.Add(item.Kind);
         Assert.Contains(PlaybackEventKind.Resumed, kinds);
         Assert.Equal(2, kinds.Count(k => k == PlaybackEventKind.Underrun));
+    }
+
+    [Fact]
+    public async Task VoiceSlowerThanRealTimePausesBetweenBurstsAndPlaysEverySample()
+    {
+        var time = new ManualTime();
+        var device = new ControlledDevice();
+        await using var sink = new PcmPlaybackSink(device, new() { Prebuffer = TimeSpan.Zero }, time);
+        var request = Request(time: time);
+        var run = sink.Start(request);
+        // Bursts of audio with longer gaps between them than the audio lasts, like a busy self-hosted engine streaming.
+        for (var burst = 0; burst < 3; burst++)
+        {
+            run.Submit(Frame(request, burst, burst * 2_400L, 2_400));
+            await Until(() => run.Snapshot.DeviceConsumedSamples == (burst + 1) * 2_400L && run.Snapshot.State == PlaybackState.Underrun);
+            time.Advance(TimeSpan.FromSeconds(3));
+            Assert.False(run.Completion.IsCompleted);
+        }
+        run.CompleteInput(7_200);
+        var result = await End(run);
+        Assert.Equal(PlaybackState.Completed, result.State);
+        Assert.Null(result.Error);
+        Assert.Equal(7_200, result.DeviceConsumedSamples);
+        Assert.Equal(3, result.Underruns);
+        Assert.InRange(result.UnderrunTime, TimeSpan.FromSeconds(9), TimeSpan.FromSeconds(10));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(21)]
+    public void UnderrunRecoveryIsBounded(int seconds)
+    {
+        var device = new ControlledDevice();
+        Assert.ThrowsAny<Exception>(() => new PcmPlaybackSink(device, new() { UnderrunTimeout = TimeSpan.FromSeconds(seconds) }));
     }
 
     [Theory]

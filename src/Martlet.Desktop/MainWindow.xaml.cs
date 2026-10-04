@@ -308,11 +308,14 @@ public partial class MainWindow : ThemedWindow
         if (!closing && openTab == CompanionTab.Lorebook) RenderTab();
     }
 
-    private async void Memory_Click(object sender, RoutedEventArgs e)
+    private async void Memory_Click(object sender, RoutedEventArgs e) => await OpenMemoryAsync();
+
+    /// <summary>Opens Memory, showing the facts of <paramref name="person"/> (a voice ID, from People) when given.</summary>
+    private async Task OpenMemoryAsync(string? person = null)
     {
         if (memory is null || closing || saving || model?.IsRunning == true) return;
         memoryWindowOpen = true;
-        try { new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog(); }
+        try { new MemoryWindow(memory, setupOperations, voices: () => localVoices.Roster, person: person) { Owner = this }.ShowDialog(); }
         finally { memoryWindowOpen = false; }
         QueueMemorySync();
         await RefreshAsync();

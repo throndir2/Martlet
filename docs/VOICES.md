@@ -36,8 +36,13 @@ are recognized and learned only from the microphone, never from
     isn't shared;
   - tick **This is my voice**;
   - **Merge** it into another entry that is the same person (the names,
-    voiceprints and counts combine; it can't be split again);
-  - **Forget this voice** (its voiceprint and names are deleted).
+    voiceprints and counts combine, and so do the facts Memory keeps for them;
+    it can't be split again);
+  - **What Martlet remembers about them** opens Memory showing that voice's
+    facts ([Whose memories](MEMORY.md#whose-memories));
+  - **Forget this voice** (its voiceprint and names are deleted; what Martlet
+    remembers about them stays in Memory under *Forgotten voices* until you
+    delete it).
   When two voices go by the same name, the page suggests merging them.
   **Forget all voices** clears the list.
 
@@ -71,7 +76,10 @@ on), while speech-to-text runs:
    whether it is you or heard for the first time) and anyone else heard. The
    block is noted only when who is talking changed since the last one in the
    conversation sent, and holds until the next. What Memory reads starts with
-   `[name]`, so remembered facts know who said what. The talk window labels
+   `[name]`, so remembered facts know who said what: a fact remembered from
+   the message belongs to the speaker (or to another voice heard that it is
+   about), recall puts the speaker's facts first, and each recalled fact says
+   whose it is ([Whose memories](MEMORY.md#whose-memories)). The talk window labels
    the message with the speaker's name.
 4. **Learning names.** After a completed reply, if a voice in it has no name
    yet, or the words suggest a name came up ("my name is", "call me",
