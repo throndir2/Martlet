@@ -176,13 +176,13 @@ CRLF and arbitrary delta splits are handled. A failed stream never flushes
 its unfinished fragment.
 
 `ConversationRequest.SpeechBreaks` (the persona's; the desktop always passes
-one, `SpeechBreaks.Default` included) chooses which of those stops end a
-piece: periods, question marks, exclamation marks and the first piece's
-comma, semicolon or dash can each be turned off. Null keeps every sentence
+one, `SpeechBreaks.Default` included) chooses which sentence ends end a
+piece: periods, question marks and exclamation marks can each be turned off.
+Commas, semicolons and dashes never end a piece. Null keeps every sentence
 end and joins nothing, so each sentence is staged as soon as it ends. A stop
 that is off never ends a piece until the piece is 100 characters long; then
-any of them does, so a piece stays short enough for the voice. A spoken piece
-of at most `ShortEndingWords` words (", cutie.") joins the piece before it:
+any sentence end does, so a piece stays short enough for the voice. A spoken piece
+of at most `ShortEndingWords` words (". Cutie!") joins the piece before it:
 each spoken piece is held until more words than that follow it, a newline
 arrives, the reply finishes or a suppressed or cue-only piece comes next. The
 joined piece keeps both pieces' cues and never exceeds the TTS byte bound.
@@ -336,6 +336,21 @@ release; it does not free buffers/credentials underneath outstanding work.
 The task can therefore outlive the bounded disposal call. Process termination
 is outside this local cleanup contract. Upstream request abort does not prove
 compute cancellation, deletion or avoided charges.
+
+## Record of conversations
+
+`ConversationHistory` keeps every finished exchange the desktop hands it as
+one JSON line per exchange in month files (`history-2026-10.jsonl`), appended
+and flushed one at a time, with a crash-cut line skipped on reading, and a
+BM25 index in memory that it builds once (`LoadAsync`) for `Search` and
+`Between`. Only `DeleteAsync`/`DeleteAllAsync` rewrite or remove files.
+`PastConversations` decides when a message refers to an earlier conversation
+(`RefersToPast`, English phrasing), reads times such as *yesterday* or *3 days
+ago* in the user's days (`Window`), picks the exchanges to bring back
+(`Recall`), words the notes block (`Notes`) and the opt-in
+`search_conversations` tool (`Definition`, `Parse`, `Find`, `Result`). Neither
+has a logger, provider or network path. See
+[Memory › Conversation history](../../docs/MEMORY.md#conversation-history).
 
 ## Offline evidence and remaining gates
 

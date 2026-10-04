@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace Martlet.Memory;
 
@@ -27,6 +28,7 @@ public static class MemoryLimits
     public const int MaximumFacts = 512;
     public const int MaximumContentCharacters = 4096;
     public const int MaximumContentUtf8Bytes = 8192;
+    public const int MaximumVoiceIdCharacters = 64;
     public const int MaximumQueryCharacters = 256;
     public const int MaximumQueryUtf8Bytes = 512;
     public const int MaximumQueryTerms = 24;
@@ -119,6 +121,11 @@ public sealed record MemoryFact
     public required MemoryProvenance CreatedFrom { get; init; }
     public required MemoryProvenance LastModifiedBy { get; init; }
     public required MemoryRetention Retention { get; init; }
+    /// <summary>The person this fact belongs to (who said it, or who it is about): the ID of a voice in Martlet's voice list, or
+    /// null for a fact about no one in particular. Martlet.Memory only checks its form; a fact without one is written exactly
+    /// as before voices existed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? VoiceId { get; init; }
 
     internal void ValidatePersisted()
     {
@@ -126,6 +133,7 @@ public sealed record MemoryFact
         MemoryGuard.Require(Id != Guid.Empty && Revision is > 0 and <= MemoryLimits.MaximumRevision,
             MemoryFailure.CorruptStore);
         ValidateContent(Content);
+        ValidateVoiceId(VoiceId);
         MemoryGuard.Utc(CreatedAtUtc);
         MemoryGuard.Utc(UpdatedAtUtc);
         MemoryGuard.Require(UpdatedAtUtc >= CreatedAtUtc);
@@ -155,6 +163,11 @@ public sealed record MemoryFact
         }
     }
 
+    /// <summary>Null, or 1-64 ASCII letters, digits, '-' or '_' (a voice list ID).</summary>
+    internal static void ValidateVoiceId(string? voiceId) =>
+        MemoryGuard.Require(voiceId is null || voiceId.Length is > 0 and <= MemoryLimits.MaximumVoiceIdCharacters &&
+            voiceId.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_'));
+
     public override string ToString() =>
         $"MemoryFact {{ Id = {Id}, Revision = {Revision}, Content = [redacted], CreatedAtUtc = {CreatedAtUtc:O}, UpdatedAtUtc = {UpdatedAtUtc:O} }}";
 }
@@ -164,6 +177,8 @@ public sealed record SaveFactRequest
     public required string Content { get; init; }
     public required MemoryProvenance Provenance { get; init; }
     public required MemoryRetention Retention { get; init; }
+    /// <summary>Whose fact it is (<see cref="MemoryFact.VoiceId"/>); null for no one in particular.</summary>
+    public string? VoiceId { get; init; }
 
     public override string ToString() => "Explicit memory fact save request (content omitted)";
 }
@@ -175,6 +190,9 @@ public sealed record EditFactRequest
     public required string Content { get; init; }
     public required MemoryProvenance Provenance { get; init; }
     public required MemoryRetention Retention { get; init; }
+    /// <summary>Whose fact it is after the edit (<see cref="MemoryFact.VoiceId"/>); null for no one in particular. Required, so an
+    /// edit never drops who a fact belongs to by accident: pass the fact's own to keep it.</summary>
+    public required string? VoiceId { get; init; }
 
     public override string ToString() =>
         $"Explicit memory fact edit request {{ Id = {Id}, ExpectedRevision = {ExpectedRevision}, Content = [redacted] }}";

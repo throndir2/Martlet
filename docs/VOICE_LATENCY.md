@@ -50,7 +50,7 @@ after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of sp
 | Thinking authorization, connection | Per-request permission; then until the provider's response headers (network, TLS, queueing) |
 | Thinking before reasoning, hidden reasoning | A reasoning model's thinking before its first word (shown only when the provider streams it) |
 | Thinking first words | Until the first word when no reasoning was streamed |
-| first sentence | Until the first piece the voice can say (a clause of 24+ characters or a sentence) |
+| first sentence | Until the first piece the voice can say (a sentence; commas, semicolons and dashes never end a piece) |
 | voice authorization, voice synthesis | Per-piece permission; then until the voice's first audio arrives |
 | playback start, speakers | Handing audio to the speakers until Windows plays it |
 
@@ -59,6 +59,17 @@ sending them. MCP's `latency_report` summarizes the newest lines (median and
 90th percentile of the total and of every step, the slowest steps, the models);
 see [MCP](MCP.md#latency). The Chatterbox service also logs, per reply, how
 much speech it made and how long it took (never the words).
+
+A voice made slower than real time (Chatterbox streams in growing chunks, and a
+busy or smaller graphics card can take longer to make each chunk than it lasts)
+leaves the speakers waiting mid-sentence. The voice then pauses until the next
+audio arrives, for up to 10 s, instead of being cut short (it used to stop after
+1 s with `PlaybackFailed, audio StreamTruncated`, dropping the rest of the reply),
+and the line ends with *The voice paused 2 times for 3120 ms in all, waiting
+for its next audio.* A Martlet host's own log (Diagnostics, *Host gateway*)
+says, for each reply it spoke, how much speech it made, when its first audio
+left and whether that was slower than real time. Pauses don't change the time
+to the first audio.
 
 ## Where the time goes today
 
@@ -218,24 +229,44 @@ than elsewhere, and the watermark detected on every streamed piece checked.
 
 **2026-10-03, DIVA (RTX 4070 12 GB, i7-10700K)**, with `scripts/voice-bench`
 ([how to run it](../scripts/voice-bench/README.md)). The Chatterbox Turbo,
-whisper.cpp and Audio2Face host roles were resident (about 7.4 GB of the card
-idle). Clips: 73 LibriSpeech utterances (accuracy) and 16 short companion
-prompts spoken by Chatterbox in the starter voices (about 3 s each). Numbers are
-this PC's, not qualification.
+whisper.cpp and Audio2Face host roles were resident. The whole-turn and messy
+audio numbers were re-measured at 21:25-22:05 with the graphics card otherwise
+quiet (other GPU jobs paused); the first comparison ran beside a live session
+and stalled (see below). Clips: 73 LibriSpeech utterances (accuracy), 16 short
+companion prompts spoken by Chatterbox in the starter voices (about 3 s each),
+those prompts degraded to a desk microphone, and 32 real spontaneous turns
+each from the AMI Meeting Corpus' headset and room microphones (CC BY 4.0).
+Numbers are this PC's, not qualification.
 
-**Answer.** The fastest flow that keeps a cloned voice with sighs and laughs
-is **Gemma 4 E2B hearing the recording itself, streaming into Chatterbox
-Turbo**: about **760 ms** from the end of the recording to the first audio
-(median, 16 turns), against 954 ms for the cascade (Parakeet, then text). Add
-the end-of-speech pause (800 ms today) for the time after you stop:
-1.56 s against 1.75 s. The omni flow saves the speech-to-text step but hears
-less exactly than Parakeet (5-7% word errors against 2.3%), and Martlet still
-needs a transcript for history, memory and voice ID. So the shape to build is
-omni for the reply, with Parakeet transcribing **in parallel**, off the
-critical path. A cascade with Parakeet 110M (86 ms on short turns) is close
-behind on stage times, about 790 ms (estimated from stage medians, not run
-end to end). The 800 ms pause is now the largest single wait; a turn detector
-at 300 ms would put the omni flow near 1.06 s after you stop.
+**Answer.** Two flows tie for the fastest time to first audio, both with the
+cloned voice and its sighs and laughs:
+
+| Option (all into Chatterbox Turbo, streaming) | Clean prompts | p90 | Desk mic | AMI headset | AMI room | Transcript errors (desk mic / AMI headset / room) |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Cascade: Parakeet TDT 110M (CPU) → Gemma 4 E2B (Ollama)** | **734** | **838** | 788 | 760 | 688 | 11% / 17% / 43% |
+| **Omni: Gemma 4 E2B (Ollama) hears the recording** | 810 | 1,083 | **750** | **730** | 698 | (no transcript; 9-36% when asked to transcribe) |
+| Cascade: faster-whisper large-v3-turbo (GPU) → Gemma 4 E2B | 806 | 890 | | | | 1% / 14% / 28% |
+| Cascade: Gemma 4 E2B Q8 on llama.cpp, Parakeet 110M | 821 | 988 | | | | |
+| Omni: Gemma 4 E2B Q8 on llama.cpp | 850 | 923 | | | | |
+| Cascade: Parakeet TDT 0.6B v2 (CPU) → Gemma 4 E2B | 846 | 928 | | | | 1% / 9% / 20% |
+| Omni: Gemma 4 E4B Q4 on llama.cpp (smarter) | 894 | 1,002 | | | | |
+| Cascade: Parakeet v3 (Martlet today) → Gemma 4 E2B | 931 | 1,527 | 1,048 | | | 11% / 8% / 29% |
+| Hearing: Parakeet v3, then the transcript and recording | 1,039 | 1,572 | 841 (110M) | | | |
+| Cascade: Gemma 4 E4B Q4 on llama.cpp, Parakeet 110M | 946 | 1,018 | | | | |
+
+Milliseconds from the end of the recording to the first audio, medians of 32
+turns (16 on AMI); add the end-of-speech pause (800 ms today) for the time
+after you stop: 734 ms is 1.53 s. On clean, close speech the Parakeet 110M
+cascade is about 75 ms faster than omni. On messier audio omni is as fast or
+faster, because transcribing gets slower with padding and noise, and its
+reply doesn't depend on a transcript: Parakeet 110M mis-hears 11-43% of the
+words there, and the cascade answers those words. So the shape to build is
+**omni for the reply**, with an accurate transcriber running **in parallel**
+off the critical path for history, memory and voice ID (Parakeet 0.6B v2 or
+whisper.cpp: about 1% on the desk-mic set), and a cascade with Parakeet 110M
+for Thinking models that can't hear. A smarter model (E4B, 12B) costs
+100-200 ms. The 800 ms pause is now the largest single wait; a turn detector
+at 300 ms would bring both fastest flows to about 1.03-1.11 s after you stop.
 
 **Speech-to-text** (median ms per utterance after a warm-up; word error rate
 with Whisper's normalizer):
@@ -262,6 +293,25 @@ voice and Thinking need (see below). Parakeet on the processor costs no
 graphics memory, and on 3 s turns it is within 100 ms. Moonshine v2 (2026-02)
 fails in sherpa-onnx 1.13.8.
 
+**Messier audio** (word error rate %, and median ms per turn):
+
+| Engine | Desk mic (16 generated prompts, reverb, 10-20 dB SNR, padded) | AMI headset (32 real turns, 12 speakers) | AMI room microphone (32 real turns) |
+| --- | --- | --- | --- |
+| Parakeet v3 (CPU, Martlet today) | 10.7 (330 ms) | 8.3 (329) | 28.6 (260) |
+| Parakeet 0.6B v2 (CPU) | **1.2** (340) | 8.6 (278) | **20.3** (242) |
+| Parakeet 110M (CPU) | 11.2 (**110**) | 14.2 (**91**) | 28.3 (**90**) |
+| faster-whisper distil-large-v3 (GPU) | 6.5 (144) | 13.8 (143) | 22.8 (142) |
+| faster-whisper large-v3-turbo (GPU) | 1.2 (155) | 13.8 (155) | 27.8 (155) |
+| whisper.cpp large-v3-turbo (host role) | **0.6** (219) | 13.3 (224) | 27.2 (220) |
+| Gemma 4 E2B hearing, asked to transcribe (Ollama) | 9.5 (196) | 15.2 (184) | 36.3 (188) |
+| Gemma 4 E4B hearing, asked to transcribe (llama.cpp) | 8.3 (281) | 12.6 (290) | 34.6 (279) |
+
+Real meeting speech (fillers, false starts) is harder than any generated set,
+and a distant room microphone is hard for everything. Parakeet v3 and 110M
+lose the most to noise and reverb; Parakeet v2 and the Whisper engines hold
+up. Gemma 4 hears roughly as well as the small engines, which is what matters
+for an omni reply.
+
 **Thinking and models that hear** (median ms to the first piece the voice can
 say, Thinking steps Off; *text* is the transcript, *audio* only the
 recording, *both* is Martlet's *Let Thinking hear my voice*; hearing is the
@@ -278,37 +328,55 @@ word error rate when asked to transcribe):
 | Qwen2.5-Omni 7B (llama.cpp) | 182 | 1,302 | 1,291 | 53.2 (mishears) | Fair |
 | Qwen2-Audio 7B (llama.cpp) | 692 | 6,347 | 6,637 | | Describes the audio instead of answering |
 | Qwen3-Omni 30B-A3B (llama.cpp) | 610 | 4,628 | 4,464 | | Good, but prefixes "Assistant:"; doesn't fit, experts in system memory |
-| Phi-4-multimodal 5.6B (PyTorch 4-bit, 2 turns) | 5,543 | 6,697 | 8,075 | | Good, too slow here |
-| MiniCPM-o 2.6 8B (PyTorch 4-bit) | NOT RUN | | | | Installed; not run because the card was busy |
+| Phi-4-multimodal 5.6B (PyTorch 4-bit) | 7,037 | 8,777 | 7,977 | | Good, far too slow here (16 turns) |
+| MiniCPM-o 2.6 8B (PyTorch 4-bit) | 12,955 | 16,188 | 16,152 | | Good, in character, but leaks its `<\|tts_eos\|>` token; far too slow here |
 
 Hearing the audio adds 55-95 ms of prefill to Gemma 4 against text, less
-than the speech-to-text it replaces. llama.cpp is as fast as Ollama, or
-faster, for the same Gemma model. Every model writes its own reply; none of
-them speaks in a cloned voice, so the voice stays Chatterbox.
+than the speech-to-text it replaces (on the desk-mic set too: E2B's first
+piece 140 ms from text, 219 ms from the recording). llama.cpp is as fast as
+Ollama, or faster, for the same Gemma model. Phi-4-multimodal and MiniCPM-o
+run through PyTorch with 4-bit bitsandbytes weights (no GGUF of either takes
+audio in llama.cpp), which is far slower than llama.cpp or Ollama would be;
+their numbers show they don't fit this PC today, not how fast the models
+are. Every model writes its own reply; none of them speaks in a cloned voice,
+so the voice stays Chatterbox.
 
 **Voice** (Chatterbox Turbo host role on the 4070, streaming, starter voice
 *Annie*, three runs): first audio 437-485 ms for sentences, including
 `[sigh]` and `[laugh]` (real-time factor 0.43-0.63), and 800 ms for a
 two-word piece.
 
-**Whole turn** (Gemma 4 E2B on Ollama, Chatterbox role, 16 turns, medians):
+**Whole turn** (Gemma 4 E2B on Ollama, Chatterbox role, medians in ms). First
+beside a live session using the same card (16 turns), then again with the
+card quiet (32 turns):
 
-| Flow | Speech-to-text | First piece | Voice first audio | First audio | After you stop (+800 ms) |
-| --- | --- | --- | --- | --- | --- |
-| Cascade (Parakeet v3, CPU) | 248 | 163 | 538 | 954 | 1,754 |
-| Hearing (transcript and recording) | 255 | 252 | 549 | 1,083 | 1,883 |
-| **Omni (recording only)** | | 222 | 542 | **762** | **1,562** |
-| Cascade (faster-whisper large-v3-turbo, GPU) | 180 | 203 | 2,973 | 3,409 | 4,209 |
+| Flow | Speech-to-text | First piece | Voice first audio | First audio | p90 | After you stop (+800 ms) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Cascade (Parakeet v3), busy card | 248 | 163 | 538 | 954 | 34,270 | 1,754 |
+| Omni, busy card | | 222 | 542 | 762 | 39,072 | 1,562 |
+| Cascade (faster-whisper large-v3-turbo), busy card | 180 | 203 | 2,973 | 3,409 | 12,803 | 4,209 |
+| Cascade (Parakeet v3), quiet card | 242 | 169 | 514 | 931 | 1,527 | 1,731 |
+| Hearing (transcript and recording), quiet | 268 | 227 | 539 | 1,039 | 1,572 | 1,839 |
+| **Omni, quiet** | | 241 | 572 | **810** | **1,083** | **1,610** |
+| **Cascade (Parakeet 110M), quiet** | 74 | 152 | 501 | **734** | **838** | **1,534** |
+| Cascade (Parakeet 0.6B v2), quiet | 208 | 139 | 495 | 846 | 928 | 1,646 |
+| Cascade (faster-whisper large-v3-turbo), quiet | 149 | 138 | 512 | 806 | 890 | 1,606 |
 
-**The graphics card is the bottleneck on this PC.** The 90th percentiles
-include 32-52 s stalls in the first turns, and the GPU speech-to-text run
-slowed the voice five-fold. Gemma, Chatterbox, whisper.cpp, Audio2Face and the
-desktop together exceed 12 GB, and Windows pages memory instead of failing.
-During the runs a live Martlet session was also using the same roles, which
-kept the card at 100% even after the benchmarks stopped. On a card shared with
-the voice: keep speech-to-text on the processor (Parakeet), remove the
-whisper.cpp role from a host whose desktop uses Parakeet (about 2 GB back),
-and choose E2B (3.3 GB) over E4B.
+On llama.cpp, Gemma 4 E2B Q8 measured 821 ms (cascade, Parakeet 110M) and
+850 ms (omni); E4B Q4 946 and 894 ms. The model's own first piece is the same
+in both runtimes; llama.cpp's voice started about 100 ms later beside it.
+Thinking model memory with the baseline taken before it loads: Gemma 4 E2B
+3.3 GB in Ollama, 3.5 GB (Q8) in llama.cpp, E4B Q4 4.1 GB.
+
+**The graphics card is the bottleneck on this PC.** Beside a live session (and
+later other GPU experiments) the 90th percentiles reached 12-52 s, and GPU
+speech-to-text slowed the voice five-fold: Gemma, Chatterbox, whisper.cpp,
+Audio2Face and the desktop together exceed 12 GB, and Windows pages memory
+instead of failing. On a quiet card every flow's p90 stays under 1.6 s and
+GPU speech-to-text is as fast as Parakeet. On a card shared with the voice:
+keep speech-to-text on the processor (Parakeet), remove the whisper.cpp role
+from a host whose desktop uses Parakeet (about 2 GB back), and choose E2B
+(3.3 GB) over E4B.
 
 **For Martlet.** Ollama 0.35 takes `input_audio` for Gemma 4 E2B, E4B and 12B
 (a 12B request transcribed and answered a test clip). Martlet now lets Ollama
@@ -319,12 +387,17 @@ the first step toward the omni flow. The Qwen, Voxtral,
 Phi-4 and MiniCPM-o models are in the bench only: Martlet's local selector
 runs Ollama, which serves none of them, and none beat Gemma 4 E2B here.
 
-**NOT RUN:** a cloud Thinking model (OpenRouter `x-ai/grok-4.3`, the current
-route: no key in this environment; the bench takes one with `--allow-cloud`),
-MiniCPM-o 2.6 and the full Phi-4-multimodal set (the card was busy with a live
-session), the Parakeet 110M cascade end to end, real microphone recordings
-(`vb clips record`), and the RTX 5080 on IMOUTO. No one listened to the replies
-in the comparison; the voice audio is saved with each run for that.
+**NOT RUN:**
+- **A cloud Thinking model** (OpenRouter `x-ai/grok-4.3`, the current route):
+  no key is set up for the bench. Run
+  `$env:OPENROUTER_API_KEY = '<key>'; vb relay start; vb pipeline --think openrouter:x-ai/grok-4.3 --stt parakeet-110m-en --modes cascade --clips prompts-voice --allow-cloud`.
+  It can't use omni: OpenRouter lists its inputs as text, image and file.
+- **The RTX 5080 on IMOUTO**: the developer's validation hosts list only
+  Docker on this PC, so it isn't reachable from here.
+- **The owner's own microphone** (`vb clips record`): the AMI and desk-mic
+  sets stand in for it.
+- **Listening:** no one listened to the replies; the voice audio is saved with
+  each run for that.
 
 ## How others get fast
 
@@ -368,9 +441,9 @@ Research summary (sources checked 2026-10-03; vendor claims marked):
 | Stage | Before | Now | Floor with this pipeline | How |
 | --- | --- | --- | --- | --- |
 | End of speech | 800 ms | 800 ms (500 ms setting) | 200-300 ms | Smart Turn v3 with a shorter pause |
-| Speech-to-text | not logged | logged | 50-150 ms | Parakeet int8 on a short utterance; streaming STT overlaps it with speaking |
+| Speech-to-text | not logged | logged | 0-150 ms | Parakeet 110M (about 90 ms) on a short utterance, or none: a Thinking model that hears takes the recording |
 | Desktop prep | about 115 ms | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
-| Thinking to first clause | 3-8 s | provider's time to first words with Thinking steps Off | 150-400 ms | A fast provider or a small local model on the other PC's GPU; preemptive start |
+| Thinking to first sentence | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
 | Voice to first audio | 1.2-4.2 s | 0.35-0.4 s | 0.25-0.3 s | Done: CUDA graph and streaming; a GPU the character doesn't share |
 | Playback | 30-50 ms | 30-50 ms | 30 ms | |
 | **Total** | **5.5-10 s** | **about 1.5-2.5 s** (estimate) | **about 0.7-1.2 s** | |
@@ -397,10 +470,19 @@ backchannel at once would make most of the rest feel instant.
 4. **Start Thinking early.** Send the transcript at a short pause and keep the
    reply if nothing else is said (the restart already exists).
 5. **A faster Thinking route.** A non-reasoning or fast model, OpenRouter
-   provider sorting by latency, or a 7-8B model on DIVA's GPU (no internet
-   round trip). Keep the voice on the GPU that isn't rendering the character.
-6. **Mask the rest** with a cached backchannel in the cloned voice.
-7. Small desktop wins: wake the talk window when a transcript arrives
+   provider sorting by latency, or a small model on this PC or DIVA's GPU (no
+   internet round trip): Gemma 4 E2B in Ollama gives its first speakable piece
+   in about 150 ms from text and 220-240 ms from a recording (see
+   [Local options measured](#local-options-measured-voicebench)). Keep the
+   voice on the GPU that isn't rendering the character.
+6. **Omni for the reply, a transcript in parallel.** With a Thinking model that
+   hears (Gemma 4 in Ollama on this PC; Martlet now detects it), send the
+   recording and skip speech-to-text on the critical path; transcribe in
+   parallel for history and memory. For a model that can't hear, a smaller
+   transcriber (Parakeet 110M, about 90 ms) saves 150-250 ms over Parakeet v3,
+   at the cost of more mistakes on noisy audio.
+7. **Mask the rest** with a cached backchannel in the cloned voice.
+8. Small desktop wins: wake the talk window when a transcript arrives
    instead of on its 100 ms tick; keep provider connections warm (pooled
    connections idle out after a minute, so a pause costs a new TLS handshake,
    visible as *Thinking connection*).

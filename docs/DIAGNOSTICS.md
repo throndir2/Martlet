@@ -24,7 +24,12 @@ nothing.
 **Every computer keeps its own logs.** The desktop's local files are unchanged
 (rotated at 2 MiB, never uploaded by themselves). Each Martlet host's gateway
 now also keeps a bounded log of its own activity (start and stop, devices
-paired, each finished model request with route, device and duration, each
+paired, each finished model request with route, device and duration (for a
+voice reply also how much speech it made, when its first audio left and, when
+the speech after that took longer to make than to play, that it was made slower
+than real time and how long the desktop's speakers waited for it at least, so a
+host too busy to keep up with its voice shows on every PC's Diagnostics page),
+each
 refused or failed request with its stable code, HTTP status and trace ID, and,
 for a voice engine (Chatterbox, F5-TTS, XTTS-v2, GPT-SoVITS, Dia), why its
 service failed or refused the reply: its error code, stage and summary (for

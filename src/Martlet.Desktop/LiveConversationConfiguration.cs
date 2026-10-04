@@ -17,6 +17,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved microphone and speakers, or the Windows defaults when none were saved in Audio setup.</summary>
     internal AudioSettings Audio { get; }
     internal PersonaProfile? Persona { get; }
+    /// <summary>The names the companion itself goes by (Martlet and every persona's), never learned as a voice's name. Worked
+    /// out on first use, off the reply's path.</summary>
+    internal Martlet.Core.Speakers.CompanionNames CompanionNames => companionNames.Value;
+    private readonly Lazy<Martlet.Core.Speakers.CompanionNames> companionNames;
     internal MemorySettings? Memory { get; }
     /// <summary>The saved reply generation settings (Companion > Replies); null keeps every model default.</summary>
     internal GenerationSettings? Generation { get; }
@@ -117,6 +121,8 @@ internal sealed class LiveConversationConfiguration
         Routes = Array.AsReadOnly(settings.Setup!.Routes.ToArray());
         Audio = settings.Audio ?? WindowsDefaultAudio;
         Persona = settings.Companion?.ActivePersona;
+        var personas = settings.Companion?.Personas;
+        companionNames = new(() => Martlet.Core.Speakers.CompanionNames.From(personas?.Select(p => p.Name), personas?.Select(p => p.Text)));
         Memory = settings.Memory;
         Generation = settings.Generation;
         Prompts = settings.Prompts;
@@ -401,7 +407,8 @@ internal sealed class LiveConversationConfiguration
             ? "No companion persona is included until you save current settings."
             : "The selected persona, matching lorebooks and recent conversation may be included.");
         lines.Add(Memory is { Enabled: true }
-            ? "Memory may add saved facts and save new ones on this PC. You can edit or delete them in Memory."
+            ? "Memory may add saved facts and save new ones on this PC, and keeps a record of conversations unless you turn that " +
+              "off. You can edit or delete them in Memory."
             : "Memory is off.");
         lines.Add("Provider requests may use quota or cost money, even if stopped.");
         lines.Add("Stop, Esc, locking Windows or closing this window stops the current action.");
@@ -440,6 +447,7 @@ internal sealed class LiveConversationConfiguration
             tools?.Guidance, voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, closingInstructions);
         if (oneStyle) styleNote = null;
         var facts = memory?.Facts ?? [];
+        var people = memory?.People;
         var hits = lore?.Included ?? [];
         // Lorebook entries keep their budget like SillyTavern's World Info: the oldest exchanges go first, then recalled facts
         // (least relevant first); only when nothing else is left do the lowest-priority lore entries go.
@@ -452,7 +460,7 @@ internal sealed class LiveConversationConfiguration
             {
                 var recalled = facts.Take(memoryCount).ToArray();
                 // The window is found with every note (none yet in the conversation); dropping repeats only makes it smaller.
-                if (Prompt(input, instructions, Notes([], entries, recalled, voices, messageNotes, styleNote), [], image, tools, audio) is not { } bare ||
+                if (Prompt(input, instructions, Notes([], entries, recalled, voices, messageNotes, styleNote, people), [], image, tools, audio) is not { } bare ||
                     BoundedTextInput.HistoryStart(bare, history, TextLimits.MaxInputBytes, TextInputTokens, TextLimits.MaxInputTokens,
                         TextLimits.MaxHistoryMessages) is not { } first)
                     continue;
@@ -460,7 +468,7 @@ internal sealed class LiveConversationConfiguration
                 for (var start = BoundedTextInput.CacheFriendlyStart(first, history.Count); start <= history.Count; start += 2)
                 {
                     var sent = history.Skip(start).ToArray();
-                    var notes = Notes(sent, entries, recalled, voices, messageNotes, styleNote);
+                    var notes = Notes(sent, entries, recalled, voices, messageNotes, styleNote, people);
                     if (Prompt(input, instructions, notes, sent, image, tools, audio) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
@@ -500,15 +508,17 @@ internal sealed class LiveConversationConfiguration
     /// out, and so are the voices and the style when the latest ones there are the same: notes on earlier messages still hold.
     /// <paramref name="message"/> (such as a smart home result) is about this message only, so it is always noted.</summary>
     private string? Notes(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
-        string? voices, string? message, string? style)
+        string? voices, string? message, string? style, IReadOnlyDictionary<string, string>? people = null)
     {
         var earlier = string.Join("\n", sent.Where(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
             .Select(m => m.Text));
         bool Noted(string text) => earlier.Length > 0 && earlier.Contains(Clean(text), StringComparison.Ordinal);
         var newLore = lore.Where(hit => !Noted(LorebookPromptContext.Text(hit))).ToArray();
-        var newFacts = facts.Where(fact => !Noted(MemoryPromptContext.Line(fact))).ToArray();
+        var newFacts = facts.Where(fact => !Noted(MemoryPromptContext.Line(fact, people))).ToArray();
+        // What the names on facts mean is said once while the conversation sent still carries it.
+        var whoseSaid = PromptSettings.Fill(Prompts, PromptCatalog.MemoryPeople) is { } whose && Noted(whose);
         var (before, after) = newLore.Length == 0 ? (null, null) : LorebookPromptContext.Blocks(newLore, Prompts);
-        var body = Join(before, after, newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts),
+        var body = Join(before, after, newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts, people, !whoseSaid),
             voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices,
             message, style is not null && LatestStyle(earlier) == Clean(style) ? null : style);
         if (body is null) return null;

@@ -140,15 +140,23 @@ class MiniCpmO:
 
     def __init__(self, bits: int) -> None:
         import torch
+        from unittest import mock
+
         from transformers import AutoModel, AutoTokenizer
+        from transformers.dynamic_module_utils import get_imports
+
+        def without_flash_attn(filename: str) -> list[str]:
+            # Its remote code lists flash_attn, which has no Windows wheel; the model runs with sdpa attention instead.
+            return [name for name in get_imports(filename) if name != "flash_attn"]
 
         repo = REPOS["minicpm-o-2.6"]
         self.torch = torch
-        self.tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
-        self.model = AutoModel.from_pretrained(repo, trust_remote_code=True, attn_implementation="sdpa", torch_dtype=torch.bfloat16,
-                                               init_vision=True, init_audio=True, init_tts=False, device_map="cuda",
-                                               quantization_config=quantization(bits, ["vpm", "apm", "resampler", "audio_projection_layer",
-                                                                                       "lm_head"])).eval()
+        with mock.patch("transformers.dynamic_module_utils.get_imports", without_flash_attn):
+            self.tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
+            self.model = AutoModel.from_pretrained(repo, trust_remote_code=True, attn_implementation="sdpa", torch_dtype=torch.bfloat16,
+                                                   init_vision=True, init_audio=True, init_tts=False, device_map="cuda",
+                                                   quantization_config=quantization(bits, ["vpm", "apm", "resampler", "audio_projection_layer",
+                                                                                           "lm_head"])).eval()
 
     def stream(self, system: str, turns: list[tuple[str, list[Any]]], max_tokens: int, temperature: float) -> Iterator[str]:
         msgs = ([{"role": "system", "content": [system]}] if system else []) + [{"role": role, "content": parts} for role, parts in turns]

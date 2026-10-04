@@ -57,7 +57,11 @@ clearance.
   `generate(text, audio_prompt_path=...)` recomputed for every sentence, about
   140 ms each) are computed once per recording (by its SHA-256, the last two
   kept); loading also warms up the conditioning code, the decoder and the CUDA
-  graph, which the first reply after a start used to pay (about 7 s); and T3's
+  graph, which the first reply after a start used to pay (about 7 s), and
+  (image `martlet-chatterbox:5`) the Perth watermarker, which runs on the CPU
+  and took 824 ms on its first call and about 20 ms after (measured in the
+  service's container), so the first reply after each start no longer waits
+  most of a second for its first audio; and T3's
   token-by-token decoding replays one captured CUDA graph per token over a
   static KV cache (2,048 tokens, `MARTLET_CHATTERBOX_GRAPH_TOKENS`) with the
   library's own sampling, instead of launching hundreds of small kernels per
@@ -83,7 +87,16 @@ clearance.
   cache, a machine without CUDA or a capture failure is spoken whole with the
   library's own decoding; `MARTLET_CHATTERBOX_FAST=0` turns the graph (and so
   streaming) off. Each reply logs how much speech it made, how long it took
-  and when its first audio left (`docker logs`), never its text. See
+  and when its first audio left (`docker logs`), never its text; the host's
+  gateway log (Diagnostics, *Host gateway*, readable from every PC) says the
+  same for each reply and whether it was made slower than real time. A host
+  slower than real time (a smaller or busy graphics card, for example one that
+  also runs Audio2Face lip-sync) makes the next chunk after the speakers have
+  played the last, so the desktop's voice pauses until it arrives (up to 10 s)
+  rather than being cut short. A stopped reply (talked over, replaced, or its
+  desktop gone) is checked for at every speech token, so the model is free for
+  the next reply at once instead of after the rest of its chunk (seconds on a
+  busy card, which the next reply was refused for with `worker.busy`). See
   [Voice latency](VOICE_LATENCY.md).
 - **Gateway** relay `Martlet.Gateway.F5.ChatterboxRelay` serves it on its own
   route `martlet.gateway.chatterbox-synthesis.v1`
@@ -138,7 +151,8 @@ image before it failed there with "no kernel image is available", and every
 reply also failed because the worker user could not create its private
 `requests` folder; image `martlet-chatterbox:2` fixes both, and updating a host
 that already has the role rebuilds it. Images `martlet-chatterbox:3` and `:4`
-add the speed-ups and streaming above; updating a host rebuilds it the same way.
+add the speed-ups and streaming above, and `:5` the watermarker warm-up and
+per-token cancellation; updating a host rebuilds it the same way.
 
 **NOT RUN:** voice likeness and how the tags sound (nobody listened; streamed
 speech was compared with whole-piece decodes by measurement only), VRAM, and

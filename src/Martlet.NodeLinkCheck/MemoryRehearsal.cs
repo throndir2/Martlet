@@ -91,6 +91,23 @@ internal static class MemoryRehearsal
                     $"A took {result.Taken}; revision {fact.Revision}; content updated: {fact.Content == CatOlder}");
             });
 
+            await Run("Whose memories: A remembers a fact that belongs to Sam's voice; B takes it as Sam's, makes it everyone's and A takes that; a fact with no voice is written exactly as before voices", async () =>
+            {
+                const string sam = "5a3f0c9e8b7d4e21a6c3b2f1d0e9a8b7";
+                var id = (await a.SaveAsync("Sam is allergic to peanuts.", typed: false, voiceId: sam)).Id;
+                await a.SyncAsync(hosts, token);
+                await b.SyncAsync(hosts, token);
+                var onB = (await b.FactsAsync()).Single(f => f.Id == id);
+                await b.EditAsync(id, onB.Content, voiceId: "");
+                await b.SyncAsync(hosts, token);
+                var result = await a.SyncAsync(hosts, token);
+                var onA = (await a.FactsAsync()).Single(f => f.Id == id);
+                var plain = !MemoryFactJson.Write((await a.FactsAsync()).Single(f => f.Id == catId)).Contains("voice_id", StringComparison.Ordinal);
+                return (onB.VoiceId == sam && result.Taken == 1 && onA is { Revision: 2, VoiceId: null } && plain,
+                    $"B took it as Sam's: {onB.VoiceId == sam}; A took B's change: {result.Taken} (revision {onA.Revision}, everyone's: {onA.VoiceId is null}); " +
+                    $"a fact with no voice has no voice_id field: {plain}");
+            });
+
             await Run("A forgets the tea fact: every computer forgets it, and it never comes back from a computer that had it", async () =>
             {
                 await a.DeleteAsync(teaId);
@@ -300,24 +317,27 @@ internal static class MemoryRehearsal
             return await action(store);
         }
 
-        internal Task<MemoryFact> SaveAsync(string content, bool typed, TimeSpan? expiresIn = null) => WithStoreAsync(async store =>
+        internal Task<MemoryFact> SaveAsync(string content, bool typed, TimeSpan? expiresIn = null, string? voiceId = null) => WithStoreAsync(async store =>
         {
             var now = DateTimeOffset.UtcNow;
             return (await store.SaveAsync(new()
             {
                 Content = content,
                 Provenance = typed ? MemoryProvenance.UserEntry(Guid.NewGuid(), now) : MemoryProvenance.Conversation(Guid.NewGuid(), now),
-                Retention = expiresIn is { } after ? MemoryRetention.ExpiringAt(now + after) : MemoryRetention.UntilDeleted()
+                Retention = expiresIn is { } after ? MemoryRetention.ExpiringAt(now + after) : MemoryRetention.UntilDeleted(),
+                VoiceId = voiceId
             })).Fact;
         });
 
-        internal Task<MemoryFact> EditAsync(Guid id, string content) => WithStoreAsync(async store =>
+        /// <summary>Edits a fact's words, keeping whose it is unless <paramref name="voiceId"/> gives another ("" for no one).</summary>
+        internal Task<MemoryFact> EditAsync(Guid id, string content, string? voiceId = null) => WithStoreAsync(async store =>
         {
             var fact = (await store.InspectAsync()).Facts.Single(f => f.Id == id);
             return (await store.EditAsync(new()
             {
                 Id = id, ExpectedRevision = fact.Revision, Content = content,
-                Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), DateTimeOffset.UtcNow), Retention = fact.Retention
+                Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), DateTimeOffset.UtcNow), Retention = fact.Retention,
+                VoiceId = voiceId is null ? fact.VoiceId : voiceId.Length == 0 ? null : voiceId
             })).Fact;
         });
 
