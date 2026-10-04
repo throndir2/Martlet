@@ -128,6 +128,10 @@ internal static class StraightVoiceCheck
 
         // A model that refuses the recording: the reply waits for the words and asks again with them (never the stand-in).
         var refusal = await RefusalAsync(clips[0], listener, cancellation);
+        // The quick check of something short that went straight (the desktop drops the reply if it isn't words before it plays).
+        var quick = await Task.Run(() => QuickChecks(listener), cancellation);
+        // With Thinking on this PC: does Parakeet running beside the request slow the model's first words?
+        var contention = live ? await ContentionAsync(runtime, permissions, Request, straightInstructions, listener, cancellation) : null;
 
         var straightFirst = straight.Select(turn => turn.Terminal.FirstTextAfter?.TotalMilliseconds).OfType<double>().ToArray();
         var straightOk = straight.All(turn => turn.Terminal.State == ConversationState.Completed && turn.Sent is
@@ -137,7 +141,7 @@ internal static class StraightVoiceCheck
             nextBody is { HistoryAudio: 0, HistoryHasStandIn: false } && nextTerminal.State == ConversationState.Completed &&
             // Each straight turn's request carried the earlier turns' words, never their recordings.
             straight.Skip(1).All(turn => turn.Sent is { HistoryAudio: 0, HistoryHasStandIn: false });
-        var ok = straightOk && historyOk && refusal.Ok;
+        var ok = straightOk && historyOk && refusal.Ok && quick.Ok;
         return new
         {
             ok,
@@ -179,8 +183,108 @@ internal static class StraightVoiceCheck
                 note = "Milliseconds from the end of the recording (the request start for straight; speech-to-text start for transcribe " +
                     "first) to the model's first words. The desktop log's Reply latency line adds the end-of-speech pause and the voice."
             },
-            refusal = refusal.Report
+            refusal = refusal.Report,
+            quickCheck = quick.Report,
+            contention
         };
+    }
+
+    private const int Rounds = 8;
+
+    /// <summary>The same short straight request ("Yes, please." said by a Windows voice), alternating: alone; with Parakeet
+    /// started at the request's start; with Parakeet started once the model's first words arrive (what the desktop does). The
+    /// model's first words and the reply's end (milliseconds from the request's start), medians of each.</summary>
+    private static async Task<object?> ContentionAsync(ConversationRuntime runtime, IConversationAuthorizationSource permissions,
+        Func<BoundedTextInput, Func<CancellationToken, Task<string?>>?, ConversationRequest> request, string instructions, Listener listener,
+        CancellationToken cancellation)
+    {
+        var pcm = UtteranceFilterCheck.Synthesize("speech:Yes, please.");
+        var samples = UtteranceFilterCheck.ToFloats(pcm, 0, pcm.Length);
+        if (listener.Quick(samples) is null) return new { ran = false, reason = "Parakeet isn't downloaded on this PC" };
+        var clip = BoundedWaveAudio.FromPcm(new PcmFormat { SampleRate = Rate, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian }, pcm);
+        string[] modes = ["alone", "atRequestStart", "atFirstWords"];
+        var first = modes.ToDictionary(m => m, _ => new List<double>());
+        var done = modes.ToDictionary(m => m, _ => new List<double>());
+        var checkedAt = modes.ToDictionary(m => m, _ => new List<double>());
+        for (var round = 0; round < 6; round++)
+            foreach (var mode in modes)
+            {
+                var input = new BoundedTextInput(SpokenWords.StandIn, instructions, audio: clip);
+                var clock = Stopwatch.StartNew();
+                var turn = runtime.Start(request(input, null), permissions, cancellation);
+                Task<double>? check = null;
+                if (mode == "atRequestStart") check = Task.Run(() => { listener.Quick(samples); return clock.Elapsed.TotalMilliseconds; });
+                else if (mode == "atFirstWords")
+                    check = Task.Run(async () =>
+                    {
+                        while (turn.Snapshot.FirstTextAfter is null && !turn.Completion.IsCompleted) await Task.Delay(5);
+                        listener.Quick(samples);
+                        return clock.Elapsed.TotalMilliseconds;
+                    });
+                var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
+                var end = clock.Elapsed.TotalMilliseconds;
+                if (check is not null) checkedAt[mode].Add(await check);
+                if (terminal.FirstTextAfter is { } words) first[mode].Add(words.TotalMilliseconds);
+                done[mode].Add(end);
+            }
+        return new
+        {
+            ran = true, rounds = Rounds, clip = "Yes, please. (Windows voice)",
+            firstWordsMedianMs = modes.ToDictionary(m => m, m => Median([.. first[m]])),
+            replyEndMedianMs = modes.ToDictionary(m => m, m => Median([.. done[m]])),
+            quickCheckDoneMedianMs = modes.Skip(1).ToDictionary(m => m, m => Median([.. checkedAt[m]])),
+            firstWordsMs = modes.ToDictionary(m => m, m => first[m].Select(v => Math.Round(v)).ToArray())
+        };
+    }
+
+    private sealed record Quick(bool Ok, object Report);
+
+    // The quick check (the desktop's CheckWordsBesideAsync) on fixtures: what the production voice-activity detector measures as
+    // voice (under QuickVoice gets the check), what Parakeet hears and whether the production word check counts it as words.
+    private static readonly TimeSpan QuickVoice = TimeSpan.FromSeconds(1);
+    private static readonly (string Name, string Kind, bool Words)[] QuickFixtures =
+    [
+        ("mmm (hum)", "hum", false), ("cough", "cough", false), ("Mmm. (Windows voice)", "speech:Mmm.", false),
+        ("Yes, please.", "speech:Yes, please.", true), ("Stop.", "speech:Stop.", true)
+    ];
+
+    private static Quick QuickChecks(Listener listener)
+    {
+        var results = new List<object>();
+        var ok = true;
+        var ran = false;
+        foreach (var (name, kind, words) in QuickFixtures)
+        {
+            var pcm = UtteranceFilterCheck.Synthesize(kind);
+            var (voiced, speech, _, _) = UtteranceFilterCheck.Voice(pcm);
+            var checkedQuickly = voiced < QuickVoice;
+            var heard = listener.Quick(UtteranceFilterCheck.ToFloats(pcm, 0, pcm.Length));
+            if (heard is null)
+            {
+                results.Add(new { fixture = name, voicedMs = (int)voiced.TotalMilliseconds, quickCheck = checkedQuickly, ran = false });
+                continue;
+            }
+            ran = true;
+            var decision = UtteranceFilter.Check(heard.Value.Text, new UtteranceContext { Voiced = voiced, Speech = speech, Evidence = heard.Value.Evidence },
+                ListeningSensitivity.Normal);
+            var dropped = checkedQuickly && !decision.Keep;
+            // Not words must be dropped; real words must never be.
+            var right = words ? !dropped : dropped || !checkedQuickly;
+            ok &= right;
+            results.Add(new
+            {
+                fixture = name, voicedMs = (int)voiced.TotalMilliseconds, quickCheck = checkedQuickly, transcript = heard.Value.Text,
+                words = decision.Keep, reason = decision.Keep ? null : decision.Reason, parakeetMs = Math.Round(heard.Value.Ms),
+                replyDropped = dropped, expectWords = words, ok = right
+            });
+        }
+        return new(ok, new
+        {
+            ok, ran, belowVoiceMs = QuickVoice.TotalMilliseconds,
+            note = "The desktop runs this check beside the reply's request for what went straight to Thinking with less voice than " +
+                "belowVoiceMs, and drops the reply if it isn't words before its first audio.",
+            fixtures = results
+        });
     }
 
     private sealed record Turn(int Index, ConversationSnapshot Terminal, Sent? Sent, SpokenWords Words, string Reply, TimeSpan Waited);
@@ -315,6 +419,16 @@ internal static class StraightVoiceCheck
             var context = new UtteranceContext { Speech = clip.Clip.Duration, Voiced = clip.Clip.Duration };
             words.Heard(text, null, UtteranceFilter.Check(text, context, ListeningSensitivity.Normal) is { Keep: false } ignored ? ignored : null,
                 took.Elapsed);
+        }
+
+        /// <summary>Parakeet's words and evidence for 16 kHz samples, and how long it took; null without Parakeet.</summary>
+        internal (string Text, TranscriptionEvidence Evidence, double Ms)? Quick(float[] samples)
+        {
+            if (engine is null) return null;
+            var took = Stopwatch.StartNew();
+            Martlet.Sherpa.ParakeetTranscript heard;
+            lock (engine) heard = engine.Transcribe(samples);
+            return (heard.Text, UtteranceFilterCheck.Evidence(heard), took.Elapsed.TotalMilliseconds);
         }
 
         public void Dispose() => engine?.Dispose();

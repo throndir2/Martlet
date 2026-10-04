@@ -1317,17 +1317,24 @@ route's, the production decision `HearingModelCatalog.ForRoute`: only Chat
 Completions endpoints take audio, Ollama on this PC included, then what
 `model-abilities.json` says about the model, then its name; null with
 `modelId`), `savedAbility` (what Martlet found out about the saved model:
-`Hears`, `Sees`, `Source` and `CheckedAt`, or null), `hearVoice` (the saved
-choice, off by default), `voicePath` (Companion › Listening › **When Thinking
+`Hears`, `Sees`, `Source` and `CheckedAt`, or null), `hearVoice` (whether
+Thinking hears your recording as replies decide it: your choice, or, never
+chosen, on only while the recording stays on this PC), `hearVoiceChoice` (`on`,
+`off` or `unset`; a `false` saved before talk-preferences version 4 counts as
+`unset`), `staysOnThisPc` (the saved route is a Chat Completions server on this
+PC's loopback with a model that isn't a `:cloud` or `-cloud` tag), `hearVoiceWhy`
+(in words), `voicePath` (Companion › Listening › **When Thinking
 can hear you**: `straight`, the default, or `transcribeFirst`),
 `straightApplies` (always listening sends the recording alone right away: the
 choice is on, straight and the route hears) and `lastTurn`: which way the newest
 spoken reply's message went, from the desktop log (`path` `straight` or
 `transcribeFirst` and its *Voice path* `line`; for a straight one
 `transcriptReadyAfterReplyStartMs` and `speechToTextMs` from the *Background
-transcript ready* line, and `wordsLine`, the *Straight to Thinking:* line saying
+transcript ready* line, `wordsLine`, the *Straight to Thinking:* line saying
 where the words went: the conversation, its record, remembering; never the
-words), or null before one. Its `fixture`
+words, and `notWords`: `dropped` when the quick check of something short found
+it wasn't words and the reply was dropped before it played, `tooLate` when the
+reply had begun, with its `notWordsLine`), or null before one. Its `fixture`
 rehearses the production Chat Completions adapter against a canned endpoint
 on 127.0.0.1 (NOT AI) with a 1.5 s synthesized speech-like clip (never
 microphone audio, nothing played): `withRecording` (outcome, the user
@@ -1338,8 +1345,11 @@ recording) and `transcriptOnly` (the retry without the recording sends a plain
 text message); `ok` is true when all three hold. It reads no credentials and
 nothing leaves loopback. On the Listening page `TalkHearVoiceStatus` reads
 whether the saved Thinking model hears and where the recording goes, or what to
-change; the `TalkHearVoice` check box saves the choice, so it needs
-`--allow-ui-effects`. While Thinking hears and the choice is on, the page shows
+change, and `TalkHearVoiceChoice` which applies: *On: you turned it on.*, *Off:
+you turned it off...*, *On: your voice stays on this PC...* or *Off until you
+tick it: your recording would leave this PC for ...*. The `TalkHearVoice` check
+box shows the effective value; ticking or unticking it saves your choice, so it
+needs `--allow-ui-effects`. While Thinking hears and the choice is on, the page shows
 **When Thinking can hear you**: the radio buttons `TalkVoicePathStraight` and
 `TalkVoicePathTranscribeFirst` (`ui_snapshot`'s `selected`; choosing one saves
 `talk-preferences.json`, so it needs `--allow-ui-effects`) and
@@ -1368,7 +1378,18 @@ utterances the other way (speech-to-text, then the transcript and recording) and
 `compare` gives both medians from the end of the recording to the first words.
 `refusal` uses a fixture endpoint that refuses any recording: the reply waits
 for the words and asks again with them (`retry.text` is the transcript,
-`retry.audio` false, `audioRejected` true). Speech-to-text is Parakeet on this
+`retry.audio` false, `audioRejected` true). `quickCheck` runs the quick check of
+something short (the desktop's, beside the request of what went straight with
+less than `belowVoiceMs` of voice) on fixtures (a hum, coughs, *Mmm.*, *Yes,
+please.*, *Stop.*): per fixture the voice the production detector measured
+(`voicedMs`, `quickCheck` when it is short enough), Parakeet's `transcript` and
+`parakeetMs`, whether the production word check counts it as `words`, and
+`replyDropped`; `ok` needs every short non-word dropped and no real words ever
+dropped. With `live: true`, `contention` sends the same short straight request
+(*Yes, please.*, new after the instructions each time) in rounds: alone, with
+Parakeet started at the request's start (what the desktop does) and with it
+started at the model's first words, giving the median first words, reply end and
+when the check finished. Speech-to-text is Parakeet on this
 PC when it is downloaded (`speechDirectory`, default the current user's; the
 sherpa runtime from `martletDirectory`, which the script fills in with this
 checkout's Desktop build), else a fixture transcriber. With `live: true`
@@ -1377,7 +1398,8 @@ say hears) through a loopback relay that records each request and sends it on as
 the desktop does (Thinking steps Off, usage with the prompt cache); otherwise a
 fixture endpoint answers (canned replies, NOT AI). `ok` needs every straight
 request to carry the recording and only the stand-in, the history to carry the
-transcripts and no recordings, and the refusal to be answered from the words.
+transcripts and no recordings, the refusal to be answered from the words and the
+quick check to be right on every fixture.
 Nothing leaves this PC and no credentials are read.
 
 `model_ability_check` shows what Thinking models were found to hear (recorded

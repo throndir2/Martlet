@@ -731,8 +731,27 @@ internal sealed class LiveConversationConfiguration
         "When this is on and the Thinking model can hear, the recording of what you say (up to " +
         $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
         "straight away on its own or with the transcript (When Thinking can hear you), so it hears your tone as well as your " +
-        "words. Speech-to-text still runs for every message. Recordings are never saved, added to Memory or sent to the Thinking " +
+        "words. With Thinking on this PC (Ollama or another server here, not a cloud model) it is on unless you turn it off, " +
+        "since the recording never leaves this PC; anywhere else it stays off until you tick it. Speech-to-text still runs for " +
+        "every message. Recordings are never saved, added to Memory or sent to the Thinking " +
         "fallback, which gets the transcript. Audio may use more quota or cost more than text.";
+
+    /// <summary>Which applies to Let Thinking hear my voice (Companion › Listening): your own choice, or, never chosen, on because
+    /// the recording stays on this PC or off until you tick it because it would leave it.</summary>
+    internal static string HearVoiceChoice(bool? choice, SetupRoute? thinking) => choice switch
+    {
+        true => "On: you turned it on.",
+        false => "Off: you turned it off, so Thinking gets only the transcript.",
+        _ when HearingModelCatalog.StaysOnThisPc(thinking?.RouteType, thinking?.Origin, thinking?.ModelId) =>
+            "On: your voice stays on this PC (Thinking runs here), so Thinking hears it unless you turn this off.",
+        _ when thinking is null => "Off until you tick it.",
+        _ => $"Off until you tick it: your recording would leave this PC for {LlmDestinationName(thinking)}."
+    };
+
+    /// <summary>A recording sent to the Thinking route stays on this PC (<see cref="HearingModelCatalog.StaysOnThisPc"/>): only
+    /// then may Thinking hear the user's voice without their tick.</summary>
+    internal bool RecordingStaysOnThisPc() => Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { } thinking &&
+        HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);
 
     internal string ScreenDisclosure(ChattinessChoice chattiness, WatchSource source) =>
         ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +

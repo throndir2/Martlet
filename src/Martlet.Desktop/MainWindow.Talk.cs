@@ -224,22 +224,27 @@ public partial class MainWindow
 
     // ---------- Listening: let Thinking hear your voice ----------
 
-    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said with the
-    /// transcript. Off by default; ticking it is the consent, and the text under it says what is sent and where.</summary>
+    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said. Your own choice
+    /// always wins; never chosen, it is on only while the recording stays on this PC (Thinking on this PC's Ollama or another
+    /// local server, not a cloud model), and anywhere else ticking it is the consent. The text under it says which applies, what
+    /// is sent and where.</summary>
     private Border HearVoiceCard()
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
         var hears = LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
-        var hear = new CheckBox { Content = "Let Thinking hear my voice", IsChecked = Talk.HearVoice, Margin = new Thickness(0, 0, 0, 6),
-            IsEnabled = Talk.HearVoice || hears };
+        var on = Talk.HearVoiceFor(thinking).On;
+        var hear = new CheckBox { Content = "Let Thinking hear my voice", IsChecked = on, Margin = new Thickness(0, 0, 0, 6),
+            IsEnabled = on || hears };
         AutomationProperties.SetAutomationId(hear, "TalkHearVoice");
-        hear.Checked += (_, _) => { if (!Talk.HearVoice) SaveTalk(Talk with { HearVoice = true }, render: true); };
-        hear.Unchecked += (_, _) => { if (Talk.HearVoice) SaveTalk(Talk with { HearVoice = false }, render: true); };
+        hear.Checked += (_, _) => { if (Talk.HearVoice != true) SaveTalk(Talk with { HearVoice = true }, render: true); };
+        hear.Unchecked += (_, _) => { if (Talk.HearVoice != false) SaveTalk(Talk with { HearVoice = false }, render: true); };
+        var choice = Note(LiveConversationConfiguration.HearVoiceChoice(Talk.HearVoice, thinking), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(choice, "TalkHearVoiceChoice");
         var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities);
-        var status = hears || !Talk.HearVoice ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
+        var status = hears || !on ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        return Card([Heading("Hear how you say it"), hear, status, .. hears && Talk.HearVoice ? VoicePathControls() : [],
+        return Card([Heading("Hear how you say it"), hear, choice, status, .. hears && on ? VoicePathControls() : [],
             .. HearingTestControls(thinking), Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
     }
 
