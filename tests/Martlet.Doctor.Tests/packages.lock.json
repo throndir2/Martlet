@@ -90,7 +90,7 @@
       "martlet.audio": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.34.0, )"
+          "Martlet.Core": "[0.35.0, )"
         }
       },
       "martlet.core": {
@@ -99,14 +99,14 @@
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.34.0, )"
+          "Martlet.Core": "[0.35.0, )"
         }
       },
       "martlet.doctor": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Audio": "[0.34.0, )",
-          "Martlet.Diagnostics": "[0.34.0, )"
+          "Martlet.Audio": "[0.35.0, )",
+          "Martlet.Diagnostics": "[0.35.0, )"
         }
       }
     }
