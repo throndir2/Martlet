@@ -399,6 +399,42 @@ in both runtimes; llama.cpp's voice started about 100 ms later beside it.
 Thinking model memory with the baseline taken before it loads: Gemma 4 E2B
 3.3 GB in Ollama, 3.5 GB (Q8) in llama.cpp, E4B Q4 4.1 GB.
 
+**Small models in Ollama** (2026-10-04 02:30-03:05, Ollama 0.35.1, Thinking
+steps Off as Martlet sends it (`reasoning_effort: none`), the 16 companion
+prompts as text, two runs; GPU memory is the model's own runner process at the
+8,192-token context Martlet uses; *first audio* is the whole turn into
+Chatterbox Turbo with Parakeet 110M, median and p90):
+
+| Model | Hears | First word | First piece | First audio (p90) | GPU memory | Words per reply (median) | Replies |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **gemma4:e2b** | Yes | 77 | 154 | 841 (974) cascade, 826 (1,004) omni | 3.3 GB | 18 | Short, in character, tags in half, no Markdown |
+| gemma4:e4b | Yes | 117 | 208 | 894-946 (earlier run) | 4.9 GB | 17 | Short, in character |
+| qwen3.5:2b | No | 75 | 225 | 932 (1,120) | 3.3 GB | 45 | Rambles (18 of 32 over three sentences), tags in 84%, some Markdown, ignores "exactly three words" |
+| **qwen3.5:4b** | No | 133 | 328 | 1,105 (1,400) | 4.1 GB | 40 | In character, no Markdown, follows "exactly three words", right sums |
+| qwen3.5:9b | No | 166 | 511 | | 6.6 GB | 34 | Tags in nearly every reply; too slow to the first piece |
+| ministral-3:3b | No | 30 | 109 | | 4.0 GB | 56 | Markdown emphasis and stage directions in 56%, wrong sums; called the weather tool |
+| ministral-3:8b | No | 34 | 242 | (didn't fit beside the voice) | 6.4 GB | 44 | Markdown in 62%, thinks aloud, names its maker; called the weather tool |
+| qwen3-vl:8b | No | 9,355 | 9,702 | | | | Keeps thinking with Thinking steps Off (`think: false` too): no words for seconds |
+
+Thinking steps Off works for Qwen3.5 in Ollama: no reasoning in any of the 32
+replies, and none with the native `think: false`. Asked about the weather with
+a `get_weather` tool offered (once each, with the companion prompt), only
+Ministral 3 called it; Gemma 4 and Qwen3.5 answered in conversation instead.
+None of the new models beats
+Gemma 4 E2B to the first audio while replying as well: Qwen3.5 2B is about
+90 ms slower and rambles; Qwen3.5 4B replies well but is about 260 ms slower;
+Ministral 3 starts fastest but writes Markdown and stage directions a voice
+can't say. Companion › Thinking keeps **gemma4:e2b** as the recommendation and
+now suggests **qwen3.5:4b** in place of `qwen3-vl:8b`: a smarter small model
+that sees and calls tools but doesn't hear, so its replies always take the
+transcript (the Parakeet cascade). Gemma 4 E2B, E4B and 12B are the suggestions
+that hear. The ministral-3:8b turn run is NOT RUN cleanly: another client
+reloaded Gemma 4 E2B into Ollama during it, the card filled and requests timed
+out (with the voice it needs about 11 GB on its own). Results:
+`20261004-023122-think`, `20261004-030232-think` (qwen3-vl),
+`20261004-024436-pipeline` (Gemma 4 E2B), `-024758-` (qwen3.5:2b),
+`-024934-` (qwen3.5:4b) and `small-models-quality.jsonl`.
+
 **The graphics card is the bottleneck on this PC.** Beside a live session (and
 later other GPU experiments) the 90th percentiles reached 12-52 s, and GPU
 speech-to-text slowed the voice five-fold: Gemma, Chatterbox, whisper.cpp,
