@@ -18,7 +18,9 @@ param(
     [string]$LlamaCppBuild = 'b11379',
     # PyTorch runners for models llama.cpp can't give audio: phi-4-multimodal, minicpm-o-2.6 (each its own environment).
     [ValidateSet('phi-4-multimodal', 'minicpm-o-2.6')]
-    [string[]]$HfModels = @()
+    [string[]]$HfModels = @(),
+    # Dia 1.6B through Martlet's own dia worker code (voicebench.diabench), in its own environment.
+    [switch]$Dia
 )
 $ErrorActionPreference = 'Stop'
 $home_ = if ($env:MARTLET_BENCH_HOME) { $env:MARTLET_BENCH_HOME } else { Join-Path $env:LOCALAPPDATA 'MartletBench' }
@@ -73,6 +75,23 @@ foreach ($model in $HfModels) {
     & $modelPython -m pip install -r (Join-Path $PSScriptRoot "requirements-$model.txt")
     if ($LASTEXITCODE) { throw "Installing $model's packages failed." }
     Write-Host "${model}: $modelVenv (the weights download on its first run)"
+}
+
+if ($Dia) {
+    $diaVenv = Join-Path $home_ 'venv-dia'
+    $diaPython = Join-Path $diaVenv 'Scripts\python.exe'
+    if (-not (Test-Path $diaPython)) {
+        Write-Host "Creating the Dia environment in $diaVenv"
+        & py -3.12 -m venv $diaVenv
+    }
+    & $diaPython -m pip install --upgrade pip --quiet
+    & $diaPython -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+    & $diaPython -m pip install -r (Join-Path $PSScriptRoot 'requirements-dia.txt')
+    if ($LASTEXITCODE) { throw "Installing Dia's packages failed." }
+    # The role's pinned source, weights (6.4 GB) and codec, each checked against its SHA-256.
+    Push-Location $PSScriptRoot
+    try { & $diaPython -m voicebench.diabench fetch } finally { Pop-Location }
+    Write-Host "Dia: $diaVenv"
 }
 
 & $python -c "import sys; sys.path.insert(0, r'$PSScriptRoot'); from voicebench.__main__ import main; main(['env'])"

@@ -18,22 +18,40 @@ internal interface ISongSource
     (SongSetup? Setup, string? Problem) Current();
 }
 
-/// <summary>Where songs come from on this PC. Until Companion › Voice › Singing's client is part of this build, only the
-/// FIXTURE - NOT AI song maker is available (when <see cref="FixtureVariable"/> is 1 before Martlet starts, for automated
-/// checks); otherwise singing isn't set up. In fixture mode songs also play into <see cref="SilentSongOutput"/>, so automated
-/// checks never sound.</summary>
-internal sealed class DesktopSongSource : ISongSource
+/// <summary>Where songs come from on this PC: Companion › Voice › Singing's computer through <see cref="SongClient"/> (or the
+/// FIXTURE - NOT AI song maker when <c>MARTLET_SINGING_FIXTURE=1</c>, for automated checks), sung in the voice Martlet speaks
+/// with and the card's quality and voice match (singing.json). Whether singing is set up is read without the network
+/// (<see cref="SongClient.IsSetUp"/>) and kept for a few seconds, so asking for every reply costs nothing. In fixture mode songs
+/// also play into <see cref="SilentSongOutput"/>, so automated checks never sound.</summary>
+internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
 {
-    internal const string FixtureVariable = "MARTLET_SINGING_FIXTURE";
+    private sealed record Known(bool SetUp, long At);
+    private Known? cached;
 
-    internal static bool Fixture => Environment.GetEnvironmentVariable(FixtureVariable) == "1";
+    internal static bool Fixture => Environment.GetEnvironmentVariable(SongClient.FixtureVariable) == "1";
 
-    public bool SetUp => Fixture;
+    public bool SetUp
+    {
+        get
+        {
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (Volatile.Read(ref cached) is { } known && System.Diagnostics.Stopwatch.GetElapsedTime(known.At, now) < TimeSpan.FromSeconds(5))
+                return known.SetUp;
+            var setUp = SongClient.IsSetUp(dataDirectory);
+            Volatile.Write(ref cached, new Known(setUp, now));
+            return setUp;
+        }
+    }
 
-    public (SongSetup? Setup, string? Problem) Current() => SetUp
-        ? (new SongSetup(new FixtureSongMaker(TimeSpan.FromMilliseconds(400)), "fixture-voice", SongQuality.Fast, SongVoiceMatch.SoulX,
-            "this PC (FIXTURE - NOT AI)"), null)
-        : (null, "singing isn't set up on any of your computers (Companion › Voice › Singing).");
+    public (SongSetup? Setup, string? Problem) Current()
+    {
+        if (!SongClient.IsSetUp(dataDirectory)) return (null, "singing isn't set up on any of your computers (Companion › Voice › Singing).");
+        var voice = SongClient.SpeakingVoiceId(dataDirectory) ?? (Fixture ? "fixture-voice" : null);
+        if (voice is null) return (null, "there's no voice to sing with yet (Companion › Voice).");
+        var choices = SingingPreferences.Load(dataDirectory);
+        return (new SongSetup(SongClient.For(dataDirectory), voice, choices.Quality, choices.VoiceMatch,
+            Fixture ? "this PC (FIXTURE - NOT AI)" : choices.Host ?? "the singing computer"), null);
+    }
 
     public override string ToString() => nameof(DesktopSongSource);
 }

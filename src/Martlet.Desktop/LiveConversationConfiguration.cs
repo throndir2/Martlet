@@ -433,7 +433,8 @@ internal sealed class LiveConversationConfiguration
         string? closingInstructions = null, BoundedWaveAudio? audio = null, bool imageOptional = false,
         string? voices = null, string? messageNotes = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
-        CharacterActionPrompt? gaze = null, string? chattiness = null, IReadOnlyList<string>? controlTags = null)
+        CharacterActionPrompt? gaze = null, string? chattiness = null, IReadOnlyList<string>? controlTags = null,
+        Func<CancellationToken, Task<string?>>? spokenWords = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -487,7 +488,7 @@ internal sealed class LiveConversationConfiguration
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
-                        characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags);
+                        characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords);
                 }
             }
         }
@@ -623,6 +624,10 @@ internal sealed class LiveConversationConfiguration
     /// spoken.</summary>
     internal const string SilentReply = StayQuiet.Marker;
 
+    /// <summary>The text of a message that goes straight to a Thinking model that hears as the user's recording alone (a request
+    /// needs some text): it only marks the recording. Later requests carry the transcript in its place.</summary>
+    internal const string VoiceOnlyText = SpokenWords.StandIn;
+
     /// <summary>Replies to always listening: the microphone hears the room, so the model decides whether to answer.</summary>
     internal static string? Listening(PromptSettings? prompts) =>
         PromptSettings.Fill(prompts, PromptCatalog.Listening, ("silent", SilentReply));
@@ -705,7 +710,7 @@ internal sealed class LiveConversationConfiguration
         var found = ability is null ? "" : $" ({Said(ability)})";
         return Hearing(route, abilities) switch
         {
-            HearingSupport.Supported => $"This Thinking model can hear{found}. Your recording goes to {LlmDestinationName(route)} with the transcript.",
+            HearingSupport.Supported => $"This Thinking model can hear{found}. Your recording goes to {LlmDestinationName(route)}.",
             HearingSupport.Unsupported when IsHost(route) =>
                 "A host's Ollama can't take audio from Martlet, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
                 "for example Gemma 4 E2B or E4B in Ollama on this PC, or gemini-2.5-flash.",
@@ -724,9 +729,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>What letting Thinking hear your voice sends, and where: shown in Companion › Listening before it is turned on.</summary>
     internal static string HearingDisclosure(SetupRoute? route) =>
         "When this is on and the Thinking model can hear, the recording of what you say (up to " +
-        $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))} " +
-        "with the transcript, so it hears your tone as well as your words. Speech-to-text still runs as before. Recordings are " +
-        "never saved, added to Memory or sent to the Thinking fallback. Audio may use more quota or cost more than text.";
+        $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
+        "straight away on its own or with the transcript (When Thinking can hear you), so it hears your tone as well as your " +
+        "words. Speech-to-text still runs for every message. Recordings are never saved, added to Memory or sent to the Thinking " +
+        "fallback, which gets the transcript. Audio may use more quota or cost more than text.";
 
     internal string ScreenDisclosure(ChattinessChoice chattiness, WatchSource source) =>
         ScreenDisclosure(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), chattiness, source) +

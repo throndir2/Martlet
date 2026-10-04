@@ -178,5 +178,22 @@ it answers without Singing), `SongClient.SpeakingVoiceId(dataDirectory)` is the 
 
 ## Singing in conversation
 
-Reserved for the conversation side (`sing_song`, playing a song while listening and stopping when asked), which builds
-on the contract above.
+"Martlet, sing me a song": Martlet says it'll work on it, makes the song in the background while the conversation goes on,
+brings it up when it's ready and sings it when you say yes. The full behaviour (tools, lead-ins, stops, resuming, lip sync,
+latency) is in [Conversation › Singing in conversation](CONVERSATION.md#singing-in-conversation); in short:
+
+- Replies get `sing_song`, `play_song` and `stop_singing` while `SongClient.IsSetUp` says singing is set up (and the
+  Thinking route does function calling). A song job (`song-1`, one at a time, 4 an hour) writes the lyrics on Deep thinking
+  when there is no lyrics argument, then calls `SongClient.For(dataDirectory)` with the voice Martlet speaks with
+  (`SongClient.SpeakingVoiceId`) and the card's quality and voice match (`SingingPreferences.Load`), times the mouth to the
+  vocals and keeps the song as a `song` creation ([Creations](CREATIONS.md)): FLAC mix, vocals and backing, its map (lines,
+  words, beat grid) and mouth track.
+- Only Martlet performs songs (`play_song`, or `perform_creation` with the same `from`): start, resume, a section, `line:N`
+  or a time. Anywhere but the top, the band comes in on a downbeat a bar or two before the line with an equal-power fade-in
+  and the vocals wait for the line; while Martlet still talks, the band vamps on that bar.
+- `stop_singing`, "stop singing" (with Martlet's name or a song word), Stop singing and the talk button stop musically (the
+  word ends, the band rings to the next beat); Esc in 300 ms. Where it stopped and why goes at the end of the conversation,
+  and `resume` restarts that line.
+- The mouth follows the vocals only, from a track made once per song: Audio2Face over the vocals when it answers, else
+  visemes from `SongResult.Words`, else loudness, played on the song's own clock. Captions follow word by word.
+- MCP: `songs_status` and `song_playback_check` ([MCP](MCP.md)).

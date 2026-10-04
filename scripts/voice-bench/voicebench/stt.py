@@ -35,6 +35,8 @@ ENGINES: dict[str, dict[str, Any]] = {
                             "size": "0.68 GB", "about": "Parakeet unified 0.6B int8 (English, offline mode), CPU"},
     "parakeet-110m-en": {"kind": "sherpa-transducer", "archive": "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8",
                          "size": "0.13 GB", "about": "Parakeet TDT 110M int8, English only, CPU"},
+    "parakeet-110m-en-fp32": {"kind": "sherpa-transducer", "archive": "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000",
+                              "size": "0.48 GB", "about": "Parakeet TDT 110M fp32 (the files on Hugging Face), English only, CPU"},
     "moonshine-base": {"kind": "sherpa-moonshine", "archive": "sherpa-onnx-moonshine-base-en-int8", "size": "0.29 GB",
                        "about": "Moonshine base int8, English only, CPU"},
     "moonshine-tiny": {"kind": "sherpa-moonshine", "archive": "sherpa-onnx-moonshine-tiny-en-int8", "size": "0.12 GB",

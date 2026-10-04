@@ -24,9 +24,11 @@ Docker on your PC or a Linux box over key-based SSH. See
 1. Branch from freshly fetched `origin/main`; keep one focused change per branch.
 2. Write or update tests in the matching `tests\` project.
 3. Validate ([Validating changes](docs/VALIDATION.md)):
-   - `.\scripts\Test-Martlet.ps1` runs the tests your change affects, in
-     parallel, here and on your validation hosts. It must pass with no new
-     failures.
+   - `.\scripts\Test-Martlet.ps1 -Project <Project>.Tests -Filter '<your tests>'`
+     runs only your targeted tests: the ones you added or changed and the suite
+     directly covering your change, here or on your validation hosts. Don't run
+     everything; many unrelated suites fail or are flaky under load. Your
+     targeted tests must pass.
    - For a feature or behavior change, drive it through Martlet's MCP server
      with `.\scripts\Invoke-MartletMcp.ps1` on a disposable data directory, and
      extend the MCP server so the new feature can be reached and observed.
@@ -43,7 +45,7 @@ Docker on your PC or a Linux box over key-based SSH. See
   validation; all builds and tests run on developers' own machines. The only
   workflow is the manually dispatched release build. See the
   [validation policy](README.md#local-only-validation-policy).
-- **Keep `main` green.** A new failing test blocks a merge. Tests that already
+- **Keep `main` green.** A targeted test your change breaks blocks a merge. Tests that already
   fail on `main` are listed in `tests\known-failures.txt`; fix them and delete
   their lines. Add a line only for a test shown failing on `origin/main` without
   your change, never for one your change breaks.

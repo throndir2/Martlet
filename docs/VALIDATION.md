@@ -1,27 +1,33 @@
 # Validating changes
 
-Every change is validated on the developer's own machines before it merges: the tests
-it can affect, run in parallel, plus the actual behavior through Martlet's MCP server.
-No remote CI runs, ever (see the [validation policy](../README.md#local-only-validation-policy)).
-This page is the flow for people and coding agents alike; [AGENTS.md](../AGENTS.md)
-adds the agent-specific rules.
+Every change is validated on the developer's own machines before it merges: its
+[targeted tests](#targeted-tests-only) (the tests it adds or changes and the suite
+directly covering the changed code, nothing broader), plus the actual behavior through
+Martlet's MCP server. No remote CI runs, ever (see the
+[validation policy](../README.md#local-only-validation-policy)). This page is the flow
+for people and coding agents alike; [AGENTS.md](../AGENTS.md) adds the agent-specific
+rules.
 
 ## The flow
 
 1. **Branch** from freshly fetched `origin/main` (`git fetch origin`).
-2. **See what your change touches:** `.\scripts\Test-Martlet.ps1 -List` prints the
-   test projects and suites the change selects, and why, without building anything.
-3. **Run the affected tests:** `.\scripts\Test-Martlet.ps1`. It must end with
-   `PASSED` (no new failing tests). It builds every affected project, runs the
-   affected tests here and on your [validation hosts](#validation-hosts-and-the-developer-profile)
-   at the same time, and writes `artifacts\validation\summary.md`.
+2. **Pick the targeted tests:** the tests you added or changed, and the test project
+   or suite that directly covers the code you changed (usually
+   `tests\<Project>.Tests`, or `python:<worker>` for a worker). `.\scripts\Test-Martlet.ps1 -List`
+   shows what the change touches without building anything: take the entries whose
+   reason is `changed: ...` and ignore the ones that only `depend on` them.
+3. **Run only those:**
+   `.\scripts\Test-Martlet.ps1 -Project <Project>.Tests -Filter 'FullyQualifiedName~<YourTests>'`.
+   They must pass. It builds the test project and what it references, runs it here
+   or on your [validation hosts](#validation-hosts-and-the-developer-profile), and
+   writes `artifacts\validation\summary.md`.
 4. **Exercise the behavior through Martlet MCP** for any feature or behavior change
    ([below](#mcp-verification)): drive the actual feature on a disposable data
    directory and check the outcome. Extend the MCP server in the same change so the
    feature can be reached and observed.
 5. **Run what the tests do not cover** the way it is used: scripts, packaging,
-   installers, worker hosts, release workflow changes. The runner lists changed
-   files that no suite covers.
+   installers, worker hosts, release workflow changes. `-List` names changed files
+   that no suite covers.
 6. **Report it in the pull request:** paste `summary.md`, the MCP calls and what they
    showed, and every **NOT RUN** item with its reason (missing hardware, credentials,
    another OS, a locked desktop). Never present unrun or partial checks as passed.
@@ -32,10 +38,33 @@ adds the agent-specific rules.
 Documentation-only changes (Markdown) need none of this; the runner selects nothing
 for them.
 
-Run `.\scripts\Test-Martlet.ps1 -All` (every suite) before bumping the version for a
-release, after changes to shared build settings (the runner does this on its own
-when `Directory.Build.props`, `Directory.Packages.props`, `global.json`,
-`NuGet.config` or `.editorconfig` change) and after a large refactor.
+## Targeted tests only
+
+Validation deliberately runs a small slice, never everything. Many suites have
+failures unrelated to any one change, and broad parallel runs add concurrency
+failures that say nothing about it, so wide runs cost a lot of time and produce noise
+rather than evidence about the change.
+
+- Run the tests you wrote or changed, narrowed with `-Filter` (a `dotnet test`
+  filter such as `FullyQualifiedName~ReplyLatencyTests`). Widen to the whole directly
+  related test project only when the change alters behavior that the project's other
+  tests rely on. Several targeted projects or suites go in one run:
+  `-Project Martlet.Conversation.Tests, python:singing`.
+- Name test projects exactly, with `.Tests`. `-Project Martlet.Conversation` names
+  the product project and selects every suite that depends on it.
+- Do not run `.\scripts\Test-Martlet.ps1` without `-Project`, or with `-All`: both
+  select every dependent suite (a change to `Martlet.Core` or
+  `Directory.Build.props` selects almost everything). Use them only when the owner
+  asks for a broad run.
+- When a change alters an API other projects use, build those projects
+  (`dotnet build <project>.csproj -c Release`) to catch compile breaks instead of
+  running their tests.
+- Fix any failure your change causes. A failure it cannot cause (the test also fails
+  on `origin/main`, or fails only under parallel load and passes when run alone with
+  a narrower `-Filter`) does not block the merge: narrow the filter to your tests,
+  note the failure in the pull request and do not chase it in this change.
+- Add tests for new behavior in the matching `tests\` project, so the next change
+  there has something targeted to run.
 
 ## What runs, and how fast
 
@@ -46,23 +75,29 @@ when `Directory.Build.props`, `Directory.Packages.props`, `global.json`,
 | Python worker suites (`workers\<name>\tests`) | `unittest` | One job per worker, concurrently |
 | Avatar npm packages and node tests (`src\Martlet.Avatar.Vrm`, `src\Martlet.Avatar.Live2D`, `*.test.mjs`) | `node --test` | One job per package, concurrently |
 
-The selection is per project, so a change usually runs a slice. Measured on a
-16-core Windows dev PC with a warm build: a change to a leaf library such as
-`Martlet.Gateway.Trust` runs in about 15 seconds. `Martlet.Desktop` references
-nearly every library, so most library changes also select
-`Martlet.Desktop.Tests`, which runs serially and takes 4 to 8 minutes depending
-on what else the PC is doing; a change to `Martlet.Core` selects almost
-everything. The full run (`-All`) took 12 minutes on a quiet PC and 20 on a busy
-one, dominated by `Martlet.Updates.Tests` (6.5 to 9.5 minutes),
-`Martlet.Launcher.Tests` (4.5 to 5) and `Martlet.Desktop.Tests`. Making those
-three faster is the best way to shorten long runs (tracked in
+The default and `-All` selections are broad by design, which is why routine
+validation names its targeted tests instead. Measured on a 16-core Windows dev PC
+with a warm build: one leaf test project such as `Martlet.Gateway.Trust.Tests` runs
+in about 15 seconds. Without `-Project`, `Martlet.Desktop` references nearly every
+library, so most library changes also select `Martlet.Desktop.Tests`, which runs
+serially and takes 4 to 8 minutes depending on what else the PC is doing; a change
+to `Martlet.Core` selects almost everything. The full run (`-All`) took 12 minutes
+on a quiet PC and 20 on a busy one, dominated by `Martlet.Updates.Tests` (6.5 to 9.5
+minutes), `Martlet.Launcher.Tests` (4.5 to 5) and `Martlet.Desktop.Tests`. Making
+those three faster is the best way to shorten long runs (tracked in
 [#332](https://github.com/throndir2/Martlet/issues/332)).
 
 ## How the selection works
 
-The runner compares the working tree (commits, staged, unstaged and untracked files)
-with its merge-base on `origin/main` (`-Base` changes that) and maps each changed
-file:
+`-Project` runs exactly the named test projects or suites. Naming a product project
+instead (no `.Tests`) also selects every project that depends on it, the same
+expansion as the default mode.
+
+Without `-Project` or `-All` (not used for routine validation; see
+[Targeted tests only](#targeted-tests-only)), the runner compares the working tree
+(commits, staged, unstaged and untracked files) with its merge-base on `origin/main`
+(`-Base` changes that) and maps each changed file. `-List` prints this mapping and
+why, which is how to find the test projects a change touches directly:
 
 - A file inside a project directory selects that project. A file another project
   links or reads (`Compile Include="..\..."`, embedded resources, `MSBuild
@@ -81,8 +116,9 @@ file:
   covers (scripts, packaging, deploy files, workflows) is listed as **not covered
   by automated tests**: validate it by running it.
 
-Options: `-Project <name>` runs named projects or suites (and what depends on them)
-instead of the diff; `-Filter` passes a `dotnet test` filter; `-All`; `-NoHosts`
+Options: `-Project <name>` runs the named test projects or suites instead of the
+diff (a product project name adds what depends on it); `-Filter` passes a
+`dotnet test` filter; `-All` (only on the owner's request); `-NoHosts`
 keeps everything on this PC; `-RequireAll` fails the run when anything is NOT RUN;
 `-Retries` (default 2) sets how often a new failure is retried; `-TimeoutMinutes`
 (default 30) stops a hung job.
@@ -93,8 +129,8 @@ keeps everything on this PC; `-RequireAll` fails the run when anything is NOT RU
 | Result | Meaning | Blocks the merge |
 | --- | --- | --- |
 | Passed | Everything selected passed | No |
-| Failed | A test failed that is not a known failure, or a project did not build | **Yes** |
-| Flaky | A test failed, then passed when retried (up to twice) with the machine quieter | No, but fix it: flaky tests are named in the summary |
+| Failed | A test failed that is not a known failure, or a project did not build | **Yes**, unless your change cannot cause it ([Targeted tests only](#targeted-tests-only)) |
+| Flaky | A test failed, then passed when retried (up to twice) with the machine quieter | No; fix it only when it is one of your targeted tests |
 | Known failures | Only tests listed in `tests\known-failures.txt` failed | No |
 | NOT RUN | This environment cannot run it (no Linux host, missing Python module, another OS) | Report it; `-RequireAll` makes it fail |
 
@@ -107,9 +143,9 @@ for a failure your change causes. Entries tagged `env:` fail only on some machin
 (for example, symlink tests without Windows Developer Mode) and are not reported as
 fixed.
 
-If `main` moves while your pull request is open, merge it and rerun the runner
-before merging: someone else's change can break a test your change selects, and that
-is how such breaks are caught.
+If `main` moves while your pull request is open, merge it and rerun your targeted
+tests before merging when the merge touched the code they cover: someone else's
+change can break a test your change relies on.
 
 Full logs and TRX files are in `artifacts\validation\`. Processes a suite leaves
 running (a worker host a failed test never stopped, for example) are stopped and

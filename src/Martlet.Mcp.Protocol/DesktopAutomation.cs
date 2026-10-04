@@ -33,6 +33,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
+        // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
+        // closing it only change what it shows (the answers stay in memory); its plan's Install on this PC buttons do the work.
+        "OpenSetupAdvisor", "AdvisorBack", "AdvisorNext", "AdvisorClose", "GoalBalanced", "GoalSmartest", "GoalFastest", "GoalPrivate",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
         // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
         // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
@@ -150,6 +153,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
+        // Companion › Listening › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
+        // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
+        // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
+        "TalkVoicePathStatus",
+        // The setup advisor: which step it shows and its plan's summary (the goal's one-line explanation).
+        "AdvisorStep", "AdvisorSummary",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
         // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words), under each
@@ -346,6 +355,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
+        // recognition (Available)"; the plan has no personal data).
+        "AdvisorChoice-",
         // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.").
         "DeepThinkingHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and

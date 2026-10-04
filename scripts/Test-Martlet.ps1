@@ -31,12 +31,16 @@ Exits 1 when anything failed. What this environment cannot run is reported as NO
 -RequireAll makes NOT RUN fail the run too.
 
 .EXAMPLE
+.\scripts\Test-Martlet.ps1 -Project Martlet.Core.Tests -Filter 'FullyQualifiedName~Settings'
+Runs only the named test project, filtered: the targeted tests routine validation uses (docs/VALIDATION.md).
+
+.EXAMPLE
 .\scripts\Test-Martlet.ps1 -List
 Shows what this branch's changes select, and why, without building anything.
 
 .EXAMPLE
 .\scripts\Test-Martlet.ps1
-Runs everything this branch's changes affect.
+Runs everything this branch's changes affect, including every dependent suite (broad; not for routine validation).
 
 .EXAMPLE
 .\scripts\Test-Martlet.ps1 -Project Martlet.Core -Filter 'FullyQualifiedName~Settings'

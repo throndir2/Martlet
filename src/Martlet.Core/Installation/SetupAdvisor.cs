@@ -100,9 +100,9 @@ public static class SetupAdvisor
         var roles = new List<AdvisorRole>();
         var online = new SortedSet<string>(StringComparer.Ordinal);
 
+        // Fastest replies use a small model, so the voice and lip-sync may share its GPU when they fit (an idle GPU first).
         bool CanShare(Machine m, int need, bool needsNvidia) =>
-            (!needsNvidia || m.Nvidia) && m.Free >= need &&
-            !(m.HasLlm && goal == AdvisorGoal.Fastest && !m.IsHost);
+            (!needsNvidia || m.Nvidia) && m.Free >= need;
         // Prefer a free host, then a machine already doing speech work, then this PC, and the LLM's GPU last;
         // among equals, the smallest GPU that fits so bigger ones stay free.
         int Rank(Machine m) => m.HasLlm ? 3 : m.Idle ? (m.IsHost ? 0 : 2) : 1;
@@ -148,10 +148,10 @@ public static class SetupAdvisor
             if (llmMachine is not null) llmMachine.HasLlm = true;
         }
 
-        // 2. Voice and speech recognition placement (GPU work only where it helps the goal).
+        // 2. Voice and speech recognition placement (GPU work only where it helps the goal). Fastest replies keep a cloned,
+        // expressive voice on an NVIDIA GPU: Chatterbox Turbo streams its first audio in about 0.4 s.
         var wantGpuVoice = answers.SpokenReplies &&
-            (answers.CustomVoice || goal == AdvisorGoal.Private ||
-             goal == AdvisorGoal.Fastest && (hosts.Any(h => h.Idle && h.Nvidia) || llmMachine is { IsHost: true } && pc.Nvidia));
+            (answers.CustomVoice || goal is AdvisorGoal.Private or AdvisorGoal.Fastest);
         var wantHostWhisper = answers.VoiceInput && goal == AdvisorGoal.Private && hosts.Any(h => h.Idle && h.Nvidia);
         Machine? voiceMachine = null, whisperMachine = null;
         // Keep voice and Whisper together on one free host when it has room; otherwise split them.
@@ -172,7 +172,8 @@ public static class SetupAdvisor
             var onPc = !llmMachine.IsHost;
             roles.Add(new("Thinking model", $"A {size} local model", where, LlmWhat,
                 goal == AdvisorGoal.Fastest
-                    ? "A dedicated GPU starts replies sooner. Smaller models are faster but less capable."
+                    ? "A small local model starts replies soonest (Gemma 4 E2B: about 0.15 s to its first sentence) and hears your voice. " +
+                      "Bigger models are smarter but slower."
                     : "Your conversation stays on your computers. Local models are usually less capable than large online ones.",
                 onPc ? AdvisorAvailability.Available : AdvisorAvailability.Planned,
                 onPc
@@ -230,12 +231,13 @@ public static class SetupAdvisor
             else
             {
                 pc.Runs.Add("Speech-to-text (CPU)");
-                windowsSpeech = true;
-                roles.Add(new("Speech-to-text", "Windows speech recognition", "This PC (CPU)", SttWhat,
+                roles.Add(new("Speech-to-text", "Parakeet speech recognition", "This PC (CPU)", SttWhat,
                     goal == AdvisorGoal.Fastest
-                        ? "Short push-to-talk clips transcribe quickly on the CPU with no internet delay."
-                        : "Keeps your microphone audio on this PC. The CPU is enough for push-to-talk.",
-                    AdvisorAvailability.Planned, "OpenAI transcription works today.", "Stays on this PC."));
+                        ? "Recognizes a short sentence in about 0.1-0.3 s on the processor, with no internet delay, and leaves the GPU to the " +
+                          "thinking model and the voice."
+                        : "Accurate, runs on the processor, and keeps your microphone audio on this PC.",
+                    AdvisorAvailability.Available, null, "Stays on this PC.",
+                    "In Companion > Listening, choose Parakeet in Martlet. It downloads once."));
             }
         }
 
@@ -251,14 +253,13 @@ public static class SetupAdvisor
                         : $"A natural local voice with {Settings.SpeechEngines.Default.Name}",
                     $"{voiceMachine.Name} (GPU)", TtsWhat,
                     answers.CustomVoice ? "Cloning a voice needs a self-hosted GPU engine."
-                        : goal == AdvisorGoal.Fastest ? "A separate GPU speaks quickly and never waits for the thinking model."
+                        : goal == AdvisorGoal.Fastest ? "It streams its first audio in about 0.4 s, in a cloned voice that can laugh and sigh."
                         : "Natural speech without sending reply text anywhere.",
-                    AdvisorAvailability.Planned,
-                    answers.CustomVoice
-                        ? "Use an OpenAI voice until the engine runs."
-                        : "OpenAI voices work today in Setup / resume.",
-                    Local,
-                    answers.CustomVoice ? "Add voice recordings and transcripts in Companion > Voice > Voices." : null));
+                    AdvisorAvailability.Available, null, Local,
+                    (voiceMachine == pc
+                        ? $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.Default.Name} on this PC. It sets up in Docker Desktop."
+                        : $"Add {voiceMachine.Name} in Devices, then choose {Settings.SpeechEngines.Default.Name} for it in Companion > Voice > Voice engine.") +
+                    (answers.CustomVoice ? " Add voice recordings and transcripts in Companion > Voice > Voices." : "")));
             }
             else if (goal is AdvisorGoal.Fastest or AdvisorGoal.Private)
             {
@@ -268,7 +269,8 @@ public static class SetupAdvisor
                     goal == AdvisorGoal.Fastest
                         ? "Starts speaking almost instantly but sounds robotic. OpenAI voices sound better but need an internet connection."
                         : "Free and offline, but sounds robotic. An NVIDIA GPU with more free memory would allow a natural local voice.",
-                    AdvisorAvailability.Planned, "OpenAI voices work today.", "Stays on this PC."));
+                    AdvisorAvailability.Available, null, "Stays on this PC.",
+                    "In Companion > Voice > Voice engine, choose Windows voices on this PC."));
             }
             else
             {
@@ -303,7 +305,6 @@ public static class SetupAdvisor
                 {
                     pc.Runs.Add("Lip-sync (loudness)");
                     var reason = answers.GamesOnThisPc && gpuHosts.Count == 0 ? "Your GPU is kept for games."
-                        : llmMachine == pc && goal == AdvisorGoal.Fastest ? "The GPU is kept for the thinking model."
                         : "No NVIDIA GPU has room for advanced lip-sync.";
                     roles.Add(new("Lip-sync", "Loudness lip-sync", "This PC (CPU)", FaceWhat,
                         $"{reason} Loudness moves the mouth with the voice's volume; advanced lip-sync is more expressive.",
@@ -372,7 +373,7 @@ public static class SetupAdvisor
         var summary = goal switch
         {
             AdvisorGoal.Smartest => "The largest online model for the best answers. Local hardware goes to voice and face.",
-            AdvisorGoal.Fastest => "A thinking model on its own GPU, so replies start as soon as possible.",
+            AdvisorGoal.Fastest => "A small thinking model that answers quickly, your cloned voice streaming on the GPU and speech recognized on the processor.",
             AdvisorGoal.Private => "Everything runs on your own computers.",
             _ => "Smart online answers, with your GPU spent where it helps most: voice and face."
         };
@@ -446,11 +447,12 @@ public static class SetupAdvisor
     // Leave roughly 15% headroom for drivers, context growth and the desktop.
     private static int Usable(int vram) => vram * 85 / 100;
 
-    private static string LlmSize(int vram, bool fastest) => vram switch
+    // Fastest replies always use a small model: it starts speaking soonest, and bigger ones are smarter but slower.
+    private static string LlmSize(int vram, bool fastest) => fastest ? "small" : vram switch
     {
         < 8 => "small",
-        < 16 => fastest ? "small" : "medium",
-        < 32 => fastest ? "medium" : "large",
+        < 16 => "medium",
+        < 32 => "large",
         _ => "large"
     };
 }
