@@ -188,6 +188,7 @@ public partial class LiveConversationWindow : ThemedWindow
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
         controller.VoicesNamed += VoicesNamed;
+        controller.ChattinessDecided += ChattinessDecided;
         if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
         RenderActions();
     }
@@ -335,6 +336,9 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // Hearing what this PC plays starts or stops beside the microphone, which carries on.
         if (before.HearPc != next.HearPc) StopPcListening(keepHeard: next.HearPc);
+        // Muting Martlet's voice (Speak Martlet's replies aloud off, or Mute voice on the character's menu) silences what it is
+        // saying now; the reply's words still show. The next reply starts without a voice.
+        if (before.SpeakReplies && !next.SpeakReplies) controller.MuteVoice();
         if (!next.Watch)
         {
             watchPaused = true;
@@ -342,7 +346,7 @@ public partial class LiveConversationWindow : ThemedWindow
             if (watching) StopWatching(null);
         }
         else if (addressChanged || !before.Watch || before.ScreenScope != next.ScreenScope || before.CameraId != next.CameraId ||
-            before.VideoAddress != next.VideoAddress || before.ScreenChattiness != next.ScreenChattiness)
+            before.VideoAddress != next.VideoAddress)
         {
             if (!watchPaused)
             {
@@ -354,6 +358,8 @@ public partial class LiveConversationWindow : ThemedWindow
             // What kept Martlet from seeing may be fixed now: Start watching tries again.
             else visionProblem = null;
         }
+        // A new chattiness choice retunes the looks from now on, without starting over.
+        if (before.ScreenChattiness != next.ScreenChattiness) pacer?.Retune(ChattinessNow);
         RenderActions();
     }
 
@@ -615,7 +621,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             // Pressing Send or the talk button is the action; the destinations were chosen in Companion.
             owned = controller.Start(text, Voice, microphone, approved: true, localCaptureApproved: microphone, uploadApproved: microphone,
-                listening: microphone ? Listening(false) : null, seen: SeenNow());
+                listening: microphone ? Listening(false) : null, seen: SeenNow(), chattiness: BackgroundChattiness);
             yielded = null;
             notice = null;
             answeredAt = clock.GetTimestamp();
@@ -1047,12 +1053,12 @@ public partial class LiveConversationWindow : ThemedWindow
             owned = playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
-                    seen: SeenNow(), timeline: timeline)
+                    seen: SeenNow(), timeline: timeline, chattiness: BackgroundChattiness)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
                     seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
-                    timeline: timeline);
+                    timeline: timeline, chattiness: BackgroundChattiness);
             answering = everything;
             yielded = null;
             answeredAt = clock.GetTimestamp();
@@ -1106,14 +1112,16 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool PcDue()
     {
         if (playingQueue.Count == 0 || pcListener is { Hearing: true } or { Transcribing: > 0 }) return false;
-        if (answeredAt != 0 && clock.GetElapsedTime(answeredAt) < PcPace) return false;
-        return clock.GetElapsedTime(playingQueue[0].At) >= PcPace || clock.GetElapsedTime(pcHeardAt) >= PcLull;
+        var pace = PcPace;
+        if (answeredAt != 0 && clock.GetElapsedTime(answeredAt) < pace) return false;
+        return clock.GetElapsedTime(playingQueue[0].At) >= pace || clock.GetElapsedTime(pcHeardAt) >= PcLull;
     }
 
     // When Martlet was last asked to answer: what you said or typed, or what the PC played.
     private long answeredAt;
-    /// <summary>At most how often what the PC played, on its own, goes to Martlet, counted from its last answer.</summary>
-    internal static TimeSpan PcPace => TimeSpan.FromSeconds(20);
+    /// <summary>At most how often what the PC played, on its own, goes to Martlet, counted from its last answer: 20 seconds,
+    /// 45 while Martlet is quiet and 12 while it is chatty (<see cref="ScreenCommentaryPacer.PcPace"/>).</summary>
+    private TimeSpan PcPace => ScreenCommentaryPacer.PcPace(ChattinessNow);
     /// <summary>How long the PC must stay quiet before what it played goes to Martlet sooner than PcPace.</summary>
     internal static TimeSpan PcLull => TimeSpan.FromSeconds(4);
     private static readonly string PcLine = LiveConversationConfiguration.PcAudioMarker + " ";
@@ -1177,6 +1185,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 else if (done.Turn?.Snapshot is { SpeechFailed: true } voiceless)
                     reply.AddNote(voiceless.MayHavePlayed ? "The voice stopped partway, so only the beginning was spoken."
                         : "The voice failed, so this wasn't spoken.");
+                else if (done.Turn?.Snapshot is { VoiceMuted: true, MayHavePlayed: true })
+                    reply.AddNote("Muted partway, so only the beginning was spoken.");
                 else if (done.Turn?.Snapshot.SpeechLimitReached == true) reply.AddNote("Only the beginning was spoken.");
             }
         }
@@ -1721,6 +1731,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var pcLine = PcAudioLine();
         PcAudioText.Text = pcLine;
         PcAudioText.Visibility = available && preferences.HandsFree && pcLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var chattinessLine = available ? ChattinessLine(SavedChoice, ChattinessNow, BackgroundOn, chattinessAt) : "";
+        ChattinessText.Text = chattinessLine;
+        ChattinessText.Visibility = chattinessLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
         ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context, controller.LastCache);
         ContextRow.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1737,6 +1750,16 @@ public partial class LiveConversationWindow : ThemedWindow
             : pushToTalk ? "Type below, or hold the talk button to speak."
             : preferences.HandsFree && micUsable ? "Type below, or press Start listening to talk." : "Type a message below.";
         RenderJobs();
+    }
+
+    /// <summary>The line under the status while vision or hearing what this PC plays is turned on: how chatty Martlet is about
+    /// them, and, while Martlet decides, the level it picked and when it last switched. Empty when there is nothing in the
+    /// background or the choice is a fixed level (Companion says which).</summary>
+    internal static string ChattinessLine(ChattinessChoice choice, Chattiness level, bool background, DateTime? switchedAt)
+    {
+        if (!background || choice != ChattinessChoice.MartletDecides) return "";
+        return $"Martlet decides how chatty it is: {ChattinessTags.Name(level)} right now" +
+            (switchedAt is { } at ? $" (since {at:t})." : ".");
     }
 
     /// <summary>The line under the status while Hear what this PC plays is on: whether Martlet hears the PC now (every app but
@@ -1824,7 +1847,18 @@ public partial class LiveConversationWindow : ThemedWindow
         var kind => new(kind)
     };
 
-    private Chattiness SavedChattiness => (Chattiness)Math.Clamp(preferences.ScreenChattiness, 0, 2);
+    /// <summary>Companion › Vision › How often it comments (also Listening › Watch along).</summary>
+    private ChattinessChoice SavedChoice => ChattinessTags.Choice(preferences.ScreenChattiness);
+    /// <summary>How chatty Martlet is now: the chosen level, or the one it picked while it decides.</summary>
+    private Chattiness ChattinessNow => ChattinessTags.Level(SavedChoice, controller.DecidedChattiness);
+    /// <summary>The choice replies follow while there is something in the background to be chatty about (vision or hearing
+    /// what this PC plays is turned on in Companion); null otherwise, so a plain conversation's replies aren't told about it.
+    /// It follows the saved choices rather than whether vision is paused right now, so replies keep the same instructions
+    /// (and the model's prompt cache) while you pause and resume.</summary>
+    private ChattinessChoice? BackgroundChattiness => BackgroundOn ? SavedChoice : null;
+    private bool BackgroundOn => preferences.Watch || preferences.HearPc;
+    // When Martlet last switched how chatty it is (while it decides), for the chattiness line.
+    private DateTime? chattinessAt;
 
     /// <summary>Starts looking at what Companion › Vision chose. Not ready yet (loading, Windows locked) leaves it for
     /// <see cref="StartLive"/>; something that keeps Martlet from seeing says why and leaves watching stopped.</summary>
@@ -1847,7 +1881,7 @@ public partial class LiveConversationWindow : ThemedWindow
         watchSource = source;
         watching = true;
         lookWanted = false;
-        pacer = new(SavedChattiness, clock);
+        pacer = new(ChattinessNow, clock);
         nextGlance = clock.GetTimestamp();
         sight = lookNote = waitNote = captureNote = sentNote = attentionNote = null;
         seeing = false;
@@ -2072,7 +2106,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             var image = frame.Encode();
             // An address's host is not useful to the model; a camera's or window's name is.
-            commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChattiness,
+            commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChoice,
                 Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true);
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
@@ -2241,6 +2275,26 @@ public partial class LiveConversationWindow : ThemedWindow
         else AddNote(text);
     });
 
+    // A reply or glance switched how chatty Martlet is (while it decides): looks and what this PC plays follow the new level
+    // from now on, and the history says so.
+    private void ChattinessDecided(Chattiness before, Chattiness level) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        pacer?.Retune(ChattinessNow);
+        chattinessAt = DateTime.Now;
+        if (SavedChoice == ChattinessChoice.MartletDecides) AddNote(ChattinessSwitched(before, level));
+        RenderActions();
+    });
+
+    /// <summary>The note the history gets when Martlet switches how chatty it is.</summary>
+    internal static string ChattinessSwitched(Chattiness before, Chattiness level) => level switch
+    {
+        Chattiness.Quiet => "Martlet went quiet about what it sees and hears. It speaks up only for something notable.",
+        Chattiness.Chatty => "Martlet got chattier about what it sees and hears.",
+        _ => before == Chattiness.Quiet ? "Martlet is less quiet again about what it sees and hears."
+            : "Martlet calmed down about what it sees and hears."
+    };
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         // The window only shows the conversation: while Martlet listens or watches, closing it hides it and Martlet carries on.
@@ -2268,6 +2322,7 @@ public partial class LiveConversationWindow : ThemedWindow
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
         controller.VoicesNamed -= VoicesNamed;
+        controller.ChattinessDecided -= ChattinessDecided;
         homeQuestion?.TrySetResult(false);
         if (controller.Home is { } smartHome && smartHome.Confirm == ConfirmHomeAsync) smartHome.Confirm = null;
     }

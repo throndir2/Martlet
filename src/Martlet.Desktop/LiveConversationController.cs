@@ -6,6 +6,7 @@ using Martlet.Audio;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Creations;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Participation;
@@ -68,6 +69,7 @@ internal sealed class LiveConversationOperation
     private LiveConversationStatus status = new("conversation.authorizing");
     private CaptureRun? capture;
     private ConversationTurn? turn;
+    private bool voiceMuted;
     private int releasedPress;
     private int executionFinished;
     private string? cancellationReason;
@@ -137,6 +139,9 @@ internal sealed class LiveConversationOperation
     internal bool PcAudio { get; init; }
     /// <summary>What the user said themselves in a message with <see cref="PcAudio"/>; null when it is only what the PC played.</summary>
     [JsonIgnore] internal string? UserWords { get; init; }
+    /// <summary>Companion › Vision › How often it comments while vision or hearing this PC is turned on (null otherwise): with
+    /// Martlet decides, the reply is told how to switch the level and may end with a chattiness tag.</summary>
+    internal ChattinessChoice? BackgroundChattiness { get; init; }
     private int hearing;
     /// <summary>Speech longer than a cough or click is being recorded right now.</summary>
     internal bool Hearing { get => Volatile.Read(ref hearing) != 0; set => Volatile.Write(ref hearing, value ? 1 : 0); }
@@ -215,8 +220,26 @@ internal sealed class LiveConversationOperation
     }
     internal void Attach(ConversationTurn run)
     {
-        Volatile.Write(ref turn, run);
+        bool mute;
+        lock (gate)
+        {
+            Volatile.Write(ref turn, run);
+            mute = voiceMuted;
+        }
         if (Authorization.IsCanceled) run.StopAsync().Forget();
+        else if (mute) run.MuteVoice();
+    }
+    /// <summary>Martlet's voice was muted while this reply ran: its turn (now, or once it starts) stops saying it aloud, and the
+    /// rest shows as text.</summary>
+    internal void MuteVoice()
+    {
+        ConversationTurn? attached;
+        lock (gate)
+        {
+            voiceMuted = true;
+            attached = Volatile.Read(ref turn);
+        }
+        attached?.MuteVoice();
     }
     internal void ReleasePress()
     {
@@ -333,7 +356,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private ThinkPlace? thinkingWhere;
     private sealed record ThinkPlace(string Where, DeepThinkingPlan Plan);
     private BackgroundThink? thinking;
-    private (bool Spoken, HeardVoices? Heard) lastAsked;
+    private (bool Spoken, HeardVoices? Heard, ChattinessChoice? Chattiness) lastAsked;
+    // The chattiness level Martlet picked while it decides how chatty it is: Normal until a reply or glance switches it, then
+    // kept until Martlet closes.
+    private Chattiness decided = Chattiness.Normal;
     private readonly object statusGate = new();
 
     internal bool IsRunning => operations.IsRunning;
@@ -390,6 +416,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal string? PcOutput => pcAudio?.Output;
     /// <summary>The controller's clock, for timing what it measured (such as when the user's voice began).</summary>
     internal TimeProvider Clock => clock;
+
+    /// <summary>The level Martlet picked while it decides how chatty it is (Companion › Vision › How often it comments: Martlet
+    /// decides): Normal until a reply or glance switches it with a chattiness tag, then kept until Martlet closes.</summary>
+    internal Chattiness DecidedChattiness { get { lock (gate) return decided; } }
+    /// <summary>Raised off the dispatcher when a reply or glance switched <see cref="DecidedChattiness"/>: the level before and
+    /// the new one.</summary>
+    internal event Action<Chattiness, Chattiness>? ChattinessDecided;
+
+    /// <summary>Takes the level a finished reply or glance switched to (the last chattiness tag it wrote) while Martlet decides
+    /// how chatty it is. A reply cut off before its words were all written (restarted, stopped early) switches nothing.</summary>
+    private void Decide(ConversationTurn turn, ConversationSnapshot terminal, string what)
+    {
+        if (!terminal.TextComplete || ChattinessTags.Last(turn.Controls) is not { } level) return;
+        Chattiness before;
+        lock (gate)
+        {
+            before = decided;
+            decided = level;
+        }
+        if (before == level) return;
+        ErrorLog.Info($"Chattiness: Martlet went from {ChattinessTags.Name(before)} to {ChattinessTags.Name(level)} " +
+            $"({what}; Martlet decides).");
+        ChattinessDecided?.Invoke(before, level);
+    }
 
     /// <summary>How long after Martlet asks something a short answer ("yes", "mm-hmm") counts as one.</summary>
     internal static TimeSpan AnswerWindow => TimeSpan.FromSeconds(30);
@@ -638,7 +688,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         bool localCaptureApproved = false, bool uploadApproved = false, CancellationToken caller = default,
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
-        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply)
+        ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -672,6 +722,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen,
                 PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
+                BackgroundChattiness = chattiness,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
                     : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
             };
@@ -974,7 +1025,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look. With
     /// <paramref name="look"/> (Martlet decides where the character looks) the model may also start its answer with a look tag
     /// that turns the character's eyes to part of the picture.</summary>
-    internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, Chattiness chattiness, bool voice,
+    internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, ChattinessChoice chattiness, bool voice,
         bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
         bool look = false)
     {
@@ -1034,8 +1085,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
-        Chattiness chattiness, bool camera, bool look, CancellationToken worker)
+        ChattinessChoice chattiness, bool camera, bool look, CancellationToken worker)
     {
+        // While Martlet decides how chatty it is, the look is told how to switch the level (the same at every level) and the
+        // level it is at goes in the notes.
+        var decides = chattiness == ChattinessChoice.MartletDecides;
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1052,10 +1106,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
                 var history = context.Snapshot(sent: true);
+                var level = ChattinessTags.Level(chattiness, decided);
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
-                    out var usedHistory, out _, out var usedLore, image, LiveConversationConfiguration.CommentaryInstructions(chattiness, camera, configured.Prompts),
+                    out var usedHistory, out _, out var usedLore, image,
+                    LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides),
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
-                    gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null);
+                    gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
+                    chattiness: decides ? configured.ChattinessNote(level) : null, controlTags: decides ? ChattinessTags.All : null);
                 operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
@@ -1072,6 +1129,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             NoteInput(camera ? "Camera glance" : "Screen glance", terminal);
+            if (decides) Decide(turn, terminal, camera ? "a camera look" : "a screen glance");
             var text = turn.Content.Text;
             var passed = terminal.State == ConversationState.Completed && IsSilentReply(text);
             operation.Passed = passed;
@@ -1146,6 +1204,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         // Exact handle, never a delayed sink-wide Stop or cancellation of the next setup/turn.
         operation.Cancel(reason);
+    }
+
+    /// <summary>Martlet's voice was muted (Speak Martlet's replies aloud turned off): the reply or comment running now stops
+    /// saying it aloud and finishes as text, with the rest in the captions. Nothing is canceled or forgotten, and what comes
+    /// next is text only because it starts without a voice.</summary>
+    internal void MuteVoice()
+    {
+        LiveConversationOperation? running;
+        lock (gate) running = active is { OwnershipReleased: false } ? active : null;
+        running?.MuteVoice();
     }
 
     private async Task SuperviseAsync(LiveConversationOperation operation)
@@ -1258,8 +1326,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
-            // is on and Deep thinking can run where it is set to think), only for the user's own turns (and Martlet's reports of
-            // its background work) and routes that do function calling. While they are on they are always offered, the same
+            // is on and Deep thinking can run where it is set to think, search_conversations while it is allowed, list_creations
+            // and perform_creation while any kind of creation is registered), only for the user's own turns (and Martlet's reports
+            // of its background work) and routes that do function calling. While they are on they are always offered, the same
             // way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
@@ -1320,6 +1389,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
                     ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
+                // While Martlet decides how chatty it is (and vision is on or it hears this PC), every reply is told how to switch
+                // the level, the same way every time; the level goes in the notes when the conversation's notes don't say it yet.
+                var decides = operation.BackgroundChattiness == ChattinessChoice.MartletDecides;
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
@@ -1328,13 +1400,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
+                            decides ? LiveConversationConfiguration.ChattinessDecides(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background, recalled),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
-                        characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()));
+                        characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
+                        chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
+                        controlTags: decides ? ChattinessTags.All : null);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -1375,6 +1450,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
+            if (operation.BackgroundChattiness == ChattinessChoice.MartletDecides)
+                Decide(turn, terminal, operation.Report ? "bringing up background work"
+                    : operation.PcAudio && operation.UserWords is null ? "what this PC played" : "your message");
             // A model that rejected tools is asked without them from now on (for a week, on this PC).
             if (terminal.ToolsRejected)
             {
@@ -1442,7 +1520,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                                 (operation.Report ? "brought up by Martlet on its own" : "brought up with your message") +
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
-                        if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard);
+                        if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
                         var spokenOwn = operation.Report ? null : operation.PcAudio ? operation.UserWords : input.UserText;
                         var remembered = spokenOwn is null ? null
@@ -1527,7 +1605,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
     /// prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
-    /// off by default). Null when there are none.</summary>
+    /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
+    /// docs/CREATIONS.md). Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
@@ -1542,6 +1621,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
             own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
+        var kinds = Creations.Kinds;
+        if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
+        {
+            var definitions = CreationTools.Definitions(kinds);
+            own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
+            own.Add((definitions[1], PerformCreationAsync));
+        }
         return own.Count == 0 ? null : new(own, guidance);
     }
 
@@ -1550,6 +1636,30 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         var (result, outcome) = await history!.SearchAsync(call, conversation, token).ConfigureAwait(false);
         tools?.Record("Martlet", PastConversations.ToolName, outcome, ConversationHistory.Preview(call.ArgumentsJson, 120), result.IsError);
+        return result;
+    }
+
+    /// <summary>The kinds of creation Martlet knows and what performs them (docs/CREATIONS.md).</summary>
+    internal CreationRegistry Creations { get; init; } = CreationRegistry.Shared;
+
+    /// <summary>list_creations: what Martlet made, from this PC's copy of the shared list (read only when called).</summary>
+    private ConversationToolResult ListCreations(TextToolCall call)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = CreationTools.List(library, Creations, call.ArgumentsJson, c => CreationStore.IsComplete(dataDirectory!, c));
+        tools?.Record("Martlet", CreationTools.ListName, result.IsError ? "invalid arguments" : $"{library.Live.Count} creations", "", result.IsError);
+        return result;
+    }
+
+    /// <summary>perform_creation: hands the creation to its kind's handler (a song is sung by the conversation that attached the
+    /// song handler), or says clearly why it can't.</summary>
+    private async ValueTask<ConversationToolResult> PerformCreationAsync(TextToolCall call, CancellationToken token)
+    {
+        var library = CreationStore.View(dataDirectory!);
+        var result = await CreationTools.PerformAsync(library, Creations, call.ArgumentsJson, c => CreationStore.Assets(dataDirectory!, c), token)
+            .ConfigureAwait(false);
+        tools?.Record("Martlet", CreationTools.PerformName, result.IsError ? "not performed" : "performed", "", result.IsError);
+        ErrorLog.Info($"Creations: perform_creation {(result.IsError ? "didn't start" : "started")}.");
         return result;
     }
 
@@ -1738,7 +1848,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);
                 operation = new(authorization, CancellationToken.None)
                 {
-                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken
+                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken, BackgroundChattiness = lastAsked.Chattiness
                 };
                 active = operation;
                 var worker = operations.TryStart(async token =>

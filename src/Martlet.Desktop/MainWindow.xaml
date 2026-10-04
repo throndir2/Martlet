@@ -32,6 +32,8 @@
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDevices"/>
                     <RadioButton x:Name="NavCompanion" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE76E;" Content="Companion"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavCompanion"/>
+                    <RadioButton x:Name="NavCreations" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE790;" Content="Creations"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavCreations"/>
                     <RadioButton x:Name="NavDiagnostics" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE9D9;" Content="Diagnostics"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDiagnostics"/>
                     <RadioButton x:Name="NavSettings" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE713;" Content="Settings"
@@ -314,7 +316,7 @@
                                 <StackPanel>
                                     <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
                                               Content="Keep Martlet the same on all my computers"
-                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, the people and voices it knows, your characters and Home Assistant travel through your paired hosts. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
+                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, the people and voices it knows, your characters, what it makes (Creations) and Home Assistant travel through your paired hosts. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
                                               AutomationProperties.AutomationId="ClusterSync"/>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
@@ -353,6 +355,43 @@
                     <StackPanel x:Name="CompanionContent" Margin="32,30,32,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
                 </ScrollViewer>
             </Grid>
+
+            <!-- Creations: everything Martlet made, kept the same on all the owner's computers (MainWindow.Creations.cs, docs/CREATIONS.md).
+                 No Play, Show or Activate here: Martlet performs its creations itself when asked. -->
+            <ScrollViewer x:Name="CreationsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="36,30,36,24" MaxWidth="1100" AutomationProperties.AutomationId="CreationsPage">
+                    <StackPanel Margin="0,0,0,14">
+                        <TextBlock Text="Creations" Style="{DynamicResource PageTitle}"/>
+                        <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
+                                   Text="Everything Martlet makes, kept on all your computers."/>
+                        <TextBlock x:Name="CreationsNoteText" Margin="0,6,12,0" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Text="Ask Martlet to sing or show any of these." AutomationProperties.AutomationId="CreationsNote"/>
+                    </StackPanel>
+                    <TextBlock x:Name="CreationsSummaryText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="CreationsSummary" AutomationProperties.LiveSetting="Polite"/>
+                    <TextBlock x:Name="CreationsStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,14"
+                               AutomationProperties.AutomationId="CreationsStatus" AutomationProperties.LiveSetting="Polite"/>
+                    <Border x:Name="CreationsEmptyCard" Style="{DynamicResource CardStyle}" Padding="26,22" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Center">
+                                <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE790;" Foreground="{DynamicResource AccentBrush}"/>
+                            </Border>
+                            <TextBlock x:Name="CreationsEmptyText" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="15"
+                                       Text="Things Martlet makes, like songs, appear here." AutomationProperties.AutomationId="CreationsEmpty"/>
+                        </StackPanel>
+                    </Border>
+                    <Grid x:Name="CreationsContent" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="5*" MinWidth="280"/>
+                            <ColumnDefinition Width="7*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel x:Name="CreationsList" AutomationProperties.Name="Your creations" AutomationProperties.AutomationId="CreationsList"/>
+                        <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Padding="26,22" Margin="18,0,0,0" VerticalAlignment="Top">
+                            <StackPanel x:Name="CreationDetail" AutomationProperties.Name="Selected creation" AutomationProperties.LiveSetting="Polite"/>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- Diagnostics: every part's activity, warnings and errors, from this PC and (with a log host) all the owner's computers (MainWindow.Logs.cs) -->
             <Grid x:Name="DiagnosticsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="DiagnosticsPage">

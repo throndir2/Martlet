@@ -48,6 +48,9 @@
                     <!-- While Hear what this PC plays is on: whether Martlet hears the PC now, or why it can't. -->
                     <TextBlock x:Name="PcAudioText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LivePcAudio"/>
+                    <!-- While Martlet decides how chatty it is and vision or hearing this PC is on: the level it picked. -->
+                    <TextBlock x:Name="ChattinessText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveChattiness"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes). -->
                     <!-- Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <StackPanel x:Name="ContextRow" Orientation="Horizontal" Margin="0,2,0,0" Visibility="Collapsed">

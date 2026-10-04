@@ -500,6 +500,10 @@ what* shows which computer handles each job:
   `character-model-chunk-<sha256>.bin` beside `host.json`), only so each of your Martlet
   desktops can copy them; a host shows no character. See
   [shared character models](../../docs/CLUSTER.md#the-shared-character-models).
+- Hosts keep a copy of everything Martlet makes, such as songs (`creations.json` and
+  `creation-chunk-<sha256>.bin` beside `host.json`), so each of your Martlet desktops can copy
+  them, including one that was off when it was made; a host performs nothing. See
+  [Creations](../../docs/CREATIONS.md).
 - Handing a job to a host detaches the replaced cloud key (it is listed for removal
   in Setup, never silently deleted); handing the job back reattaches it. Jobs on the
   same host share that host's one pairing.

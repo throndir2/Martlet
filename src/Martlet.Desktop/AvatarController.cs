@@ -40,7 +40,8 @@ internal sealed class AvatarController : IAsyncDisposable
     internal bool IsShowing => renderer is { HasExited: false } && profile is not null;
     internal RendererCapabilities? Capabilities => renderer?.Capabilities;
     internal AvatarProfile? InspectedProfile => profile;
-    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings" or "lock"), raised off the UI thread.</summary>
+    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings", "lock", "mute" or "unmute"),
+    /// raised off the UI thread.</summary>
     internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
@@ -235,6 +236,30 @@ internal sealed class AvatarController : IAsyncDisposable
     }
 
     internal bool PlacementLocked => LockedPlacement is not null;
+
+    private int voiceMuted;
+
+    /// <summary>Martlet's voice is muted (Speak Martlet's replies aloud is off): a newly shown character's menu offers Unmute
+    /// voice instead of Mute voice. Set it before showing; <see cref="SetVoiceMutedAsync"/> also tells a showing character.</summary>
+    internal bool VoiceMuted
+    {
+        get => Volatile.Read(ref voiceMuted) != 0;
+        set => Volatile.Write(ref voiceMuted, value ? 1 : 0);
+    }
+
+    /// <summary>Records whether Martlet's voice is muted and tells the showing character, so its menu offers the other choice.
+    /// Hidden, the next showing starts with it.</summary>
+    internal async Task SetVoiceMutedAsync(bool muted, CancellationToken token)
+    {
+        VoiceMuted = muted;
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is { HasExited: false } current && profile is not null)
+                await current.SendAsync("voice", new RendererVoice(VoiceMuted), token);
+        }
+        finally { changes.Release(); }
+    }
 
     /// <summary>
     /// Locks the showing character where it is, or unlocks it (also while it is hidden). Returns the locked place, or null once
@@ -656,7 +681,7 @@ internal sealed class AvatarController : IAsyncDisposable
             var next = createRenderer();
             next.Requested += action => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) Requested?.Invoke(action); };
             renderer = next;
-            await next.StartAsync(selected, snapshot.Revision, LockedPlacement, attempt.Token);
+            await next.StartAsync(selected, snapshot.Revision, LockedPlacement, VoiceMuted, attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

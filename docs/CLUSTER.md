@@ -175,7 +175,7 @@ NVIDIA Build and its old key.
 | `lorebooks` | Every lorebook and the scan settings (up to 1 MiB) | |
 | `character` | The character shown: a bundled one, one of [your characters](#the-shared-character-models) by its ID (each computer shows its own copy), or a model file at the same path; its renderer, its Audio2Face mapping, show at start | The overlay's place and zoom; who does lip-sync (the plan) |
 | `character-actions` | Every model's emotes and motions (`character-actions.json`): what the Thinking model named them, the owner's tags, voice cues, when to use each and which are on, so a model is named once for all computers | |
-| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, screen chattiness | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
+| `talk` | Always listening or push-to-talk, pause length, interrupting, spoken replies, letting Thinking hear you, how chatty Martlet is about what it sees and what the PC plays (Martlet decides included; a computer on an older Martlet reads it as Chatty) | Microphone sensitivity, cameras and video addresses, Watch on or off and what it looks at (consent at that screen), echo reduction, hearing what the PC plays |
 | `speech-display` | Whether speech bubbles and subtitles show | Where the bubble sits (beside the character or in one place, and its offsets): it depends on this PC's screens |
 | `appearance` | The theme | |
 | `voice-recognition` | Whether Martlet recognizes the people it hears (Companion › People) | |
@@ -185,7 +185,7 @@ NVIDIA Build and its old key.
 | `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 
-Conversations are not shared.
+Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
 
 ### What stays with each computer
 
@@ -446,6 +446,32 @@ copy on a disposable data folder). The Linux host's file custody was checked on
 the fake Linux file system. The desktop's sync with real paired hosts, a real
 Linux host's files, rendering a copy on another computer and two real computers
 are **NOT RUN**.
+
+## The shared creations
+
+Everything Martlet makes (songs now, other kinds later) is a
+[creation](CREATIONS.md), kept the same on every Martlet computer the way the
+character models are: one last-writer-wins entry per creation with tombstones
+(`Martlet.Core.Creations.CreationLibrary`, the same hybrid revisions and merge
+rules), and assets stored once by SHA-256 that travel in 3 MiB pieces, each in one
+signed request. Every desktop, companion or host PC, keeps every creation, so
+Martlet on any computer can perform any of them; each host keeps
+`creations.json` and `creation-chunk-<sha256>.bin` beside `host.json` (0600,
+gateway service owner) only to pass them on, so a desktop that was off catches up
+from any host.
+
+| Endpoint (paired devices only, over the pinned, signed connection; API keys may not) | What |
+| --- | --- |
+| `GET /martlet/v1/creations` | The host's list and the pieces it holds (`present`) |
+| `GET /martlet/v1/creations/digest` | Digests of the list and of `present`, so unchanged hosts aren't read |
+| `POST /martlet/v1/creations` | Merge a desktop's list in; returns the merged list and `present` |
+| `GET /martlet/v1/creations/chunks/<sha256>` | One piece (`chunk.missing` when the host has none) |
+| `POST /martlet/v1/creations/chunks/<sha256>` | Send a piece of a live creation; refused (`request.invalid`) for a wrong SHA-256 or length, or a piece no live creation has |
+
+Desktops sync every 30 seconds while any host is paired and Martlet is the same on
+all your computers (and two seconds after a change), with the same engine MCP's
+`creations_check` rehearses on loopback. The desktop's sync with real paired
+hosts, the Linux host's files and two real computers are **NOT RUN**.
 
 ## The shared Home Assistant connection
 

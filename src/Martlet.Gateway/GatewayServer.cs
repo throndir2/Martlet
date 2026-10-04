@@ -61,6 +61,10 @@ public sealed class GatewayServer
     /// /martlet/v1/character-models) in <paramref name="storage"/> and loads what was saved there.</summary>
     public void AttachCharacterModelStorage(IGatewayCharacterModelStorage storage) => application.CharacterModels.Attach(storage);
 
+    /// <summary>Keeps this host's copy of Martlet's creations and their pieces (served at /martlet/v1/creations) in
+    /// <paramref name="storage"/> and loads what was saved there.</summary>
+    public void AttachCreationStorage(IGatewayCreationStorage storage) => application.Creations.Attach(storage);
+
     /// <summary>Keeps this host's shared Home Assistant connection (served at /martlet/v1/home-assistant) in
     /// <paramref name="storage"/> and loads the copy saved there.</summary>
     public void AttachHomeAssistantStorage(IGatewayHomeAssistantStorage storage) => application.HomeAssistant.Attach(storage);

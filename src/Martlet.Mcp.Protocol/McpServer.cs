@@ -341,6 +341,31 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "resuming an interrupted copy, passing characters on to a host the first desktop never reached, removal everywhere (host " +
             "pieces and desktop copies deleted), keeping the copy a computer shows, stale copies, a host restart, piece checks and the " +
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+        Tool("creations_status", "Read Martlet's creations (Creations, docs/CREATIONS.md: songs and other things Martlet made, shared " +
+            "with every paired Martlet computer) from a data directory's creations.json, creations folder and creations-sync.json: " +
+            "live creations and tombstones, total size, counts and sizes per kind, and for each creation its short id, kind, kind " +
+            "version, size, length, when and on which device it was made, whether Martlet may clean it up, its assets (name, media " +
+            "type, size, pieces), whether this PC holds all of it and on how many hosts it is complete; the asset files here (unused " +
+            "ones and copies in progress); the last sync (when, its summary, each paired host's state and how many creations it " +
+            "holds); and the limits. Never a title, text, voice or personality. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("creations_check", "Rehearse Martlet's creations end to end with the production code: list_creations and " +
+            "perform_creation (Martlet.Conversation.CreationTools) on a disposable folder with the production store and the FIXTURE - " +
+            "NOT AI test-tone kind (no tools without a registered kind; the same two tools and texts every time; listing, filters, " +
+            "performing through the kind's handler, and clear refusals for no handler, unknown ids, bad arguments, a creation still " +
+            "copying and an unknown kind), then the sync: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory " +
+            "creations.json and pieces) and three simulated desktops with the production CreationStore and CreationSync over the " +
+            "desktop's paired client. Checks FLAC sizes, sharing every 3 MiB piece, skipping unchanged hosts, a new desktop and a " +
+            "relay host, resuming an interrupted copy, performing on another computer, an unknown kind passing through, rename, " +
+            "delete everywhere (pieces and files deleted), stale copies, a host restart, piece checks, an unsigned request refused, " +
+            "a kind's rules and the per-host sync record. Loopback only; folders are deleted and the credential vault is untouched. " +
+            "With seedDataDirectory (a disposable folder under the temporary folder, never Martlet's own), it instead writes two " +
+            "FIXTURE - NOT AI test tones there, so the Creations page can be checked with a desktop on that folder.", new
+        {
+            seedDataDirectory = new { type = "string" }
+        }),
         Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
             "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
             "companion, replies, prompts, memory, lorebooks, character, character-actions, talk, speech-display, appearance, " +
@@ -442,7 +467,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "with no Save button): the personas (name, whether Martlet uses it, response-style weights, speech breaks, instruction " +
             "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
             "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
-            "this PC and where (placement) and the lorebooks (counts only). Read-only.", new
+            "this PC and where (placement), whether Martlet's voice is muted (voice: Speak Martlet's replies aloud, which the " +
+            "character's Mute voice / Unmute voice menu item changes) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -480,8 +506,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
             "unavailable (it is reloading), stall (no audio until the voice's time runs out), slow (every piece slower than real " +
             "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
-            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; a fixture " +
-            "speaker opens no " +
+            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; muted " +
+            "instead has the user mute Martlet's voice (the character's Mute voice) as the failAt-th piece is asked, which ends " +
+            "only what is said aloud and is not a failure (voice.muted); text-only sends the reply with no voice at all (Speak " +
+            "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
@@ -494,7 +522,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "and voice.pieces lists exactly what the voice was asked to say. thinkingSteps (off or on) sends Companion > Replies > " +
             "Thinking steps with the reply; with refuseThinking the fixture endpoint refuses a request that carries it, as a model " +
             "that always thinks does, and ok needs the reply asked once more without it (thinking.sentControl [true, false], " +
-            "reasoningRejected). Loopback only; reads no credentials.", new
+            "reasoningRejected). With chattiness, the reply is offered the chattiness tags as it is while Companion > Vision > How " +
+            "often it comments is Martlet decides (such as \"[chattiness:quiet]\"): chattiness returns the tags the reply wrote and " +
+            "the level they switch to, and ok also needs them out of reply.text and voice.pieces. Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 },
@@ -503,7 +533,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             reply = new { type = "string", maxLength = 1024 }, dataDirectory = new { type = "string" }, persona = new { type = "string" },
             breaks = BreaksSchema(),
             thinkingSteps = new { type = "string", @enum = new[] { "off", "on" } },
-            refuseThinking = new { type = "boolean" }
+            refuseThinking = new { type = "boolean" },
+            chattiness = new { type = "boolean" }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -605,6 +636,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "when this PC plays it back, on fixed samples. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
+            "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
+            "whether vision and hearing the PC are on (replies are told about Martlet decides only while one is), the level Martlet " +
+            "decides starts at, the tags a reply switches the level with, what Martlet decides tells the Thinking model and the " +
+            "note that says the level (Companion > Prompts, from settings.json's edits), then a rehearsal: sample replies (or reply) " +
+            "through the production speech segmenter and chat stripper with those tags offered, returning what is spoken and shown, " +
+            "whether it stays silent, the tags found and the level they switch to. The level a running conversation picked shows in " +
+            "the talk window's LiveChattiness line and the desktop log. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 1024 }
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
@@ -791,6 +834,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), OptionalString(arguments, "name"),
                     OptionalString(arguments, "about"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
+                "creations_status" => CreationsCheck.Status(DataDirectory(arguments)),
+                "creations_check" => OptionalString(arguments, "seedDataDirectory") is { } seed
+                    ? await CreationsCheck.SeedAsync(seed, cancellation)
+                    : await CreationsCheck.RunAsync(() => NodeLinkCheckAsync(cancellation, "creations"), cancellation),
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
@@ -815,11 +862,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
                     SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name,
-                    OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false),
+                    OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false,
+                    OptionalBool(arguments, "chattiness") ?? false),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
@@ -2054,7 +2103,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
         };
-        return new { personality, character, placement = CharacterPlacement(directory), lorebooks };
+        return new { personality, character, placement = CharacterPlacement(directory), voice = CharacterVoice(directory), lorebooks };
+    }
+
+    /// <summary>Whether Martlet's voice is muted, from talk-preferences.json in a data directory (Martlet.Desktop's
+    /// TalkPreferences): SpeakReplies (Companion › Voice's Speak Martlet's replies aloud) is on unless saved off, and Mute
+    /// voice / Unmute voice on the character's right-click menu change the same choice.</summary>
+    private static object CharacterVoice(string directory)
+    {
+        var path = Path.Combine(directory, "talk-preferences.json");
+        if (!File.Exists(path)) return new { state = "none", speakReplies = true, muted = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return new { state = "unreadable", speakReplies = true, muted = false, problem = "NotAnObject" };
+            var speak = !(document.RootElement.TryGetProperty("SpeakReplies", out var value) && value.ValueKind == JsonValueKind.False);
+            return new { state = "loaded", speakReplies = speak, muted = !speak };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", speakReplies = true, muted = false, problem = error.GetType().Name };
+        }
     }
 
     /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): whether the character's

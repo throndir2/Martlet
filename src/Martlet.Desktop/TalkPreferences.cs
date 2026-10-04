@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -9,8 +10,9 @@ namespace Martlet.Desktop;
 // by default), whether talking over a reply stops it (BargeIn, opt-in and off by default), how readily what is heard counts as
 // words (WordCheck: Relaxed, Normal by default, or Sensitive), whether what the PC plays is removed
 // from the microphone (ReduceEcho, on by default), whether always listening also hears what the PC plays (HearPc, off by
-// default) and whether (and at what) Martlet may look, and whether Martlet decides where the character looks while it watches
-// your screen (DecideGaze, off by default: the character follows the mouse). The talk
+// default) and whether (and at what) Martlet may look, how chatty it is about what it sees and what the PC plays
+// (ScreenChattiness: a ChattinessChoice, Normal by default; 3 is Martlet decides), and whether Martlet decides where the
+// character looks while it watches your screen (DecideGaze, off by default: the character follows the mouse). The talk
 // window's mic and vision buttons pause them there (Stop and Esc pause vision, never listening). A camera address is saved
 // without its user name or password.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
@@ -38,7 +40,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 BargeIn = loaded.Version >= OptInBargeInVersion && loaded.BargeIn,
                 Sensitivity = double.IsFinite(loaded.Sensitivity) ? Math.Clamp(loaded.Sensitivity, 0, 1) : 0.5,
                 PauseIndex = Math.Clamp(loaded.PauseIndex, 0, Pauses.Length - 1),
-                ScreenChattiness = Math.Clamp(loaded.ScreenChattiness, 0, 2),
+                ScreenChattiness = (int)ChattinessTags.Choice(loaded.ScreenChattiness),
                 ScreenScope = Math.Clamp(loaded.ScreenScope, 0, 3),
                 CameraId = loaded.CameraId ?? "",
                 CameraName = loaded.CameraName ?? "",

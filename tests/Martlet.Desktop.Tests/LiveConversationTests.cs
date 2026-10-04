@@ -1951,6 +1951,39 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task MutingTheVoiceSilencesTheReplyBeingSpokenAndKeepsItsText() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Retained response.");
+        var spoken = new TalkPreferences(HandsFree: false, SpeakReplies: true);
+        var window = fixture.Open(spoken);
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "test";
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            // Mute voice on the character's menu (or Speak Martlet's replies aloud off) while Martlet speaks.
+            window.UsePreferences(spoken with { SpeakReplies = false }, null);
+            await fixture.Finish();
+            var muted = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => muted.OwnershipReleased && window.Messages.Any(m => m.Role == ChatRole.Martlet && m.HasNote));
+            var reply = Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.Contains("Retained response.", reply.Text);
+            Assert.Contains("Muted partway", reply.Note);
+            // Not canceled and not a voice failure: the reply completed, only what was said aloud ended.
+            Assert.Equal("runtime.Completed", muted.Status.Code);
+            Assert.Equal(ConversationState.Completed, muted.Turn!.Snapshot.State);
+            Assert.True(muted.Turn.Snapshot.VoiceMuted);
+            Assert.False(muted.Turn.Snapshot.SpeechFailed);
+            Assert.Equal(1, fixture.Output.Opens);
+            Assert.Equal(1, fixture.Output.Stops);
+            Assert.Equal(1, fixture.Tts.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task EscapeDuringSettingsLoadRetainsOwnershipUntilWorkerReturns() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -1974,6 +2007,133 @@ public sealed class LiveConversationTests
             fixture.NoEffects();
         }
         finally { release.TrySetResult(); window.Close(); }
+    });
+
+    [Fact]
+    public async Task MartletDecidesHowChattyItIsWithATagAtTheEndOfAReply()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var switched = new ConcurrentQueue<(Chattiness Before, Chattiness Level)>();
+        fixture.Controller.ChattinessDecided += (before, level) => switched.Enqueue((before, level));
+        Assert.Equal(Chattiness.Normal, fixture.Controller.DecidedChattiness);
+        LiveConversationOperation Say(string text, ChattinessChoice? choice) =>
+            fixture.Controller.Start(text, voice: false, microphone: false, approved: true, chattiness: choice);
+        static string[] Earlier(JsonDocument body) => [.. body.RootElement.GetProperty("input").EnumerateArray().SkipLast(1)
+            .Select(item => item.GetProperty("content").GetString()!)];
+
+        // Asked for quiet, the reply switches the level with a tag at its very end: never shown, spoken or kept.
+        fixture.Answer("Sure, I'll keep it down. ", "[chattiness:", "quiet]");
+        var first = Say("Shh, I'm concentrating.", ChattinessChoice.MartletDecides);
+        await fixture.Finish(first);
+        Assert.Equal("runtime.Completed", first.Status.Code);
+        Assert.Equal("Sure, I'll keep it down.", first.Turn!.Content.Text);
+        Assert.Equal(["[chattiness:quiet]"], first.Turn.Controls);
+        Assert.Equal(Chattiness.Quiet, fixture.Controller.DecidedChattiness);
+        Assert.Equal((Chattiness.Normal, Chattiness.Quiet), Assert.Single(switched));
+        string instructions;
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            instructions = body.RootElement.GetProperty("instructions").GetString()!;
+            Assert.Contains(LiveConversationConfiguration.ChattinessDecides(null)!, instructions);
+            Assert.Contains("[chattiness:quiet]", instructions);
+            Assert.Contains("Your chattiness right now: normal.", ResponsesCurrentNotes(body));
+        }
+
+        // The next reply's notes say the new level once; the instructions stay exactly the same, so the prompt cache holds.
+        fixture.Answer("Okay.");
+        await fixture.Finish(Say("Thanks.", ChattinessChoice.MartletDecides));
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            Assert.Equal(instructions, body.RootElement.GetProperty("instructions").GetString());
+            Assert.Contains("Your chattiness right now: quiet.", ResponsesCurrentNotes(body));
+            Assert.Contains("Sure, I'll keep it down.", Earlier(body));
+            Assert.DoesNotContain(Earlier(body), text => text.Contains("[chattiness", StringComparison.OrdinalIgnoreCase));
+        }
+        fixture.Answer("Mm-hmm.");
+        await fixture.Finish(Say("Still here?", ChattinessChoice.MartletDecides));
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            Assert.Equal(instructions, body.RootElement.GetProperty("instructions").GetString());
+            Assert.DoesNotContain("Your chattiness right now", ResponsesCurrentUserText(body), StringComparison.Ordinal);
+        }
+        Assert.Single(switched);
+
+        // With a fixed level (or nothing in the background) replies aren't told about it, and a stray tag switches nothing.
+        fixture.Answer("Fine. [chattiness:chatty]");
+        await fixture.Finish(Say("Hello.", ChattinessChoice.Normal));
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+            Assert.DoesNotContain("You decide how chatty you are", body.RootElement.GetProperty("instructions").GetString());
+        fixture.Answer("Sure. [chattiness:chatty]");
+        await fixture.Finish(Say("Hello again.", null));
+        Assert.Equal(Chattiness.Quiet, fixture.Controller.DecidedChattiness);
+        Assert.Single(switched);
+    }
+
+    [Fact]
+    public async Task AGlanceWhileMartletDecidesMayStayQuietAndStillSwitchTheLevel()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+        fixture.Answer("[pass] ", "[chattiness:chatty]");
+        var glance = fixture.Controller.StartCommentary(image, "Boss fight", ChattinessChoice.MartletDecides, voice: false,
+            screenApproved: true);
+        await fixture.Finish(glance);
+        Assert.True(glance.Passed);
+        Assert.Equal("commentary.passed", glance.Status.Code);
+        Assert.Equal(Chattiness.Chatty, fixture.Controller.DecidedChattiness);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            var instructions = body.RootElement.GetProperty("instructions").GetString()!;
+            // The look's prompt, then how to switch: the same at every level, without a fixed level's line.
+            Assert.EndsWith(LiveConversationConfiguration.CommentaryInstructions(Chattiness.Quiet, decides: true)!, instructions);
+            Assert.Equal(LiveConversationConfiguration.CommentaryInstructions(Chattiness.Quiet, decides: true),
+                LiveConversationConfiguration.CommentaryInstructions(Chattiness.Chatty, decides: true));
+            Assert.DoesNotContain(PromptCatalog.Default(PromptCatalog.ChattinessNormal).Replace("{silent}", "pass"), instructions);
+            Assert.Contains("Your chattiness right now: normal.", ResponsesCurrentNotes(body));
+        }
+
+        // A fixed level keeps its own line in the glance instructions and isn't told how to switch.
+        fixture.Answer("[pass]");
+        var fixedGlance = fixture.Controller.StartCommentary(image, "Boss fight", ChattinessChoice.Quiet, voice: false, screenApproved: true);
+        await fixture.Finish(fixedGlance);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            var instructions = body.RootElement.GetProperty("instructions").GetString()!;
+            Assert.EndsWith(LiveConversationConfiguration.CommentaryInstructions(Chattiness.Quiet)!, instructions);
+            Assert.DoesNotContain("You decide how chatty you are", instructions);
+        }
+        Assert.Equal(Chattiness.Chatty, fixture.Controller.DecidedChattiness);
+    }
+
+    [Fact]
+    public Task TheTalkWindowSaysWhatMartletDecidedAndNotesTheSwitch() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        // Hearing this PC is on (push-to-talk never hears it, so nothing is captured): Martlet decides applies to replies.
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: false, HearPc: true,
+            ScreenChattiness: (int)ChattinessChoice.MartletDecides));
+        try
+        {
+            await Loaded(window);
+            Assert.Equal("Martlet decides how chatty it is: normal right now.", Control<TextBlock>(window, "ChattinessText").Text);
+            Assert.Equal(Visibility.Visible, Control<TextBlock>(window, "ChattinessText").Visibility);
+            fixture.Answer("Got it, I'll hush. ", "[chattiness:quiet]");
+            Control<TextBox>(window, "InputText").Text = "Please be quiet for a bit.";
+            Click(window, "SendButton");
+            await fixture.Finish();
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Got it, I'll hush."));
+            await Until(() => Control<TextBlock>(window, "ChattinessText").Text.StartsWith(
+                "Martlet decides how chatty it is: quiet right now (since ", StringComparison.Ordinal));
+            Assert.Contains(window.Messages, m => m.Role == ChatRole.Note &&
+                m.Text == LiveConversationWindow.ChattinessSwitched(Chattiness.Normal, Chattiness.Quiet));
+            Assert.Contains("Your chattiness right now: normal.", Encoding.UTF8.GetString(fixture.Llm.Body));
+
+            // A fixed level says nothing here (Companion shows it).
+            window.UsePreferences(new TalkPreferences(HandsFree: false, SpeakReplies: false, HearPc: true,
+                ScreenChattiness: (int)ChattinessChoice.Chatty), null);
+            Assert.Equal(Visibility.Collapsed, Control<TextBlock>(window, "ChattinessText").Visibility);
+        }
+        finally { window.Close(); }
     });
 
     private static void Escape(Window window, string target)

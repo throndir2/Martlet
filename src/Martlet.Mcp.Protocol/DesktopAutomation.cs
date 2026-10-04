@@ -14,7 +14,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
+        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
@@ -89,7 +89,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
-        "PeopleMemories-"];
+        "PeopleMemories-",
+        // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
+        // There is no Play, Show or Activate; its Rename and Delete change it on every computer, so they need --allow-ui-effects.
+        "Creation-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -110,6 +113,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // CharacterLockPosition ("Lock position" / "Position locked: unlock in Martlet"). Clicking any of them saves
         // character-placement.json, so it needs --allow-ui-effects.
         "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
+        // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
+        // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
+        "CharacterMuteVoice",
         // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
@@ -170,6 +176,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
+        // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
+        // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and
+        // the talk window's line while Martlet decides and vision is on or it hears this PC (the level it picked and since when).
+        "VisionChattiness", "VisionChattinessStatus", "TalkPcChattiness", "TalkPcChattinessStatus", "LiveChattiness",
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects) and, under Another
         // of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads through the
@@ -270,7 +281,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Thinking › This PC's Use Ollama on this PC, for a model Ollama doesn't have yet: the download question
         // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
         // it, so it needs --allow-ui-effects.
-        "LocalModelDownloadQuestion"
+        "LocalModelDownloadQuestion",
+        // Creations: the fixed note ("Ask Martlet to sing or show any of these.") and empty state ("Things Martlet makes, like
+        // songs, appear here."), how many creations and how large, whether they are shared with the paired computers (with how
+        // many and when), and the selected creation's kind line (kind, length, size, when and on which computer it was made),
+        // where it is (this PC and which hosts hold it) and what to ask Martlet ("Ask Martlet to sing it."). Never a title, text,
+        // voice or personality: those are the owner's own (CreationTitle and the rename box are never returned).
+        "CreationsNote", "CreationsEmpty", "CreationsSummary", "CreationsStatus", "CreationKind", "CreationSync", "CreationAsk"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -332,7 +349,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads
         // "Parakeet TDT 110M (English). Replies start sooner: ... Downloads once: 477 MB."). Its SetupListenParakeet-<model>
         // button downloads (after a confirmation) and switches Listening, so it needs --allow-ui-effects.
-        "ListenParakeetModel"];
+        "ListenParakeetModel",
+        // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
+        // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
+        "CreationState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

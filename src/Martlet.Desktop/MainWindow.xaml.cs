@@ -88,6 +88,7 @@ public partial class MainWindow : ThemedWindow
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
         avatar.LockedPlacement = CharacterPlacementStore.Load(store?.DataDirectory);
+        avatar.VoiceMuted = !Talk.SpeakReplies;
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
@@ -103,6 +104,7 @@ public partial class MainWindow : ThemedWindow
                 pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
+            conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
         }
         WireCharacterActions();
         WireCharacterThemes();
@@ -143,6 +145,7 @@ public partial class MainWindow : ThemedWindow
         InitializeVoiceSync();
         InitializeSpeakingVoices();
         InitializeCharacterModels();
+        InitializeCreations();
         InitializeHomeShare();
         InitializeNodeAgent();
         InitializeLogs();
@@ -185,6 +188,7 @@ public partial class MainWindow : ThemedWindow
         StartVoiceSync();
         StartSpeakingVoices();
         StartCharacterModels();
+        StartCreations();
         StartHomeShare();
         StartNodeAgent();
         StartLogShipping();
@@ -463,8 +467,8 @@ public partial class MainWindow : ThemedWindow
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
-    /// Martlet, talk, open Companion › Character or lock its position. The overlay handles its zoom, position and keep-on-top
-    /// itself; it can't unlock its own position.</summary>
+    /// Martlet, talk, open Companion › Character, lock its position, or mute or unmute Martlet's voice. The overlay handles its
+    /// zoom, position and keep-on-top itself; it can't unlock its own position.</summary>
     private void CharacterRequested(string action)
     {
         if (closing) return;
@@ -484,6 +488,8 @@ public partial class MainWindow : ThemedWindow
             case "lock":
                 if (!avatar.PlacementLocked) SetCharacterLockAsync(true).Forget();
                 break;
+            case "mute": SetVoiceMuted(true); break;
+            case "unmute": SetVoiceMuted(false); break;
         }
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();
