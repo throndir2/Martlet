@@ -4,28 +4,10 @@
                     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                     xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
                     mc:Ignorable="po">
-    <!-- The Martlet mascot: the cream bird from Assets\Martlet.svg on a round badge. Keep in step with the app icon. -->
-    <DrawingImage x:Key="MascotImage" po:Freeze="True">
-        <DrawingImage.Drawing>
-            <DrawingGroup>
-                <GeometryDrawing Brush="#A52D64">
-                    <GeometryDrawing.Geometry><EllipseGeometry Center="128,136" RadiusX="114" RadiusY="114"/></GeometryDrawing.Geometry>
-                </GeometryDrawing>
-                <GeometryDrawing Brush="#F6AACD">
-                    <GeometryDrawing.Geometry><EllipseGeometry Center="128,136" RadiusX="106" RadiusY="106"/></GeometryDrawing.Geometry>
-                </GeometryDrawing>
-                <GeometryDrawing Brush="#FFE8F1" Geometry="M 45 127 C 45 80 80 47 126 47 C 172 47 211 82 211 132 C 211 180 180 219 132 219 C 81 219 45 185 45 127 Z"/>
-                <GeometryDrawing Brush="#A52D64" Geometry="M 100 201 L 110 216 L 123 201 Z M 139 201 L 151 216 L 160 200 Z"/>
-                <GeometryDrawing Brush="#FFF9EE" Geometry="M 64 138 C 64 107 78 84 104 77 C 106 64 118 59 132 61 L 125 76 C 163 73 188 102 188 140 C 188 158 193 185 209 192 L 187 197 L 196 210 C 178 212 169 204 163 199 C 143 211 110 211 91 200 L 60 210 L 69 190 C 54 178 53 154 64 138 Z"/>
-                <GeometryDrawing Brush="#F6AACD" Geometry="M 65 148 C 79 151 93 168 100 187 C 83 188 65 174 65 148 Z"/>
-                <GeometryDrawing Brush="#432C3A" Geometry="M 91 130 C 91 119 108 119 108 130 C 108 141 91 141 91 130 Z M 147 130 C 147 119 164 119 164 130 C 164 141 147 141 147 130 Z"/>
-                <GeometryDrawing Brush="#F28DB9" Geometry="M 78 150 C 78 139 102 139 102 150 C 102 161 78 161 78 150 Z M 153 150 C 153 139 177 139 177 150 C 177 161 153 161 153 150 Z"/>
-                <GeometryDrawing Brush="#A52D64" Geometry="M 117 145 Q 128 139 139 145 L 128 157 Z"/>
-            </DrawingGroup>
-        </DrawingImage.Drawing>
-    </DrawingImage>
+    <!-- The Martlet mascot: the cream bird from Assets\Martlet.svg on a round badge (keep in step with the app icon). Each palette
+         supplies MascotImage (AppearancePalette.cs): Martlet's pink badge, or the accent's hue in a character palette. -->
     <Style x:Key="Mascot" TargetType="Image">
-        <Setter Property="Source" Value="{StaticResource MascotImage}"/>
+        <Setter Property="Source" Value="{DynamicResource MascotImage}"/>
         <Setter Property="Stretch" Value="Uniform"/>
         <Setter Property="IsHitTestVisible" Value="False"/>
         <Setter Property="Focusable" Value="False"/>

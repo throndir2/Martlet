@@ -52,7 +52,7 @@ public class ThemedWindow : Window
     {
         if (fallbackPalette is not null) Resources.MergedDictionaries.Remove(fallbackPalette);
         fallbackHighContrast = SystemParameters.HighContrast;
-        fallbackPalette = Appearance.Palette(PinkTheme.Light, fallbackHighContrast);
+        fallbackPalette = Appearance.Palette(AppearanceTheme.Light, fallbackHighContrast);
         Resources.MergedDictionaries.Add(fallbackPalette);
     }
 }

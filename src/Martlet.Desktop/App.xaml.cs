@@ -9,7 +9,10 @@ namespace Martlet.Desktop;
 public partial class App : Application
 {
     private ResourceDictionary? palette;
-    internal PinkTheme SelectedTheme { get; private set; }
+    internal AppearanceTheme SelectedTheme { get; private set; }
+    /// <summary>The character colors applied while a character theme is chosen (null with Martlet's own palettes, or until the
+    /// character's colors are known).</summary>
+    internal IReadOnlyDictionary<string, string>? ThemeColors { get; private set; }
     internal string? AppearanceNotice { get; private set; }
     /// <summary>The --data-directory Martlet was started with, so an update restarts it with the same one.</summary>
     internal string? DataDirectoryArgument { get; private set; }
@@ -18,10 +21,11 @@ public partial class App : Application
     /// <summary>This process owns its data folder (<see cref="SingleInstance"/>).</summary>
     private SingleInstance? instance;
 
-    internal void ApplyTheme(PinkTheme theme)
+    internal void ApplyTheme(AppearanceTheme theme, IReadOnlyDictionary<string, string>? colors = null)
     {
         SelectedTheme = theme;
-        var next = Appearance.Palette(theme, SystemParameters.HighContrast);
+        ThemeColors = theme.FromCharacter() ? colors : null;
+        var next = Appearance.Palette(theme, SystemParameters.HighContrast, ThemeColors);
         if (palette is not null) Resources.MergedDictionaries.Remove(palette);
         Resources.MergedDictionaries.Add(next);
         palette = next;
@@ -30,7 +34,7 @@ public partial class App : Application
     private void SystemAppearanceChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SystemParameters.HighContrast))
-            Dispatcher.InvokeAsync(() => ApplyTheme(SelectedTheme));
+            Dispatcher.InvokeAsync(() => ApplyTheme(SelectedTheme, ThemeColors));
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -96,10 +100,11 @@ public partial class App : Application
             if (store is not null)
             {
                 (SelectedTheme, AppearanceNotice) = Appearance.LoadForStartup(store.DataDirectory);
+                ThemeColors = Appearance.LoadColors(store.DataDirectory, SelectedTheme);
                 HostShells.Current = new SshHostShell(store.DataDirectory);
                 HostSetupResume.Initialize(store.DataDirectory, DataDirectoryArgument);
             }
-            ApplyTheme(SelectedTheme);
+            ApplyTheme(SelectedTheme, ThemeColors);
             SystemParameters.StaticPropertyChanged += SystemAppearanceChanged;
             var main = new MainWindow(store, error);
             MainWindow = main;
@@ -126,7 +131,7 @@ public partial class App : Application
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             if (palette is null)
             {
-                try { ApplyTheme(SelectedTheme); }
+                try { ApplyTheme(SelectedTheme, ThemeColors); }
                 catch (Exception theme) when (!ErrorLog.IsFatal(theme)) { ErrorLog.Warn("Couldn't apply the theme for the startup error", theme); }
             }
             if (!ProblemDialog.Show(null, "Martlet couldn't start", "Martlet couldn't start",
