@@ -192,6 +192,19 @@ on each PC), and brought up when it's done
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
 started think-1`); the desktop log notes each start, pause and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
+
+### Searching past conversations
+
+**Companion > Memory > Conversation history > Let Martlet search the record on
+its own** (off by default) gives every reply on a route that does function
+calling Martlet's own `search_conversations` (`query`, words to look for, and/or
+`when`: today, yesterday, 3 days ago, last week, a weekday or YYYY-MM-DD), after
+`think_longer` and `cancel_thinking`, always worded the same. It never asks
+first, searches the [record of conversations](MEMORY.md#conversation-history)
+on this PC from memory (other conversations than the one going on) and returns
+at most six exchanges with their dates, as data, never instructions. *Recent
+tool use* lists each call (`Martlet > search_conversations: found 2`); the
+desktop log notes how many were found, never what (`Past conversations:`).
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -398,6 +411,33 @@ by its tag such as `V3`, with `named`, `owner` and `facts`) and
 `forgottenVoices`. It reads the store's file as JSON without opening or
 locking the store (the desktop can keep running), and never returns a fact's
 text, a name, a voice ID or a path. It contacts nothing.
+
+`conversation_history_status` reads the [record of conversations](MEMORY.md#conversation-history)
+from a data directory (optional absolute `dataDirectory`; the disposable one in
+`Invoke-MartletMcp.ps1`): `memory` (`on`, `off` or `not chosen`), `preferences`
+(`conversation-history.json`: `keep`, on by default, and `search`, off by
+default), `recording` and `recallWhenMentioned` (memory on and `keep`), `tool`
+(whether replies are offered `search_conversations`, whether the Thinking route
+does function calling, and the tool exactly as the model gets it with its
+`utf8Bytes` and `estimatedTokens`), `prompt` (Companion > Prompts > *Past
+conversations* as sent) and `record` (`files`, `bytes`, `conversations`,
+`exchanges`, `skippedLines`, `notIndexed`, `oldest`, `newest`). Never what was
+said; it contacts nothing.
+
+`conversation_history_check` (optional `bulkExchanges`, 1,000-100,000, default
+20,000) rehearses the record with the production code (`ConversationHistory`
+and `PastConversations` in `src\Martlet.Conversation`) on synthetic
+conversations in a disposable folder and returns `{passed, failures, steps,
+tool}`: recording exchanges into month files, a line cut short by a crash
+skipped after a restart, an ordinary message recalling nothing, *Do you
+remember what I said about Kyoto?* and *What did we talk about yesterday?*
+bringing back the right exchanges (never the conversation going on) with the
+notes' size, `search_conversations` by words and by time and what it tells the
+model, deleting one conversation and everything, and reading `bulkExchanges`
+exchanges with the time recall takes (`recallMedianMs`, `recallMaxMs`) and the
+time an ordinary message's check takes (`ordinaryMessageCheckMs`). It is not a
+real conversation or Thinking model; the desktop's tests and `ui_*` tools cover
+the talk window.
 
 `memory_sync_selftest` (no arguments) rehearses shared memories end to end with
 the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
@@ -1029,7 +1069,18 @@ own into the newest saved file, keeping what was saved elsewhere meanwhile
 (the character itself doesn't show), and their `CompanionClose`,
 `AvatarClose`, `LorebookClose` and `MemoryClose` close them; these are passive
 clicks, as are the character window's `AvatarAdvanced` and
-`RemoteHostSection` expanders. Each editor's footer line, `CompanionSaveState`,
+`RemoteHostSection` expanders. Companion > Memory's *Conversation history* card
+shows `HistoryStatus` (text: whether Martlet keeps a record and may search it,
+and how many conversations and exchanges it holds since when; never what was
+said) and the checkboxes `HistoryKeep` and `HistorySearch` (toggling either
+saves `conversation-history.json`, so it needs `--allow-ui-effects`).
+`OpenHistory` opens the history window and `HistoryClose` closes it;
+`HistorySearchRun` and `HistoryShowAll` only filter what it lists. Its
+`HistoryWindowStatus` reads as text (counts, or what a search found);
+`HistorySearchText` takes a search through `ui_set_text`, while the list
+(`HistoryConversations`) and what was said (`HistoryExchanges`) are not
+readable values. `HistoryDeleteConversation` and `HistoryDeleteAll` ask first
+(No by default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSaveState`,
 `AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
 *Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
 response styles at zero, or *Choose your model file: an existing .vrm or
@@ -2562,7 +2613,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
