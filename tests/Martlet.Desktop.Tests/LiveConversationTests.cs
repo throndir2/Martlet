@@ -1826,6 +1826,39 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task MutingTheVoiceSilencesTheReplyBeingSpokenAndKeepsItsText() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Retained response.");
+        var spoken = new TalkPreferences(HandsFree: false, SpeakReplies: true);
+        var window = fixture.Open(spoken);
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "test";
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            // Mute voice on the character's menu (or Speak Martlet's replies aloud off) while Martlet speaks.
+            window.UsePreferences(spoken with { SpeakReplies = false }, null);
+            await fixture.Finish();
+            var muted = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => muted.OwnershipReleased && window.Messages.Any(m => m.Role == ChatRole.Martlet && m.HasNote));
+            var reply = Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.Contains("Retained response.", reply.Text);
+            Assert.Contains("Muted partway", reply.Note);
+            // Not canceled and not a voice failure: the reply completed, only what was said aloud ended.
+            Assert.Equal("runtime.Completed", muted.Status.Code);
+            Assert.Equal(ConversationState.Completed, muted.Turn!.Snapshot.State);
+            Assert.True(muted.Turn.Snapshot.VoiceMuted);
+            Assert.False(muted.Turn.Snapshot.SpeechFailed);
+            Assert.Equal(1, fixture.Output.Opens);
+            Assert.Equal(1, fixture.Output.Stops);
+            Assert.Equal(1, fixture.Tts.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task EscapeDuringSettingsLoadRetainsOwnershipUntilWorkerReturns() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();

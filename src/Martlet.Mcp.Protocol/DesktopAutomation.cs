@@ -102,6 +102,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // CharacterLockPosition ("Lock position" / "Position locked: unlock in Martlet"). Clicking any of them saves
         // character-placement.json, so it needs --allow-ui-effects.
         "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
+        // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
+        // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
+        "CharacterMuteVoice",
         // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.

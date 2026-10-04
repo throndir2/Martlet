@@ -19,7 +19,7 @@ namespace Martlet.Avatar.RendererHost;
 internal sealed class RendererWindow : Window
 {
     private readonly Stream input, output;
-    // Menu choices Martlet itself carries out (hide, open, talk, settings); null when started without it (tests).
+    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute); null when started without it (tests).
     private readonly Stream? requests;
     private readonly SemaphoreSlim requesting = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -263,6 +263,25 @@ internal sealed class RendererWindow : Window
 
     // Locked, the overlay can't be dragged, nudged, sent home or resized from here; only Martlet's window unlocks it.
     private bool placementLocked;
+    // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
+    private bool voiceMuted;
+    private MenuItem? muteItem;
+
+    private void UseVoice(bool muted)
+    {
+        if (voiceMuted == muted) return;
+        voiceMuted = muted;
+        ShowVoice();
+        ErrorLog.Info(muted ? "Martlet's voice is muted." : "Martlet's voice is unmuted.");
+    }
+
+    // The menu item carries the state: Mute voice while Martlet speaks, Unmute voice while it is muted.
+    private void ShowVoice()
+    {
+        if (muteItem is null) return;
+        muteItem.Header = voiceMuted ? "Unmute _voice" : "Mute _voice";
+        AutomationProperties.SetName(muteItem, voiceMuted ? "Unmute voice" : "Mute voice");
+    }
 
     private RendererPlacement Placement() =>
         new(placementLocked, Math.Round(Left, 2), Math.Round(Top, 2), Math.Round(FrameWidth, 2), Math.Round(Height, 2));
@@ -281,8 +300,8 @@ internal sealed class RendererWindow : Window
         viewport.PlacementLocked = placementLocked;
         viewport.Cursor = placementLocked ? Cursors.Arrow : Cursors.SizeAll;
         AutomationProperties.SetName(viewport, placementLocked
-            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom and hide options."
-            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, settings, zoom, position, lock and hide options.");
+            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom and hide options."
+            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock and hide options.");
     }
 
     /// <summary>Puts the overlay back where it was locked, at that size, when the character's frame would still be on a screen;
@@ -409,6 +428,8 @@ internal sealed class RendererWindow : Window
             if (item.Parent is ContextMenu { IsOpen: true } owner) owner.IsOpen = false;
         }
         var talk = Item("_Talk to Martlet", "CharacterTalk", null, () => Request("talk"));
+        // Muting goes through Martlet, which saves it (Speak Martlet's replies aloud) and silences a reply it is speaking.
+        var mute = muteItem = Item("Mute _voice", "CharacterMuteVoice", null, () => Request(voiceMuted ? "unmute" : "mute"));
         var open = Item("Open _Martlet", "CharacterOpenMartlet", null, () => Request("open"));
         var settings = Item("Character _settings", "CharacterSettings", null, () => Request("settings"));
         var zoomIn = Item("Zoom _in", "CharacterZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
@@ -425,7 +446,7 @@ internal sealed class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, open, settings, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
+            Items = { talk, mute, open, settings, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -433,7 +454,8 @@ internal sealed class RendererWindow : Window
         menu.Opened += (_, _) =>
         {
             // Until Martlet has loaded the character there is no one to ask; Hide still closes the overlay then.
-            talk.IsEnabled = open.IsEnabled = settings.IsEnabled = placeLock.IsEnabled = CanRequest;
+            talk.IsEnabled = mute.IsEnabled = open.IsEnabled = settings.IsEnabled = placeLock.IsEnabled = CanRequest;
+            ShowVoice();
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
             reset.IsEnabled = CanResetZoom;
@@ -714,6 +736,7 @@ internal sealed class RendererWindow : Window
             var load = RendererProtocol.Data<RendererLoad>(message);
             ApplyOverlayTheme(load.DarkTheme, load.ThemeColors);
             if (load.Placement is { Locked: true } locked) RestorePlacement(locked);
+            UseVoice(load.VoiceMuted);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
             foreach (var asset in assets.Assets) resources.Add(RendererResourcePolicy.CanonicalName("asset/" + asset.Name), asset);
@@ -798,7 +821,7 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "snapshot"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "snapshot"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "home")
                 {
@@ -810,6 +833,12 @@ internal sealed class RendererWindow : Window
                 {
                     LockPlacement(RendererProtocol.Data<RendererLock>(message).Locked);
                     await ReplyAsync("placement", Placement());
+                    continue;
+                }
+                if (message.Kind == "voice")
+                {
+                    UseVoice(RendererProtocol.Data<RendererVoice>(message).Muted);
+                    await ReplyAsync("ok", new { });
                     continue;
                 }
                 if (message.Kind == "zoom")

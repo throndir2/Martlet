@@ -25,9 +25,14 @@ public sealed record RendererAction(string Kind, string Name, bool On = true)
 }
 /// <summary>Starts the renderer. A locked <paramref name="Placement"/> puts the overlay back where it was locked (when that
 /// spot is still on a screen) and locks it again. <paramref name="ThemeColors"/> are a character palette's colors by role
-/// (#RRGGBB; null for Martlet's own palette of that lightness).</summary>
+/// (#RRGGBB; null for Martlet's own palette of that lightness). <paramref name="VoiceMuted"/>: Martlet's voice is muted (its
+/// replies aren't spoken), so the overlay's menu offers to unmute it (see <see cref="RendererVoice"/>).</summary>
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme, RendererPlacement? Placement = null,
-    IReadOnlyDictionary<string, string>? ThemeColors = null);
+    IReadOnlyDictionary<string, string>? ThemeColors = null, bool VoiceMuted = false);
+/// <summary>Whether Martlet's voice is muted now (changed from the overlay's menu, Martlet's window or another computer), so
+/// the overlay's menu offers Mute voice or Unmute voice. Only Martlet mutes: the menu asks it with a "mute" or "unmute"
+/// <see cref="RendererRequest"/>. Replied to with "ok".</summary>
+public sealed record RendererVoice(bool Muted);
 /// <summary>
 /// Locks (or unlocks) the character overlay's place. While locked it can't be dragged, nudged with the arrow keys, moved back
 /// to its default spot or resized from the overlay itself; zoom then only zooms the camera within its frame. Only Martlet
@@ -67,12 +72,13 @@ public sealed record RendererZoom(string Action);
 /// <summary>
 /// Something chosen on the character overlay's menu that Martlet itself carries out, sent unprompted on the renderer's
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
-/// window), show the character's "settings" or "lock" its place where it is (Martlet saves it and sends
-/// <see cref="RendererLock"/>; unlocking is only in Martlet's window). Zoom, position and keep-on-top stay inside the overlay.
+/// window), show the character's "settings", "lock" its place where it is (Martlet saves it and sends
+/// <see cref="RendererLock"/>; unlocking is only in Martlet's window), or "mute" or "unmute" Martlet's voice (Martlet saves it
+/// and sends <see cref="RendererVoice"/>). Zoom, position and keep-on-top stay inside the overlay.
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock"];
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "mute", "unmute"];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area

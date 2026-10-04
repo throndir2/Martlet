@@ -150,7 +150,13 @@ and pan never push it above the overlay's top edge (the renderer reports where
 the head's top is for the loaded Live2D or VRM model). When zoomed in,
 Ctrl+drag or middle-drag pans.
 Right-click the character for **Zoom in**, **Zoom out**, **Reset zoom** and
-**Reset position and size**. After clicking the character, use arrow keys for
+**Reset position and size**, and for **Mute voice** (**Unmute voice** while
+muted). Muting is the same choice as **Speak Martlet's replies aloud**
+(Companion > Voice), so it is saved and shared with your other computers like
+it: Martlet stops saying a reply at once and later replies aren't spoken, while
+their words still show in the talk window and in the speech bubble (and
+subtitles, when on), one sentence after another for about as long as reading
+it takes. No voice is asked and no speakers are opened until you unmute it. After clicking the character, use arrow keys for
 10-DIP steps (device-independent pixels), Shift+arrows for 1-DIP steps, +/- to
 zoom, 0 to reset zoom, or Home to return to the primary screen at the default
 size. The overlay has no buttons, panel or title bar; its other controls live

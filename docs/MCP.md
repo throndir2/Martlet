@@ -1004,7 +1004,11 @@ instructions), `character` (from `avatar.json`: `model` `built-in` with
 `lipSyncHost`, the paired host's ID), `placement` (from
 `character-placement.json`, this PC only: `state` `none` when the character's
 position is unlocked, or `loaded` with `locked`, `left`, `top`, `width` and
-`height` in device-independent pixels; see the character overlay below) and
+`height` in device-independent pixels; see the character overlay below), `voice`
+(from `talk-preferences.json`: `state` `none`, `loaded` or `unreadable`,
+`speakReplies`, Companion › Voice's *Speak Martlet's replies aloud*, on unless
+saved off, and `muted`, its opposite, which the overlay menu's *Mute voice* and
+*Unmute voice* change; see below) and
 `lorebooks` (`books`, `on` and
 `entries` counts). Those editors have no Save button; each change saves on its
 own into the newest saved file, keeping what was saved elsewhere meanwhile
@@ -1110,10 +1114,13 @@ quiet tone, NOT AI) fails on the `failAt`-th piece (1-4, default 1) it is asked
 to say, as `voiceFailure`: `server` (default; the host's voice worker failed,
 `worker.failed`), `unavailable` (it is reloading, `worker.unavailable`),
 `stall` (no audio until the voice's time runs out, shortened to a few seconds)
-or `none`; a fixture speaker opens no device and plays nothing. It returns
+or `none`; `muted` instead has the user mute Martlet's voice (what the
+character's *Mute voice* does, `ConversationTurn.MuteVoice`) as the
+`failAt`-th piece is asked, and `text-only` sends the reply with no voice at
+all (*Speak Martlet's replies aloud* off); a fixture speaker opens no device and plays nothing. It returns
 `reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
-turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
+turn's `SpeechFailure`), `muted` (the turn's `VoiceMuted`), `provider` and `failedJob`, `piecesAsked`,
 `piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
 `mayHavePlayed`) and `captions`, what the speech bubble and subtitles were
 given (`complete`, `shown`, `spoken`, `unsaid` and each line's `text`, `atMs`
@@ -1122,7 +1129,11 @@ failed, every sentence it couldn't say, one after another for its reading
 time (2-20 s). `ok` is true when the reply completed with all of its text,
 only the voice stopped, at the chosen piece with the expected provider code
 (or, with `none`, every piece was spoken), and the captions together showed
-the whole reply. Before the fix this reported `Partial` with only the text up
+the whole reply. With `muted`, `ok` needs the voice muted at that piece
+(`voice.muted`, no `SpeechFailure`, nothing more asked of the voice) and, with
+`text-only`, no voice request or speaker at all; both still need the whole
+text and captions that show all of it (every line unsaid for `text-only`).
+Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
 is streamed a word at a time instead, like a model's tokens, and spoken with
@@ -1133,7 +1144,8 @@ exactly what the voice was asked to say, in order, with `voice.persona` and
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
-only the beginning was spoken.* under the reply.
+only the beginning was spoken.* under the reply, and a reply muted partway
+*Muted partway, so only the beginning was spoken.*
 
 With `reasoningMs` (0-5000) the fixture endpoint first streams a hidden
 reasoning delta (as OpenRouter streams a reasoning model's thinking) and waits
@@ -1864,17 +1876,38 @@ expand/collapse, so `ui_click` on it opens (or closes again) the character's
 right-click menu with no flag; opened this way, the menu stays open until a
 choice or another `MoveAvatar` click. While it is open, snapshots list
 `CharacterMenu` and its items: `CharacterTalk` (*Talk to Martlet*, like
-`TrayTalk`), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
+`TrayTalk`), `CharacterMuteVoice` (*Mute voice*, or *Unmute voice* while
+Martlet's voice is muted; see below), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
 `TrayOpen`, also from the notification area) and `CharacterSettings`
-(*Character settings*, opens Companion › Character), which are passive clicks;
+(*Character settings*, opens Companion › Character), which are passive clicks
+(except `CharacterMuteVoice`);
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
 the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
 this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
-the same), which need `--allow-ui-effects`. Talk, Open, Settings and Hide are
+the same), which need `--allow-ui-effects`. Talk, Mute, Open, Settings and Hide are
 carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
+**Muting Martlet's voice**: the overlay menu's `CharacterMuteVoice` (in
+`SafeValues`: its name, *Mute voice* or *Unmute voice*, carries the state)
+asks Martlet to mute (*The character's menu chose 'mute'.*) or unmute it. It is
+the same choice as Companion › Voice's `SpeakReplies` check box (*Speak
+Martlet's replies aloud*), so it needs `--allow-ui-effects`: it saves
+`talk-preferences.json` (`character_status`'s `voice.muted`), is shared with the
+paired computers like the check box, and the desktop log records *Martlet's
+voice is muted: replies show as text only.* (or *... unmuted ...*; a choice
+from the menu also logs the window's *Status: Martlet's voice is muted: ...*
+or *Status: Martlet's voice is on again: ...*) while
+`avatar-renderer` records *Martlet's voice is muted.* once the overlay's menu
+follows; muting or unmuting there, in Companion or from another computer
+changes the menu's item too, and a newly shown character starts with it.
+Muting silences a reply Martlet is saying at once (its turn's `VoiceMuted`;
+`spoken_reply_check` `voiceFailure` `muted` rehearses it), and the rest of its
+words, like every reply while muted, show in the talk window and as speech
+bubble and subtitle captions, one sentence per reading time
+(`spoken_reply_check` `text-only`).
 
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
