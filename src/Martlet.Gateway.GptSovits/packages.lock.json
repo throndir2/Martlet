@@ -8,21 +8,21 @@
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.33.0, )"
+          "Martlet.Core": "[0.34.0, )"
         }
       },
       "martlet.gateway": {
         "type": "Project",
         "dependencies": {
-          "Martlet.F5": "[0.33.0, )",
-          "Martlet.Perception": "[0.33.0, )",
-          "Martlet.Providers": "[0.33.0, )"
+          "Martlet.F5": "[0.34.0, )",
+          "Martlet.Perception": "[0.34.0, )",
+          "Martlet.Providers": "[0.34.0, )"
         }
       },
       "martlet.gateway.f5": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.33.0, )"
+          "Martlet.Gateway": "[0.34.0, )"
         }
       },
       "martlet.perception": {
@@ -31,7 +31,7 @@
       "martlet.providers": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.33.0, )"
+          "Martlet.Core": "[0.34.0, )"
         }
       }
     }
