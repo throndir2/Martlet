@@ -12,7 +12,7 @@ the implementation coordinator.
 **Current policy, 2026-10-03:** the
 [validation policy](../README.md#local-only-validation-policy) supersedes this
 first slice's hosted-CI configuration and F05 handoff. Every change passes its
-affected tests locally through `scripts\Test-Martlet.ps1` before merge
+targeted tests locally through `scripts\Test-Martlet.ps1` before merge
 ([Validating changes](VALIDATION.md)); build, package and smoke commands remain
 available as optional gates. Historical workflow descriptions below do not
 request hosted execution or reclassify past runs as local passes.
@@ -52,7 +52,7 @@ Build dependencies are centrally pinned and every project commits its NuGet
 configured with `--locked-mode`, read-only permissions and commit-pinned actions.
 Current local validation retains locked mode. Intentional updates modify
 `Directory.Packages.props`, restore normally to update locks, review the diff,
-then restore in locked mode and rerun affected tests.
+then restore in locked mode and rerun the targeted tests.
 
 | Dependency | Current use / upstream license metadata |
 | --- | --- |
