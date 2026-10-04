@@ -145,11 +145,26 @@ gives attribution, sources and hashes. Martlet binds the sherpa-onnx C API with
 authored P/Invoke code; no managed sherpa-onnx package is redistributed.
 
 Parakeet (optional, downloaded on request, never bundled): only when the owner
-asks (Companion > Listening > Parakeet) Martlet downloads NVIDIA Parakeet TDT
-0.6B v3, int8 ONNX export by sherpa-onnx (CC BY 4.0, NVIDIA), into its data
-folder's speech\ directory, checking exact sizes and SHA-256 before use, and
-writes a NOTICE file with attribution and license links beside it. It runs on
-the bundled sherpa-onnx runtime and is not part of this payload or its SBOM.
+asks (Companion > Listening > Parakeet in Martlet) Martlet downloads the one
+model chosen, from Hugging Face at a pinned revision, into its data folder's
+speech\models\ directory, checking exact sizes and SHA-256 before use, and
+writes that model's NOTICE file with attribution and license links beside it:
+- NVIDIA Parakeet TDT-CTC 110M, its TDT transducer branch (CC BY 4.0, NVIDIA;
+  https://huggingface.co/nvidia/parakeet-tdt_ctc-110m), ONNX export by the
+  sherpa-onnx project (Apache-2.0): csukuangfj/sherpa-onnx-nemo-parakeet_tdt_
+  transducer_110m-en-36000 at e9bea5a06247dc3f55319ff23d34b0328f2f5ddf.
+  speech\models\Parakeet-TDT-110M-NOTICE.txt.
+- NVIDIA Parakeet TDT 0.6B v2 (CC BY 4.0, NVIDIA;
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2), int8 ONNX conversion by
+  sherpa-onnx (Apache-2.0): csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+  at 1ab9323565ddb038682214b292f588070a538ce2.
+  speech\models\Parakeet-TDT-0.6B-v2-NOTICE.txt.
+- NVIDIA Parakeet TDT 0.6B v3 (CC BY 4.0, NVIDIA;
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), int8 ONNX conversion by
+  sherpa-onnx (Apache-2.0): csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
+  at 2bda32ec70b097a55adaa07d9a7173915b43cc78. speech\models\Parakeet-NOTICE.txt.
+They run on the bundled sherpa-onnx runtime and are not part of this payload or
+its SBOM.
 
 Installer: built with Inno Setup 7.1.0 x64, copyright Jordan Russell / Martijn
 Laan. https://jrsoftware.org/ . The compiler is NOT installed with Martlet.

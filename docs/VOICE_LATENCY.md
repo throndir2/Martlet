@@ -150,19 +150,24 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
    - The background request continues a reply's request, so a cloud provider
      reads it from the cache and a model on this PC keeps the conversation in
      its cache.
-   - When the think shares the conversation's hardware (Thinking's own model
-     on this PC or a paired computer, or any model on this PC while Thinking or
-     the voice runs here: one request at a time and one graphics card) it stops
-     the moment you talk or a reply, glance or after-reply request starts, and
-     starts again from the latest exchange once it's quiet; replies never
-     queue behind it.
-   - **Deep thinking** (Companion › Deep thinking › *Where it thinks*) can put
-     it on another machine instead: a paired computer's Ollama, Ollama on this
-     PC while the conversation runs elsewhere, or a cloud provider. Then it
-     runs in parallel and is never paused, and the conversation's model,
-     cache and graphics card are left alone. Its request doesn't carry the
-     reply's tools, so it doesn't share the conversation's cache (it is on
-     another server anyway).
+   - A think always runs in parallel and is never paused, so it runs only where
+     it has a model of its own (**Deep thinking**, Companion › Deep thinking ›
+     *Where it thinks*): a paired computer's Ollama, a cloud provider, a second
+     model in Ollama on this PC, or Thinking's own model when its provider
+     answers several requests at once. Thinking's own model on this PC or a
+     paired computer answers one request at a time and keeps one conversation
+     in its cache, so there `think_longer` isn't offered at all (and its tools
+     and prompt aren't in the request), and *Off* turns it off everywhere.
+   - On another machine the conversation's model, cache and graphics card are
+     left alone. A second model in Ollama on this PC runs in its own process
+     beside Thinking's, so Thinking's cache stays, and a think starts only when
+     both fit on the graphics card (Ollama would otherwise unload Thinking's
+     model or make a reply wait for the think); if loading it pushed Thinking's
+     off the card after all, the think stops and Thinking's is loaded again.
+     The two share the card's compute, so replies may start a little later while
+     such a think runs. A separate destination's request doesn't carry the
+     reply's tools, so it doesn't share the conversation's cache (it is another
+     model anyway).
    - A model that turns tools down is remembered on this PC for a week, so it
      isn't asked with tools (and again without) on every first reply.
 
@@ -175,25 +180,14 @@ typed messages, warm:
 | --- | --- | --- |
 | Thinking longer off (no tools) | 55, 56, 59, 45 (median 56) | 99% of 865-940 tokens |
 | On, nothing running | 67, 53, 57, 55 (median 56) | 99% of 773-888 tokens |
-| On, a think running (it paused for each reply) | 55, 57, 65, 61 (median 59) | 99% of 976-1,089 tokens |
 
-Each reply during the think reached the fixture 1 ms after the think's request
-was stopped (it paused 4 times, then finished from 91% cached input and
-Martlet brought it up on its own from 85%). An earlier build that resumed the
-think from the reply that started it, against a fixture that noticed a hang-up
-only every 100 ms, measured 93-138 ms with 917 of 937-1,013 tokens cached: why
-a resumed think continues the latest exchange.
-
-Deep thinking on a second single-slot loopback fixture (Custom server on
-127.0.0.1, so the plan still waits for quiet moments because both share this
-PC): typed messages, warm, *Reply latency* first words 59 and 60 ms with nothing
-running, then 59, 45, 55 and 46 ms during the think, each reply 98-99% from the
-cache (the think went to the second fixture without tools, paused 4 times and
-finished in 57 s; Martlet brought it up from the first, 83% from the cache). With
-a destination of its own (`think_longer_check`'s `parallel` part: the
-production plan says parallel, the think is never stopped) three replies beside
-it answered in 2 ms each, as without it.
-
+A Thinking model on this PC with *Same as Thinking* (the default) now gets the
+first row: Deep thinking can't run there, so the tools are left out. With a
+destination of its own (`think_longer_check`'s `parallel` part: the think is
+never stopped) three replies beside it answered in 2-7 ms each, as without it.
+How much a second model in Ollama on this PC slows a reply's first words while
+it thinks depends on the graphics card and both models, and wasn't measured
+here (see below).
 Two measurements: one process on an idle GPU (graph against the library's own
 decoding), and the running service against this change's service on a side
 port, interleaved through `/synthesize` while the character was showing
@@ -496,8 +490,8 @@ backchannel at once would make most of the rest feel instant.
   total; `latency_report` reads the new lines and the older ones.
 - A disposable desktop (`-Desktop`) with Thinking on a loopback fixture logged
   the line for a typed message, and the Thinking longer table above (with
-  `think_longer_check` rehearsing the scheduler, the background request and its
-  pause and resume headlessly).
+  `think_longer_check` rehearsing the scheduler, the background request, the
+  Deep thinking plan and the side-by-side fit check headlessly).
 - The Chatterbox numbers come from the container on IMOUTO, with the service
   started from this change on a side port next to the running one; streamed
   speech was compared with whole-piece decodes by measurement.
@@ -508,6 +502,9 @@ backchannel at once would make most of the rest feel instant.
   the model's own variation), streaming through a real paired gateway to the
   speakers, and GPUs other than the RTX 5080. For Thinking longer: a real
   model calling think_longer (Ollama on this PC was shared with other running
-  work and kept swapping models, so local timings would have measured that) and
-  a cloud provider's background think (paid), and Deep thinking on a real
-paired computer (none is paired here) or a cloud provider (paid).
+  work and kept swapping models, so local timings would have measured that), a
+  second model in Ollama on this PC thinking beside Thinking's (the graphics
+  card here was already mostly in use by other programs, so the pair didn't
+  fit; how much it slows a reply's first words is not measured), a cloud
+  provider's background think (paid), and Deep thinking on a real
+  paired computer (none is paired here) or a cloud provider (paid).

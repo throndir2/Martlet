@@ -153,6 +153,44 @@ picture that is almost all Martlet is skipped), so the model never reads its
 own conversation. Protected video reads back black and is skipped. Screenshots
 are never saved, logged, put in local memory or support bundles.
 
+## Where the character looks
+
+The character's head and eyes follow your mouse. Companion › Vision › **Where
+the character looks** can instead let **Martlet decide** (off by default; saved
+on this PC as `DecideGaze` in `talk-preferences.json`). While vision watches your
+active window or whole screen and the character shows, every new screenshot (every
+3 seconds) is a chance to look somewhere else:
+
+- **Something new in one place.** Martlet compares the screenshot with the one
+  before it as a 32×18 grid of average greys (far too coarse to carry content;
+  on this PC only, never sent) and glances for 2.5 seconds at a change that
+  stands out: a notification popping up, a new chat line, a window opening. It
+  doesn't when much of the picture changed at once (a new scene, scrolling,
+  another window in front), when things changed all over (an animated page),
+  when the change was right by your mouse (the eyes are already there) or when
+  only the character moved: under its overlay only a strong change counts (a
+  notification behind it does, its own breathing and head turns don't), and its
+  speech bubble and menus never do. It glances at most every 6 seconds and tires
+  of a spot that keeps changing (a video): looking there again waits 20 seconds,
+  then 40 and so on, up to two minutes.
+- **What the Thinking model picks.** A look Martlet already takes (above) also
+  offers nine look tags, `{look top left}` to `{look bottom right}`, for the
+  ninths of the picture (Companion › Prompts › *Where the character looks*;
+  empty it to turn this off). A tag at the start of the answer turns the
+  character's eyes to the middle of that part of the screen for 6 seconds,
+  timed with the remark, and works with `[pass]` too, so Martlet can look at
+  something without saying anything. Tags are never shown, spoken or kept in the
+  conversation. They are offered only when they fit beside the character's emote
+  tags (128 at most) and never with replies to you, so the time to Martlet's
+  first word and the conversation's prompt cache don't change.
+- Otherwise, **your mouse**.
+
+No extra request is sent and nothing leaves this PC for it beyond the looks
+vision already takes. With a camera the character follows your mouse. The talk
+window's line under the vision status says what the eyes are on and when they
+last looked away (*Glancing at something new at the bottom right of your
+screen.*, *Looking at your mouse: much of the screen changed at once.*).
+
 ## Cameras, phones and other video sources
 
 **What Martlet looks at** also offers two non-screen sources. The pacer,

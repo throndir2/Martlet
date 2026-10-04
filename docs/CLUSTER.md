@@ -225,8 +225,8 @@ to *different* settings made on different computers are all kept.
   computer shared it is removed (`shared-keys.txt` lists those). The owner's
   choice is recorded as made on the computer where it was made. A setting
   followed from elsewhere is not counted as a change made here.
-- **A setting this PC can't use yet** (a Windows voice not installed, Parakeet
-  not downloaded, Ollama without the model, a character file not at the same
+- **A setting this PC can't use yet** (a Windows voice not installed, the
+  Parakeet model not downloaded, Ollama without the model, a character file not at the same
   path, a job a paired host does now, Home Assistant not connected here yet,
   emotes and motions while the Thinking model names them here) keeps its
   current value and is tried on every check; *Settings for all devices* lists

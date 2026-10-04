@@ -113,12 +113,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices (recognition is on " +
             "unless turned off), whether a Martlet folder (optional absolute martletDirectory, default the installed release's Desktop " +
-            "folder) includes the voice recognition runtime and models, whether Parakeet is downloaded and counts of known voices " +
-            "(never names, voiceprints or audio), including how many go by a name of the companion's own (from the saved personas) " +
-            "and the most names one voice has. Read-only; no audio, network or models run.", new
+            "folder) includes the voice recognition runtime and models, whether any Parakeet model is downloaded (parakeet) and, in " +
+            "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
+            "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
+            "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
+            "(from the saved personas) and the most names one voice has. Read-only; no audio, network or models run.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" }
+        }),
+        Tool("parakeet_check", "Companion > Listening > Parakeet in Martlet: load each Parakeet model downloaded in speechDirectory " +
+            "(optional absolute path, default the data directory's speech folder, where the desktop downloads them; or name them in " +
+            "models) through the production ParakeetEngine with the sherpa-onnx runtime from martletDirectory, and transcribe phrases " +
+            "a Windows voice says (System.Speech rendered to memory, never played; optional phrases, up to 8 English sentences). Per " +
+            "model: loadMs, memoryMb (process memory it added), each phrase's transcript, word errors and transcribeMs, the word " +
+            "error rate and the median time; ok when every model ran with at most 20% word errors. Also returns voices_status's " +
+            "Parakeet part. Nothing is downloaded, recorded or played; nothing leaves this PC.", new
+        {
+            dataDirectory = new { type = "string" },
+            martletDirectory = new { type = "string" },
+            speechDirectory = new { type = "string" },
+            models = new { type = "array", maxItems = 3, items = new { type = "string", @enum = Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id).ToArray() } },
+            phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
         Tool("voices_naming_check", "Rehearse learning names (Companion › People) with the production checks and changes on a fixture " +
             "voice list in memory: the companion's own names (persona names, \"You are ...\" in persona text, \"I'm ...\" in Martlet's " +
@@ -286,6 +302,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
             answer = new { type = "string" }
+        }),
+        Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
+            "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
+            "decides), then a rehearsal of the production decision (Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
+            "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
+            "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
+            "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
+            "the spot looked at (ok: all as expected). Also where each look tag points on one and two screens, the screen glance's " +
+            "look instructions (the data directory's edited prompts included) and what the production segmenter makes of glance " +
+            "answers that start with a look tag (spoken, shown, quiet, the look cue); answer replaces the sample answers. Reads " +
+            "only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }
         }),
         Tool("character_theme", "A character model's colors and palettes as Settings > Appearance makes them (docs/UI_DESIGN.md " +
             "\"Character palettes\"): modelPath (a .model3.json or .vrm on this PC), else the model dataDirectory's avatar.json shows, " +
@@ -528,7 +557,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "averageLogProbability, afterQuestion, persona, playback reply|song, expectKeep, expectInterrupt; default: a fixed set " +
             "with the outcome Normal must give, including evidence measured from whisper.cpp and Parakeet on this PC). " +
             "With audio (default true) and Parakeet downloaded on this PC (speechDirectory, default the current user's; the sherpa " +
-            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, a quiet " +
+            "runtime from martletDirectory; parakeetModel, default Listening's model when downloaded, else v3, else the one " +
+            "downloaded), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, a quiet " +
             "phrase over a fan's hum, yes, yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production " +
             "voice-activity detector, Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
             "decision with its reason, the filter's cost per call, the saved Word check (sensitivity overrides it: relaxed, normal, " +
@@ -537,6 +567,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" },
             speechDirectory = new { type = "string" },
+            parakeetModel = new { type = "string", @enum = Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id).ToArray() },
             sensitivity = new { type = "string", @enum = new[] { "relaxed", "normal", "sensitive" } },
             audio = new { type = "boolean" },
             samples = new
@@ -614,16 +645,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
-        Tool("think_longer_status", "Companion > Replies > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
+        Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
-            "(on by default, effort, time limit, hourly limit, when it shares the result) and whether any was chosen, the Thinking " +
-            "route (whether it does function calling, whether the model turned tools down), Companion > Deep thinking (this PC's " +
-            "deep-thinking.json: same as Thinking, an endpoint or a paired computer, never a key; whether a think runs in parallel " +
-            "with the conversation or waits for quiet moments and why, and what it sends for Thinking steps at that effort), " +
-            "think_longer and cancel_thinking exactly as the Thinking model gets them with the Thinking longer prompt, and the " +
-            "desktop's background-jobs.json: each running or finished job's id, kind, state, progress, times, result length, " +
-            "problem and delivery (never its task or result), how many thinks started in the last hour, and the running think's " +
-            "requests and pauses. Read-only.", new
+            "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
+            "was chosen, the Thinking route (whether it does function calling, whether the model turned tools down, whether " +
+            "think_longer is offered), Companion > Deep thinking (this PC's deep-thinking.json: same as Thinking, an endpoint or a " +
+            "paired computer, never a key; whether a think can run there alongside the conversation and why: Deep thinking needs a " +
+            "model of its own, never Thinking's own model on this PC or a paired computer; whether a second model in Ollama on this " +
+            "PC is checked to fit beside Thinking's first; and what it sends for Thinking steps at that effort), think_longer and " +
+            "cancel_thinking exactly as the Thinking model gets them with the Thinking longer prompt, and the desktop's " +
+            "background-jobs.json: each running or finished job's id, kind, state, progress, times, result length, problem and " +
+            "delivery (never its task or result), how many thinks started in the last hour, and where the running think works. " +
+            "Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -633,11 +666,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "calls think_longer (the call returns at once and the reply completes), the background request (Thinking steps on, its " +
             "own output budget, the reply's instructions, tools and messages unchanged before the task), delivery as a message at " +
             "the end of the conversation (as soon as Martlet is free, or in the notes of the next message), the limits (one think " +
-            "at a time beside a song job, the hourly limit, Cancel, Martlet's cancel, the time limit, the conversation ending) and, " +
-            "for a model on this PC, a think waiting for a quiet moment, stopping at once when the conversation needs the model " +
-            "and starting again from the same request; the production Deep thinking plan for eight setups (parallel or waiting); a " +
+            "at a time beside a song job, the hourly limit, Cancel, Martlet's cancel, the time limit, the conversation ending); the " +
+            "production Deep thinking plan for eleven setups (whether a think can run there, and whether it is checked to fit); a " +
             "think on a destination of its own running in parallel while replies go to the conversation's endpoint (no tools, " +
-            "Thinking steps on, never stopped); and a long conversation fitted into a paired computer's 16 KiB and 16 messages. " +
+            "Thinking steps on, never stopped); the production side-by-side check for a second model in Ollama on this PC (a " +
+            "fixture Ollama's /api/ps and /api/tags, graphics cards of several sizes, and stopping when loading it pushed " +
+            "Thinking's model off the card); and a long conversation fitted into a paired computer's 16 KiB and 16 messages. " +
             "reasoningMs (200-3000, default 1200) is how long the fixture's hidden " +
             "reasoning takes. Loopback only; reads no credentials.", new
         {
@@ -742,6 +776,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
+                "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
+                    OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
+                    cancellation),
                 "voices_naming_check" => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "reply")),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
@@ -763,6 +800,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
+                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "answer"), OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), OptionalString(arguments, "name"),
@@ -872,7 +910,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 runtime = Martlet.Sherpa.SherpaComponents.RuntimeDirectory(martlet) is not null,
                 voiceModels = Martlet.Sherpa.SherpaComponents.VoiceRecognitionIncluded(martlet)
             },
-            parakeet = Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speech),
+            parakeet = Martlet.Sherpa.SherpaComponents.InstalledParakeetModels(speech).Count > 0,
+            parakeetModels = ParakeetCheck.Status(directory, speech),
             roster
         };
     }

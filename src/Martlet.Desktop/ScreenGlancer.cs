@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Martlet.Avatar.Hosting;
 using Martlet.Providers;
 
 namespace Martlet.Desktop;
@@ -12,8 +13,11 @@ internal enum ScreenScope { ActiveWindow, ActiveScreen }
 internal enum GlanceSkip { None, MartletInFront, NoWindow, Minimized, Private, Blank, CaptureFailed }
 
 /// <summary>One downscaled look at what the user has in front of them. Pixels live only in memory (BGRA32, top-down)
-/// and are zeroed by <see cref="Clear"/>; nothing is written to disk or logs.</summary>
-internal sealed class ScreenFrame(byte[] pixels, int width, int height, string title, double change)
+/// and are zeroed by <see cref="Clear"/>; nothing is written to disk or logs. A screenshot also knows where on the desktop it
+/// was taken (<see cref="Area"/>, physical pixels) and how much each cell of a coarse grey grid changed since the screenshot
+/// before of the same area (<see cref="Changes"/>, for where the character looks).</summary>
+internal sealed class ScreenFrame(byte[] pixels, int width, int height, string title, double change, ScreenRect? area = null,
+    byte[]? changes = null)
 {
     private byte[]? pixels = pixels;
     internal int Width { get; } = width;
@@ -21,6 +25,10 @@ internal sealed class ScreenFrame(byte[] pixels, int width, int height, string t
     internal string Title { get; } = title;
     /// <summary>How much the picture changed since the previous capture, 0 (identical) to 1.</summary>
     internal double Change { get; } = change;
+    /// <summary>Where on the desktop the screenshot was taken; null for a camera.</summary>
+    internal ScreenRect? Area { get; } = area;
+    /// <summary>How much each <see cref="CharacterGaze"/> grid cell changed; null without an earlier screenshot of the same area.</summary>
+    internal byte[]? Changes { get; } = changes;
 
     /// <summary>JPEG-encodes the frame for one look. Call on the UI thread (WPF imaging).</summary>
     internal BoundedImage Encode()
@@ -85,6 +93,9 @@ internal sealed class ScreenGlancer : IScreenGlancer
     // One duplication per monitor, open while watching.
     private readonly Dictionary<nint, DesktopDuplication> duplications = [];
     private byte[]? previous;
+    // The last screenshot's gaze grid and where it was taken: the next one of the same area says what changed where.
+    private byte[]? previousGrid;
+    private NativeRect previousArea;
 
     public void Release()
     {
@@ -96,6 +107,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
         }
         foreach (var duplication in open) duplication.Release();
         previous = null;
+        previousGrid = null;
     }
 
     public TimeSpan UserIdle
@@ -228,8 +240,12 @@ internal sealed class ScreenGlancer : IScreenGlancer
         signature = Signature(pixels, width, height);
         var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
         previous = signature;
-        return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change), GlanceSkip.None, note, protectedContent,
-            behind, monitors);
+        var grid = CharacterGaze.Grid(pixels, width, height);
+        var changes = previousArea.Equals(area) ? CharacterGaze.Changes(previousGrid, grid) : null;
+        previousGrid = grid;
+        previousArea = area;
+        return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change,
+            new ScreenRect(area.Left, area.Top, area.Width, area.Height), changes), GlanceSkip.None, note, protectedContent, behind, monitors);
     }
 
     // Duplication first: it sees full-screen games and does not stall the game the way a GDI screen read can. A still desktop

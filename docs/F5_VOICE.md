@@ -226,10 +226,12 @@ with the recording (Chatterbox and XTTS-v2 ignore it), and one voice serves
 every engine. Martlet fills it in when a recording is chosen, with
 speech-to-text that keeps the recording among the owner's computers: whatever
 Listening uses when that is Parakeet on this PC or a paired host's whisper,
-otherwise Parakeet whenever it is downloaded (loaded only while the dialog is
-open). Words the owner already typed are kept, **Fill in the words** redoes it,
-and a cloud Listening route is never used. Parakeet knows 25 European
-languages, so other languages may need typing.
+otherwise a downloaded Parakeet model, the most accurate for Windows' display
+language (v2 for English, otherwise v3, 110M only when it is the one
+downloaded; loaded only while the dialog is open). Words the owner already
+typed are kept, **Fill in the words** redoes it, and a cloud Listening route
+is never used. Parakeet's v3 knows 25 European languages and the other two
+only English, so other languages may need typing.
 **Add another recording** adds more recordings of the same voice, each with its
 exact transcript (up to 10; **Browse** can pick several at once and **Play
 joined** plays them as most engines will hear them). Several recordings become

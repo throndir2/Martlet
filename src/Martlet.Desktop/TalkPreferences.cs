@@ -10,14 +10,15 @@ namespace Martlet.Desktop;
 // by default), whether talking over a reply stops it (BargeIn, opt-in and off by default), how readily what is heard counts as
 // words (WordCheck: Relaxed, Normal by default, or Sensitive), whether what the PC plays is removed
 // from the microphone (ReduceEcho, on by default), whether always listening also hears what the PC plays (HearPc, off by
-// default) and whether (and at what) Martlet may look, and how chatty it is about what it sees and what the PC plays
-// (ScreenChattiness: a ChattinessChoice, Normal by default; 3 is Martlet decides). The talk
+// default) and whether (and at what) Martlet may look, how chatty it is about what it sees and what the PC plays
+// (ScreenChattiness: a ChattinessChoice, Normal by default; 3 is Martlet decides), and whether Martlet decides where the
+// character looks while it watches your screen (DecideGaze, off by default: the character follows the mouse). The talk
 // window's mic and vision buttons pause them there (Stop and Esc pause vision, never listening). A camera address is saved
 // without its user name or password.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = 0, string CameraId = "", string CameraName = "", string VideoAddress = "",
     bool SpeakReplies = true, bool Watch = false, int Version = 0, bool HearVoice = false, bool BargeIn = false, bool ReduceEcho = true,
-    bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal)
+    bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool DecideGaze = false)
 {
     private const string FileName = "talk-preferences.json";
     // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.

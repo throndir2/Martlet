@@ -526,7 +526,7 @@ public partial class MainWindow
                 return voices.Any(v => v.Id == route.Voice) ? null
                     : $"The Windows voice {WindowsVoices.DisplayName(route.Voice)} isn't installed on this PC. Add it in Windows Settings › Time & language › Speech, or choose a voice in Companion › Voice.";
             case SharedRoute.Parakeet:
-                return parakeet?.Installed == true ? null : "Parakeet isn't downloaded on this PC yet. Set it up in Companion › Listening.";
+                return SharedParakeetWaiting(route.Model, model => parakeet?.Installed(model) == true);
             case SharedRoute.ChatCompletions when route.Origin == LocalOllamaBaseUrl:
                 if (LocalOllama.Executable() is null) return "Ollama isn't installed on this PC. Set it up in Companion › Thinking.";
                 var models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(3), token);
