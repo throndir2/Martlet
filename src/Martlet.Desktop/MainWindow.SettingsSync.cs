@@ -316,16 +316,16 @@ public partial class MainWindow
         yield return new DelegateSection(AppearanceKey, "Theme", _ =>
         {
             var path = Path.Combine(directory, "appearance.txt");
-            var theme = Application.Current is App { SelectedTheme: var selected } ? selected : PinkTheme.Light;
+            var theme = Application.Current is App { SelectedTheme: var selected } ? selected : AppearanceTheme.Light;
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(theme.ToString()), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
         {
             var name = JsonSerializer.Deserialize<string>(setting.Value);
-            if (!Enum.TryParse<PinkTheme>(name, out var theme) || !Enum.IsDefined(theme))
+            if (Appearance.Parse(name) is not { } theme)
                 return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
             Appearance.Save(directory, theme);
-            if (IsLoaded) ThemeChoice.SelectedIndex = theme == PinkTheme.Dark ? 1 : 0;
-            else (Application.Current as App)?.ApplyTheme(theme);
+            if (IsLoaded) ThemeChoice.SelectedIndex = (int)theme;
+            else (Application.Current as App)?.ApplyTheme(theme, characterThemes.Colors(theme));
             return Task.FromResult(SharedApply.Done);
         });
         yield return new DelegateSection(CharacterActionsKey, "Emotes and motions", _ =>

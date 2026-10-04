@@ -11,6 +11,8 @@ using System.Windows.Threading;
 
 #if MARTLET_RENDERER
 namespace Martlet.Avatar.RendererHost.Logging;
+#elif MARTLET_MCP
+namespace Martlet.Mcp.Logging;
 #else
 namespace Martlet.Logging;
 #endif

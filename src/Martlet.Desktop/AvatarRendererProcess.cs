@@ -86,7 +86,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         try
         {
             var response = await SendAsync("load", new RendererLoad(profile, revision,
-                Application.Current is App { SelectedTheme: PinkTheme.Dark }, placement is { Locked: true, IsValid: true } ? placement : null),
+                Application.Current is App app && app.SelectedTheme.IsDark(), placement is { Locked: true, IsValid: true } ? placement : null,
+                (Application.Current as App)?.ThemeColors),
                 token, TimeSpan.FromSeconds(45));
             if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");
             Capabilities = RendererProtocol.Data<RendererCapabilities>(response);
