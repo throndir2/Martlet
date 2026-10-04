@@ -446,6 +446,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "bleed removed from the vocals and its graphics-memory peak. Nothing is played; with saveDirectory (an absolute, " +
             "disposable folder) it writes mix.wav, vocals.wav and backing.wav there for a report. voiceRecording (an absolute path " +
             "to a copy of a mono 16-bit PCM WAV, 1-30 s) with its voiceTranscript sings in that voice instead of the starter voice. " +
+            "bpm (default 90; 0 for none) and key (default \"G major\"; empty for none) are sent as Martlet's own model writes " +
+            "them; without either the host's music planner runs first. " +
             "Runs Martlet.NodeLinkCheck; a real song can take minutes (the tool allows 20).", new
         {
             endpoint = new { type = "string", maxLength = 64 },
@@ -454,7 +456,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             voiceMatch = new { type = "string", @enum = new[] { "soulx", "vevosing" } },
             saveDirectory = new { type = "string", maxLength = 260 },
             voiceRecording = new { type = "string", maxLength = 260 },
-            voiceTranscript = new { type = "string", maxLength = 4096 }
+            voiceTranscript = new { type = "string", maxLength = 4096 },
+            bpm = new { type = "integer", minimum = 0, maximum = 240 },
+            key = new { type = "string", maxLength = 16 }
         }),
         Tool("mcp_servers_status", "Read the MCP servers in a data directory's mcp.json as Martlet parses them: each server's name, " +
             "transport, program and raw arguments (with ${env:...} and ${secret:...} references, never their values), environment and " +
@@ -1153,13 +1157,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var save = OptionalString(arguments, "saveDirectory") is { Length: > 0 } folder ? folder : null;
         if (save is not null && !Path.IsPathFullyQualified(save)) throw new ArgumentException("saveDirectory must be an absolute folder.");
         command = [.. command, save ?? "-"];
-        if (OptionalString(arguments, "voiceRecording") is { Length: > 0 } recording)
-        {
-            if (!Path.IsPathFullyQualified(recording) || !recording.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) || !File.Exists(recording))
-                throw new ArgumentException("voiceRecording must be the absolute path of an existing .wav file.");
-            command = [.. command, recording];
-            if (OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript) command = [.. command, transcript];
-        }
+        var recording = OptionalString(arguments, "voiceRecording") is { Length: > 0 } wav ? wav : null;
+        if (recording is not null && (!Path.IsPathFullyQualified(recording) || !recording.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(recording)))
+            throw new ArgumentException("voiceRecording must be the absolute path of an existing .wav file.");
+        var bpm = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("bpm", out var tempo) && tempo.TryGetInt32(out var beats)
+            ? beats : 90;
+        if (bpm is not 0 and (< 40 or > 240)) throw new ArgumentException("bpm must be 0 (none) or 40 to 240.");
+        var key = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("key", out var keyValue) ? keyValue.GetString() ?? "" : "G major";
+        command = [.. command, recording ?? "-", OptionalString(arguments, "voiceTranscript") is { Length: > 0 } transcript ? transcript : "-",
+            bpm == 0 ? "-" : bpm.ToString(System.Globalization.CultureInfo.InvariantCulture), key.Length == 0 ? "-" : key];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(20), cancellation, command);
     }
 

@@ -16,11 +16,22 @@ Martlet can write a song and sing it in a voice from the owner's voice library (
 The result is three sample-aligned 48 kHz tracks (the mix, the dry vocals and the backing), the lyric lines with their
 sections and sung starts, the sung words (for lip sync), the beat grid, and the time each stage took. Songs are only
 ever performed by Martlet itself in conversation; the owner's "Creations" library keeps and shares them. Songs are made
-ahead of time, not in real time: with every model warm on a quiet card, the stages of a 30 s song took about 30-75 s in
-the spike (below); a song that loads the models first takes minutes more. The first real song through the role on the
-development PC (RTX 4070 12 GB with 5.6 GB held by the speaking and listening roles, and short of system memory) took
-11.7 minutes from a cold start for 30 s: loading 172 s, music 287 s (planner on the PyTorch backend), lyric timing 96 s,
-separation 9 s, voice match 105 s (40 s of it loading SoulX-Singer), mixing 0.4 s.
+ahead of time, not in real time.
+
+**Measured** (MCP `singing_check` with the 6.1 s Jane Doe speech clip, turbo + SoulX-Singer, tempo and key in the request
+so the planner is skipped; RTX 4070 12 GB, a PC short of system memory; seconds):
+
+| Song | Total | Loading | Music | Lyric timestamps | Separating | Voice match | Mixing + aligning | Peak VRAM |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 30 s, cold | 273 | 123 | 16 | 7.6 | 4.6 | 102 (50 loading SoulX-Singer) | 5.3 | 6.0 GB |
+| 30 s, warm | **20** | 0 | 6.7 | 0.1 | 2.3 | 9.7 | 0.6 | 7.2 GB |
+| 60 s, cold | 332 | 141 | 38 | 13.5 | 9.8 | 115 (53 loading) | 5.9 | 6.0 GB |
+| 60 s, warm | **30** | 0 | 6.9 | 0.2 | 1.9 | 18.8 | 1.0 | 7.2 GB |
+
+Warm means the worker's models are still loaded from the previous song (until five idle minutes pass). A cold start is
+mostly loading from disk; on this PC it is slow because system memory is short. The first real song, before these
+changes (planner on the PyTorch backend, full-precision model spilling into shared memory beside 5.6 GB of other roles),
+took 705 s for 30 s.
 
 ## Why this pipeline
 
@@ -77,27 +88,36 @@ model card states no licence and a GPL-3.0 dereverb model; Martlet uses neither 
   pages a finished track's PCM out, and `POST /jobs/<id>/cancel` stops it. One song is made at a time and up to four more
   wait in order (`singing.busy` beyond that); finished songs are kept for 30 minutes. `GET /status` reports the state,
   engine, pinned models, voice matches set up, the queue and the graphics card's memory.
-- **Worker process** `martlet_singing.worker` starts with the first song and runs the stages **one at a time**, each
-  moving its model onto the graphics card and back (ACE-Step with CPU offload; the voice match in a child process that
-  exits after the song), so the peak is about 6 GB. When the card
-  has less than 7 GB free (it is shared with the speaking and listening roles), the music model loads with int8 weights
-  (`MARTLET_SINGING_QUANTIZATION`: auto, none, int8_weight_only). Models stay in system memory between songs unless less
-  than 16 GB is available, when each stage frees its models as soon as it is done (`MARTLET_SINGING_KEEP_MODELS`: auto,
-  keep, release). The worker is **restarted** for the next song if it dies (the song it was making fails with that
-  reason), and **exits after five idle minutes** (`MARTLET_SINGING_IDLE_SECONDS`), which frees the graphics card and
-  system memory for the speaking and listening roles. ACE-Step's own fallback to a CPU decode when the card looks full is
-  not used.
+- **Worker process** `martlet_singing.worker` starts with the first song and runs the stages **one at a time**. The
+  graphics card's free memory is read from nvidia-smi (every process; on Windows CUDA's own figure ignores the others and
+  spills into shared memory instead of failing):
+  - The music model loads with **int8 weights** unless the card has 11 GB free (a full-precision song peaked at 9.6-10.7 GB,
+    int8 at 6-7.2 GB; `MARTLET_SINGING_QUANTIZATION`: auto, none, int8_weight_only).
+  - It **stays on the card** from the music through the lyric timestamps when the card has room for it plus 4.5 GB, instead
+    of moving there and back for each; otherwise ACE-Step's CPU offload moves it per call.
+  - After the music it **stays warm on the card** while 3 GB remain free for separating and matching; otherwise it waits in
+    system memory when more than 8 GB is available, or is released.
+  - The voice match runs in `martlet_singing.match`, a child process with its own Transformers that keeps SoulX-Singer in
+    system memory (on the card only while converting) for the next song while more than 4 GB of system memory is
+    available; VevoSing's process ends after each song.
+  - `MARTLET_SINGING_KEEP_MODELS` (auto, keep, release) overrides the system-memory rules. The worker is **restarted** for
+    the next song if it dies (the song it was making fails with that reason), and **exits after five idle minutes**
+    (`MARTLET_SINGING_IDLE_SECONDS`), which frees the card and system memory for the speaking and listening roles. ACE-Step's
+    own fallback to a CPU decode when the card looks full is not used.
 - **Stages** (reported as progress): loading, writing the music (ACE-Step 1.5 turbo, 8 steps, or SFT, 50 steps for High
-  quality, with its 0.6B planner on the PyTorch backend), separating (Demucs vocals; backing = song minus vocals),
+  quality; its 0.6B planner, which rewrites the caption and plans tempo, key and audio codes, runs only for a request with
+  neither a tempo nor a key, since Martlet's own model writes them and the planner took 35-320 s on the PyTorch backend:
+  `MARTLET_SINGING_PLANNER` auto, none or lm), separating (Demucs vocals; backing = song minus vocals),
   matching the voice (RMVPE pitch, SoulX-Singer-SVC cfg 3 and 32 steps in fp16, shifted only by whole octaves so the
   backing never needs re-pitching, toward about four semitones above the voice's speaking pitch, so a singer already in
   the voice's range is not moved: an octave too high costs most of the likeness), mixing (the matched
   vocals, silenced outside the phrases the separated original sings (with 20 ms fades) so no backing bleed or conversion
   noise reaches the vocals track, levelled to the original's loudness over the backing), aligning (below).
-- **Aligning:** ACE-Step's own lyric timestamps (LRC, from the same generation) are matched to the request's lines in
-  order and each start is snapped to the matched vocals' onset; without usable LRC, the vocals' phrases (energy above a
-  threshold) are used. librosa's beat tracker on the backing gives the tempo, which is halved or doubled toward
-  ACE-Step's planned tempo, then a straight grid is fitted and extended over the whole song; the downbeat is the beat in
+- **Aligning:** ACE-Step's own lyric timestamps (LRC, one decoder pass over the same generation, timed separately as
+  `lyric_timestamps`) are matched to the request's lines in order and each start is snapped to the matched vocals' onset;
+  without usable LRC, or when its words sit more than a second from any vocal onset (as when a short song crams its
+  lines), the vocals' phrases (energy above a threshold) are used. librosa's beat tracker on the backing gives the tempo,
+  which is halved or doubled toward the planned or requested tempo, then a straight grid is fitted and extended over the whole song; the downbeat is the beat in
   the bar with the most low-frequency onset strength, and the bar length is ACE-Step's time signature. **Words** come
   from ACE-Step's own alignment of the same generation (its token and sentence timestamps behind the LRC): a word starts
   with its first token and ends with its last, and each start is snapped to a vocal onset within 120 ms. The result says
