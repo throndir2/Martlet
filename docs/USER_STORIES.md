@@ -58,8 +58,9 @@ new window the user has to find, finish and close.
 
 Martlet no longer opens any console window: downloads, prerequisites, Docker
 Desktop, this PC's host service (setup, roles, status, update, pairing) and
-SSH hosts all run in a run window with live output and *Cancel* (the inline
-runner, P5, is the next step). What remains is typed on a host by hand:
+SSH hosts all run in a run window with live output, *Hide* (it keeps running in
+*Background tasks*) and *Cancel task* (asks first; the inline runner, P5, is the
+next step). What remains is typed on a host by hand:
 
 | Action | What the user sees today |
 | --- | --- |

@@ -494,7 +494,7 @@ public partial class HostsWindow : ThemedWindow
         run.Status($"Pairing this PC with {ssh}...");
         var device = DeviceIdText.Text.Trim();
         var (pairing, secret, key) = await remote.PairAsync(target, device, Environment.MachineName, sudo, hostKey, run.Output, run.Token);
-        var host = await SavePairingAsync(pairing, secret, method, ssh.ToString(), key);
+        var host = await SavePairingAsync(pairing, secret, method, ssh.ToString(), key, run.Token);
         run.Status($"Checking {host.HostId}'s hardware...");
         string check;
         try { check = await CheckAsync(host.Pairing, Hardware, run.Status, run.Token); }
@@ -716,13 +716,14 @@ public partial class HostsWindow : ThemedWindow
     });
 
     /// <summary>Keeps a new pairing: the secret in Windows Credential Manager, the host in hosts.json (with how Martlet
-    /// reaches it and its pinned SSH host key).</summary>
+    /// reaches it and its pinned SSH host key). <paramref name="token"/>: a run window's, so a run that outlives this wizard
+    /// (hidden in Background tasks) still keeps its pairing; this wizard's lifetime otherwise.</summary>
     private async Task<PairedHost> SavePairingAsync(Audio2FaceHostPairing pairing, string secret, HostSetupMethod method, string? ssh,
-        string? sshHostKey)
+        string? sshHostKey, CancellationToken? token = null)
     {
-        var (host, lipSync) = await KeepPairingAsync(pairings, pairing, secret, method, ssh, sshHostKey, lifetime.Token);
+        var (host, lipSync) = await KeepPairingAsync(pairings, pairing, secret, method, ssh, sshHostKey, token ?? lifetime.Token);
         paired = host;
-        ShowPaired((await pairings.LoadAsync(lifetime.Token)).Hosts.Count);
+        ShowPaired((await pairings.LoadAsync(token ?? lifetime.Token)).Hosts.Count);
         StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
             ? "It keeps handling lip-sync."
             : "It's ready. Assign jobs on the Devices map.");
