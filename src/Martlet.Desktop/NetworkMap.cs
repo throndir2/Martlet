@@ -25,8 +25,10 @@ internal sealed record HostedRole(string Chip, string Name, string Detail, strin
 /// <summary>A line in a device's details; <paramref name="AutomationId"/> exposes its value to UI Automation (MCP).</summary>
 internal sealed record NodeFact(string Label, string Value, string? AutomationId = null);
 /// <summary>A node command; <paramref name="Argument"/> names the paired host or role it applies to and
-/// <paramref name="Component"/> the hosted role it configures (null: it applies to the whole device).</summary>
-internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false, string? Argument = null, string? Component = null);
+/// <paramref name="Component"/> the hosted role it configures (null: it applies to the whole device). A command with a
+/// <paramref name="Detail"/> is shown as a whole clickable card that says what it does (Add a computer's choices).</summary>
+internal sealed record NodeCommand(NodeAction Action, string Label, bool Primary = false, string? Argument = null, string? Component = null,
+    string? Detail = null);
 
 /// <summary>Keys that tie a device's roles to the commands that configure them.</summary>
 internal static class DeviceComponent
@@ -37,7 +39,6 @@ internal static class DeviceComponent
     internal const string Audio = "audio";
     internal const string HostService = "host-service";
     internal const string Host = "host";
-    internal const string Offer = "offer";
     /// <summary>The computers that use a host (paired with it), as the host reports them.</summary>
     internal const string Users = "users";
     /// <summary>Martlet itself on another of your computers (a member of your Martlet network, or one that uses your hosts).</summary>
@@ -704,13 +705,15 @@ internal static class NetworkMap
             thisPc.Commands.Add(new(NodeAction.Prerequisites, "Prerequisites"));
         }
 
+        // Its details are just the ways to add one, each a whole clickable card (nothing there only looks like a button).
         var add = new Draft("add", NodeKind.Add, "Add a computer", "Use another computer", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };
-        add.Roles.Add(new("Host", "Martlet host", "Another computer can help with thinking, speech or lip-sync.",
-            DeviceComponent.Offer));
-        add.Notes.Add("Pair once with a one-use code on your private network.");
-        add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true));
-        add.Commands.Add(new(NodeAction.HostThisPc, "Or run host services on this PC"));
-        add.Commands.Add(new(NodeAction.PrepareComputer, "Prepare a Linux computer"));
+        add.Commands.Add(new(NodeAction.AddComputer, "Add a computer", true,
+            Detail: "Another computer can help with thinking, speech or lip-sync. Pair it once with a one-use code on your private network."));
+        add.Commands.Add(new(NodeAction.PrepareComputer, "Prepare a Linux computer",
+            Detail: "Get a Linux PC ready for host jobs over SSH first. Martlet checks it, then changes only what you select."));
+        if (inputs.Role != DeviceRole.Host)
+            add.Commands.Add(new(NodeAction.HostThisPc, "Run host services on this PC",
+                Detail: "No other computer? Let this PC do thinking, speech or lip-sync itself."));
         order.Add(add);
 
         return order.Select(draft => draft.Build()).ToArray();

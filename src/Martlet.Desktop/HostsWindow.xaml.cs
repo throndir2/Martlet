@@ -65,7 +65,7 @@ public partial class HostsWindow : ThemedWindow
         {
             var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
             paired = paired is { } manage ? hosts.FirstOrDefault(h => h.HostId == manage.HostId) ?? manage
-                : hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
+                : hosts.FirstOrDefault(h => h.HostId == profile?.RemoteHost?.HostId) ?? hosts.LastOrDefault();
             if (paired is not null) DeviceIdText.Text = paired.Pairing.DeviceId;
             ShowPaired(hosts.Count);
         });
@@ -166,7 +166,7 @@ public partial class HostsWindow : ThemedWindow
         var name = Environment.MachineName;
         try
         {
-            await pairings.LoadProfileAsync(request.Token);
+            await pairings.CheckCanKeepAsync(request.Token);
             NearbyStatusText.Text = $"Asking Martlet on {martlet.Name}...";
             using var join = await NearbyJoin.ConnectAsync(martlet, device, name, request.Token);
             NearbyNumberText.Text = join.Number;
@@ -691,7 +691,7 @@ public partial class HostsWindow : ThemedWindow
         {
             var code = HostPairingCode.Parse(text);
             StatusText.Text = $"Pairing with {code.HostId} at {code.Origin}...";
-            await pairings.LoadProfileAsync(lifetime.Token);
+            await pairings.CheckCanKeepAsync(lifetime.Token);
             (pairing, secret) = await code.PairAsync(device, lifetime.Token);
         }
         else
@@ -699,7 +699,7 @@ public partial class HostsWindow : ThemedWindow
             var origin = HostPairingInput.Origin(PairAddressText.Text);
             HostPairingInput.NormalizeCode(text);
             StatusText.Text = $"Pairing with the host at {new Uri(origin).Authority}...";
-            await pairings.LoadProfileAsync(lifetime.Token);
+            await pairings.CheckCanKeepAsync(lifetime.Token);
             (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(origin, text, device, Environment.MachineName, lifetime.Token);
         }
         PairingCodeBox.Clear();
@@ -734,7 +734,7 @@ public partial class HostsWindow : ThemedWindow
     private static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
         string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token)
     {
-        await pairings.LoadProfileAsync(token);
+        await pairings.CheckCanKeepAsync(token);
         var store = new WindowsCredentialStore();
         using (var lease = new SecretLease(secret))
         {
@@ -858,7 +858,7 @@ public partial class HostsWindow : ThemedWindow
         if (paired is not { } host) { ShowPaired(0); return; }
         await pairings.ForgetAsync(host.HostId, lifetime.Token);
         var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
-        paired = hosts.FirstOrDefault(h => h.HostId == profile.RemoteHost?.HostId) ?? hosts.LastOrDefault();
+        paired = hosts.FirstOrDefault(h => h.HostId == profile?.RemoteHost?.HostId) ?? hosts.LastOrDefault();
         ShowPaired(hosts.Count);
         StatusText.Text = $"Forgot {host.HostId} on this PC. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.";
     });

@@ -1,4 +1,6 @@
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -10,6 +12,66 @@ public sealed class HostRolesTests
         Origin = $"https://{ip}:9443", HostId = id, SpkiFingerprint = "sha256:" + new string('a', 64),
         DeviceId = "desktop-test", CredentialId = new string('B', 22)
     };
+
+    private static HostPairings Pairings(string directory) =>
+        new(directory, new AvatarProfileStore(directory), new SetupService(new SettingsStore(directory), new UnusedVault()));
+
+    [Fact]
+    public async Task A_new_pc_pairs_with_a_host_before_anything_is_set_up_on_it()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var pairings = Pairings(scope.DirectoryPath);
+        await pairings.CheckCanKeepAsync(default);
+        var (none, noProfile) = await pairings.LoadAsync(default);
+        Assert.Empty(none);
+        Assert.Null(noProfile);
+
+        var (host, lipSync) = await pairings.AddAsync(Remote("gpu-a", "192.168.1.20"), HostSetupMethod.OnHost, null, default, adopt: false);
+        Assert.False(lipSync);
+        Assert.Equal(HostSetupMethod.Agent, host.Method);
+        var (hosts, profile) = await pairings.LoadAsync(default);
+        Assert.Equal("gpu-a", Assert.Single(hosts).HostId);
+        Assert.Null(profile);
+        // Pairing alone saves no settings: Setup on this PC stays untouched until a job is chosen.
+        Assert.Equal(SettingsLoadState.FirstRun, (await new SettingsStore(scope.DirectoryPath).LoadAsync()).State);
+    }
+
+    [Fact]
+    public async Task Handing_lip_sync_to_a_host_on_a_new_pc_saves_its_first_settings()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var pairings = Pairings(scope.DirectoryPath);
+        var gpu = new PairedHost { Pairing = Remote("gpu-a", "192.168.1.20") };
+
+        var (before, after) = await pairings.AssignLipSyncAsync(gpu, off: false, default);
+
+        Assert.Null(before.RemoteHost);
+        Assert.Equal("gpu-a", after.RemoteHost?.HostId);
+        var loaded = await new SettingsStore(scope.DirectoryPath).LoadAsync();
+        Assert.Equal(SettingsLoadState.Loaded, loaded.State);
+        Assert.Empty(loaded.Settings!.Setup!.Routes);
+        Assert.Equal(loaded.Settings.Profile.Id, after.ProfileId);
+        var (saved, _) = await pairings.LoadProfileAsync(default);
+        Assert.Equal("gpu-a", saved?.RemoteHost?.HostId);
+        Assert.Equal(after.ProfileId, (await pairings.EnsureProfileAsync(default)).Profile.ProfileId);
+    }
+
+    [Fact]
+    public async Task Pairing_stops_before_spending_a_code_only_when_settings_cannot_be_read()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        File.WriteAllText(Path.Combine(scope.DirectoryPath, "settings.json"), "{not json");
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Pairings(scope.DirectoryPath).CheckCanKeepAsync(default));
+        Assert.DoesNotContain("Complete Setup", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Settings", error.Message, StringComparison.Ordinal);
+    }
+
+    private sealed class UnusedVault : ICredentialStore
+    {
+        public CredentialError Write(CredentialBinding binding, SecretLease secret) => throw new InvalidOperationException();
+        public CredentialReadResult Read(CredentialBinding binding) => throw new InvalidOperationException();
+        public CredentialError Delete(CredentialBinding binding) => throw new InvalidOperationException();
+    }
 
     [Fact]
     public void Registry_keeps_every_paired_host_and_lists_an_older_lip_sync_pairing()
@@ -170,5 +232,24 @@ public sealed class HostRolesTests
         var quiet = new Dictionary<string, HostCheck> { ["diva-host"] = new(true, "Reachable.", new Dictionary<string, string> { ["chatterbox"] = "chatterbox-turbo" }) };
         Assert.Null(NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, quiet, [wsl], hosts))
             .Single(n => n.Id == "host:diva-host").SharedGpu);
+    }
+
+    [Fact]
+    public void Add_a_computer_offers_only_ways_to_add_one_each_saying_what_it_does()
+    {
+        NetworkNode Add(DeviceRole role) =>
+            NetworkMap.Build(new(MachineInfo.Unknown, role, null, null, false, new Dictionary<string, HostCheck>())).Single(n => n.Kind == NodeKind.Add);
+
+        // Nothing in its details only looks like a button: no job rows or notes, just choices, each a card with a line on what it does.
+        var add = Add(DeviceRole.Companion);
+        Assert.Empty(add.Roles);
+        Assert.Empty(add.Notes);
+        Assert.Equal([NodeAction.AddComputer, NodeAction.PrepareComputer, NodeAction.HostThisPc], add.Commands.Select(c => c.Action));
+        Assert.All(add.Commands, c => Assert.False(string.IsNullOrWhiteSpace(c.Detail)));
+        Assert.True(add.Commands.Single(c => c.Primary).Action == NodeAction.AddComputer);
+        Assert.Contains("one-use code", add.Commands[0].Detail, StringComparison.Ordinal);
+
+        // A host PC already runs host services, so it isn't offered to run them.
+        Assert.DoesNotContain(Add(DeviceRole.Host).Commands, c => c.Action == NodeAction.HostThisPc);
     }
 }
