@@ -1112,6 +1112,34 @@ public sealed record SetupSettings : IContract
         return updated;
     }
 
+    /// <summary>Keys set aside (listed for removal) when <paramref name="role"/> left a destination, newest first, that
+    /// fit that exact destination again: OpenAI when <paramref name="chatBaseUrl"/> is null, otherwise that Chat Completions
+    /// base URL.</summary>
+    public static IReadOnlyList<PendingCredentialRemoval> SetAsideCredentials(AppSettings? settings, SetupRole role, string? chatBaseUrl) =>
+        (settings?.Setup?.PendingRemovals ?? []).Where(item => item.Role == role && (chatBaseUrl is null
+                ? item.Scope is null || item.Scope.RouteType == SetupRouteType.OpenAi
+                : item.Scope is { RouteType: SetupRouteType.ChatCompletions } scope && scope.Origin == chatBaseUrl))
+            .Reverse().ToArray();
+
+    /// <summary>Uses a key set aside earlier again for the role's route, which must be keyless and at the key's exact
+    /// destination: switching back to a provider needs no key typed again. The key leaves the removal list.</summary>
+    public static AppSettings ReattachSetAsideCredential(AppSettings settings, PendingCredentialRemoval removal)
+    {
+        ArgumentNullException.ThrowIfNull(removal);
+        settings.Validate();
+        var setup = settings.Setup!;
+        var route = setup.Routes.SingleOrDefault(item => item.Role == removal.Role);
+        ContractRules.Require(setup.PendingRemovals.Contains(removal) && route is { CredentialId: null } &&
+            route.RouteType is SetupRouteType.OpenAi or SetupRouteType.ChatCompletions &&
+            SetAsideCredentials(settings, removal.Role, route.RouteType == SetupRouteType.ChatCompletions ? route.Origin : null).Contains(removal),
+            "Only a key set aside for this job's exact destination can be used again.");
+        var updated = settings with
+        {
+            Setup = setup with { PendingRemovals = setup.PendingRemovals.Where(item => item != removal).ToArray() }
+        };
+        return ReplaceRoute(updated, route!.WithCredential(removal.CredentialId));
+    }
+
     public static string Describe(AppSettings? settings)
     {
         if (settings?.Setup is not { } setup)

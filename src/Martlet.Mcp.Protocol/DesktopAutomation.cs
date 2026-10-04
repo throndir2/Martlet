@@ -187,6 +187,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Thinking › If Thinking fails: the saved fallback in words (provider, model, whose key; never the key) and
         // what its key field will do.
         "FallbackNow", "FallbackKeyStatus",
+        // Companion › Thinking, Voice and Listening: the job's Now line (where it runs and the model, as "Ollama on this PC:
+        // gemma4:12b") and, under A cloud provider, what the key field will do: keep the saved key, use again a key set aside
+        // when the job left that provider, or ask for one (never the key). Its Use button (SetupCloudSave-<page>) and
+        // SetupUseLocalThinking save the route, so they need --allow-ui-effects.
+        "SetupJobNow-Thinking", "SetupJobNow-Voice", "SetupJobNow-Listening",
+        "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogHostStatus", "LogHostChoice", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
