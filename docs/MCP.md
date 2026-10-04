@@ -1097,6 +1097,24 @@ the tool allows 20; pass `-TimeoutSeconds 1300` to the script. The .NET 10 runti
 must be where `Martlet.NodeLinkCheck.exe` finds it (set `DOTNET_ROOT` when it is
 not installed system-wide).
 
+With `dataDirectory` (the absolute path of a desktop data directory paired with
+a host, so it has `hosts.json`) `singing_check` goes through that real paired host
+instead, exactly as the desktop's `SongClient` does: the first host in
+`hosts.json` whose gateway offers the song route (or the one named by `host`), its
+own gateway (pinned TLS, signed with the pairing secret the desktop saved in
+Windows Credential Manager, used only to sign the requests and never returned),
+its singing role, and `voiceId` (a voice ID from that gateway's shared voice list,
+or a unique prefix of 8+ characters such as `7fa3706c`; default the list's first
+live voice). Nothing is added to the host's voice list. When the host lacks that
+voice's recording it is sent once, from `voiceRecording` or the data directory's
+voice store (`f5-voices/audio/<preset>/<voice ID>.wav`), checked against the voice's
+SHA-256. This is how to make a song with a singing role that runs in Docker on
+this PC or another computer, whose service listens only inside its gateway's
+network. The report adds `paired`: the host, route and model, the voice (ID,
+name, seconds, rights, whether its recording was already on the host) and the
+hosts skipped. `endpoint` is ignored then; `voiceId` and `host` need
+`dataDirectory`.
+
 `singing_status` reads a singing service's own `/status` over a numeric loopback
 `endpoint` (default `http://127.0.0.1:50085/`): `answered`, `state`
 (`not_provisioned`, `ready`, `loading`, `busy`), `ready`, `engine` (`song` or
@@ -1108,9 +1126,21 @@ could not be read. With a `dataDirectory` (the script passes its disposable one)
 it adds `choices`, the Singing card's saved quality and voice match
 (`singing.json`; the defaults when none are saved), `host` (the computer the
 desktop last saw running Singing) and `setUp` (that computer is still paired:
-what `SongClient.IsSetUp` answers without the fixture). Read-only. As with
-`voice_engine_check`, a role service on a host listens only in the host's
-loopback, so run it there or forward the port.
+what `SongClient.IsSetUp` answers without the fixture). When that data directory
+is paired with hosts (`hosts.json`), it adds `paired` (Martlet.NodeLinkCheck's
+`singing-status` mode): for each paired host, read through its own gateway as the
+Singing card reads it (the pairing secret from Windows Credential Manager only
+signs the requests), `reachable`, `offersSinging`, `model` and `service` (the same
+status fields as above plus the models' count, total bytes and licences), or the
+`problem`; and `thisPcDocker`, what this PC's Docker shows of the role:
+`containers` (name, image, state, status), `images` (`martlet-singing` tags,
+sizes), `modelsVolume` (whether `martlet-singing-models` exists) and
+`setupRunning` with `setup` (a `martlet-host add singing` engine session running
+now, its image and how long: a setup or *Add VevoSing there* in progress). A role
+in Docker listens only inside its gateway's network, so `paired` is how to read
+it from this PC. Read-only. As with `voice_engine_check`, a role service on a host
+listens only in the host's loopback, so `endpoint` reads it only there or through
+a forwarded port.
 
 `virtualization_status` reports whether Windows is ready for Docker Desktop's
 WSL 2 engine, from the same read-only checks the desktop runs before it starts
@@ -2667,23 +2697,33 @@ that rule; `SpeakingEngineRelease` stops them after a confirmation
 
 Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a
 voice engine row: `SingingEngine` ("Singing" or "Singing · ready"),
-`SingingFeatures` its chips ("NVIDIA GPU 6 GB+, Docker, Sings in your cloned
+`SingingFeatures` its chips ("NVIDIA GPU 6 GB+, shared, Docker, Sings in your cloned
 voice, With backing music, A few minutes per song, ACE-Step MIT · SoulX-Singer
 Apache-2.0"), `SingingState` where it stands on the shown computer ("Not set up on
-this PC yet.", "Setting up on gpu-pc...", "Ready on gpu-pc.", "Setup failed on
-this PC: ..." or why that computer can't sing, such as "Needs an NVIDIA graphics
-card with 6 GB+; this PC has ...") and `SingingSetUp` its button ("Set up",
-"Setting up...", "Ready"; disabled with the reason as help text when the computer
-can't sing). With another computer paired, the pills `SingingHost-this-pc` and
-`SingingHost-<host ID>` only choose the shown computer (passive). `SingingQuality`
-("Fast (recommended)", "High quality ...") and `SingingVoiceMatch` ("SoulX-Singer
-...", "VevoSing ...") report the saved choices; `ui_select` on them saves
-`singing.json`, so it needs `--allow-ui-effects`, and with VevoSing chosen on a
-ready computer `SingingSetUpVevo` (*Add VevoSing there*) appears. `SingingSetUp`
-asks one confirmation naming the downloads, licences and terms and sets the role
-up (a run window on this PC), so it needs `--allow-ui-effects`. There is no play
-button: songs are only performed by Martlet in conversation, so make and inspect
-real songs headlessly with `singing_check`.
+this PC yet.", "Setting up on gpu-pc...", "Ready on gpu-pc with SoulX-Singer.",
+"Ready on this PC with SoulX-Singer and VevoSing.", "Adding VevoSing on this
+PC...", "Setup failed on this PC: ..." or why that computer can't sing, such as
+"Needs an NVIDIA graphics card with 6 GB+; this PC has ..."; the voice matches come
+from that computer's singing service, read through its gateway once the card shows
+it) and `SingingSetUp` its button ("Set up", "Setting up...", "Ready"; disabled
+with the reason as help text when the computer can't sing). `SingingGpu` (fixed
+text) answers whether Singing needs a graphics card of its own. With another
+computer paired, the pills `SingingHost-this-pc` and `SingingHost-<host ID>` only
+choose the shown computer (passive). `SingingQuality` ("Fast (recommended)", "High
+quality ...") and `SingingVoiceMatch` ("SoulX-Singer (recommended: ...)",
+"VevoSing ...") report the saved choices (SoulX-Singer by default); `ui_select` on
+them saves `singing.json`, so it needs `--allow-ui-effects`. With VevoSing chosen
+on a ready computer whose service doesn't list it, `SingingVoiceMatchState` says
+so ("VevoSing isn't set up on this PC. Songs use SoulX-Singer until you add it.",
+or "Adding VevoSing on this PC...") and `SingingSetUpVevo` (*Add VevoSing there*,
+"Adding VevoSing..." while it runs) asks its own confirmation naming VevoSing's
+CC-BY-NC-ND-4.0 terms and downloads only then. `SingingSetUp` asks one
+confirmation naming the downloads, licences and terms and sets the role up through
+`martlet-host add singing` (a run window on this PC whose `HostRunStatus` follows
+the image build, the service starting and each model file's download, for example
+"Singing: downloading model-svc.pt, 45% of 2730 MiB..."); both need
+`--allow-ui-effects`. There is no play button: songs are only performed by Martlet
+in conversation, so make and inspect real songs headlessly with `singing_check`.
 
 On Companion › Tools (`CompanionTab-Tools`), the Terminal card comes first:
 `ToolsTerminalOn` (*Let Martlet run terminal commands*, off by default) and

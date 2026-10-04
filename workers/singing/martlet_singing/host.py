@@ -133,7 +133,7 @@ def provision(fixture: bool) -> None:
                               "sha256": sha256})
         # transformers finds the pinned Whisper base (SoulX's content encoder) offline through its cache layout.
         whisper_base = next(p for p in pins.PINNED_FILES if p.repository == "openai/whisper-base")
-        refs = MODELS / "hf-cache/hub/models--openai--whisper-base/refs"
+        refs = MODELS / "huggingface/hub/models--openai--whisper-base/refs"
         refs.mkdir(parents=True, exist_ok=True)
         (refs / "main").write_text(whisper_base.revision, encoding="utf-8")
     identity = {

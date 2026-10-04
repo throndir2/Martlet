@@ -344,25 +344,32 @@ public partial class MainWindow
         hostBusy = true;
         try
         {
+            // Why martlet-host stopped ("Stopped: ..."), for the card when the run fails.
+            string? stopped = null;
             async Task<string> Continue(HostRunWindow run, PairedHost pc)
             {
                 var target = pc.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
                 await HostLocal.EnsureImageAsync(target, run.Status, run.Output, run.Token);
                 run.Status(vevosing ? "Adding VevoSing on this PC (about 4.5 GB)..." : "Installing Singing on this PC (a large download)...");
-                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Singing], SetupProgress(run, what), run.Token, answers: answers);
-                if (exit != 0) throw new InvalidOperationException($"Installing {what} stopped (exit {exit}). The output has details.");
+                var exit = await HostLocal.EngineAsync(target, ["add", HostRoles.Singing], SetupProgress(run, what, why => stopped ??= why),
+                    run.Token, answers: answers);
+                if (exit != 0)
+                    throw new InvalidOperationException($"Installing {what} stopped{(stopped is null ? $" (exit {exit})" : ": " + stopped)}. The output has details.");
                 run.Status($"Checking {what} on this PC...");
                 singingServices.Remove(pc.HostId);
                 if (await WaitForSingingAsync(pc, vevosing, run.Token) is { } why)
-                    throw new InvalidOperationException($"Setup finished, but Martlet can't see {what} yet ({why}). Check this PC in a minute.");
+                {
+                    stopped = $"Setup finished, but Martlet can't see {what} yet ({why}). Check this PC in a minute.";
+                    throw new InvalidOperationException(stopped);
+                }
                 return vevosing ? "VevoSing is ready on this PC." : "Singing is ready on this PC. Ask Martlet to sing you a song.";
             }
 
             string? status;
             if (thisPc is not null)
                 status = await HostRunWindow.RunAsync(this, vevosing ? "Add VevoSing on this PC" : "Set up Singing on this PC", run => Continue(run, thisPc)) ??
-                    $"{what} wasn't set up. The run window has details.";
+                    (stopped is null ? $"{what} wasn't set up. The run window has details." : $"{what} wasn't set up: {stopped}");
             else
             {
                 (_, status) = await HostsWindow.SetUpThisPcAsync(this, new AvatarProfileStore(dataDirectory), service,
@@ -394,11 +401,12 @@ public partial class MainWindow
 
     /// <summary>martlet-host's output for the run window, with the singing role's own progress (the image build's steps, the
     /// service starting, each pinned model file's download) as its status line, so the window (and MCP, through
-    /// HostRunStatus) shows how far setting up is.</summary>
-    private static IProgress<string> SetupProgress(HostRunWindow run, string what) => new Progress<string>(line =>
+    /// HostRunStatus) shows how far setting up is; <paramref name="stopped"/> gets why martlet-host stopped, if it does.</summary>
+    private static IProgress<string> SetupProgress(HostRunWindow run, string what, Action<string> stopped) => new Progress<string>(line =>
     {
         run.Output.Report(line);
-        if (SingingDownloadPattern().Match(line) is { Success: true } download)
+        if (line.StartsWith("Stopped: ", StringComparison.Ordinal)) stopped(line["Stopped: ".Length..].Trim());
+        else if (SingingDownloadPattern().Match(line) is { Success: true } download)
             run.Status($"{what}: downloading {download.Groups["file"].Value}, {download.Groups["percent"].Value}% of {download.Groups["mib"].Value} MiB...");
         else if (SingingModelPattern().Match(line) is { Success: true } model)
             run.Status($"{what}: getting {model.Groups["file"].Value}...");

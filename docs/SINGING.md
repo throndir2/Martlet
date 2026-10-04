@@ -146,13 +146,40 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 
 ## Desktop
 
-**Companion > Voice > Singing** (below the voice engine) works like a voice engine row: chips (NVIDIA GPU 6 GB+, Docker,
-sings in your cloned voice, with backing music, a few minutes per song, the licences), where it stands on the shown
-computer (not set up, setting up, ready, failed with the reason, or why that computer can't sing), and one **Set up**
-button for this PC or the computer picked in its pills, after a confirmation naming the downloads, licences and terms.
-**Quality** (Fast, High quality) and **Voice match** (SoulX-Singer, VevoSing) are kept in `singing.json`; choosing VevoSing
-where only SoulX is set up offers **Add VevoSing there**. There is no play button: Martlet performs its songs itself in
-conversation. The Devices map lists the role as "Singing".
+**Companion > Voice > Singing** (below the voice engine) works like a voice engine row: chips (NVIDIA GPU 6 GB+ shared,
+Docker, sings in your cloned voice, with backing music, a few minutes per song, the licences), where it stands on the
+shown computer (not set up, setting up, ready with the voice matches set up there, failed with the reason, or why that
+computer can't sing), and one **Set up** button for this PC or the computer picked in its pills, after a confirmation
+naming the downloads, licences and terms. A note under it answers whether Singing needs a graphics card of its own
+([below](#does-singing-need-its-own-graphics-card)).
+**Quality** (Fast, High quality) and **Voice match** (SoulX-Singer, the default, or VevoSing) are kept in `singing.json`.
+There is no play button: Martlet performs its songs itself in conversation. The Devices map lists the role as "Singing"
+("Ready. Martlet makes its songs here when you ask it to sing.").
+
+### Setting it up
+
+Singing installs like every other role, through `martlet-host add singing`:
+
+- **Set up** (this PC) opens the same run window as a voice engine: Docker Desktop and the host service first when this
+  PC has none, then the role. Its status line follows the role's own progress: building the singing image (its steps),
+  starting the service, then each pinned model file's download ("Singing: downloading model-svc.pt, 45% of 2730 MiB...").
+  On another computer the run goes through Martlet there or SSH, as for any role. The card says *Setting up on ...* until
+  the gateway offers the song route and the singing service answers set up, then *Ready on this PC with SoulX-Singer.*;
+  a failed run says why and Set up tries again (downloads already verified are kept).
+- A plain Set up installs **ACE-Step, Demucs and SoulX-Singer only** (`SINGING_VOICE_MATCHES=soulx`, about 16 GB). The
+  card reads the voice matches set up on the shown computer from its singing service, through the gateway.
+- **VevoSing is optional.** Choosing it under Voice match where only SoulX-Singer is set up says so ("Songs use
+  SoulX-Singer until you add it") and offers **Add VevoSing there**, with its own confirmation naming CC-BY-NC-ND-4.0
+  (personal, non-commercial use only) and its downloads (Vevo1.5 and Whisper medium, about 4.5 GB), which happen only
+  then (`martlet-host add singing` again with `soulx-vevosing`; SoulX-Singer's files are kept). A song asked for with
+  VevoSing where it isn't set up is sung with SoulX-Singer instead.
+- The Devices map's *Install Singing* and the Martlet hosts window's role cards run the same `martlet-host add singing`
+  with the role's install dialog (`martlet-host describe singing`: its terms, the model and voice-match choices with
+  SoulX-Singer preselected, and VevoSing's terms only when it is chosen). *Remove Singing* stops it and keeps the
+  downloads.
+- The host image carries the singing sources (`/opt/martlet/source/workers/singing`) the role's image is built from,
+  like every role that builds on the host; the role's image tag (`martlet-singing:2`) is bumped whenever those sources
+  change, so `martlet-host update` (Martlet updating its hosts) rebuilds it.
 
 For other code (the conversation's `sing_song` tool), `Martlet.Core.Singing` holds the contract: `ISongMaker`
 (`GetAvailabilityAsync`, `GenerateAsync(request, progress, cancellationToken)`), `SongRequest`, `SongProgress`,

@@ -111,7 +111,7 @@ internal static class SingingCheck
         var hosts = PairedHosts(dataDirectory).Where(h => hostId is null || h.HostId == hostId).ToList();
         if (hosts.Count == 0)
             throw new ArgumentException(hostId is null ? "That data directory has no paired hosts." : $"{hostId} isn't paired in that data directory.");
-        string? audioSha256 = null;
+        string? audioSha256 = null, chosenId = null;
         var tried = new List<object>();
         return await SongAsync("paired", seconds, quality, voiceMatch, bpm, key, saveDirectory, async open =>
         {
@@ -136,6 +136,7 @@ internal static class SingingCheck
                         throw new Audio2FaceHostException("voice.missing",
                             voiceId is null ? $"{candidate.HostId}'s shared voice list has no voices." : $"{candidate.HostId}'s shared voice list has no single voice {voiceId}.");
                     audioSha256 = voice.AudioSha256;
+                    chosenId = voice.Id;
                     var opened = new Opened(connection, route, null, voice.Id, voice.Name ?? voice.Id[..12], new
                     {
                         host = candidate.HostId, route = route.RouteId, model = route.ModelId,
@@ -165,9 +166,10 @@ internal static class SingingCheck
             if (voiceRecording is not null) audio = await File.ReadAllBytesAsync(voiceRecording, read);
             else
             {
+                // The desktop keeps each voice's recording as f5-voices/audio/<preset>/<voice ID>.wav.
                 var store = Path.Combine(dataDirectory, "f5-voices", "audio");
                 var file = Directory.Exists(store)
-                    ? Directory.EnumerateFiles(store, audioSha256 + ".wav", SearchOption.AllDirectories).FirstOrDefault() : null;
+                    ? Directory.EnumerateFiles(store, chosenId + ".wav", SearchOption.AllDirectories).FirstOrDefault() : null;
                 if (file is not null) audio = await File.ReadAllBytesAsync(file, read);
             }
             return audio is not null && Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(audio)) == audioSha256 ? audio : null;

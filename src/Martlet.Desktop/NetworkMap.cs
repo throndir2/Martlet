@@ -447,7 +447,9 @@ internal static class NetworkMap
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
                     !(role.Kind == speaking && speaks))
-                    target.Roles.Add(new(role.Chip, role.Name, $"Ready. Assign {role.Job} to use it.",
+                    target.Roles.Add(new(role.Chip, role.Name, role.Kind == HostRoles.Singing
+                            ? "Ready. Martlet makes its songs here when you ask it to sing (Companion > Voice > Singing)."
+                            : $"Ready. Assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }
             var users = inputs.HostUsers?.GetValueOrDefault(paired.HostId);
