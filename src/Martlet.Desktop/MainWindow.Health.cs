@@ -359,9 +359,9 @@ public partial class MainWindow
 
         // Vision: on, but with nothing it can use.
         var talk = Talk;
-        if (talk.Watch && llm is not null && LiveConversationConfiguration.Vision(llm) == VisionSupport.Unsupported)
+        if (talk.Watch && llm is not null && LiveConversationConfiguration.Vision(llm, SavedModelAbilities()) == VisionSupport.Unsupported)
             Add("vision", HealthLevel.Warning, "Martlet can't see with your thinking model",
-                LiveConversationConfiguration.VisionAdvice(llm), [Open(CompanionTab.Vision, "Open vision")]);
+                LiveConversationConfiguration.VisionAdvice(llm, SavedModelAbilities()), [Open(CompanionTab.Vision, "Open vision")]);
         else if (talk.Watch && VisionSource(talk) is { IsScreen: false, Id.Length: 0 })
             Add("vision-source", HealthLevel.Warning, "Vision has nothing to look at",
                 "Watching is on with a camera, but no camera is chosen.", [Open(CompanionTab.Vision, "Choose a camera")]);

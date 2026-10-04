@@ -476,10 +476,31 @@ internal sealed class LiveConversationController : IAsyncDisposable
         WriteJobsStatus();
     }
 
+    /// <summary>Saves what Martlet found out about a Thinking model (model-abilities.json) and lets the running conversation use
+    /// it at once. Nothing is saved without a data directory (tests).</summary>
+    internal void RecordAbility(ModelAbility ability)
+    {
+        if (dataDirectory is null) return;
+        var abilities = ModelAbilities.Load(dataDirectory).With(ability);
+        if (!abilities.Save(dataDirectory))
+        {
+            ErrorLog.Warn("Martlet couldn't save what it found out about the Thinking model (model-abilities.json).");
+            return;
+        }
+        Configuration?.UseAbilities(abilities);
+    }
+
+    /// <summary>Reads model-abilities.json again, after Martlet found out more or another computer shared it.</summary>
+    internal void ReloadAbilities()
+    {
+        if (dataDirectory is not null) Configuration?.UseAbilities(ModelAbilities.Load(dataDirectory));
+    }
+
     internal void Configure(SettingsLoadResult loaded)
     {
-        // The context windows found on this PC (Companion › Replies › Check) keep the context size within the model's own.
-        var next = LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory));
+        // The context windows found on this PC (Companion › Replies › Check) keep the context size within the model's own, and
+        // what Thinking models were found to hear and see decides whether a recording or picture goes with a message.
+        var next = LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory), ModelAbilities.Load(dataDirectory));
         LiveConversationOperation? stop;
         LiveListener[] stopListening;
         bool changed;
@@ -1303,12 +1324,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with tools; " +
                     "Martlet asked again without tools and stops offering them to it for a week.");
             }
-            // A model that rejected the recording gets the transcript only from now on (this app session).
+            // A model that rejected the recording gets the transcript only from now on (this app session), and Martlet remembers
+            // it can't hear (model-abilities.json, shared with the owner's other computers) until a check or test says otherwise.
             if (terminal.AudioRejected)
             {
                 lock (gate) deafModels.Add(configured.ToolModelKey());
+                var thinking = configured.Route(SetupRole.Llm);
+                RecordAbility(new() { Origin = thinking.Origin, ModelId = thinking.ModelId, Hears = false, Source = "a refused recording",
+                    CheckedAt = DateTimeOffset.UtcNow });
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with your recording; " +
-                    "Martlet asked again with the transcript only and sends it only the transcript until it restarts.");
+                    "Martlet asked again with the transcript only and sends it only the transcript from now on.");
             }
             if (terminal.ImageRejected)
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the picture of your screen sent " +

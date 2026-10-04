@@ -222,17 +222,18 @@ public partial class MainWindow
     private Border HearVoiceCard()
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        var hears = LiveConversationConfiguration.Hearing(thinking) == HearingSupport.Supported;
+        var abilities = SavedModelAbilities();
+        var hears = LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
         var hear = new CheckBox { Content = "Let Thinking hear my voice", IsChecked = Talk.HearVoice, Margin = new Thickness(0, 0, 0, 6),
             IsEnabled = Talk.HearVoice || hears };
         AutomationProperties.SetAutomationId(hear, "TalkHearVoice");
         hear.Checked += (_, _) => { if (!Talk.HearVoice) SaveTalk(Talk with { HearVoice = true }, render: true); };
         hear.Unchecked += (_, _) => { if (Talk.HearVoice) SaveTalk(Talk with { HearVoice = false }, render: true); };
-        var advice = LiveConversationConfiguration.HearingAdvice(thinking);
+        var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities);
         var status = hears || !Talk.HearVoice ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        return Card(Heading("Hear how you say it"), hear, status,
-            Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0)));
+        return Card([Heading("Hear how you say it"), hear, status, .. HearingTestControls(thinking),
+            Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
     }
 
     // ---------- Voice: speak replies ----------
@@ -265,7 +266,8 @@ public partial class MainWindow
     {
         var prefs = Talk;
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        var canSee = thinking is not null && LiveConversationConfiguration.Vision(thinking) != VisionSupport.Unsupported;
+        var abilities = SavedModelAbilities();
+        var canSee = thinking is not null && LiveConversationConfiguration.Vision(thinking, abilities) != VisionSupport.Unsupported;
         var source = VisionSource(prefs);
         var chosen = source.IsScreen || source.Id.Length > 0;
         var chattiness = (Chattiness)Math.Clamp(prefs.ScreenChattiness, 0, 2);
@@ -282,7 +284,7 @@ public partial class MainWindow
             }
         };
         if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
-        var advice = LiveConversationConfiguration.VisionAdvice(thinking);
+        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities);
         var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice);
         AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
         now.Add(adviceText);

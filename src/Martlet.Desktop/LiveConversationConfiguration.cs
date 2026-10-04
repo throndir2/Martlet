@@ -109,10 +109,11 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved reply length prompt, or null when the user emptied it.</summary>
     internal string? ReplyLength => PromptSettings.Fill(Prompts, PromptCatalog.ReplyLength);
 
-    private LiveConversationConfiguration(AppSettings settings, string revision, ModelLimits? limits)
+    private LiveConversationConfiguration(AppSettings settings, string revision, ModelLimits? limits, ModelAbilities? abilities)
     {
         Profile = settings.Profile.Id;
         Revision = revision;
+        this.abilities = abilities ?? new();
         Routes = Array.AsReadOnly(settings.Setup!.Routes.ToArray());
         Audio = settings.Audio ?? WindowsDefaultAudio;
         Persona = settings.Companion?.ActivePersona;
@@ -144,15 +145,23 @@ internal sealed class LiveConversationConfiguration
     }
 
     /// <summary>The conversation configuration of loaded settings; <paramref name="limits"/> are the context windows found on
-    /// this PC (model-limits.json), so the context size stays within the Thinking model's own.</summary>
-    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded, ModelLimits? limits = null)
+    /// this PC (model-limits.json), so the context size stays within the Thinking model's own, and <paramref name="abilities"/>
+    /// what Thinking models were found to hear and see (model-abilities.json).</summary>
+    internal static LiveConversationConfiguration? From(SettingsLoadResult loaded, ModelLimits? limits = null, ModelAbilities? abilities = null)
     {
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null ||
             loaded.Revision is null || loaded.Settings is not { Setup: not null } settings ||
         settings.Profile.Kind != ProfileKind.Api) return null;
         settings.Validate();
-        return new(settings, loaded.Revision, limits);
+        return new(settings, loaded.Revision, limits, abilities);
     }
+
+    /// <summary>What Thinking models were found to hear and see (model-abilities.json): loaded with this configuration and
+    /// replaced when Martlet finds out more (<see cref="UseAbilities"/>), so a conversation follows it at once.</summary>
+    internal ModelAbilities Abilities { get => Volatile.Read(ref abilities); private set => Volatile.Write(ref abilities, value); }
+    private ModelAbilities abilities;
+
+    internal void UseAbilities(ModelAbilities found) => Abilities = found ?? new();
 
     // One shared instance, so reloading unchanged settings compares equal.
     private static readonly AudioSettings WindowsDefaultAudio = AudioSettings.Create();
@@ -612,31 +621,34 @@ internal sealed class LiveConversationConfiguration
         return string.IsNullOrWhiteSpace(own) ? null : own.Trim();
     }
 
-    internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+    internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
 
-    internal static VisionSupport Vision(SetupRoute? thinking) =>
+    /// <summary>Whether the Thinking model sees: what its server's metadata said when it was chosen or checked
+    /// (<paramref name="abilities"/>), otherwise its name.</summary>
+    internal static VisionSupport Vision(SetupRoute? thinking, ModelAbilities? abilities = null) =>
         thinking is null ? VisionSupport.Unknown
-        : IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null ? VisionSupport.Unsupported
-        : VisionModelCatalog.Classify(thinking.ModelId);
+        : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities,
+            IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
 
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
-    internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+    internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
 
-    internal static string VisionAdvice(SetupRoute? route)
+    internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities = null)
     {
         if (route is null) return "Set up Thinking before turning on vision.";
         if (IsChat(route) && ChatCompletionsEndpointCatalog.RetiredOn(route.Origin, route.ModelId) is { } retired)
             return $"{retired.Name} retired this Thinking model. Choose {retired.DefaultModelId} in Companion › Thinking.";
-        return Vision(route) switch
+        var found = abilities?.Find(route.Origin, route.ModelId) is { Sees: not null } ability ? $" ({Said(ability)})" : "";
+        return Vision(route, abilities) switch
         {
             VisionSupport.Supported =>
-                $"This Thinking model can use vision. Pictures go to {LlmDestinationName(route)}.",
+                $"This Thinking model can use vision{found}. Pictures go to {LlmDestinationName(route)}.",
             VisionSupport.Unsupported when IsHost(route) =>
                 "This Thinking model is text-only. Choose a vision-capable model for the host on Devices, or choose one in Companion › Thinking.",
             VisionSupport.Unsupported when IsChat(route) =>
                 ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
-                    ? $"This Thinking model is text-only. Choose {named.DefaultModelId} in Companion › Thinking, or another vision-capable model on the same endpoint."
-                    : "This Thinking model is text-only. Choose a vision-capable model on this endpoint or in Companion › Thinking.",
+                    ? $"This Thinking model is text-only{found}. Choose {named.DefaultModelId} in Companion › Thinking, or another vision-capable model on the same endpoint."
+                    : $"This Thinking model is text-only{found}. Choose a vision-capable model on this endpoint or in Companion › Thinking.",
             VisionSupport.Unsupported =>
                 "This Thinking model is text-only. Choose a vision-capable model in Companion › Thinking.",
             _ =>
@@ -644,30 +656,44 @@ internal sealed class LiveConversationConfiguration
         };
     }
 
-    /// <summary>Whether the Thinking model can hear the user's recording. Only Chat Completions endpoints take audio (the
-    /// <c>input_audio</c> content part); OpenAI's Responses route, a host's Ollama and Ollama on this PC take none.</summary>
-    internal HearingSupport Hearing() => Hearing(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+    /// <summary>Whether the Thinking model can hear the user's recording: only Chat Completions endpoints take audio (the
+    /// <c>input_audio</c> content part; OpenAI's Responses route and a host's Ollama take none), then what was found out about
+    /// the model (its server's metadata, Test hearing or a refused recording), then its name.</summary>
+    internal HearingSupport Hearing() => Hearing(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
 
-    internal static HearingSupport Hearing(SetupRoute? thinking) =>
+    internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) =>
         thinking is null ? HearingSupport.Unknown
-        : !IsChat(thinking) || MainWindow.IsLocalOllama(thinking) ||
-            ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null ? HearingSupport.Unsupported
-        : HearingModelCatalog.Classify(thinking.ModelId);
+        : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
+            IsChat(thinking) && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
+
+    // Where what Martlet knows about a model came from, in a few words: "Ollama on this PC says so, checked 3 Oct".
+    private static string Said(ModelAbility ability) =>
+        $"{(ability.Source is "a test request" or "a refused recording" ? "found by " + ability.Source : ability.Source + " says so")}, " +
+        $"checked {ability.CheckedAt.LocalDateTime:d MMM}";
 
     /// <summary>Whether the Thinking model can hear your voice, and what to change when it can't.</summary>
-    internal static string HearingAdvice(SetupRoute? route) => route is null ? "Set up Thinking before letting it hear your voice." :
-        Hearing(route) switch
+    internal static string HearingAdvice(SetupRoute? route, ModelAbilities? abilities = null)
+    {
+        if (route is null) return "Set up Thinking before letting it hear your voice.";
+        var ability = abilities?.Find(route.Origin, route.ModelId) is { Hears: not null } known ? known : null;
+        var found = ability is null ? "" : $" ({Said(ability)})";
+        return Hearing(route, abilities) switch
         {
-            HearingSupport.Supported => $"This Thinking model can hear. Your recording goes to {LlmDestinationName(route)} with the transcript.",
-            HearingSupport.Unsupported when IsHost(route) || MainWindow.IsLocalOllama(route) =>
-                "Ollama can't take audio, so only the transcript is sent. Choose a model that hears on an OpenAI-compatible endpoint in Companion › Thinking, for example gemini-2.5-flash.",
+            HearingSupport.Supported => $"This Thinking model can hear{found}. Your recording goes to {LlmDestinationName(route)} with the transcript.",
+            HearingSupport.Unsupported when IsHost(route) =>
+                "A host's Ollama can't take audio from Martlet, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
+                "for example Gemma 4 E2B or E4B in Ollama on this PC, or gemini-2.5-flash.",
             HearingSupport.Unsupported when !IsChat(route) =>
                 "This OpenAI model can't take audio, so only the transcript is sent. Choose an OpenAI-compatible endpoint and a model that hears in Companion › Thinking, for example gpt-4o-audio-preview or gemini-2.5-flash.",
+            HearingSupport.Unsupported when ability is not null =>
+                $"This Thinking model can't hear audio{found}, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
+                "for example Gemma 4 E2B in Ollama on this PC, gemini-2.5-flash or gpt-4o-audio-preview.",
             HearingSupport.Unsupported =>
-                "This Thinking model can't hear audio, so only the transcript is sent. Choose a model that hears in Companion › Thinking, for example gemini-2.5-flash, gpt-4o-audio-preview, Qwen Omni or Gemma 4 E4B.",
+                "This Thinking model can't hear audio, so only the transcript is sent. Choose a model that hears in Companion › Thinking, for example Gemma 4 E2B or E4B, gemini-2.5-flash, gpt-4o-audio-preview or Qwen Omni.",
             _ =>
-                "Martlet can't tell whether this Thinking model can hear audio, so only the transcript is sent. Choose a known model that hears in Companion › Thinking, for example gemini-2.5-flash or gpt-4o-audio-preview."
+                "Martlet can't tell whether this Thinking model can hear audio, so only the transcript is sent. Test hearing finds out."
         };
+    }
 
     /// <summary>What letting Thinking hear your voice sends, and where: shown in Companion › Listening before it is turned on.</summary>
     internal static string HearingDisclosure(SetupRoute? route) =>

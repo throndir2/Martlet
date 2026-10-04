@@ -30,18 +30,23 @@ internal static class HearingCheck
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var model = modelId ?? thinking?.ModelId ?? "gemini-2.5-flash";
         var modelHearing = HearingModelCatalog.Classify(model);
-        // Only Chat Completions endpoints take audio; OpenAI's Responses route and Ollama (a host's or this PC's) don't.
+        // The production decision (HearingModelCatalog.ForRoute): only Chat Completions routes take audio (OpenAI's Responses
+        // route and a host's Ollama don't), then what model-abilities.json says, then the name.
+        var abilities = ModelAbilities.Load(dataDirectory);
+        var saved = thinking is null || modelId is not null ? null : abilities.Find(thinking.Origin, thinking.ModelId);
         var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null
-            : thinking.RouteType != SetupRouteType.ChatCompletions || thinking.Origin == LocalOllama ? HearingSupport.Unsupported
-            : modelHearing;
+            : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
+                thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
         return new
         {
             model,
             source = modelId is not null ? "argument" : thinking is not null ? "settings" : "default",
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
             routeType = modelId is null ? thinking?.RouteType?.ToString() : null,
+            localOllama = thinking is not null && modelId is null && thinking.Origin == LocalOllama,
             modelHearing = modelHearing.ToString(),
             routeHearing = routeHearing?.ToString(),
+            savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Source, saved.CheckedAt },
             hearVoice = HearVoice(dataDirectory),
             fixture = await FixtureAsync(model, cancellation)
         };

@@ -116,6 +116,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Listening › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
+        // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
+        // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
+        "TalkHearVoiceTestStatus",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,
         // and why Add a voice couldn't add a recording (never the typed name, transcript or file path); Add a voice's line on
         // its recordings (how many, how long joined, or which one Martlet can't use; never paths or words), under each

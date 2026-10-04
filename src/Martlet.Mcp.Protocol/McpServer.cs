@@ -396,7 +396,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
-            "directory, or modelId): the model's and the route's hearing support and whether Companion > Listening > Let Thinking hear " +
+            "directory, or modelId): the model's name-based hearing, the route's (the production decision: only Chat Completions routes, " +
+            "Ollama on this PC included, then what model-abilities.json says, then the name), savedAbility (what Martlet found out about " +
+            "the saved model and where) and whether Companion > Listening > Let Thinking hear " +
             "my voice is on. Then rehearses the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned " +
             "reply, NOT AI) with a synthesized speech-like clip (never microphone audio, nothing played): the clip goes as an " +
             "input_audio WAV part beside the transcript, is refused without its own audio permission before any request, and is " +
@@ -404,6 +406,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" },
             modelId = new { type = "string", maxLength = 128 }
+        }),
+        Tool("model_ability_check", "What Thinking models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
+            "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
+            "detection (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like OpenRouter's model list " +
+            "(architecture.input_modalities), llama.cpp (/props modalities) and Ollama (/api/show capabilities), Companion > Listening > " +
+            "Test hearing (ModelHearingTest) against a fixture Chat Completions endpoint that answers the test word only when the request " +
+            "carries the recording (it is told the word: NOT AI), a model that ignores audio, one that refuses it and a wrong key; the " +
+            "hearing and vision decisions replies use (decisions) and the shared value's round trip (shared). With baseUrl (an http:// " +
+            "server on this PC only, for example Ollama's http://127.0.0.1:11434/v1 or a llama.cpp server) and modelId it also asks that " +
+            "real server what the model takes (real.metadata), and with test=true sends it the real Test hearing request: one word said " +
+            "by Windows speech (never microphone audio, nothing played). Nothing leaves this PC; reads no credentials; saves nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            baseUrl = new { type = "string", maxLength = 256 },
+            modelId = new { type = "string", maxLength = 128 },
+            test = new { type = "boolean" }
         }),
         Tool("spoken_reply_check", "Rehearse a spoken reply whose voice fails partway, end to end with the production conversation " +
             "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
@@ -701,6 +719,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
+                    OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
@@ -1586,7 +1606,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
-                if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates")
+                if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
+                    "model-abilities")
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();
