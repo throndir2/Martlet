@@ -17,7 +17,7 @@ namespace Martlet.Desktop;
 /// <summary>One Martlet on every computer: the settings that make the companion what it is (how it thinks, listens and speaks
 /// with their API keys, the Thinking fallback, personality, replies, prompts, memory on or off, lorebooks, the character and
 /// its emotes and motions, how you talk, speech bubbles, the theme, recognizing voices, Voice ID, what Martlet may do with Home
-/// Assistant and app updates) are kept the same on all the owner's computers through the paired hosts, next
+/// Assistant, app updates and what Thinking models hear and see) are kept the same on all the owner's computers through the paired hosts, next
 /// to who does what (docs/CLUSTER.md). Every 15 seconds while "Keep Martlet the same on all my computers" is on, this PC reads
 /// each host's copy when it changed, records what changed here, follows what is newer elsewhere and gives hosts with an older
 /// copy the merged one. Changes made while it is off (or offline) are recorded with their time and win only if newer.</summary>
@@ -25,7 +25,7 @@ public partial class MainWindow
 {
     private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance",
         CharacterActionsKey = "character-actions", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
-        SmartHomeKey = "smart-home", UpdatesKey = "updates";
+        SmartHomeKey = "smart-home", UpdatesKey = "updates", ModelAbilitiesKey = "model-abilities";
     private static readonly JsonSerializerOptions SharedJson = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -143,6 +143,7 @@ public partial class MainWindow
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",
         UpdatesKey => "app updates",
+        ModelAbilitiesKey => "what Thinking models hear and see",
         _ when SharedPc.IsKey(key) => "whether this PC is a companion or a host",
         _ => key
     };
@@ -251,7 +252,8 @@ public partial class MainWindow
         if (settingsNode is null || closing || !clusterEnabled) return;
         if (!ConfirmationDialog.Confirm(this, "Make all your computers use this PC's settings? How Martlet thinks, listens and speaks " +
                 "(with this PC's API keys), its character with its emotes and motions, personality, replies, prompts, lorebooks, how you " +
-                "talk, the theme, Voice ID, recognizing voices, what Martlet may do with Home Assistant and app updates are copied from " +
+                "talk, the theme, Voice ID, recognizing voices, what Martlet may do with Home Assistant, app updates and what Thinking models " +
+                "hear and see are copied from " +
                 "this PC to every paired computer, replacing what they have.", "Use this PC's settings"))
             return;
         while (settingsBusy && !closing) await Task.Delay(100);
@@ -410,6 +412,21 @@ public partial class MainWindow
             {
                 IntervalMinutes = value.IntervalMinutes, AutoInstall = value.AutoInstall, AutoUpdateHosts = value.AutoUpdateHosts
             });
+            return Task.FromResult(SharedApply.Done);
+        });
+        // What Thinking models were found to hear and see (their servers' metadata, Test hearing, a refused recording): found out
+        // once, on whichever computer, for all of them.
+        yield return new DelegateSection(ModelAbilitiesKey, "What Thinking models hear and see", _ =>
+        {
+            var path = Path.Combine(directory, ModelAbilities.FileName);
+            var saved = ModelAbilities.Load(directory);
+            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.Models.Count == 0, FileTime(path)));
+        }, (setting, _) =>
+        {
+            if (ModelAbilities.Parse(setting.Value) is not { } shared)
+                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
+            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
+            conversation?.ReloadAbilities();
             return Task.FromResult(SharedApply.Done);
         });
     }

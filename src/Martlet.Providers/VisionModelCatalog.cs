@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
@@ -66,6 +67,15 @@ public static partial class VisionModelCatalog
 
     public static string DescribeLocalOptions() =>
         string.Join("; ", LocalRecommendations.Select(m => $"{m.Tag} ({m.Memory}: {m.Why})"));
+
+    /// <summary>Whether the Thinking route's model sees: a retired model doesn't; then what Martlet found out about the model on
+    /// that server (<paramref name="abilities"/>: its model metadata), and only without that its name (<see cref="Classify"/>).</summary>
+    public static VisionSupport ForRoute(string? origin, string? modelId, ModelAbilities? abilities, bool retired = false)
+    {
+        if (retired) return VisionSupport.Unsupported;
+        if (abilities?.Find(origin, modelId)?.Sees is { } sees) return sees ? VisionSupport.Supported : VisionSupport.Unsupported;
+        return Classify(modelId);
+    }
 
     [GeneratedRegex("[^a-z0-9]")]
     private static partial Regex Compact();

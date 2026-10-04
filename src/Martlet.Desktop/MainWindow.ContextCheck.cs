@@ -7,7 +7,8 @@ namespace Martlet.Desktop;
 
 /// <summary>Finding out how much context the Thinking model takes (Companion › Replies › Check model limit, and right after a
 /// model is chosen or tested): the server's model list, Ollama's API on this PC, or OpenAI's documented windows. What it finds
-/// is kept in model-limits.json, so the context size stays within the model's own from the next conversation on.</summary>
+/// is kept in model-limits.json, so the context size stays within the model's own from the next conversation on. What the same
+/// metadata says the model hears and sees is kept in model-abilities.json (MainWindow.ModelAbilities.cs).</summary>
 public partial class MainWindow
 {
     private bool checkingContext;
@@ -49,6 +50,10 @@ public partial class MainWindow
     {
         var directory = store?.DataDirectory;
         if (directory is null) return;
+        // What the same metadata says the model takes besides text (audio, pictures) is kept too, and shared.
+        if (report.AbilitySource is { } said && (report.Hears ?? report.Sees) is not null)
+            RecordModelAbility(new() { Origin = origin, ModelId = modelId, Hears = report.Hears, Sees = report.Sees,
+                Source = said.Length <= 200 ? said : said[..200], CheckedAt = DateTimeOffset.UtcNow });
         var limits = ModelLimits.Load(directory);
         var before = limits.Find(origin, modelId);
         if (!limits.With(new()

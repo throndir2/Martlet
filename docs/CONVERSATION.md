@@ -680,6 +680,42 @@ video, music or game playing on the PC.
   …*); otherwise the log notes *Echo reduction is on*. Turning the choice off
   restarts listening without it.
 
+## Thinking models that hear and see
+
+With Companion › Listening › **Let Thinking hear my voice** on, the recording of
+what you said goes to the Thinking model with the transcript, when the model
+hears: as an `input_audio` WAV part, so only an OpenAI-compatible (Chat
+Completions) endpoint takes it. **Ollama on this PC** does too, for models it
+says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). A paired host's
+Ollama and OpenAI's own route don't. Vision works the same way with pictures.
+
+Martlet finds out what a model takes instead of guessing from its name:
+
+- **From the server, automatically.** Choosing, testing or checking a Thinking
+  model asks its server for the model's metadata (the same request as the
+  context check, no conversation content): OpenRouter's model list
+  (`architecture.input_modalities`), Ollama's `/api/show` (`capabilities`:
+  `audio`, `vision`), llama.cpp's `/props` (`modalities`), LM Studio's model
+  type or a `capabilities` list. Hosted APIs that don't publish this (OpenAI,
+  Gemini, NVIDIA Build) keep the name-based guess.
+- **Test hearing** (Companion › Listening, under the switch) sends the model one
+  short recording of a random word said by Windows speech (never your voice)
+  and asks which word it heard, with Thinking steps off. Saying the word means
+  it hears; another answer, or the server refusing the audio, means it
+  doesn't. On this PC it stays local; a cloud model asks first, since it is one
+  small request with your key.
+- **A refused recording.** When a model rejects a reply's recording, Martlet
+  asks again with the transcript only and remembers that the model can't hear.
+
+What it finds is kept in `model-abilities.json` (the model, the server, whether
+it hears and sees, where that came from and when) and shared with your other
+computers as the `model-abilities` setting ([shared
+settings](CLUSTER.md#one-martlet-on-every-computer)), so a model is found out
+once. A conversation uses it at once. The Listening and Vision pages say what is
+known and where it came from (*This Thinking model can hear (Ollama on this PC
+says so, checked 3 Oct)*). MCP `model_ability_check` and `hearing_check` show it
+([MCP](MCP.md)).
+
 ## Hearing what this PC plays
 
 *Hear what this PC plays* (Companion › Listening › Watch along, off by

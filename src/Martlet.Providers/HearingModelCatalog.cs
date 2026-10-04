@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
@@ -36,6 +37,19 @@ public static partial class HearingModelCatalog
             return gemma.Groups["edge"].Success ? HearingSupport.Supported : HearingSupport.Unsupported;
         // Any other family Martlet knows (text-only or vision) takes no audio.
         return VisionModelCatalog.Classify(modelId) == VisionSupport.Unknown ? HearingSupport.Unknown : HearingSupport.Unsupported;
+    }
+
+    /// <summary>Whether the Thinking route's model hears: only a Chat Completions route takes the <c>input_audio</c> part (OpenAI's
+    /// Responses route and a paired host's Ollama take none), a retired model none; then what Martlet found out about the model
+    /// on that server (<paramref name="abilities"/>: its model metadata, a test request or a refused recording), and only
+    /// without that the model's name (<see cref="Classify"/>). Ollama on this PC takes audio for models it says hear
+    /// (Ollama 0.35 and later, for example Gemma 4).</summary>
+    public static HearingSupport ForRoute(SetupRouteType? routeType, string? origin, string? modelId, ModelAbilities? abilities,
+        bool retired = false)
+    {
+        if (routeType != SetupRouteType.ChatCompletions || retired) return HearingSupport.Unsupported;
+        if (abilities?.Find(origin, modelId)?.Hears is { } hears) return hears ? HearingSupport.Supported : HearingSupport.Unsupported;
+        return Classify(modelId);
     }
 
     [GeneratedRegex("[^a-z0-9]")]

@@ -94,7 +94,16 @@ def cmd_clips(args: argparse.Namespace) -> None:
     from . import clips
 
     if args.action == "fetch":
-        clips.fetch_librispeech()
+        if args.source in (None, "librispeech"):
+            clips.fetch_librispeech()
+        elif args.source in ("ami-headset", "ami-room"):
+            clips.fetch_ami("ihm" if args.source == "ami-headset" else "sdm", args.count, args.name)
+        else:
+            raise SystemExit("clips fetch [librispeech|ami-headset|ami-room] [--count N] [--name SET]")
+    elif args.action == "degrade":
+        if not args.source or not args.name:
+            raise SystemExit("clips degrade SOURCE_SET --name SET")
+        clips.desk_mic(args.source, args.name, args.seed)
     elif args.action == "synth":
         if args.engine == "sapi":
             clips.synth_sapi()
@@ -146,10 +155,13 @@ def main(argv: list[str] | None = None) -> int:
     models.add_argument("--fetch", nargs="+", metavar="NAME")
     models.set_defaults(func=cmd_models)
 
-    clips = sub.add_parser("clips", help="make clip sets: fetch (LibriSpeech), synth (prompts), record (your voice), import, list")
-    clips.add_argument("action", choices=["fetch", "synth", "record", "import", "list"])
+    clips = sub.add_parser("clips", help="make clip sets: fetch (LibriSpeech or AMI meetings), synth (prompts), record (your voice), "
+                                         "degrade (a desk-microphone copy), import, list")
+    clips.add_argument("action", choices=["fetch", "synth", "record", "degrade", "import", "list"])
     clips.add_argument("source", nargs="?")
     clips.add_argument("--name")
+    clips.add_argument("--count", type=int, default=32, help="fetch ami-*: how many clips")
+    clips.add_argument("--seed", type=int, default=7, help="degrade: the room, noise and level draw")
     clips.add_argument("--engine", default="sapi", choices=["sapi", "voice"], help="synth: Windows voices or a Martlet voice worker")
     add_tts_options(clips, "martlet-worker")
     clips.set_defaults(func=cmd_clips)

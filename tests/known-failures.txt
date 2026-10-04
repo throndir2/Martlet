@@ -35,6 +35,8 @@ Martlet.Desktop.Tests.SupportIntegrationTests.MainSupportCanBePresentedInsideEac
 Martlet.Desktop.Tests.SupportIntegrationTests.RecordingAccessFailureAndUnsupportedNetworkScopeNeverCreateAlternateStorage
 Martlet.Doctor.Tests.DoctorCommandTests.HelpSharesActualSupportDefaultsWithoutAddingAnExportCommand
 Martlet.Gateway.Persistence.Tests.OwnerTests.Public_owner_never_exposes_mutable_authority_certificate_or_snapshot_import
+# The wrong-nonce case times out (ReadinessTimedOut) instead of failing readiness; fails on origin/main afb9100 alone.
+Martlet.Launcher.Tests.LauncherIntegrationTests.ProductionActivationProbeFailsAndRetainsPendingEvidence
 
 # Create real symbolic links, which Windows allows only with Developer Mode or as administrator.
 Martlet.Launcher.Tests.LauncherReviewRegressionTests.EvidenceRootCannotHideInsidePayloadThroughAncestorLink  # env: symlink privilege
