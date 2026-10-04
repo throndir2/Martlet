@@ -1022,7 +1022,8 @@ public partial class MainWindow
         ring.Opacity = 0;
         status.Children.Add(ring);
         status.Children.Add(Dot(node.Health, 10, default));
-        if (node.Kind == NodeKind.Add) status.Visibility = Visibility.Hidden;
+        // Add a computer has no status, so its name gets the room.
+        if (node.Kind == NodeKind.Add) status.Visibility = Visibility.Collapsed;
         DockPanel.SetDock(status, Dock.Right);
         header.Children.Add(status);
         var bubble = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(18), Margin = new Thickness(0, 0, 10, 0) };

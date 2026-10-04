@@ -2183,7 +2183,7 @@ Martlet updated it). `SelectedDeviceSharedGpu` (shown only then) warns that the
 computer runs on Windows and its voice engine shares the graphics card with its
 other roles (the same wording as `SpeakingEngineSharedGpu`). Each row title
 `DeviceComponent-<part>` (`job-Llm`, `job-Stt`, `job-Tts`, `lipsync`,
-`character`, `audio`, `host-service`, `host`, `users`, `member`, `role-<role>`, `offer`)
+`character`, `audio`, `host-service`, `host`, `users`, `member`, `role-<role>`)
 returns the job's name, and its detail line `DeviceComponentDetail-<part>`
 returns the row's text. Another Martlet computer's `member` row (*Martlet
 companion*, *Martlet host PC*, or *Martlet app* for one on an older Martlet)
@@ -2211,6 +2211,15 @@ only when this PC can't follow a setting yet: which, and why),
 `SettingsSyncClaim` (*Use this PC's settings on all my computers*; it changes
 every computer's settings, so it needs `--allow-ui-effects` and then
 `ConfirmationYes`) and `RoleSetup-<role>` for jobs nobody does.
+`Node-add` (*Add a computer*) shows only the ways to add one, each a whole
+clickable card named for what it does, with its line as help text:
+`NodeAction-AddComputer` (*Add a computer*, the highlighted first card),
+`NodeAction-PrepareComputer` (*Prepare a Linux computer*) and, on a companion,
+`NodeAction-HostThisPc` (*Run host services on this PC*; it sets up this PC's
+host service, so it needs `--allow-ui-effects`). The + beside the title,
+`SelectedDeviceAdd`, opens the same *Add a computer* wizard as
+`NodeAction-AddComputer` and the page's `AddComputer`, so all three are
+passive clicks.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
 (status text: member with how many computers and hosts, waiting to join with
 the check number, a host PC in no network that only watches, or in no network),
