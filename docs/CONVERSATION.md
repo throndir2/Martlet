@@ -517,19 +517,20 @@ Time to first audio is what makes a spoken reply feel conversational, so the
 voice pipeline never waits for a whole reply:
 
 - **Pipelined chunking.** Text is spoken as it streams from the Thinking model:
-  each finished sentence goes to the voice right away. The first piece of a
-  reply is cut even earlier, at a comma, semicolon or dash once it is at least
-  24 characters long, so audio starts before the first sentence is finished;
-  later pieces stay whole sentences, which sound more natural.
+  each finished sentence goes to the voice right away. Only sentence ends
+  (`.`, `?`, `!` followed by a space), a new line and the end of the reply
+  break a reply into pieces; commas, semicolons and dashes never do, so each
+  piece is one or more whole sentences, which sounds more natural.
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
-  break in the wrong place sounds awkward ("I'm so glad you're here, | cutie.").
-  Personality › **Where the voice pauses** sets, per persona, which stops may
-  break a reply: commas, semicolons and dashes (first piece only), periods,
-  question marks and exclamation marks, all on by default. A stop that is off
-  doesn't break until the piece has grown long (100 characters); then any stop
-  does, so a piece never runs past what the voice can say at once. **Say a
+  break in the wrong place sounds awkward ("That was a wonderful idea. |
+  Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
+  sentence ends may break a reply: periods, question marks and exclamation
+  marks, all on by default. A stop that is off doesn't break until the piece
+  has grown long (100 characters); then any sentence end does, so a piece
+  rarely runs past what the voice can say at once (past the voice's byte limit
+  it is cut there). **Say a
   short ending with the words before it** (up to two words by default; *Never*
-  turns it off) keeps an ending such as ", cutie." or ". Cutie!" with the piece
+  turns it off) keeps an ending such as ". Cutie!" with the piece
   before it: each piece waits until a few more words have streamed in (or the
   line or reply ends) before it goes to the voice.
 - **Overlapped synthesis.** While one sentence plays, the next is already being

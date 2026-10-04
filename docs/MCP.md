@@ -371,9 +371,10 @@ tags kept), `suppressedPieces` and `shown` (the chat and caption text, every
 tag stripped). The pieces break where the persona's [speech
 breaks](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in) allow:
 `dataDirectory`'s saved persona named `persona` (else the one Martlet uses,
-else the defaults), with any of `breaks`' `commas`, `periods`,
+else the defaults), with any of `breaks`' `periods`,
 `questionMarks`, `exclamationMarks` (booleans) and `shortEndingWords` (0-5)
-on top; `persona` and `breaks` (with `isDefault`) say what was used.
+on top; `persona` and `breaks` (with `isDefault`) say what was used. Commas,
+semicolons and dashes never break a piece.
 With `characterTags` (the character's [emote and motion
 tags](AVATARS.md#emotes-and-motions), such as `["{blush}"]`), those are stripped
 too and `characterCues` lists the cues the character acts on: each one's
@@ -1072,7 +1073,7 @@ data directory (optional absolute `dataDirectory`, default the current
 user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 `problem`; `active`, the persona Martlet uses; and each persona's `name`,
 `active`, `instructionCharacters`, `styles` weights and `speechBreaks`
-(`commas`, `periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
+(`periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
 and `isDefault`), never its
 instructions), `character` (from `avatar.json`: `model` `built-in` with
 `builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
@@ -1112,7 +1113,7 @@ many people Martlet knows by voice and how many to forgotten voices, how many
 its *Show* choice (`MemoryPersonFilter`) lists (*Showing N.*) and what the last
 action did, never a fact or a name. Their
 fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
-the *Where the voice pauses* check boxes `CompanionBreakCommas`,
+the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
 `CompanionBreakExclamations` (their `checkedState` is the persona's choice) and
 `CompanionShortEnding` (its value reads *Never*, *1 word* or *Up to N words*),
