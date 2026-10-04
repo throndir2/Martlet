@@ -52,6 +52,13 @@ if (args is ["settings"])
     Console.WriteLine(JsonSerializer.Serialize(settingsReport));
     return settingsOk ? 0 : 1;
 }
+// With "creations" it rehearses Martlet's creations and their assets shared through the hosts (CreationRehearsal).
+if (args is ["creations"])
+{
+    var (creationsOk, creationsReport) = await Martlet.NodeLinkCheck.CreationRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(creationsReport));
+    return creationsOk ? 0 : 1;
+}
 // With "memories" it rehearses one memory on every computer: real memory stores kept the same through the hosts (MemoryRehearsal).
 if (args is ["memories"])
 {

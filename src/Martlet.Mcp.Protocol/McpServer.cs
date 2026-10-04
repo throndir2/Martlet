@@ -341,6 +341,31 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "resuming an interrupted copy, passing characters on to a host the first desktop never reached, removal everywhere (host " +
             "pieces and desktop copies deleted), keeping the copy a computer shows, stale copies, a host restart, piece checks and the " +
             "list's limits. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+        Tool("creations_status", "Read Martlet's creations (Creations, docs/CREATIONS.md: songs and other things Martlet made, shared " +
+            "with every paired Martlet computer) from a data directory's creations.json, creations folder and creations-sync.json: " +
+            "live creations and tombstones, total size, counts and sizes per kind, and for each creation its short id, kind, kind " +
+            "version, size, length, when and on which device it was made, whether Martlet may clean it up, its assets (name, media " +
+            "type, size, pieces), whether this PC holds all of it and on how many hosts it is complete; the asset files here (unused " +
+            "ones and copies in progress); the last sync (when, its summary, each paired host's state and how many creations it " +
+            "holds); and the limits. Never a title, text, voice or personality. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("creations_check", "Rehearse Martlet's creations end to end with the production code: list_creations and " +
+            "perform_creation (Martlet.Conversation.CreationTools) on a disposable folder with the production store and the FIXTURE - " +
+            "NOT AI test-tone kind (no tools without a registered kind; the same two tools and texts every time; listing, filters, " +
+            "performing through the kind's handler, and clear refusals for no handler, unknown ids, bad arguments, a creation still " +
+            "copying and an unknown kind), then the sync: two real gateways on 127.0.0.1 (pinned TLS, signed requests, in-memory " +
+            "creations.json and pieces) and three simulated desktops with the production CreationStore and CreationSync over the " +
+            "desktop's paired client. Checks FLAC sizes, sharing every 3 MiB piece, skipping unchanged hosts, a new desktop and a " +
+            "relay host, resuming an interrupted copy, performing on another computer, an unknown kind passing through, rename, " +
+            "delete everywhere (pieces and files deleted), stale copies, a host restart, piece checks, an unsigned request refused, " +
+            "a kind's rules and the per-host sync record. Loopback only; folders are deleted and the credential vault is untouched. " +
+            "With seedDataDirectory (a disposable folder under the temporary folder, never Martlet's own), it instead writes two " +
+            "FIXTURE - NOT AI test tones there, so the Creations page can be checked with a desktop on that folder.", new
+        {
+            seedDataDirectory = new { type = "string" }
+        }),
         Tool("settings_sync_status", "Read one Martlet on every computer (the settings shared through the paired hosts) from a data " +
             "directory's shared-settings.json: whether sync is on, each shared setting (thinking, listening, speaking, thinking-fallback, " +
             "companion, replies, prompts, memory, lorebooks, character, character-actions, talk, speech-display, appearance, " +
@@ -794,6 +819,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), OptionalString(arguments, "name"),
                     OptionalString(arguments, "about"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
+                "creations_status" => CreationsCheck.Status(DataDirectory(arguments)),
+                "creations_check" => OptionalString(arguments, "seedDataDirectory") is { } seed
+                    ? await CreationsCheck.SeedAsync(seed, cancellation)
+                    : await CreationsCheck.RunAsync(() => NodeLinkCheckAsync(cancellation, "creations"), cancellation),
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
