@@ -87,10 +87,11 @@ Desktop, its output shows each engine check (`docker info`, cut off after 15
 seconds because Docker Desktop holds requests while its engine starts), what
 Docker Desktop reports (`docker desktop status`) and the warnings and errors of
 its current run (`docker desktop logs`), every 30 seconds while it waits. When
-Docker Desktop answers that it is unable to start, Martlet first checks whether
-Windows is the reason (below); if Windows is ready, the run stops at once with
-those messages instead of waiting; otherwise it gives up after ten minutes. All
-of it is also in `host-runs.log`.
+Docker Desktop answers that it is unable to start, or that its start check
+failed (*Virtualization support not detected*), Martlet first checks whether
+Windows is the reason (below); if Windows is ready, it restarts Docker Desktop
+once, and stops with Docker's words when it fails again instead of waiting;
+otherwise it gives up after ten minutes. All of it is also in `host-runs.log`.
 
 ## Docker Desktop is unable to start (virtualization, WSL 2)
 
@@ -131,7 +132,11 @@ unavailable does not prevent Docker's WSL 2 engine. When something is off:
 - **Firmware**: Windows can't turn firmware virtualization on. Martlet offers
   to restart straight into the firmware settings (administrator approval), where
   you turn on *Intel Virtualization Technology (VT-x)* or *SVM Mode* (AMD), save
-  and exit; the setup then continues after you sign in.
+  and exit; the setup then continues after you sign in. Until then Docker
+  Desktop says *Virtualization support not detected*. On a fresh PC, where the
+  Windows features and WSL are off too, Martlet turns those on first (one
+  administrator prompt; they don't need virtualization), so that one restart
+  into the firmware settings finishes both.
 - **Virtual machine**: enable nested virtualization on its host, not in the
   guest's firmware. Martlet explains this rather than restarting the guest into
   firmware settings.
@@ -149,11 +154,20 @@ Desktop that was already open
 while Martlet changed Windows doesn't notice the new WSL by itself, so Martlet
 restarts it. Martlet also restarts it once when it is open but keeps reporting
 its engine `stopped` (its log says *backend is not running*), for example
-because it started before WSL was installed. If Windows is ready and Docker
-Desktop still reports that it is unable to start, or never gets past
-`stopped`, restart Windows or use Docker Desktop's *Troubleshoot > Restart*, and
-try again. Do not use *Reset to factory defaults* as a virtualization repair:
-it deletes Docker data and does not enable Windows virtualization.
+because it started before WSL was installed.
+
+Docker Desktop checks Windows only when it starts, and keeps showing a failed
+check (*Virtualization support not detected*, *Virtual Machine Platform not
+enabled*; its log says *checking preconditions: ...*) until it starts again.
+So if you opened it before Windows restarted, it still says so afterwards. When
+Windows is ready, Martlet reads that failed check (or *unable to start*) from
+Docker Desktop and restarts it once instead of waiting. If it says the same
+again after that, the run stops with its words; restart Windows and try again,
+and check that Task Manager › Performance › CPU shows *Virtualization:
+Enabled*. If Docker Desktop never gets past `stopped`, restart Windows or use
+Docker Desktop's *Troubleshoot > Restart*, and try again. Do not use *Reset to
+factory defaults* as a virtualization repair: it deletes Docker data and does
+not enable Windows virtualization.
 
 ## A local model doesn't answer (Ollama on this PC)
 

@@ -30,15 +30,21 @@ internal static partial class HostLocal
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>One check of Docker Desktop's engine: its version when it answered, otherwise the reason (first useful
-    /// output line or the timeout) and whether Docker Desktop said it is unable to start.</summary>
-    internal sealed record EngineProbe(bool Answered, string? Version, string? Error, bool UnableToStart);
+    /// output line or the timeout), whether Docker Desktop said it is unable to start, and the Windows check its engine
+    /// failed when it started (<see cref="DockerDesktopStatus.Precondition"/>), when it said so.</summary>
+    internal sealed record EngineProbe(bool Answered, string? Version, string? Error, bool UnableToStart, string? Precondition = null)
+    {
+        /// <summary>Docker Desktop gave up starting its engine; it doesn't try again until it is restarted.</summary>
+        internal bool Failed => UnableToStart || Precondition is not null;
+    }
 
     /// <summary>Starts Docker Desktop when needed and waits (up to ten minutes) until its engine answers, showing each check,
     /// what Docker Desktop reports and its own warnings and errors in the run window. When the engine doesn't answer it first
     /// makes sure Windows can run it (virtualization and WSL 2, <see cref="WindowsVirtualizationSetup"/>): what is off gets
     /// turned on, and when Windows must restart, <paramref name="resume"/> continues after the next sign-in. A Docker Desktop
-    /// that was already open while Windows changed is restarted (it doesn't notice new WSL by itself). Stops at once when
-    /// Docker Desktop says it is unable to start although Windows is ready.</summary>
+    /// that was already open while Windows changed is restarted (it doesn't notice new WSL by itself), and so is one that
+    /// gave up starting (unable to start, or "Virtualization support not detected") although Windows is ready: it checked
+    /// Windows too early, before the restart or while Windows was still starting. Stops when it gives up again after that.</summary>
     internal static async Task EnsureDockerAsync(HostRunWindow run, ContinueSetupKind resume)
     {
         Action<string> status = run.Status;
@@ -51,22 +57,32 @@ internal static partial class HostLocal
         var probe = await ProbeEngineAsync(token);
         if (!probe.Answered)
         {
-            if (probe.UnableToStart) output.Report("Docker Desktop reported: " + probe.Error);
+            if (probe.Failed) output.Report("Docker Desktop reported: " + probe.Error);
             // Docker Desktop's WSL 2 engine can't start until Windows' virtualization is on.
+            var changed = await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume);
             var restarted = false;
-            if (await WindowsVirtualizationSetup.EnsureReadyAsync(run, resume))
+            if (changed)
             {
+                desktop.Restarted();
                 restarted = await RestartDockerDesktopAsync(output, token);
-                probe = probe with { UnableToStart = false };
             }
-            if (!probe.UnableToStart) probe = await WaitForEngineAsync(probe, desktop, restarted, status, output, token);
-            else probe = probe with { Error = null };
+            else if (probe.Failed && MachineInfo.DockerDesktopRunning())
+            {
+                output.Report("Martlet finds nothing missing in Windows, so Docker Desktop checked too early. Restarting Docker Desktop...");
+                desktop.Restarted();
+                restarted = await RestartDockerDesktopAsync(output, token);
+            }
+            if (changed || restarted) probe = probe with { UnableToStart = false, Precondition = null };
+            probe = await WaitForEngineAsync(run, probe, desktop, restarted);
         }
-        if (probe.UnableToStart)
+        if (probe.Failed)
         {
             if (probe.Error is not null) output.Report("Docker Desktop reported: " + probe.Error);
             await desktop.ReportAsync(output, token);
-            throw new InvalidOperationException("Docker Desktop couldn't start. Open Docker Desktop Troubleshoot or restart Windows, then try again.");
+            throw new InvalidOperationException(probe.Precondition is { } check
+                ? $"Docker Desktop still says \"{check}\", although Martlet finds nothing missing in Windows. Restart Windows, then try " +
+                  "again. If Docker Desktop keeps saying so, check that Task Manager > Performance > CPU shows Virtualization: Enabled."
+                : "Docker Desktop couldn't start. Open Docker Desktop Troubleshoot or restart Windows, then try again.");
         }
         HostSetupResume.Clear();
         output.Report("Docker Desktop is running.");
@@ -86,21 +102,27 @@ internal static partial class HostLocal
         return true;
     }
 
-    /// <summary>Starts Docker Desktop unless it is already running, then checks its engine every few seconds until it answers
-    /// or says it is unable to start; every 30 seconds (or when the reason changes) shows the reason and Docker Desktop's
-    /// own new messages. When Docker Desktop is open but reports its engine stopped at two checks in a row, restarts it once
-    /// (unless <paramref name="restarted"/>). Throws after ten minutes.</summary>
-    private static async Task<EngineProbe> WaitForEngineAsync(EngineProbe probe, DockerDesktopLog desktop, bool restarted,
-        Action<string> status, IProgress<string> output, CancellationToken token)
+    /// <summary>Starts Docker Desktop unless it is already running, then checks its engine every few seconds until it answers;
+    /// every 30 seconds (or when the reason changes) shows the reason and Docker Desktop's own new messages. Windows is
+    /// ready by now, so when Docker Desktop gives up starting (unable to start, or its start check failed: "Virtualization
+    /// support not detected"), it checked Windows too early and is restarted once; and when it is open but reports its engine
+    /// stopped at two checks in a row, it is restarted once too (unless <paramref name="restarted"/>). Returns the failed
+    /// check when it gives up again after a restart. Throws after ten minutes.</summary>
+    private static async Task<EngineProbe> WaitForEngineAsync(HostRunWindow run, EngineProbe probe, DockerDesktopLog desktop, bool restarted)
     {
+        Action<string> status = run.Status;
+        var (output, token) = (run.Output, run.Token);
+        const string Waiting = "Waiting for Docker Desktop to start. Accept Docker's terms if it asks.";
         output.Report("Docker Desktop isn't ready yet: " + probe.Error);
         if (!MachineInfo.DockerDesktopRunning())
         {
             output.Report("Starting Docker Desktop...");
+            // Until the new session logs, "docker desktop logs --boot 0" still shows the last one, whose failure is old.
+            desktop.Restarted();
             Process.Start(new ProcessStartInfo(MachineInfo.DockerDesktopPath) { UseShellExecute = true })?.Dispose();
         }
         await desktop.ReportAsync(output, token);
-        status("Waiting for Docker Desktop to start. Accept Docker's terms if it asks.");
+        status(Waiting);
         var started = DateTime.UtcNow;
         var reported = started;
         var reason = probe.Error;
@@ -116,19 +138,39 @@ internal static partial class HostLocal
             }
             await Task.Delay(TimeSpan.FromSeconds(3), token);
             probe = await ProbeEngineAsync(token);
-            if (probe.Answered || probe.UnableToStart) return probe;
-            if (probe.Error == reason && DateTime.UtcNow - reported < ProgressInterval) continue;
-            output.Report($"Still waiting for Docker Desktop ({DateTime.UtcNow - started:m\\:ss}): {probe.Error}");
-            await desktop.ReportAsync(output, token);
-            reported = DateTime.UtcNow;
-            reason = probe.Error;
+            if (probe.Answered) return probe;
+            var report = probe.Failed || probe.Error != reason || DateTime.UtcNow - reported >= ProgressInterval;
+            if (report)
+            {
+                if (!probe.Failed) output.Report($"Still waiting for Docker Desktop ({DateTime.UtcNow - started:m\\:ss}): {probe.Error}");
+                await desktop.ReportAsync(output, token);
+                reported = DateTime.UtcNow;
+                reason = probe.Error;
+            }
+            if (probe.Failed || desktop.Precondition is not null)
+            {
+                probe = probe with { Precondition = probe.Precondition ?? desktop.Precondition };
+                if (restarted) return probe;
+                output.Report((probe.Precondition is { } check ? $"Docker Desktop says \"{check}\"" : $"Docker Desktop says it is unable to start ({probe.Error})") +
+                    ", but Martlet finds nothing missing in Windows: Docker Desktop checked too early (before Windows restarted, or while it was still starting).");
+                status("Restarting Docker Desktop...");
+                // Taken before the restart: "docker desktop restart" waits while the new session runs its start check.
+                desktop.Restarted();
+                if (!await RestartDockerDesktopAsync(output, token)) return probe;
+                restarted = true;
+                status(Waiting);
+                stopped = false;
+                continue;
+            }
+            if (!report) continue;
             var stillStopped = desktop.State == DockerDesktopStatus.Stopped;
             if (stillStopped && stopped && !restarted)
             {
                 output.Report("Docker Desktop is open but its engine stays stopped.");
                 status("Restarting Docker Desktop...");
+                desktop.Restarted();
                 restarted = await RestartDockerDesktopAsync(output, token);
-                status("Waiting for Docker Desktop to start. Accept Docker's terms if it asks.");
+                status(Waiting);
                 stillStopped = false;
             }
             stopped = stillStopped;
@@ -149,7 +191,8 @@ internal static partial class HostLocal
                 line.Contains("daemon", StringComparison.OrdinalIgnoreCase) || line.Contains("docker", StringComparison.OrdinalIgnoreCase))
             ?? lines.FirstOrDefault() ?? $"docker info exited with {exit} and printed nothing.";
         return new(false, null, Shorten(error),
-            lines.Any(line => line.Contains("unable to start", StringComparison.OrdinalIgnoreCase)));
+            lines.Any(line => line.Contains("unable to start", StringComparison.OrdinalIgnoreCase)),
+            DockerDesktopStatus.LastPrecondition(lines, DateTimeOffset.MinValue));
     }
 
     /// <summary>Runs docker for at most 15 seconds and collects its output lines; the exit code is null when it was cut off.</summary>
@@ -172,16 +215,29 @@ internal static partial class HostLocal
 
     /// <summary>Docker Desktop's own view of why its engine isn't answering, for the run window: its status
     /// ("docker desktop status") and the warnings and errors of its current run ("docker desktop logs"), each message
-    /// once. Read locally from Docker Desktop; nothing is sent anywhere.</summary>
+    /// once, and the Windows check its engine failed when it started (<see cref="Precondition"/>). Read locally from Docker
+    /// Desktop; nothing is sent anywhere.</summary>
     private sealed class DockerDesktopLog
     {
         private const int MaximumLines = 12;
         private readonly HashSet<string> shown = new(StringComparer.Ordinal);
         private bool unavailable;
+        private DateTimeOffset since = DateTimeOffset.MinValue;
 
         /// <summary>What "docker desktop status" said at the last report (for example running, starting or stopped), or why
         /// it didn't answer.</summary>
         internal string? State { get; private set; }
+
+        /// <summary>The Windows check Docker Desktop's engine failed since it last (re)started, as of the last report (for
+        /// example "Virtual Machine Platform not enabled": its window says "Virtualization support not detected"), or null.</summary>
+        internal string? Precondition { get; private set; }
+
+        /// <summary>Martlet is about to start or restart Docker Desktop: what it logged before no longer counts as its current state.</summary>
+        internal void Restarted()
+        {
+            since = DateTimeOffset.UtcNow;
+            Precondition = null;
+        }
 
         internal async Task ReportAsync(IProgress<string> output, CancellationToken token)
         {
@@ -199,6 +255,7 @@ internal static partial class HostLocal
             State = now;
             (exit, lines) = await CaptureAsync(["desktop", "logs", "--boot", "0", "--priority", "1", "--no-color"], token);
             if (exit != 0) return;
+            Precondition = DockerDesktopStatus.LastPrecondition(lines, since);
             var fresh = lines.Where(line => !line.Contains(".analytics", StringComparison.Ordinal))
                 .Select(line => Shorten(TimestampPattern().Replace(line, "").Trim()))
                 .Where(line => line.Length > 0 && shown.Add(line)).ToList();
