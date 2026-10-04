@@ -211,15 +211,11 @@ public partial class MainWindow
     private async Task UseVoiceAsync(string voiceId, string destination)
     {
         if (store is null || setupService is null || closing) return;
-        if (savingTab || assigningRole || setupOperations.IsRunning)
-        {
-            ActionText.Text = "Another change is still finishing. Try again in a moment.";
-            return;
-        }
-        assigningRole = true;
+        ChangeTurns.Turn? turn = null;
         var token = lifetime.Token;
         try
         {
+            turn = await ChangeTurnAsync();
             var loaded = await setupService.LoadAsync(token);
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
             var route = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
@@ -246,7 +242,7 @@ public partial class MainWindow
         }
         finally
         {
-            assigningRole = false;
+            turn?.Dispose();
             if (!closing) RenderHome();
         }
     }
@@ -275,7 +271,7 @@ public partial class MainWindow
     /// route moved, otherwise null.</summary>
     private async Task<AppSettings?> LeaveRetiredSampleAsync(SettingsLoadResult loaded, CancellationToken token)
     {
-        if (store is null || setupService is null || closing || savingTab || assigningRole || loaded.Settings is not { } settings)
+        if (store is null || setupService is null || closing || changes.Busy || loaded.Settings is not { } settings)
             return null;
         var route = settings.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
@@ -285,7 +281,7 @@ public partial class MainWindow
         retiredSampleChecked = true;
         if (!speaking && !System.IO.Directory.Exists(F5Voices.Directory(store.DataDirectory))) return null;
         var destination = f5?.GatewaySnapshot!.DestinationId ?? F5Destination;
-        assigningRole = true;
+        if (changes.TryTake() is not { } turn) return null;
         try
         {
             if (!speaking)
@@ -322,7 +318,7 @@ public partial class MainWindow
             ActionText.Text = "Couldn't switch from the old sample voice: " + error.Message;
             return null;
         }
-        finally { assigningRole = false; }
+        finally { turn.Dispose(); }
     }
 
     /// <summary>Adds a voice from a recording, then switches to it. Its words are filled in with Listening's speech-to-text
@@ -515,7 +511,7 @@ public partial class MainWindow
     private async Task<bool> FollowChosenVoiceAsync(SpeakingVoiceLibrary library, IReadOnlyDictionary<string, F5ReferenceSnapshot> local,
         CancellationToken token)
     {
-        if (store is null || setupService is null || closing || savingTab || assigningRole || setupOperations.IsRunning) return false;
+        if (store is null || setupService is null || closing || changes.Busy || setupOperations.IsRunning) return false;
         if (library.Chosen is not { } chosen || library.ChosenVoice is not { } voice || !local.TryGetValue(voice.Id, out var snapshot))
             return false;
         var loaded = await setupService.LoadAsync(token);
@@ -525,13 +521,13 @@ public partial class MainWindow
         if ((f5?.Reference?.ReferenceRevision ?? F5Voices.Applied(store.DataDirectory)?.ReferenceRevision) == voice.Id) return false;
         var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId) ?? SpeakingEngineChoice.Current;
         if (SpeechEngines.ReferenceProblem(engine, snapshot.AudioFormat.DurationMilliseconds, voice.ClipMilliseconds) is not null) return false;
-        assigningRole = true;
+        if (changes.TryTake() is not { } turn) return false;
         try
         {
             await ApplyVoiceAsync(loaded, snapshot, token);
             if (chosen.UpdatedBy != ClusterDevice) ActionText.Text = $"Martlet now speaks with '{voice.Name}', as chosen on {chosen.UpdatedBy}.";
             return true;
         }
-        finally { assigningRole = false; }
+        finally { turn.Dispose(); }
     }
 }

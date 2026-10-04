@@ -29,8 +29,13 @@ internal static class WindowsVirtualizationSetup
     /// <see cref="PausedForRestartException"/> when Windows must restart and <see cref="InvalidOperationException"/> when the
     /// owner declined or a step failed. <paramref name="resume"/> is what continues after the restart.
     /// <paramref name="dockerPrecondition"/> is the start check Docker Desktop failed, if any (for example "wsl is not
-    /// installed"): when Martlet's own checks can't read that fact, Docker Desktop's word counts and Windows is set up.</summary>
-    internal static async Task<WindowsCheck> EnsureReadyAsync(HostRunWindow run, ContinueSetupKind resume, string? dockerPrecondition = null)
+    /// installed"): when Martlet's own checks can't read that fact, Docker Desktop's word counts and Windows is set up.
+    /// Another run that needs Windows ready meanwhile waits for this one (one administrator prompt, one restart question).</summary>
+    internal static Task<WindowsCheck> EnsureReadyAsync(HostRunWindow run, ContinueSetupKind resume, string? dockerPrecondition = null) =>
+        SharedSteps.RunAsync(SharedSteps.WindowsReady, run.Heading, "getting Windows ready for Docker Desktop",
+            () => CheckAndFixAsync(run, resume, dockerPrecondition), run.Status, run.Output, run.Token);
+
+    private static async Task<WindowsCheck> CheckAndFixAsync(HostRunWindow run, ContinueSetupKind resume, string? dockerPrecondition)
     {
         run.Status("Checking Windows virtualization...");
         var state = await WindowsVirtualization.ProbeAsync(run.Token) with { DockerPrecondition = dockerPrecondition };

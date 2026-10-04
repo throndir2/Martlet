@@ -77,9 +77,9 @@ public partial class MainWindow
     {
         if (settingsNode is null || settingsBusy || closing) return;
         // Pages, Setup and who does what change settings.json too; the next check runs once they are done.
-        if (assigningRole || savingTab || setupOperations.IsRunning) return;
+        if (changes.Busy || setupOperations.IsRunning) return;
         settingsBusy = true;
-        var holding = false;
+        ChangeTurns.Turn? turn = null;
         SharedSettingsResult? result = null;
         try
         {
@@ -87,10 +87,9 @@ public partial class MainWindow
             var hosts = shared ? NetworkMap.Hosts(Inputs()) : [];
             var reads = await Task.WhenAll(hosts.Select(ReadSettingsCopyAsync));
             if (closing) return;
-            if (assigningRole || savingTab || setupOperations.IsRunning) return;
-            assigningRole = holding = true;
+            if (setupOperations.IsRunning || (turn = changes.TryTake()) is null) return;
             result = await settingsNode.SyncAsync(reads.Select(r => r.Copy).OfType<SharedSettings>(), shared, DateTimeOffset.UtcNow, lifetime.Token);
-            assigningRole = holding = false;
+            turn.Dispose();
             if (shared) await PushSettingsAsync(reads, result.Document);
             if (shared) settingsCheckedAt = DateTimeOffset.UtcNow;
             var digest = settingsNode.Document.Digest();
@@ -112,7 +111,7 @@ public partial class MainWindow
         }
         finally
         {
-            if (holding) assigningRole = false;
+            turn?.Dispose();
             settingsBusy = false;
             if (!closing)
             {

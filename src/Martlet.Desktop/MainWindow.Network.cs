@@ -123,10 +123,9 @@ public partial class MainWindow
                     networkProblem = $"Couldn't keep the pairing with {pairing.HostId}: {error.Message}";
                 }
             }
-            if (result.Forget.Count > 0 && !assigningRole)
+            if (result.Forget.Count > 0 && changes.TryTake() is { } turn)
             {
-                assigningRole = true;
-                try
+                using (turn)
                 {
                     foreach (var id in result.Forget)
                         if (FindHost(id) is { } host)
@@ -135,7 +134,6 @@ public partial class MainWindow
                             hostsChanged = true;
                         }
                 }
-                finally { assigningRole = false; }
             }
             // Keep what changed here while this sync ran: hosts paired on purpose, hosts forgotten, roster changes.
             var latest = NetworkIdentity.Load(directory);
