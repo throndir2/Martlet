@@ -52,6 +52,12 @@
       "martlet.core": {
         "type": "Project"
       },
+      "martlet.diagnostics": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.33.0, )"
+        }
+      },
       "martlet.f5": {
         "type": "Project",
         "dependencies": {
@@ -93,7 +99,7 @@
       "martlet.gateway.singing": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Gateway": "[0.31.0, )"
+          "Martlet.Gateway": "[0.33.0, )"
         }
       },
       "martlet.gateway.xtts": {

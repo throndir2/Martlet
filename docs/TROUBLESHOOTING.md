@@ -60,8 +60,10 @@ Martlet always keeps a small local error log; it is never uploaded.
   Reporting is off. Each process (`desktop`, `avatar-renderer`) checks its own
   previous run. Nothing is uploaded.
 - Read every log in one list, filtered by level, part, computer and text, on
-  the **Diagnostics** page; with a log host it also shows your other computers'
-  and hosts' logs. See [Diagnostics page and the log host](DIAGNOSTICS.md#diagnostics-page-and-the-log-host).
+  the **Diagnostics** page; it shows the logs of all your computers and hosts,
+  which share them with each other. To send them to someone helping you,
+  **Save logs to share** there makes one ZIP with everything. See
+  [Diagnostics page and shared logs](DIAGNOSTICS.md#diagnostics-page-and-shared-logs).
   `desktop.log` also records each message shown in the main window's status
   line (`Status: ...`) and hosts that stop or start answering again.
 - Open the folder any time from **Troubleshooting > Open crash / error logs**.

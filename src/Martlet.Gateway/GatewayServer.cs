@@ -94,7 +94,7 @@ public sealed class GatewayServer
     public void AttachCommandStorage(IGatewayCommandStorage storage, string agentToken) =>
         application.Commands.Attach(storage, agentToken, application.Now);
 
-    /// <summary>Keeps this host's log (its own activity and, as the owner's log host, every computer's lines it receives;
+    /// <summary>Keeps this host's log (its own activity and every computer's lines the owner's desktops share with it;
     /// served at /martlet/v1/logs) in <paramref name="storage"/> and loads the log saved there.</summary>
     public void AttachLogStorage(IGatewayLogStorage storage) => application.Logs.Attach(storage);
 

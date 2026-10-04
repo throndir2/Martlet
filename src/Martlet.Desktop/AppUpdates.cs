@@ -133,7 +133,7 @@ internal static class AppUpdateInstaller
     }
 
     /// <summary>Copies what the last helper run did into Martlet's log (once), and for a failed install the installer log's
-    /// last lines, so the Diagnostics page and the log host show how an update went, even an unattended one.</summary>
+    /// last lines, so every computer's Diagnostics page shows how an update went, even an unattended one.</summary>
     internal static void LogLastRun(string dataDirectory, (string Message, string? Failed)? result)
     {
         var directory = UpdatesDirectory(dataDirectory);

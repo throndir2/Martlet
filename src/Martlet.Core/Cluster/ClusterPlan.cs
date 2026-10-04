@@ -14,8 +14,9 @@ public static class ClusterJobs
     public const string LipSync = "lip-sync";
     public static readonly IReadOnlyList<string> All = [Thinking, Listening, Speaking, LipSync];
 
-    /// <summary>Not a role: the paired host that collects every computer's logs (the log host). No host means each
-    /// computer keeps only its own logs. Older desktops ignore it, and it never moves or fails over.</summary>
+    /// <summary>Not a role: the paired host that desktops older than shared logs send every computer's logs to (the old
+    /// "log host"). Newer desktops share every computer's logs with every host and never set or use it; the entry stays in the
+    /// plan only so older desktops keep sending their logs somewhere newer ones read them. It never moves or fails over.</summary>
     public const string Logs = "logs";
 }
 

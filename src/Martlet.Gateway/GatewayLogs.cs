@@ -14,11 +14,12 @@ public interface IGatewayLogStorage
     void Save(byte[] bytes);
 }
 
-/// <summary>This host's log: its own activity (requests it served or refused, pairings, starts and stops) and, when the
-/// owner chose it as the log host, the lines paired desktops send from their own logs and relay from other hosts. Each
-/// stream (computer and part) keeps its newest sequence number, so a line delivered twice is kept once. Bounded to the
-/// newest <see cref="MaximumEntries"/> lines and about <see cref="MaximumStoredBytes"/>; saved at most every
-/// <see cref="SaveDelay"/> and when the listener stops. Holds no secrets or conversation content.</summary>
+/// <summary>This host's log: its own activity (requests it served or refused, pairings, starts and stops) and the lines every
+/// paired desktop shares with it, from its own logs and from every other computer of the owner's Martlet network, so each
+/// host holds everyone's logs. Each stream (computer and part) keeps its newest sequence number, so a line delivered twice
+/// or by several desktops is kept once. Bounded to the newest <see cref="MaximumEntries"/> lines and about
+/// <see cref="MaximumStoredBytes"/>; saved at most every <see cref="SaveDelay"/> and when the listener stops. Holds no
+/// secrets or conversation content.</summary>
 internal sealed class GatewayLogStore
 {
     internal const int MaximumEntries = 6_000;
@@ -300,8 +301,8 @@ internal sealed partial class GatewayHttpApplication
         rawTarget == LogsPath || rawTarget.StartsWith(LogsPath + "?", StringComparison.Ordinal);
 
     /// <summary>GET returns stored lines after <c>after</c> (a store position; every computer's lines) or this host's own
-    /// lines after <c>own_after</c> (a sequence number), with an optional <c>limit</c>; POST stores a desktop's batch. Any
-    /// paired device may do either over its signed, pinned connection.</summary>
+    /// lines after <c>own_after</c> (a sequence number), with an optional <c>limit</c>; POST stores a batch a desktop shares.
+    /// Any paired device may do either over its signed, pinned connection.</summary>
     private async ValueTask InvokeLogsAsync(HttpContext context, string rawTarget)
     {
         if (context.Request.Method == HttpMethods.Get)
