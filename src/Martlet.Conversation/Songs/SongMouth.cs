@@ -126,7 +126,9 @@ public sealed class SongMouthTrack
             var quick = Math.Min(0.07, length * 0.5 / Math.Max(1, consonants));
             var leading = units.TakeWhile(u => !u.Vowel).Count();
             var held = Math.Max(0.02, (length - quick * (anticipate ? consonants - leading : consonants)) / vowels);
-            var at = anticipate ? start - quick * leading : start;
+            // Spread words start at the vowel's sound, so the consonants before it come first; timed words start at the word's
+            // first sound, where a sung consonant is short, so half of them come just before it.
+            var at = start - quick * leading * (anticipate ? 1 : 0.5);
             foreach (var unit in units)
             {
                 var span = unit.Vowel ? held : quick;

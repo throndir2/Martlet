@@ -412,17 +412,25 @@ lyrics)* in the log; at most Thinking longer's time limit). Then the song maker
 (`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
 the Singing card's quality and voice match; the chip follows its stages
 (*Writing the lyrics*, *Writing the music*, *Matching the singing to the
-voice*...). The finished song is kept in the data folder's `songs\<id>\`
-(`song.json` with the title, lyrics, sections and lines with their times, the
-beat grid, voice and engine; `mix.wav`, `vocals.wav`, `backing.wav`), the newest
-20. The job's result gives the song's ID, title, length and map (each section and
+voice*..., *Timing the mouth to the singing*). Its mouth track is made once,
+from the vocals stem (never the mix; see *Lip sync* below). The finished song is
+kept as a creation of the `song` kind in Martlet's shared Creations library
+(`SongCreations`: the mix, vocals and backing as FLAC, its map (lines and words
+with their times, the beat grid) and its mouth track as JSON; the title, lyrics,
+voice, engine and where the mouth came from in its entry), which copies it to
+every paired Martlet computer, so any of them can sing it. Old songs are cleaned
+up when a new creation needs the room. The job's result gives the song's ID (its
+creation key, such as `3fa2c19b0d71`), title, length and map (each section and
 line with its start time) and says to offer it.
 
-**`play_song(song_id, from)`** plays a finished song through Martlet's voice
+**`play_song(song_id, from)`** (or the Creations library's `perform_creation`
+with `{"from": ...}`) is the only way a song plays: Martlet performs it in
+conversation; nothing in the UI plays one. It plays through Martlet's voice
 output: the backing and vocals as two sample-aligned streams mixed on this PC
 into one stream beside the speech stream on the same output device (Windows'
-volume for Martlet applies to both), with the character's mouth following the
-vocals' loudness and the speech bubble or subtitles showing the line being sung.
+volume for Martlet applies to both). The speech bubble shows the line being
+sung; the subtitles and the talk window show it word by word as it is sung
+(karaoke, from the sung words' times).
 `from` is `start`, `resume` (the line where it stopped; `resume section` for
 its section), a section (`chorus`, `verse 2`, *second verse*), `line:N` or a
 time (`1:05`; a line starting within a bar of it is where it goes). From
@@ -447,7 +455,7 @@ to the next beat and fades over one beat, about 1-1.5 s after the request. Stop
 recorded at once (song time, section, line number and words, and why: the
 user's words, the button or Martlet's own call) and goes at the end of the
 conversation as a note with the next message, never rewriting anything before
-it: *You stopped singing "Morning Light" (song-1a2b3c) at 0:22, in verse line 4
+it: *You stopped singing "Morning Light" (3fa2c19b0d71) at 0:22, in verse line 4
 of 12, "When you're laughing like before" because the user said: "okay okay
 Martlet, stop singing". play_song with from=resume restarts that line.*
 `stop_singing`'s own result carries the note instead; a song that played to its
@@ -464,6 +472,26 @@ else speaks, the song is turned down 12 dB under the speech (60 ms ramps) and
 back up after; the character's mouth follows the speech meanwhile. Finished
 background work and screen glances wait until the song is over.
 
+**Lip sync.** The character's mouth follows the sung words from a mouth track
+made once, when the song is made, from the vocals stem only (`SongMouthTrack`,
+ARKit mouth blendshapes and an overall opening every 20 ms): Audio2Face run over
+the vocals offline (this PC's service on the character's endpoint, or the paired
+lip-sync host's relay) when one answers; otherwise visemes from the sung words'
+times (the song maker's `SongResult.Words`, or each line's words spread over its
+singing), each word's spelling turned into shapes (aa, ih, ee, oh, ou, closed
+lips for m/b/p), opened as far as the vocals are loud and blended between
+sounds; the vocals' loudness only as a last resort. Its timing against the vocal
+onsets is measured when it is made and logged (*mouth opens +10 ms from the
+vocal onsets (median ...)*). During playback the track is read at the song time
+being heard, on the song's own playback clock, so it stays on the words after a
+lead-in, a vamp or a resume from any line, and the mouth stays closed while the
+vocals are muted. With Automatic lip-sync and the character's mouth mapping, its
+blendshapes go through the same composition and reset/apply frames as
+Audio2Face for speech (VRM's aa, ih, ou, ee and oh; Live2D's mouth open and form);
+otherwise its opening goes to the loudness mouth. A reply's Audio2Face frames
+own the face while they play; the song's mouth takes it back (with a new
+playback identity) when they stop, and pauses while Martlet talks over the song.
+
 **Latency.** Song work never holds up a reply: the job runs on its own runtime,
 the song maker on its own computer, and the lyrics think stops at once whenever
 the conversation needs a model on this PC. Playback never blocks the reply
@@ -472,8 +500,9 @@ then they stay the same reply after reply, so they stay in the prompt cache.
 
 The talk window's song panel (`LiveSongPanel`) shows the song playing (`LiveSong`:
 its ID, state, position, line number and section; `LiveSongLine`: its title and
-the line being sung) with *Stop singing* (`LiveSongStop`), or the last song with
-*Play* or *Resume* (`LiveSongPlay`, which sings it without asking the model).
+the line so far) with *Stop singing* (`LiveSongStop`), or where the last song
+stopped and why, or that a new one is ready for Martlet to offer. It has no Play
+button: only Martlet performs songs.
 `songs-status.json` in the data folder has the song playing and the last stop
 (never a title or words). MCP's `songs_status` and `song_playback_check` read and
 exercise it ([MCP](MCP.md)).

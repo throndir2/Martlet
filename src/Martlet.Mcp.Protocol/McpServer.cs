@@ -603,10 +603,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         }),
         Tool("songs_status", "Martlet singing in conversation (sing_song, play_song, stop_singing), from a data directory: whether " +
-            "background work (Thinking longer, which the song tools come with) is on; the song library (songs/: each song's id, " +
-            "length, number of lines, sections, tempo, beat grid size, engine and whether it is the FIXTURE - NOT AI song; never its " +
+            "background work (Thinking longer, which the song tools come with) is on; the song creations (each song's key, " +
+            "length, lines and timed words, tempo, engine, mouth track source, assets and whether it is the FIXTURE - NOT AI song; never its " +
             "title or words); the desktop's songs-status.json (whether singing is offered, the song playing: state, position, line " +
-            "number and section, where it started, lead-in bars and fade-in, vamps, ducking and its stop plan; and the last stop: " +
+            "number and section, where it started, lead-in bars and fade-in, vamps, ducking, the mouth frames sent and how, and its " +
+            "stop plan; and the last stop: " +
             "where, which line and section, and why, without the user's words); the song job kind's limits; and the three tools and " +
             "Singing prompt exactly as the Thinking model gets them. Read-only.", new
         {
@@ -619,7 +620,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "equal-power fade-in gain at its start, middle and end, vocals silent until just before the line); the band vamping " +
             "twice while Martlet talks before the vocals come in; ducking (-12 dB); and a full run: sung from the top, stopped " +
             "musically mid-line by the user's words (the stop record and its note, the word's end, the beat the band fades from, " +
-            "when the output went silent), resumed from that line with its lead-in, and stopped with Esc (a 300 ms fade).", new
+            "when the output went silent), resumed from that line with its lead-in, and stopped with Esc (a 300 ms fade); and lip sync: " +
+            "the mouth tracks made from the vocals stem (Audio2Face when a service answers on 127.0.0.1:52000, visemes from the sung " +
+            "words, loudness) with their offsets from the vocal onsets, and the mouth sent on the playback clock after a lead-in " +
+            "against the onsets of the vocals actually played.", new
         {
             dataDirectory = new { type = "string" },
             songId = new { type = "string", maxLength = 32 }

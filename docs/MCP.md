@@ -1337,16 +1337,22 @@ answered in 2 ms. Loopback only; reads no credentials.
 
 `songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
 (optional absolute `dataDirectory`, default the current user's):
-`backgroundWork` (Thinking longer, which the song tools come with), `library`
-(`songs\`: `count`, `kept` 20, and each song's `id`, `durationSeconds`, `lines`,
-`sections`, `bpm`, `beatsPerBar`, `beats`, `downbeats`, `titleCharacters`,
-`lyricsCharacters`, `generator`, `converter`, `quality`, `voiceMatch`, `fixture`
-and `createdAt`; never a title or words), `desktop` (the desktop's
+`backgroundWork` (Thinking longer, which the song tools come with), `creations`
+(the song creations in the shared Creations library: `count`, and each song's
+`id` (its key), `durationSeconds`, `lines`, `words`, `wordsEstimated`,
+`wordTimingSource`, `bpm`, `titleCharacters`, `lyricsCharacters`, `generator`,
+`converter`, `quality`, `voiceMatch`, `fixture`, `mouthSource` (*Audio2Face*,
+*Visemes* or *Loudness*) and `mouthNote`, its `assets` (name, media type, bytes),
+whether they are all `here` on this computer, `createdBy` and `createdAt`; never
+a title or words), `desktop` (the desktop's
 `songs-status.json`: `offered`, `songs`, `output` (*Martlet's voice output*, or
 the silent fixture output under `MARTLET_SINGING_FIXTURE=1`), `playing` with
 `songId`, `state` (*Starting*, *LeadIn*, *Singing*, *Stopping*...),
 `positionSeconds`, `durationSeconds`, `line`, `lines`, `section`, `from`,
-`leadInBars`, `leadInSeconds`, `fadeInMs`, `vamps`, `ducked`, its `stop` plan
+`leadInBars`, `leadInSeconds`, `fadeInMs`, `vamps`, `ducked`, `lipSync` (the
+mouth track's `source`, `frames` and `channels`, how many mouth frames were
+`sent` to the character, their `averageSendMs`, and the `route`: *mapped mouth
+shapes* through the character's mouth mapping or *mouth opening*), its `stop` plan
 (`musical`, `requestedSeconds`, `vocalsEndSeconds`, `vocalsFadeMs`,
 `backingFromSeconds`, `backingFadeMs`, `silentAfterSeconds`) and `failure`;
 `lastStop` with `songId`, `atSeconds`, `line`, `lines`, `section`, `nextLine`,
@@ -1360,7 +1366,7 @@ three `tools` exactly as the Thinking model gets them and the filled Singing
 `SongMixer`, `SongPlayer` pumping a fixture output that plays ten times faster
 than real time and keeps what it is given; nothing is played aloud) on the
 FIXTURE - NOT AI tone song (40 s, 96 BPM, ten lines in verse, chorus, verse 2 and
-chorus 2), or on a stored song (`songId` with its `dataDirectory`), and measures
+chorus 2), or on a song creation (`songId`: its key, with its `dataDirectory`), and measures
 what it produced. `resolve`: where `from` points for start, a section, *second
 verse*, `line:3`, a time and two misses. `leadIn` (resuming line 4, rendered from
 the backing alone and the vocals alone): `entrySeconds` on a downbeat,
@@ -1374,9 +1380,20 @@ repeats the bar twice and the vocals are first heard two bars later
 band fades from and over how long, the planned and measured silence and the
 note), then resumed (`resume`: the line where it stopped, its lead-in, 2 vamps,
 the states *LeadIn*, *Singing*, *Stopped*) and stopped with Esc (`quickStop`: a
-300 ms fade from where the audio already handed to the output ends). Each part
-has an `ok`; on this PC the musical stop went silent 0.88 s after the request
-(planned 9.375 s, measured 9.370 s) and Esc 0.4 s after it.
+300 ms fade from where the audio already handed to the output ends). `lipSync`:
+the mouth tracks Martlet makes from the vocals stem and how far each opens from
+the vocal onsets (`onsets`, `matched`, `medianOffsetMs`, `meanAbsoluteOffsetMs`,
+`p90AbsoluteOffsetMs`, `good`): `audio2Face` (run once over the vocals when a
+service answers on 127.0.0.1:52000, otherwise *NOT RUN* with why), `visemes`
+(from the sung words, `words.estimated` when spread over each line's singing),
+`loudness`, a song creation's own `stored` track, which one was `used`, and
+`playback`: the player resuming line 4 with its lead-in on the vocals alone,
+the mouth it sends on the playback clock (`mouthUpdates`), whether it stayed
+`closedDuringLeadIn`, and the offsets between the mouth opening and the onsets of
+the vocals it actually played. Each part has an `ok`; on this PC the musical stop
+went silent 0.88 s after the request (planned 9.375 s, measured 9.370 s), Esc
+0.4 s after it, the viseme track opened +10 ms from all 10 onsets and, played
+after a lead-in, within 1-4 ms median (90% within 20 ms).
 
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
@@ -2281,17 +2298,16 @@ it.*, *think-1 waiting for a quiet moment*, *think-1 paused while you talk
 `LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
 so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
 only stops that job, and the next thing you say tells Martlet), the song panel
-`LiveSongPanel` (shown while Martlet sings or has a song to offer): `LiveSong`
-(*Singing song-1a2b3c · 0:22 of 1:00 · verse line 4 of 12.*, *Starting
-song-1a2b3c line 4 where you stopped: a bar of the band first · 0:08 of 0:40.*,
-*Stopping song-1a2b3c at 0:10: finishing the word, then the band rings out on the
-beat.*, *Stopped song-1a2b3c at 0:17 (verse 2 line 7 of 10): you pressed Stop
-singing. Resume picks up that line.* or *Song song-1a2b3c is ready (0:40, 10
-lines). Martlet offers it, or press Play.*; never the title or words, which
-`LiveSongLine` holds), `LiveSongStop` (*Stop singing*, a passive click: it only
-ends the song musically) and `LiveSongPlay` (its name says *Sing it from the top*
-or *Resume singing where it stopped*; clicking it sings aloud, so it needs
-`--allow-ui-effects`), with the status
+`LiveSongPanel` (shown while Martlet sings or has a song to offer; it has no Play
+button, since only Martlet performs songs): `LiveSong`
+(*Singing 3fa2c19b0d71 · 0:22 of 1:00 · verse line 4 of 12.*, *Starting
+3fa2c19b0d71 line 4 where you stopped: a bar of the band first · 0:08 of 0:40.*,
+*Stopping 3fa2c19b0d71 at 0:10: finishing the word, then the band rings out on the
+beat.*, *Stopped 3fa2c19b0d71 at 0:17 (verse 2 line 7 of 10): you pressed Stop
+singing. Ask Martlet to pick up where it left off.* or *Song 3fa2c19b0d71 is ready
+(0:40, 10 lines). Martlet will offer it.*; never the title or words, which
+`LiveSongLine` holds, word by word as they are sung) and `LiveSongStop` (*Stop
+singing*, a passive click: it only ends the song musically), with the status
 line reading *Starting to think it over in the background…* while
 `think_longer` runs and *Martlet is bringing up what it worked on…* while
 Martlet's own report is on its way; Companion › **Deep thinking**'s
