@@ -8,12 +8,13 @@ Read [scope and decisions](../DEVELOPMENT_PLAN.md), [contracts](ARCHITECTURE.md)
 The original empty baseline is historical. Current implementation and evidence
 must not be confused with the broader planned milestones below.
 
-**Current validation policy, 2026-09-26:** follow the
-[repository policy](../README.md#local-only-validation-policy): prototype
-speed, never remote validation. Earlier hosted-CI plans and the 2026-09-13
-local-gate requirement are superseded. Test, smoke, package-integrity and
-qualification gates below are future release gates, not required per change;
-unrun gates are reported as NOT RUN, never as passed.
+**Current validation policy, 2026-10-03:** follow the
+[repository policy](../README.md#local-only-validation-policy): every change
+passes its affected tests and MCP verification locally before merge
+([Validating changes](VALIDATION.md)); never remote validation. Earlier
+hosted-CI plans are superseded. Package-integrity and qualification gates below
+are future release gates, not required per change; unrun gates are reported as
+NOT RUN, never as passed.
 Agents may publish minimal build/package releases automatically under that policy.
 
 **Requirements expansion, 2026-09-19:** [Companion controls and behavior](COMPANION_REQUIREMENTS.md)
@@ -327,8 +328,8 @@ naming the new platforms in the pending Live2D Expandable Application review.
 
 Follow [the repository agent instructions](../AGENTS.md) for autonomous
 autopilot-style work, task branch/worktree ownership and publication/merge
-protocol. Implementation requests normally proceed straight to a verified
-merge into `main` without routine approval prompts or required local gates.
+protocol. Implementation requests normally proceed straight to a validated,
+verified merge into `main` without routine approval prompts.
 Explicit user holds, required protections and authorization boundaries
 remain binding; queued auto-merge is not verified integration.
 
@@ -342,13 +343,14 @@ Before implementation, confirm the affected architecture/contract decisions
 against current repository instructions and coordinate ownership of shared
 files. Use established decisions for routine work; decide consequential unresolved
 questions autonomously where evidence allows rather than reopening accepted
-choices. During the prototype phase a PR needs only a short description of the
-change and what was verified through Martlet MCP: feature and behavior changes
+choices. A PR needs a short description of the change and its validation
+([Validating changes](VALIDATION.md)): the affected tests pass through
+`scripts\Test-Martlet.ps1` with no new failures, feature and behavior changes
 are exercised on the dev machine through `Martlet.Mcp` where possible, and the
 MCP server is extended in the same change to reach them (see
 [Verifying changes with Martlet MCP](MCP.md#verifying-changes-with-martlet-mcp)).
-Tests, package/smoke gates and independent review are optional and not run by
-default. Never fabricate check statuses or claim unrun gates passed.
+Package/smoke gates and independent review are optional. Never fabricate check
+statuses or claim unrun gates passed.
 
 The product owner's distribution/cloud choices and restricted-model/SDK rights
 remain real decisions. Releases do not require code signing; a spending
@@ -628,8 +630,9 @@ owner changes the shared settings schema; H08c consumes it after merge.
 Disabled role configuration can be retained without authorizing its execution.
 
 **Per-PR completion and merge protocol:** keep one bounded change per branch.
-Local tests and independent review are not required during the prototype
-phase. Check workflow triggers before every push/PR/merge so publishing cannot
+Validate it before merge ([Validating changes](VALIDATION.md)): affected tests
+through `scripts\Test-Martlet.ps1` and behavior through Martlet MCP; independent
+review is optional. Check workflow triggers before every push/PR/merge so publishing cannot
 start remote validation. Merge one eligible PR at a time; if main advanced,
 reconcile before merging. Do not force-push, bypass protections, manufacture
 statuses or merge a held PR. Stop only dependent waves for a genuine blocker
@@ -786,10 +789,11 @@ measurement conditions hidden from the user.
 | Real Ubuntu gate | Clean 24.04 x86_64, then qualified NVIDIA hardware | System services, driver/runtime/model fit, reboot/start/stop; CPU containers alone cannot pass GPU cells |
 | Witnessed two-host gate | Actual Windows + both Ubuntu PCs, known LAN, selected role manifests | Authentication/firewalls, combined roles, failures, streaming, performance; host-2 fixture gate cannot certify real perception |
 
-Use the existing pinned .NET/xUnit runner consistently. Add Python worker tests
-only when a worker exists, using that worker's chosen tooling. No expensive
-model pulls in ordinary local validation. Run narrow related tests first, then
-the full affected suites and applicable local build/package/smoke gates. Keep
+Use the existing pinned .NET/xUnit runner consistently, through
+`scripts\Test-Martlet.ps1` ([Validating changes](VALIDATION.md)). Python worker
+tests use each worker's `unittest` suite. No expensive model pulls in ordinary
+local validation. Run narrow related tests first, then the full affected suites
+and applicable local build/package/smoke gates. Keep
 environment, exact revision, results and known limitations with the evidence.
 Unavailable environments remain explicit qualification blockers. Do not use
 remote validation runners to fill the gap. Installing VM/WSL/Docker/driver

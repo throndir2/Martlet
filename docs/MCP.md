@@ -2076,8 +2076,9 @@ readiness.
 ## Verifying changes with Martlet MCP
 
 Every new feature or behavior change is verified on the dev machine through
-this server before merge, whenever the machine can exercise it (the policy is
-in [AGENTS.md](../AGENTS.md#verify-changes-through-martlet-mcp)).
+this server before merge, whenever the machine can exercise it, alongside the
+affected tests (the policy is in [AGENTS.md](../AGENTS.md#validate-before-merge)
+and the whole flow in [Validating changes](VALIDATION.md)).
 `scripts\Invoke-MartletMcp.ps1` runs this checkout's `Martlet.Mcp`, sends a list
 of tool calls in order and prints one JSON array of results; it exits 1 if any
 call fails or an `until` is not met.
@@ -2110,8 +2111,9 @@ call fails or an `until` is not met.
   credentials only; it never authorizes spending, provider requests, credential
   handling, audio capture/playback or data disclosure).
 - `-Build` builds `Martlet.Mcp` (and `Martlet.Desktop` with `-Desktop`) in
-  `-Configuration` (default Release); the `dotnet` on `PATH` must provide the
-  SDK pinned in `global.json`.
+  `-Configuration` (default Release) with the `dotnet` that has the SDK pinned in
+  `global.json` (found the same way as `scripts\Test-Martlet.ps1`, including the
+  developer profile's `dotnet`).
 
 Check the outcome the change should produce (status values, control states,
 Doctor probes), not only that calls succeeded. What the machine cannot exercise

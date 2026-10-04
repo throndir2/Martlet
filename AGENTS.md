@@ -14,11 +14,12 @@ outside the authorization boundaries below.
 
 ## Default: deliver through merge
 
-For an implementation request: inspect, implement, commit, publish a pull
-request and merge into `main`. Routine branch creation, commits, PR publication
-and normal merging are authorized by default; do not stop at a plan, a local
-patch or an open PR when the requested work can be completed safely. Do not
-ask "should I proceed?" at each step.
+For an implementation request: inspect, implement, validate, commit, publish a
+pull request and merge into `main`. Routine branch creation, commits, PR
+publication and normal merging are authorized by default once the change is
+validated; do not stop at a plan, a local patch or an open PR when the
+requested work can be completed safely. Do not ask "should I proceed?" at each
+step.
 
 An explicit review-only, planning, local-only, no-push, draft, approval-hold or
 no-merge request overrides this default. Existing task-specific holds remain
@@ -88,18 +89,26 @@ before and after, and report the numbers.
 - Do not force-push, rewrite shared history, amend without permission, or delete
   branches/worktrees containing unmerged or unrelated work.
 
-## Verify changes through Martlet MCP
+## Validate before merge
 
-Every new feature or behavior change must be shown working on the current dev
-machine through Martlet's own MCP server (`src\Martlet.Mcp`) before merge,
-whenever this machine can exercise it. This is the one required local check.
-See [Verifying changes with Martlet MCP](docs/MCP.md#verifying-changes-with-martlet-mcp).
+Every change except documentation is validated locally before it merges, by the
+flow in [Validating changes](docs/VALIDATION.md). Both parts are required:
 
-- Build what the change needs, then drive the actual feature with
-  `scripts\Invoke-MartletMcp.ps1`: Doctor tools for headless behavior and
-  `-Desktop` for UI behavior, always on a disposable data directory, never the
-  real profile. Check the expected outcome (status values, control state,
-  Doctor report), not merely that a call returned.
+- **Affected tests:** run `.\scripts\Test-Martlet.ps1` (`-List` first shows what
+  the change selects). It builds every affected project and runs the affected
+  .NET, Python and node suites in parallel on this PC and on the developer's
+  validation hosts. It must end `PASSED`: a new failing test or build error
+  blocks the merge. Fix the cause; never add to `tests\known-failures.txt` to
+  get a change through, and delete a line when its test passes again. Fix
+  flaky tests the run names when they are in or near your change. Add or update
+  tests for new behavior in the matching `tests\` project.
+- **Behavior through Martlet MCP:** every feature or behavior change is shown
+  working through Martlet's own MCP server (`src\Martlet.Mcp`) on this machine
+  whenever it can exercise it. Build what the change needs, then drive the
+  actual feature with `scripts\Invoke-MartletMcp.ps1`: Doctor and status tools
+  for headless behavior and `-Desktop` for UI behavior, always on a disposable
+  data directory, never the real profile. Check the expected outcome (status
+  values, control state, Doctor report), not merely that a call returned.
 - **Always extend the MCP server with the feature.** In the same change, make
   everything new reachable and observable through MCP: stable automation IDs
   on new controls, passive navigation in `SafeClicks`, non-secret status
@@ -110,28 +119,27 @@ See [Verifying changes with Martlet MCP](docs/MCP.md#verifying-changes-with-mart
   data directory and no real credentials. It never authorizes spending, real
   provider requests, credential handling, audio capture/playback or data
   disclosure; stop at those steps.
-- When full verification is impossible here (locked or headless desktop,
-  missing hardware, credentials or paid services, another OS), verify
+- **Run what the tests do not cover** (scripts, packaging, worker hosts,
+  workflows) the way it is used; the runner lists such files.
+- **Use the developer's validation hosts.** The developer profile
+  (`~\.martlet-dev\validation.json` and `NOTES.md`, shared by all of that
+  developer's checkouts and worktrees, never committed) lists the machines the
+  developer has set up: Docker on this PC, Linux boxes over key-based SSH, GPU
+  hosts. Read it before validating and run what needs those machines there; the
+  runner already sends Linux-only suites to them. Record useful facts about
+  listed hosts in `NOTES.md`. Adding a host, installing anything on one or using
+  a password is the developer's decision, not an agent's.
+- When full validation is impossible here (locked or headless desktop, missing
+  hardware, credentials or paid services, another OS, no suitable host), validate
   everything reachable up to that boundary and report the rest as **NOT RUN**
-  with the exact reason. Never claim unrun or partial verification passed.
-  Documentation-only changes need no verification.
-- State in the PR description what was verified through MCP and what was not.
-
-## Prototype speed: no other local gates
-
-Martlet is developed at prototype speed (a development pace, not a release
-label). Speed matters more than gates. Apart from MCP verification above,
-local test suites, build/package/smoke gates and independent review agents
-are **not required** and should not be run by default. Build what MCP
-verification needs; otherwise run at most a quick, targeted build or test
-when it directly helps you finish or debug the change. Do not add
-test-coverage, review or evidence-recording steps to satisfy process.
+  with the exact reason. Never claim unrun or partial validation passed.
+- Put the runner's `artifacts\validation\summary.md`, the MCP calls and what they
+  showed, and every NOT RUN item in the PR description.
 
 Keep changes focused and surface errors instead of silently falling back.
-Never claim a check passed that you did not run, and never present fixture,
-fake-native or historical results as real-device, model or release
-qualification.
-
+Never present fixture, fake-native or historical results as real-device, model
+or release qualification. Independent review agents and package/smoke gates are
+optional; use them when the change warrants it.
 ## Publication and merge
 
 Follow the [validation policy](README.md#local-only-validation-policy)
@@ -141,15 +149,19 @@ validation, including self-hosted Actions. If no safe path exists, retain the
 local work and report the exact blocker.
 
 Publish only the task's changes to the repository's configured remote. Use a
-focused PR targeting `main` with a short description. Refresh `origin/main`
-before merging and reconcile if it advanced. Merge eligible PRs one at a time
-through the normal GitHub path. Never bypass protections, dismiss required
-review, fabricate check statuses or merge a held PR.
+focused PR targeting `main` with a short description and the validation report.
+Refresh `origin/main` before merging and reconcile if it advanced (rerun the
+affected tests when the reconcile changed what they cover). Merge eligible PRs
+one at a time through the normal GitHub path. Never bypass protections, dismiss
+required review, fabricate check statuses or merge a held PR.
 
-Automatic completion means the agent performs the normal eligible PR merge;
-it does not mean enabling repository-wide auto-merge, changing repository
-settings or adding background/remote automation. If GitHub queues a merge,
-the task remains pending until the merged result is verified.
+Auto-merge is encouraged for autonomous work, **after validation**: once the
+affected tests pass, MCP verification is done and NOT RUN items are reported,
+the agent merges its own PR without waiting for approval. A PR whose validation
+failed or was skipped is not eligible. Automatic completion means the agent
+performs the normal eligible PR merge; it does not mean changing repository
+settings or adding background/remote automation. If GitHub queues a merge, the
+task remains pending until the merged result is verified.
 
 Verify the PR is merged and its result is present on freshly fetched
 `origin/main`; a successful push or pending auto-merge is not completion.
