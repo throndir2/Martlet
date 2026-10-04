@@ -88,7 +88,7 @@ internal static class HostSupplyCheck
                 !onlineText.Contains("martlet-host: not found"),
                 $"the online command (no git, no sudo, no internet) ended with exit {onlineExit}: {LastLine(onlineLines)}");
 
-            var supplier = new HostSupplier(Http, cache, output);
+            var supplier = new HostSupplier(Martlet.Desktop.HostSupplies.OpenAsync, cache, output);
             await supplier.SupplyAsync(host, archive, token);
             var sent = log.LastOrDefault(l => l.StartsWith("Sending ", StringComparison.Ordinal)) ?? "nothing sent";
             var (_, stateLines) = await host.RunAsync(HostSupply.StateScript, token);
@@ -147,15 +147,6 @@ internal static class HostSupplyCheck
                 "Docker hosts and roles on a computer without internet access (Martlet stops with an explanation instead)"
             }
         };
-    }
-
-    private static readonly HttpClient Http = CreateClient();
-
-    private static HttpClient CreateClient()
-    {
-        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Martlet-host-supply-check/1");
-        return client;
     }
 
     /// <summary>Runs as root once: the host account and the FIXTURE tools a container lacks.</summary>

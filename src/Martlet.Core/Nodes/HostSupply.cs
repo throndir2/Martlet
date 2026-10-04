@@ -21,7 +21,7 @@ public sealed record HostSupplyNeeds(string DotnetSdk, IReadOnlyList<HostSupplyI
 /// and where ~/Martlet came from ("git", the SHA-512 of the source archive it was unpacked from, or null).</summary>
 public sealed record HostSupplyState(IReadOnlySet<string> Sdks, IReadOnlyDictionary<string, string> Files, string? Source);
 
-/// <summary>How <see cref="HostSupplier"/> reaches a host: Martlet's SSH runner on the desktop, docker exec in checks.</summary>
+/// <summary>How a host without internet access reaches a host account: Martlet's SSH runner on the desktop, docker exec in checks.</summary>
 public interface IHostSupplyChannel
 {
     /// <summary>Runs POSIX sh as the host account and returns its exit code and output lines.</summary>
@@ -29,6 +29,23 @@ public interface IHostSupplyChannel
 
     /// <summary>Runs POSIX sh with <paramref name="write"/> streaming its stdin; returns the exit code.</summary>
     Task<int> SendAsync(string command, Func<Stream, CancellationToken, Task> write, CancellationToken token);
+}
+
+/// <summary>Opens a download on this PC (HTTPS GET): its content and length when known, or null when the address doesn't
+/// exist (HTTP 404). Martlet.Core itself makes no network requests; the desktop passes one built on its HTTP client.</summary>
+public delegate Task<HostSupplyDownload?> HostSupplyOpen(string url, CancellationToken token);
+
+/// <summary>An opened download (<see cref="HostSupplyOpen"/>); disposing it ends the request.</summary>
+public sealed class HostSupplyDownload(Stream content, long? length, IDisposable? owner = null) : IAsyncDisposable
+{
+    public Stream Content => content;
+    public long? Length => length;
+
+    public async ValueTask DisposeAsync()
+    {
+        await content.DisposeAsync();
+        owner?.Dispose();
+    }
 }
 
 /// <summary>Files for a native Ubuntu host without internet access (see "Computers without internet" in
@@ -176,14 +193,12 @@ public static partial class HostSupply
     }
 
     /// <summary>The linux-x64 .NET SDK archive for <paramref name="version"/>, with the SHA-512 Microsoft publishes for it.</summary>
-    public static async Task<HostSupplyItem> DotnetSdkAsync(HttpClient http, string version, CancellationToken token)
+    public static async Task<HostSupplyItem> DotnetSdkAsync(HostSupplyOpen open, string version, CancellationToken token)
     {
         var channel = string.Join('.', version.Split('.').Take(2));
-        using var response = await http.GetAsync($"https://builds.dotnet.microsoft.com/dotnet/release-metadata/{channel}/releases.json",
-            HttpCompletionOption.ResponseHeadersRead, token);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(token);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        var url = $"https://builds.dotnet.microsoft.com/dotnet/release-metadata/{channel}/releases.json";
+        await using var download = await open(url, token) ?? throw new FileNotFoundException($"{url} was not found.");
+        using var document = await JsonDocument.ParseAsync(download.Content, cancellationToken: token);
         return DotnetSdk(document.RootElement, version) ??
             throw new InvalidDataException($"Microsoft's release list has no Linux x64 download of the .NET SDK {version}.");
     }
@@ -235,24 +250,21 @@ public static partial class HostSupply
 
     /// <summary>Downloads <paramref name="item"/> to <paramref name="path"/> unless a good copy is there already (with
     /// <paramref name="reuse"/>): it must match the published SHA-512, and a package must be a NuGet package.</summary>
-    public static async Task<string> FetchAsync(HttpClient http, HostSupplyItem item, string path, bool reuse, IProgress<string>? progress,
+    public static async Task<string> FetchAsync(HostSupplyOpen open, HostSupplyItem item, string path, bool reuse, IProgress<string>? progress,
         CancellationToken token)
     {
         if (reuse && File.Exists(path) && await GoodAsync(item, path, token)) return path;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var part = path + ".part";
-        using (var response = await http.GetAsync(item.Url, HttpCompletionOption.ResponseHeadersRead, token))
+        await using (var download = await open(item.Url, token) ?? throw new FileNotFoundException($"{item.Url} was not found."))
         {
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) throw new FileNotFoundException($"{item.Url} was not found.");
-            response.EnsureSuccessStatusCode();
-            var total = response.Content.Headers.ContentLength;
-            await using var source = await response.Content.ReadAsStreamAsync(token);
+            var total = download.Length;
             await using var target = File.Create(part);
             var buffer = new byte[1 << 16];
             long done = 0;
             var shown = System.Diagnostics.Stopwatch.GetTimestamp();
             int read;
-            while ((read = await source.ReadAsync(buffer, token)) > 0)
+            while ((read = await download.Content.ReadAsync(buffer, token)) > 0)
             {
                 await target.WriteAsync(buffer.AsMemory(0, read), token);
                 done += read;
@@ -308,7 +320,7 @@ public static partial class HostSupply
 /// .NET SDK and the gateway's NuGet packages on this PC (cached in <paramref name="cacheDirectory"/>), sends what the host
 /// lacks over <see cref="IHostSupplyChannel"/>, checks every file arrived intact, unpacks the source in ~/Martlet and
 /// removes what is no longer needed. The engine then runs with MARTLET_SUPPLY (<see cref="HostCheckout.Command"/>).</summary>
-public sealed class HostSupplier(HttpClient http, string cacheDirectory, IProgress<string> output)
+public sealed class HostSupplier(HostSupplyOpen open, string cacheDirectory, IProgress<string> output)
 {
     /// <summary>Downloads Martlet's source for <paramref name="version"/> (its release tag, else main).</summary>
     public async Task<string> SourceAsync(string version, CancellationToken token)
@@ -318,7 +330,7 @@ public sealed class HostSupplier(HttpClient http, string cacheDirectory, IProgre
             output.Report($"Downloading Martlet's source ({name}) on this PC...");
             try
             {
-                return await HostSupply.FetchAsync(http, new(HostSupply.SourceArchive, url),
+                return await HostSupply.FetchAsync(open, new(HostSupply.SourceArchive, url),
                     Path.Combine(cacheDirectory, "source", name + ".tar.gz"), reuse: name != "main", output, token);
             }
             catch (FileNotFoundException) when (name != "main") { output.Report($"There is no {name} release tag; using main."); }
@@ -338,18 +350,18 @@ public sealed class HostSupplier(HttpClient http, string cacheDirectory, IProgre
         if (installSource) send.Add((HostSupply.SourceArchive, sourceArchive, sourceSum));
         if (!state.Sdks.Contains(needs.DotnetSdk))
         {
-            var sdk = await HostSupply.DotnetSdkAsync(http, needs.DotnetSdk, token);
+            var sdk = await HostSupply.DotnetSdkAsync(open, needs.DotnetSdk, token);
             keep.Add(sdk.Name);
             if (state.Files.GetValueOrDefault(sdk.Name) != sdk.Sha512)
             {
                 output.Report($"Downloading the .NET SDK {needs.DotnetSdk} for Linux on this PC (about 230 MB, kept for next time)...");
-                send.Add((sdk.Name, await HostSupply.FetchAsync(http, sdk, Cached(sdk), reuse: true, output, token), sdk.Sha512!));
+                send.Add((sdk.Name, await HostSupply.FetchAsync(open, sdk, Cached(sdk), reuse: true, output, token), sdk.Sha512!));
             }
         }
         output.Report($"Checking the gateway's {needs.Packages.Count} NuGet packages on this PC...");
         foreach (var package in needs.Packages)
         {
-            var path = await HostSupply.FetchAsync(http, package, Cached(package), reuse: true, null, token);
+            var path = await HostSupply.FetchAsync(open, package, Cached(package), reuse: true, null, token);
             var sum = await HostSupply.Sha512Async(path, token);
             keep.Add(package.Name);
             if (state.Files.GetValueOrDefault(package.Name) != sum) send.Add((package.Name, path, sum));

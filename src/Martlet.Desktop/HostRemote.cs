@@ -133,7 +133,7 @@ internal sealed partial class HostRemote(HostShell shell)
         if (await InternetAsync(ssh, pinnedHostKey, token) != false) return false;
         if (OfflineBlocker(target.Method, verb, ssh.ToString()) is { } blocker) throw new InvalidOperationException(blocker);
         output.Report($"{ssh} can't reach the internet, so Martlet downloads what it needs on this PC and sends it over SSH.");
-        var supplier = new HostSupplier(HostSupplies.Http, HostSupplies.Cache(dataDirectory), output);
+        var supplier = new HostSupplier(HostSupplies.OpenAsync, HostSupplies.Cache(dataDirectory), output);
         try
         {
             var source = await supplier.SourceAsync(target.Version, token);
@@ -308,23 +308,6 @@ internal sealed partial class HostRemote(HostShell shell)
 internal sealed class LineSink(Action<string> action) : IProgress<string>
 {
     public void Report(string value) => action(value);
-}
-
-/// <summary>Where this PC keeps the files it sends hosts without internet access (<see cref="HostSupplier"/>), and the
-/// client it downloads them with.</summary>
-internal static class HostSupplies
-{
-    internal static readonly HttpClient Http = CreateClient();
-
-    internal static string Cache(string dataDirectory) => Path.Combine(dataDirectory, "host-supply");
-
-    private static HttpClient CreateClient()
-    {
-        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Martlet/" +
-            (typeof(HostSupplies).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
-        return client;
-    }
 }
 
 /// <summary>Passes martlet-host output on and keeps the line the engine prints when the host was busy with another change
