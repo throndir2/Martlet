@@ -901,6 +901,34 @@ continues; and the desktop's reader reads that busy line. Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 
+`host_supply_check` (optional `cacheDirectory`; default
+`%TEMP%\Martlet\host-supply-check`) checks how Martlet sets up a native Ubuntu
+host [without internet access](../deploy/host/README.md#computers-without-internet),
+with the production `HostSupplier` and `HostCheckout` and this checkout's real
+engine. It archives this checkout like GitHub's source archive and starts one
+disposable `ubuntu:24.04` container (`--pull never`) on an internal Docker
+network (a private LAN address, no route out) with its home folder on a
+disposable ext4 volume; container, volume and network are removed afterwards.
+This PC downloads the .NET SDK and the gateway's NuGet packages for real (about
+240 MB the first time, cached in `cacheDirectory`); the container gets them only
+from this PC, through `docker exec` instead of SSH. It returns `{exitCode,
+report: {passed, total, image, cache, steps: [{name, ok, detail}]},
+notCovered}`. Steps: `checkout-archived`; `needs-read` (the engine's .NET SDK
+matches `global.json`, the packages from the gateway's lock files);
+`host-is-offline` (`HostCheckout.InternetProbe` says `internet=no`);
+`online-setup-stops-plainly` (the online command, with no git, sudo or
+internet, stops with `Stopped: git is not installed here` and never runs a
+missing engine); `supplied` (the files arrive intact, `~/Martlet` is unpacked
+and the source archive removed); `setup-without-internet` (`martlet-host --yes
+setup` with `MARTLET_SUPPLY` builds the gateway, creates its identity and starts
+it healthy); `again-sends-nothing` (a second pass sends nothing and removes the
+installed SDK's archive); and `update-without-internet` (`update` rebuilds the
+gateway offline). FIXTURE `systemctl` (runs the gateway unit's `ExecStart`) and
+`ip` (the container's address) stand in for systemd and iproute2. Not covered:
+Martlet's SSH runner itself, and roles or Docker hosts without internet access
+(Martlet stops with an explanation). Without Docker or the image it returns
+`exitCode` 2 and `notRun` (it never pulls).
+
 `host_update_check` (no arguments) rehearses how one Martlet keeps its own host
 service updates from colliding, with the desktop's production
 `HostUpdateTracker` and `HostEngineBusy` reader, and returns `{exitCode, report:

@@ -491,8 +491,10 @@ public partial class HostsWindow : ThemedWindow
         var sudo = HostRemote.NeedsSudo(method, probe);
         if (setup)
         {
+            run.Status($"Checking whether {ssh} reaches the internet...");
+            var supplied = await remote.SupplyIfOfflineAsync(target, HostVerb.Setup, pairings.DataDirectory, hostKey, run.Output, run.Token);
             run.Status($"Setting up the host on {ssh}. This can take a few minutes...");
-            var result = await remote.RunAsync(target, "setup", true, sudo, null, hostKey, run.Output, run.Token);
+            var result = await remote.RunAsync(target, "setup", true, sudo, null, hostKey, run.Output, run.Token, supplied: supplied);
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"Setup stopped on {ssh} (exit {result.ExitCode}). Check the output for details.");
         }
