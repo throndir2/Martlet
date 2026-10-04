@@ -102,17 +102,17 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(thinking, "RepliesThinking");
         AutomationProperties.SetHelpText(thinking, ThinkingRange + ". " + ThinkingHelp);
-        // Thinking longer's controls save with the reply settings (one auto-save), so they are read when it saves.
-        Func<ThinkLongerSettings?> readThinkLonger = () => saved?.ThinkLonger;
         // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, readThinkLonger(), generation =>
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, generation =>
         {
             described.Text = DescribeGeneration(generation, route);
             showContextStatus?.Invoke();
-            showThinkLongerStatus?.Invoke(generation?.ThinkLonger);
         }));
         tabAutoSave = autoSave;
-        page.Children.Add(ThinkLongerCard(saved?.ThinkLonger, route, () => { tabEdited = true; autoSave.Changed(); }, out readThinkLonger));
+        page.Children.Add(Card(Heading("Thinking longer"),
+            Note("Martlet can think a hard task through in the background while you keep talking. Choose where and how on " +
+                "Deep thinking.", new Thickness(0, 0, 0, 0)),
+            Row(PageButton("Open Deep thinking", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: "RepliesOpenDeepThinking"))));
         thinking.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
         AddRepliesRow(grid, new Label { Content = "T_hinking steps", Target = thinking, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
             thinking, ThinkingRange, ThinkingHelp, route is null ? null : (ThinkingUseText(route, place!), "RepliesThinkingStatus",
@@ -186,92 +186,6 @@ public partial class MainWindow
                 new Thickness(0, 0, 0, 4)),
             grid,
             Row(defaults)));
-    }
-
-    // ---------- Thinking longer ----------
-
-    private Action<ThinkLongerSettings?>? showThinkLongerStatus;
-    private static readonly ThinkEffort[] ThinkEfforts = [ThinkEffort.Medium, ThinkEffort.High];
-    private static readonly ThinkDelivery[] ThinkDeliveries = [ThinkDelivery.WhenFree, ThinkDelivery.NextMessage];
-
-    /// <summary>Companion › Replies › Thinking longer, beside Thinking steps: whether Martlet may decide, sparingly, to think a
-    /// task through in the background (on by default), how hard, for how long, how often and when it shares the result. It
-    /// saves with the reply settings; <paramref name="read"/> gives what the controls show.</summary>
-    private Border ThinkLongerCard(ThinkLongerSettings? saved, SetupRoute? route, Action changed, out Func<ThinkLongerSettings?> read)
-    {
-        var current = saved ?? new ThinkLongerSettings();
-        var on = new CheckBox { Content = "Let Martlet _think longer when it needs to", IsChecked = current.On, Margin = new Thickness(0, 0, 0, 4) };
-        AutomationProperties.SetAutomationId(on, "RepliesThinkLonger");
-        ComboBox Choice(string id, string name, IEnumerable<string> items, int selected)
-        {
-            var box = new ComboBox { Width = 260, ItemsSource = items.ToArray(), SelectedIndex = selected, HorizontalAlignment = HorizontalAlignment.Left };
-            AutomationProperties.SetAutomationId(box, id);
-            AutomationProperties.SetName(box, name);
-            box.SelectionChanged += (_, _) => changed();
-            return box;
-        }
-        var effort = Choice("RepliesThinkLongerEffort", "How hard it thinks", ["Medium (default)", "High"],
-            Array.IndexOf(ThinkEfforts, current.HowHard));
-        var minutes = ThinkLongerSettings.MinuteChoices;
-        var time = Choice("RepliesThinkLongerTime", "Time limit", minutes.Select(m =>
-            $"{m} minutes{(m == ThinkLongerSettings.DefaultMinutes ? " (default)" : "")}"), minutes.ToList().IndexOf((int)current.TimeLimit.TotalMinutes));
-        var hourly = ThinkLongerSettings.PerHourChoices;
-        var perHour = Choice("RepliesThinkLongerPerHour", "At most this many an hour", hourly.Select(n =>
-            $"{n} an hour{(n == ThinkLongerSettings.DefaultPerHour ? " (default)" : "")}"), hourly.ToList().IndexOf(current.Hourly));
-        var when = Choice("RepliesThinkLongerDelivery", "When Martlet shares the result",
-            ["As soon as Martlet is free (default)", "When I talk next"], Array.IndexOf(ThinkDeliveries, current.When));
-        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
-        AutomationProperties.SetAutomationId(status, "RepliesThinkLongerStatus");
-        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        void Show(ThinkLongerSettings? settings)
-        {
-            var (text, problem) = ThinkLongerStatus(settings ?? new(), route);
-            status.Text = text;
-            status.SetResourceReference(TextBlock.ForegroundProperty, problem ? "WarningBrush" : "MutedBrush");
-            foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = settings?.On ?? true;
-        }
-        Show(saved);
-        showThinkLongerStatus = Show;
-        on.Checked += (_, _) => { foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = true; changed(); };
-        on.Unchecked += (_, _) => { foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = false; changed(); };
-        read = () => new ThinkLongerSettings
-        {
-            Enabled = on.IsChecked == true,
-            Effort = ThinkEfforts[Math.Max(0, effort.SelectedIndex)],
-            Minutes = minutes[Math.Max(0, time.SelectedIndex)],
-            PerHour = hourly[Math.Max(0, perHour.SelectedIndex)],
-            Delivery = ThinkDeliveries[Math.Max(0, when.SelectedIndex)]
-        };
-        return Card(Heading("Thinking longer"),
-            Note("Replies answer right away (Thinking steps are off by default). When a task really needs thought, such as writing " +
-                "song lyrics, a story or a plan, or tricky math or code, Martlet can say it'll think it over and work on it in the " +
-                "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8)),
-            on, status,
-            TerminalRow("How hard", effort), TerminalRow("Time limit", time), TerminalRow("How often", perHour),
-            TerminalRow("Share it", when),
-            Note("It thinks with Thinking steps on, on your Thinking model, whatever replies use; one think runs at a time. Stop " +
-                "(Esc) doesn't end it: its Cancel in the talk window, closing the conversation or the time limit do. A paid provider " +
-                "may charge for its thinking.", new Thickness(0, 8, 0, 0)));
-    }
-
-    /// <summary>What Thinking longer does on the current Thinking route, and whether something keeps it from working.</summary>
-    private (string Text, bool Problem) ThinkLongerStatus(ThinkLongerSettings settings, SetupRoute? route)
-    {
-        if (!settings.On) return ("Off. Martlet answers everything right away and never thinks in the background.", false);
-        if (route is null) return ("On. Set up Thinking so Martlet can use it.", true);
-        if (route.RouteType is not (SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
-            return ("On, but your Thinking model can't use tools here (a Martlet host's model), so Martlet can't think in the " +
-                "background. Use OpenAI or a Chat Completions endpoint (such as Ollama on this PC) in Companion › Thinking.", true);
-        if (mcpTools.IsUnsupported(McpToolService.ModelKey($"{route.RouteType}", route.Origin, route.ModelId)))
-            return ($"On, but {route.ModelId} turned down tools, so it can't think in the background. Choose a model that can use tools.", true);
-        var local = IsLocalOllama(route) || route.RouteType == SetupRouteType.ChatCompletions &&
-            Uri.TryCreate(route.Origin, UriKind.Absolute, out var origin) && origin.IsLoopback;
-        var reasons = GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) != GenerationSettingUse.Unused;
-        return ($"On. When a task needs it, Martlet says it'll think it over and works on it in the background " +
-            (reasons ? $"({settings.HowHard} effort" : "(this model has no thinking steps, so it just writes it out") +
-            $", up to {Martlet.Conversation.BackgroundJobs.Duration(settings.TimeLimit)}, at most {settings.Hourly} an hour) while you keep talking, then " +
-            (settings.When == ThinkDelivery.WhenFree ? "brings it up as soon as it's free." : "brings it up when you talk next.") +
-            (local ? " Its model is on this PC, so it thinks only while you aren't talking and pauses for every reply." : ""), false);
     }
 
     /// <summary>One row of the Replies grid that isn't a number box: its label, control and what it does, with how the current
@@ -370,7 +284,7 @@ public partial class MainWindow
     /// newest saved settings. A field that isn't a number in range says so (on the status line) and nothing is saved until it is
     /// fixed. Returns false to be tried again shortly while another change holds the settings.</summary>
     private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, ComboBox thinking,
-        ThinkLongerSettings? thinkLonger, Action<GenerationSettings?> saved)
+        Action<GenerationSettings?> saved)
     {
         var values = new Dictionary<GenerationSetting, double?>();
         foreach (var setting in ReplySettings)
@@ -400,8 +314,7 @@ public partial class MainWindow
             FrequencyPenalty = values[GenerationSetting.FrequencyPenalty],
             PresencePenalty = values[GenerationSetting.PresencePenalty],
             ContextTokens = Whole(GenerationSetting.ContextTokens),
-            Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value,
-            ThinkLonger = ThinkLongerSettings.Normalize(thinkLonger)
+            Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value
         };
         try { generation.Validate(); }
         catch (ContractException error)
@@ -409,10 +322,15 @@ public partial class MainWindow
             ActionText.Text = "Reply settings not saved yet: " + error.Message;
             return true;
         }
-        return await SaveRepliesAsync(GenerationSettings.Normalize(generation), saved);
+        // Thinking longer is saved with the reply settings but set on Deep thinking: it is kept as saved.
+        return await SaveRepliesAsync(saved_ => GenerationSettings.Normalize(generation with { ThinkLonger = saved_?.ThinkLonger }), saved,
+            "Reply settings saved. Reload an open conversation to use them.");
     }
 
-    private async Task<bool> SaveRepliesAsync(GenerationSettings? generation, Action<GenerationSettings?> saved)
+    /// <summary>Saves the reply settings <paramref name="update"/> makes of the newest saved ones. Returns false to be tried again
+    /// shortly while another change holds the settings.</summary>
+    private async Task<bool> SaveRepliesAsync(Func<GenerationSettings?, GenerationSettings?> update, Action<GenerationSettings?> saved,
+        string done)
     {
         if (store is null || setupService is null || closing) return true;
         if (savingTab || assigningRole || setupOperations.IsRunning) return false;
@@ -422,6 +340,7 @@ public partial class MainWindow
         {
             var loaded = await setupService.LoadAsync(token);
             if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
+            var generation = update(loaded.Settings?.Generation);
             if (Equals(loaded.Settings?.Generation, generation)) return true;
             var updated = SetupSettings.Begin(loaded.Settings) with { Generation = generation };
             updated.Validate();
@@ -433,7 +352,7 @@ public partial class MainWindow
             }
             homeSettings = updated;
             saved(generation);
-            ActionText.Text = "Reply settings saved. Reload an open conversation to use them.";
+            ActionText.Text = done;
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)

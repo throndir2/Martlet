@@ -315,7 +315,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private readonly BackgroundJobs jobs;
     private readonly ConversationCredentialSource thinkCredentials;
     private ConversationRuntime? thinkRuntime;
-    private ConversationAuthorization? thinkAuthorization;
+    private ICredentialAuthority? thinkAuthorization;
+    // Where the running think works and whether it runs alongside the conversation (for background-jobs.json).
+    private ThinkPlace? thinkingWhere;
+    private sealed record ThinkPlace(string Where, DeepThinkingPlan Plan);
     private BackgroundThink? thinking;
     private int userBusy;
     private (bool Spoken, HeardVoices? Heard) lastAsked;
@@ -980,7 +983,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
         Chattiness chattiness, bool camera, CancellationToken worker)
     {
-        YieldBackground(operation.Authorization.Configuration);
+        YieldBackground();
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1125,7 +1128,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     {
         DispatchLease? lease = null;
         // A model on this PC serves the conversation first: a background think stops at once and starts again once it's quiet.
-        YieldBackground(operation.Authorization.Configuration);
+        YieldBackground();
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1460,29 +1463,37 @@ internal sealed class LiveConversationController : IAsyncDisposable
         if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
-        var local = configured.LocalThinking;
-        var model = configured.Route(SetupRole.Llm).ModelId;
+        // Where it thinks (Companion › Deep thinking, this PC's choice) and whether that runs alongside the conversation or waits
+        // for quiet moments because it shares the conversation's hardware.
+        var deep = DeepThinkingSettings.Load(dataDirectory);
+        var plan = DeepThinkingPlan.For(deep, configured.Routes);
+        var where = deep.Separate ? deep.Describe() : configured.Route(SetupRole.Llm).ModelId;
         var think = new BackgroundThink(ThinkRuntime(),
-            left => PrepareThink(configured, sent, () => operation.Turn?.Content.Text, task!, reason, left),
-            local ? ThinkBusy : null, clock)
+            left => PrepareThink(configured, deep, plan, sent, () => operation.Turn?.Content.Text, task!, reason, left),
+            plan.Parallel ? null : ThinkBusy, clock)
         {
             AttemptFinished = terminal =>
             {
                 NoteFallback("Background thinking", configured, terminal);
                 NoteInput("Background thinking", terminal, reply: false);
-                if (IsFailure(terminal) && terminal.State != ConversationState.Canceled) LogReplyFailure("Background thinking", configured, terminal);
+                if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
+                {
+                    if (deep.Separate) ErrorLog.Warn($"Background thinking on {where} failed ({Describe(terminal)}).");
+                    else LogReplyFailure("Background thinking", configured, terminal);
+                }
             }
         };
         var start = jobs.Start(ThinkLonger.Kind(settings), ThinkLonger.Label(task!), async (job, token) =>
         {
             Volatile.Write(ref thinking, think);
+            Volatile.Write(ref thinkingWhere, new ThinkPlace(where, plan));
             try { return await think.RunAsync(job, token).ConfigureAwait(false); }
             finally
             {
                 Interlocked.CompareExchange(ref thinking, null, think);
                 ErrorLog.Info($"Background thinking: {job.Id} ended after {BackgroundJobs.Duration(job.Elapsed)} " +
                     $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}" +
-                    (local ? $", paused {think.Pauses} time{(think.Pauses == 1 ? "" : "s")} for the conversation" : "") + ").");
+                    (plan.Parallel ? ", alongside the conversation" : $", paused {think.Pauses} time{(think.Pauses == 1 ? "" : "s")} for the conversation") + ").");
             }
         });
         if (start.Job is not { } started)
@@ -1492,10 +1503,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
             return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Refused(start), true));
         }
         tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
-        ErrorLog.Info($"Background thinking: started {started.Id} on {model} (thinking steps on, {settings.HowHard} effort, " +
+        ErrorLog.Info($"Background thinking: started {started.Id} on {where} (thinking steps on, {settings.HowHard} effort, " +
             $"{BackgroundJobs.Duration(settings.TimeLimit)} limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} of {settings.Hourly} " +
-            "this hour" + (local ? "; the model is on this PC, so it works only while the conversation is quiet)" : ")") +
-            (toldUser ? "." : "; the reply hadn't told you yet, so it was asked to."));
+            $"this hour; {(plan.Parallel ? "in parallel with the conversation" : "only while the conversation is quiet")}: {plan.Why})" +
+            (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
     }
 
@@ -1523,18 +1534,33 @@ internal sealed class LiveConversationController : IAsyncDisposable
         jobs.CancelAll();
     }
 
-    // One attempt of a background think: a reply's request continued (or the task alone when it no longer fits), with its own
-    // authorization bound to exactly this request and the time left. On a model on this PC it continues the latest exchange
-    // (the conversation may have gone on while it paused); elsewhere the reply that called think_longer, as said so far.
-    private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured, BoundedTextInput? sent,
-        Func<string?> reply, string task, string? reason, TimeSpan left)
+    // One attempt of a background think: a reply's request continued and fitted to where it thinks, with its own authorization
+    // bound to exactly this request and the time left. When it waits for quiet moments it continues the latest exchange (the
+    // conversation may have gone on while it paused, and that keeps the model's cache on the conversation); otherwise the
+    // reply that called think_longer, as said so far.
+    private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured,
+        DeepThinkingSettings deep, DeepThinkingPlan plan, BoundedTextInput? sent, Func<string?> reply, string task, string? reason,
+        TimeSpan left)
     {
         (BoundedTextInput Sent, string Reply)? latest;
-        lock (gate) latest = configured.LocalThinking ? lastExchange : null;
-        var input = latest is { } exchange
+        lock (gate) latest = plan.Parallel ? null : lastExchange;
+        var full = latest is { } exchange
             ? ThinkLonger.Input(exchange.Sent, exchange.Reply, task, reason, configured.Prompts, exchange.Sent.Personality)
             : ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
-        if (!configured.FitsContext(input)) input = ThinkLonger.Input(null, null, task, reason, configured.Prompts, sent?.Personality);
+        var effort = configured.ThinkLonger.HowHard;
+        if (deep.Separate)
+        {
+            var target = DeepThinkTarget.For(deep, effort, configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm),
+                ModelLimits.Load(dataDirectory));
+            var separate = target.Request(ThinkLonger.Fit(full, target.Bounds), effort, left);
+            var own = new DeepThinkAuthorization(target, separate, configured.Profile,
+                configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), vault, clock, clock.GetUtcNow() + left + TimeSpan.FromSeconds(5));
+            Volatile.Write(ref thinkAuthorization, own);
+            return (separate, own);
+        }
+        // With the Thinking model: within the reply's own bounds, its tools kept so the start is the reply's.
+        var input = configured.FitsContext(full) ? full : ThinkLonger.Fit(full, new(configured.TextLimits.MaxInputBytes,
+            configured.TextLimits.MaxHistoryMessages, configured.TextInputTokens, Tools: false));
         bool withoutReasoning;
         lock (gate) withoutReasoning = reasoningRefused.Contains(configured.ToolModelKey());
         var request = configured.ThinkRequest(input, left, withoutReasoning);
@@ -1556,7 +1582,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>A Thinking model on this PC is needed by the conversation: a reply or glance runs, an exchange is being
+    /// <summary>The conversation needs the hardware a waiting think shares: a reply or glance runs, an exchange is being
     /// remembered, or the user is talking or about to be answered.</summary>
     private bool ThinkBusy()
     {
@@ -1564,18 +1590,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         lock (gate) return active is { Worker.Completion.IsCompleted: false } || capturesPending > 0;
     }
 
-    // On a Thinking model on this PC, the conversation's request goes first: the background think stops at once.
-    private void YieldBackground(LiveConversationConfiguration? configured)
-    {
-        if (configured?.LocalThinking == true) Volatile.Read(ref thinking)?.Yield();
-    }
+    // A think that shares the conversation's hardware stops at once when the conversation needs it; one that runs in parallel
+    // (another computer or provider) carries on.
+    private void YieldBackground() => Volatile.Read(ref thinking)?.Yield();
 
     /// <summary>The talk window says whether the user is talking or a turn is about to start (heard, typed, held to talk), so a
-    /// background think on a model on this PC gives way before the reply needs it.</summary>
+    /// think that shares the conversation's hardware gives way before the reply needs it.</summary>
     internal void NoteUserBusy(bool busy)
     {
         if (Interlocked.Exchange(ref userBusy, busy ? 1 : 0) == (busy ? 1 : 0) || !busy) return;
-        YieldBackground(Configuration);
+        YieldBackground();
     }
 
     /// <summary>Starts a reply Martlet gives on its own to bring up finished background work, as soon as it is free (the talk
@@ -1664,13 +1688,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
             delivery = job.Delivery.ToString()
         };
         var running = Volatile.Read(ref thinking);
+        var place = Volatile.Read(ref thinkingWhere);
         return System.Text.Json.JsonSerializer.Serialize(new
         {
             updatedAt = clock.GetUtcNow(),
             active = jobs.Active.Select(Describe),
             recent = jobs.Recent.Select(Describe),
             startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName) },
-            thinking = running is null ? null : new { local = running.Busy is not null, attempts = running.Attempts, pauses = running.Pauses }
+            thinking = running is null ? null : new
+            {
+                where = place?.Where, parallel = place?.Plan.Parallel, why = place?.Plan.Why,
+                waitsForQuiet = running.Busy is not null, attempts = running.Attempts, pauses = running.Pauses
+            }
         });
     }
 
@@ -2056,7 +2085,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
         BoundedTextInput input, CancellationToken token)
     {
-        YieldBackground(configuration);
+        YieldBackground();
         var picture = input.Image is not null;
         var request = configuration.MemoryCaptureRequest(input, imageOptional: picture);
         var capture = CaptureRuntime();
