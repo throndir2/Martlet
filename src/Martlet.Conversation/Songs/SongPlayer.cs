@@ -250,7 +250,7 @@ public sealed class SongPlayer : IAsyncDisposable
                 if (text.Length > 0 && captions is not null)
                 {
                     caption = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                    captions.Post(text, caption.Task);
+                    captions.Post(text, caption.Task, Map.Lines[heard!.Value].Text);
                 }
                 changed |= text != captionText;
             }

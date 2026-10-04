@@ -283,6 +283,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
             {
                 while (!loop.IsCancellationRequested && playing.Active)
                 {
+                    var started = System.Diagnostics.Stopwatch.GetTimestamp();
                     var (output, _, shape, level) = playing.MouthNow;
                     // While Martlet talks over the song, its speech moves the mouth instead.
                     if (!playing.Mixer.Ducked && output > sent && (level > 0 || moved))
@@ -291,18 +292,26 @@ internal sealed class ConversationSinging : IAsyncDisposable
                         sent = output;
                         moved = level > 0;
                         Interlocked.Increment(ref mouthFrames);
+                        Interlocked.Add(ref mouthTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
                     }
-                    await Task.Delay(TimeSpan.FromMilliseconds(20), loop.Token).ConfigureAwait(false);
+                    var spent = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+                    await Task.Delay(spent < TimeSpan.FromMilliseconds(15) ? TimeSpan.FromMilliseconds(20) - spent : TimeSpan.FromMilliseconds(5),
+                        loop.Token).ConfigureAwait(false);
                 }
             }
-            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
+            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
+                InvalidDataException or TimeoutException)
+            {
+                if (error is not OperationCanceledException) ErrorLog.Warn($"Singing: the character's mouth stopped following the song ({error.GetType().Name}).");
+            }
             if (!loop.IsCancellationRequested)
                 try { await face.RestAsync(CancellationToken.None).ConfigureAwait(false); }
-                catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
+                catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
+                    InvalidDataException or TimeoutException) { }
         });
     }
 
-    private long mouthFrames;
+    private long mouthFrames, mouthTicks;
 
     /// <summary>songs-status.json: the library's size, the song playing (state, position, line number and section, lead-in, vamps,
     /// ducking) and where the last one stopped and why; never a title or words.</summary>
@@ -351,7 +360,9 @@ internal sealed class ConversationSinging : IAsyncDisposable
                 lipSync = new
                 {
                     source = p.MouthTrack.Source.ToString(), frames = p.MouthTrack.Frames, channels = p.MouthTrack.Channels.Count,
-                    sent = Interlocked.Read(ref mouthFrames), route = face?.Route
+                    sent = Interlocked.Read(ref mouthFrames), route = face?.Route,
+                    averageSendMs = Interlocked.Read(ref mouthFrames) == 0 ? (double?)null : Math.Round(
+                        Interlocked.Read(ref mouthTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Interlocked.Read(ref mouthFrames), 1)
                 },
                 stop = stopping is null ? null : new
                 {
