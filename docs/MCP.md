@@ -924,7 +924,12 @@ chatterbox (...)` without replacing `martlet-host-net`; a `--yes setup` waits
 for it, then removes and recreates the holder and runs its engine; an engine
 left in a replaced holder's namespace stops at once (`... was replaced while
 this ran ... Nothing was changed`) while one in the current namespace
-continues; and the desktop's reader reads that busy line. Without Docker or the
+continues; and the desktop's reader reads that busy line. Finally a native
+`--yes add` of a fixture role against a fake `docker` whose `compose up` fails
+with exit 17 (as a role image build does when a download times out) stops with
+exit 1 and `Stopped: Building or starting fixture-build failed ... run
+'martlet-host add fixture-build' again` (`build-failure-says-run-again`, also in
+`logs/engine.log`). Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 

@@ -12,8 +12,8 @@ namespace Martlet.Mcp;
 /// run, status names the holder, an automatic run (no terminal, no --yes) stops at once with exit 75 and MARTLET-BUSY,
 /// an attended run waits and gives up after MARTLET_LOCK_WAIT, a waiting run continues when the holder dies (SIGKILL), so
 /// does a run without a terminal or --yes that was told to wait (Update hosts now), no
-/// stale lock remains and the engine journal records it. The desktop's own reader (<see cref="HostEngineBusy"/>) then
-/// reads the engine's real busy line.</summary>
+/// stale lock remains and the engine journal records it, and an add whose image build fails says to run it again. The
+/// desktop's own reader (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
 {
     internal const string Image = "ubuntu:24.04";
@@ -76,7 +76,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 16;
+        const int expected = 17;
         if (steps.Count < expected)
         {
             passed = false;
@@ -267,5 +267,23 @@ internal static class HostEngineCheck
         D MARTLET_ENGINE=inner MARTLET_ENGINE_NAME=martlet-host-remove-check timeout 15 "$E" --yes remove fixture-role </dev/null >/tmp/attached.out 2>&1; rc=$?
         [[ $rc == 1 ]] && ! has /tmp/attached.out "was replaced" && has /tmp/attached.out "Run 'martlet-host setup' first." && ok=1 || ok=0
         step attached-engine-continues "$ok" "engine in the current holder's namespace passed the check (exit $rc at the fixture's missing setup)"
+
+        # A role whose image build fails (a fake docker whose compose up fails like a pip download that timed out) stops
+        # with what to do next instead of only Compose's exit code.
+        mkdir -p /tmp/buildfail "${E%/*}/roles/fixture-build"
+        printf 'title=Fixture build (FIXTURE, builds nothing)\nrequires=docker\nport=50999\n' > "${E%/*}/roles/fixture-build/role.conf"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-build/compose.yaml"
+        cat > /tmp/buildfail/docker <<'FAKE'
+        #!/bin/bash
+        [[ "$1" == run ]] && { cat > /dev/null; exit 0; }
+        [[ "$1" == compose && " $* " == *" up "* ]] || exit 0
+        echo "pip._vendor.urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='pypi.nvidia.com', port=443): Read timed out." >&2
+        exit 17
+        FAKE
+        chmod 755 /tmp/buildfail/docker
+        PATH="/tmp/buildfail:$PATH" timeout 30 "$E" --yes add fixture-build </dev/null >/tmp/buildfail.out 2>&1; rc=$?
+        [[ $rc == 1 ]] && has /tmp/buildfail.out "Stopped: Building or starting fixture-build failed" &&
+          has /tmp/buildfail.out "run 'martlet-host add fixture-build' again" && has "$log" "stopped: Building or starting fixture-build failed" && ok=1 || ok=0
+        step build-failure-says-run-again "$ok" "add whose compose up fails (exit 17): exit $rc, $(grep -m1 -oE 'Stopped: Building or starting [^.]*' /tmp/buildfail.out || tail -n1 /tmp/buildfail.out)"
         """;
 }
