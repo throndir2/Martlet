@@ -181,16 +181,18 @@ what it prints go to the Thinking model.
 
 ### Thinking longer
 
-**Companion > Deep thinking > Thinking longer** (on by default) gives every reply on a
-route that does function calling Martlet's own `think_longer` (`task`, the
-complete instruction, and an optional `reason`) and `cancel_thinking` (optional
-`id`). The call never asks first and returns at once; the task is worked out in
-a background request with Thinking steps on, by Deep thinking (the Thinking
-model, another of your computers, Ollama on this PC or a cloud provider, chosen
-on each PC), and brought up when it's done
+**Companion > Deep thinking > Thinking longer** (on by default; *Where it thinks* ›
+*Off* turns it off) gives every reply on a route that does function calling
+Martlet's own `think_longer` (`task`, the complete instruction, and an optional
+`reason`) and `cancel_thinking` (optional `id`), while Deep thinking can run where
+it is set to think. The call never asks first and returns at once; the task is
+worked out in parallel, in a background request with Thinking steps on, by Deep
+thinking (the Thinking model when its provider answers several requests at once,
+another of your computers, a second model in Ollama on this PC or a cloud
+provider, chosen on each PC), and brought up when it's done
 ([Thinking longer and background work](CONVERSATION.md#thinking-longer-and-background-work)).
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
-started think-1`); the desktop log notes each start, pause and end without the
+started think-1`); the desktop log notes each start, fit check and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
 
 ### Searching past conversations
@@ -1386,24 +1388,27 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 
 `think_longer_status` shows Companion › **Deep thinking** as replies use it
 (optional absolute `dataDirectory`, default the current user's): `settings`,
-`thinkLonger` (`enabled`, on by default; `effort` *Medium* or *High*; `minutes`
-2, 5 or 10; `perHour` 3, 6 or 12; `delivery` *WhenFree* or *NextMessage*;
-`chosen`), `thinking` (the Thinking route's `routeType`, `model`,
-`supportsTools`, `toolsRejected` from `tools-unsupported.json`, `offered`,
+`thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
+*Off*; `effort` *Medium* or *High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12;
+`delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
+route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
+`tools-unsupported.json`, `offered` (only where Deep thinking can run),
 `onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
 *loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
 `model`, `hostId`, an endpoint's `origin`, `ownKey` and `usesThinkingKey`
-(never a key), `parallel`/`waitsForQuiet` and `why` from the production
-`DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at that
-effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
+(never a key), `available` (and `parallel`, the same: a think always runs
+alongside the conversation), `checksFit` (a second model in Ollama on this PC,
+checked to fit beside Thinking's before each think) and `why` from the
+production `DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at
+that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
 `outputTokens` and `carriesTools`, true only with the Thinking model), `tools`
 (`think_longer` and `cancel_thinking` exactly as the model gets them), the
 filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
 `resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
-`startedLastHour`; and the running think's `where`, `parallel`, `why`,
-`waitsForQuiet`, `attempts` and `pauses`),
+`startedLastHour`; and the running think's `where`, `available`, `checksFit`,
+`why`, `parallel` and `attempts`),
 never a task or result. Read-only.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
@@ -1424,25 +1429,31 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped). `local`: a think for a model on this PC waits
-for a quiet moment without sending anything, stops its request when the
-conversation needs the model (`stoppedAfterMs`), sends nothing while paused and
-then finishes from the same request (`attempts` 2, `pauses` 1,
-`sameRequestAgain`). `plans`: the production `DeepThinkingPlan` for eight setups
-(Same as Thinking with Thinking local or on OpenRouter; OpenRouter, or Ollama on
-this PC, with Thinking local; Ollama on this PC with the voice on another
-computer or in this PC's host service; a paired computer that does nothing else,
-or also speaks), each `parallel` against `expected` with its `why`.
-`parallel`: a think on a destination of its own (the plan says parallel; a
-second fixture endpoint stands in for the other machine) keeps working while
-three replies go to the conversation's endpoint (`replyFirstWordsMs`), is never
-stopped (`attempts` 1, `pauses` 0) and its request has no tools, Thinking steps
-on and the conversation then the task. `hostFit`: a 160-message conversation
+the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
+for eleven setups (Same as Thinking with Thinking on this PC, on OpenRouter or
+on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
+another model or Thinking's own beside Thinking local, or with the voice on
+another computer or in this PC's host service; a paired computer that does
+nothing else, also speaks, or also does Thinking), each `available` against
+`expected` with `checksFit` and its `why`.
+`parallel`: a think on a destination of its own (a second fixture endpoint
+stands in for the other machine) keeps working while three replies go to the
+conversation's endpoint (`replyFirstWordsMs`), is never stopped (`attempts` 1)
+and its request has no tools, Thinking steps on and the conversation then the
+task. `sideBySide`: the production `OllamaSideBySide` reads a fixture Ollama's
+`/api/ps` and `/api/tags` (`readFromOllama`, `loaded`, `downloads`) and decides
+whether a second model fits beside Thinking's (`decisions`, each `fits` against
+`expected` with `needGb`, `roomGb` and `why`: a large model on a 24 GB and a
+12 GB card, a small one on a 12 GB card free or filled by a game, only
+Windows' total known, graphics memory unknown, Thinking's own model, a model
+not downloaded, both already loaded, Thinking's already partly on the
+processor), and once the think's model has loaded
+whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
+each `stops` against `expected`). `hostFit`: a 160-message conversation
 fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
 kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
-this PC the tool returned in 5 ms, a paused think's request was gone 123-140 ms
-later (the fixture writes every 50 ms) and replies beside a parallel think
-answered in 2 ms. Loopback only; reads no credentials.
+this PC the tool returned in 33 ms and replies beside a parallel think answered
+in 2-7 ms. Loopback only; reads no credentials.
 
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
@@ -2350,8 +2361,8 @@ forgets them so the next reply starts fresh, adds the note *Context refreshed.*
 to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
 works in the background or a finished job waits to be brought up: *Working in
 the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
-it.*, *think-1 waiting for a quiet moment*, *think-1 paused while you talk
-(0:30)*, *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
+it.*, *think-1 checking it fits beside Thinking* (a second model in Ollama on
+this PC, before it starts), *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
 *... when you talk next.*; never what a job is about), each job's chip
 `LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
 so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
@@ -2360,31 +2371,43 @@ line reading *Starting to think it over in the background…* while
 `think_longer` runs and *Martlet is bringing up what it worked on…* while
 Martlet's own report is on its way; Companion › **Deep thinking**'s
 `DeepThinkingNow` (*Thinks on diva (gemma4:27b), in parallel with the
-conversation.*, *Thinks on the Thinking model (gemma4:e4b), in quiet moments.*,
-or *Off. When on, it thinks on ...*) and `DeepThinkingParallel` (why: *Thinking
-runs on this PC and its server answers one request at a time, so a think waits
-for quiet moments.*, *diva does none of the conversation's jobs, so a think runs
-there alongside the conversation.*), `ThinkLongerOn` (*Let Martlet think longer
-when it needs to*; `checkedState` is the saved choice), `ThinkLongerStatus`
+conversation.*, *On, but it can't think on the Thinking model (gemma4:e4b), so
+Martlet doesn't offer to think things over. Choose another place below.*, or
+*Off. Martlet answers everything right away and never thinks in the
+background.*) and `DeepThinkingParallel` (why: *Thinking's model (gemma4:e4b)
+runs on this PC and can't think something over while it answers you. ...*,
+*It runs as a second model beside Thinking's gemma4:e4b on this PC, ...*, *diva
+does none of the conversation's jobs, so a think runs there alongside the
+conversation.*), `ThinkLongerStatus`
 (*On. When a task needs it, Martlet says it'll think it over and works on it in
 the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
 talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
 from working: no Thinking, a paired host's model, a model that turned tools
-down) and the choices `ThinkLongerEffort`, `ThinkLongerTime`,
-`ThinkLongerPerHour` and `ThinkLongerDelivery` (returned; `ui_toggle` and
-`ui_select` on them save the reply settings, so they need
+down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
+`ThinkLongerTime`, `ThinkLongerPerHour` and `ThinkLongerDelivery` (returned;
+`ui_select` on them saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
-`DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
-`DeepPlace-Cloud` (each only shows its card): each paired computer's
+`DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
+`DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what
+Same as Thinking thinks with, or why Thinking's own model can't think here),
+each paired computer's
 `DeepThinkingHost-<host ID>` (*diva: Ollama runs gemma4:27b.*, *Thinks here
 (...)*, *Ollama isn't installed there...*) or `DeepThinkingHosts` when none is
-paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded) and
-`DeepThinkingKeyStatus` (what the key field will do; never a key or typed base
-URL). `DeepThinkingUseSame`, `DeepThinkingUseHost-<host ID>` (checks that
-computer and saves its Ollama route), `DeepThinkingUseLocal` and
-`DeepThinkingSaveCloud` (with `DeepThinkingProvider`, `DeepThinkingBaseUrl`,
-`DeepThinkingModel`, `DeepThinkingKey` and `DeepThinkingConsent`) save
-`deep-thinking.json` and need `--allow-ui-effects`; the next think uses it.
+paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
+`DeepThinkingLocalFit` (whether the model in `DeepThinkingLocalModel` fits
+beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
+`/api/tags` and the NVIDIA driver without loading anything: *Fits: gemma4:e2b
+(about 5.3 GB) fits beside ...*, *Doesn't fit: ... Choose a smaller model.*,
+*... is Thinking's own model ...*, or *Thinking runs elsewhere, so ... has
+Ollama on this PC to itself ...*) and `DeepThinkingKeyStatus` (what the key
+field will do; never a key or typed base URL). `DeepThinkingTurnOff` (Off;
+saves the reply settings), `DeepThinkingUseSame`, `DeepThinkingUseHost-<host
+ID>` (checks that computer and saves its Ollama route), `DeepThinkingUseLocal`
+(refuses Thinking's own model) and `DeepThinkingSaveCloud` (with
+`DeepThinkingProvider`, `DeepThinkingBaseUrl`, `DeepThinkingModel`,
+`DeepThinkingKey` and `DeepThinkingConsent`) save `deep-thinking.json` (and turn
+Deep thinking back on when it was off) and need `--allow-ui-effects`; an open
+conversation's next reply and think use it.
 Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and

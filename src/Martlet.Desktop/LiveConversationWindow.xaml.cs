@@ -410,8 +410,6 @@ public partial class LiveConversationWindow : ThemedWindow
         if (closed) return;
         Settle();
         Collect();
-        // A background think on a model on this PC gives way as soon as you talk or a turn is about to start.
-        controller.NoteUserBusy(UserBusy);
         if (loading is not null || locked) return;
         KeepListening();
         Interrupt();
@@ -566,8 +564,8 @@ public partial class LiveConversationWindow : ThemedWindow
         var parts = jobs.Select(job => job.State switch
         {
             BackgroundJobState.Running => $"{job.Id} running for {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.Waiting => $"{job.Id} waiting for a quiet moment",
-            BackgroundJobState.Paused => $"{job.Id} paused while you talk ({BackgroundJobs.Clockface(job.Elapsed)})",
+            BackgroundJobState.Waiting => job.Progress is { } note ? $"{job.Id} {note}" : $"{job.Id} waiting to start",
+            BackgroundJobState.Paused => $"{job.Id} paused ({BackgroundJobs.Clockface(job.Elapsed)})",
             BackgroundJobState.Succeeded => $"{job.Id} done after {BackgroundJobs.Clockface(job.Elapsed)}",
             BackgroundJobState.TimedOut => $"{job.Id} ran out of time",
             BackgroundJobState.Canceled => $"{job.Id} stopped",
