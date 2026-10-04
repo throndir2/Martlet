@@ -177,6 +177,16 @@ default spot, still locked, if that place is no longer on a screen). Unlocked,
 position is session-only. This is not a global click-through or game-injected
 overlay. Exclusive-fullscreen applications may cover it.
 
+The character's head and eyes follow the mouse. Martlet can also send the overlay
+a `gaze` command (`RendererGaze`): a point on the desktop in physical screen
+pixels, as Martlet's screenshots measure it, and how long to look there (0.5 to
+30 seconds); then the eyes follow the mouse again, and a `gaze` without a point
+returns them at once. The overlay converts the face's position to physical pixels
+for it (`LogicalToPhysicalPointForPerMonitorDPI`) and replies with `RendererLook`:
+what it looks at (`mouse` or `point`) and the head and eye direction it gave the
+model (-1 to 1, +x right, +y up). Companion › Vision › **Where the character
+looks** uses it while Martlet decides ([Screen commentary](../../docs/SCREEN_COMMENTARY.md#where-the-character-looks)).
+
 **Hide character** in the main window, Alt+F4, or Escape while the overlay has
 focus closes only the renderer; normal voice playback continues. **Show
 character** opens it again.

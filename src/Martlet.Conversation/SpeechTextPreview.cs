@@ -5,17 +5,18 @@ namespace Martlet.Conversation;
 /// <summary>What a reply becomes for a voice engine, without speaking it: the pieces the real segmenter hands that engine
 /// (its own tags kept, other tags and the character's tags dropped, markup suppressed, broken where a spoken reply with these
 /// speech breaks breaks), the cues the character acts on in each piece, and the text the chat and captions show. Used by
-/// Martlet MCP's voice_tags tool to observe tag handling and a persona's speech breaks headlessly.</summary>
+/// Martlet MCP's voice_tags and character_gaze tools to observe tag handling and a persona's speech breaks headlessly. With
+/// <paramref name="silentWord"/> a sentence that is only that word (a screen glance's [pass]) is never spoken, as in a glance.</summary>
 public static class SpeechTextPreview
 {
     public sealed record Cue(int Piece, string Tag, int Offset);
     public sealed record Result(IReadOnlyList<string> Spoken, int SuppressedPieces, string Shown, IReadOnlyList<Cue> Cues);
 
     public static Result For(string reply, SpeechEngine? engine, IReadOnlyList<string>? characterTags = null,
-        SpeechBreaks? breaks = null)
+        SpeechBreaks? breaks = null, string? silentWord = null)
     {
         ArgumentNullException.ThrowIfNull(reply);
-        var segmenter = new SpeechSegmenter(1536, 16_384, tags: engine?.Tags, characterTags: characterTags,
+        var segmenter = new SpeechSegmenter(1536, 16_384, silentWord, tags: engine?.Tags, characterTags: characterTags,
             breaks: breaks ?? SpeechBreaks.Default);
         var pieces = segmenter.Push(reply).Concat(segmenter.Finish()).ToArray();
         var spoken = new List<string>();

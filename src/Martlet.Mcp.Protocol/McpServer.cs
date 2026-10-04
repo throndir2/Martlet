@@ -287,6 +287,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
             answer = new { type = "string" }
         }),
+        Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
+            "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
+            "decides), then a rehearsal of the production decision (Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
+            "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
+            "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
+            "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
+            "the spot looked at (ok: all as expected). Also where each look tag points on one and two screens, the screen glance's " +
+            "look instructions (the data directory's edited prompts included) and what the production segmenter makes of glance " +
+            "answers that start with a look tag (spoken, shown, quiet, the look cue); answer replaces the sample answers. Reads " +
+            "only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }
+        }),
         Tool("character_theme", "A character model's colors and palettes as Settings > Appearance makes them (docs/UI_DESIGN.md " +
             "\"Character palettes\"): modelPath (a .model3.json or .vrm on this PC), else the model dataDirectory's avatar.json shows, " +
             "else the built-in character. Returns the main colors read from its textures (hex, share, kind, name), the colors the " +
@@ -751,6 +764,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
+                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "answer"), OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), OptionalString(arguments, "name"),
