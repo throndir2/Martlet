@@ -330,6 +330,21 @@ The task can therefore outlive the bounded disposal call. Process termination
 is outside this local cleanup contract. Upstream request abort does not prove
 compute cancellation, deletion or avoided charges.
 
+## Record of conversations
+
+`ConversationHistory` keeps every finished exchange the desktop hands it as
+one JSON line per exchange in month files (`history-2026-10.jsonl`), appended
+and flushed one at a time, with a crash-cut line skipped on reading, and a
+BM25 index in memory that it builds once (`LoadAsync`) for `Search` and
+`Between`. Only `DeleteAsync`/`DeleteAllAsync` rewrite or remove files.
+`PastConversations` decides when a message refers to an earlier conversation
+(`RefersToPast`, English phrasing), reads times such as *yesterday* or *3 days
+ago* in the user's days (`Window`), picks the exchanges to bring back
+(`Recall`), words the notes block (`Notes`) and the opt-in
+`search_conversations` tool (`Definition`, `Parse`, `Find`, `Result`). Neither
+has a logger, provider or network path. See
+[Memory › Conversation history](../../docs/MEMORY.md#conversation-history).
+
 ## Offline evidence and remaining gates
 
 `Martlet.Conversation.Tests` drives **real** LLM/TTS serializers, parsers,

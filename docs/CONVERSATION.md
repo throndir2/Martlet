@@ -128,7 +128,7 @@ comment; it needs a Thinking model that can see images. See
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
    Thinking model: the persona wrapper, the style line and each response style,
    reply length, always listening, tools, Thinking longer, who is talking,
-   lorebook and memory introductions, notes with messages, the screen and
+   lorebook, memory and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines, *Screen with your message* (sent with what you type or say while
@@ -214,7 +214,9 @@ reads the entire conversation again before every reply (on a 12B model, about
 - **The message** comes last and ends with Martlet's **notes** between
   `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
   remembered facts not already in the notes of an earlier message the request
-  carries, who is talking when that changed, a smart home result, and the
+  carries, what was said in earlier conversations when the message refers to
+  one ([Memory › Conversation history](MEMORY.md#conversation-history)), who is
+  talking when that changed, a smart home result, and the
   picked style when the persona has several and it changed. The first notes
   start with what notes are (Companion › Prompts › *Notes with messages*).
   Notes are never shown and never what the user said.
@@ -395,8 +397,11 @@ ahead without memory and the status says why. After a completed reply, the
 exchange is sent once more, as one extra text-only request (shared with
 learning names when both are due), to the same Thinking model, which picks out
 lasting facts to save locally (shown under the reply and
-listed in Memory). Screen glances are never remembered. The volatile exchange
-buffer itself is still not persisted. TTS receives only eligible
+listed in Memory). Screen glances are never remembered. The exchanges kept in
+mind for the next replies stay in memory only; separately, while memory and
+*Keep a record of my conversations* are on, each finished exchange is added to
+the [record of conversations](MEMORY.md#conversation-history) on this PC, which
+a later message that mentions an earlier conversation brings back. TTS receives only eligible
 generated segments. All provider routes have the fixed HTTPS origin
 `https://api.openai.com`; there is no custom endpoint, model discovery,
 fallback provider, retry loop or hidden continuation.
@@ -418,7 +423,7 @@ game/call audio. Capturing other people requires their permission.
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
 | Background think (think_longer) | One at a time, 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
-| Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio/transcript files or ordinary content logs |
+| Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio files or ordinary content logs; finished exchanges (the user's own words and the reply, never audio, glances or what the PC plays) go to the [record of conversations](MEMORY.md#conversation-history) on this PC only while memory and *Keep a record of my conversations* are on |
 
 These are admission and request limits, **not a measured latency promise or a
 currency/invoice ceiling**. Input-token reservations are conservative local

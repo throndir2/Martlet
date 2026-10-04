@@ -104,6 +104,8 @@ internal sealed class LiveConversationOperation
     internal bool MemoryRequested { get; set; }
     internal int MemoryFactsUsed { get; set; }
     internal int MemoryFactsOmitted { get; set; }
+    /// <summary>How many exchanges of earlier conversations went in this message's notes (it referred to one).</summary>
+    internal int PastExchanges { get; set; }
     internal long? MemoryStoreRevision { get; set; }
     /// <summary>Why memory could not be read for this turn (the reply went ahead without it).</summary>
     internal string? MemoryProblem { get; set; }
@@ -258,6 +260,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // The desktop character's emotes and motions a reply may use, for the speaking engine (null: a reply that isn't spoken).
     private readonly Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions;
     private readonly DesktopMemoryService? memory;
+    // The record of conversations on this PC (Companion › Memory › Conversation history), and which conversation this is: a
+    // conversation runs until the exchanges kept in mind are cleared (Refresh context, pause, lock, closing the talk window).
+    private readonly DesktopConversationHistory? history;
+    private Guid conversationId = Guid.NewGuid();
     private readonly LorebookStore? lorebooks;
     private readonly VoiceIdentity? voiceIdentity;
     private readonly SmartHome? smartHome;
@@ -358,6 +364,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal SmartHome? Home => smartHome;
     /// <summary>The MCP servers whose tools user-started replies may call.</summary>
     internal McpToolService? Tools => tools;
+    /// <summary>The record of conversations on this PC, when Martlet has one.</summary>
+    internal DesktopConversationHistory? History => history;
+    /// <summary>The conversation going on: a new one starts whenever the exchanges kept in mind are cleared.</summary>
+    internal Guid ConversationId { get { lock (gate) return conversationId; } }
     /// <summary>How echo reduction went the last time Martlet listened; null when this controller has none.</summary>
     internal EchoReductionReport? EchoReport => echoReducer?.Report;
     /// <summary>Martlet can hear what this PC plays (Companion › Listening › Hear what this PC plays).</summary>
@@ -432,7 +442,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         SmartHome? smartHome = null, LorebookStore? lorebooks = null, McpToolService? tools = null,
         LocalVoices? voices = null, ILocalTranscriber? localListener = null, EchoReducer? echoReducer = null,
         PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
-        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null)
+        Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null,
+        DesktopConversationHistory? history = null)
 
     {
         this.operations = operations;
@@ -442,6 +453,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         this.echoReducer = echoReducer;
         this.pcAudio = pcAudio;
         this.characterActions = characterActions;
+        this.history = history;
         if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
@@ -522,6 +534,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         Cancel(stopListening);
         // Opening the talk window starts the MCP servers in the background, so their tools are ready by the first reply.
         if (next is { SupportsTools: true } && tools is { HasEnabledServers: true }) tools.EnsureStarted(retry: true);
+        // The record of conversations is read in the background now, so a message that mentions an earlier one finds it.
+        if (history?.Active(next?.Memory) == true) history.Warm();
     }
 
     internal void SetControls(bool pause, bool mute, bool sessionLocked)
@@ -924,6 +938,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         remarks.Clear();
         lastCache = null;
         lastExchange = null;
+        conversationId = Guid.NewGuid();
     }
 
     /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
@@ -1174,6 +1189,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             ResponseStyle? style;
             IReadOnlyList<TextHistoryMessage> history, sentHistory;
             long historyStart;
+            Guid conversation;
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -1202,6 +1218,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 // lore, memory and learning names read what was said (history).
                 sentHistory = context.Snapshot(sent: true);
                 historyStart = context.Start;
+                conversation = conversationId;
             }
 
             // Keeps Smart home's list of locks, doors and garages current before the model may call Home Assistant's tools.
@@ -1229,7 +1246,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
             // calling. While Thinking longer is on they are always offered, the same way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
-            var builtIns = configured.OffersThinkLonger ? BuiltIns(operation, configured) : null;
+            var builtIns = BuiltIns(operation, configured, conversation);
             if ((own is not null || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
                 configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
@@ -1262,6 +1279,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.Publish(new(home.Code));
             }
 
+            // A message that refers to an earlier conversation brings back what was said then (Companion › Memory › Conversation
+            // history) in its notes, read from memory only. Any other message gets nothing, so its request is what it always was.
+            string? past = null;
+            var pastCount = 0;
+            if (own is not null && this.history is { } pastRecord && pastRecord.Active(configured.Memory))
+            {
+                past = pastRecord.RecallNotes(own, conversation, sentHistory, configured.Prompts, out pastCount);
+                if (past is not null) operation.LatencyTimeline?.Mark("past conversations");
+            }
+
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -1276,7 +1303,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
                     ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
-                ConversationRequest Ask(SeenScreen? picture, out int keptHistory, out int keptFacts, out int keptEntries) =>
+                ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
@@ -1287,17 +1314,28 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             recording is null ? null : PromptSettings.Fill(prompts, PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
-                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background),
+                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background, recalled),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()));
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
-                try { request = Ask(seen, out usedHistory, out usedMemory, out usedLore); }
-                catch (LiveActionException error) when (error.Code == "conversation.input_limit" && seen is not null)
+                var picture = seen;
+                while (true)
                 {
-                    request = Ask(null, out usedHistory, out usedMemory, out usedLore);
+                    try
+                    {
+                        request = Ask(picture, past, out usedHistory, out usedMemory, out usedLore);
+                        break;
+                    }
+                    // A message too long to fit goes without what was said in earlier conversations first, then without the picture.
+                    catch (LiveActionException error) when (error.Code == "conversation.input_limit" && (past is not null || picture is not null))
+                    {
+                        if (past is not null) (past, pastCount) = (null, 0);
+                        else picture = null;
+                    }
                 }
+                operation.PastExchanges = pastCount;
                 operation.VoiceSent = request.Input.Audio is not null;
                 operation.ScreenSent = request.Input.Image is not null;
                 operation.Sent = request.Input;
@@ -1371,6 +1409,14 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         // A pass stays in the conversation too, so later replies know what was said around Martlet.
                         context.Add(said, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text,
                             configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
+                        // The record of conversations keeps the user's own words (never what the PC played) and the reply,
+                        // written in the background after the reply. A pass wasn't said to Martlet, and glances never get here.
+                        if (!passed && this.history is { } historyRecord && historyRecord.Active(configured.Memory) &&
+                            (operation.Report ? "" : operation.PcAudio ? operation.UserWords : input.UserText) is { } recordedWords)
+                            historyRecord.Record(conversation, operation.Report ? HistoryInputKind.Report
+                                    : operation.Spoken || operation.Authorization.Microphone ? HistoryInputKind.Spoken : HistoryInputKind.Typed,
+                                recordedWords, turn.Content.Text,
+                                operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null);
                         if (operation.Sent is { } kept && configured.HostTarget() is null)
                             lastExchange = (kept, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text);
                         // The finished background work this reply carried is in the conversation now.
@@ -1460,16 +1506,33 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     // ---------- background work (think_longer) ----------
 
-    /// <summary>Martlet's own tools for one reply while Thinking longer is on: think_longer and cancel_thinking, always both, in
-    /// that order, with the Thinking longer prompt, so the start of every request stays the same.</summary>
-    private BuiltInTools BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured)
+    /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
+    /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
+    /// prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
+    /// off by default). Null when there are none.</summary>
+    private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
-        var settings = configured.ThinkLonger;
-        var definitions = ThinkLonger.Definitions(settings);
-        return new([
-            (definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)),
-            (definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call)))
-        ], ThinkLonger.Instructions(settings, configured.Prompts));
+        var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
+        string? guidance = null;
+        if (configured.OffersThinkLonger)
+        {
+            var settings = configured.ThinkLonger;
+            var definitions = ThinkLonger.Definitions(settings);
+            own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
+            own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
+            guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+        }
+        if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
+            own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
+        return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has).</summary>
+    private async ValueTask<ConversationToolResult> SearchConversationsAsync(TextToolCall call, Guid conversation, CancellationToken token)
+    {
+        var (result, outcome) = await history!.SearchAsync(call, conversation, token).ConfigureAwait(false);
+        tools?.Record("Martlet", PastConversations.ToolName, outcome, ConversationHistory.Preview(call.ArgumentsJson, 120), result.IsError);
+        return result;
     }
 
     /// <summary>think_longer: starts the background think and returns at once (never waits for it), telling the model to tell

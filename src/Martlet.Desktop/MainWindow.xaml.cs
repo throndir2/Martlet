@@ -27,6 +27,7 @@ public partial class MainWindow : ThemedWindow
     private readonly ISetupService? setupService;
     private readonly ICompanionSettingsService? companionService;
     private readonly DesktopMemoryService? memory;
+    private readonly DesktopConversationHistory? conversationHistory;
     private readonly LorebookStore? lorebooks;
     private readonly SmartHome smartHome;
     private readonly McpToolService mcpTools;
@@ -73,6 +74,7 @@ public partial class MainWindow : ThemedWindow
         setupService = store is null ? null : new SetupService(store, vault);
         companionService = store is null ? null : new CompanionSettingsService(store);
         memory = store is null ? null : new DesktopMemoryService(store);
+        conversationHistory = store is null ? null : new DesktopConversationHistory(store.DataDirectory);
         lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
         smartHome = new(store?.DataDirectory, vault);
         mcpTools = new(store?.DataDirectory);
@@ -98,7 +100,7 @@ public partial class MainWindow : ThemedWindow
                 tools: mcpTools, voices: localVoices, localListener: parakeet,
                 echoReducer: new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
                 pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
-                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor);
+                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }
         WireCharacterActions();
@@ -314,6 +316,14 @@ public partial class MainWindow : ThemedWindow
         finally { memoryWindowOpen = false; }
         QueueMemorySync();
         await RefreshAsync();
+    }
+
+    /// <summary>Companion › Memory › Open conversation history: the record of conversations on this PC, to read, search and delete.</summary>
+    private void History_Click()
+    {
+        if (conversationHistory is null || closing) return;
+        new ConversationHistoryWindow(conversationHistory) { Owner = this }.ShowDialog();
+        if (!closing && openTab == CompanionTab.Memory) RenderTab();
     }
 
     /// <summary>Opens the talk window beside Martlet (modeless, so Home, Companion and the rest stay usable while you talk), or

@@ -1935,12 +1935,16 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal ControlledCapture Capture { get; } = new();
     internal ControlledDevice Output { get; }
     internal DesktopMemoryService Memory { get; }
+    internal DesktopConversationHistory? History { get; }
+    internal McpToolService? ToolService { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
-        IPcAudioSourceFactory? pcAudio = null)
+        IPcAudioSourceFactory? pcAudio = null, bool history = false, bool tools = false)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
+        History = history ? new(DirectoryPath, Clock, TimeZoneInfo.Utc) : null;
+        ToolService = tools ? new(DirectoryPath, Clock) : null;
         Output = output ?? new();
         var vault = new WindowsCredentialStore(Native);
         Settings = new(new SetupService(Store, vault));
@@ -1953,7 +1957,7 @@ internal sealed class LiveFixture : IAsyncDisposable
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
             memory: Memory, voiceIdentity: voiceIdentity,
-            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock));
+            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -1962,9 +1966,10 @@ internal sealed class LiveFixture : IAsyncDisposable
         };
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
-        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null)
+        bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool history = false,
+        bool tools = false)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, history, tools);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -2076,6 +2081,8 @@ internal sealed class LiveFixture : IAsyncDisposable
         Capture.ReadBlock?.Set();
         Capture.DisposeBlock?.Set();
         await Controller.DisposeAsync();
+        if (ToolService is not null) await ToolService.DisposeAsync();
+        if (History is not null) await History.Idle;
         Memory.Dispose();
         if (System.IO.Directory.Exists(DirectoryPath)) System.IO.Directory.Delete(DirectoryPath, true);
     }

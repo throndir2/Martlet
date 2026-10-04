@@ -9,6 +9,9 @@ Configuration restore still forces memory OFF for review (like routes).
 When memory is ON, each explicit conversation turn recalls saved facts
 automatically, and after each completed reply the same Thinking model picks out
 lasting facts to save (see [Automatic recall and remembering](#automatic-recall-and-remembering)).
+Martlet also keeps a record of every conversation on this PC and brings back
+what was said when you mention an earlier conversation (see
+[Conversation history](#conversation-history)).
 Martlet remembers the same things on every computer of yours: facts travel
 through your paired hosts ([One memory on every computer](#one-memory-on-every-computer)),
 like the rest of Martlet ([CLUSTER](CLUSTER.md)), and each computer keeps them in
@@ -302,6 +305,97 @@ provider limiting requests or the memory folder being unusable); the same
 problem on later exchanges is only logged (`Remembering failed (<code>)`) until
 remembering works again.
 
+## Conversation history
+
+Facts are what Martlet distills; the **record of conversations** is what was
+actually said. While memory is ON and **Keep a record of my conversations**
+(Companion › Memory › Conversation history, on by default) is on, every
+finished exchange of a typed, push-to-talk or always-listening turn (what you
+typed or said, who said it when Martlet recognized a named voice, and Martlet's
+reply) is kept on this PC, as is a reply Martlet starts on its own to bring up
+finished background work. A conversation runs from the talk window opening, or
+**Refresh context**, until the exchanges kept in mind are cleared (Refresh
+context, pause, lock, closing the talk window). Not recorded: screen and camera
+glances, what this PC plays (only the user's own words of such a message), a
+`[pass]` (what always listening heard wasn't meant for Martlet), failed,
+refused or stopped replies, and anything while memory or the choice is off.
+Turning it off keeps what is already recorded until you delete it.
+
+**On disk.** The data folder's `conversations` folder holds one JSON Lines file
+per month (`history-2026-10.jsonl`, by UTC month), one line per exchange:
+`{"v":1,"id":…,"conversation":…,"at":…,"kind":"typed|spoken|report","speaker":…,"user":…,"reply":…}`.
+Each exchange is appended (and flushed to disk) in the background after its
+reply, one at a time, so the next reply never waits for the disk; exiting
+Martlet waits a moment for the last one. Earlier lines are never rewritten by
+appending; a line cut short by a crash is skipped when the record is read again
+and the next exchange starts on its own line. Text is kept up to 8,192
+characters of what you said and 16,384 of the reply (the reply's own bound),
+with control characters other than line breaks and tabs made spaces. Like the
+fact store it is plain local data in your profile: not encrypted, not synced to
+your other computers, not uploaded and not part of configuration backup.
+`conversation-history.json` beside it holds this PC's two choices.
+
+**Reading it.** The record is read once, in the background, when a
+conversation opens (or the history window or the Memory page needs it) and
+kept in memory with a lexical (BM25) index of what was said; nothing is
+embedded or sent anywhere. The newest 100,000 exchanges are indexed; older
+ones stay in their files. With 20,000 synthetic exchanges (7.3 MB) reading takes
+about half a second, once, and a search about 7 ms (`conversation_history_check`).
+
+**Bringing back what was said.** When your message refers to an earlier
+conversation (*do you remember…*, *remember when…*, *what did we talk about
+yesterday?*, *did I tell you about…*, *in our last conversation…*, or something
+said or talked about with a time such as *last week* or *3 days ago*; English
+phrasing), up to three matching exchanges of other conversations go in that
+message's notes (see [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
+between `[MARTLET_PAST_CONVERSATIONS]` labels, with today's date and each
+exchange's day and time (each side cut to 280 characters, brackets made
+parentheses so recorded text can't open or close a block), introduced by
+Companion › Prompts › *Past conversations*. The best matches for the message's
+own words come back (common words and words about remembering, talking or time
+left out; about half of the remaining words, at most three, must match, so one
+common word alone brings back nothing), within the time it names; with only a
+time (*what did we talk about yesterday?*) the latest exchanges of that time do.
+Asking Martlet to remember something (*remember to…*), not remembering
+something yourself (*I can't remember how…*) and asking to be told something
+(*tell me what happened yesterday*) don't count as a reference. An exchange
+already in the notes of a message the request carries isn't sent again, and the
+conversation
+going on never is (the request carries it). A message that doesn't refer to an
+earlier conversation gets nothing: its request is exactly what it was without
+the record, so replies keep their latency and their prompt cache. Recall reads
+only what is in memory: while the record is still being read, the message goes
+without. If the notes would make the request too large, they go first (then a
+picture). The desktop log says how many exchanges went and how long the search
+took (`Past conversations:`), never what.
+
+**Searching it on its own** (Companion › Memory › *Let Martlet search the
+record on its own*, off by default). On a Thinking route that does function
+calling, replies are then offered `search_conversations` (`query` and/or
+`when`: today, yesterday, 3 days ago, last week, a weekday or YYYY-MM-DD) after
+Martlet's other own tools, always worded the same. The model calls it when you
+bring up something from before; it returns at most six exchanges of other
+conversations with their dates (as data, never instructions) or says nothing
+was found and not to guess. It is off by default because its description (458
+bytes, about 153 estimated tokens) goes at the start of every request: providers
+cache it after the first reply of a conversation, but that first reply reads it
+too.
+
+**Seeing and deleting it.** Companion › Memory › **Open conversation history**
+lists the conversations, newest first, shows what was said in the one selected,
+searches everything said (matching exchanges marked ▶) and deletes one
+conversation or everything, each asked first (No by default). Deleting rewrites
+only that conversation's month files (through a temporary file and an atomic
+replace) or removes the files; facts remembered from a conversation stay in
+Memory until you delete them there. Deletion is not a secure wipe of old disk
+blocks.
+
+MCP: `conversation_history_status` (choices, what replies are offered and
+counts, never content) and `conversation_history_check` (the production record,
+recall and search on synthetic conversations); `HistoryStatus` and
+`HistoryWindowStatus` read as text and `OpenHistory` opens the window
+([MCP](MCP.md)).
+
 ## One memory on every computer
 
 What Martlet remembers is the same on all your computers, so whichever one is
@@ -402,6 +496,10 @@ All validation remains local; no remote workflow was added or run.
 
 ## Remaining gates
 
+- Decide whether the record of conversations should travel to your other
+  computers (it stays on the PC where each conversation happened) and whether
+  it, like facts, should be encrypted at rest; evaluate recall's reference
+  phrasing beyond English with real conversations.
 - Qualify the memory sync between real computers and real paired hosts, and
   decide whether facts should be encrypted end to end between desktops.
 - Design explicit backup/restore semantics and prove compatible restore and
