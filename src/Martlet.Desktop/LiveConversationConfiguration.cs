@@ -407,7 +407,8 @@ internal sealed class LiveConversationConfiguration
             ? "No companion persona is included until you save current settings."
             : "The selected persona, matching lorebooks and recent conversation may be included.");
         lines.Add(Memory is { Enabled: true }
-            ? "Memory may add saved facts and save new ones on this PC. You can edit or delete them in Memory."
+            ? "Memory may add saved facts and save new ones on this PC, and keeps a record of conversations unless you turn that " +
+              "off. You can edit or delete them in Memory."
             : "Memory is off.");
         lines.Add("Provider requests may use quota or cost money, even if stopped.");
         lines.Add("Stop, Esc, locking Windows or closing this window stops the current action.");

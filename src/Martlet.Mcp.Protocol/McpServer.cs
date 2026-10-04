@@ -627,6 +627,25 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "reasoning takes. Loopback only; reads no credentials.", new
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
+        }),
+        Tool("conversation_history_status", "Companion > Memory > Conversation history, from a data directory: whether memory is " +
+            "on, this PC's choices (conversation-history.json: keep a record of conversations, on by default; let Martlet search it " +
+            "on its own, off by default), whether exchanges are recorded and recalled when a message mentions an earlier " +
+            "conversation, whether replies are offered search_conversations (exactly as the Thinking model gets it, with its size " +
+            "in UTF-8 bytes and estimated tokens) and the Past conversations prompt, and what the record in the data folder's " +
+            "conversations folder holds: files, bytes, conversations, exchanges, unreadable lines and the oldest and newest times. " +
+            "Never what was said. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("conversation_history_check", "Rehearse the record of conversations with the production code (ConversationHistory and " +
+            "PastConversations) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
+            "cut short by a crash skipped after a restart, an ordinary message recalling nothing, \"Do you remember...\" and " +
+            "\"What did we talk about yesterday?\" bringing back the right exchanges (never the conversation going on), " +
+            "search_conversations by words and by time and its answers, deleting one conversation and everything, and reading " +
+            "bulkExchanges (1,000-100,000, default 20,000) exchanges with recall timings. Nothing leaves this PC.", new
+        {
+            bulkExchanges = new { type = "integer", minimum = 1_000, maximum = 100_000 }
         })
     ];
 
@@ -768,6 +787,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
+                "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
