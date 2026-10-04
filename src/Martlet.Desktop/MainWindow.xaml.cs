@@ -160,11 +160,13 @@ public partial class MainWindow : ThemedWindow
         InitializeNodeAgent();
         InitializeLogs();
         InitializeBackground();
+        InitializeTasks();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         StartAmbientMotion();
+        StartSimulatedTask();
         await StartRunningAsync();
     }
 

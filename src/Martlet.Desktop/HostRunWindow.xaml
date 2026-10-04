@@ -10,10 +10,21 @@
     <DockPanel Margin="24">
         <TextBlock x:Name="HeadingText" DockPanel.Dock="Top" Style="{DynamicResource SectionHeading}"/>
         <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="_Cancel" Click="Cancel_Click" MinWidth="100" IsCancel="True"
+            <!-- Hide (Esc, or the window's close button) only hides a running task: it keeps going in Background tasks.
+                 Cancel task asks first. Once it has finished, Hide becomes Close. -->
+            <Button x:Name="HideButton" DockPanel.Dock="Right" Content="_Hide" Click="Hide_Click" MinWidth="100" IsCancel="True"
+                    ToolTip="Hides this window. The task keeps running in Background tasks."
+                    AutomationProperties.AutomationId="HostRunHide"/>
+            <Button x:Name="CancelButton" DockPanel.Dock="Left" Content="Cancel _task..." Click="Cancel_Click" VerticalAlignment="Center"
+                    Margin="0,0,16,0" ToolTip="Stops this task. Martlet asks first."
                     AutomationProperties.AutomationId="HostRunCancel"/>
-            <TextBlock x:Name="StatusText" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0"
-                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunStatus"/>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="HostRunStatus"/>
+                <TextBlock x:Name="HideHint" Style="{DynamicResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
+                           Text="Hide keeps it running. Find it again in Background tasks in Martlet's main window."
+                           AutomationProperties.AutomationId="HostRunHideHint"/>
+            </StackPanel>
         </DockPanel>
         <Border x:Name="PairingPanel" DockPanel.Dock="Top" Visibility="Collapsed" Style="{DynamicResource CardStyle}" Margin="0,12,0,0"
                 AutomationProperties.AutomationId="HostRunPairing">

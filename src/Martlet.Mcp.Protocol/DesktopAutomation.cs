@@ -76,7 +76,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
         // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing, Fill in the words (F5AddVoiceFill
         // runs speech-to-text, which may send the recording to the Listening host) and Add voice need --allow-ui-effects.
-        "F5AddVoiceMore"
+        "F5AddVoiceMore",
+        // Background tasks (NavTasks): a run window's Hide only hides it while its task keeps running (and closes it once the
+        // task has finished), and Clear finished only drops finished tasks' kept output from the list; neither stops, sends or
+        // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
+        // so they need --allow-ui-effects.
+        "NavTasks", "HostRunHide", "TasksClear"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -98,7 +103,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
         // There is no Play, Show or Activate; its Rename and Delete change it on every computer, so they need --allow-ui-effects.
-        "Creation-"];
+        "Creation-",
+        // Background tasks: a task's Show or Show output ("TaskShow-3") only shows its run window again, or a finished task's
+        // kept output.
+        "TaskShow-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -319,7 +327,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // many and when), and the selected creation's kind line (kind, length, size, when and on which computer it was made),
         // where it is (this PC and which hosts hold it) and what to ask Martlet ("Ask Martlet to sing it."). Never a title, text,
         // voice or personality: those are the owner's own (CreationTitle and the rename box are never returned).
-        "CreationsNote", "CreationsEmpty", "CreationsSummary", "CreationsStatus", "CreationKind", "CreationSync", "CreationAsk"
+        "CreationsNote", "CreationsEmpty", "CreationsSummary", "CreationsStatus", "CreationKind", "CreationSync", "CreationAsk",
+        // Background tasks: how many run now and how many finished (TasksSummary), its empty state, the navigation rail's count
+        // of running tasks (NavTasksCount, shown only while some run), a run window's line on Hide (HostRunHideHint) and the
+        // question Cancel task asks first (the task's title, which is a run window's title).
+        "TasksSummary", "TasksEmpty", "NavTasksCount", "HostRunHideHint", "CancelTaskQuestion"
     };
     /// <summary>Job titles in the selected device's details ("DeviceComponent-job-Llm" reads "Thinking (conversation model)");
     /// whether each home or host-dashboard step is ticked ("StepState-service" reads "Host service: done") and its buttons'
@@ -389,7 +401,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ListenParakeetModel",
         // Creations: each creation's line in the list ("CreationState-3f2a9c1b7d04" reads "Song · 1:02 · 6.6 MB · made 10/3/2026
         // 9:41 PM on DESK-PC · on this PC, on 2 of 2 hosts"; never its title).
-        "CreationState-"];
+        "CreationState-",
+        // Background tasks: each task's title ("TaskTitle-3" reads "Set up gpu-pc", a run window's title), its line
+        // ("TaskState-3" reads "Running for 2 min. Waiting for Docker Desktop to start..." or "Done at 3:41 PM after 5 min.
+        // gpu-pc is ready.") and its buttons ("TaskShow-3" reads "Show: Set up gpu-pc" or "Show output: ...", "TaskCancel-3"
+        // "Cancel: Set up gpu-pc").
+        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

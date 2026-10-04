@@ -49,7 +49,7 @@ obvious next step at every stage, and a living map of the user's computers.
 ```text
 first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Home (what needs attention ─> ready)
                                 └── "Lend this PC to Martlet"     ──> Host dashboard (host service)
-Every mode: Home · Devices (map) · Companion* · Settings      (* companion mode only)
+Every mode: Home · Devices (map) · Companion* · Creations · Background tasks · Diagnostics · Settings      (* companion mode only)
 ```
 
 Each page answers one question, so no two pages do the same thing:
@@ -59,6 +59,7 @@ Each page answers one question, so no two pages do the same thing:
 | **Home** | Is anything wrong or missing, and can I talk to it? | No. It shows problems with their fixes and links to where each thing changes. |
 | **Companion** | How does Martlet think, sound, listen, look and remember? | Yes: the one place each of those choices is made. |
 | **Devices** | Which computer does what? | Machines and handing jobs between them. |
+| **Background tasks** | What is Martlet working on, and how did it go? | No. It lists long steps (setup, updates, pairing, downloads) running or finished this session, shows their window again and cancels them after asking. |
 | **Settings** | How does the app itself behave? | Appearance, this PC's role, updates, tools. |
 
 ### 1. Welcome tour (first launch)
@@ -214,8 +215,10 @@ to bottom: the **map**, the **selected device** with what it does, and
     *Forget this host*; *Prerequisites* for This PC. Install, remove, update
     and status run the same `martlet-host` engine on that computer the way
     Martlet reaches it (SSH with Docker, SSH native Ubuntu, or this PC's Docker
-    Desktop), in a Martlet run window with live output and *Cancel* (never a
-    console window); the owner's click is the confirmation. On this PC, roles
+    Desktop), in a Martlet run window with live output, *Hide* and *Cancel task*
+    (never a console window; see
+    [Run windows and Background tasks](#run-windows-and-background-tasks)); the
+    owner's click is the confirmation. On this PC, roles
     with a GPU-or-CPU choice preselect the suggestion from the graphics card's
     free memory. The desktop never gets a shell, Docker socket or admin rights
     on the host.
@@ -302,8 +305,8 @@ The long form became a four-step wizard with a step rail:
    that is already set up (straight to Pair).
 2. **Install**: only the fields that method needs, *Set up host* (*Add this
    computer* for SSH: connect, check Docker, set up, pair and read the machine
-   report in a run window with live output and *Cancel*), and the exact command
-   in a *Show the command* expander.
+   report in a run window with live output, *Hide* and *Cancel task*), and the
+   exact command in a *Show the command* expander.
 3. **Pair**: *Pair automatically* (*Pair over SSH* for SSH hosts) when Martlet
    can reach the host; otherwise (or as the alternative) the host's address and
    the short code it shows, then *Pair with host*. The command to run on the
@@ -518,6 +521,27 @@ Companion job tab, which opens it on the matching job. Consent and credential
 behavior did not change. The broader redesign
 (jobs, placement on hosts, audio separation and queued local model hosting) is
 in [COMPONENTS.md](COMPONENTS.md).
+
+### Run windows and Background tasks
+
+Long steps (setting up, updating or pairing a computer, adding or removing a
+role, downloads, Docker Desktop and Windows features) run in a *run window*:
+live output, a status line, *Hide* and *Cancel task...*. *Hide*, Esc and the
+window's close button only hide it while it runs, so a stray click never stops
+the work; *Cancel task...* sits apart on the left and always asks first (*Keep
+running* is the default). A question the run asks (a password, a role's
+choices) brings its window back with it, and a run outlives the window that
+started it. Once it ends, *Hide* becomes *Close*; a run that ends while hidden
+closes its window.
+
+**Background tasks** in the navigation rail (its count shows how many run now)
+lists every run since Martlet started, newest first, with how long it has run
+and its status, or when and how it ended. *Show* brings a running task's window
+back, *Show output* reopens a finished task's output (kept in memory, pairing
+codes hidden), *Cancel...* asks the same question as *Cancel task...*, and
+*Clear finished* drops the finished ones. Every run's output also stays in
+`host-runs.log` (Diagnostics). Exiting Martlet while a task runs names it
+(*<run> (in Background tasks)*) and asks first.
 
 ## Character palettes
 
