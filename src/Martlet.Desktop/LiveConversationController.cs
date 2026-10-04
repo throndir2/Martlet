@@ -6,6 +6,7 @@ using Martlet.Audio;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Creations;
 using Martlet.Core.Lorebooks;
 using Martlet.Core.Settings;
 using Martlet.Core.Singing;
@@ -342,6 +343,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private ConversationRuntime? songRuntime;
     private ICredentialAuthority? songAuthorization;
     private BackgroundThink? songThink;
+    // How the shared Creations library's perform_creation sings a song in this conversation.
+    private readonly IDisposable? songHandler;
 
     internal bool IsRunning => operations.IsRunning;
     /// <summary>A reply (or a comment on the screen) is running on the shared setup slot.</summary>
@@ -508,6 +511,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         jobs = new(this.clock);
         thinkCredentials = new(() => Volatile.Read(ref thinkAuthorization));
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
+        if (singing is not null)
+            songHandler = CreationRegistry.Shared.Handle(SongCreations.KindName, new CreationHandler(PerformCreationAsync));
         jobs.Changed += WriteJobsStatus;
         WriteJobsStatus();
     }
@@ -1526,7 +1531,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             var songs = SongTools.Definitions;
             tools.Add((songs[0], (call, token) => ValueTask.FromResult(SingSong(operation, configured, call))));
-            tools.Add((songs[1], (call, token) => ValueTask.FromResult(PlaySong(configured, call))));
+            tools.Add((songs[1], (call, token) => PlaySongAsync(configured, call, token)));
             tools.Add((songs[2], (call, token) => ValueTask.FromResult(StopSinging(call))));
             guidance = Join(guidance, SongTools.Instructions(configured.Prompts));
         }
@@ -1640,7 +1645,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         var label = SongTools.Label(arguments.About);
         if (!configured.ThinkLonger.On) return new(SongTools.Unavailable("the user turned background work off."), true);
         var (setup, unavailable) = singing?.Source?.Current() ?? (null, "singing isn't set up.");
-        if (setup is null || singing?.Library is not { } library)
+        if (setup is null || singing?.DataDirectory is not { } library)
         {
             tools?.Record(server, SongTools.SingName, "not started: singing unavailable", label, false);
             ErrorLog.Info($"Singing: a song wasn't started ({unavailable}).");
@@ -1671,7 +1676,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             };
         }
         var writing = configured.ThinkLonger.TimeLimit;
-        var start = jobs.Start(SongTools.Kind, label, (job, token) => MakeSongAsync(job, arguments, setup, library, writer, writing, token));
+        var author = new CreationAuthor
+        {
+            Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName, Voice = setup.VoiceId,
+            Persona = configured.Persona?.Name is { Length: > 0 } persona ? persona : null
+        };
+        var start = jobs.Start(SongTools.Kind, label, (job, token) => MakeSongAsync(job, arguments, setup, library, author, writer, writing, token));
         if (start.Job is not { } started)
         {
             tools?.Record(server, SongTools.SingName, "not started: " + start.Refusal, label, false);
@@ -1686,9 +1696,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
         return new(SongTools.Started(started, toldUser, writer is not null));
     }
 
-    // The song job: the singing computer is checked, the lyrics written (when none were given), the song made and kept.
-    private async Task<BackgroundJobOutcome> MakeSongAsync(BackgroundJob job, SingArguments arguments, SongSetup setup, SongLibrary library,
-        BackgroundThink? writer, TimeSpan writing, CancellationToken token)
+    // The song job: the singing computer is checked, the lyrics written (when none were given), the song made, its mouth timed
+    // to its vocals and the song kept as a creation (shared with every paired Martlet computer).
+    private async Task<BackgroundJobOutcome> MakeSongAsync(BackgroundJob job, SingArguments arguments, SongSetup setup, string library,
+        CreationAuthor author, BackgroundThink? writer, TimeSpan writing, CancellationToken token)
     {
         job.Report(BackgroundJobState.Running, "Checking the singing computer");
         var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
@@ -1724,15 +1735,28 @@ internal sealed class LiveConversationController : IAsyncDisposable
         try { result = await setup.Maker.GenerateAsync(request, new SongJobProgress(job), token).ConfigureAwait(false); }
         catch (SongException error) { return BackgroundJobOutcome.Failed(SongProblem(error)); }
         job.Report(BackgroundJobState.Running, "Timing the mouth to the singing");
-        var (mouth, words, estimated, timing) = await singing!.MouthAsync(result, null, token).ConfigureAwait(false);
+        var (mouth, words, estimated, timing) = await singing!.MouthAsync(result, token).ConfigureAwait(false);
         job.Report(BackgroundJobState.Running, "Saving the song");
-        var song = library.Save(result, written.Title, arguments.About, written.Lyrics, written.Style, clock.GetUtcNow(), words, estimated, mouth);
+        Creation creation;
+        try
+        {
+            creation = await CreationStore.AddAsync(library, SongCreations.Draft(result, written.Title, arguments.About, written.Lyrics,
+                written.Style, words, estimated, mouth, author), CreationRegistry.Shared, clock.GetUtcNow(), token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (CreationStore.IsFailure(error))
+        {
+            ErrorLog.Warn($"Singing: {job.Id} couldn't keep its song ({error.Message}).");
+            return BackgroundJobOutcome.Failed("there was no room to keep the song on this PC");
+        }
+        var (song, _, _, unreadable) = await SongCreations.LoadAsync(creation, CreationStore.Assets(library, creation), token).ConfigureAwait(false);
+        if (song is null) return BackgroundJobOutcome.Failed(unreadable ?? "the song couldn't be read back");
         singing.Made(song);
         ErrorLog.Info($"Singing: {song.Id} mouth track from {mouth.Note} ({mouth.Frames} frames): mouth opens {timing.MedianOffsetMs:+0;-0;0} ms " +
             $"from the vocal onsets (median; mean {timing.MeanAbsoluteOffsetMs:0} ms, 90% within {timing.P90AbsoluteOffsetMs:0} ms; " +
-            $"{timing.Matched} of {timing.Onsets} onsets).");
-        ErrorLog.Info($"Singing: {job.Id} made {song.Id} ({SongLibrary.Clock(TimeSpan.FromSeconds(song.DurationSeconds))}, " +
-            $"{song.Lines.Count} lines, {song.Generator} + {song.Converter}{(song.Fixture ? ", FIXTURE - NOT AI" : "")}) after " +
+            $"{timing.Matched} of {timing.Onsets} onsets; words {(estimated ? "spread over each line's singing" : "timed by " + result.WordTimingSource)}).");
+        ErrorLog.Info($"Singing: {job.Id} made {song.Id} ({SongClock.Of(TimeSpan.FromSeconds(song.DurationSeconds))}, " +
+            $"{song.Lines.Count} lines, {song.Generator} + {song.Converter}{(song.Fixture ? ", FIXTURE - NOT AI" : "")}; " +
+            $"{creation.Bytes / 1024} KiB kept as a creation) after " +
             $"{BackgroundJobs.Duration(job.Elapsed)}: " + string.Join(", ", result.StageTimings.Select(stage => $"{stage.Stage} {stage.Duration.TotalSeconds:0.0} s")) + ".");
         return BackgroundJobOutcome.Done(SongTools.Ready(song));
     }
@@ -1757,9 +1781,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>play_song: plays a finished song through Martlet's voice output from where the model chose, with a musical
-    /// lead-in anywhere but the top; returns at once.</summary>
-    private ConversationToolResult PlaySong(LiveConversationConfiguration configured, TextToolCall call)
+    /// <summary>play_song: plays a finished song (a song creation, which may have been made on another computer) through
+    /// Martlet's voice output from where the model chose, with a musical lead-in anywhere but the top; returns at once.</summary>
+    private async ValueTask<ConversationToolResult> PlaySongAsync(LiveConversationConfiguration configured, TextToolCall call,
+        CancellationToken token)
     {
         const string server = "Martlet";
         var (id, from, problem) = SongTools.ParsePlay(call.ArgumentsJson);
@@ -1768,23 +1793,37 @@ internal sealed class LiveConversationController : IAsyncDisposable
             tools?.Record(server, SongTools.PlayName, "invalid arguments", "", true);
             return new(problem, true);
         }
-        var library = singing?.Library;
-        if (library?.Find(id) is not { } song)
+        var directory = singing?.DataDirectory;
+        if (directory is null || SongCreations.Find(directory, id) is not { } creation)
         {
             tools?.Record(server, SongTools.PlayName, "no such song", "", true);
-            var kept = library?.List().Take(5).Select(s => $"{s.Id} (\"{s.Title}\")").ToArray() ?? [];
+            var kept = directory is null ? [] : SongCreations.List(directory).Take(5).Select(s => $"{s.Key} (\"{s.Title}\")").ToArray();
             return new(kept.Length == 0 ? $"There's no song {id}, and no finished songs yet."
                 : $"There's no song {id}. The newest songs are {string.Join(", ", kept)}.", true);
         }
+        var result = await PerformSongAsync(configured, creation, CreationStore.Assets(directory, creation), from, token).ConfigureAwait(false);
+        tools?.Record(server, SongTools.PlayName, result.IsError ? "not played" : "playing " + creation.Key, creation.Key, result.IsError);
+        return new(result.Text, result.IsError);
+    }
+
+    // Sings a song creation from where the model chose (play_song, or perform_creation's from).
+    private async ValueTask<CreationActionResult> PerformSongAsync(LiveConversationConfiguration? configured, Creation creation,
+        ICreationAssets assets, string? from, CancellationToken token)
+    {
+        if (singing is null || configured is null) return new("Martlet can't sing in this conversation.", true);
+        var (song, audio, mouth, missing) = await SongCreations.LoadAsync(creation, assets, token).ConfigureAwait(false);
+        if (song is null || audio is null) return new($"{missing} Say you'll sing it in a moment.", true);
         var speaking = ReplySpeaking();
-        var (player, trouble) = singing!.Play(song, from, configured.SpeechOutput(), ReplySpeaking);
-        if (player is null)
-        {
-            tools?.Record(server, SongTools.PlayName, "not played", song.Id, true);
-            return new(trouble ?? "It couldn't play.", true);
-        }
-        tools?.Record(server, SongTools.PlayName, $"playing {song.Id} from {player.Plan.Target.Describe}", song.Id, false);
-        return new(SongTools.Playing(song, player.Plan, speaking));
+        var (player, trouble) = singing.Play(song, audio, mouth, from, configured.SpeechOutput(), ReplySpeaking);
+        return player is null ? new(trouble ?? "It couldn't play.", true) : new(SongTools.Playing(song, player.Plan, speaking));
+    }
+
+    /// <summary>The song kind's handler for perform_creation: options {"from": ...} as play_song's.</summary>
+    private ValueTask<CreationActionResult> PerformCreationAsync(CreationAction action, CancellationToken token)
+    {
+        var from = action.Options.ValueKind == System.Text.Json.JsonValueKind.Object && action.Options.TryGetProperty("from", out var value) &&
+            value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
+        return PerformSongAsync(Configuration, action.Creation, action.Assets, from, token);
     }
 
     /// <summary>stop_singing: the song ends musically; the result says where and why (Martlet knows, so no note follows).</summary>
@@ -2795,6 +2834,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         DisposeThinkRuntimeAsync().Forget();
         DisposeCaptureRuntimeAsync().Forget();
         singing?.DisposeAsync().AsTask().Forget();
+        songHandler?.Dispose();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();

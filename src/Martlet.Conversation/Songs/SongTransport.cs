@@ -87,7 +87,7 @@ public sealed class SongMap
     /// <summary>Where <paramref name="time"/> is, in words: "verse line 4 of 12, 0:22 of 1:00".</summary>
     public string Describe(TimeSpan time)
     {
-        var clock = $"{SongLibrary.Clock(time)} of {SongLibrary.Clock(Duration)}";
+        var clock = $"{SongClock.Of(time)} of {SongClock.Of(Duration)}";
         return LineAt(time) is { } index
             ? $"{(Lines[index].Section.Length > 0 ? Lines[index].Section + " " : "")}line {index + 1} of {Lines.Count}, {clock}"
             : time < (Lines.Count > 0 ? Lines[0].Start : Duration) ? $"the intro, {clock}" : $"between lines, {clock}";
@@ -117,8 +117,8 @@ public sealed record SongStopRecord(string SongId, string Title, TimeSpan At, Ti
         var title = $"\"{Title}\" ({SongId})";
         if (Cause == SongStopCause.Ended) return $"You finished singing {title}. play_song with from=start sings it again.";
         var where = Line is { } line
-            ? $"at {SongLibrary.Clock(At)}, in {(Section is { Length: > 0 } ? Section + " " : "")}line {line + 1} of {Lines}, \"{Text}\""
-            : $"at {SongLibrary.Clock(At)}, {(NextLine is { } next ? $"before line {next + 1} of {Lines}" : "after the last line")}";
+            ? $"at {SongClock.Of(At)}, in {(Section is { Length: > 0 } ? Section + " " : "")}line {line + 1} of {Lines}, \"{Text}\""
+            : $"at {SongClock.Of(At)}, {(NextLine is { } next ? $"before line {next + 1} of {Lines}" : "after the last line")}";
         var why = Cause switch
         {
             SongStopCause.UserWords => Words is { Length: > 0 } words ? $"because the user said: \"{words}\"" : "because the user asked you to",
@@ -259,13 +259,13 @@ public static class SongTransport
         }
         if (Time(text) is { } time)
         {
-            if (time >= map.Duration) return (null, $"The song is only {SongLibrary.Clock(map.Duration)} long.");
+            if (time >= map.Duration) return (null, $"The song is only {SongClock.Of(map.Duration)} long.");
             if (time <= TimeSpan.FromMilliseconds(50)) return (new(null, null, "from the top", Top: true), null);
             // A line starting soon after that moment is where it goes; otherwise that moment itself, on its nearest downbeat.
             if (map.NextLine(time) is { } next && map.Lines[next].Start - time <= map.Bar)
-                return (new(next, null, $"line {next + 1} at {SongLibrary.Clock(map.Lines[next].Start)}"), null);
+                return (new(next, null, $"line {next + 1} at {SongClock.Of(map.Lines[next].Start)}"), null);
             var downbeat = map.DownbeatAtOrBefore(time + map.Bar / 2);
-            return (new(null, downbeat, $"{SongLibrary.Clock(downbeat)}"), null);
+            return (new(null, downbeat, $"{SongClock.Of(downbeat)}"), null);
         }
         var sections = map.Sections;
         var name = text.Replace("first ", "", StringComparison.Ordinal);

@@ -25,7 +25,7 @@ public sealed class SongTests
         Assert.Equal(6, SongTransport.Resolve(map, "second verse", null).Target!.Line);
         Assert.Equal(2, SongTransport.Resolve(map, "line:3", null).Target!.Line);
         Assert.NotNull(SongTransport.Resolve(map, "bridge", null).Problem);
-        var stopped = new SongStopRecord("song-abcdef", "T", TimeSpan.FromSeconds(8.5), map.Duration, 2, "verse", "Three", null, 10,
+        var stopped = new SongStopRecord("3fa2c19b0d71", "T", TimeSpan.FromSeconds(8.5), map.Duration, 2, "verse", "Three", null, 10,
             SongStopCause.UserWords, "stop singing");
         Assert.Equal(2, SongTransport.Resolve(map, "resume", stopped).Target!.Line);
         Assert.Equal(0, SongTransport.Resolve(map, "resume section", stopped).Target!.Line);
@@ -104,21 +104,32 @@ public sealed class SongTests
     }
 
     [Fact]
-    public void LibraryKeepsSongsWithTheirTracksAndMap()
+    public async Task SongsAreKeptAsCreationsWithTheirTracksMapAndMouth()
     {
         var directory = Path.Combine(Path.GetTempPath(), "martlet-songs-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var (_, _, result) = Fixture();
-            var library = new SongLibrary(directory);
-            var song = library.Save(result, "Biscuit", "a cat", Lyrics, "pop", DateTimeOffset.UtcNow);
-            Assert.True(SongLibrary.IsId(song.Id));
-            var found = library.Find(song.Id)!;
-            Assert.Equal(10, found.Lines.Count);
-            Assert.Equal(result.Downbeats.Count, found.Downbeats.Count);
-            var audio = library.LoadAudio(found)!;
-            Assert.Equal(result.Vocals.Frames, audio.Frames);
-            Assert.Contains(song.Id, SongTools.Ready(found));
+            var (map, audio, result) = Fixture();
+            var envelope = new VocalEnvelope(audio.Vocals, audio.SampleRate);
+            var words = SongMouthTrack.Spread(map, envelope);
+            var mouth = SongMouthTrack.FromVisemes(map, envelope, words, estimated: true);
+            var registry = new Martlet.Core.Creations.CreationRegistry();
+            registry.Register(SongCreations.Kind);
+            var author = new Martlet.Core.Creations.CreationAuthor { Device = "desktop-test", Voice = "fixture-voice" };
+            var creation = await Martlet.Core.Creations.CreationStore.AddAsync(directory,
+                SongCreations.Draft(result, "Biscuit", "a cat", Lyrics, "pop", words, true, mouth, author), registry, DateTimeOffset.UtcNow,
+                CancellationToken.None);
+            var (song, loaded, track, problem) = await SongCreations.LoadAsync(directory, creation.Key, CancellationToken.None);
+            Assert.Null(problem);
+            Assert.Equal(creation.Key, song!.Id);
+            Assert.Equal(10, song.Lines.Count);
+            Assert.Equal(words.Count, song.Words.Count);
+            Assert.Equal(result.Downbeats.Count, song.Downbeats.Count);
+            Assert.Equal(audio.Vocals, loaded!.Vocals);
+            Assert.Equal(audio.Backing, loaded.Backing);
+            Assert.Equal(SongMouthSource.Visemes, track!.Source);
+            Assert.Contains(song.Id, SongTools.Ready(song));
+            Assert.Equal(["Verse", "Chorus", "Verse", "Chorus"], SongCreations.Sections(Lyrics).Select(section => section.Heading));
         }
         finally
         {

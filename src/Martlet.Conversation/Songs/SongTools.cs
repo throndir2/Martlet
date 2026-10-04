@@ -35,7 +35,7 @@ public static class SongTools
         """{"type":"object","properties":{"about":{"type":"string","description":"What it's about, with the user's details."},"lyrics":{"type":"string","description":"Only if the user gave the words: lines with [verse]/[chorus] tags."},"style":{"type":"string","description":"Optional genre and mood."},"duration":{"type":"integer","minimum":15,"maximum":180,"description":"Seconds, default 60."}},"required":["about"],"additionalProperties":false}""";
 
     public const string PlayParametersJson =
-        """{"type":"object","properties":{"song_id":{"type":"string","description":"From the note, like song-1a2b3c."},"from":{"type":"string","description":"start, resume, a section, line:N or a time like 1:05."}},"required":["song_id"],"additionalProperties":false}""";
+        """{"type":"object","properties":{"song_id":{"type":"string","description":"From the note, like 3fa2c19b0d71."},"from":{"type":"string","description":"start, resume, a section, line:N or a time like 1:05."}},"required":["song_id"],"additionalProperties":false}""";
 
     public const string StopParametersJson =
         """{"type":"object","properties":{"reason":{"type":"string"}},"additionalProperties":false}""";
@@ -86,7 +86,7 @@ public static class SongTools
         var arguments = Object(argumentsJson);
         var id = Read(arguments, "song_id");
         if (arguments is null || string.IsNullOrWhiteSpace(id))
-            return (null, null, "Pass the song's ID, like {\"song_id\": \"song-1a2b3c\", \"from\": \"start\"}.");
+            return (null, null, "Pass the song's ID, like {\"song_id\": \"3fa2c19b0d71\", \"from\": \"start\"}.");
         var from = Read(arguments, "from");
         return (id.Trim().ToLowerInvariant(), string.IsNullOrWhiteSpace(from) ? null : Clean(from.Length > 40 ? from[..40] : from), null);
     }
@@ -202,7 +202,7 @@ public static class SongTools
     public static string Ready(StoredSong song)
     {
         var text = new StringBuilder();
-        text.Append(CultureInfo.InvariantCulture, $"Song ready: {song.Id}, \"{song.Title}\", {SongLibrary.Clock(TimeSpan.FromSeconds(song.DurationSeconds))} long");
+        text.Append(CultureInfo.InvariantCulture, $"Song ready: {song.Id}, \"{song.Title}\", {SongClock.Of(TimeSpan.FromSeconds(song.DurationSeconds))} long");
         if (song.Bpm is { } bpm) text.Append(CultureInfo.InvariantCulture, $", {Math.Round(bpm)} BPM");
         if (song.Fixture) text.Append(" (a FIXTURE test tone, NOT AI music)");
         text.Append(".\nMap:");
@@ -215,7 +215,7 @@ public static class SongTools
                 section = line.Section;
                 text.Append("\n[").Append(section.Length > 0 ? section : "song").Append(']');
             }
-            text.Append(CultureInfo.InvariantCulture, $"\n{SongLibrary.Clock(TimeSpan.FromSeconds(line.Start))} line {i + 1}: {line.Text}");
+            text.Append(CultureInfo.InvariantCulture, $"\n{SongClock.Of(TimeSpan.FromSeconds(line.Start))} line {i + 1}: {line.Text}");
         }
         text.Append("\nOffer it to the user and ask if they want to hear it; play it with play_song (song_id ").Append(song.Id)
             .Append(") only once they say yes.");

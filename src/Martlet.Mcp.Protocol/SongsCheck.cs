@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Martlet.Audio;
 using Martlet.Conversation;
 using Martlet.Core.Audio;
+using Martlet.Core.Creations;
 using Martlet.Core.Settings;
 using Martlet.Core.Singing;
 
@@ -31,22 +32,26 @@ internal static class SongsCheck
     {
         var loaded = await new SettingsStore(dataDirectory).LoadAsync(cancellation);
         var thinkLonger = ThinkLongerSettings.Of(loaded.Settings?.Generation);
-        var songs = SongLibrary.In(dataDirectory).List();
+        var songs = SongCreations.List(dataDirectory);
         return new
         {
             backgroundWork = thinkLonger.On,
-            library = new
+            creations = new
             {
-                count = songs.Count, kept = SongLibrary.Kept,
-                songs = songs.Select(song => new
+                count = songs.Count,
+                songs = songs.Select(song =>
                 {
-                    id = song.Id, durationSeconds = song.DurationSeconds, lines = song.Lines.Count,
-                    sections = song.Lines.Select(line => line.Section).Where(section => section.Length > 0).Distinct().ToArray(),
-                    bpm = song.Bpm, beatsPerBar = song.BeatsPerBar, beats = song.Beats.Count, downbeats = song.Downbeats.Count,
-                    titleCharacters = song.Title.Length, lyricsCharacters = song.Lyrics.Length, generator = song.Generator,
-                    converter = song.Converter, quality = song.Quality, voiceMatch = song.VoiceMatch, fixture = song.Fixture,
-                    words = song.Words.Count, wordsEstimated = song.WordsEstimated, mouthSource = song.MouthSource, mouthNote = song.MouthNote,
-                    createdAt = song.CreatedAt
+                    var metadata = SongCreations.Metadata(song);
+                    return new
+                    {
+                        id = song.Key, durationSeconds = song.Duration?.TotalSeconds, lines = metadata?.Lines, words = metadata?.Words,
+                        wordsEstimated = metadata?.WordsEstimated, wordTimingSource = metadata?.WordTimingSource, bpm = metadata?.Bpm,
+                        titleCharacters = song.Title?.Length, lyricsCharacters = song.Text?.Length, generator = metadata?.Generator,
+                        converter = metadata?.Converter, quality = metadata?.Quality, voiceMatch = metadata?.VoiceMatch, fixture = metadata?.Fixture,
+                        mouthSource = metadata?.MouthSource, mouthNote = metadata?.MouthNote,
+                        assets = song.Assets?.Select(asset => new { name = asset.Name, mediaType = asset.MediaType, bytes = asset.Bytes }).ToArray(),
+                        here = CreationStore.IsComplete(dataDirectory, song), createdBy = song.CreatedBy?.Computer, createdAt = song.CreatedAt
+                    };
                 }).ToArray()
             },
             desktop = Status(dataDirectory),
@@ -85,12 +90,14 @@ internal static class SongsCheck
     {
         StoredSong song;
         SongAudio audio;
+        SongMouthTrack? stored = null;
         if (songId is not null)
         {
             if (dataDirectory is null) throw new ArgumentException("songId needs the dataDirectory it is stored in.");
-            var library = SongLibrary.In(dataDirectory);
-            song = library.Find(songId) ?? throw new ArgumentException($"There's no song '{songId}' in that data directory.");
-            audio = library.LoadAudio(song) ?? throw new ArgumentException($"The song '{songId}' couldn't be read.");
+            var (found, sound, mouth, problem) = await SongCreations.LoadAsync(dataDirectory, songId, cancellation);
+            song = found ?? throw new ArgumentException(problem ?? $"There's no song '{songId}' in that data directory.");
+            audio = sound!;
+            stored = mouth;
         }
         else (song, audio) = Fixture();
         var map = song.Map();
@@ -101,7 +108,6 @@ internal static class SongsCheck
         var vamp = Vamp(map, audio, envelope);
         var duck = Duck(map, audio, envelope);
         var played = await PlayedAsync(song, map, audio, cancellation);
-        var stored = songId is not null && dataDirectory is not null ? SongLibrary.In(dataDirectory).LoadMouth(song) : null;
         var lipSync = await LipSyncAsync(song, map, audio, envelope, stored, cancellation);
         return new
         {
@@ -167,10 +173,14 @@ internal static class SongsCheck
         var vocalsOnly = new SongAudio(new short[audio.Backing.Length], audio.Vocals);
         var output = new FixtureOutput(4);
         var sent = new List<(long Output, double Level)>();
+        // The pump runs without pausing here, so what is heard (and the mouth for it) moves on in steps of about a millisecond.
         await using (var player = new SongPlayer(song, map, vocalsOnly, plan, output, new OutputSelection(OutputPolicy.DefaultAtStart), () => false,
-            pumpWait: TimeSpan.FromMilliseconds(1), mouth: mouth, words: spread))
+            pumpWait: TimeSpan.Zero, mouth: mouth, words: spread))
         {
-            player.Played += (at, _, level) => { lock (sent) sent.Add((at, level)); };
+            player.Played += (at, _, level) =>
+            {
+                lock (sent) if (sent.Count == 0 || at - sent[^1].Output >= Rate / 1000) sent.Add((at, level));
+            };
             player.Start();
             var watch = Stopwatch.StartNew();
             while (player.Active && player.Position < plan.Onset + TimeSpan.FromSeconds(8) && watch.Elapsed < TimeSpan.FromSeconds(20))
@@ -231,7 +241,7 @@ internal static class SongsCheck
         var result = FixtureSongMaker.Compose(request);
         var song = new StoredSong
         {
-            Id = "song-f17e00", Title = "Morning Light (fixture)", Lyrics = FixtureLyrics, Style = request.Style, VoiceId = request.VoiceId,
+            Id = "f17e00f17e00", Title = "Morning Light (fixture)", Lyrics = FixtureLyrics, Style = request.Style, VoiceId = request.VoiceId,
             DurationSeconds = result.Duration.TotalSeconds, Bpm = result.Bpm, BeatsPerBar = result.BeatsPerBar,
             Beats = [.. result.Beats.Select(b => b.TotalSeconds)], Downbeats = [.. result.Downbeats.Select(b => b.TotalSeconds)],
             Lines = [.. result.LyricTimestamps.Select(l => new StoredSongLine(l.Start.TotalSeconds, l.End?.TotalSeconds, l.Text, l.Section))],

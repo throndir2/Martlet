@@ -614,7 +614,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("song_playback_check", "Run Martlet's production song playback headlessly (SongTransport, SongMixer and SongPlayer " +
             "pumping a fixture output ten times faster than real time; nothing is played aloud) on the FIXTURE - NOT AI tone song, " +
-            "or on a stored song (songId with its dataDirectory), and measure the transitions in the audio it produced: where " +
+            "or on a song creation (songId: its key, with its dataDirectory), and measure the transitions in the audio it produced: where " +
             "play_song's from points (start, a section, line:N, a time, misses); the resume lead-in (entry downbeat, 1 or 2 bars, " +
             "equal-power fade-in gain at its start, middle and end, vocals silent until just before the line); the band vamping " +
             "twice while Martlet talks before the vocals come in; ducking (-12 dB); and a full run: sung from the top, stopped " +
@@ -622,7 +622,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "when the output went silent), resumed from that line with its lead-in, and stopped with Esc (a 300 ms fade).", new
         {
             dataDirectory = new { type = "string" },
-            songId = new { type = "string", maxLength = 21 }
+            songId = new { type = "string", maxLength = 32 }
         })
     ];
 

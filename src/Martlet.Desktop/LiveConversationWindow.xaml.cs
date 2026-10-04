@@ -612,7 +612,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         if (playing is { } player)
         {
-            var at = $"{SongLibrary.Clock(player.Position)} of {SongLibrary.Clock(player.Map.Duration)}";
+            var at = $"{SongClock.Of(player.Position)} of {SongClock.Of(player.Map.Duration)}";
             var line = player.Line is { } index
                 ? $" · {(player.Map.Lines[index].Section is { Length: > 0 } section ? section + " " : "")}line {index + 1} of {player.Map.Lines.Count}" : "";
             return player.State switch
@@ -621,7 +621,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 SongPlaybackState.LeadIn => $"Starting {player.Song.Id} {player.Plan.Target.Describe}: " +
                     (player.Plan.Top ? "the intro" : $"{(player.Plan.LeadInBars == 1 ? "a bar" : $"{player.Plan.LeadInBars} bars")} of the band first") +
                     (player.Mixer.Vamps > 0 ? $", waiting for Martlet to finish talking ({player.Mixer.Vamps})" : "") + $" · {at}.",
-                SongPlaybackState.Stopping => $"Stopping {player.Song.Id} at {SongLibrary.Clock(player.Record?.At ?? player.Position)}: " +
+                SongPlaybackState.Stopping => $"Stopping {player.Song.Id} at {SongClock.Of(player.Record?.At ?? player.Position)}: " +
                     (player.Mixer.Stopping?.Musical == true ? "finishing the word, then the band rings out on the beat." : "fading out."),
                 _ => $"Singing {player.Song.Id} · {at}{line}" + (player.Mixer.Ducked ? " · turned down while Martlet talks." : ".")
             };
@@ -640,10 +640,10 @@ public partial class LiveConversationWindow : ThemedWindow
                 SongStopCause.Failed => "it couldn't play on this PC",
                 _ => "another song started"
             };
-            return $"Stopped {song.Id} at {SongLibrary.Clock(stopped.At)} ({where}): {why}." +
+            return $"Stopped {song.Id} at {SongClock.Of(stopped.At)} ({where}): {why}." +
                 (stopped.Ended ? "" : " Ask Martlet to pick up where it left off.");
         }
-        return $"Song {song.Id} is ready ({SongLibrary.Clock(TimeSpan.FromSeconds(song.DurationSeconds))}, {song.Lines.Count} lines). " +
+        return $"Song {song.Id} is ready ({SongClock.Of(TimeSpan.FromSeconds(song.DurationSeconds))}, {song.Lines.Count} lines). " +
             "Martlet will offer it.";
     }
 

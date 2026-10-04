@@ -109,20 +109,23 @@ internal sealed class ConversationSinging : IAsyncDisposable
         this.face = face;
         this.analysis = analysis;
         this.clock = clock ?? TimeProvider.System;
-        Library = dataDirectory is null ? null : SongLibrary.In(dataDirectory);
     }
+
+    /// <summary>The data directory songs are kept in (as creations), or null where they can't be.</summary>
+    internal string? DataDirectory => dataDirectory;
 
     /// <summary>The mouth track and sung words for a song just made, from its vocals stem (never the mix): Audio2Face run once
     /// over the vocals when one is reachable, otherwise visemes timed from the sung words (the song maker's, or the words of each
     /// line spread over its singing), otherwise the vocals' loudness; and how well it follows the vocal onsets.</summary>
     internal async Task<(SongMouthTrack Mouth, IReadOnlyList<SongWordTime> Words, bool Estimated, SongMouthTiming Timing)> MouthAsync(
-        SongResult result, IReadOnlyList<SongWordTime>? given, CancellationToken token)
+        SongResult result, CancellationToken token)
     {
         var vocals = SongAudio.Mono(result.Vocals);
         var envelope = new VocalEnvelope(vocals, result.Vocals.SampleRate);
         var map = SongMap.Of(result);
-        var estimated = given is not { Count: > 0 };
-        var words = estimated ? SongMouthTrack.Spread(map, envelope) : given!;
+        IReadOnlyList<SongWordTime> given = [.. result.Words.Select(word => new SongWordTime(word.Start, word.End, word.Text))];
+        var estimated = given.Count == 0;
+        var words = estimated ? SongMouthTrack.Spread(map, envelope) : given;
         SongMouthTrack? track = null;
         if (analysis is not null && await analysis(vocals, result.Vocals.SampleRate, token).ConfigureAwait(false) is { Faces.Count: > 0 } faces)
             track = SongMouthTrack.FromFrames(faces.Faces, map.Duration, faces.Where);
@@ -131,19 +134,18 @@ internal sealed class ConversationSinging : IAsyncDisposable
     }
 
     internal ISongSource? Source { get; }
-    internal SongLibrary? Library { get; }
     /// <summary>Raised on any thread when a song starts, its heard line changes or it stops.</summary>
     internal event Action? Changed;
 
     /// <summary>Singing is set up and songs can be kept: the song tools are offered.</summary>
-    internal bool Offered => Source?.SetUp == true && Library is not null;
+    internal bool Offered => Source?.SetUp == true && dataDirectory is not null;
 
     internal SongPlayer? Player { get { lock (gate) return player; } }
     /// <summary>The song shown in the talk window: the one playing or last played, or the newest made since Martlet started.</summary>
     internal StoredSong? Current { get { lock (gate) return current; } }
     private StoredSong? current;
 
-    /// <summary>A song job finished and kept <paramref name="song"/>: it's the one the talk window offers to play.</summary>
+    /// <summary>A song job finished and kept <paramref name="song"/>: the talk window shows it until Martlet sings it.</summary>
     internal void Made(StoredSong song)
     {
         lock (gate) if (player is not { Active: true }) current = song;
@@ -153,13 +155,13 @@ internal sealed class ConversationSinging : IAsyncDisposable
     internal bool Playing { get { lock (gate) return player is { Active: true }; } }
     internal SongStopRecord? Last { get { lock (gate) return last; } }
 
-    /// <summary>Plays <paramref name="song"/> from <paramref name="from"/> through <paramref name="output"/>: a song already playing
-    /// stops at once. <paramref name="talking"/> says when Martlet speaks (the song ducks, and a lead-in vamps).</summary>
-    internal (SongPlayer? Player, string? Problem) Play(StoredSong song, string? from, OutputSelection output, Func<bool> talking)
+    /// <summary>Plays <paramref name="song"/> (with its <paramref name="audio"/> and <paramref name="mouth"/> track) from
+    /// <paramref name="from"/> through <paramref name="output"/>: a song already playing stops at once. <paramref name="talking"/>
+    /// says when Martlet speaks (the song ducks, and a lead-in vamps).</summary>
+    internal (SongPlayer? Player, string? Problem) Play(StoredSong song, SongAudio audio, SongMouthTrack? mouth, string? from, OutputSelection output,
+        Func<bool> talking)
     {
-        if (devices is null || Library is null) return (null, "Martlet can't play sound here.");
-        var audio = Library.LoadAudio(song);
-        if (audio is null) return (null, $"The song {song.Id} couldn't be read on this PC.");
+        if (devices is null) return (null, "Martlet can't play sound here.");
         var map = song.Map();
         SongStopRecord? previous;
         lock (gate) previous = last?.SongId == song.Id ? last : null;
@@ -167,8 +169,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
         if (target is null) return (null, problem);
         var plan = SongTransport.PlanStart(map, target);
         SongPlayer? stopping;
-        var started = new SongPlayer(song, map, audio, plan, devices, output, talking, captions,
-            mouth: Library.LoadMouth(song), words: song.WordTimes());
+        var started = new SongPlayer(song, map, audio, plan, devices, output, talking, captions, mouth: mouth, words: song.WordTimes());
         lock (gate)
         {
             stopping = player;
@@ -203,7 +204,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
             pendingNote = cause == SongStopCause.Martlet ? null : record.Note();
         }
         var plan = current!.Mixer.Stopping;
-        ErrorLog.Info($"Singing: {record.SongId} stopped at {SongLibrary.Clock(record.At)} ({cause}" +
+        ErrorLog.Info($"Singing: {record.SongId} stopped at {SongClock.Of(record.At)} ({cause}" +
             (plan is null ? ")." : $", {(plan.Musical ? "musical" : "quick")} stop, silent {plan.AfterRequest.TotalSeconds:0.00} s after the request)."));
         OnChanged();
         return record;
@@ -376,7 +377,7 @@ internal sealed class ConversationSinging : IAsyncDisposable
         }
         return JsonSerializer.Serialize(new
         {
-            updatedAt = clock.GetUtcNow(), offered = Offered, songs = Library?.List().Count ?? 0,
+            updatedAt = clock.GetUtcNow(), offered = Offered, songs = dataDirectory is null ? 0 : SongCreations.List(dataDirectory).Count,
             output = devices is SilentSongOutput ? "silent fixture output (MARTLET_SINGING_FIXTURE)" : devices is null ? "none" : "Martlet's voice output",
             playing = current is null ? null : Playing(current),
             lastStop = stopped is null ? null : new
