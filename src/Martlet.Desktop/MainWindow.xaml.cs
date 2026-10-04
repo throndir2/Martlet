@@ -93,13 +93,17 @@ public partial class MainWindow : ThemedWindow
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
         {
-            var microphones = new WasapiCaptureDeviceFactory();
-            conversation = new(setupOperations, setupService, vault, microphones, new WasapiDeviceFactory(),
+            // MARTLET_SIMULATE_MICROPHONE / MARTLET_SIMULATE_SPEAKERS: fixture devices for MCP verification (never real audio).
+            var simulated = SimulatedAudio.Microphone();
+            ICaptureDeviceFactory microphones = simulated is null ? new WasapiCaptureDeviceFactory() : simulated;
+            IPlaybackDeviceFactory speakers = SimulatedAudio.Speakers() is { } silent ? silent : new WasapiDeviceFactory();
+            conversation = new(setupOperations, setupService, vault, microphones, speakers,
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
                 tools: mcpTools, voices: localVoices, localListener: parakeet,
-                echoReducer: new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
-                pcAudio: new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
+                echoReducer: simulated is not null ? null
+                    : new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
+                pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
         }

@@ -232,9 +232,34 @@ public partial class MainWindow
         var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities);
         var status = hears || !Talk.HearVoice ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        return Card([Heading("Hear how you say it"), hear, status, .. HearingTestControls(thinking),
-            Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
+        return Card([Heading("Hear how you say it"), hear, status, .. hears && Talk.HearVoice ? VoicePathControls() : [],
+            .. HearingTestControls(thinking), Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
     }
+
+    /// <summary>Companion › Listening › When Thinking can hear you, shown while Thinking hears your voice: your voice straight to
+    /// Thinking (the default; speech-to-text runs beside the reply for the talk window, history and memory) or the transcript
+    /// first, then both.</summary>
+    private UIElement[] VoicePathControls()
+    {
+        var label = new TextBlock { Text = "When Thinking can hear you", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 6) };
+        var straight = Choice("TalkVoicePath", "Send my voice straight to Thinking (fastest)",
+            "The reply starts the moment you stop talking. Your words are still transcribed in the background for the talk window, " +
+            "the conversation history and memory.", !Talk.TranscribeFirst, "TalkVoicePathStraight");
+        var first = Choice("TalkVoicePath", "Transcribe first, then send both",
+            "Martlet waits for speech-to-text, then sends Thinking your recording with the transcript.", Talk.TranscribeFirst,
+            "TalkVoicePathTranscribeFirst");
+        straight.Checked += (_, _) => { if (Talk.TranscribeFirst) SaveTalk(Talk with { TranscribeFirst = false }, render: true); };
+        first.Checked += (_, _) => { if (!Talk.TranscribeFirst) SaveTalk(Talk with { TranscribeFirst = true }, render: true); };
+        var status = Note(VoicePathStatus(Talk), new Thickness(0, 0, 0, 6));
+        AutomationProperties.SetAutomationId(status, "TalkVoicePathStatus");
+        return [label, straight, first, status];
+    }
+
+    internal static string VoicePathStatus(TalkPreferences prefs) => prefs.TranscribeFirst
+        ? "Transcribe first: each reply waits for speech-to-text, then Thinking gets your recording and the transcript."
+        : "Straight to Thinking: Thinking gets your recording alone and answers right away. What you said appears in the talk " +
+          "window once it is transcribed. A message with what this PC plays, one said over Martlet while it speaks, or one for " +
+          "Home Assistant's Assist is transcribed first.";
 
     // ---------- Voice: speak replies ----------
 

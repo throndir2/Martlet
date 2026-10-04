@@ -707,8 +707,9 @@ video, music or game playing on the PC.
 ## Thinking models that hear and see
 
 With Companion › Listening › **Let Thinking hear my voice** on, the recording of
-what you said goes to the Thinking model with the transcript, when the model
-hears: as an `input_audio` WAV part, so only an OpenAI-compatible (Chat
+what you said goes to the Thinking model, when the model hears: straight away on
+its own, or with the transcript ([Straight to Thinking](#straight-to-thinking)),
+as an `input_audio` WAV part, so only an OpenAI-compatible (Chat
 Completions) endpoint takes it. **Ollama on this PC** does too, for models it
 says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). A paired host's
 Ollama and OpenAI's own route don't. Vision works the same way with pictures.
@@ -739,6 +740,89 @@ once. A conversation uses it at once. The Listening and Vision pages say what is
 known and where it came from (*This Thinking model can hear (Ollama on this PC
 says so, checked 3 Oct)*). MCP `model_ability_check` and `hearing_check` show it
 ([MCP](MCP.md)).
+
+### Straight to Thinking
+
+While Thinking hears and **Let Thinking hear my voice** is on, Companion ›
+Listening asks **When Thinking can hear you** (shared with your other computers
+like the other listening choices):
+
+- **Send my voice straight to Thinking (fastest)**, the default. Once always
+  listening hears you stop (the end-of-speech pause), the reply's request starts
+  at once with your recording alone: an `input_audio` part beside a short
+  stand-in text, *(spoken: listen to the recording)*, never a transcript, and
+  the picture of what vision watches when that goes along. Companion › Prompts ›
+  *Your recorded voice, without a transcript* tells Thinking to listen to it.
+- **Transcribe first, then send both**: the reply waits for speech-to-text, then
+  sends the recording with the transcript (*Your recorded voice*), as before.
+
+On the straight path speech-to-text still runs, beside the reply and never in
+front of it. Where Listening and Thinking both run on this PC (Parakeet and
+Ollama), it starts once the reply's first audio plays (its first words without
+a voice, or when it ends; at most 4 seconds later), so the two never compete for
+the processor before you hear Martlet; elsewhere it starts at once. Its words:
+
+- **Talk window.** Your bubble shows *(your voice; transcribing…)* until the
+  words come, then the words. One the word check wouldn't count as words keeps
+  them with a note (*Word check: not words. Thinking heard it anyway.*): Thinking
+  already heard it and decided, often with `[pass]`.
+- **The conversation.** The exchange is kept as soon as the reply ends and the
+  words replace the stand-in once they come, with the notes the message went
+  with, so later requests carry the transcript (never the recording, which is
+  dropped after its turn as before) and the after-reply request, which continues
+  the reply's own request on a model on this PC, already has them. A reply that
+  starts while an earlier message's words are still on their way waits for them
+  for at most 1.5 seconds, then carries that message as the stand-in until they
+  come. Words speech-to-text couldn't make keep the message as *(spoken;
+  speech-to-text couldn't transcribe it)*.
+- **The record of conversations, memory and learning names** get the words like
+  any spoken message, once they come; words the word check wouldn't count go to
+  the record marked (*(not words) mm*) and are never remembered.
+
+What needs your words before the request does without them on the straight
+path: memory recall goes by the conversation so far and who is speaking (the
+speaker's and the newest facts), lorebook entries trigger on the conversation
+but not yet on this message, a message isn't checked for a mention of an
+earlier conversation (search_conversations still works), and Home Assistant is
+reached only through its tools. Tools, finished background work and vision go
+with the message as always. The checks that need no words still apply before
+anything is sent: the voice-activity gate (an utterance shorter than 0.45 s, or
+mostly what the speakers played, is let go), Voice ID and who is speaking (the
+reply waits for voice recognition, at most 3 s, as Thinking is told who
+talks). Always listening's instructions let Thinking stay quiet with `[pass]`,
+which works on the reply's text as before. Barge-in keeps its own quick check.
+
+Some messages are transcribed first anyway: push-to-talk, a message with what
+the PC played (`[PC audio]` lines are transcripts, context rather than you, so
+your words go beside them as words), something said over Martlet while it
+speaks that the quick check didn't decide (its words decide whether it stops
+Martlet), a message for Home Assistant's Assist (Smart home control on without
+model tools), and any message once the model refused a recording.
+
+**A refused recording.** If the model refuses the recording, the reply waits
+for the words and asks again with them (the Thinking fallback gets the words
+too), and Martlet remembers that the model can't hear, so later messages are
+transcribed first with the transcript only. Without a model that hears, nothing
+changes.
+
+**Prompt cache.** Every request starts the same way: the instructions are the
+same from one straight message to the next, and earlier messages go exactly as
+the conversation keeps them. Ollama on this PC reuses its cache only for a
+request that continues a whole earlier one, and a request that carried a
+recording is never continued by the next reply (its recording isn't sent
+again), on either path. The after-reply request (remembering and learning
+names), which continues the reply's request with the words in place of the
+recording, keeps the conversation in the cache for the next reply; [Voice
+latency](VOICE_LATENCY.md#straight-to-thinking-measured) has the measured share.
+
+**Logs.** Each reply with your recording logs *Voice path: straight to Thinking
+(your recording alone, no transcript)...* or *Voice path: transcribe first
+(your recording with the transcript).*; a straight one then logs *Background
+transcript ready N ms after the reply started (speech-to-text M ms).* and
+*Straight to Thinking: the transcript replaced the recording in the
+conversation, went to the record of conversations and to remembering.* (never
+the words). MCP `hearing_check` reads them as `lastTurn`; `straight_voice_check`
+rehearses the path headless ([MCP](MCP.md)).
 
 ## Hearing what this PC plays
 

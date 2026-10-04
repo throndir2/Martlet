@@ -420,14 +420,37 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("hearing_check", "Whether the Thinking model can hear the user's recording (the saved Thinking route in a data " +
             "directory, or modelId): the model's name-based hearing, the route's (the production decision: only Chat Completions routes, " +
             "Ollama on this PC included, then what model-abilities.json says, then the name), savedAbility (what Martlet found out about " +
-            "the saved model and where) and whether Companion > Listening > Let Thinking hear " +
-            "my voice is on. Then rehearses the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned " +
+            "the saved model and where), whether Companion > Listening > Let Thinking hear my voice is on, voicePath (When Thinking can " +
+            "hear you: straight, the default, or transcribeFirst), straightApplies (always listening sends the recording alone right " +
+            "away) and lastTurn: which way the newest spoken reply went, from the desktop log's Voice path line, with the background " +
+            "transcript's timing (transcriptReadyAfterReplyStartMs, speechToTextMs) and where its words went (never the words). Then " +
+            "rehearses the production Chat Completions adapter against " +
+            "a fixture endpoint on 127.0.0.1 (canned " +
             "reply, NOT AI) with a synthesized speech-like clip (never microphone audio, nothing played): the clip goes as an " +
             "input_audio WAV part beside the transcript, is refused without its own audio permission before any request, and is " +
             "left out of a transcript-only retry. Loopback only; reads no credentials.", new
         {
             dataDirectory = new { type = "string" },
             modelId = new { type = "string", maxLength = 128 }
+        }),
+        Tool("straight_voice_check", "Companion > Listening > When Thinking can hear you > Send my voice straight to Thinking, " +
+            "rehearsed headless with the production conversation runtime and Chat Completions adapter, the desktop's own SpokenWords " +
+            "(the words of a recording sent alone) and ConversationContextBuffer (what each next request carries). Three utterances " +
+            "synthesized by a Windows voice (never a microphone, nothing played) go one turn at a time as the recording alone: each " +
+            "request must carry an input_audio WAV and only the stand-in text, never the transcript. Speech-to-text runs beside the " +
+            "reply (Parakeet on this PC when downloaded in speechDirectory with the sherpa runtime from martletDirectory, else a " +
+            "fixture transcriber), its words replace the recording in the conversation and every next request carries them (no " +
+            "recordings or stand-ins in history). Then the same utterances transcribed first (the transcript, then both), and a model " +
+            "that refuses the recording: the reply waits for the words and asks again with them. Returns per turn the first-words " +
+            "time, when the transcript was ready after the reply started, speech-to-text time and the prompt cache (input and cached " +
+            "tokens), and the medians of both ways. With live=true Thinking is Ollama on this PC (model, default gemma4:e2b, must " +
+            "hear) through a loopback relay that records each request; otherwise a fixture endpoint (canned replies, NOT AI). " +
+            "Nothing leaves this PC; reads no credentials.", new
+        {
+            live = new { type = "boolean" },
+            model = new { type = "string", maxLength = 128 },
+            martletDirectory = new { type = "string" },
+            speechDirectory = new { type = "string" }
         }),
         Tool("model_ability_check", "What Thinking models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
@@ -771,6 +794,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
+                "straight_voice_check" => await StraightVoiceCheck.RunAsync(MartletDirectory(arguments), SpeechDirectory(arguments),
+                    OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"), cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),

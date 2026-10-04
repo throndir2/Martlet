@@ -260,6 +260,31 @@ public sealed class ConversationTurn
     private sealed record RoundResult(RoundEnd End, string Text, IReadOnlyList<TextToolCall> Calls,
         ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null);
 
+    // The words of a message sent as the user's recording alone, once speech-to-text running beside the reply has them.
+    private string? spokenWords;
+
+    // The input without its recording: with the transcript it already carries, or, for a recording sent alone, with its words
+    // (waiting, within the reply's own time, for speech-to-text to finish). Null when those words never came.
+    private async Task<BoundedTextInput?> WithoutRecordingAsync(BoundedTextInput input)
+    {
+        if (input.Audio is null) return input;
+        if (request.SpokenWords is not { } words) return input.WithoutAudio();
+        if (spokenWords is null)
+        {
+            try
+            {
+                var heard = await words(stop.Token).WaitAsync(whole.Remaining > TimeSpan.Zero ? whole.Remaining : TimeSpan.Zero, Clock,
+                    stop.Token).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(heard)) return null;
+                spokenWords = heard.Trim();
+            }
+            catch (TimeoutException) { return null; }
+            lock (Sync) CheckActive();
+        }
+        try { return input.WithTranscript(spokenWords); }
+        catch (ContractException) { return null; }
+    }
+
     // One reply may take several requests: each tool round sends the calls and their results back to the model, until it
     // answers in text. Every request is separately authorized; text from every round is shown and spoken in order.
     private async Task GenerateAsync()
@@ -278,9 +303,20 @@ public sealed class ConversationTurn
                 int before;
                 lock (Sync) before = text.Length;
                 RoundResult result;
+                // Without the recording (a model that refused it, or the fallback): the transcript, or the words that stand in
+                // for a recording sent alone once speech-to-text has them.
+                var sent = input;
+                if (fallback || audioDropped)
+                {
+                    if (await WithoutRecordingAsync(input).ConfigureAwait(false) is not { } withoutRecording)
+                    {
+                        Fail(ConversationFailure.ProviderFailed, audioDropped ? ProviderFailureCode.RequestRejected : null, null, ProviderRole.Llm);
+                        return;
+                    }
+                    sent = withoutRecording;
+                }
                 try
                 {
-                    var sent = fallback || audioDropped ? input.WithoutAudio() : input;
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
                         attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped).ConfigureAwait(false);
                 }

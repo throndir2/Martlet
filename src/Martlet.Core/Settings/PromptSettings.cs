@@ -27,6 +27,7 @@ public static class PromptCatalog
     public const string CharacterActions = "character_actions";
     public const string Voices = "voices";
     public const string HeardVoice = "heard_voice";
+    public const string HeardVoiceOnly = "heard_voice_only";
     public const string Lorebook = "lorebook";
     public const string MemoryRecall = "memory_recall";
     public const string PastConversations = "past_conversations";
@@ -227,6 +228,13 @@ public static class PromptCatalog
             "The user's message was spoken. Their recording is attached along with an automatic transcript, which can contain " +
             "mistakes: listen to the recording for exactly what was said and how it was said (tone, emotion, emphasis, laughter, " +
             "hesitation), and trust it over the transcript. Answer in text as usual, without mentioning the recording or transcript.",
+            []),
+        new(HeardVoiceOnly, ConversationGroup, "Your recorded voice, without a transcript",
+            "Added to replies when your recording goes straight to Thinking with no transcript (Companion › Listening › When Thinking " +
+            "can hear you › Send my voice straight to Thinking). Earlier spoken messages appear as their transcripts.",
+            "The user's message was spoken. Their recording is attached with no transcript (the text beside it only marks it): listen " +
+            "to it for what they said and how they said it (tone, emotion, emphasis, laughter, hesitation), and answer that. Answer in " +
+            "text as usual, without mentioning the recording.",
             []),
         new(Tools, ConversationGroup, "Tools", "Added when a reply is offered tools: MCP servers', Martlet's own (think_longer, and " +
             "search_conversations when Companion › Memory lets Martlet search past conversations) and the terminal (Companion › Tools).",

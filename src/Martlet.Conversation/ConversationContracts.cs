@@ -82,13 +82,16 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 // through the runtime's CharacterCueFeed, timed with the sentence they were written in. SpeechBreaks are the persona's stops:
 // where the spoken reply may break between pieces and which short endings join the piece before them (the desktop always
 // passes the persona's, SpeechBreaks.Default included); null breaks at every sentence end and never joins pieces, so each
-// sentence goes to the voice as soon as it ends.
+// sentence goes to the voice as soon as it ends. SpokenWords: the input's message is the user's recording alone (sent straight
+// to a Thinking model that hears, with no transcript); it gives the transcript once speech-to-text has it (null when it can't),
+// so a request without the recording (a model that refused it, or the Thinking fallback) gets the words instead.
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
     HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
     GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null,
-    bool imageOptional = false, IReadOnlyList<string>? characterTags = null, SpeechBreaks? speechBreaks = null)
+    bool imageOptional = false, IReadOnlyList<string>? characterTags = null, SpeechBreaks? speechBreaks = null,
+    Func<CancellationToken, Task<string?>>? spokenWords = null)
 {
     [JsonIgnore] public BoundedTextInput Input { get; } = input;
     public TextModelSelection Model { get; } = model;
@@ -106,6 +109,7 @@ public sealed class ConversationRequest(
     public bool ImageOptional { get; } = imageOptional;
     [JsonIgnore] public IReadOnlyList<string> CharacterTags { get; } = characterTags ?? [];
     [JsonIgnore] public SpeechBreaks? SpeechBreaks { get; } = speechBreaks;
+    [JsonIgnore] public Func<CancellationToken, Task<string?>>? SpokenWords { get; } = spokenWords;
 
     internal void Validate()
     {
@@ -158,6 +162,7 @@ public sealed class ConversationRequest(
         ContractRules.Require(Input.Utf8Bytes <= TextLimits.MaxInputBytes &&
             Input.InputTokenReservation <= TextLimits.MaxInputTokens &&
             Input.History.Count <= TextLimits.MaxHistoryMessages, "Text input exceeds the selected limits.");
+        ContractRules.Require(SpokenWords is null || Input.Audio is not null, "Spoken words stand in for a recording the input carries.");
         if (Speech is { } voice)
         {
             ArgumentNullException.ThrowIfNull(voice.Selection);

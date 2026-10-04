@@ -97,9 +97,15 @@ public partial class LiveConversationWindow : ThemedWindow
     private readonly List<HeardEntry> heardQueue = [];
     private List<HeardEntry>? answering;
     private int restarts;
-    // WhileYouTalked: a line the PC played that was heard while the microphone was still hearing or transcribing you.
+    // WhileYouTalked: a line the PC played that was heard while the microphone was still hearing or transcribing you. Words: it
+    // goes straight to Thinking as the Recording alone, and its words (Text stays empty) come from speech-to-text beside the reply.
     private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
-        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false, ReplyTimeline? Timeline = null);
+        BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false, ReplyTimeline? Timeline = null,
+        SpokenWords? Words = null);
+    // Bubbles of what went straight to Thinking, waiting for their words (FollowWords).
+    private readonly List<(SpokenWords Words, ChatMessage Bubble)> awaitingWords = [];
+    /// <summary>What a bubble shows for what went straight to Thinking until its words come.</summary>
+    internal const string StraightPlaceholder = "(your voice; transcribing…)";
     // Hearing what this PC plays (Companion › Listening › Hear what this PC plays): a second listener beside the microphone
     // while always listening runs. What it hears waits here, goes with the next thing you say, and on its own is offered to
     // Martlet at most every PcPace (or once the PC goes quiet), so a video never floods Thinking or interrupts you.
@@ -321,7 +327,7 @@ public partial class LiveConversationWindow : ThemedWindow
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
-            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck)
+            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -625,7 +631,8 @@ public partial class LiveConversationWindow : ThemedWindow
             Sensitivity = preferences.Sensitivity,
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
-        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck);
+        preferences.VoiceId, preferences.HearVoice, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
+        Straight: handsFree && preferences.HearVoice && !preferences.TranscribeFirst);
 
     // ---------- always listening ----------
 
@@ -711,8 +718,30 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Collect()
     {
         CollectMic();
+        FollowWords();
         CollectPc();
         ReleasePc();
+    }
+
+    // The words of what went straight to Thinking, as speech-to-text beside the reply finishes them: they replace the bubble's
+    // placeholder (marked when the word check wouldn't count them; Thinking already heard it), and count as what you said lately
+    // so your own voice played back by the PC is left out.
+    private void FollowWords()
+    {
+        if (awaitingWords.Count == 0) return;
+        var now = clock.GetTimestamp();
+        foreach (var (words, bubble) in awaitingWords.Where(waiting => waiting.Words.IsReady).ToArray())
+        {
+            awaitingWords.Remove((words, bubble));
+            if (words.Text is { Length: > 0 } text)
+            {
+                bubble.Text = text;
+                if (words.Ignored is { } ignored) bubble.AddNote($"Word check: {ignored.Reason}. Thinking heard it anyway.");
+                saidLately.Add((text, now));
+                LeaveOutYourVoice();
+            }
+            else bubble.Text = "(your voice; speech-to-text couldn't transcribe it)";
+        }
     }
 
     private void CollectMic()
@@ -790,8 +819,8 @@ public partial class LiveConversationWindow : ThemedWindow
     internal static TimeSpan PcHoldWait => TimeSpan.FromSeconds(8);
 
     // The microphone is still on something that may turn out to be the words the PC just played back: you are talking, or what
-    // you said is being transcribed or waits to be taken.
-    private bool MicBusy => listener is { Hearing: true } or { Transcribing: > 0 } or { HasResults: true };
+    // you said is being transcribed (beside a reply, for what went straight to Thinking) or waits to be taken.
+    private bool MicBusy => listener is { Hearing: true } or { Transcribing: > 0 } or { HasResults: true } || awaitingWords.Count > 0;
 
     // What the PC played while you talked goes on once the microphone has your words (or it waited PcHoldWait): your own voice
     // played back is left out, the rest shows as the PC's in the order it was heard. A line let go while you still talk is
@@ -865,14 +894,27 @@ public partial class LiveConversationWindow : ThemedWindow
             ShowIgnored(ignored.Describe(speech.Text));
             return;
         }
+        if (speech.Interrupt is { } stop) heardInterrupt = (stop, speech.SpeechStartedAt);
+        var label = speech.Voices?.Speaker?.Voice is { } voice ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)";
+        // Straight to Thinking: the recording goes on its own and its words fill the bubble once speech-to-text has them.
+        if (speech.Words is { } words && speech.Recording is not null)
+        {
+            var waiting = Add(ChatRole.User, StraightPlaceholder, label);
+            lastHeard = clock.GetTimestamp();
+            activityAt = lastHeard;
+            reportHeld = false;
+            heardQueue.Add(new("", null, speech.Voices, waiting, speech.Recording, At: lastHeard, Timeline: speech.Timeline, Words: words));
+            awaitingWords.Add((words, waiting));
+            notice = null;
+            pacer?.NoteConversation();
+            return;
+        }
         if (speech.Text?.Trim() is not { Length: > 0 } text)
         {
             notice = ListenOutcome(status, controller.Configuration) ?? notice;
             return;
         }
-        if (speech.Interrupt is { } stop) heardInterrupt = (stop, speech.SpeechStartedAt);
-        var bubble = Add(ChatRole.User, text, speech.Voices?.Speaker?.Voice is { } voice
-            ? $"{voice.DisplayName}{(voice.Owner ? " (you)" : "")} (spoken)" : "You (spoken)");
+        var bubble = Add(ChatRole.User, text, label);
         lastHeard = clock.GetTimestamp();
         activityAt = lastHeard;
         reportHeld = false;
@@ -998,7 +1040,9 @@ public partial class LiveConversationWindow : ThemedWindow
         if (pcHeld.Count > 0) return false;
         if (heardQueue.Count > 0)
         {
-            if (Unfinished(heardQueue[^1].Text) && clock.GetElapsedTime(lastHeard) < UnfinishedPause) return false;
+            // What went straight to Thinking has no words yet to sound unfinished.
+            if (heardQueue[^1].Words is null && Unfinished(heardQueue[^1].Text) && clock.GetElapsedTime(lastHeard) < UnfinishedPause)
+                return false;
         }
         else if (!PcDue()) return false;
         var batch = new List<HeardEntry>();
@@ -1009,7 +1053,24 @@ public partial class LiveConversationWindow : ThemedWindow
             if (length > MaximumMessage && batch.Count > 0) break;
             batch.Insert(0, heardQueue[i]);
         }
-        foreach (var skipped in heardQueue.Take(heardQueue.Count - batch.Count)) skipped.Bubble.AddNote("Not answered.");
+        // Every utterance's recording together, or none when one is missing or they run too long: never half of what was said.
+        var recordings = batch.Select(entry => entry.Recording).ToArray();
+        var joined = preferences.HearVoice && batch.Count > 0 && recordings.All(r => r is not null)
+            ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap, TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds))
+            : null;
+        // Straight to Thinking only when everything said went that way and nothing the PC played goes with it; otherwise what went
+        // straight waits for its words and goes as words (transcribed first), like the rest.
+        var straight = joined is not null && playingQueue.Count == 0 && batch.All(entry => entry.Words is not null);
+        if (!straight)
+        {
+            // Its words are needed now: transcribe what went straight without waiting for a reply.
+            foreach (var entry in batch) entry.Words?.Release();
+            if (batch.Any(entry => entry.Words is { IsReady: false })) return false;
+            batch = [.. batch.Where(entry => entry.Words is null || entry.Words is { Text.Length: > 0, Ignored: null })
+                .Select(entry => entry.Words is { } words ? entry with { Text = words.Text!, Confidence = words.Confidence, Words = null } : entry)];
+            length = batch.Count == 0 ? -1 : batch.Sum(entry => entry.Text.Length + 1) - 1;
+        }
+        foreach (var skipped in heardQueue.Take(heardQueue.Count - recordings.Length)) skipped.Bubble.AddNote("Not answered.");
         heardQueue.Clear();
         // The newest of what the PC played that fits beside your own words.
         var playing = new List<HeardEntry>();
@@ -1026,15 +1087,17 @@ public partial class LiveConversationWindow : ThemedWindow
         var everything = batch.Concat(playing).OrderBy(entry => entry.At).ToList();
         try
         {
-            // Every utterance's recording together, or none when one is missing or they run too long: never half of what was said.
             // What the PC played has no recording, so a message with it goes as words only.
-            var recordings = batch.Select(entry => entry.Recording).ToArray();
-            var recording = preferences.HearVoice && playing.Count == 0 && recordings.All(r => r is not null)
-                ? BoundedWaveAudio.Join(recordings.Select(r => r!).ToArray(), HeardGap,
-                    TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
+            var recording = straight ? joined
+                : preferences.HearVoice && playing.Count == 0 && batch.Count > 0 && batch.All(entry => entry.Recording is not null)
+                    ? BoundedWaveAudio.Join(batch.Select(entry => entry.Recording!).ToArray(), HeardGap,
+                        TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
             // The reply's wait counts from when you last stopped talking (a copy, so a restarted reply counts from there again).
             var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
-            owned = playing.Count == 0
+            owned = straight
+                ? controller.Start(null, Voice, microphone: false, approved: true, spoken: true, heard: batch[^1].Voices,
+                    recording: recording, seen: SeenNow(), timeline: timeline, words: [.. batch.Select(entry => entry.Words!)])
+                : playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
                     seen: SeenNow(), timeline: timeline)
@@ -1176,8 +1239,11 @@ public partial class LiveConversationWindow : ThemedWindow
             : ReferenceEquals(shown, done) ? heard ?? (typed is { } sent && ReferenceEquals(sent.Operation, done) ? sent.Bubble : null) : null;
         if (!continued && done.VoiceSent && asked is { } said)
         {
-            if (done.Turn?.Snapshot.AudioRejected == true) said.AddNote("Thinking couldn't take your recording, so it got the transcript.");
-            else if (done.Turn?.Snapshot.State == ConversationState.Completed) said.AddNote("Thinking heard your voice.");
+            if (done.Turn?.Snapshot.AudioRejected == true)
+                said.AddNote(done.Straight ? "Thinking couldn't take your recording, so it got your words once they were transcribed."
+                    : "Thinking couldn't take your recording, so it got the transcript.");
+            else if (done.Turn?.Snapshot.State == ConversationState.Completed)
+                said.AddNote(done.Straight ? "Thinking heard your voice straight away." : "Thinking heard your voice.");
         }
         // Whether the reply saw the picture of what vision watches that went with your message.
         if (!continued)
