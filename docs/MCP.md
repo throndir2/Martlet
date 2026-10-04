@@ -957,9 +957,10 @@ to ... didn't finish* followed by the installer log's last lines), and
 `foreground` (launch the desktop with `-DesktopArguments '--after-update'`).
 Steps `resume: ...` check the note Martlet leaves itself as it closes to install
 (`updates\resume.txt`, `AppUpdateResume`), so the restarted Martlet shows the
-character and starts listening again: it is read once
+character and starts listening and watching again: it is read once
 (`picks-up-character-and-listening-once`), carries only what was on
-(`only-what-was-on`), leaves nothing when nothing was on
+(`only-what-was-on`, `watching-alone`), still reads a note from a Martlet that
+didn't save watching yet (`reads-note-without-watching`), leaves nothing when nothing was on
 (`nothing-on-leaves-no-note`) and is ignored after 15 minutes, when you started
 Martlet yourself rather than the update (`stale-note-ignored`).
 
@@ -971,9 +972,9 @@ transcribed, a modal question, or work exiting would cut short; then
 `AppUpdateStatus` reads *Martlet x.y.z is downloaded and installs as soon as
 Martlet isn't busy. Waiting: <what>.* and the next one-minute tick tries again.
 Installing logs *Installing Martlet x.y.z automatically, with no installer
-window. Martlet closes and restarts into it[, showing the character and
-listening again].*, and the restarted Martlet logs *Martlet restarted after its
-update and is showing the character [and listening] again, as before the
+window. Martlet closes and restarts into it[, showing the character, listening
+and watching again].* (only what was on), and the restarted Martlet logs *Martlet restarted after its
+update and is showing the character[, listening and watching] again, as before the
 update.* To exercise this without GitHub or a real install, set
 `MARTLET_SIMULATE_APP_UPDATE` to a version newer than the build (for example
 `9.9.9`) before launching the desktop (FIXTURE): checks find that version
@@ -1394,6 +1395,35 @@ refused, none without `thinkingSteps`, and with `refuseThinking` the reply
 asked once more without it (`sentControl` `[true, false]`,
 `reasoningRejected`) and still completed; before this, a refused Off failed
 the reply (or handed it to the Thinking fallback when one was set).
+
+With `chattiness` the reply is offered the chattiness tags the desktop offers
+while [Martlet decides how chatty it is](SCREEN_COMMENTARY.md#martlet-decides-how-chatty-it-is)
+(`ConversationRequest.ControlTags`). `chattiness` returns `offered`, `found`
+(the tags the reply wrote, in order, from `ConversationTurn.Controls`),
+`switchesTo` (the level the last one picks) and `hidden`; `ok` also needs every
+tag out of `reply.text`, `voice.pieces` and the captions, and `reply.fullText`
+compares with the served text without its tags. For example
+`{"voiceFailure":"none","chattiness":true,"reply":"Sure, I will keep it down. Tell me if you need me. [chattiness: quiet]"}`
+returned `switchesTo` *quiet*, the two sentences as the only pieces, and the
+same `firstWordsMs` (about 2 ms) and `firstAudioMs` (340-470 ms) as the reply
+without its tag: a tag at the end never holds back the first words.
+
+`chattiness_status` reads Companion › Vision › **How often it comments** (the
+same choice as Listening › Watch along) from a data directory's
+`talk-preferences.json` (optional absolute `dataDirectory`, default the current
+user's): `choice` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*), `saved`
+and `source` (`saved` or `default`), `martletDecides`, `visionOn` and
+`hearPcOn` (replies are told about Martlet decides only while one of them is
+on), `startsAt` (*normal*), `tags` (every spelling a reply switches with) and
+`prompts` (`state` of settings.json, `decides`: Companion › Prompts ›
+*Chattiness: Martlet decides* exactly as it is sent, and `notes`: *Chattiness
+right now* for each level). Its `rehearsal` sends sample replies (or `reply`,
+up to 1,024 characters of one line) through the production speech segmenter
+and chat stripper with those tags offered: `spoken`, `shown`, `silent` (the
+shown text is `[pass]`), `tags` and `switchesTo`. The level a running
+conversation picked shows in the talk window's `LiveChattiness` line and in
+`logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
+Martlet decides).* It reads no credentials and contacts nothing.
 
 ### Latency
 
@@ -2569,13 +2599,24 @@ needs `--allow-ui-effects`) and `HomeListeningStatus` (the listening
 indicator: *Not listening*, *Getting ready to listen…*, *Listening. Just start
 talking.*, *Hearing you…*, *Martlet is replying…*, *Martlet is speaking…*,
 *Paused…* or why it can't listen, such as *Set up Thinking in Companion, then
-come back to talk.*). While Martlet listens or watches, the talk window's close
+come back to talk.*), Home's `HomeWatch` (*Start watching* / *Stop watching*,
+shown while vision is on in Companion; it runs the conversation hidden and
+starts screen or camera capture, so it needs `--allow-ui-effects`; Stop watching
+only stops it) and `HomeWatchingStatus` (the watching indicator: *Not
+watching*, *Getting ready to watch…*, *Watching your active window.* (or *your
+whole screen*, a camera), *Taking a look…*, *Paused…* or why Martlet can't see,
+such as *Choose a camera in Companion › Vision.*). Listening and watching are
+separate: neither button starts or stops the other, and opening the talk window
+or turning vision on in Companion starts neither. While Martlet listens or watches, the talk window's close
 button only hides it (`ui_snapshot` stops listing *Talk with Martlet*;
 `OpenLiveConversation` shows it again),
-`LiveVision` (*Watching*, *Looking*, *Vision paused* or *Can't see*, with when
+`LiveVision` (the talk window's *Start watching* / *Stop watching* button, or
+*Can't see* with the reason; its value starts with the state: *Not watching*,
+*Watching*, *Looking* while a look is with the model, or *Can't see*, then when
 it last checked the screen; it checks every 3 s, and with the whole screen it
 also says it looks right away at pop-up notifications and flashing taskbar
-buttons), `LiveVisionStatus` (while
+buttons; clicking it to start captures the screen or camera, so it needs
+`--allow-ui-effects`), `LiveVisionStatus` (while
 vision is on: what it sees, for example *Watching the window behind Martlet*
 or *Watching your whole screen (2 monitors).*, then the last look's outcome or
 why it is holding off, what wanted your attention (*Last look 10:17 PM (a
@@ -2688,7 +2729,8 @@ and the test run's output says so.
 The talk window is modeless: `ui_snapshot`'s `windowStates` lists each window
 with `enabled` (false while a modal dialog such as Audio setup blocks it), and
 the main window stays enabled while the talk window is open. Opening the talk
-window never opens the microphone; `LiveMic` does with always listening on. For
+window never opens the microphone or looks at the screen; `LiveMic` does the
+first with always listening on, `LiveVision` the second with vision on. For
 verification, save a fixed microphone that does not exist in the disposable
 data directory, so listening starts after `LiveMic`,
 fails without capturing real audio and shows *Mic unavailable* while it keeps
@@ -2732,7 +2774,18 @@ voice.*, *On. <another output> is in use too (a virtual cable there can carry
 your own voice), so Martlet hears only what plays on <your output> and stops
 hearing it while it speaks.*, or why it doesn't apply: push-to-talk, echo
 reduction off, or Martlet's voice can't be left out; the card reads which
-outputs are in use, never their sound); `pc_audio_check` reads the same choice. With it on
+outputs are in use, never their sound); `pc_audio_check` reads the same choice.
+The card also has `TalkPcChattiness`, the same choice as Vision's
+`VisionChattiness` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*; returned,
+and `ui_select` saves `talk-preferences.json`, so it needs
+`--allow-ui-effects`), each with its `...Status` line (`TalkPcChattinessStatus`,
+`VisionChattinessStatus`: what the level means, or what Martlet decides means
+and, while a conversation runs, *Right now it is quiet.*); `chattiness_status`
+reads the same choice. While Martlet decides and vision or hearing the PC is
+on, the talk window's `LiveChattiness` line (returned) says *Martlet decides
+how chatty it is: normal right now.*, then *quiet right now (since 10:14 PM).*
+once a reply switched it, and `LiveHistory` gets a note such as *Martlet went
+quiet about what it sees and hears.* With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
 what this PC plays (not Martlet's own voice).*, *Also hearing what this PC
@@ -2807,11 +2860,18 @@ desktop log records *Read N colors from the character's textures.* and
 *Applied the Character dark palette (#D194AE accent on #161E24).*
 `character_theme` makes the same colors and palettes headlessly.
 On a Martlet host (Settings › *Use as a Martlet
-host*) the menu has no `TrayTalk`, `TrayStartListening` or `TrayCharacter`: a
-host doesn't talk, listen or show the character. `TrayOpen`, `TrayTalk` (like
-`OpenLiveConversation`), `TrayPause` (it only stops work) and `TrayEndTalk`
-(like `CloseLive`) are passive clicks; `TrayResume`, `TrayCharacter`, the two
-choices and `TrayExit` need `--allow-ui-effects`. While another Martlet dialog
+host*) the menu has no `TrayTalk`, `TrayStartListening`, `TrayStartWatching` or `TrayCharacter`: a
+host doesn't talk, listen, watch or show the character. With always listening the menu
+has `TrayStartListening` (*Start listening*) or, once started, `TrayStopListening`
+(*Stop listening*); with vision on in Companion it also has `TrayStartWatching`
+(*Start watching*) or, once started, `TrayStopWatching` (*Stop watching*), each
+working without the other. `TrayOpen`, `TrayTalk` (like
+`OpenLiveConversation`), `TrayPause` (it only stops work), `TrayStopListening`,
+`TrayStopWatching` (they only stop listening or watching) and `TrayEndTalk`
+(like `CloseLive`) are passive clicks; `TrayStartListening`, `TrayStartWatching`,
+`TrayResume`, `TrayCharacter`, the two
+choices and `TrayExit` need `--allow-ui-effects`. The menu's status line reads
+*Martlet is listening and watching* when both run. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
 `TrayExit` shows Martlet instead of exiting (the status line names the open
 window to close first). Settings › *Startup and closing* has
@@ -2819,9 +2879,11 @@ window to close first). Settings › *Startup and closing* has
 (the per-user Run entry `Martlet`: this executable, the same `--data-directory`
 and `--tray` when `StartInTray` is checked; verify with a disposable data
 directory and turn it off again afterwards), `StartInTray`, `StartCompanion`
-(*When Martlet starts, show the character and start listening*; saves
+(*When Martlet starts, show the character and start listening (and watching,
+while vision is on)*; saves
 `background.json` and applies on every start, `--tray` included, so the
-desktop log records *Martlet started with the character and listening.*) and
+desktop log records *Martlet started with the character and listening.*, or
+*... and listening, and watching.* with vision on) and
 `BackgroundStatus`
 (status text: what closing does, and whether Windows starts Martlet, including
 when Windows' own Startup apps switch turned it off). On a Martlet host
@@ -2910,7 +2972,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check` and `parakeet_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

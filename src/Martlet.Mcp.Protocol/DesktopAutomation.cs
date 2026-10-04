@@ -34,9 +34,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
-        // like OpenLiveConversation, Pause Martlet only stops work and End the conversation closes the talk window like CloseLive.
-        // Start listening, Resume Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
-        "TrayOpen", "TrayTalk", "TrayPause", "TrayEndTalk",
+        // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
+        // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
+        // Martlet, the character, the startup and closing choices and Exit need --allow-ui-effects.
+        "TrayOpen", "TrayTalk", "TrayPause", "TrayStopListening", "TrayStopWatching", "TrayEndTalk",
         // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
         // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
         // or page, like TrayTalk and TrayOpen. Its zoom, position, Keep on top and Hide character items need --allow-ui-effects.
@@ -99,9 +100,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
-        // listens); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start talking.",
-        // "Hearing you…", "Not listening" or why Martlet can't listen).
-        "OpenLiveConversation", "HomeListen", "HomeListeningStatus",
+        // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
+        // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
+        // and watching indicator ("Watching your active window.", "Taking a look…", "Not watching" or why Martlet can't see).
+        "OpenLiveConversation", "HomeListen", "HomeListeningStatus", "HomeWatch", "HomeWatchingStatus",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
@@ -175,6 +177,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
+        // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
+        // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and
+        // the talk window's line while Martlet decides and vision is on or it hears this PC (the level it picked and since when).
+        "VisionChattiness", "VisionChattinessStatus", "TalkPcChattiness", "TalkPcChattinessStatus", "LiveChattiness",
         // Companion › Voice › Voice engine: the voice engines the speaking computer still runs besides the one that speaks
         // (SpeakingEngineOthers; its SpeakingEngineRelease button stops them, so it needs --allow-ui-effects) and, under Another
         // of your computers, that the shown computer isn't reachable (SpeakingHostStatus). Each engine row reads through the

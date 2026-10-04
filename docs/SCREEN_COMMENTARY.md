@@ -10,13 +10,19 @@ your setup can't.
 1. **Companion › Vision** shows whether your Thinking model can see (see
    below), what Martlet looks at (**my active window**, **my whole screen**:
    every monitor with the taskbar and pop-up notifications, or a camera) and
-   **how chatty** it is (Quiet, Normal, Chatty), and says exactly what is
-   captured and where it is sent.
-2. Click **Turn vision on** (off by default). From then on, opening **Start
-   talking** starts looking; the talk window's **Watching** button and its
-   title show it. It keeps going in the background (while you play) until you
-   click that button, Stop or Esc, lock Windows or close the talk window.
-   **Turn vision off** in Companion stops it for good.
+   **how chatty** it is (Quiet, Normal, Chatty or [Martlet
+   decides](#martlet-decides-how-chatty-it-is); the same choice sets how often
+   it reacts to [what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)),
+   and says exactly what is captured and where it is sent.
+2. Click **Turn vision on** (off by default). That only allows it: Martlet
+   starts looking when you press **Start watching** (on Home, in the talk
+   window or from the notification-area icon), with or without the talk window
+   open, and Home's watching indicator, the talk window's **Stop watching**
+   button and its title show it. It keeps going in the background (while you
+   play) until you press **Stop watching**, Stop or Esc, pause Martlet, lock
+   Windows (it carries on when you unlock) or end the conversation. Listening
+   has its own Start listening / Stop listening button; neither starts or stops
+   the other. **Turn vision off** in Companion stops it for good.
 3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
    Duplication, falling back to GDI; kept only in memory) and compares a 16x9
    grey thumbnail with the last one to notice change. The active window is
@@ -24,8 +30,8 @@ your setup can't.
    side as Windows arranges them, each at most 1024 px and the picture at most
    2048 px, so the taskbar, the notification area and pop-up notifications are
    in it; it doesn't need a window in front (the desktop counts). The
-   **Watching** button's dot blinks on each capture (it twinkles
-   and reads **Looking…** while a look is with the model), and a line under the
+   **Stop watching** button's dot blinks on each capture (it twinkles
+   while a look is with the model), and a line under the
    talk window's status says what it sees (*Watching your whole screen (2
    monitors).*), how the last look went (*nothing worth saying*, *said
    something*), why it is holding off (you're talking, you seem away, the
@@ -42,7 +48,8 @@ your setup can't.
    - never to an empty room: no keyboard/mouse input for 5 minutes and a still
      screen means you are away;
    - at most 12 / 24 / 45 looks per hour (Quiet / Normal / Chatty), because each
-     look is one model request.
+     look is one model request; while Martlet decides, the level it picked sets
+     these, so it may use up to Chatty's 45 (what Companion discloses).
 5. A look sends **one** screenshot (JPEG) with the window title, your persona
    and recent conversation to the Thinking model. The model is told that real
    friends stay quiet and to answer exactly `[pass]` unless something is worth a
@@ -54,6 +61,47 @@ your setup can't.
 6. You come first: typing or push-to-talk stops a remark in progress. With
    always listening on, an idle listen (nobody speaking) briefly yields to a
    look and re-arms right after. Remarks appear in the talk window's history.
+
+## Martlet decides how chatty it is
+
+**How often it comments** has a fourth choice, **Martlet decides** (the same
+choice appears under Listening › *Watch along*). Martlet then picks Quiet,
+Normal or Chatty itself and switches as things happen: it goes quiet when you
+are focused, busy, on a call, watching closely, seem tired of its remarks or ask
+it to hush; it gets chatty when you invite its reactions, ask what it thinks,
+play or watch something together or things get exciting; and it settles back to
+normal. Asking for more or less talk switches it right away. It starts at
+Normal and keeps the level it picked until Martlet closes.
+
+- **How it is told.** While vision or hearing what this PC plays is turned on,
+  every glance, every reply to what the PC plays and every reply to what you
+  type or say gets Companion › Prompts › *Chattiness: Martlet decides* (what
+  the three levels mean, when to switch and how), in place of a fixed level's
+  line. It is the same at every level, so the instructions, and the model's
+  prompt cache, stay the same when it switches. The level itself goes in the
+  message's notes (*Chattiness right now*), only when the conversation's notes
+  don't already say it.
+- **How it switches.** A reply or look ends with a tag such as
+  `[chattiness:quiet]` (`[chattiness:normal]`, `[chattiness:chatty]`; a space
+  after the colon and any case work), after its last sentence or after
+  `[pass]`. The tag goes at the end so the first words are never held back:
+  as soon as what follows a finished sentence can only be a chattiness tag
+  (`[cha...`), that sentence goes to the voice without waiting for the rest of
+  the tag. It is never shown, spoken, captioned or kept in the history (the runtime's
+  control tags: `ConversationRequest.ControlTags`, reported in
+  `ConversationTurn.Controls`). The last tag of a reply whose words all
+  arrived wins; a reply cut off before then switches nothing.
+- **What follows.** The pacer retunes on the spot (the looks already taken
+  still count toward the new hourly budget), what the PC plays on its own goes
+  to Thinking every 45 / 20 / 12 seconds at Quiet / Normal / Chatty, the talk
+  window's history notes the switch (*Martlet went quiet about what it sees and
+  hears.*), its `LiveChattiness` line says *Martlet decides how chatty it is:
+  quiet right now (since 10:14 PM).*, Companion says the level it picked, and
+  the desktop log writes *Chattiness: Martlet went from normal to quiet (your
+  message; Martlet decides).*
+- **Cost.** A switch adds a few tokens to the end of a reply and nothing before
+  its first word. The prompt adds a few hundred tokens to the instructions,
+  which the prompt cache keeps; Companion's disclosure counts Chatty's budget.
 
 ## Martlet sees what you see when you talk to it
 
@@ -310,7 +358,8 @@ Companion › Vision always states the result for the **current** Thinking selec
 
 Other edges: a host running an older Martlet refuses the larger request; the
 look fails and the message says to update the host. A failed or expired look
-never retries; it stops looking and the talk window says why. A settings change
+never retries; it stops watching, the talk window and Home's watching indicator
+say why, and **Start watching** tries again. A settings change
 made elsewhere (a synced change or a failover) restarts looking with the new
 choices once Martlet is free.
 

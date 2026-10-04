@@ -41,10 +41,12 @@ internal static class SpokenReplyCheck
 
     /// <summary>With <paramref name="reply"/>, that text is streamed a word at a time instead of the four canned sentences.
     /// <paramref name="breaks"/> are the persona's speech breaks the reply is spoken with, the defaults when null, as the desktop
-    /// always passes them (<paramref name="persona"/> names the saved persona they came from, if any).</summary>
+    /// always passes them (<paramref name="persona"/> names the saved persona they came from, if any). With
+    /// <paramref name="chattiness"/>, the reply is offered the chattiness tags as the desktop offers them while Martlet decides
+    /// how chatty it is; they must never be shown or spoken.</summary>
     internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, CancellationToken cancellation,
         int? reasoningMs = null, int? voiceDelayMs = null, string? reply = null, SpeechBreaks? breaks = null, string? persona = null,
-        string? thinkingSteps = null, bool refuseThinking = false)
+        string? thinkingSteps = null, bool refuseThinking = false, bool chattiness = false)
     {
         if (thinkingSteps is not (null or "off" or "on")) throw new ArgumentException("'thinkingSteps' must be off or on.");
         if (refuseThinking && thinkingSteps is null) throw new ArgumentException("'refuseThinking' needs thinkingSteps.");
@@ -90,7 +92,8 @@ internal static class SpokenReplyCheck
                 new TextModelSelection(ChatCompletionsSetup.Alias, Model), new TextGenerationLimits(),
                 new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
                 speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: textOnly ? null : target, speechBreaks: breaks,
-                generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" });
+                generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" },
+                controlTags: chattiness ? ChattinessTags.All : null);
             // What the speech bubble and subtitles are given: each line as its playback starts, or, once the voice failed, each
             // sentence it couldn't say, shown one after another for its reading time.
             var captions = new SpokenTextFeed();
@@ -133,11 +136,17 @@ internal static class SpokenReplyCheck
                     latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8);
             var text = turn.Content.Text;
             var served = string.Concat(chunks);
-            var full = text == served;
+            // The chat and captions never show a control tag the reply was offered (VoiceTags.Strip without them leaves them be).
+            var expectedText = chattiness ? VoiceTags.Strip(served, controlTags: ChattinessTags.All) : served;
+            var full = text == expectedText;
+            var controls = turn.Controls;
+            string[] pieces = voice.Pieces;
+            var tagsHidden = !chattiness || !ChattinessTags.All.Any(tag =>
+                text.Contains(tag, StringComparison.OrdinalIgnoreCase) || pieces.Any(piece => piece.Contains(tag, StringComparison.OrdinalIgnoreCase)));
             // Captions of unsaid sentences keep coming after the reply ends, one per reading time.
             bool Covered()
             {
-                lock (shown) return Words(string.Join(" ", shown.Select(line => line.Text))) == Words(served);
+                lock (shown) return Words(string.Join(" ", shown.Select(line => line.Text))) == Words(expectedText);
             }
             var waited = System.Diagnostics.Stopwatch.StartNew();
             while (!Covered() && waited.Elapsed < TimeSpan.FromSeconds(25)) await Task.Delay(100, cancellation);
@@ -162,10 +171,17 @@ internal static class SpokenReplyCheck
             return new
             {
                 ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk &&
-                    thinkingOk,
+                    thinkingOk && tagsHidden,
                 voiceFailure = failure,
                 failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
+                chattiness = chattiness ? new
+                {
+                    offered = ChattinessTags.All,
+                    found = controls,
+                    switchesTo = ChattinessTags.Last(controls) is { } level ? ChattinessTags.Name(level) : null,
+                    hidden = tagsHidden
+                } : null,
                 thinking = new
                 {
                     ok = thinkingOk,

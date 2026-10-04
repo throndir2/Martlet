@@ -43,6 +43,8 @@ public static class PromptCatalog
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
+    public const string ChattinessDecides = "chattiness_decides";
+    public const string ChattinessNow = "chattiness_now";
     public const string MemoryCapture = "memory_capture";
     public const string VoiceNaming = "voice_naming";
     public const string AfterReply = "after_reply";
@@ -124,6 +126,21 @@ public static class PromptCatalog
         "Martlet's own personality. Answer in exactly this form and nothing else:\n" +
         "TITLE: <a short title>\nSTYLE: <genre, instruments, mood and vocal style, under 200 characters>\n" +
         "BPM: <a tempo from 60 to 180>\nKEY: <a key such as G major>\nLYRICS:\n[verse]\n<the lines, section by section>";
+
+    public const string DefaultChattinessDecidesInstructions =
+        "You decide how chatty you are about what goes on around the user without them asking: what you see on their screen " +
+        "or camera and what plays on their PC. There are three levels:\n" +
+        "quiet: speak up only when something is clearly remarkable or they'd want to know; otherwise [{silent}].\n" +
+        "normal: say something when it's worth saying; otherwise [{silent}].\n" +
+        "chatty: react more often, like a friend enjoying it with them, but still [{silent}] when nothing is new.\n" +
+        "Levels only change remarks nobody asked for: always answer the user when they talk to you. Martlet's notes say your " +
+        "level right now. Change it whenever what's happening or what the user says calls for it: go quiet when they're " +
+        "focused, busy, on a call, watching or listening closely, seem tired of your remarks or ask for quiet; go chatty when " +
+        "they invite your reactions, ask what you think, play, watch or listen to something together with you, or things get " +
+        "exciting; go back to normal once it settles down. When they ask for more or less talk, change it right away.\n" +
+        "To change it, write {quiet}, {normal} or {chatty}, exactly as written, at the very end of your reply, after your " +
+        "last sentence or after [{silent}]. The tag is never shown or spoken. Don't write it while your level stays the same, " +
+        "and never talk about levels or tags.";
 
     public const string DefaultReplyLengthInstructions =
         "Reply length: one or two short sentences at most, like a quick spoken reply. No lists, headings or markdown, no " +
@@ -377,6 +394,16 @@ public static class PromptCatalog
             "Answer [{silent}] unless it is worth saying.", ["silent"]),
         new(ChattinessChatty, VisionGroup, "Chattiness: chatty", "Closes the glance instructions when vision is chatty.",
             "You are in a chatty mood, but still answer [{silent}] when nothing is new.", ["silent"]),
+        new(ChattinessDecides, VisionGroup, "Chattiness: Martlet decides",
+            "Closes the glance instructions, and is added to replies to what this PC plays and to your messages while vision is on " +
+            "or Martlet hears this PC, when How often it comments is Martlet decides. It stays the same from message to message. " +
+            "{quiet}, {normal} and {chatty} are the tags a reply ends with to switch the level (at the end, so the first words " +
+            "aren't held back; never shown or spoken); {silent} is the word for staying quiet.",
+            DefaultChattinessDecidesInstructions, ["silent", "quiet", "normal", "chatty"]),
+        new(ChattinessNow, VisionGroup, "Chattiness right now",
+            "Goes in the notes of a message while Martlet decides how chatty it is, when the conversation's notes don't already " +
+            "say the level (it starts at normal and changes when a reply switches it). {level} is quiet, normal or chatty.",
+            "Your chattiness right now: {level}.", ["level"]),
         new(GlanceScreen, VisionGroup, "Screen glance message",
             "The message sent with each screenshot. {title} is the active window's title; {remarks} is the line below when Martlet already said something.",
             "(Screen glance. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark.)",

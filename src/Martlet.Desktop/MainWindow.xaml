@@ -69,6 +69,10 @@
                                         <Button x:Name="ListenButton" Content="Start _listening" Click="Listen_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="HomeListen"
                                                 AutomationProperties.Name="Start listening"/>
+                                        <!-- Start watching / Stop watching, shown while vision is on in Companion (MainWindow.BackgroundTalk.cs) -->
+                                        <Button x:Name="WatchButton" Content="Start _watching" Click="Watch_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
+                                                Visibility="Collapsed" AutomationProperties.AutomationId="HomeWatch"
+                                                AutomationProperties.Name="Start watching"/>
                                         <Button x:Name="ConversationButton" Content="Start _talking" Click="Conversation_Click" Padding="20,12" FontSize="15" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="OpenLiveConversation"
                                                 AutomationProperties.Name="Start talking"/>
@@ -84,17 +88,29 @@
                                         <Button x:Name="LockCharacterButton" Content="Lock character p_osition" Click="LockCharacter_Click" Padding="16,12" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterLock"/>
                                     </WrapPanel>
-                                    <!-- Whether Martlet is listening (MainWindow.BackgroundTalk.cs), with or without the talk window -->
-                                    <Border x:Name="ListeningIndicator" Visibility="Collapsed" HorizontalAlignment="Left" CornerRadius="14"
-                                            Padding="12,6" Margin="0,2,0,8" BorderThickness="1" Background="{DynamicResource SurfaceBrush}"
-                                            BorderBrush="{DynamicResource BorderBrush}">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Ellipse x:Name="ListeningDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"
-                                                     Fill="{DynamicResource MutedBrush}"/>
-                                            <TextBlock x:Name="ListeningStatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
-                                                       AutomationProperties.AutomationId="HomeListeningStatus" AutomationProperties.LiveSetting="Polite"/>
-                                        </StackPanel>
-                                    </Border>
+                                    <!-- Whether Martlet is listening and watching (MainWindow.BackgroundTalk.cs), with or without the talk window -->
+                                    <WrapPanel>
+                                        <Border x:Name="ListeningIndicator" Visibility="Collapsed" HorizontalAlignment="Left" CornerRadius="14"
+                                                Padding="12,6" Margin="0,2,8,8" BorderThickness="1" Background="{DynamicResource SurfaceBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="ListeningDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource MutedBrush}"/>
+                                                <TextBlock x:Name="ListeningStatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                                                           AutomationProperties.AutomationId="HomeListeningStatus" AutomationProperties.LiveSetting="Polite"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border x:Name="WatchingIndicator" Visibility="Collapsed" HorizontalAlignment="Left" CornerRadius="14"
+                                                Padding="12,6" Margin="0,2,8,8" BorderThickness="1" Background="{DynamicResource SurfaceBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="WatchingDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource MutedBrush}"/>
+                                                <TextBlock x:Name="WatchingStatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                                                           AutomationProperties.AutomationId="HomeWatchingStatus" AutomationProperties.LiveSetting="Polite"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </WrapPanel>
                                     <WrapPanel Margin="0,4,0,0">
                                         <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Get a setup recommendation"
                                                 Click="Advisor_Click" AutomationProperties.AutomationId="OpenSetupAdvisor"
@@ -539,7 +555,7 @@
                             </CheckBox>
                             <CheckBox x:Name="StartCompanionCheck" Margin="0,4,0,6" Checked="StartCompanion_Changed" Unchecked="StartCompanion_Changed"
                                       AutomationProperties.AutomationId="StartCompanion">
-                                <TextBlock TextWrapping="Wrap" Text="When Martlet starts, show the character and start listening"/>
+                                <TextBlock TextWrapping="Wrap" Text="When Martlet starts, show the character and start listening (and watching, while vision is on)"/>
                             </CheckBox>
                             <TextBlock x:Name="BackgroundStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="BackgroundStatus"/>

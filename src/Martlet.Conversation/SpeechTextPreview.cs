@@ -3,21 +3,23 @@ using Martlet.Core.Settings;
 namespace Martlet.Conversation;
 
 /// <summary>What a reply becomes for a voice engine, without speaking it: the pieces the real segmenter hands that engine
-/// (its own tags kept, other tags and the character's tags dropped, markup suppressed, broken where a spoken reply with these
-/// speech breaks breaks), the cues the character acts on in each piece, and the text the chat and captions show. Used by
-/// Martlet MCP's voice_tags and character_gaze tools to observe tag handling and a persona's speech breaks headlessly. With
-/// <paramref name="silentWord"/> a sentence that is only that word (a screen glance's [pass]) is never spoken, as in a glance.</summary>
+/// (its own tags kept, other tags, the character's tags and control tags dropped, markup suppressed, broken where a spoken
+/// reply with these speech breaks breaks), the cues the character acts on in each piece, the text the chat and captions show
+/// and the control tags found, in order. Used by Martlet MCP's voice_tags, character_gaze and chattiness_status tools to
+/// observe tag handling and a persona's speech breaks headlessly. With <paramref name="silentWord"/> a sentence that is only
+/// that word (a screen glance's [pass]) is never spoken, as in a glance.</summary>
 public static class SpeechTextPreview
 {
     public sealed record Cue(int Piece, string Tag, int Offset);
-    public sealed record Result(IReadOnlyList<string> Spoken, int SuppressedPieces, string Shown, IReadOnlyList<Cue> Cues);
+    public sealed record Result(IReadOnlyList<string> Spoken, int SuppressedPieces, string Shown, IReadOnlyList<Cue> Cues,
+        IReadOnlyList<string> Controls);
 
     public static Result For(string reply, SpeechEngine? engine, IReadOnlyList<string>? characterTags = null,
-        SpeechBreaks? breaks = null, string? silentWord = null)
+        SpeechBreaks? breaks = null, string? silentWord = null, IReadOnlyList<string>? controlTags = null)
     {
         ArgumentNullException.ThrowIfNull(reply);
         var segmenter = new SpeechSegmenter(1536, 16_384, silentWord, tags: engine?.Tags, characterTags: characterTags,
-            breaks: breaks ?? SpeechBreaks.Default);
+            breaks: breaks ?? SpeechBreaks.Default, controlTags: controlTags);
         var pieces = segmenter.Push(reply).Concat(segmenter.Finish()).ToArray();
         var spoken = new List<string>();
         var cues = new List<Cue>();
@@ -27,6 +29,9 @@ public static class SpeechTextPreview
             if (piece.Text is not null) spoken.Add(piece.Text);
             foreach (var cue in piece.Cues ?? []) cues.Add(new(piece.Text is null ? -1 : spoken.Count - 1, cue.Tag, cue.Offset));
         }
-        return new(spoken, pieces.Count(p => p.Text is null && p.Cues is null or { Count: 0 }), VoiceTags.Strip(reply, characterTags), cues);
+        var controls = new List<string>();
+        var stripper = new VoiceTagStripper(characterTags, controlTags: controlTags, droppedControl: controls.Add);
+        var shown = stripper.Push(reply) + stripper.Finish();
+        return new(spoken, pieces.Count(p => p.Text is null && p.Cues is null or { Count: 0 }), shown, cues, controls);
     }
 }
