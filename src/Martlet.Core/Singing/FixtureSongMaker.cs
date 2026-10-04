@@ -6,7 +6,7 @@ namespace Martlet.Core.Singing;
 
 /// <summary>
 /// FIXTURE - NOT AI: a deterministic <see cref="ISongMaker"/> for tests and plumbing checks. It "sings" a sine melody (one
-/// note per beat, pitched from the voice ID) over sine chord pads with a click on every beat, starts every lyric line on a
+/// note per word, pitched from the voice ID) over sine chord pads with a click on every beat, starts every lyric line on a
 /// downbeat of a straight 4/4 grid, reports every stage, honours cancellation and returns the same three 48 kHz tracks,
 /// lyric lines with sections and beat grid a real song has. Nothing it makes is music from a model, and
 /// <see cref="SongEngineIdentity.Fixture"/> is true.
@@ -79,6 +79,7 @@ public sealed class FixtureSongMaker(TimeSpan? stageDelay = null) : ISongMaker
             if (b % beatsPerBar == 0) downbeats.Add(TimeSpan.FromSeconds(b * beat));
         }
         var lyricLines = new List<SongLyricLine>();
+        var words = new List<SongLyricWord>();
         for (var l = 0; l < parsed.Count; l++)
         {
             var start = bar * (1 + l * barsPerLine);
@@ -86,6 +87,12 @@ public sealed class FixtureSongMaker(TimeSpan? stageDelay = null) : ISongMaker
             var end = Math.Min(start + bar * barsPerLine - beat / 2, request.DurationSeconds);
             lyricLines.Add(new SongLyricLine(TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end), parsed[l].Text,
                 parsed[l].Section));
+            // One sung note per word, spread evenly over the line.
+            var lineWords = parsed[l].Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var each = (end - start) / lineWords.Length;
+            for (var w = 0; w < lineWords.Length; w++)
+                words.Add(new SongLyricWord(TimeSpan.FromSeconds(start + w * each), TimeSpan.FromSeconds(start + (w + 1) * each - 0.02),
+                    lineWords[w], lyricLines.Count - 1));
         }
 
         var vocals = new short[frames];
@@ -106,15 +113,14 @@ public sealed class FixtureSongMaker(TimeSpan? stageDelay = null) : ISongMaker
                 : 0;
             pad = pad * 0.06 + click;
             var voice = 0.0;
-            foreach (var line in lyricLines)
+            for (var w = 0; w < words.Count; w++)
             {
-                var from = line.Start.TotalSeconds;
-                var to = line.End!.Value.TotalSeconds;
+                var from = words[w].Start.TotalSeconds;
+                var to = words[w].End.TotalSeconds;
                 if (t < from || t >= to) continue;
-                var note = (int)((t - from) / beat);
-                var degree = scale[(int)((seed + note * 3 + line.Text.Length) % scale.Length)];
-                var phase = (t - from) - note * beat;
-                var envelope = Math.Min(1, phase / 0.03) * Math.Min(1, (beat - phase) / 0.05);
+                var degree = scale[(int)((seed + w * 3 + words[w].LineIndex) % scale.Length)];
+                var phase = t - from;
+                var envelope = Math.Min(1, phase / 0.03) * Math.Min(1, (to - t) / 0.05);
                 var vibrato = 1 + 0.004 * Math.Sin(2 * Math.PI * 5.5 * t);
                 voice = 0.22 * envelope * Math.Sin(2 * Math.PI * root * Math.Pow(2, degree / 12.0) * vibrato * t);
                 break;
@@ -146,7 +152,9 @@ public sealed class FixtureSongMaker(TimeSpan? stageDelay = null) : ISongMaker
             BeatsPerBar = beatsPerBar,
             Beats = beats,
             Downbeats = downbeats,
-            LyricTimestamps = lyricLines
+            LyricTimestamps = lyricLines,
+            Words = words,
+            WordTimingSource = "fixture"
         };
     }
 

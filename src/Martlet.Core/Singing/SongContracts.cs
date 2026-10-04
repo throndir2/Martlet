@@ -140,8 +140,8 @@ public enum SongTrackKind
 }
 
 /// <summary>One track of a song as interleaved signed 16-bit little-endian PCM. The mix and backing are 48 kHz stereo; the
-/// vocals are 48 kHz mono. They start together and have the same length, so the vocals and backing can be played,
-/// ducked or stopped separately in step with each other.</summary>
+/// vocals are 48 kHz mono: the dry, matched voice alone (no backing), which also drives lip sync. They start together and
+/// have the same length, so the vocals and backing can be played, ducked or stopped separately in step with each other.</summary>
 public sealed class SongTrack
 {
     public const int SampleRateHz = 48_000;
@@ -195,6 +195,11 @@ public sealed class SongTrack
 /// vocals' phrases when those are unavailable.</summary>
 public sealed record SongLyricLine(TimeSpan Start, TimeSpan? End, string Text, string Section = "");
 
+/// <summary>One sung word, for lip sync: when it starts and ends in the vocals, its text as written in the lyrics, and the
+/// index of its line in <see cref="SongResult.LyricTimestamps"/>. Times come from ACE-Step's own alignment of the same
+/// generation snapped to the matched vocals' onsets (<see cref="SongResult.WordTimingSource"/> says which source).</summary>
+public sealed record SongLyricWord(TimeSpan Start, TimeSpan End, string Text, int LineIndex);
+
 /// <summary>How long one stage took on the host (loading models counts as <see cref="SongStage.Loading"/>).</summary>
 public sealed record SongStageTiming(SongStage Stage, TimeSpan Duration);
 
@@ -227,6 +232,11 @@ public sealed record SongResult
     /// <summary>The first beat of every bar (a subset of <see cref="Beats"/>).</summary>
     public IReadOnlyList<TimeSpan> Downbeats { get; init; } = [];
     public IReadOnlyList<SongLyricLine> LyricTimestamps { get; init; } = [];
+    /// <summary>Every sung word in order, for lip sync (empty when the words could not be timed).</summary>
+    public IReadOnlyList<SongLyricWord> Words { get; init; } = [];
+    /// <summary>Where <see cref="Words"/> came from: "ace-step-alignment" (ACE-Step's own alignment of the same generation,
+    /// snapped to the vocals), "vocal-phrases" (spread over the vocals' phrases), "fixture", or "" when none.</summary>
+    public string WordTimingSource { get; init; } = "";
     public IReadOnlyList<SongStageTiming> StageTimings { get; init; } = [];
     public TimeSpan Duration => Mix.Duration;
 
