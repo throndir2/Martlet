@@ -44,10 +44,12 @@ public sealed record KnownVoice
     public required DateTimeOffset UpdatedAt { get; init; }
     public required string UpdatedBy { get; init; }
 
-    /// <summary>The owner's name, else the name used most in conversation (newest on a tie), else "Voice N".</summary>
+    /// <summary>The owner's name, else the name used most in conversation (newest on a tie), else another name the owner typed,
+    /// else "Voice N".</summary>
     [JsonIgnore]
     public string DisplayName => Name ?? Names.Where(n => n.Source == VoiceNameSource.Conversation)
-        .OrderByDescending(n => n.Uses).ThenByDescending(n => n.LastUsedAt).Select(n => n.Text).FirstOrDefault() ?? $"Voice {Number}";
+        .OrderByDescending(n => n.Uses).ThenByDescending(n => n.LastUsedAt).Select(n => n.Text).FirstOrDefault() ??
+        Names.Select(n => n.Text).FirstOrDefault() ?? $"Voice {Number}";
 
     /// <summary>Whether the voice goes by any name yet.</summary>
     [JsonIgnore]
@@ -197,15 +199,32 @@ public sealed record VoiceRoster
     public VoiceRoster Heard(string id, string by, DateTimeOffset now) =>
         Resolve(id) is { } voice ? Update(voice with { Heard = Math.Min(voice.Heard + 1, 1_000_000), LastHeardAt = now.ToUniversalTime() }, by, now) : this;
 
-    /// <summary>Records a name the Thinking model picked up for a voice from what was said.</summary>
-    public VoiceRoster AddHeardName(string id, string name, string by, DateTimeOffset now)
+    /// <summary>Records a name the Thinking model picked up for a voice from what was said. <paramref name="prefer"/> (the
+    /// person asked to be called it) makes it the learned name shown; a name the owner typed still wins.</summary>
+    public VoiceRoster AddHeardName(string id, string name, string by, DateTimeOffset now, bool prefer = false)
     {
         if (Resolve(id) is not { } voice || CleanName(name) is not { } text) return this;
         var existing = voice.Names.FirstOrDefault(n => string.Equals(n.Text, text, StringComparison.OrdinalIgnoreCase));
+        // Preferring a name gives it one use more than any other learned name, so it is the one shown.
+        var top = voice.Names.Where(n => n.Source == VoiceNameSource.Conversation && !ReferenceEquals(n, existing)).Select(n => n.Uses)
+            .DefaultIfEmpty(0).Max();
+        int Uses(int current) => Math.Min(prefer ? Math.Max(current, top) + 1 : current + 1, 1_000_000);
         var names = existing is not null
-            ? voice.Names.Select(n => n == existing ? n with { Uses = Math.Min(n.Uses + 1, 1_000_000), LastUsedAt = now.ToUniversalTime() } : n)
-            : voice.Names.Append(new VoiceName { Text = text, Source = VoiceNameSource.Conversation, LastUsedAt = now.ToUniversalTime() });
+            ? voice.Names.Select(n => n == existing ? n with { Uses = Uses(n.Uses), LastUsedAt = now.ToUniversalTime() } : n)
+            : voice.Names.Append(new VoiceName
+            {
+                Text = text, Source = VoiceNameSource.Conversation, Uses = Uses(0), LastUsedAt = now.ToUniversalTime()
+            });
         return Update(voice with { Names = TrimNames(names) }, by, now);
+    }
+
+    /// <summary>Drops the names a voice picked up in conversation that <paramref name="drop"/> picks; names the owner typed stay.</summary>
+    public VoiceRoster DropHeardNames(string id, Func<string, bool> drop, string by, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(drop);
+        if (Resolve(id) is not { } voice) return this;
+        var kept = voice.Names.Where(n => n.Source != VoiceNameSource.Conversation || !drop(n.Text)).ToArray();
+        return kept.Length == voice.Names.Count ? this : Update(voice with { Names = kept }, by, now);
     }
 
     /// <summary>The owner's names for a voice: <paramref name="name"/> becomes its name (null keeps the learned one) and the
