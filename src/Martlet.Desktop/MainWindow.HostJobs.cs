@@ -315,10 +315,10 @@ public partial class MainWindow
     private async Task JobBackAsync(HostJob job, ChangeTurns.Turn turn)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
-        if (loaded.Settings is not { Setup: not null } settings) throw new InvalidOperationException("Complete Setup first.");
+        if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
         pendingJobHosts.Remove(job.Role);
         pendingJobVoices.Remove(job.Role);
-        if (NetworkMap.JobHost(settings, job.Role) is null)
+        if (NetworkMap.JobHost(loaded.Settings, job.Role) is null)
         {
             ActionText.Text = $"{job.Title} already uses the choice from Setup.";
             return;
@@ -347,7 +347,8 @@ public partial class MainWindow
     private async Task HandBackAsync(HostJob job, SetupRoute saved)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
-        if (loaded.Settings is not { Setup: not null } settings) throw new InvalidOperationException("Complete Setup first.");
+        if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
+        var settings = UseModels(SetupSettings.Begin(loaded.Settings));
         pendingJobHosts.Remove(job.Role);
         pendingJobVoices.Remove(job.Role);
         var name = NetworkMap.ProviderName(saved);

@@ -53,6 +53,7 @@ public partial class MainWindow
     {
         var changed = hostUpdates.Current(key, version ?? Version, DateTime.Now, seen, ThisPcHostIds(homeHosts));
         if (hostUpdates.Waiting.Count == 0) hostRetryAt = null;
+        if (key == ThisPcHostId) OwnHostFoundCurrent(version ?? Version);
         return changed;
     }
 
@@ -162,6 +163,7 @@ public partial class MainWindow
     private async Task UpdateTickAsync()
     {
         if (closing || store is null) return;
+        FollowOwnHostAsync().Forget();
         if (installAfterHostWork && readyUpdate is not null && HostWorkBlocker() is null && !updateBusy)
         {
             installAfterHostWork = false;
@@ -635,6 +637,7 @@ public partial class MainWindow
                 {
                     current++;
                     if (!hostUpdates.IsUpdating(key)) hostUpdates.Current(key, check.MartletVersion ?? Version, DateTime.Now, seen: true, thisPcIds);
+                    if (key == ThisPcHostId) OwnHostFoundCurrent(check.MartletVersion ?? Version);
                     continue;
                 }
                 // Another route of this Martlet updates it right now; a second run would only find the host locked by it.
@@ -658,6 +661,7 @@ public partial class MainWindow
                 HostUpdateResult outcome;
                 using (hostUpdates.Begin(key)) outcome = await UpdateHostQuietlyAsync(host.HostId, host.Target(Version), host.SshHostKey, asked: !automatic);
                 Record(host.HostId, attempt, outcome);
+                if (outcome == HostUpdateResult.Updated && key == ThisPcHostId) OwnHostFoundCurrent(Version);
                 if (outcome == HostUpdateResult.Updated) hostChecks[host.HostId] = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
             }
             // This PC's own host service when this PC isn't paired with it (otherwise the loop above already covered it).
@@ -670,6 +674,7 @@ public partial class MainWindow
                 {
                     current++;
                     if (!hostUpdates.IsUpdating(ThisPcHostId)) hostUpdates.Current(ThisPcHostId, service, DateTime.Now, seen: true);
+                    OwnHostFoundCurrent(service);
                 }
                 else if (service is not null && hostUpdates.IsUpdating(ThisPcHostId)) already++;
                 else if (service is not null && (!automatic || hostUpdateAttempts.Add(attempt)))
@@ -677,7 +682,11 @@ public partial class MainWindow
                     HostUpdateResult outcome;
                     using (hostUpdates.Begin(ThisPcHostId)) outcome = await UpdateHostQuietlyAsync(ThisPcHostId, ThisPcTarget(), asked: !automatic);
                     Record(ThisPcHostId, attempt, outcome);
-                    if (outcome == HostUpdateResult.Updated) thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
+                    if (outcome == HostUpdateResult.Updated)
+                    {
+                        thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
+                        if (thisPcHostVersion is { } now) OwnHostFoundCurrent(now);
+                    }
                 }
             }
         }

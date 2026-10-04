@@ -467,6 +467,11 @@ public partial class MainWindow
 
     private void PrimaryStage_Click(object sender, RoutedEventArgs e) => (stageFix ?? (() => OpenCompanion(CompanionTab.Thinking)))();
 
+    /// <summary>Home's first steps on a new PC: Add a computer, which opens on Martlet on your network.</summary>
+    private HealthFix ConnectComputersFix() => new("network", "Connect to your other computers", () => RunNodeAction(NodeAction.AddComputer), Passive: true);
+
+    private void ConnectComputers_Click(object sender, RoutedEventArgs e) => ConnectComputersFix().Run();
+
     // ---------- host dashboard ----------
 
     private HostSetupTarget ThisPcTarget() => new(HostSetupMethod.ThisPcDocker, "",
@@ -691,10 +696,15 @@ public partial class MainWindow
         if (state!.Version is not { } running)
             return new("update", "Keep it up to date", $"Updates the host service to Martlet {Version}. Pairings and roles stay.",
                 false, true, [update]);
-        return AppVersions.IsOlder(running, Version)
-            ? new("update", "Keep it up to date",
-                $"The host service runs Martlet {running}. Update it to {Version}. Pairings and roles stay.", false, true, [update with { Primary = true }])
-            : new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+        if (!AppVersions.IsOlder(running, Version))
+            return new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+        if (hostUpdates.IsUpdating(ThisPcHostId))
+            return new("update", "Keep it up to date",
+                $"Updating the host service from Martlet {running} to {Version}. Pairings and roles stay.", false, true, []);
+        return new("update", "Keep it up to date",
+            $"The host service runs Martlet {running}. Martlet updates it to {Version} by itself " +
+            (state.Stage == LocalHostServiceStage.Running ? "in the background" : "once it runs again") +
+            "; Update host service does it now. Pairings and roles stay.", false, true, [update with { Primary = true }]);
     }
 
     /// <summary>"A", "A and B", "A, B and C", "A, B, C and 2 more".</summary>
@@ -1070,7 +1080,8 @@ public partial class MainWindow
         ring.Opacity = 0;
         status.Children.Add(ring);
         status.Children.Add(Dot(node.Health, 10, default));
-        if (node.Kind == NodeKind.Add) status.Visibility = Visibility.Hidden;
+        // Add a computer has no status, so its name gets the room.
+        if (node.Kind == NodeKind.Add) status.Visibility = Visibility.Collapsed;
         DockPanel.SetDock(status, Dock.Right);
         header.Children.Add(status);
         var bubble = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(18), Margin = new Thickness(0, 0, 10, 0) };

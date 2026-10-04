@@ -99,6 +99,23 @@ public sealed class HostHandoffTests : IDisposable
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => shared.Validate());
     }
 
+    [Fact]
+    public async Task A_new_pc_hands_its_jobs_to_hosts_with_nothing_set_up_first()
+    {
+        // What a new PC does when it follows who does what right after pairing: no settings yet, every job on a host.
+        var thinking = HostHandoff.ToHost(SetupSettings.Begin(null), SetupRouteType.GatewayOllama, Endpoint(), Pairing, "desktop-test",
+            Snapshot(SetupRouteType.GatewayOllama, "llama3.2-3b"));
+        var both = HostHandoff.ToHost(thinking, SetupRouteType.GatewayStt, Endpoint("gpu-b"), Guid.NewGuid(), "desktop-test",
+            Snapshot(SetupRouteType.GatewayStt, "small"));
+        await SaveAsync(both, null);
+
+        var loaded = await Store.LoadAsync();
+        Assert.Equal(SettingsLoadState.Loaded, loaded.State);
+        Assert.Equal(new[] { SetupRouteType.GatewayStt, SetupRouteType.GatewayOllama },
+            loaded.Settings!.Setup!.Routes.Where(r => r.Role is SetupRole.Stt or SetupRole.Llm).OrderBy(r => r.Role == SetupRole.Llm).Select(r => r.RouteType!.Value));
+        Assert.Empty(loaded.Settings.Setup.PendingRemovals);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);

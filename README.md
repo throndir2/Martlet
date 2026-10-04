@@ -243,7 +243,11 @@ Martlet run window (`martlet-host update`; identity, pairings and roles stay).
 *Keep my Martlet hosts on this PC's version* does the same in the background
 every interval for hosts Martlet reaches over an SSH key or this PC's Docker
 Desktop; a host that needs a password, sudo or an approval keeps the Update
-host route. The
+host route. This PC's **own host service** follows its version whatever that
+setting says: Martlet installs its own update and is back moments later (the
+update helper starts the installer within about a second of Martlet's exit),
+then updates its host service in the background while you use it, and checks
+again every minute until it runs the same version. The
 [Windows packaging guide](packaging/windows/README.md) distinguishes local
 internal builds from the manually dispatched release workflow, which has no
 push, PR, tag or scheduled trigger.

@@ -169,7 +169,7 @@ public partial class MainWindow
             if (model is not null && !SharedCharacterModels.IsComplete(store.DataDirectory, model))
                 throw new InvalidOperationException("That character is still being copied to this PC. Try again in a moment.");
             var pairings = Pairings();
-            var (profile, revision) = await pairings.LoadProfileAsync(lifetime.Token);
+            var (profile, revision) = await pairings.EnsureProfileAsync(lifetime.Token);
             var next = profile with
             {
                 Renderer = model is null ? AvatarRenderer.Live2D : SharedCharacterModels.Renderer(model),
@@ -256,14 +256,14 @@ public partial class MainWindow
     private async Task ShareShownCharacterAsync(CancellationToken token)
     {
         if (store is null || setupService is null || avatarWindowOpen || changes.Busy) return;
-        AvatarProfile profile;
+        AvatarProfile? profile;
         string? revision;
         try { (profile, revision) = await Pairings().LoadProfileAsync(token); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
         {
             return;
         }
-        if (BundledLive2D.IsBuiltIn(profile.ModelPath) || SharedCharacterModels.KeyOfPath(store.DataDirectory, profile.ModelPath) is not null ||
+        if (profile is null || BundledLive2D.IsBuiltIn(profile.ModelPath) || SharedCharacterModels.KeyOfPath(store.DataDirectory, profile.ModelPath) is not null ||
             unsharedCharacterPaths.Contains(profile.ModelPath) || !File.Exists(profile.ModelPath))
             return;
         var (shared, note) = await ShareCharacterAsync(profile, token);

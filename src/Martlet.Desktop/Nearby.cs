@@ -34,7 +34,8 @@ internal static partial class Nearby
     internal static readonly TimeSpan FindWindow = TimeSpan.FromMilliseconds(1600);
     /// <summary>How long the computer with the hosts waits for its owner to allow or deny a request.</summary>
     internal static readonly TimeSpan DecisionTimeout = TimeSpan.FromMinutes(2);
-    /// <summary>How long a shared code stays redeemable (the host's own five-minute pairing window).</summary>
+    /// <summary>How long this PC keeps the codes it shared open for the asking desktop before withdrawing the unused ones
+    /// (the hosts' short codes themselves have no deadline).</summary>
     internal static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     /// <summary>How long the asking desktop waits for the codes once allowed (a host may first build its image).</summary>
     internal static readonly TimeSpan CodesTimeout = TimeSpan.FromMinutes(10);

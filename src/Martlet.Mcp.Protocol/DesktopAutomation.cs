@@ -29,8 +29,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
-        // shows; its Set up, Pair and role buttons do the work.
-        "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
+        // shows; its Set up, Pair and role buttons do the work. The Devices map's Add a computer details open the same wizard
+        // from their + (SelectedDeviceAdd) and their first choice card, and so does Home's Connect to your other computers on a
+        // new PC (HomeConnectComputers).
+        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepWhere",
+        "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
         "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
         "HostCommandSection", "PairCommandSection", "DeviceIdSection",
         // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
@@ -147,6 +150,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // behind (SelectedDeviceSharedGpu, fixed wording with role and engine names).
         "SelectedDeviceRelease", "SelectedDeviceUpdate", "SelectedDeviceSharedGpu",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
+        // default, your active window, or a camera's name or host without its path or password) and how often it comments.
+        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
+        // (clicking it saves talk-preferences.json, so it needs --allow-ui-effects).
+        "VisionNow", "VisionToggle",
         // Companion › Listening › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
         // Thinking destination the page already shows.
@@ -216,6 +224,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // through the VoiceEngine prefix below.
         "SpeakingEngineOthers", "SpeakingEngineSharedGpu", "SpeakingHostStatus",
         "SetupOllamaStatus", "SetupLocalModelTest", "HostRunStatus", "RepliesNow", "AppUpdateStatus", "AppCurrentVersion",
+        // Settings › App updates: this PC's own host service following the app's version (shown only when this PC runs one):
+        // current, being updated in the background, busy (and when Martlet tries again), stopped, not running, or why the
+        // update stopped. Versions and fixed text only.
+        "OwnHostUpdateStatus",
         // Companion › Replies › Context size: the size replies use, where it comes from (the setting, Martlet's default, the
         // model's limit, the host's default or Ollama's context length) and what Martlet knows of the model's own limit. Its
         // Check model limit button (RepliesCheckContext) asks the Thinking model's server, so it needs --allow-ui-effects.
@@ -257,6 +269,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
+        // A run window's pairing panel: the note on how long the code works (fixed text) and its Copy code button's label
+        // ("Copy code", then "Copied" or "Couldn't copy"); never the code (HostRunPairCode). Clicking HostRunPairCopy puts the
+        // code on the clipboard, so it needs --allow-ui-effects.
+        "HostRunPairNote", "HostRunPairCopy",
         "NearbyStatus", "NearbyNumber", "NearbyShareStatus", "JoinRequestTitle", "JoinRequestText", "JoinRequestNumber", "JoinRequestExpiry",
         // The MCP directory's status line and the selected server's public directory facts (never what was typed into its fields).
         "McpDirectoryStatus", "McpDirectoryNoSelection", "McpDirectoryDetailTitle", "McpDirectoryDetailName", "McpDirectorySummary",
