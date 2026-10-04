@@ -25,4 +25,18 @@
     <!-- character_models reads the desktop's shared character list and copies (SharedCharacterModels). -->
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
   </ItemGroup>
+  <!-- character_theme uses the desktop's own texture decoding, picture sheet and window sample with Martlet's real styles. The
+       linked error log (which Controls.xaml's copy buttons use) gets its own namespace, like the renderer's copy. -->
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);MARTLET_MCP</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Martlet.Desktop\AppearancePalette.cs" Link="Theme\AppearancePalette.cs" />
+    <Compile Include="..\Martlet.Desktop\CharacterThemeImages.cs" Link="Theme\CharacterThemeImages.cs" />
+    <Compile Include="..\Martlet.Desktop\ThemeSample.cs" Link="Theme\ThemeSample.cs" />
+    <Compile Include="..\Martlet.Desktop\CopyText.cs" Link="Theme\CopyText.cs" />
+    <Compile Include="..\Martlet.Desktop\ErrorLog.cs" Link="Theme\ErrorLog.cs" />
+    <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
+    <Page Include="..\Martlet.Desktop\Themes\Motion.xaml" Link="Themes\Motion.xaml" />
+  </ItemGroup>
 </Project>

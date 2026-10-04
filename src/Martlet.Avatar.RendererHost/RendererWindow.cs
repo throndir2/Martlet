@@ -48,6 +48,7 @@ internal sealed class RendererWindow : Window
     private RendererBubble speechShown = new("hidden", 0, 0, 0, 0);
     private ResourceDictionary? palette;
     private bool darkTheme;
+    private IReadOnlyDictionary<string, string>? themeColors;
     private bool highContrast;
     private bool closed;
     private TaskCompletionSource<JsonElement>? response;
@@ -142,12 +143,13 @@ internal sealed class RendererWindow : Window
         };
     }
 
-    internal void ApplyOverlayTheme(bool dark)
+    internal void ApplyOverlayTheme(bool dark, IReadOnlyDictionary<string, string>? colors = null)
     {
         darkTheme = dark;
+        themeColors = colors;
         highContrast = SystemParameters.HighContrast;
         if (palette is not null) Resources.MergedDictionaries.Remove(palette);
-        palette = AppearancePalette.Create(dark, highContrast);
+        palette = AppearancePalette.Create(dark, highContrast, colors);
         Resources.MergedDictionaries.Add(palette);
     }
 
@@ -155,7 +157,7 @@ internal sealed class RendererWindow : Window
     {
         if (e.PropertyName == nameof(SystemParameters.HighContrast) &&
             !closed && !Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
-            Dispatcher.InvokeAsync(() => { if (!closed) ApplyOverlayTheme(darkTheme); });
+            Dispatcher.InvokeAsync(() => { if (!closed) ApplyOverlayTheme(darkTheme, themeColors); });
     }
 
     // The character is fitted into a portrait frame centered in the overlay. Each side of the frame has this much of its
@@ -710,7 +712,7 @@ internal sealed class RendererWindow : Window
             if (message.Kind != "load") throw new InvalidDataException("Private renderer initialization required.");
             activation = message.Activation;
             var load = RendererProtocol.Data<RendererLoad>(message);
-            ApplyOverlayTheme(load.DarkTheme);
+            ApplyOverlayTheme(load.DarkTheme, load.ThemeColors);
             if (load.Placement is { Locked: true } locked) RestorePlacement(locked);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
@@ -796,7 +798,7 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "snapshot"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "home")
                 {
@@ -825,7 +827,8 @@ internal sealed class RendererWindow : Window
                 }
                 if (message.Kind == "theme")
                 {
-                    ApplyOverlayTheme(RendererProtocol.Data<RendererTheme>(message).Dark);
+                    var theme = RendererProtocol.Data<RendererTheme>(message);
+                    ApplyOverlayTheme(theme.Dark, theme.Colors);
                     await ReplyAsync("ok", new { });
                     continue;
                 }

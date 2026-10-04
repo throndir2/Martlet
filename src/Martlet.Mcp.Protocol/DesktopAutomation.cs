@@ -207,8 +207,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching).
         "BackgroundStatus", "TrayStatus",
-        // Settings › Appearance: the palette ("Pink light" or "Rose dark"; menus and every window follow it) and its status line.
-        "AppearanceTheme", "AppearanceStatus",
+        // Settings › Appearance: the palette (Pink light, Rose dark, Character light or dark, or Character light or dark by
+        // Thinking; menus and every window follow it) and its status line; the character's colors (how many and where the accent
+        // comes from, or why they couldn't be read; never its name) and the Thinking model's palettes (made when and from what,
+        // its reason and the colors it chose, or how asking went). AppearanceColor-<n> and AppearancePreview-<id> read through
+        // the prefixes below. AppearanceThinkingMake sends the character's colors, name and picture to the Thinking model, so it
+        // needs --allow-ui-effects. Who the character is (AppearanceCharacterAbout, typed by the owner) and what Thinking is told
+        // (AppearanceIdentity) carry its name, so their text is never returned.
+        "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus", "AppearanceThinkingStatus", "AppearanceThinkingMake",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
@@ -273,7 +279,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-"];
+        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
+        // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
+        // or "...: not made yet" for a Thinking palette not made).
+        "AppearanceColor-", "AppearancePreview-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

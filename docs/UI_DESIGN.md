@@ -483,7 +483,8 @@ window ends it.
   asks first, and the exact evidence and *Troubleshooting* sit under
   *Details*. Home and the Listening tab warn about the microphone only when
   none is found or the chosen one isn't connected.
-- **Settings**: palette, this PC's role and the tour, app updates (automatic
+- **Settings**: palette (Martlet's own or one made from the character, see
+  [Character palettes](#character-palettes)), this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
   version, *Check for updates now*, *Install*, *Update hosts now*), *Your
   other computers* (whether they may send this PC commands, and **Let my
@@ -508,6 +509,97 @@ Companion job tab, which opens it on the matching job. Consent and credential
 behavior did not change. The broader redesign
 (jobs, placement on hosts, audio separation and queued local model hosting) is
 in [COMPONENTS.md](COMPONENTS.md).
+
+## Character palettes
+
+Every window, menu and the character overlay are drawn with twelve brushes
+(`AppearancePalette.cs`): `Canvas` (window background), `Surface` (cards),
+`Soft` (buttons, chips, inputs), `Text`, `Muted`, `Border`, `Accent` (primary
+buttons, selection, links, icons, headings; also used as text), `OnAccent`,
+`Focus` (focus and hover rings), `Success`, `Warning` and `Glow` (the halos
+behind the mascot), plus the mascot itself, whose badge takes the accent's hue
+in a character palette (Martlet's pink otherwise). Everything refers to them as
+`DynamicResource`, so a palette swaps at once.
+Windows' high contrast always wins.
+
+Settings › Appearance offers *Pink light*, *Rose dark* and four palettes made
+from the character this PC shows: **Character light** and **Character dark**
+(Martlet's rules) and **Character light/dark by Thinking**. They follow the
+character: choosing or showing another character recolors Martlet within a
+moment, and the last colors are kept in `appearance-colors.json` so Martlet
+starts in them. Under the choice the page shows the character's main colors and
+a small picture of Martlet's window in each of the four palettes.
+
+**Reading the colors** (`Martlet.Avatar.Hosting`, `CharacterTheme.cs`): the
+model's textures (a Live2D model's texture sheets, a VRM's base color
+textures) are decoded small (WIC), nearly opaque pixels are grouped with
+deterministic k-means in OKLab into up to seven main colors, and small vivid
+touches (eyes, trims, ribbons) are clustered separately and kept as up to three
+more. Each color has its share of the textures and a kind: vivid, muted,
+neutral or skin. They are read once per model and kept in
+`character-themes.json` by the model's ID. Texture sheets over-represent some
+parts (mouths, eyes, effects), so the rules can pick a color that is small on
+the character itself; the Thinking palettes, which also see a picture, are the
+remedy.
+
+**Martlet's rules** (in OKLCH): the backgrounds are near white (light) or
+near black (dark), tinted with the hue that covers most of the model, more
+faintly when that hue covers little of it; a dark canvas is the model's own
+darkest color when it shares that hue. Text reuses the model's darkest (light)
+or lightest (dark) neutral when it has one. The accent is one of the model's
+most vivid colors (pale tints and specks never): the one that suits both
+palettes best, unless it would have to change a lot for one of them (a yellow
+turning olive on white), which then takes the candidate that suits it. A
+model's color is used as it is whenever it already keeps the rules; otherwise
+only its lightness moves. Glow is a second vivid color (or the tint), success
+and warning keep their green and amber, moved off the accent's hue when close.
+
+**The Thinking palettes**: the Thinking model chooses, Martlet's rules design.
+Small models asked for whole palettes made plain, black-and-white ones (and
+copied any palette they were shown), while the rules reliably make calm,
+cohesive ones; what the rules can't do is know which color *is* the
+character, since texture sheets over-represent mouths, eyes and effects. So
+*Make with Thinking* (and, once for each new character, choosing a Thinking
+palette while Thinking is set up) asks only that: the prompt *Character theme
+colors* (Companion › Prompts) and a message with who the character is (its name
+in your character list, with the name its files give it) and where it is from
+(what you type under **Who the character is and where it's from**, saved for that
+character in `character-themes.json`, else what its files say: a VRM's authors,
+copyright and references, or *Live2D's official sample* for the built-in
+Hiyori), its main colors and one JPEG: the character as it shows on screen (a
+snapshot from the overlay, cropped, at most 320 pixels) beside its texture
+sheet, or the sheet alone (a VRM's own thumbnail beside it) while it is hidden.
+It answers JSON with the `accent` (the character's signature color, the one
+fans would name first; from what it knows of the character when it recognizes
+it), the `glow` (a second color of theirs), the `tint` the backgrounds lean
+toward and the `strength` of that tint (`subtle`, `balanced` or `bold`), and a
+short reason. Martlet's rules then build both palettes around those colors,
+exactly as they build their own; a gray or near-white accent, a gray glow or a
+hueless tint is refused and the rules' own is used. A model that can't take
+pictures is asked again with the message alone. An edited prompt that still
+asks for whole `light` and `dark` palettes is accepted too: their plain grays
+take the hue of the rule-based palette and the rules below are kept. Until it
+has answered, the Thinking choices use the rule-based palettes.
+
+**Rules every palette keeps**, the Thinking model's included
+(`CharacterThemeRules.Repair`): light backgrounds with dark text in a light
+palette and dark backgrounds with light text in a dark one; text 7:1 on
+`Canvas`, `Surface` and `Soft`; `Muted`, `Accent`, `Success` and `Warning`
+4.5:1 on them; `OnAccent` 4.5:1 on `Accent`; `Border` and `Focus` 3:1 on
+`Surface` and `Canvas` (WCAG 2); and body text keeps only a hint of color
+(OKLCH chroma at most 0.05 for `Text`, 0.08 for `Muted`). A color that breaks
+one is moved in lightness (or chroma, for text) only, keeping its hue, and the
+page says how many were adjusted.
+
+Verified looks (2026-10-03, `character_theme` previews and the desktop): the
+rules give calm, readable palettes for all ten models tried (the Live2D samples
+Hiyori, Haru, Mao, Mark, Natori, Ren and Rice, the VRM samples Seed-san and
+Constraint Twist, and a VTube Studio model). Asked for whole palettes, Gemma 4
+(12B and E2B on Ollama) made plainer, black-and-white ones that needed many
+fixes; asked for the choice, Gemma 4 12B answered in about 2-3 s each and picked
+what the texture sheets hide (Seed-san's teal trims instead of the red of its
+mouth texture, Hiyori's blue ribbon, Constraint Twist's coral, Natori's blue
+tie), with palettes as cohesive as the rules' own.
 
 ## Motion system
 
