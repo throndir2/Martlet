@@ -404,9 +404,12 @@ the path or audio, saves nothing, plays nothing and contacts nothing.
 handled: `text` (required) is a reply, `engine` an engine key (default the
 default engine, `chatterbox`; `none` for a voice without tags such as OpenAI or
 Windows) and optional `dataDirectory` whose saved prompt edits are used. It
-returns the engine, `supportsTags`, its `tags`, `cues` (each tag's
+returns the engine, `supportsTags`, its `tags`, the same split into `sounds`
+(non-word sounds such as `[laugh]`) and `tones` (tones of voice such as
+`[whispering]`), `cues` (each tag's
 engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
-sounds and tones* instructions the Thinking model gets, or null), `spoken` (the
+sounds and tones* instructions the Thinking model gets, the sounds and the tones
+each under a line saying where they go, or null), `spoken` (the
 pieces the real speech segmenter hands that engine for a spoken reply, its own
 tags kept), `suppressedPieces` and `shown` (the chat and caption text, every
 tag stripped). The pieces break where the persona's [speech

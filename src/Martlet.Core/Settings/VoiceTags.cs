@@ -19,13 +19,34 @@ public static class VoiceTags
     }
 
     /// <summary>What the Thinking model is told about the speaking engine's tags (Companion › Prompts › Voice sounds and
-    /// tones): exactly that engine's tags in its own syntax, one per line with when to use it. Null when the engine has no
-    /// tags or the owner emptied the prompt.</summary>
+    /// tones): exactly that engine's tags in its own syntax (<see cref="Catalog"/>). Null when the engine has no tags or the
+    /// owner emptied the prompt.</summary>
     public static string? Instructions(SpeechEngine? engine, PromptSettings? prompts) =>
         engine is { SupportsTags: true }
-            ? PromptSettings.Fill(prompts, PromptCatalog.VoiceTags, ("engine", engine.Name),
-                ("tags", string.Join("\n", engine.Tags.Select(tag => $"{tag.Text} - {tag.Usage}"))), ("example", engine.Tags[0].Text))
+            ? PromptSettings.Fill(prompts, PromptCatalog.VoiceTags, ("engine", engine.Name), ("tags", Catalog(engine)),
+                ("example", engine.Tags[0].Text))
             : null;
+
+    /// <summary>Heads the engine's non-word sounds in <see cref="Catalog"/>.</summary>
+    public const string SoundsHeading = "Non-word sounds (write one inline, exactly where the sound happens):";
+
+    /// <summary>Heads the engine's tones of voice in <see cref="Catalog"/>. Each spoken piece is synthesized on its own, so a
+    /// tone reaches only the sentence it starts.</summary>
+    public const string TonesHeading =
+        "Tones of voice (write one at the very start of a sentence; that whole sentence, and only that one, is said in that tone):";
+
+    /// <summary>The engine's tags as the Thinking prompt lists them (its {tags}): the non-word sounds, then the tones of voice,
+    /// each group under a heading saying where its tags go and each tag on its own line with when to use it. A group the engine
+    /// has none of is left out.</summary>
+    public static string Catalog(SpeechEngine engine)
+    {
+        ArgumentNullException.ThrowIfNull(engine);
+        string? Group(VoiceTagKind kind, string heading) =>
+            engine.Tags.Where(tag => tag.Kind == kind).Select(tag => $"{tag.Text} - {tag.Usage}").ToArray() is { Length: > 0 } lines
+                ? heading + "\n" + string.Join("\n", lines) : null;
+        return string.Join("\n", new[] { Group(VoiceTagKind.Sound, SoundsHeading), Group(VoiceTagKind.Emotion, TonesHeading) }
+            .Where(group => group is not null));
+    }
     /// <summary>Every registered engine's tags (what chat and captions never show).</summary>
     public static IReadOnlyList<VoiceTag> Known => SpeechEngines.All.SelectMany(engine => engine.Tags)
         .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase).ToArray();
