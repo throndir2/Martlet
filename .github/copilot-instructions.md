@@ -10,9 +10,14 @@ approval or choice questions. Stop only for a genuine blocker or an action that
 needs explicit authorization.
 
 **Validate every change before merge** ([docs/VALIDATION.md](../docs/VALIDATION.md)):
-run `.\scripts\Test-Martlet.ps1` (it selects the tests the change affects and runs
-them in parallel here and on the developer's validation hosts from
-`~\.martlet-dev\validation.json`) and make it pass with no new failures. Verify
+run only the targeted tests, meaning the tests the change adds or modifies and the
+test project or suite directly covering the changed code, with
+`.\scripts\Test-Martlet.ps1 -Project <Project>.Tests -Filter '<your tests>'` (it
+runs them here or on the developer's validation hosts from
+`~\.martlet-dev\validation.json`), and make them pass. Never run the runner's
+default diff-wide selection, `-All` or merely dependent suites unless asked: many
+unrelated suites fail or hit concurrency problems, so broad runs are noise. A
+failure the change cannot cause does not block; note it in the PR. Verify
 every feature or behavior change through Martlet's own MCP server on this dev
 machine whenever possible: build it and drive the actual feature with
 `scripts\Invoke-MartletMcp.ps1` (Doctor and status tools headless, `-Desktop` for

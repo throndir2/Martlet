@@ -94,16 +94,25 @@ before and after, and report the numbers.
 Every change except documentation is validated locally before it merges, by the
 flow in [Validating changes](docs/VALIDATION.md). Both parts are required:
 
-- **Affected tests:** run `.\scripts\Test-Martlet.ps1` (`-List` first shows what
-  the change selects). It builds every affected project and runs the affected
-  .NET, Python and node suites in parallel on this PC and on the developer's
-  validation hosts. It must end `PASSED`: a new failing test or build error
-  blocks the merge. Fix the cause. Add to `tests\known-failures.txt` only a test
-  shown failing on `origin/main` without your change (noted in the PR and
-  [#332](https://github.com/throndir2/Martlet/issues/332)), never one your change
-  breaks, and delete a line when its test passes again. Fix flaky tests the run
-  names when they are in or near your change. Add or update tests for new
-  behavior in the matching `tests\` project.
+- **Targeted tests only:** run just the tests you added or changed and the test
+  project or suite that directly covers the changed code:
+  `.\scripts\Test-Martlet.ps1 -Project <Project>.Tests -Filter '<your tests>'`
+  (`-Project python:<worker>` for a worker suite; `-List` shows which projects
+  the change touches directly). Never run the runner's default diff-wide
+  selection, `-All` or suites that merely depend on the changed project unless
+  the owner asks: many suites fail for unrelated reasons or under parallel
+  load, and that noise is not evidence about the change. Name test projects
+  exactly; `-Project <Project>` without `.Tests` pulls in every dependent
+  suite. When a change alters an API other projects use, build them instead of
+  testing them. The targeted tests must pass: fix every failure your change
+  causes. A failure it cannot cause (also failing on `origin/main`, or only
+  under load and passing alone) does not block; narrow the filter, note it in
+  the PR and do not chase it in this change. Add to `tests\known-failures.txt`
+  only a test shown failing on `origin/main` without your change (noted in the
+  PR and [#332](https://github.com/throndir2/Martlet/issues/332)), never one
+  your change breaks, and delete a line when its test passes again. Add or
+  update tests for new behavior in the matching `tests\` project. Details:
+  [Targeted tests only](docs/VALIDATION.md#targeted-tests-only).
 - **Behavior through Martlet MCP:** every feature or behavior change is shown
   working through Martlet's own MCP server (`src\Martlet.Mcp`) on this machine
   whenever it can exercise it. Build what the change needs, then drive the
@@ -122,13 +131,13 @@ flow in [Validating changes](docs/VALIDATION.md). Both parts are required:
   provider requests, credential handling, audio capture/playback or data
   disclosure; stop at those steps.
 - **Run what the tests do not cover** (scripts, packaging, worker hosts,
-  workflows) the way it is used; the runner lists such files.
+  workflows) the way it is used; `-List` names such files.
 - **Use the developer's validation hosts.** The developer profile
   (`~\.martlet-dev\validation.json` and `NOTES.md`, shared by all of that
   developer's checkouts and worktrees, never committed) lists the machines the
   developer has set up: Docker on this PC, Linux boxes over key-based SSH, GPU
   hosts. Read it before validating and run what needs those machines there; the
-  runner already sends Linux-only suites to them. Record useful facts about
+  runner already sends targeted Linux-only suites to them. Record useful facts about
   listed hosts in `NOTES.md`. Adding a host, installing anything on one or using
   a password is the developer's decision, not an agent's.
 - When full validation is impossible here (locked or headless desktop, missing
@@ -153,12 +162,12 @@ local work and report the exact blocker.
 Publish only the task's changes to the repository's configured remote. Use a
 focused PR targeting `main` with a short description and the validation report.
 Refresh `origin/main` before merging and reconcile if it advanced (rerun the
-affected tests when the reconcile changed what they cover). Merge eligible PRs
+targeted tests when the reconcile touched the code they cover). Merge eligible PRs
 one at a time through the normal GitHub path. Never bypass protections, dismiss
 required review, fabricate check statuses or merge a held PR.
 
 Auto-merge is encouraged for autonomous work, **after validation**: once the
-affected tests pass, MCP verification is done and NOT RUN items are reported,
+targeted tests pass, MCP verification is done and NOT RUN items are reported,
 the agent merges its own PR without waiting for approval. A PR whose validation
 failed or was skipped is not eligible. Automatic completion means the agent
 performs the normal eligible PR merge; it does not mean changing repository

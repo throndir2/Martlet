@@ -3086,7 +3086,7 @@ readiness.
 
 Every new feature or behavior change is verified on the dev machine through
 this server before merge, whenever the machine can exercise it, alongside the
-affected tests (the policy is in [AGENTS.md](../AGENTS.md#validate-before-merge)
+targeted tests (the policy is in [AGENTS.md](../AGENTS.md#validate-before-merge)
 and the whole flow in [Validating changes](VALIDATION.md)).
 `scripts\Invoke-MartletMcp.ps1` runs this checkout's `Martlet.Mcp`, sends a list
 of tool calls in order and prints one JSON array of results; it exits 1 if any
