@@ -1395,6 +1395,35 @@ asked once more without it (`sentControl` `[true, false]`,
 `reasoningRejected`) and still completed; before this, a refused Off failed
 the reply (or handed it to the Thinking fallback when one was set).
 
+With `chattiness` the reply is offered the chattiness tags the desktop offers
+while [Martlet decides how chatty it is](SCREEN_COMMENTARY.md#martlet-decides-how-chatty-it-is)
+(`ConversationRequest.ControlTags`). `chattiness` returns `offered`, `found`
+(the tags the reply wrote, in order, from `ConversationTurn.Controls`),
+`switchesTo` (the level the last one picks) and `hidden`; `ok` also needs every
+tag out of `reply.text`, `voice.pieces` and the captions, and `reply.fullText`
+compares with the served text without its tags. For example
+`{"voiceFailure":"none","chattiness":true,"reply":"Sure, I will keep it down. Tell me if you need me. [chattiness: quiet]"}`
+returned `switchesTo` *quiet*, the two sentences as the only pieces, and the
+same `firstWordsMs` (about 2 ms) and `firstAudioMs` (340-470 ms) as the reply
+without its tag: a tag at the end never holds back the first words.
+
+`chattiness_status` reads Companion › Vision › **How often it comments** (the
+same choice as Listening › Watch along) from a data directory's
+`talk-preferences.json` (optional absolute `dataDirectory`, default the current
+user's): `choice` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*), `saved`
+and `source` (`saved` or `default`), `martletDecides`, `visionOn` and
+`hearPcOn` (replies are told about Martlet decides only while one of them is
+on), `startsAt` (*normal*), `tags` (every spelling a reply switches with) and
+`prompts` (`state` of settings.json, `decides`: Companion › Prompts ›
+*Chattiness: Martlet decides* exactly as it is sent, and `notes`: *Chattiness
+right now* for each level). Its `rehearsal` sends sample replies (or `reply`,
+up to 1,024 characters of one line) through the production speech segmenter
+and chat stripper with those tags offered: `spoken`, `shown`, `silent` (the
+shown text is `[pass]`), `tags` and `switchesTo`. The level a running
+conversation picked shows in the talk window's `LiveChattiness` line and in
+`logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
+Martlet decides).* It reads no credentials and contacts nothing.
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from
@@ -2661,7 +2690,18 @@ voice.*, *On. <another output> is in use too (a virtual cable there can carry
 your own voice), so Martlet hears only what plays on <your output> and stops
 hearing it while it speaks.*, or why it doesn't apply: push-to-talk, echo
 reduction off, or Martlet's voice can't be left out; the card reads which
-outputs are in use, never their sound); `pc_audio_check` reads the same choice. With it on
+outputs are in use, never their sound); `pc_audio_check` reads the same choice.
+The card also has `TalkPcChattiness`, the same choice as Vision's
+`VisionChattiness` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*; returned,
+and `ui_select` saves `talk-preferences.json`, so it needs
+`--allow-ui-effects`), each with its `...Status` line (`TalkPcChattinessStatus`,
+`VisionChattinessStatus`: what the level means, or what Martlet decides means
+and, while a conversation runs, *Right now it is quiet.*); `chattiness_status`
+reads the same choice. While Martlet decides and vision or hearing the PC is
+on, the talk window's `LiveChattiness` line (returned) says *Martlet decides
+how chatty it is: normal right now.*, then *quiet right now (since 10:14 PM).*
+once a reply switched it, and `LiveHistory` gets a note such as *Martlet went
+quiet about what it sees and hears.* With it on
 and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears what this PC plays once you start listening.*, *Also hearing
 what this PC plays (not Martlet's own voice).*, *Also hearing what this PC
@@ -2839,7 +2879,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check` and `parakeet_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze` and `character_theme` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

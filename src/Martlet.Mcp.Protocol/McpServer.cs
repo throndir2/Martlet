@@ -522,7 +522,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "and voice.pieces lists exactly what the voice was asked to say. thinkingSteps (off or on) sends Companion > Replies > " +
             "Thinking steps with the reply; with refuseThinking the fixture endpoint refuses a request that carries it, as a model " +
             "that always thinks does, and ok needs the reply asked once more without it (thinking.sentControl [true, false], " +
-            "reasoningRejected). Loopback only; reads no credentials.", new
+            "reasoningRejected). With chattiness, the reply is offered the chattiness tags as it is while Companion > Vision > How " +
+            "often it comments is Martlet decides (such as \"[chattiness:quiet]\"): chattiness returns the tags the reply wrote and " +
+            "the level they switch to, and ok also needs them out of reply.text and voice.pieces. Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 },
@@ -531,7 +533,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             reply = new { type = "string", maxLength = 1024 }, dataDirectory = new { type = "string" }, persona = new { type = "string" },
             breaks = BreaksSchema(),
             thinkingSteps = new { type = "string", @enum = new[] { "off", "on" } },
-            refuseThinking = new { type = "boolean" }
+            refuseThinking = new { type = "boolean" },
+            chattiness = new { type = "boolean" }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -633,6 +636,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "when this PC plays it back, on fixed samples. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
+            "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
+            "whether vision and hearing the PC are on (replies are told about Martlet decides only while one is), the level Martlet " +
+            "decides starts at, the tags a reply switches the level with, what Martlet decides tells the Thinking model and the " +
+            "note that says the level (Companion > Prompts, from settings.json's edits), then a rehearsal: sample replies (or reply) " +
+            "through the production speech segmenter and chat stripper with those tags offered, returning what is spoken and shown, " +
+            "whether it stays silent, the tags found and the level they switch to. The level a running conversation picked shows in " +
+            "the talk window's LiveChattiness line and the desktop log. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 1024 }
         }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
@@ -847,11 +862,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
                     SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name,
-                    OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false),
+                    OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false,
+                    OptionalBool(arguments, "chattiness") ?? false),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),

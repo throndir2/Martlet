@@ -25,6 +25,8 @@ public sealed class ConversationTurn
     private readonly TaskCompletionSource<ConversationSnapshot> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly VoiceTagStripper shown;
+    // The control tags the reply wrote, in order (ConversationRequest.ControlTags); guarded by Sync like the text.
+    private readonly List<string> controls = [];
     private readonly Channel<SpeechPiece> segments = Channel.CreateBounded<SpeechPiece>(new BoundedChannelOptions(2)
     {
         FullMode = BoundedChannelFullMode.Wait, SingleWriter = true, SingleReader = false, AllowSynchronousContinuations = false
@@ -83,6 +85,9 @@ public sealed class ConversationTurn
     public ChannelReader<ConversationEvent> Events => events.Reader;
     public ConversationSnapshot Snapshot { get { lock (Sync) return GetSnapshot(); } }
     public ConversationContent Content { get { lock (Sync) return new(text.ToString(), refusal); } }
+    /// <summary>The control tags (<see cref="ConversationRequest.ControlTags"/>) the reply wrote so far, in order, as the request
+    /// spelled them; never shown or spoken.</summary>
+    public IReadOnlyList<string> Controls { get { lock (Sync) return [.. controls]; } }
 
     internal ConversationTurn(ConversationRuntime owner, ConversationRequest request,
         IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech)
@@ -92,10 +97,11 @@ public sealed class ConversationTurn
         this.authorization = authorization;
         // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive.
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
-            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null);
+            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null,
+            request.ControlTags, controls.Add);
         captioner = request.Speech is null && owner.SpokenText is not null
             ? new SpeechSegmenter(BoundedSpeechInput.HardMaxUtf8Bytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
-                characterTags: request.CharacterTags)
+                characterTags: request.CharacterTags, controlTags: request.ControlTags)
             : null;
         Epoch = epoch;
         this.retryOf = retryOf;
@@ -294,7 +300,7 @@ public sealed class ConversationTurn
         var segmenter = request.Speech is { } voice
             ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
                 tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId),
-                characterTags: request.CharacterTags, breaks: request.SpeechBreaks) : null;
+                characterTags: request.CharacterTags, breaks: request.SpeechBreaks, controlTags: request.ControlTags) : null;
         try
         {
             var input = request.Input;
