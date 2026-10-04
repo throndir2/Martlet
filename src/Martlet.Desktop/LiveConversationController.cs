@@ -310,21 +310,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // Thinking models that refused the Thinking steps choice this app session; they get their own default until Martlet restarts.
     private readonly HashSet<string> reasoningRefused = new(StringComparer.Ordinal);
     // Background work Martlet started during the conversation (think_longer), its own text runtime and credentials (bound to the
-    // one think's request at a time), the think running (so a model on this PC can be handed back to the conversation at once),
-    // whether the user is talking or about to be answered (from the talk window), and who the last spoken reply heard.
+    // one think's request at a time), where Deep thinking thinks on this PC (deep-thinking.json, read when the conversation is
+    // set up or the page saves it), and who the last spoken reply heard.
     private readonly BackgroundJobs jobs;
     private readonly ConversationCredentialSource thinkCredentials;
     private ConversationRuntime? thinkRuntime;
     private ICredentialAuthority? thinkAuthorization;
-    // Where the running think works and whether it runs alongside the conversation (for background-jobs.json).
+    private DeepThinkingSettings deepThinking = new();
+    // Where the running think works and whether it can run there (for background-jobs.json).
     private ThinkPlace? thinkingWhere;
     private sealed record ThinkPlace(string Where, DeepThinkingPlan Plan);
     private BackgroundThink? thinking;
-    private int userBusy;
     private (bool Spoken, HeardVoices? Heard) lastAsked;
-    // The latest exchange kept in the conversation, as its request was sent and what Martlet said: a think on a model on this PC
-    // continues it when it starts again, so the conversation since stays in the model's cache.
-    private (BoundedTextInput Sent, string Reply)? lastExchange;
     private readonly object statusGate = new();
 
     internal bool IsRunning => operations.IsRunning;
@@ -499,11 +496,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
         if (dataDirectory is not null) Configuration?.UseAbilities(ModelAbilities.Load(dataDirectory));
     }
 
+    /// <summary>Reads where Deep thinking thinks on this PC (deep-thinking.json) again, after Companion › Deep thinking saved it:
+    /// the next reply offers think_longer only where Deep thinking can run, and the next think goes there.</summary>
+    internal void ReloadDeepThinking() => Volatile.Write(ref deepThinking, DeepThinkingSettings.Load(dataDirectory));
+
+    /// <summary>Whether Deep thinking can run where it is set to think, for <paramref name="configured"/>'s routes.</summary>
+    private DeepThinkingPlan DeepPlan(LiveConversationConfiguration configured) =>
+        DeepThinkingPlan.For(Volatile.Read(ref deepThinking), configured.Routes);
+
     internal void Configure(SettingsLoadResult loaded)
     {
         // The context windows found on this PC (Companion › Replies › Check) keep the context size within the model's own, and
         // what Thinking models were found to hear and see decides whether a recording or picture goes with a message.
         var next = LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory), ModelAbilities.Load(dataDirectory));
+        ReloadDeepThinking();
         LiveConversationOperation? stop;
         LiveListener[] stopListening;
         bool changed;
@@ -923,7 +929,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
         context.Clear();
         remarks.Clear();
         lastCache = null;
-        lastExchange = null;
     }
 
     /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
@@ -1004,7 +1009,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
         Chattiness chattiness, bool camera, CancellationToken worker)
     {
-        YieldBackground();
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1148,8 +1152,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<SetupWorkResult> RunAsync(LiveConversationOperation operation, BoundedTextInput? input, CancellationToken worker)
     {
         DispatchLease? lease = null;
-        // A model on this PC serves the conversation first: a background think stops at once and starts again once it's quiet.
-        YieldBackground();
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
@@ -1225,11 +1227,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
-            // is on), only for the user's own turns (and Martlet's reports of its background work) and routes that do function
-            // calling. While Thinking longer is on they are always offered, the same way, so every request starts the same.
+            // is on and Deep thinking can run where it is set to think), only for the user's own turns (and Martlet's reports of
+            // its background work) and routes that do function calling. While they are on they are always offered, the same
+            // way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
-            var builtIns = configured.OffersThinkLonger ? BuiltIns(operation, configured) : null;
+            var builtIns = configured.OffersThinkLonger && DeepPlan(configured).Available ? BuiltIns(operation, configured) : null;
             if ((own is not null || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
                 configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
@@ -1371,8 +1374,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         // A pass stays in the conversation too, so later replies know what was said around Martlet.
                         context.Add(said, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text,
                             configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
-                        if (operation.Sent is { } kept && configured.HostTarget() is null)
-                            lastExchange = (kept, passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text);
                         // The finished background work this reply carried is in the conversation now.
                         if (operation.Delivery is { } delivered)
                         {
@@ -1486,16 +1487,22 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         var settings = configured.ThinkLonger;
         if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
+        // Where it thinks (Companion › Deep thinking, this PC's choice). Deep thinking is parallel thinking: it runs only where it
+        // has a model of its own, and on a second model in Ollama on this PC only while both fit on the graphics card.
+        var deep = Volatile.Read(ref deepThinking);
+        var plan = DeepThinkingPlan.For(deep, configured.Routes);
+        if (!plan.Available)
+        {
+            tools?.Record(server, ThinkLonger.Name, "not started: unavailable", ThinkLonger.Label(task!), false);
+            ErrorLog.Info($"Background thinking: a new think wasn't started ({plan.Why})");
+            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Unavailable(plan.Why), true));
+        }
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
-        // Where it thinks (Companion › Deep thinking, this PC's choice) and whether that runs alongside the conversation or waits
-        // for quiet moments because it shares the conversation's hardware.
-        var deep = DeepThinkingSettings.Load(dataDirectory);
-        var plan = DeepThinkingPlan.For(deep, configured.Routes);
-        var where = deep.Separate ? deep.Describe() : configured.Route(SetupRole.Llm).ModelId;
+        var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
+        var where = deep.Separate ? deep.Describe() : thinkingModel;
         var think = new BackgroundThink(ThinkRuntime(),
-            left => PrepareThink(configured, deep, plan, sent, () => operation.Turn?.Content.Text, task!, reason, left),
-            plan.Parallel ? null : ThinkBusy, clock)
+            left => PrepareThink(configured, deep, sent, () => operation.Turn?.Content.Text, task!, reason, left), clock)
         {
             AttemptFinished = terminal =>
             {
@@ -1512,13 +1519,40 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             Volatile.Write(ref thinking, think);
             Volatile.Write(ref thinkingWhere, new ThinkPlace(where, plan));
-            try { return await think.RunAsync(job, token).ConfigureAwait(false); }
+            using var guard = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var watch = Task.CompletedTask;
+            string? pushed = null;
+            try
+            {
+                if (plan.ChecksFit)
+                {
+                    // A second model in the same Ollama: it starts only when both fit on the graphics card (Thinking's loaded
+                    // first, so its own size counts), and stops if loading it pushed Thinking's off the card after all.
+                    job.Report(BackgroundJobState.Waiting, "checking it fits beside Thinking");
+                    var fit = await LocalDeepThinking.CheckAsync(thinkingModel, deep.ModelId!, loadThinking: true, token).ConfigureAwait(false);
+                    ErrorLog.Info($"Background thinking: {job.Id} {(fit.Fits ? "can" : "can't")} run in Ollama on this PC beside Thinking. {fit.Why}");
+                    if (!fit.Fits) return BackgroundJobOutcome.Failed(fit.Why.TrimEnd('.'));
+                    watch = LocalDeepThinking.WatchAsync(thinkingModel, deep.ModelId!, why =>
+                    {
+                        Volatile.Write(ref pushed, why);
+                        guard.Cancel();
+                    }, guard.Token);
+                }
+                return await think.RunAsync(job, guard.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && Volatile.Read(ref pushed) is { } pushedOut)
+            {
+                ErrorLog.Warn($"Background thinking: {job.Id} stopped. {pushedOut}");
+                LocalDeepThinking.RecoverAsync(thinkingModel, deep.ModelId!).Forget();
+                return BackgroundJobOutcome.Failed(pushedOut.TrimEnd('.'));
+            }
             finally
             {
+                await guard.CancelAsync().ConfigureAwait(false);
+                await watch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 Interlocked.CompareExchange(ref thinking, null, think);
                 ErrorLog.Info($"Background thinking: {job.Id} ended after {BackgroundJobs.Duration(job.Elapsed)} " +
-                    $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}" +
-                    (plan.Parallel ? ", alongside the conversation" : $", paused {think.Pauses} time{(think.Pauses == 1 ? "" : "s")} for the conversation") + ").");
+                    $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}, alongside the conversation).");
             }
         });
         if (start.Job is not { } started)
@@ -1530,7 +1564,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
         ErrorLog.Info($"Background thinking: started {started.Id} on {where} (thinking steps on, {settings.HowHard} effort, " +
             $"{BackgroundJobs.Duration(settings.TimeLimit)} limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} of {settings.Hourly} " +
-            $"this hour; {(plan.Parallel ? "in parallel with the conversation" : "only while the conversation is quiet")}: {plan.Why})" +
+            $"this hour; in parallel with the conversation: {plan.Why})" +
             (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
     }
@@ -1559,19 +1593,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
         jobs.CancelAll();
     }
 
-    // One attempt of a background think: a reply's request continued and fitted to where it thinks, with its own authorization
-    // bound to exactly this request and the time left. When it waits for quiet moments it continues the latest exchange (the
-    // conversation may have gone on while it paused, and that keeps the model's cache on the conversation); otherwise the
-    // reply that called think_longer, as said so far.
+    // A background think's request: the reply that called think_longer (as said so far) continued and fitted to where it thinks,
+    // with its own authorization bound to exactly this request and the time left.
     private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured,
-        DeepThinkingSettings deep, DeepThinkingPlan plan, BoundedTextInput? sent, Func<string?> reply, string task, string? reason,
-        TimeSpan left)
+        DeepThinkingSettings deep, BoundedTextInput? sent, Func<string?> reply, string task, string? reason, TimeSpan left)
     {
-        (BoundedTextInput Sent, string Reply)? latest;
-        lock (gate) latest = plan.Parallel ? null : lastExchange;
-        var full = latest is { } exchange
-            ? ThinkLonger.Input(exchange.Sent, exchange.Reply, task, reason, configured.Prompts, exchange.Sent.Personality)
-            : ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
+        var full = ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
         var effort = configured.ThinkLonger.HowHard;
         if (deep.Separate)
         {
@@ -1605,26 +1632,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
             return thinkRuntime ??= runtimeFactory?.Invoke(thinkCredentials, clock) ??
                 ConversationRuntime.Create(thinkCredentials, clock: clock, hostText: new HostTextClient());
         }
-    }
-
-    /// <summary>The conversation needs the hardware a waiting think shares: a reply or glance runs, an exchange is being
-    /// remembered, or the user is talking or about to be answered.</summary>
-    private bool ThinkBusy()
-    {
-        if (Volatile.Read(ref userBusy) != 0) return true;
-        lock (gate) return active is { Worker.Completion.IsCompleted: false } || capturesPending > 0;
-    }
-
-    // A think that shares the conversation's hardware stops at once when the conversation needs it; one that runs in parallel
-    // (another computer or provider) carries on.
-    private void YieldBackground() => Volatile.Read(ref thinking)?.Yield();
-
-    /// <summary>The talk window says whether the user is talking or a turn is about to start (heard, typed, held to talk), so a
-    /// think that shares the conversation's hardware gives way before the reply needs it.</summary>
-    internal void NoteUserBusy(bool busy)
-    {
-        if (Interlocked.Exchange(ref userBusy, busy ? 1 : 0) == (busy ? 1 : 0) || !busy) return;
-        YieldBackground();
     }
 
     /// <summary>Starts a reply Martlet gives on its own to bring up finished background work, as soon as it is free (the talk
@@ -1722,8 +1729,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName) },
             thinking = running is null ? null : new
             {
-                where = place?.Where, parallel = place?.Plan.Parallel, why = place?.Plan.Why,
-                waitsForQuiet = running.Busy is not null, attempts = running.Attempts, pauses = running.Pauses
+                where = place?.Where, available = place?.Plan.Available, checksFit = place?.Plan.ChecksFit, why = place?.Plan.Why,
+                parallel = true, attempts = running.Attempts
             }
         });
     }
@@ -2110,7 +2117,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
         BoundedTextInput input, CancellationToken token)
     {
-        YieldBackground();
         var picture = input.Image is not null;
         var request = configuration.MemoryCaptureRequest(input, imageOptional: picture);
         var capture = CaptureRuntime();
