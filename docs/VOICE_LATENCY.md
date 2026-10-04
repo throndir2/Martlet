@@ -50,7 +50,7 @@ after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of sp
 | Thinking authorization, connection | Per-request permission; then until the provider's response headers (network, TLS, queueing) |
 | Thinking before reasoning, hidden reasoning | A reasoning model's thinking before its first word (shown only when the provider streams it) |
 | Thinking first words | Until the first word when no reasoning was streamed |
-| first sentence | Until the first piece the voice can say (a clause of 24+ characters or a sentence) |
+| first sentence | Until the first piece the voice can say (a sentence; commas, semicolons and dashes never end a piece) |
 | voice authorization, voice synthesis | Per-piece permission; then until the voice's first audio arrives |
 | playback start, speakers | Handing audio to the speakers until Windows plays it |
 

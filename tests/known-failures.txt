@@ -38,6 +38,9 @@ Martlet.Desktop.Tests.SupportIntegrationTests.MainSupportCanBePresentedInsideEac
 Martlet.Desktop.Tests.SupportIntegrationTests.RecordingAccessFailureAndUnsupportedNetworkScopeNeverCreateAlternateStorage
 Martlet.Doctor.Tests.DoctorCommandTests.HelpSharesActualSupportDefaultsWithoutAddingAnExportCommand
 Martlet.Gateway.Persistence.Tests.OwnerTests.Public_owner_never_exposes_mutable_authority_certificate_or_snapshot_import
+# Bounded-deadline tests that time out on a busy PC; both fail on origin/main 7f088d1 alone (CPU ~97% busy).
+Martlet.Desktop.Tests.AudioSetupDispatcherTests.FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay
+Martlet.Launcher.Tests.LauncherIntegrationTests.InvalidOrLateHandshakeFailsClosed
 # The wrong-nonce case times out (ReadinessTimedOut) instead of failing readiness; fails on origin/main afb9100 alone.
 Martlet.Launcher.Tests.LauncherIntegrationTests.ProductionActivationProbeFailsAndRetainsPendingEvidence
 
