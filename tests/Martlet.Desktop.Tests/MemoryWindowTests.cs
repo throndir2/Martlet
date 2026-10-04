@@ -61,7 +61,7 @@ public sealed class MemoryWindowTests
             Assert.Contains("expires", Text(window, "FactDetails"));
             Control<TextBox>(window, "FactContent").Text = "Preferred server region is north-west.";
             Click(window, "MemoryEditFact");
-            await Until(() => !runner.IsRunning && list.Items.Cast<MemoryFact>().Single().Content.Contains(
+            await Until(() => !runner.IsRunning && list.Items.Cast<MemoryWindow.FactItem>().Single().Fact.Content.Contains(
                 "north-west", StringComparison.Ordinal));
             list.SelectedIndex = 0;
             Assert.Contains("Updated:", Text(window, "FactDetails"));
@@ -92,7 +92,7 @@ public sealed class MemoryWindowTests
 
             list.SelectedIndex = 0;
             Click(window, "MemoryDeleteFact");
-            Assert.Single(list.Items.Cast<MemoryFact>());
+            Assert.Single(list.Items.Cast<MemoryWindow.FactItem>());
             allowDelete = true;
             Click(window, "MemoryDeleteFact");
             await Until(() => !runner.IsRunning && list.Items.Count == 0);

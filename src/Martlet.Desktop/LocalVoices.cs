@@ -93,14 +93,16 @@ internal sealed class LocalVoices : IDisposable
     }
 
     /// <summary>Who spoke in one utterance (16 kHz mono samples). Confident matches teach the voice a little more; a clearly new
-    /// voice with enough clean speech joins the list as "Voice N"; anything in between stays unattributed.</summary>
-    internal HeardVoices Recognize(float[] samples)
+    /// voice with enough clean speech joins the list as "Voice N"; anything in between stays unattributed. A voice heard drops
+    /// any name it learned in conversation that is one of the <paramref name="companion"/>'s own, so nobody is called by it.</summary>
+    internal HeardVoices Recognize(float[] samples, CompanionNames? companion = null)
     {
         if (!Active) return HeardVoices.None;
         SpeakerEngine current;
         lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
         var analysis = current.Analyze(samples);
         var heard = new List<HeardVoice>();
+        var repaired = 0;
         lock (gate)
         {
             var before = roster;
@@ -137,14 +139,55 @@ internal sealed class LocalVoices : IDisposable
                 }
                 else heard.Add(new(null, match.Kind, match.Score, analysis.SpeechSeconds, false));
             }
+            if (companion is not null)
+                for (var i = 0; i < heard.Count; i++)
+                {
+                    if (heard[i].Voice is not { } voice) continue;
+                    var next = roster.DropHeardNames(voice.Id, companion.Matches, by, now);
+                    if (ReferenceEquals(next, roster)) continue;
+                    roster = next;
+                    repaired++;
+                    heard[i] = heard[i] with { Voice = roster.Resolve(voice.Id) };
+                }
             if (!ReferenceEquals(before, roster)) SaveLocked();
         }
+        if (repaired > 0) ErrorLog.Info($"A voice heard went by Martlet's own name, learned by mistake; dropped it from {repaired} voice(s).");
         if (heard.Any(h => h.Voice is not null)) Changed?.Invoke();
         return new(heard, analysis.Overlap);
     }
 
     internal void SetNames(string id, string? name, IEnumerable<string> others) => Change(r => r.SetNames(id, name, others, by, Now));
-    internal void AddHeardName(string id, string name) => Change(r => r.AddHeardName(id, name, by, Now));
+
+    /// <summary>Drops from every voice the names it learned in conversation that are the <paramref name="companion"/>'s own
+    /// (learning names refuses them now; older versions could pick one up). Names the owner typed stay. Returns how many voices
+    /// changed.</summary>
+    internal int DropCompanionNames(CompanionNames companion)
+    {
+        var changed = 0;
+        Change(r => r.Live.Aggregate(r, (current, voice) =>
+        {
+            var next = current.DropHeardNames(voice.Id, companion.Matches, by, Now);
+            if (!ReferenceEquals(next, current)) changed++;
+            return next;
+        }));
+        if (changed > 0) ErrorLog.Info($"Dropped Martlet's own name, learned by mistake, from {changed} voice(s).");
+        return changed;
+    }
+
+    /// <summary>Makes the changes learning names asked for (already checked by <see cref="VoiceUpdates.Parse"/>).</summary>
+    internal (IReadOnlyList<VoiceUpdateResult> Applied, IReadOnlyList<VoiceUpdateRefusal> Refused) Apply(IReadOnlyList<VoiceUpdate> updates)
+    {
+        (IReadOnlyList<VoiceUpdateResult> Applied, IReadOnlyList<VoiceUpdateRefusal> Refused) result = ([], []);
+        if (updates.Count == 0) return result;
+        Change(r =>
+        {
+            var (next, applied, refused) = VoiceUpdates.Apply(r, updates, by, Now);
+            result = (applied, refused);
+            return next;
+        });
+        return result;
+    }
+
     internal void SetOwner(string id, bool owner) => Change(r => r.SetOwner(id, owner, by, Now));
     internal void Join(string fromId, string intoId) => Change(r => r.Join(fromId, intoId, by, Now));
     internal void Forget(string id) => Change(r => r.Forget(id, by, Now));
