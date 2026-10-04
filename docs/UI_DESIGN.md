@@ -284,6 +284,8 @@ service on this PC:
      *Remove* for each installed one.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
+     Martlet does this by itself in the background after it updates (the
+     step then says it is updating); *Update host service* does it now.
 - The steps' heading reads *This host is ready* once Docker Desktop, the host
   service and pairing are done, and the line under it says what is left.
 - **Check again** repeats the read at once and says what it found.
@@ -352,7 +354,8 @@ settings, approvals, cost envelopes, timelines or links to other windows.
 
 **Always listening** (the default, with the chosen or Windows
 default microphone; no test needed) starts only when you press *Start
-listening*, and **vision** (once Companion turns it on; off by default) only
+listening*, and **vision** (on by default, looking at your whole screen; Companion
+turns it off) only
 when you press *Start watching*: each has its own button here, on Home (beside
 a listening and a watching indicator) and in the notification-area menu, and
 neither starts or stops the other. Typing while Martlet listens hands the microphone over for the typed
@@ -382,12 +385,13 @@ window ends it unless Martlet is listening or watching, which only hides it.
        and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
        (*Only respond to my voice* and *Set up Voice ID*).
     4. *Vision*: whether Martlet may look at your screen or a camera when you
-       press *Start watching* (off by default): what it looks at (active
-       window, whole screen, a camera found with *Find cameras*, a phone or
+       press *Start watching* (on by default, looking at your whole screen):
+       what it looks at (whole screen, active
+       window, a camera found with *Find cameras*, a phone or
        network camera address, or a Home Assistant camera once Smart home is
        connected), how chatty it is, what is captured and where it is sent,
-       and *Turn vision on* (which only allows it; *Start watching* starts
-       looking).
+       and *Turn vision off* / *Turn vision on* (which only allows it; *Start
+       watching* starts looking).
     5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
     6. *Character*: what it looks like now, then the character model (show,
@@ -500,7 +504,9 @@ window ends it unless Martlet is listening or watching, which only hides it.
 - **Settings**: palette (Martlet's own or one made from the character, see
   [Character palettes](#character-palettes)), this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
-  version, *Check for updates now*, *Install*, *Update hosts now*), *Your
+  version, *Check for updates now*, *Install*, *Update hosts now*, and a line
+  on this PC's own host service, which always follows this app's version in
+  the background), *Your
   other computers* (whether they may send this PC commands, and **Let my
   other computers find this PC and ask to use its hosts**: ON by default,
   unticking it saves `off` in `nearby.txt`; when this PC runs a host or

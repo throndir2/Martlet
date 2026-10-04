@@ -237,6 +237,17 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
+    public void This_pc_gateway_reads_its_version_and_whether_it_runs()
+    {
+        Assert.Equal(new Martlet.Core.Nodes.OwnHostReading("0.38.0", true), HostSetupCommands.ParseGateway("true martlet-host:0.38.0\r\n"));
+        Assert.Equal(new Martlet.Core.Nodes.OwnHostReading("0.38.1", false), HostSetupCommands.ParseGateway("false martlet-host:0.38.1"));
+        Assert.Equal(new Martlet.Core.Nodes.OwnHostReading(null, true), HostSetupCommands.ParseGateway("true martlet-host:latest"));
+        Assert.Equal(new Martlet.Core.Nodes.OwnHostReading(null, true), HostSetupCommands.ParseGateway("true ubuntu:24.04"));
+        Assert.Null(HostSetupCommands.ParseGateway(""));
+        Assert.Null(HostSetupCommands.ParseGateway("maybe martlet-host:0.38.0"));
+    }
+
+    [Fact]
     public void This_pc_script_starts_docker_desktop_and_waits_before_running()
     {
         var script = HostSetupCommands.Script(Target(HostSetupMethod.ThisPcDocker), HostAction.Pair);

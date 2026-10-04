@@ -2,13 +2,15 @@ using Martlet.Core.Nodes;
 
 namespace Martlet.Mcp;
 
-/// <summary>host_update_check: rehearses, with the desktop's production <see cref="HostUpdateTracker"/> and
-/// <see cref="HostEngineBusy"/> reader, how Martlet coordinates its own host service updates. The timeline is the one seen on
-/// a host PC right after Martlet updated itself: you press Update this PC's host service (a run window) while Martlet's
-/// automatic pass reaches the same host service, both as its local pairing and as this PC's own host service. Martlet must
-/// leave the host to your run instead of starting more runs that find it locked by Martlet's own update, an update from
-/// elsewhere must be described as such, and once the host is current no stale "busy" note or retry may remain. Pure logic:
-/// contacts nothing and touches no Docker, host or data directory.</summary>
+/// <summary>host_update_check: rehearses, with the desktop's production <see cref="HostUpdateTracker"/>,
+/// <see cref="OwnHostFollower"/> and <see cref="HostEngineBusy"/> reader, how Martlet coordinates its own host service updates.
+/// The timeline is the one seen on a host PC right after Martlet updated itself: you press Update this PC's host service (a
+/// run window) while Martlet's automatic pass reaches the same host service, both as its local pairing and as this PC's own
+/// host service. Martlet must leave the host to your run instead of starting more runs that find it locked by Martlet's own
+/// update, an update from elsewhere must be described as such, and once the host is current no stale "busy" note or retry
+/// may remain. Then this PC's own host service follows the app's version by itself: updated in the background, giving way
+/// to another route, this PC's own pending update and the conversation, retried when busy and settled once current. Pure
+/// logic: contacts nothing and touches no Docker, host or data directory.</summary>
 internal static class HostUpdateCheck
 {
     private const string Version = "0.22.0";
@@ -96,6 +98,46 @@ internal static class HostUpdateCheck
         Step("asked-update-waits", askedWait is > 0 and < 45 * 60,
             $"Update hosts now waits up to {askedWait / 60} min for another change on the host " +
             "(MARTLET_LOCK_WAIT), inside the 45 min limit of an unattended run; automatic updates stop at once and retry");
+
+        // This PC's own host service follows the app's version after Martlet restarted into its update, in the background and
+        // whatever Update paired hosts automatically says.
+        const string previous = "0.21.0";
+        var at = new DateTimeOffset(2026, 10, 2, 20, 21, 0, TimeSpan.Zero);
+        var follower = new OwnHostFollower();
+        var older = new OwnHostReading(previous, Running: true);
+        OwnHostStep Decide(OwnHostReading? reading, DateTimeOffset now, bool appUpdateFirst = false, bool conversation = false) =>
+            follower.Decide(Version, reading, tracker.IsUpdating(HostUpdateTracker.ThisPc), appUpdateFirst, conversation, now);
+        var first = Decide(older, at);
+        Step("own-host-follows-app-update", first == OwnHostStep.Update,
+            $"Martlet restarted as {Version}; its host service runs {previous}: {first} (in the background, after the window is up)");
+
+        var missing = Decide(null, at);
+        var stopped = Decide(older with { Running = false }, at);
+        Step("own-host-waits-until-it-runs", missing == OwnHostStep.NotFound && stopped == OwnHostStep.Stopped && follower.Due(Version, at),
+            $"Docker not answering: {missing}; host service stopped: {stopped}; read again on the next minute's check");
+
+        OwnHostStep claimed;
+        using (tracker.Begin(HostUpdateTracker.ThisPc)) claimed = Decide(older, at);
+        var ownUpdate = Decide(older, at, appUpdateFirst: true, conversation: true);
+        var talking = Decide(older, at, conversation: true);
+        Step("own-host-gives-way", claimed == OwnHostStep.OtherRoute && ownUpdate == OwnHostStep.AppUpdateFirst &&
+            talking == OwnHostStep.Conversation,
+            $"another route updating it: {claimed}; this PC about to install its own update: {ownUpdate}; replying or hearing you: {talking}");
+
+        follower.Busy(at);
+        var early = Decide(older, at.AddMinutes(2));
+        var due = Decide(older, at + follower.RetryDelay);
+        Step("own-host-busy-retries", early == OwnHostStep.Idle && due == OwnHostStep.Update,
+            $"busy with another change: not read again for {follower.RetryDelay.TotalMinutes:0} min ({early}), then {due}");
+
+        follower.Updated(Version);
+        var afterwards = Decide(older, at.AddHours(1));
+        var failing = new OwnHostFollower();
+        failing.Failed(Version);
+        Step("own-host-settles", afterwards == OwnHostStep.Idle && !follower.Due(Version, at.AddHours(1)) &&
+            !failing.Due(Version, at) && failing.Due("0.23.0", at),
+            "updated: no further reads this run; a failed update isn't retried automatically for that version (Update hosts " +
+            "still runs it) but the next version is");
 
         return new { exitCode = passed ? 0 : 1, report = new { passed, total = steps.Count, steps } };
     }

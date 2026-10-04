@@ -8,13 +8,15 @@ your setup can't.
 ## How it works
 
 1. **Companion › Vision** shows whether your Thinking model can see (see
-   below), what Martlet looks at (**my active window**, **my whole screen**:
-   every monitor with the taskbar and pop-up notifications, or a camera) and
+   below), what Martlet looks at (**my whole screen**, the default: every
+   monitor with the taskbar and pop-up notifications, **my active window**, or a
+   camera) and
    **how chatty** it is (Quiet, Normal, Chatty or [Martlet
    decides](#martlet-decides-how-chatty-it-is); the same choice sets how often
    it reacts to [what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)),
    and says exactly what is captured and where it is sent.
-2. Click **Turn vision on** (off by default). That only allows it: Martlet
+2. Vision is on by default (**Turn vision off** in Companion stops it for
+   good; a saved choice is kept). That only allows it: Martlet
    starts looking when you press **Start watching** (on Home, in the talk
    window or from the notification-area icon), with or without the talk window
    open, and Home's watching indicator, the talk window's **Stop watching**
@@ -22,7 +24,7 @@ your setup can't.
    play) until you press **Stop watching**, Stop or Esc, pause Martlet, lock
    Windows (it carries on when you unlock) or end the conversation. Listening
    has its own Start listening / Stop listening button; neither starts or stops
-   the other. **Turn vision off** in Companion stops it for good.
+   the other.
 3. Every 3 seconds Martlet captures the screen **on this PC** (DXGI Desktop
    Duplication, falling back to GDI; kept only in memory) and compares a 16x9
    grey thumbnail with the last one to notice change. The active window is
@@ -352,8 +354,10 @@ must also run this Martlet version so its gateway accepts images.
 Companion › Vision always states the result for the **current** Thinking selection:
 
 - **Ready:** the model sees; screenshots go to the named destination.
-- **Can't see yet:** the model is text-only. **Turn vision on** stays
-  disabled (and the talk window's button says *Can't see*); the message names the fix for your route: on a host, add the
+- **Can't see yet:** the model is text-only. Vision may be on (it is by
+  default), but **Turn vision on** stays disabled once it is off, Home shows a
+  *Martlet can't see with your thinking model* warning while it is on, and the
+  talk window's button says *Can't see*; the message names the fix for your route: on a host, add the
   Thinking (Ollama) role again with `gemma4:e2b` / `gemma4:e4b` / `qwen3-vl:8b`;
   on Chat Completions, pick a vision model on the endpoint (the named
   endpoint's recommended model is named) or run one locally;

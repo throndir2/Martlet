@@ -1431,7 +1431,8 @@ public sealed class LiveConversationTests
     {
         await using var fixture = await LiveFixture.Create();
         var glancer = new CountingGlancer();
-        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true), glancer);
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true,
+            ScreenScope: (int)WatchKind.ActiveWindow), glancer);
         try
         {
             await Loaded(window);
@@ -1491,7 +1492,7 @@ public sealed class LiveConversationTests
             Assert.True(window.IsWatching);
 
             // Turning vision off in Companion stops it; turning it on again only offers Start watching.
-            var preferences = new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true);
+            var preferences = new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true, ScreenScope: (int)WatchKind.ActiveWindow);
             window.UsePreferences(preferences with { Watch = false }, null);
             Assert.False(window.IsWatching);
             window.UsePreferences(preferences, null);
