@@ -885,9 +885,10 @@ Ollama and OpenAI's own route don't. Vision works the same way with pictures.
 
 **On or off.** Your own choice always wins: tick it, or untick it to keep
 Thinking to the transcript. Until you choose, it is **on only while the
-recording stays on this PC**: Thinking runs on a server on this PC's loopback
-(Ollama at `127.0.0.1:11434`, llama.cpp, LM Studio) with a model that isn't one
-Ollama forwards to its cloud (a `:cloud` or `-cloud` tag). So a new setup with
+recording stays on this PC**: Thinking is Ollama on this PC (`http://127.0.0.1:11434/v1`)
+with a model that isn't one Ollama forwards to its cloud (a `:cloud` or `-cloud`
+tag). Another server on this PC's loopback (llama.cpp, LM Studio, a LiteLLM-style
+proxy) needs the tick too, since it may send the audio on. So a new setup with
 Gemma 4 E2B in Ollama hears you straight away, while a cloud or paired-host
 Thinking model never gets your recording until you tick the box. The line under
 it says which applies (*On: your voice stays on this PC (Thinking runs here), so

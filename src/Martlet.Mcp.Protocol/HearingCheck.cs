@@ -61,7 +61,7 @@ internal static partial class HearingCheck
                 true => "you turned it on",
                 false => "you turned it off",
                 _ when staysOnThisPc => "never chosen: on because the recording stays on this PC",
-                _ => "never chosen: off because the recording would leave this PC (tick it to allow)"
+                _ => "never chosen: off because Thinking isn't Ollama on this PC, so the recording would or could leave it (tick it to allow)"
             },
             // Companion › Listening › When Thinking can hear you (shown while Thinking hears): straight (the default) or transcribe
             // first. Straight applies to always listening when the route hears; push-to-talk and messages with what the PC

@@ -1321,8 +1321,8 @@ Completions endpoints take audio, Ollama on this PC included, then what
 Thinking hears your recording as replies decide it: your choice, or, never
 chosen, on only while the recording stays on this PC), `hearVoiceChoice` (`on`,
 `off` or `unset`; a `false` saved before talk-preferences version 4 counts as
-`unset`), `staysOnThisPc` (the saved route is a Chat Completions server on this
-PC's loopback with a model that isn't a `:cloud` or `-cloud` tag), `hearVoiceWhy`
+`unset`), `staysOnThisPc` (the saved route is Ollama on this PC,
+`http://127.0.0.1:11434/v1`, with a model that isn't a `:cloud` or `-cloud` tag), `hearVoiceWhy`
 (in words), `voicePath` (Companion › Listening › **When Thinking
 can hear you**: `straight`, the default, or `transcribeFirst`),
 `straightApplies` (always listening sends the recording alone right away: the

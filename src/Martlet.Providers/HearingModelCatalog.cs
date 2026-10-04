@@ -52,18 +52,18 @@ public static partial class HearingModelCatalog
         return Classify(modelId);
     }
 
-    /// <summary>Whether a recording sent to this Thinking route stays on this PC: a Chat Completions server on this PC's loopback
-    /// (Ollama, llama.cpp, LM Studio...) with a model that isn't one Ollama forwards to its cloud (a <c>:cloud</c> or
-    /// <c>-cloud</c> tag, such as <c>gpt-oss:120b-cloud</c>). Only then does Thinking hear the user's voice without them ticking
-    /// Companion › Listening › Let Thinking hear my voice.</summary>
+    /// <summary>Whether a recording sent to this Thinking route stays on this PC: Ollama on this PC (the Chat Completions route at
+    /// <see cref="GenerationSupport.LocalOllamaChatBaseUrl"/>) with a model that isn't one Ollama forwards to its cloud (a
+    /// <c>:cloud</c> or <c>-cloud</c> tag, such as <c>gpt-oss:120b-cloud</c>). Another server on this PC's loopback isn't
+    /// counted: it may be a proxy (LiteLLM and the like) that sends the audio on. Only then does Thinking hear the user's voice
+    /// without them ticking Companion › Listening › Let Thinking hear my voice.</summary>
     public static bool StaysOnThisPc(SetupRouteType? routeType, string? origin, string? modelId)
     {
         if (routeType != SetupRouteType.ChatCompletions || string.IsNullOrWhiteSpace(modelId) ||
-            !Uri.TryCreate(origin, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            !string.Equals(origin?.TrimEnd('/'), GenerationSupport.LocalOllamaChatBaseUrl, StringComparison.Ordinal))
             return false;
-        var local = string.Equals(uri.IdnHost, "localhost", StringComparison.OrdinalIgnoreCase) || ModelContextProbe.IsLoopback(uri);
         var model = modelId.Trim();
-        return local && !model.EndsWith(":cloud", StringComparison.OrdinalIgnoreCase) && !model.EndsWith("-cloud", StringComparison.OrdinalIgnoreCase);
+        return !model.EndsWith(":cloud", StringComparison.OrdinalIgnoreCase) && !model.EndsWith("-cloud", StringComparison.OrdinalIgnoreCase);
     }
 
     [GeneratedRegex("[^a-z0-9]")]

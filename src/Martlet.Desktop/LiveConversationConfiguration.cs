@@ -731,8 +731,9 @@ internal sealed class LiveConversationConfiguration
         "When this is on and the Thinking model can hear, the recording of what you say (up to " +
         $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
         "straight away on its own or with the transcript (When Thinking can hear you), so it hears your tone as well as your " +
-        "words. With Thinking on this PC (Ollama or another server here, not a cloud model) it is on unless you turn it off, " +
-        "since the recording never leaves this PC; anywhere else it stays off until you tick it. Speech-to-text still runs for " +
+        "words. With Thinking in Ollama on this PC (not a cloud model) it is on unless you turn it off, " +
+        "since the recording never leaves this PC; anywhere else (another server here included) it stays off until you tick it. " +
+        "Speech-to-text still runs for " +
         "every message. Recordings are never saved, added to Memory or sent to the Thinking " +
         "fallback, which gets the transcript. Audio may use more quota or cost more than text.";
 
@@ -745,6 +746,9 @@ internal sealed class LiveConversationConfiguration
         _ when HearingModelCatalog.StaysOnThisPc(thinking?.RouteType, thinking?.Origin, thinking?.ModelId) =>
             "On: your voice stays on this PC (Thinking runs here), so Thinking hears it unless you turn this off.",
         _ when thinking is null => "Off until you tick it.",
+        _ when Uri.TryCreate(thinking.Origin, UriKind.Absolute, out var uri) && (uri.IsLoopback || ModelContextProbe.IsLoopback(uri)) =>
+            $"Off until you tick it: your recording would go to {LlmDestinationName(thinking)}, a server on this PC that may pass it on " +
+            "(only Ollama on this PC hears you without the tick).",
         _ => $"Off until you tick it: your recording would leave this PC for {LlmDestinationName(thinking)}."
     };
 

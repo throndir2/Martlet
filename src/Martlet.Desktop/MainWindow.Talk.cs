@@ -225,8 +225,8 @@ public partial class MainWindow
     // ---------- Listening: let Thinking hear your voice ----------
 
     /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said. Your own choice
-    /// always wins; never chosen, it is on only while the recording stays on this PC (Thinking on this PC's Ollama or another
-    /// local server, not a cloud model), and anywhere else ticking it is the consent. The text under it says which applies, what
+    /// always wins; never chosen, it is on only while the recording stays on this PC (Thinking in Ollama on this PC, not a
+    /// cloud model), and anywhere else ticking it is the consent. The text under it says which applies, what
     /// is sent and where.</summary>
     private Border HearVoiceCard()
     {
