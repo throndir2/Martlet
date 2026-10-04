@@ -230,7 +230,10 @@ def main(argv: list[str] | None = None) -> int:
         started = time.perf_counter()
         if converter is None:
             break  # VevoSing: one song per process
-    return 0
+    answers.flush()
+    # Ending without the interpreter's teardown: with CUDA and the converters' threads loaded, a normal exit can abort, and
+    # every abort leaves a multi-GB core dump on the host (Docker Desktop keeps WSL's crash dumps on the Windows drive).
+    os._exit(0)
 
 
 if __name__ == "__main__":
