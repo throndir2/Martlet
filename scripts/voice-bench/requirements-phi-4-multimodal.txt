@@ -1,0 +1,12 @@
+# Phi-4-multimodal through its own remote code (voicebench hf:phi-4-multimodal). The model card pins transformers 4.48.2 and
+# peft 0.13.2. Installed into its own environment with: Install-VoiceBench.ps1 -HfModels phi-4-multimodal
+transformers==4.48.2
+peft==0.13.2
+accelerate
+bitsandbytes
+backoff
+scipy
+pillow
+soundfile
+soxr
+numpy

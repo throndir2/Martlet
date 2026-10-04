@@ -1,0 +1,28 @@
+{
+  "about": "Short things people say to a voice companion: the 'prompts' clip set (voicebench clips synth/record) and the pipeline benchmark's turns. Each is answered by the Thinking model, so they ask for a reply.",
+  "prompts": [
+    "Hey, are you there?",
+    "What's a good way to wind down after a really long day?",
+    "Can you remind me how many ounces are in a cup?",
+    "I just got the job! I can't believe it actually happened.",
+    "Ugh, my code broke again and I have no idea why.",
+    "Tell me something interesting about octopuses.",
+    "What should I make for dinner if I only have eggs, rice and some spinach?",
+    "Do you think it's going to be a good weekend for a hike?",
+    "Okay, give me one quick tip for sleeping better.",
+    "I'm kind of nervous about my presentation tomorrow morning.",
+    "Remind me, what's the difference between a latte and a cappuccino?",
+    "Sing me a tiny made up song about my cat, Biscuit.",
+    "How long should I boil an egg if I want the yolk a little runny?",
+    "Honestly, I'm just bored. Entertain me for a second.",
+    "What year did the first person walk on the moon?",
+    "Thanks, that was actually really helpful."
+  ],
+  "tts": [
+    {"id": "short", "text": "Oh, hey there."},
+    {"id": "sentence", "text": "I think that sounds like a great plan, and honestly you deserve a break."},
+    {"id": "sigh", "text": "[sigh] Fine, I'll help you, but you owe me one."},
+    {"id": "laugh", "text": "[laugh] Okay, that is actually hilarious. Tell me more!"},
+    {"id": "long", "text": "If you only have eggs, rice and spinach, make a quick fried rice: wilt the spinach, push it aside, scramble two eggs in the same pan, then toss everything with the rice and a splash of soy sauce."}
+  ]
+}
