@@ -113,11 +113,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("voices_status", "Read voice recognition and Parakeet status from a data directory: on/off choices (recognition is on " +
             "unless turned off), whether a Martlet folder (optional absolute martletDirectory, default the installed release's Desktop " +
-            "folder) includes the voice recognition runtime and models, whether Parakeet is downloaded and counts of known voices " +
-            "(never names, voiceprints or audio). Read-only; no audio, network or models run.", new
+            "folder) includes the voice recognition runtime and models, whether any Parakeet model is downloaded (parakeet) and, in " +
+            "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
+            "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
+            "and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" }
+        }),
+        Tool("parakeet_check", "Companion > Listening > Parakeet in Martlet: load each Parakeet model downloaded in speechDirectory " +
+            "(optional absolute path, default the data directory's speech folder, where the desktop downloads them; or name them in " +
+            "models) through the production ParakeetEngine with the sherpa-onnx runtime from martletDirectory, and transcribe phrases " +
+            "a Windows voice says (System.Speech rendered to memory, never played; optional phrases, up to 8 English sentences). Per " +
+            "model: loadMs, memoryMb (process memory it added), each phrase's transcript, word errors and transcribeMs, the word " +
+            "error rate and the median time; ok when every model ran with at most 20% word errors. Also returns voices_status's " +
+            "Parakeet part. Nothing is downloaded, recorded or played; nothing leaves this PC.", new
+        {
+            dataDirectory = new { type = "string" },
+            martletDirectory = new { type = "string" },
+            speechDirectory = new { type = "string" },
+            models = new { type = "array", maxItems = 3, items = new { type = "string", @enum = Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id).ToArray() } },
+            phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
         Tool("voices_engine_check", "Run the voice recognition engine that ships in a Martlet folder (optional absolute " +
             "martletDirectory, default the installed release's Desktop folder): load its sherpa-onnx runtime and the WeSpeaker and " +
@@ -500,7 +516,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "averageLogProbability, afterQuestion, persona, playback reply|song, expectKeep, expectInterrupt; default: a fixed set " +
             "with the outcome Normal must give, including evidence measured from whisper.cpp and Parakeet on this PC). " +
             "With audio (default true) and Parakeet downloaded on this PC (speechDirectory, default the current user's; the sherpa " +
-            "runtime from martletDirectory), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, yes, " +
+            "runtime from martletDirectory; parakeetModel, default Listening's model when downloaded, else v3, else the one " +
+            "downloaded), it also runs fixtures synthesized with a Windows voice (stop, wait, a question, yes, " +
             "yeah, mmm, hmm, laughter) and generated ones (a hum, coughs, noise) through the production voice-activity detector, " +
             "Parakeet and the barge-in gate, with the time from the start of the voice to the decision to stop. Returns each " +
             "decision with its reason, the filter's cost per call, the saved Word check (sensitivity overrides it: relaxed, normal, " +
@@ -509,6 +526,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" },
             speechDirectory = new { type = "string" },
+            parakeetModel = new { type = "string", @enum = Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id).ToArray() },
             sensitivity = new { type = "string", @enum = new[] { "relaxed", "normal", "sensitive" } },
             audio = new { type = "boolean" },
             samples = new
@@ -682,6 +700,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
+                "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
+                    OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
+                    cancellation),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),
                 "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
@@ -794,7 +815,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 runtime = Martlet.Sherpa.SherpaComponents.RuntimeDirectory(martlet) is not null,
                 voiceModels = Martlet.Sherpa.SherpaComponents.VoiceRecognitionIncluded(martlet)
             },
-            parakeet = Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speech),
+            parakeet = Martlet.Sherpa.SherpaComponents.InstalledParakeetModels(speech).Count > 0,
+            parakeetModels = ParakeetCheck.Status(directory, speech),
             roster
         };
     }

@@ -38,7 +38,9 @@ internal static class UtteranceFilterCheck
         object audio;
         var audioOk = true;
         if (Bool(arguments, "audio") == false) audio = new { ran = false, reason = "audio: false" };
-        else audio = await AudioAsync(martletDirectory, speechDirectory, sensitivity, cancellation, ok => audioOk = ok);
+        else audio = await AudioAsync(martletDirectory, speechDirectory,
+            ParakeetCheck.ModelFor(Optional(arguments, "parakeetModel"), dataDirectory, speechDirectory), sensitivity, cancellation,
+            ok => audioOk = ok);
 
         return new
         {
@@ -140,6 +142,12 @@ internal static class UtteranceFilterCheck
             { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.69, MinimumProbability = 0.28 } }, false, false),
         new("parakeet-yeah-said", "Yeah.", Context(340) with
             { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.79, MinimumProbability = 0.51 } }, true, false),
+        // Parakeet's English models on a Windows voice laughing (utterance_filter_check's audio): a guess they were far from
+        // sure of, kept as words but not enough to stop a reply; the start of a real question is.
+        new("parakeet-en-laughter", "Come on.", Context(300) with
+            { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.50, MinimumProbability = 0.18 } }, true, false),
+        new("parakeet-en-two-words-said", "Can you", Context(300) with
+            { Evidence = new TranscriptionEvidence { Engine = "parakeet", MeanProbability = 0.80, MinimumProbability = 0.43 } }, true, true),
         // whisper.cpp on this PC's martlet-stt (large-v3-turbo, verbose_json): "Yeah." it wrote for two coughs, and "Stop." said.
         new("whisper-yeah-from-cough", "Yeah.", Context(380, mean: 0.07, noSpeech: 0.0, logProbability: -0.9), false, false),
         new("whisper-stop", "Stop.", Context(360, mean: 0.74, noSpeech: 0.0, logProbability: -0.17), true, true),
@@ -213,15 +221,15 @@ internal static class UtteranceFilterCheck
         new("noise", "noise", false, false)
     ];
 
-    private static async Task<object> AudioAsync(string martletDirectory, string speechDirectory, ListeningSensitivity sensitivity,
-        CancellationToken cancellation, Action<bool> setOk)
+    private static async Task<object> AudioAsync(string martletDirectory, string speechDirectory, Martlet.Sherpa.ParakeetModel? model,
+        ListeningSensitivity sensitivity, CancellationToken cancellation, Action<bool> setOk)
     {
         var runtime = Martlet.Sherpa.SherpaComponents.RuntimeDirectory(martletDirectory);
         if (runtime is null) return new { ran = false, reason = "the sherpa-onnx runtime isn't in martletDirectory (build Martlet.Desktop)" };
-        if (!Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speechDirectory))
+        if (model is null || !Martlet.Sherpa.SherpaComponents.IsParakeetInstalled(speechDirectory, model))
             return new { ran = false, reason = "Parakeet isn't downloaded in speechDirectory (Companion > Listening on this PC)" };
         var load = Stopwatch.StartNew();
-        using var engine = new Martlet.Sherpa.ParakeetEngine(speechDirectory, runtimeDirectory: runtime);
+        using var engine = new Martlet.Sherpa.ParakeetEngine(speechDirectory, model.Id, runtimeDirectory: runtime);
         await Task.Run(engine.Warm, cancellation);
         var loadMs = load.ElapsedMilliseconds;
         var results = new List<object>();
@@ -261,7 +269,7 @@ internal static class UtteranceFilterCheck
         stopDelays.Sort();
         return new
         {
-            ran = true, ok = allOk, engine = "Parakeet TDT 0.6B v3 (sherpa-onnx) on this PC", loadMs, wordCheck = sensitivity.ToString(),
+            ran = true, ok = allOk, engine = $"{model} (sherpa-onnx) on this PC", model = model.Id, loadMs, wordCheck = sensitivity.ToString(),
             scene = "each fixture starts after 0.3 s of faint noise and ends with 1 s of it; Martlet is taken to be speaking the whole time",
             stopDelayMs = stopDelays.Count == 0 ? null : new { min = stopDelays[0], median = stopDelays[stopDelays.Count / 2], max = stopDelays[^1] },
             fixtures = results
@@ -333,7 +341,7 @@ internal static class UtteranceFilterCheck
         return (TimeSpan.FromMilliseconds(count * 20), frames, loud);
     }
 
-    private static float[] ToFloats(byte[] pcm, int offset, int bytes)
+    internal static float[] ToFloats(byte[] pcm, int offset, int bytes)
     {
         bytes = Math.Min(bytes, pcm.Length - offset) & ~1;
         var samples = new float[bytes / 2];
@@ -342,7 +350,7 @@ internal static class UtteranceFilterCheck
     }
 
     // 16 kHz mono PCM16: 0.3 s of faint noise, the fixture, then 1 s of faint noise.
-    private static byte[] Synthesize(string kind)
+    internal static byte[] Synthesize(string kind)
     {
         var random = new Random(kind.Aggregate(17, (hash, c) => unchecked(hash * 31 + c)) & 0x7fffffff);
         float[] body = kind switch

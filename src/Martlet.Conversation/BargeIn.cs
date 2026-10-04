@@ -68,10 +68,19 @@ public static class BargeInPolicy
         if (cue is not null) return new(true, "a stop word", words);
         if (addressed) return new(true, "Martlet's name", words);
         if (said.All(Backchannels.Contains)) return new(false, "a quick backchannel", words);
+        // A few words the engine was far from sure of are often its guess at laughter or a noise (Parakeet's English models
+        // write "Come on." or "Cosmos was" for a laugh): they don't stop a reply on their count alone. A later check of the same
+        // voice, or a stop word or Martlet's name, still does.
+        if (words.Words <= 3 && Unsure(context.Evidence, sensitivity)) return new(false, "speech-to-text wasn't sure of the words", words);
         return words.Words >= WordsToInterrupt(sensitivity)
             ? new(true, $"{words.Words} words", words)
             : new(false, "too few words", words);
     }
+
+    // Both the mean and the least sure token's probability are low (engines that report both: Parakeet today).
+    private static bool Unsure(TranscriptionEvidence? evidence, ListeningSensitivity sensitivity) =>
+        evidence is { MeanProbability: { } mean, MinimumProbability: { } least } &&
+        mean < UtteranceFilter.For(sensitivity).MinimumProbability + 0.2 && least < UtteranceFilter.For(sensitivity).MinimumProbability * 0.8;
 }
 
 /// <summary>When to check the words of someone talking over Martlet (<see cref="BargeInPolicy"/>): once their voice has gone

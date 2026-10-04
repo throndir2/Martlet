@@ -94,8 +94,8 @@ public partial class MainWindow
             busy.Add("Troubleshooting is waiting to clean up its files");
         if (updateDownloadCancellation is not null)
             busy.Add(availableUpdate is { } update ? $"Downloading Martlet {update.Version.ToString(3)}" : "Downloading a Martlet update");
-        if (installingParakeet)
-            busy.Add("Downloading Parakeet speech recognition");
+        if (installingParakeet is { } downloading)
+            busy.Add($"Downloading {Martlet.Sherpa.ParakeetModels.Find(downloading)?.Name ?? "Parakeet"} speech recognition");
         if (hostUpdatesRunning || hostUpdates.Running)
             busy.Add("Updating Martlet on your hosts");
         if (!asked && nodeCommandRunning is { } command)
