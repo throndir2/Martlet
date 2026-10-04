@@ -795,8 +795,8 @@ public partial class MainWindow
     };
 
     /// <summary>Runs a host-dashboard step on this PC's host service in a run window (never a console). Pairing shows the
-    /// one-use code for the main PC. Steps run side by side: changes to the host service take turns in its engine lock (a
-    /// run waiting for another says so in its window), what they share (starting Docker Desktop, the host image) is done
+    /// one-use code for the main PC. Steps run side by side: changes to the host service run side by side in its engine,
+    /// where only colliding ones wait (a run waiting for another says so in its window), what they share (starting Docker Desktop, the host image) is done
     /// once, and pressing a step that is still working brings its window forward.</summary>
     private void LaunchHost(HostAction action) => LaunchHostAsync(action).Forget();
 

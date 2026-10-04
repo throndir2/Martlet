@@ -382,8 +382,8 @@ internal static partial class HostLocal
 
     /// <summary>Runs one martlet-host command unattended in a container on this PC; returns its exit code.
     /// <paramref name="answers"/> are martlet-host answers (secret.&lt;name&gt;=..., choice.&lt;VAR&gt;=...) sent over stdin.
-    /// The engine makes one change to this host at a time: a change waits for one already running (its output says what it
-    /// waits for) unless <paramref name="waitForOtherChanges"/> is false, when it stops at once with
+    /// Changes run side by side; one waits only for a change it collides with (the same role, or a setup or update; its
+    /// output says what it waits for) unless <paramref name="waitForOtherChanges"/> is false, when it stops at once with
     /// <see cref="HostEngineBusy.ExitCode"/> and changes nothing.</summary>
     internal static Task<int> EngineAsync(HostSetupTarget target, IReadOnlyList<string> engine, IProgress<string> output,
         CancellationToken token, Task<string?>? moreInput = null, IReadOnlyDictionary<string, string>? answers = null,

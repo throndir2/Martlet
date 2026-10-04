@@ -332,24 +332,97 @@ async Task RunAsync()
     Step("cancel-waiting", withdrawn.State == NodeCommandState.Canceled && pass.Kind == NodeAgentPassKind.Idle,
         $"{withdrawn.State}; agent then {pass.Kind}");
 
+    // Commands side by side: the agent takes every command it may start and runs each in the background on its own
+    // connection. Changes to other roles, status and reading a role run at once; a second change to one role waits for the
+    // first, and an update waits for what runs and holds the commands sent after it.
+    Audio2FaceHostConnection ConnectAgent() => new(agentPairing, agentSecret);
+    async Task<bool> UntilAsync(Func<Task<bool>> done, int seconds = 15)
+    {
+        var until = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < until)
+        {
+            if (await done()) return true;
+            await Task.Delay(100);
+        }
+        return await done();
+    }
+    async Task<NodeCommandState> StateAsync(string id) => (await asker.ReadCommandAsync(id)).State;
     var slow = await asker.SendCommandAsync(NodeCommandKinds.DescribeRole, new Dictionary<string, string> { ["role"] = "slow-role" });
-    var running = agent.RunOnceAsync(agentConnection, CancellationToken.None);
-    var deadline = DateTime.UtcNow.AddSeconds(15);
-    while ((await asker.ReadCommandAsync(slow.Id)).State != NodeCommandState.Running && DateTime.UtcNow < deadline) await Task.Delay(200);
-    var behindSlow = await asker.SendCommandAsync(NodeCommandKinds.Status, new Dictionary<string, string>());
-    var queueWhileRunning = await asker.ReadCommandsAsync();
-    var ahead = queueWhileRunning.Ahead(behindSlow);
-    Step("queued-behind-running", behindSlow.State == NodeCommandState.Queued && ahead?.Id == slow.Id &&
-        queueWhileRunning.WaitingText(behindSlow, "check-host")?.Contains("busy with: Read what slow-role needs", StringComparison.Ordinal) == true,
-        queueWhileRunning.WaitingText(behindSlow, "check-host") ?? "nothing ahead");
+    var holdA = await asker.SendCommandAsync(NodeCommandKinds.AddRole, new Dictionary<string, string> { ["role"] = "hold-a" });
+    var holdB = await asker.SendCommandAsync(NodeCommandKinds.AddRole, new Dictionary<string, string> { ["role"] = "hold-b" });
+    var took = await agent.TakeAsync(ConnectAgent, CancellationToken.None);
+    var allRunning = await UntilAsync(() => Task.FromResult(runner.Active == 3));
+    var sideBySide = await asker.ReadCommandsAsync();
+    Step("runs-side-by-side", took.Kind == NodeAgentPassKind.Started && allRunning && agent.Running.Count == 3 &&
+        sideBySide.Commands.Count(c => c.State == NodeCommandState.Running) == 3 && sideBySide.Agent?.Parallel == true,
+        $"{took.Text} The fixture runner ran {runner.Active} at once; the gateway shows " +
+        $"{sideBySide.Commands.Count(c => c.State == NodeCommandState.Running)} running (agent runs them side by side: {sideBySide.Agent?.Parallel})");
+
+    var holdAgain = await asker.SendCommandAsync(NodeCommandKinds.AddRole, new Dictionary<string, string> { ["role"] = "hold-a", ["choice.MODEL"] = "large" });
+    var beside = await asker.SendCommandAsync(NodeCommandKinds.Status, new Dictionary<string, string>());
+    var barrier = await asker.SendCommandAsync(NodeCommandKinds.Update, new Dictionary<string, string> { ["version"] = "9.9.7" });
+    var afterBarrier = await asker.SendCommandAsync(NodeCommandKinds.RemoveRole, new Dictionary<string, string> { ["role"] = "after-barrier" });
+    var second = await agent.TakeAsync(ConnectAgent, CancellationToken.None);
+    var besideDone = await UntilAsync(async () => await StateAsync(beside.Id) == NodeCommandState.Succeeded);
+    var queue = await asker.ReadCommandsAsync();
+    var sameRoleText = queue.WaitingText(holdAgain, "check-host");
+    Step("same-role-waits", second.Command?.Id == beside.Id && queue.Commands.First(c => c.Id == holdAgain.Id).State == NodeCommandState.Queued &&
+        queue.Ahead(holdAgain)?.Id == holdA.Id && sameRoleText?.Contains("already changing hold-a", StringComparison.Ordinal) == true,
+        sameRoleText ?? "nothing holds it back");
+    Step("others-run-beside", besideDone && runner.Active == 3,
+        $"status ran ({(besideDone ? "succeeded" : "not finished")}) while {runner.Active} commands kept running");
+    var updateText = queue.WaitingText(barrier, "check-host");
+    var barrierText = queue.WaitingText(afterBarrier, "check-host");
+    Step("update-waits-for-running", queue.Commands.First(c => c.Id == barrier.Id).State == NodeCommandState.Queued &&
+        updateText?.Contains("updates as soon as what it runs now ends", StringComparison.Ordinal) == true &&
+        queue.Ahead(afterBarrier)?.Id == barrier.Id && barrierText?.Contains("updates first", StringComparison.Ordinal) == true,
+        $"{updateText ?? "update not held back"} / {barrierText ?? "later command not held back"}");
+
+    runner.Release("hold-a");
+    var firstDone = await UntilAsync(async () => await StateAsync(holdA.Id) == NodeCommandState.Succeeded);
+    var ended = agent.Collect();
+    var next = await agent.TakeAsync(ConnectAgent, CancellationToken.None);
+    var againDone = await UntilAsync(async () => await StateAsync(holdAgain.Id) == NodeCommandState.Succeeded);
+    Step("same-role-runs-next", firstDone && ended.Any(e => e.Command?.Id == holdA.Id && e.Kind == NodeAgentPassKind.Ran) &&
+        next.Command?.Id == holdAgain.Id && againDone && runner.LastChoice == "large",
+        $"after Install hold-a ended: {next.Text}");
+
     var stopping = await asker.CancelCommandAsync(slow.Id);
-    var finished = await Task.WhenAny(running, Task.Delay(TimeSpan.FromSeconds(20))) == running;
-    var stopped = await asker.ReadCommandAsync(slow.Id);
-    Step("cancel-running", stopping.CancelRequested && finished && stopped.State == NodeCommandState.Canceled && runner.Canceled,
-        $"cancel requested {stopping.CancelRequested}; ended {stopped.State}");
-    pass = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
-    Step("queued-runs-next", pass.Kind == NodeAgentPassKind.Ran && pass.Command?.Id == behindSlow.Id,
-        $"after the running command ended the agent ran {(pass.Command is { } next ? NodeCommandAgent.Describe(next) : pass.Kind.ToString())}");
+    var stoppedState = await UntilAsync(async () => await StateAsync(slow.Id) == NodeCommandState.Canceled);
+    Step("cancel-running", stopping.CancelRequested && stoppedState && runner.Canceled,
+        $"cancel requested {stopping.CancelRequested}; ended {await StateAsync(slow.Id)}");
+    var stillHeld = await asker.ReadCommandsAsync();
+    var heldByB = stillHeld.Commands.First(c => c.Id == barrier.Id).State == NodeCommandState.Queued;
+    runner.Release("hold-b");
+    await UntilAsync(async () => await StateAsync(holdB.Id) == NodeCommandState.Succeeded);
+    agent.Collect();
+    var updateTaken = await agent.TakeAsync(ConnectAgent, CancellationToken.None);
+    var updateRan = await UntilAsync(async () => await StateAsync(barrier.Id) == NodeCommandState.Succeeded);
+    var duringUpdate = agent.Collect();
+    var afterTaken = await agent.TakeAsync(ConnectAgent, CancellationToken.None);
+    var afterRan = await UntilAsync(async () => await StateAsync(afterBarrier.Id) == NodeCommandState.Succeeded);
+    agent.Collect();
+    var order = runner.Events;
+    var alone = runner.ActiveWhenStarted.GetValueOrDefault(barrier.Id, -1) == 0;
+    var afterUpdateEnded = order.IndexOf("end " + barrier.Id) is >= 0 and var endUpdate && order.IndexOf("start " + afterBarrier.Id) > endUpdate;
+    Step("update-runs-alone-then-the-rest", heldByB && updateTaken.Command?.Id == barrier.Id && updateRan && alone &&
+        duringUpdate.Any(e => e.Command?.Id == barrier.Id) && afterTaken.Command?.Id == afterBarrier.Id && afterRan && afterUpdateEnded,
+        $"held while Install hold-b ran: {heldByB}; then {updateTaken.Text} (nothing else running: {alone}), then {afterTaken.Text}");
+
+    // An agent from before commands ran side by side (no list of running commands) still gets one at a time.
+    var serialFirst = await asker.SendCommandAsync(NodeCommandKinds.DescribeRole, new Dictionary<string, string> { ["role"] = "serial-one" });
+    var serialSecond = await asker.SendCommandAsync(NodeCommandKinds.DescribeRole, new Dictionary<string, string> { ["role"] = "serial-two" });
+    var oldTake = await agentConnection.TakeCommandAsync(token, "0.38.1", NodeCommandKinds.All);
+    var oldAgain = await agentConnection.TakeCommandAsync(token, "0.38.1", NodeCommandKinds.All);
+    var serialQueue = await asker.ReadCommandsAsync();
+    var serialText = serialQueue.WaitingText(serialSecond, "check-host");
+    await agentConnection.ReportCommandAsync(token, serialFirst.Id, ["FIXTURE: read serial-one"], "FIXTURE - read.", NodeCommandState.Succeeded, 0);
+    var oldNext = await agentConnection.TakeCommandAsync(token, "0.38.1", NodeCommandKinds.All);
+    await agentConnection.ReportCommandAsync(token, serialSecond.Id, ["FIXTURE: read serial-two"], "FIXTURE - read.", NodeCommandState.Succeeded, 0);
+    Step("serial-agent-one-at-a-time", oldTake.Command?.Id == serialFirst.Id && oldAgain.Command?.Id == serialFirst.Id && oldAgain.Resumed &&
+        serialQueue.Agent?.Parallel == false && serialText?.Contains("busy with: Read what serial-one needs", StringComparison.Ordinal) == true &&
+        oldNext.Command?.Id == serialSecond.Id,
+        $"{serialText ?? "nothing ahead"}; then {(oldNext.Command is { } taken ? NodeCommandAgent.Describe(taken) : "nothing")}");
 
     // An update the host's Martlet can't install yet (someone is using it there) stays first and holds the queue; a command
     // sent meanwhile says it waits behind the update and runs once the update is done.
@@ -436,20 +509,64 @@ sealed class NoAudit : IGatewayAuditSink
 }
 
 /// <summary>Stands in for Martlet's command runner: prints fixed lines, records the secrets and choices it was handed and
-/// waits to be canceled for describe-role. An update to <see cref="BusyVersion"/> continues later (as Martlet's does while
-/// someone uses Martlet on the host) until <see cref="UpdateMayInstall"/>.</summary>
+/// waits to be canceled for describe-role (slow-role). Adding a role named hold-* waits until <see cref="Release"/> lets
+/// that role finish. It counts the commands it runs at once and records when each starts and ends. An update to
+/// <see cref="BusyVersion"/> continues later (as Martlet's does while someone uses Martlet on the host) until
+/// <see cref="UpdateMayInstall"/>.</summary>
 sealed class FixtureRunner : INodeCommandRunner
 {
     internal static readonly string[] UpdateLines = ["Checking the fixture release...", "Updating the fixture host service...", "Fixture host updated."];
     internal const string BusyVersion = "9.9.8";
     internal const string BusyLine = "FIXTURE: Martlet is in use here, so the update waits until it is idle.";
+    private readonly object gate = new();
+    private readonly Dictionary<string, TaskCompletionSource> holds = [];
+    private readonly List<string> events = [];
+    private readonly Dictionary<string, int> activeWhenStarted = [];
+    private int active;
     internal List<string> SecretsSeen { get; } = [];
     internal string? LastChoice { get; private set; }
     internal bool Canceled { get; private set; }
     internal bool UpdateMayInstall { get; set; }
     public IReadOnlyList<string> Kinds => NodeCommandKinds.All;
+    /// <summary>How many commands run right now.</summary>
+    internal int Active { get { lock (gate) return active; } }
+    /// <summary>"start ID" and "end ID", in order.</summary>
+    internal List<string> Events { get { lock (gate) return [.. events]; } }
+    /// <summary>How many other commands ran when each command started.</summary>
+    internal Dictionary<string, int> ActiveWhenStarted { get { lock (gate) return new(activeWhenStarted); } }
+
+    internal void Release(string role) => Hold(role).TrySetResult();
+
+    private TaskCompletionSource Hold(string role)
+    {
+        lock (gate)
+        {
+            if (!holds.TryGetValue(role, out var hold)) holds[role] = hold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return hold;
+        }
+    }
 
     public async Task<NodeCommandOutcome?> RunAsync(NodeCommand command, IReadOnlyDictionary<string, string> secrets, bool resumed,
+        IProgress<string> output, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            activeWhenStarted[command.Id] = active;
+            active++;
+            events.Add("start " + command.Id);
+        }
+        try { return await RunOneAsync(command, secrets, resumed, output, cancellationToken); }
+        finally
+        {
+            lock (gate)
+            {
+                active--;
+                events.Add("end " + command.Id);
+            }
+        }
+    }
+
+    private async Task<NodeCommandOutcome?> RunOneAsync(NodeCommand command, IReadOnlyDictionary<string, string> secrets, bool resumed,
         IProgress<string> output, CancellationToken cancellationToken)
     {
         switch (command.Kind)
@@ -466,11 +583,16 @@ sealed class FixtureRunner : INodeCommandRunner
                 foreach (var line in UpdateLines) output.Report(line);
                 return new(true, "FIXTURE - updated nothing.", 0);
             case NodeCommandKinds.AddRole:
-                SecretsSeen.AddRange(secrets.Values);
-                LastChoice = command.Arguments.GetValueOrDefault("choice.MODEL");
+                lock (gate)
+                {
+                    SecretsSeen.AddRange(secrets.Values);
+                    LastChoice = command.Arguments.GetValueOrDefault("choice.MODEL");
+                }
                 output.Report("Installing the fixture role...");
+                if (command.Arguments.GetValueOrDefault("role") is { } role && role.StartsWith("hold-", StringComparison.Ordinal))
+                    await Hold(role).Task.WaitAsync(cancellationToken);
                 return new(true, "FIXTURE - installed nothing.", 0);
-            case NodeCommandKinds.DescribeRole:
+            case NodeCommandKinds.DescribeRole when command.Arguments.GetValueOrDefault("role") == "slow-role":
                 output.Report("Waiting to be canceled...");
                 try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
                 catch (OperationCanceledException) { Canceled = true; throw; }

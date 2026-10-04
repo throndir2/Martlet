@@ -139,7 +139,7 @@ public sealed class HostSupplyTests
     {
         var online = HostCheckout.Command("--yes setup", "MARTLET_HOST_ADDRESS=192.168.1.20 ", "1.2.3", refresh: true, update: false,
             supplied: false, closeStdin: true);
-        Assert.StartsWith("command -v git", online);
+        Assert.StartsWith(HostCheckout.CheckoutTurn + "command -v git", online);
         Assert.Contains("Stopped: git is not installed here", online);
         Assert.Contains("git clone -q --depth 1 https://github.com/throndir2/Martlet.git ~/.cache/martlet/clone </dev/null", online);
         Assert.Contains("Stopped: there is no Martlet engine in ~/Martlet", online);
@@ -151,8 +151,9 @@ public sealed class HostSupplyTests
             Assert.DoesNotContain(text, c => c is '"' or '%' or '\n' or '\r');
 
         var status = HostCheckout.Command("status", "", "1.2.3", refresh: false, update: false, supplied: false, closeStdin: true);
-        Assert.StartsWith("if [ ! -x ~/Martlet/deploy/host/martlet-host ]; then command -v git", status);
-        Assert.Contains("{ [ -d ~/Martlet/.git ] && git -C ~/Martlet pull --ff-only -q </dev/null; } || true", status);
+        Assert.StartsWith(HostCheckout.CheckoutTurn + "if [ ! -x ~/Martlet/deploy/host/martlet-host ]; then command -v git", status);
+        Assert.Contains("{ [ -d ~/Martlet/.git ] && git -C ~/Martlet pull --ff-only -q </dev/null; } || true; " + HostCheckout.CheckoutTurnEnd +
+            "test -x ~/Martlet/deploy/host/martlet-host", status);
 
         var supplied = HostCheckout.Command("--yes update", "", "1.2.3", refresh: true, update: true, supplied: true, closeStdin: true);
         Assert.DoesNotContain("git", supplied);

@@ -66,7 +66,8 @@ public partial class HostRunWindow : ThemedWindow
     internal BackgroundTask BackgroundTask => task;
 
     /// <summary>The runs still working, oldest first (UI thread). Several run side by side: setup steps they share wait for
-    /// each other (<see cref="SharedSteps"/>) and changes to one host take turns in its engine lock.</summary>
+    /// each other (<see cref="SharedSteps"/>) and changes to one host run side by side in its engine, where only colliding ones
+    /// wait.</summary>
     internal static IReadOnlyList<HostRunWindow> Running => runs.ToArray();
 
     /// <summary>Whether a run titled <paramref name="title"/> is still working.</summary>

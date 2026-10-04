@@ -44,6 +44,9 @@ public static class HostCheckout
     /// <param name="supplied">The host has no internet access and this PC sent its files: run the unpacked copy with
     /// MARTLET_SUPPLY and touch neither git nor the network.</param>
     /// <param name="closeStdin">Keep stdin for the engine (Martlet's SSH runner passes answers there).</param>
+    /// <remarks>Several engine runs may start on one computer at once (installs side by side, from one or several desktops):
+    /// they take turns at the checkout (flock on ~/.cache/martlet/checkout.lock, up to ten minutes), so two git commands
+    /// never collide in ~/Martlet, and then run their engines side by side.</remarks>
     public static string Command(string arguments, string environment, string version, bool refresh, bool update, bool supplied,
         bool closeStdin)
     {
@@ -55,6 +58,12 @@ public static class HostCheckout
               $"git -C ~/Martlet -c advice.detachedHead=false checkout -q v{version}; }} || " +
               $"{{ git -C ~/Martlet checkout -q main && git -C ~/Martlet pull --ff-only -q{quiet}; }} || true; "
             : $"{{ [ -d ~/Martlet/.git ] && git -C ~/Martlet pull --ff-only -q{quiet}; }} || true; ";
-        return checkout + pull + Present + $"{environment}{Engine} {arguments}";
+        return CheckoutTurn + checkout + pull + CheckoutTurnEnd + Present + $"{environment}{Engine} {arguments}";
     }
+
+    /// <summary>The checkout's turn: a subshell that holds the lock while it clones or pulls (without flock, or after ten
+    /// minutes, it goes ahead anyway); a stop inside it (exit 1) stops the whole command.</summary>
+    internal const string CheckoutTurn = "mkdir -p ~/.cache/martlet && ( { command -v flock >/dev/null 2>&1 && flock -w 600 9; }; ";
+
+    internal const string CheckoutTurnEnd = ") 9>>$HOME/.cache/martlet/checkout.lock || exit 1; ";
 }

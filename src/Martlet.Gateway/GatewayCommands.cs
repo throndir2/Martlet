@@ -21,7 +21,7 @@ public interface IGatewayCommandStorage
 internal sealed class GatewayCommandStore
 {
     internal const int MaximumRetained = 24;
-    internal const int MaximumActive = 8;
+    internal const int MaximumActive = NodeCommandRules.MaximumActive;
     internal const int MaximumStorageBytes = 1_048_576;
     internal const int SavedOutputLines = 20;
     internal static readonly TimeSpan SecretLifetime = TimeSpan.FromMinutes(15);
@@ -144,12 +144,15 @@ internal sealed class GatewayCommandStore
         }
     }
 
-    /// <summary>The agent asks for work: first a command it took before and has not finished (after it restarted, for
-    /// example to install an update), otherwise the oldest waiting command of a kind it runs. It is handed that command's
-    /// secrets once; the gateway then forgets them.</summary>
+    /// <summary>The agent asks for work: first a command it took before and isn't running now (after it restarted, for
+    /// example to install an update), otherwise the next waiting command of a kind it runs. An agent that runs commands
+    /// side by side lists the ones it runs (<paramref name="running"/>, kept alive by asking) and gets the oldest waiting
+    /// command that <see cref="NodeCommandSchedule"/> lets start beside them; an older agent (null) runs one at a time and
+    /// asks only between commands. It is handed that command's secrets once; the gateway then forgets them.</summary>
     internal (NodeCommand? Command, IReadOnlyDictionary<string, string>? Secrets, bool Resumed) Poll(GatewayPrincipal principal, string token,
-        string? version, IReadOnlyList<string> kinds, DateTimeOffset now)
+        string? version, IReadOnlyList<string> kinds, IReadOnlyList<string>? running, DateTimeOffset now)
     {
+        GatewayRules.Require(running is null || running.Count <= MaximumActive && running.All(NodeCommandRules.IsId), "request.invalid");
         lock (gate)
         {
             RequireAgentLocked(token);
@@ -157,20 +160,24 @@ internal sealed class GatewayCommandStore
             agent = new()
             {
                 DeviceId = principal.DeviceId, SeenAt = now, Version = NodeCommandRules.IsVersion(version) ? version : null,
-                Kinds = NodeCommandKinds.All.Where(kinds.Contains).ToArray()
+                Kinds = NodeCommandKinds.All.Where(kinds.Contains).ToArray(), Parallel = running is not null
             };
-            if (entries.FirstOrDefault(e => e.Command.State == NodeCommandState.Running && e.Command.ClaimedBy == principal.DeviceId) is { } mine)
+            var mine = entries.Where(e => e.Command.State == NodeCommandState.Running && e.Command.ClaimedBy == principal.DeviceId).ToArray();
+            // Asking again keeps the commands the agent runs, or continues later (for example after restarting into an update),
+            // alive.
+            foreach (var entry in mine.Where(e => now - e.Command.UpdatedAt > TimeSpan.FromMinutes(1)))
             {
-                // Asking again keeps a command the agent continues later (for example after restarting into an update) alive.
-                if (now - mine.Command.UpdatedAt > TimeSpan.FromMinutes(1))
-                {
-                    mine.Command = mine.Command with { UpdatedAt = now };
-                    changed = true;
-                }
-                if (changed) SaveLocked();
-                return (mine.Command, null, true);
+                entry.Command = entry.Command with { UpdatedAt = now };
+                changed = true;
             }
-            if (entries.FirstOrDefault(e => e.Command.State == NodeCommandState.Queued && agent.Kinds.Contains(e.Command.Kind)) is not { } next)
+            if (mine.FirstOrDefault(e => running?.Contains(e.Command.Id) != true) is { } resume)
+            {
+                if (changed) SaveLocked();
+                return (resume.Command, null, true);
+            }
+            var commands = entries.Select(e => e.Command).Where(c => c.State == NodeCommandState.Running || agent.Kinds.Contains(c.Kind)).ToArray();
+            if (entries.FirstOrDefault(e => e.Command.State == NodeCommandState.Queued && agent.Kinds.Contains(e.Command.Kind) &&
+                    (running is null || NodeCommandSchedule.Blocker(e.Command, commands, parallel: true) is null)) is not { } next)
             {
                 if (changed) SaveLocked();
                 return (null, null, false);
@@ -322,7 +329,7 @@ internal sealed partial class GatewayHttpApplication
         else if (parts is ["agent"])
         {
             var request = ReadCommandBody<AgentRequest>(bytes);
-            var (command, secrets, resumed) = Commands.Poll(principal, request.Token, request.Version, request.Kinds ?? [], now);
+            var (command, secrets, resumed) = Commands.Poll(principal, request.Token, request.Version, request.Kinds ?? [], request.Running, now);
             await WriteJsonAsync(context, StatusCodes.Status200OK, new AgentDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, Command = command,
@@ -381,6 +388,8 @@ internal sealed partial class GatewayHttpApplication
         public required string Token { get; init; }
         public string? Version { get; init; }
         public string[]? Kinds { get; init; }
+        /// <summary>The commands an agent that runs them side by side runs right now; absent for agents that run one at a time.</summary>
+        public string[]? Running { get; init; }
     }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

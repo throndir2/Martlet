@@ -10,22 +10,30 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 /// has asked for work since the gateway started) and its recent commands.</summary>
 public sealed record HostCommandList(NodeAgentInfo? Agent, IReadOnlyList<NodeCommand> Commands)
 {
-    /// <summary>What <paramref name="waiting"/> waits behind, or null when it is not waiting or nothing is ahead of it. The
-    /// host's agent runs one command at a time and finishes the one it took before it takes another (an update stays first
-    /// while it waits until Martlet there is idle and while Martlet restarts into it); waiting commands go oldest first.</summary>
+    /// <summary>What <paramref name="waiting"/> waits for, or null when it is not waiting or nothing holds it back
+    /// (<see cref="NodeCommandSchedule"/>). A host's agent that runs commands side by side starts it as soon as nothing it
+    /// collides with runs or waits ahead of it: an update runs alone, and two changes to one role take turns. An older agent
+    /// runs one at a time, oldest first. An update stays first while it waits until Martlet there is idle and while Martlet
+    /// restarts into it.</summary>
     public NodeCommand? Ahead(NodeCommand waiting) =>
-        waiting.State != NodeCommandState.Queued ? null
-        : Commands.Where(c => c.State == NodeCommandState.Running && c.Id != waiting.Id).OrderBy(c => c.RequestedAt).FirstOrDefault()
-          ?? Commands.Where(c => c.State == NodeCommandState.Queued && c.Id != waiting.Id && c.RequestedAt < waiting.RequestedAt)
-              .OrderBy(c => c.RequestedAt).FirstOrDefault();
+        NodeCommandSchedule.Blocker(waiting, Commands.Reverse().OrderBy(c => c.RequestedAt).ToArray(), Agent?.Parallel == true);
 
-    /// <summary>Why <paramref name="waiting"/> has not started yet, in words, or null when nothing is ahead of it.</summary>
+    /// <summary>Why <paramref name="waiting"/> has not started yet, in words, or null when nothing holds it back.</summary>
     public string? WaitingText(NodeCommand waiting, string host) => Ahead(waiting) switch
     {
         null => null,
         { State: NodeCommandState.Running, Kind: NodeCommandKinds.Update } update =>
             $"Martlet on {host} is updating first: {NodeCommandAgent.Describe(update)}. This runs right after it.",
+        { State: NodeCommandState.Running } when waiting.Kind == NodeCommandKinds.Update && Agent?.Parallel == true =>
+            $"Martlet on {host} updates as soon as what it runs now ends: " +
+            string.Join("; ", Commands.Where(c => c.State == NodeCommandState.Running).OrderBy(c => c.RequestedAt).Select(NodeCommandAgent.Describe)) +
+            ". Commands sent after the update wait for it.",
+        { State: NodeCommandState.Running } running when Agent?.Parallel == true =>
+            $"Martlet on {host} is already changing {running.Arguments.GetValueOrDefault("role")}: {NodeCommandAgent.Describe(running)}. " +
+            "This runs right after it; everything else runs side by side.",
         { State: NodeCommandState.Running } running => $"Martlet on {host} is busy with: {NodeCommandAgent.Describe(running)}. This runs next.",
+        { Kind: NodeCommandKinds.Update } update when waiting.Kind != NodeCommandKinds.Update =>
+            $"Waiting behind {NodeCommandAgent.Describe(update)}, sent earlier: Martlet on {host} updates first.",
         var earlier => $"Waiting behind {NodeCommandAgent.Describe(earlier)}, sent earlier. Martlet on {host} runs them in order."
     };
 }
@@ -88,12 +96,15 @@ public sealed partial class Audio2FaceHostConnection
     }
 
     /// <summary>For the Martlet app on the host computer only: takes the next command of <paramref name="kinds"/>, presenting
-    /// the agent token the gateway wrote to the host's local configuration. Also tells the gateway this agent is alive.</summary>
+    /// the agent token the gateway wrote to the host's local configuration. Also tells the gateway this agent is alive. An
+    /// agent that runs commands side by side lists the ones it runs now (<paramref name="running"/>); without it the gateway
+    /// hands out one at a time. Gateways from before commands ran side by side refuse the list with
+    /// <c>request.invalid</c>.</summary>
     public Task<HostAgentWork> TakeCommandAsync(string token, string? version, IReadOnlyList<string> kinds,
-        CancellationToken cancellationToken = default) =>
+        IReadOnlyList<string>? running = null, CancellationToken cancellationToken = default) =>
         PostCommandAsync(CommandsPath + "/agent", new Dictionary<string, object?>
         {
-            ["token"] = token, ["version"] = version, ["kinds"] = kinds
+            ["token"] = token, ["version"] = version, ["kinds"] = kinds, ["running"] = running
         }, root =>
         {
             var command = root.TryGetProperty("command", out var found) && found.ValueKind == JsonValueKind.Object
@@ -167,41 +178,171 @@ public interface INodeCommandRunner
 }
 
 /// <summary>What one pass of <see cref="NodeCommandAgent"/> found or did.</summary>
-public enum NodeAgentPassKind { Idle, Ran, Pending, NoToken, HostTooOld, Unreachable }
+public enum NodeAgentPassKind { Idle, Ran, Pending, NoToken, HostTooOld, Unreachable, Started }
 
 public sealed record NodeAgentPass(NodeAgentPassKind Kind, string Text, NodeCommand? Command = null, NodeCommandOutcome? Outcome = null);
 
 /// <summary>The host side of commands between Martlet computers: asks this host's gateway for work with the local agent
 /// token, runs it through an <see cref="INodeCommandRunner"/>, streams its output back every couple of seconds (holding it
-/// while the gateway restarts, for example during its own update) and reports the outcome.</summary>
+/// while the gateway restarts, for example during its own update or when another command publishes a role) and reports the
+/// outcome. <see cref="TakeAsync"/> runs every command the gateway lets start side by side (<see cref="NodeCommandSchedule"/>),
+/// each in the background on its own connection; <see cref="RunOnceAsync"/> takes one and runs it to its end. A gateway from
+/// before commands ran side by side hands this agent one at a time.</summary>
 public sealed class NodeCommandAgent(Func<CancellationToken, Task<string?>> readToken, string version, INodeCommandRunner runner)
 {
     private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan FinalReportPatience = TimeSpan.FromMinutes(10);
-    private string? token;
+    private static readonly NodeAgentPass IdlePass = new(NodeAgentPassKind.Idle, "Waiting for commands from your other computers.");
+    private readonly object gate = new();
+    private readonly Dictionary<string, (NodeCommand Command, Task<NodeAgentPass> Run)> runs = new(StringComparer.Ordinal);
+    private volatile string? token;
+    /// <summary>The host's gateway predates commands side by side, so it gets one at a time (asked again after it restarts).</summary>
+    private bool serial;
+
+    /// <summary>The commands this agent runs in the background right now, oldest first.</summary>
+    public IReadOnlyList<NodeCommand> Running
+    {
+        get
+        {
+            lock (gate) return runs.Values.Where(r => !r.Run.IsCompleted).Select(r => r.Command).OrderBy(c => c.RequestedAt).ToArray();
+        }
+    }
+
+    /// <summary>Background runs that ended since the last call: Ran, or Pending when the command continues later (the gateway
+    /// then hands it back on a later <see cref="TakeAsync"/>). Call it before each <see cref="TakeAsync"/>.</summary>
+    public IReadOnlyList<NodeAgentPass> Collect()
+    {
+        lock (gate)
+        {
+            var ended = runs.Where(pair => pair.Value.Run.IsCompleted).OrderBy(pair => pair.Value.Command.RequestedAt).ToArray();
+            foreach (var (id, _) in ended) runs.Remove(id);
+            return ended.Select(pair => pair.Value.Run.Result).ToArray();
+        }
+    }
+
+    /// <summary>Takes every command this host's gateway lets start now and runs each in the background on its own connection
+    /// from <paramref name="connect"/> (<see cref="Running"/>, then <see cref="Collect"/>). Returns Started with the first
+    /// command it took, Idle when nothing may start, or why it could not ask (NoToken, HostTooOld, Unreachable).</summary>
+    public async Task<NodeAgentPass> TakeAsync(Func<Audio2FaceHostConnection> connect, CancellationToken cancellationToken)
+    {
+        var started = new List<NodeCommand>();
+        using (var connection = connect())
+        {
+            while (started.Count < NodeCommandRules.MaximumActive)
+            {
+                string[] running;
+                lock (gate)
+                {
+                    running = ActiveLocked();
+                    if (serial && running.Length > 0) break;
+                }
+                var (pass, work) = await TryTakeAsync(connection, running, cancellationToken).ConfigureAwait(false);
+                if (work?.Command is not { } command)
+                {
+                    if (started.Count == 0) return pass ?? IdlePass;
+                    break;
+                }
+                lock (gate)
+                {
+                    // One this agent still holds (it ended but wasn't collected yet) comes back after Collect.
+                    if (runs.ContainsKey(command.Id)) break;
+                    runs[command.Id] = (command, Task.Run(() => RunInBackgroundAsync(connect, command, work, cancellationToken)));
+                }
+                started.Add(command);
+            }
+        }
+        return started.Count == 0 ? IdlePass
+            : new(NodeAgentPassKind.Started, "Started " + string.Join("; ", started.Select(Describe)) + ".", started[0]);
+    }
 
     /// <summary>One pass: take at most one command and run it to its end (or until the runner says it continues later).</summary>
     public async Task<NodeAgentPass> RunOnceAsync(Audio2FaceHostConnection connection, CancellationToken cancellationToken)
     {
-        HostAgentWork work;
-        try { work = await TakeAsync(connection, cancellationToken).ConfigureAwait(false); }
+        string[] running;
+        lock (gate) running = ActiveLocked();
+        var (pass, work) = await TryTakeAsync(connection, running, cancellationToken).ConfigureAwait(false);
+        if (work?.Command is not { } command) return pass ?? IdlePass;
+        lock (gate)
+            if (runs.ContainsKey(command.Id)) return IdlePass;
+        return await RunTakenAsync(connection, command, work, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string[] ActiveLocked() =>
+        runs.Where(pair => !pair.Value.Run.IsCompleted).Select(pair => pair.Key).Take(NodeCommandRules.MaximumActive).ToArray();
+
+    /// <summary>Asks for work, presenting the commands this agent runs: the work, or a pass saying why it couldn't ask.</summary>
+    private async Task<(NodeAgentPass? Pass, HostAgentWork? Work)> TryTakeAsync(Audio2FaceHostConnection connection,
+        IReadOnlyList<string> running, CancellationToken cancellationToken)
+    {
+        try { return (null, await TakeWorkAsync(connection, running, cancellationToken).ConfigureAwait(false)); }
         catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
         {
-            return new(NodeAgentPassKind.HostTooOld, "This host service predates commands between computers; update it.");
+            return (new(NodeAgentPassKind.HostTooOld, "This host service predates commands between computers; update it."), null);
         }
         catch (Audio2FaceHostException error) when (error.Code == "command.agent")
         {
             token = null;
-            return new(NodeAgentPassKind.NoToken, "The host service did not accept this PC's agent token.");
+            return (new(NodeAgentPassKind.NoToken, "The host service did not accept this PC's agent token."), null);
         }
-        catch (Audio2FaceHostException error) { return new(NodeAgentPassKind.Unreachable, error.Message); }
+        catch (Audio2FaceHostException error) { return (new(NodeAgentPassKind.Unreachable, error.Message), null); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new(NodeAgentPassKind.Unreachable, "The host service did not answer in time.");
+            return (new(NodeAgentPassKind.Unreachable, "The host service did not answer in time."), null);
         }
-        catch (InvalidOperationException error) { return new(NodeAgentPassKind.NoToken, error.Message); }
-        if (work.Command is not { } command) return new(NodeAgentPassKind.Idle, "Waiting for commands from your other computers.");
+        catch (InvalidOperationException error) { return (new(NodeAgentPassKind.NoToken, error.Message), null); }
+    }
 
+    private async Task<HostAgentWork> TakeWorkAsync(Audio2FaceHostConnection connection, IReadOnlyList<string> running,
+        CancellationToken cancellationToken)
+    {
+        var renewed = false;
+        while (true)
+        {
+            var current = token ??= await readToken(cancellationToken).ConfigureAwait(false) ??
+                throw new InvalidOperationException("This PC's host service has no agent token yet (it predates commands or is not running).");
+            bool alone;
+            lock (gate) alone = serial;
+            try
+            {
+                return await connection.TakeCommandAsync(current, version, runner.Kinds, alone ? null : running, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            // The gateway writes a new token each time it starts (and may have been updated meanwhile).
+            catch (Audio2FaceHostException error) when (error.Code == "command.agent" && !renewed)
+            {
+                renewed = true;
+                token = null;
+                lock (gate) serial = false;
+            }
+            // A gateway from before commands ran side by side refuses the list: it hands out one at a time, and would hand back
+            // a command this agent runs as one to resume.
+            catch (Audio2FaceHostException error) when (error.Code == "request.invalid" && !alone)
+            {
+                lock (gate) serial = true;
+                if (running.Count > 0) return new(null, new Dictionary<string, string>(), false);
+            }
+        }
+    }
+
+    /// <summary>Runs a command taken by <see cref="TakeAsync"/> on its own connection. It never throws: a run cut off here
+    /// (Martlet exiting, an unexpected failure) is Pending, and the gateway hands the command back on a later take.</summary>
+    private async Task<NodeAgentPass> RunInBackgroundAsync(Func<Audio2FaceHostConnection> connect, NodeCommand command, HostAgentWork work,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var connection = connect();
+            return await RunTakenAsync(connection, command, work, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            return new(NodeAgentPassKind.Pending, $"{Describe(command)} stopped here before it ended: {error.Message}", command);
+        }
+    }
+
+    private async Task<NodeAgentPass> RunTakenAsync(Audio2FaceHostConnection connection, NodeCommand command, HostAgentWork work,
+        CancellationToken cancellationToken)
+    {
         var lines = new ConcurrentQueue<string>();
         var output = new LineQueue(lines);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -245,18 +386,6 @@ public sealed class NodeCommandAgent(Func<CancellationToken, Task<string?>> read
         return $"{what} (from {command.RequestedBy})";
     }
 
-    private async Task<HostAgentWork> TakeAsync(Audio2FaceHostConnection connection, CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; ; attempt++)
-        {
-            token ??= await readToken(cancellationToken).ConfigureAwait(false) ??
-                throw new InvalidOperationException("This PC's host service has no agent token yet (it predates commands or is not running).");
-            try { return await connection.TakeCommandAsync(token, version, runner.Kinds, cancellationToken).ConfigureAwait(false); }
-            // The gateway writes a new token each time it starts.
-            catch (Audio2FaceHostException error) when (error.Code == "command.agent" && attempt == 0) { token = null; }
-        }
-    }
-
     private async Task<NodeCommandOutcome?> RunCommandAsync(NodeCommand command, HostAgentWork work, IProgress<string> output,
         CancellationToken cancellationToken)
     {
@@ -281,13 +410,17 @@ public sealed class NodeCommandAgent(Func<CancellationToken, Task<string?>> read
         {
             try
             {
-                token ??= await readToken(cancellationToken).ConfigureAwait(false);
-                if (token is null) return null;
-                var cancel = await connection.ReportCommandAsync(token, id, batch, summary, state, exitCode, cancellationToken).ConfigureAwait(false);
+                var current = token ??= await readToken(cancellationToken).ConfigureAwait(false);
+                if (current is null) return null;
+                var cancel = await connection.ReportCommandAsync(current, id, batch, summary, state, exitCode, cancellationToken).ConfigureAwait(false);
                 for (var i = 0; i < batch.Length; i++) lines.TryDequeue(out _);
                 return cancel;
             }
-            catch (Audio2FaceHostException error) when (error.Code == "command.agent" && attempt == 0) { token = null; }
+            catch (Audio2FaceHostException error) when (error.Code == "command.agent" && attempt == 0)
+            {
+                token = null;
+                lock (gate) serial = false;
+            }
             catch (Audio2FaceHostException error) when (error.Code == "command.not_found") { return true; }
             catch (Audio2FaceHostException) { return null; }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return null; }

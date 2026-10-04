@@ -258,16 +258,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("node_link_check", "Run commands between Martlet computers end to end on this PC's loopback: the real gateway (pinned TLS, " +
             "pairing, signed requests, the command mailbox and its storage), the desktop's real client and agent loop with a fixture " +
             "runner, two fixture devices. Checks that only known commands are accepted, only the host's agent (local token) takes them, " +
-            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works, an update that waits " +
-            "holds the queue and the sender sees what its command waits behind, and commands survive a restart. Contacts nothing " +
+            "output and outcomes reach the sender, secrets never appear in lists or saved copies, cancel works, commands run side by " +
+            "side (a second change to one role waits for the first; an update waits for what runs and holds what was sent after it; " +
+            "an older agent still gets one at a time), an update that waits holds the queue and the sender sees what its command " +
+            "waits behind, and commands survive a restart. Contacts nothing " +
             "outside loopback and touches no real credentials, Docker or installs.", new { }),
-        Tool("host_engine_check", "Check that a Martlet host makes one change at a time: runs this checkout's real martlet-host " +
-            "engine in one disposable ubuntu:24.04 container (no network, never pulled, removed afterwards; Martlet's own host " +
-            "containers and volumes are never touched) against a fixture setup. A change holds the engine lock; read-only commands " +
-            "still run; status names the holder; an automatic run (no terminal, no --yes) stops at once with exit 75 and " +
-            "MARTLET-BUSY, changing nothing; an attended run waits and gives up after MARTLET_LOCK_WAIT; a waiting run continues when " +
-            "the holder is killed, and so does a run without a terminal or --yes told to wait (Update hosts now); no stale lock " +
-            "remains; the journal records it; the desktop's reader reads the busy line. With a " +
+        Tool("host_engine_check", "Check that a Martlet host runs changes side by side and makes only colliding ones wait: runs " +
+            "this checkout's real martlet-host engine in one disposable ubuntu:24.04 container (no network, never pulled, removed " +
+            "afterwards; Martlet's own host containers and volumes are never touched) against a fixture setup. A change holds and " +
+            "records its locks; read-only commands still run; status names the holders; an automatic run (no terminal, no --yes) " +
+            "stops at once with exit 75 and MARTLET-BUSY, changing nothing; an attended run waits and gives up after " +
+            "MARTLET_LOCK_WAIT; adds of different roles run side by side while the same role or exclusive group waits; setup and " +
+            "update wait for every change and hold back later ones; a waiting run continues when the holder is killed, and so does " +
+            "a run without a terminal or --yes told to wait (Update hosts now); no stale lock or record remains; the journal " +
+            "records it; the desktop's reader reads the busy line. With a " +
             "fake docker CLI it also checks the Docker method: setup does not replace the network holder while an engine session " +
             "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), and an engine " +
             "left in a replaced holder's namespace stops at once. Returns notRun when Docker or the image is missing.", new { }),
