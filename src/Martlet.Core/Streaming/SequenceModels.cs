@@ -28,12 +28,13 @@ public sealed record SequenceLimits : IContract
 
     public void Validate()
     {
-        ContractRules.Require(MaxIngressEvents is >= 2 and <= 4096 &&
+        ContractRules.Require(MaxIngressEvents is >= 2 and <= 65_536 &&
             MaxTextCharacters is >= 1 and <= 262_144 && MaxQueuedChunks is >= 1 and <= 128 &&
             MaxAttempts is >= 1 and <= 64, "Sequence resource limits are out of range.");
+        // A background think (think_longer) may take up to fifteen minutes; replies stay within two.
         foreach (var timeout in new[] { FirstEventTimeout, IdleTimeout, TotalTimeout })
-            ContractRules.Require(timeout > TimeSpan.Zero && timeout <= TimeSpan.FromMinutes(5),
-                "Sequence deadlines must be positive and at most five minutes.");
+            ContractRules.Require(timeout > TimeSpan.Zero && timeout <= TimeSpan.FromMinutes(15),
+                "Sequence deadlines must be positive and at most fifteen minutes.");
     }
 }
 

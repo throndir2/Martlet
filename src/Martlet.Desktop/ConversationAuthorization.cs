@@ -29,6 +29,11 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     private BoundedTextInput? exactInput;
     private int maxTextRequests = 1;
     internal LiveConversationConfiguration Configuration { get; }
+    /// <summary>The bounds every text request of this action must have: the configuration's, or a background think's own.</summary>
+    internal TextGenerationLimits TextLimits { get; }
+    /// <summary>How long this action may last: <see cref="LiveConversationConfiguration.ActionLifetime"/>, or a background
+    /// think's time left.</summary>
+    internal TimeSpan Lifetime { get; }
     internal bool Voice { get; }
     internal bool Microphone { get; }
     /// <summary>This action may send its one attached picture with the text: a screen glance, or the user's screen sent along
@@ -41,9 +46,12 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
 
     internal ConversationAuthorization(LiveConversationConfiguration configuration, bool voice, bool microphone,
         TimeProvider clock, Func<bool> current, Func<CancellationToken, Task<SettingsLoadResult>> load,
-        ICredentialStore vault, CancellationToken caller, bool screen = false, bool hear = false)
+        ICredentialStore vault, CancellationToken caller, bool screen = false, bool hear = false,
+        TextGenerationLimits? textLimits = null, TimeSpan? lifetime = null)
     {
         Configuration = configuration;
+        TextLimits = textLimits ?? configuration.TextLimits;
+        Lifetime = lifetime ?? LiveConversationConfiguration.ActionLifetime;
         Voice = voice;
         Microphone = microphone;
         Screen = screen;
@@ -82,8 +90,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         worker.ThrowIfCancellationRequested();
         token.ThrowIfCancellationRequested();
         if (IsCanceled) throw new LiveActionException("conversation.revoked");
-        if (clock.GetUtcNow() >= acceptedAt + LiveConversationConfiguration.ActionLifetime ||
-            clock.GetElapsedTime(started) >= LiveConversationConfiguration.ActionLifetime)
+        if (clock.GetUtcNow() >= acceptedAt + Lifetime || clock.GetElapsedTime(started) >= Lifetime)
             throw new LiveActionException("conversation.expired");
     }
 
@@ -91,9 +98,9 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     {
         Check();
         var elapsed = clock.GetElapsedTime(started);
-        var remaining = (fromAcceptance ? maximum : LiveConversationConfiguration.ActionLifetime) - elapsed;
+        var remaining = (fromAcceptance ? maximum : Lifetime) - elapsed;
         if (remaining <= TimeSpan.Zero) throw new LiveActionException("conversation.expired");
-        var absolute = acceptedAt + (fromAcceptance ? maximum : LiveConversationConfiguration.ActionLifetime);
+        var absolute = acceptedAt + (fromAcceptance ? maximum : Lifetime);
         var clamped = clock.GetUtcNow() + (remaining < maximum ? remaining : maximum);
         return clamped < absolute ? clamped : absolute;
     }
@@ -134,15 +141,15 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         var selection = Configuration.TextSelection();
         var fallback = Configuration.FallbackSelection() is { } second && action.Model == second;
         var expected = new OperationBudget(action.Context.Ids, action.Context.Epoch, ProviderRole.Llm, 1,
-            action.Input.Utf8Bytes, action.Input.InputTokenReservation, Configuration.TextLimits.MaxOutputTokens, 0);
-        var expiry = Min(action.Context.Deadline, Deadline(Configuration.TextLimits.MaxRequestTime));
+            action.Input.Utf8Bytes, action.Input.InputTokenReservation, TextLimits.MaxOutputTokens, 0);
+        var expiry = Min(action.Context.Deadline, Deadline(TextLimits.MaxRequestTime));
         lock (gate)
         {
             Check(token);
             // Tool rounds, a retry without tools and one without the recording all continue this exact input.
             var continues = exactInput is not null && ReferenceEquals(action.Input.Origin, exactInput);
             if (!ReferenceEquals(action.Input, exactInput) && !continues || action.Model != selection && !fallback ||
-                action.Limits != Configuration.TextLimits || action.Budget != expected ||
+                action.Limits != TextLimits || action.Budget != expected ||
                 textRequests >= maxTextRequests || !requests.Add(action.Context.Ids.RequestId)) return null;
             textRequests++;
             if (fallback) fallbackTickets++;

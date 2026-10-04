@@ -86,6 +86,12 @@ has Martlet's own **Terminal** (off by default): turn it on and Martlet can run
 PowerShell or Command Prompt commands when you ask, hidden and never as
 administrator, asking before each one unless you change that. See [MCP](docs/MCP.md).
 
+**Thinking longer** (Companion > Replies, on by default): replies answer right
+away, and when a task really needs thought (song lyrics, a story, a plan, tricky
+math or code) Martlet says it'll think it over, works it out in the background
+with Thinking steps on while you keep talking, then brings it up when it's done.
+See [Thinking longer](docs/CONVERSATION.md#thinking-longer-and-background-work).
+
 **Voices (F5)**: add your own voice recordings on **Companion > Voice >
 Voices** and switch between them in one click. F5 copies a voice from a short
 recording with its transcript; nothing is trained. Martlet keeps its own copy of

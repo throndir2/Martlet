@@ -190,7 +190,7 @@ public partial class MainWindow
             return ("On, but your Thinking model can't use tools here. Use OpenAI or a Chat Completions endpoint (such as Ollama on " +
                 "this PC) in Companion › Thinking.", true);
         if (service.IsUnsupported(McpToolService.ModelKey($"{route.RouteType}", route.Origin, route.ModelId)))
-            return ($"On, but {route.ModelId} turned down tools, so Martlet stopped offering them until it restarts. Choose a model " +
+            return ($"On, but {route.ModelId} turned down tools, so Martlet stops offering them to it for a week. Choose a model " +
                 "that can use tools.", true);
         return ($"On. {shell}, {(saved.AskFirst ? "asks before every command" : "runs commands without asking")}, stops a command " +
             $"after {(saved.TimeLimitSeconds < 60 ? $"{saved.TimeLimitSeconds} seconds" : "1 minute")}.", false);

@@ -371,8 +371,9 @@ internal sealed class TextGenerationOperation(
         abortBody = Token.Register(body.Dispose);
         EnsureActive();
         reader = new(body, limits, EnsureActive, response.Content.Headers.ContentLength);
-        if (chatBaseUri is null) normalizer = new(limits, model.UpstreamModelId, input.Tools.Count > 0);
-        else chatNormalizer = new(limits, input.Tools.Count > 0, GenerationSupport.SendsReplyBudget(chatBaseUri.AbsoluteUri, generation));
+        if (chatBaseUri is null) normalizer = new(limits, model.UpstreamModelId, input.Tools.Count > 0, input.ToolRounds.Count > 0);
+        else chatNormalizer = new(limits, input.Tools.Count > 0, GenerationSupport.SendsReplyBudget(chatBaseUri.AbsoluteUri, generation),
+            input.ToolRounds.Count > 0);
         return null;
     }
 
@@ -504,9 +505,11 @@ internal sealed class TextGenerationOperation(
                     if (sampling.MinP is { } minP) writer.WriteNumber("min_p", minP);
                     if (sampling.RepeatPenalty is { } repeat) writer.WriteNumber("repetition_penalty", repeat);
                 }
-                // Thinking steps: each server family reads its own control (GenerationSupport.ChatReasoning).
+                // Thinking steps: each server family reads its own control (GenerationSupport.ChatReasoning); a background
+                // think also says how hard to think where the route takes an effort.
                 if (sampling.Reasoning is { } reasoning)
-                    GenerationSupport.WriteReasoning(writer, GenerationSupport.ChatReasoning(chatBaseUri!.AbsoluteUri), reasoning);
+                    GenerationSupport.WriteReasoning(writer, GenerationSupport.ChatReasoning(chatBaseUri!.AbsoluteUri), reasoning,
+                        sampling.ReasoningEffort);
             }
             if (string.Equals(chatBaseUri!.AbsoluteUri, ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
                 StringComparison.Ordinal))
