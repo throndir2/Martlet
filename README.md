@@ -248,7 +248,7 @@ PC and on the validation hosts they have set up (their local developer profile,
 verified working through Martlet's own MCP server, which is extended in the
 same change so it can reach and observe the feature. A new failing test blocks
 the merge; tests that already fail on `main` are listed in
-`tests\known-failures.txt`, which only shrinks. The flow, the runner and the
+`tests\known-failures.txt` until they are fixed. The flow, the runner and the
 hosts are described in [Validating changes](docs/VALIDATION.md). `CI=true`
 remains a local MSBuild setting for locked restore and deterministic build
 metadata; it does not require a remote runner.

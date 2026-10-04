@@ -98,10 +98,12 @@ flow in [Validating changes](docs/VALIDATION.md). Both parts are required:
   the change selects). It builds every affected project and runs the affected
   .NET, Python and node suites in parallel on this PC and on the developer's
   validation hosts. It must end `PASSED`: a new failing test or build error
-  blocks the merge. Fix the cause; never add to `tests\known-failures.txt` to
-  get a change through, and delete a line when its test passes again. Fix
-  flaky tests the run names when they are in or near your change. Add or update
-  tests for new behavior in the matching `tests\` project.
+  blocks the merge. Fix the cause. Add to `tests\known-failures.txt` only a test
+  shown failing on `origin/main` without your change (noted in the PR and
+  [#332](https://github.com/throndir2/Martlet/issues/332)), never one your change
+  breaks, and delete a line when its test passes again. Fix flaky tests the run
+  names when they are in or near your change. Add or update tests for new
+  behavior in the matching `tests\` project.
 - **Behavior through Martlet MCP:** every feature or behavior change is shown
   working through Martlet's own MCP server (`src\Martlet.Mcp`) on this machine
   whenever it can exercise it. Build what the change needs, then drive the

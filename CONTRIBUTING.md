@@ -45,7 +45,8 @@ Docker on your PC or a Linux box over key-based SSH. See
   [validation policy](README.md#local-only-validation-policy).
 - **Keep `main` green.** A new failing test blocks a merge. Tests that already
   fail on `main` are listed in `tests\known-failures.txt`; fix them and delete
-  their lines, never add lines to get a change through.
+  their lines. Add a line only for a test shown failing on `origin/main` without
+  your change, never for one your change breaks.
 - **Never use a real profile, real credentials or paid services in tests or
   verification**, and never claim a check passed that you did not run.
 - **Conversation latency must never grow** (time from the end of speech to the

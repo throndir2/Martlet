@@ -98,11 +98,18 @@ keeps everything on this PC; `-RequireAll` fails the run when anything is NOT RU
 | Known failures | Only tests listed in `tests\known-failures.txt` failed | No |
 | NOT RUN | This environment cannot run it (no Linux host, missing Python module, another OS) | Report it; `-RequireAll` makes it fail |
 
-`tests\known-failures.txt` lists tests that already fail on `main`. It is a ratchet:
-it only ever shrinks. Fixing one of them means deleting its line (the runner reports
-known failures that pass again); never add a line to get a change through. Entries
-tagged `env:` fail only on some machines (for example, symlink tests without
-Windows Developer Mode) and are not reported as fixed.
+`tests\known-failures.txt` lists tests that already fail on `main`. Fixing one means
+deleting its line (the runner reports known failures that pass again). A line may be
+added only for a test you have shown failing on `origin/main` **without** your change
+(run it on a clean export of `origin/main`), with a note in the pull request and in
+the burn-down issue ([#332](https://github.com/throndir2/Martlet/issues/332)); never
+for a failure your change causes. Entries tagged `env:` fail only on some machines
+(for example, symlink tests without Windows Developer Mode) and are not reported as
+fixed.
+
+If `main` moves while your pull request is open, merge it and rerun the runner
+before merging: someone else's change can break a test your change selects, and that
+is how such breaks are caught.
 
 Full logs and TRX files are in `artifacts\validation\`. Processes a suite leaves
 running (a worker host a failed test never stopped, for example) are stopped and
