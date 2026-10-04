@@ -284,6 +284,8 @@ service on this PC:
      *Remove* for each installed one.
   5. *Keep it up to date*: rebuilds the host service from this app's version
      (`martlet-host update`); done when its gateway image matches the app.
+     Martlet does this by itself in the background after it updates (the
+     step then says it is updating); *Update host service* does it now.
 - The steps' heading reads *This host is ready* once Docker Desktop, the host
   service and pairing are done, and the line under it says what is left.
 - **Check again** repeats the read at once and says what it found.
@@ -502,7 +504,9 @@ window ends it unless Martlet is listening or watching, which only hides it.
 - **Settings**: palette (Martlet's own or one made from the character, see
   [Character palettes](#character-palettes)), this PC's role and the tour, app updates (automatic
   checks and their interval, automatic installs, keeping hosts on this PC's
-  version, *Check for updates now*, *Install*, *Update hosts now*), *Your
+  version, *Check for updates now*, *Install*, *Update hosts now*, and a line
+  on this PC's own host service, which always follows this app's version in
+  the background), *Your
   other computers* (whether they may send this PC commands, and **Let my
   other computers find this PC and ask to use its hosts**: ON by default,
   unticking it saves `off` in `nearby.txt`; when this PC runs a host or

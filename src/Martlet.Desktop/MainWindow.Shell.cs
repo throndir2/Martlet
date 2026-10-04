@@ -633,10 +633,15 @@ public partial class MainWindow
         if (state!.Version is not { } running)
             return new("update", "Keep it up to date", $"Updates the host service to Martlet {Version}. Pairings and roles stay.",
                 false, true, [update]);
-        return AppVersions.IsOlder(running, Version)
-            ? new("update", "Keep it up to date",
-                $"The host service runs Martlet {running}. Update it to {Version}. Pairings and roles stay.", false, true, [update with { Primary = true }])
-            : new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+        if (!AppVersions.IsOlder(running, Version))
+            return new("update", "Keep it up to date", $"Up to date: the host service runs Martlet {running}.", true, true, []);
+        if (hostUpdates.IsUpdating(ThisPcHostId))
+            return new("update", "Keep it up to date",
+                $"Updating the host service from Martlet {running} to {Version}. Pairings and roles stay.", false, true, []);
+        return new("update", "Keep it up to date",
+            $"The host service runs Martlet {running}. Martlet updates it to {Version} by itself " +
+            (state.Stage == LocalHostServiceStage.Running ? "in the background" : "once it runs again") +
+            "; Update host service does it now. Pairings and roles stay.", false, true, [update with { Primary = true }]);
     }
 
     /// <summary>"A", "A and B", "A, B and C", "A, B, C and 2 more".</summary>

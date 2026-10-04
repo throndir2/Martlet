@@ -284,7 +284,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "update tracker and busy reader: an Update host run window claims its host so the automatic pass leaves it to that run " +
             "(no second engine run that finds the host locked by Martlet's own update and reports it busy, for its pairing or as this " +
             "PC's own host service); overlapping routes end separately; an update started elsewhere is named as another update; a " +
-            "host found current stops waiting and its stale note says it is updated; Update hosts now waits for another change. Pure logic: contacts " +
+            "host found current stops waiting and its stale note says it is updated; Update hosts now waits for another change; this " +
+            "PC's own host service follows the app's version after an update by itself (in the background, giving way to another " +
+            "route, this PC's own pending update and the conversation, retried when busy, settled once current). Pure logic: contacts " +
             "nothing and touches no Docker, host or data directory.", new { }),
         Tool("app_update_check", "Rehearse how Martlet installs its own update end to end with the desktop's production update " +
             "helper (the same script and hidden start) in a disposable folder: a stand-in for Martlet that exits, and a FIXTURE " +

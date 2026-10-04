@@ -17,8 +17,11 @@ public static class AppUpdateHelper
     public const string InstallerLogFile = "install.log";
     /// <summary>Martlet restarted by an unattended install: minimized, without taking focus.</summary>
     public const string AfterUpdateArgument = "--after-update";
-    /// <summary>One-second rounds the helper waits for Martlet to exit before it gives up and installs nothing.</summary>
+    /// <summary>Rounds the helper waits for Martlet to exit before it gives up and installs nothing (about 3 minutes).</summary>
     private const int WaitRounds = 180;
+    /// <summary>The first rounds look again at once instead of after a second, so the install (and Martlet's window after it)
+    /// starts moments after Martlet has exited; Martlet usually exits within them.</summary>
+    private const int QuickRounds = 15;
     private const int MaximumLogLines = 50;
 
     /// <summary>The installer's switches: no questions, no message boxes, no Windows restart and no optional prerequisite
@@ -45,12 +48,15 @@ public static class AppUpdateHelper
             .Append(":wait\r\n")
             .Append($"tasklist /FI \"PID eq {processId}\" /NH 2>NUL | find \" {processId} \" >NUL || goto install\r\n")
             .Append($"set /a n+=1\r\nif %n% gtr {WaitRounds} goto gaveup\r\n")
-            .Append("ping -n 2 127.0.0.1 >NUL\r\ngoto wait\r\n")
+            .Append($"if %n% gtr {QuickRounds} ping -n 2 127.0.0.1 >NUL\r\ngoto wait\r\n")
             .Append(":gaveup\r\n")
             .Append(Note("Martlet did not exit within 3 minutes, so nothing was installed."))
             .Append($">\"{Cmd(result)}\" echo wait {version}\r\nexit /b 1\r\n")
             .Append(":install\r\n")
-            .Append("ping -n 3 127.0.0.1 >NUL\r\n")
+            // One second for what Martlet started to let go of its files: the character's renderer and tool servers run in
+            // kill-on-close job objects, so they end with Martlet, and the installer's own start adds more before it replaces
+            // anything. Every second here is a second longer without Martlet's window.
+            .Append("ping -n 2 127.0.0.1 >NUL\r\n")
             .Append(Note(unattended
                 ? $"Martlet exited. Installing Martlet {version} silently, with no installer window."
                 : $"Martlet exited. Installing Martlet {version} with the installer's progress window."))
