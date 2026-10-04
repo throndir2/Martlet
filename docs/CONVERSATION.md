@@ -493,6 +493,17 @@ requests cancellation without releasing the shared ownership slot early.
 Partial response text remains available; stopped speech is not replayed.
 The shortcut is local to this conversation window, not a system-wide hotkey.
 
+A job changed while the talk window is open (Thinking's model or provider, the
+Listening or Speaking engine, the computer that does a job, the voice or the
+Thinking fallback, saved in Companion or on the Devices map) needs no reopening:
+the window takes the saved setup once no reply or turn is running, keeps what
+was said so far as context and says *Your setup changed. Martlet picked it up
+and carries on.* (logged as *The open conversation follows the changed setup
+between replies: ...*). It doesn't stop a reply to switch.
+Switching to an engine first gets it ready where that is possible (a host role is
+installed and answering, a local Ollama model is downloaded and loaded) and only
+then saves the change, so the old one keeps answering until the switch.
+
 The STT adapter's backwards-compatible two-token overload retains the original
 caller and app-operation tokens independently through credentials, serialization,
 send and result acceptance. A blocking newer cancellation callback cannot hide

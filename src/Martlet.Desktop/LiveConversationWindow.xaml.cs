@@ -117,6 +117,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private string? pendingText;
     private ChatMessage? pendingMessage;
     private string? reloadReason;
+    // The load that runs now takes a changed setup in an open conversation (said once in the log).
+    private bool following;
     // What the status line says after something finished or went wrong; the next thing you do clears it.
     private string? notice;
     // The bubbles the current operation fills in.
@@ -267,6 +269,10 @@ public partial class LiveConversationWindow : ThemedWindow
             ready = loaded.Error is null;
             notice = loaded.Error?.Summary ?? (controller.Configuration is null
                 ? "Set up Thinking in Companion, then come back to talk." : null);
+            if (following && controller.Configuration is { } now)
+                ErrorLog.Info("The open conversation follows the changed setup between replies: " +
+                    string.Join(", ", now.Routes.Select(r => $"{r.Role} {r.RouteType}{(r.ModelId is { Length: > 0 } id ? " " + id : "")}")) + ".");
+            following = false;
             Warm();
             StartLive();
             if (listenWhenReady && preferences.HandsFree && listenPaused && Available) Mic_Click(this, new RoutedEventArgs());
@@ -427,6 +433,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             reloadReason = null;
             if (Messages.Count > 0) AddNote(reason + " Martlet picked it up and carries on.");
+            following = true;
             LoadAsync().Forget();
             return;
         }

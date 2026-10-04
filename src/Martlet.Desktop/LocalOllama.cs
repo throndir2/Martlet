@@ -182,6 +182,40 @@ internal static class LocalOllama
         }
 
         status($"Loading {model}...");
+        var loaded = await LoadModelAsync(client, model, output, token);
+        var placement = await PlacementAsync(client, model, token);
+        if (placement is not null) output.Report(placement);
+        status($"Asking {model} to say hello...");
+        output.Report($"Asking {model} for a test reply...");
+        var reply = await AskAsync(client, model, replyTokens, reasoning, output, token);
+        output.Report($"First words after {Seconds(reply.FirstWords)}. Finished after {Seconds(reply.Total)}.");
+        output.Report($"Reply: {reply.Text}");
+
+        var abilities = capabilities.Length > 0 ? $" {Abilities(capabilities)}." : "";
+        var limit = Seconds(firstWordsLimit);
+        if (reply.FirstWords > firstWordsLimit)
+            return new($"{model} works, but starts too slowly for Martlet. First words took {Seconds(reply.FirstWords)}. Martlet waits {limit}. Choose a smaller model.{abilities}", Warning: true);
+        if (loaded > firstWordsLimit)
+            return new($"{model} works once loaded, but loading took {Seconds(loaded)}. If a reply times out, try again after the model finishes loading.{abilities}", Warning: true);
+        return new($"{model} works on this PC. It loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}.{abilities}", Warning: false);
+    }
+
+    /// <summary>Has this PC's Ollama load <paramref name="model"/> into memory now (an /api/generate request with no prompt, so
+    /// nothing is generated), downloading nothing: switching Thinking to it after this means the first reply doesn't wait for
+    /// the load, and a model that can't run here shows up before Thinking switches. Starts Ollama when it is installed but not
+    /// running. Loopback only. Throws <see cref="InvalidOperationException"/> with what went wrong.</summary>
+    internal static async Task<TimeSpan> LoadAsync(string model, Action<string> status, IProgress<string> output, CancellationToken token)
+    {
+        using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan };
+        await EnsureRunningAsync(client, status, output, token);
+        status($"Loading {model} so the first reply doesn't wait for it...");
+        var loaded = await LoadModelAsync(client, model, output, token);
+        if (await PlacementAsync(client, model, token) is { } placement) output.Report(placement);
+        return loaded;
+    }
+
+    private static async Task<TimeSpan> LoadModelAsync(HttpClient client, string model, IProgress<string> output, CancellationToken token)
+    {
         output.Report($"Loading {model}...");
         var clock = Stopwatch.StartNew();
         using (var load = await SendAsync(client, HttpMethod.Post, "/api/generate", new { model, stream = false }, LoadLimit, token))
@@ -199,21 +233,7 @@ internal static class LocalOllama
         }
         var loaded = clock.Elapsed;
         output.Report($"Loaded in {Seconds(loaded)}.");
-        var placement = await PlacementAsync(client, model, token);
-        if (placement is not null) output.Report(placement);
-        status($"Asking {model} to say hello...");
-        output.Report($"Asking {model} for a test reply...");
-        var reply = await AskAsync(client, model, replyTokens, reasoning, output, token);
-        output.Report($"First words after {Seconds(reply.FirstWords)}. Finished after {Seconds(reply.Total)}.");
-        output.Report($"Reply: {reply.Text}");
-
-        var abilities = capabilities.Length > 0 ? $" {Abilities(capabilities)}." : "";
-        var limit = Seconds(firstWordsLimit);
-        if (reply.FirstWords > firstWordsLimit)
-            return new($"{model} works, but starts too slowly for Martlet. First words took {Seconds(reply.FirstWords)}. Martlet waits {limit}. Choose a smaller model.{abilities}", Warning: true);
-        if (loaded > firstWordsLimit)
-            return new($"{model} works once loaded, but loading took {Seconds(loaded)}. If a reply times out, try again after the model finishes loading.{abilities}", Warning: true);
-        return new($"{model} works on this PC. It loaded in {Seconds(loaded)} and answered in {Seconds(reply.Total)}.{abilities}", Warning: false);
+        return loaded;
     }
 
     /// <summary>Saves draft_num_predict 0 on <paramref name="model"/> in this PC's Ollama so it loads without its
