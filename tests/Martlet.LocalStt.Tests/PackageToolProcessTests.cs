@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 namespace Martlet.LocalStt.Tests;
@@ -78,7 +79,10 @@ public sealed class PackageToolProcessTests
         var sdk = Environment.GetEnvironmentVariable("DOTNET_ROOT")
             ?? throw new InvalidOperationException("Set DOTNET_ROOT to the local pinned SDK.");
         var tool = Environment.GetEnvironmentVariable("MARTLET_PACKAGE_TOOL")
+            ?? typeof(PackageToolProcessTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(attribute => attribute.Key == "MartletPackageTool")?.Value
             ?? throw new InvalidOperationException("Build PackageTool locally and set MARTLET_PACKAGE_TOOL to its DLL.");
+        tool = Path.GetFullPath(tool);
         Assert.True(File.Exists(tool), $"PackageTool output is missing: {tool}");
         var start = new ProcessStartInfo(Path.Combine(sdk, "dotnet.exe"))
         {

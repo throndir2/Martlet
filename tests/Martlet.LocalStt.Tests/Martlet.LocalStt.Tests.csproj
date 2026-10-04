@@ -10,6 +10,9 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="..\..\src\Martlet.LocalStt\Martlet.LocalStt.csproj" />
+    <!-- Built first so the process tests can run the actual tool (MARTLET_PACKAGE_TOOL overrides the path). -->
+    <ProjectReference Include="..\..\src\Martlet.LocalStt.PackageTool\Martlet.LocalStt.PackageTool.csproj" ReferenceOutputAssembly="false" />
+    <AssemblyMetadata Include="MartletPackageTool" Value="$(MSBuildThisFileDirectory)..\..\src\Martlet.LocalStt.PackageTool\bin\$(Configuration)\$(TargetFramework)\martlet-local-stt-package.dll" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

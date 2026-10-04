@@ -6,6 +6,8 @@
     <NodeExecutable Condition="'$(NodeExecutable)' == ''">node</NodeExecutable>
     <!-- ErrorLog.cs is linked from Desktop; a distinct namespace keeps the two copies unambiguous for tests. -->
     <DefineConstants>$(DefineConstants);MARTLET_RENDERER</DefineConstants>
+    <!-- web\build.mjs bundles these npm packages; scripts\Test-Martlet.ps1 treats their changes as changes here. -->
+    <MartletValidationInputs>..\Martlet.Avatar.Vrm;..\Martlet.Avatar.Live2D</MartletValidationInputs>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\Martlet.Desktop\AppearancePalette.cs" Link="AppearancePalette.cs" />

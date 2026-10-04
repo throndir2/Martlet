@@ -167,7 +167,7 @@ public sealed class NativeTests : IDisposable
                 File.Delete(root + "/state/" + name);
             Directory.Delete(root + "/state", recursive: false);
         }
-        foreach (var name in new[] { "host.json", "service-approval.json", "service-approval.staging" })
+        foreach (var name in new[] { "host.json", "service-approval.json", "service-approval.staging", "logs.json", "agent.token", "commands.json" })
             File.Delete(root + "/" + name);
         Directory.Delete(root, recursive: false);
     }
