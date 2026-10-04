@@ -10,18 +10,22 @@ using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
 using Martlet.Credentials.Windows;
+using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
 /// <summary>One Martlet on every computer: the settings that make the companion what it is (how it thinks, listens and speaks
-/// with their API keys, the Thinking fallback, personality, replies, prompts, memory on or off, lorebooks, the character,
-/// how you talk, speech bubbles and the theme) are kept the same on all the owner's computers through the paired hosts, next
+/// with their API keys, the Thinking fallback, personality, replies, prompts, memory on or off, lorebooks, the character and
+/// its emotes and motions, how you talk, speech bubbles, the theme, recognizing voices, Voice ID, what Martlet may do with Home
+/// Assistant and app updates) are kept the same on all the owner's computers through the paired hosts, next
 /// to who does what (docs/CLUSTER.md). Every 15 seconds while "Keep Martlet the same on all my computers" is on, this PC reads
 /// each host's copy when it changed, records what changed here, follows what is newer elsewhere and gives hosts with an older
 /// copy the merged one. Changes made while it is off (or offline) are recorded with their time and win only if newer.</summary>
 public partial class MainWindow
 {
-    private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance";
+    private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance",
+        CharacterActionsKey = "character-actions", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
+        SmartHomeKey = "smart-home", UpdatesKey = "updates";
     private static readonly JsonSerializerOptions SharedJson = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -134,6 +138,11 @@ public partial class MainWindow
         TalkKey => "how you talk",
         SpeechDisplayKey => "speech bubbles and subtitles",
         AppearanceKey => "the theme",
+        CharacterActionsKey => "emotes and motions",
+        VoiceRecognitionKey => "recognizing voices",
+        VoiceIdKey => "Voice ID",
+        SmartHomeKey => "what Martlet may do with Home Assistant",
+        UpdatesKey => "app updates",
         _ when SharedPc.IsKey(key) => "whether this PC is a companion or a host",
         _ => key
     };
@@ -241,8 +250,9 @@ public partial class MainWindow
     {
         if (settingsNode is null || closing || !clusterEnabled) return;
         if (!ConfirmationDialog.Confirm(this, "Make all your computers use this PC's settings? How Martlet thinks, listens and speaks " +
-                "(with this PC's API keys), its character, personality, replies, prompts, lorebooks, how you talk and the theme are " +
-                "copied from this PC to every paired computer, replacing what they have.", "Use this PC's settings"))
+                "(with this PC's API keys), its character with its emotes and motions, personality, replies, prompts, lorebooks, how you " +
+                "talk, the theme, Voice ID, recognizing voices, what Martlet may do with Home Assistant and app updates are copied from " +
+                "this PC to every paired computer, replacing what they have.", "Use this PC's settings"))
             return;
         while (settingsBusy && !closing) await Task.Delay(100);
         try
@@ -273,7 +283,8 @@ public partial class MainWindow
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
             var prefs = Talk;
-            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice, prefs.BargeIn, prefs.ScreenChattiness);
+            var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice, prefs.BargeIn, prefs.ScreenChattiness,
+                prefs.WordCheck);
             var path = Path.Combine(directory, "talk-preferences.json");
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
@@ -283,18 +294,24 @@ public partial class MainWindow
             {
                 HandsFree = value.HandsFree, PauseIndex = Math.Clamp(value.PauseIndex, 0, TalkPreferences.Pauses.Length - 1),
                 SpeakReplies = value.SpeakReplies, HearVoice = value.HearVoice, BargeIn = value.BargeIn,
-                ScreenChattiness = Math.Clamp(value.ScreenChattiness, 0, 2)
+                ScreenChattiness = Math.Clamp(value.ScreenChattiness, 0, 2),
+                WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal
             });
             return Task.FromResult(SharedApply.Done);
         });
         yield return new DelegateSection(SpeechDisplayKey, "Speech bubbles", _ =>
         {
+            // Where the bubble sits (beside the character or in one place, and its offsets) depends on this PC's screens, like
+            // the character's own place, so only whether bubbles and subtitles show travels.
             var path = Path.Combine(directory, "speech-display.json");
-            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(captions.Preferences, SharedJson), null, !File.Exists(path), FileTime(path)));
+            var prefs = captions.Preferences;
+            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(new SharedSpeechDisplay(prefs.SpeechBubbles, prefs.Subtitles), SharedJson),
+                null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
         {
-            var value = JsonSerializer.Deserialize<SpeechDisplayPreferences>(setting.Value, SharedJson) ?? throw new JsonException();
-            return Task.FromResult(captions.Update(value) ? SharedApply.Done : SharedApply.Waiting("They couldn't be saved on this PC."));
+            var value = JsonSerializer.Deserialize<SharedSpeechDisplay>(setting.Value, SharedJson) ?? throw new JsonException();
+            return Task.FromResult(captions.Update(captions.Preferences with { SpeechBubbles = value.SpeechBubbles, Subtitles = value.Subtitles })
+                ? SharedApply.Done : SharedApply.Waiting("They couldn't be saved on this PC."));
         });
         yield return new DelegateSection(AppearanceKey, "Theme", _ =>
         {
@@ -311,9 +328,101 @@ public partial class MainWindow
             else (Application.Current as App)?.ApplyTheme(theme);
             return Task.FromResult(SharedApply.Done);
         });
+        yield return new DelegateSection(CharacterActionsKey, "Emotes and motions", _ =>
+        {
+            var path = CharacterActions.Path(directory);
+            return Task.FromResult<SharedLocal?>(new(CharacterActions.Share(directory), null, !CharacterActions.HasAny(directory), FileTime(path)));
+        }, async (setting, token) =>
+        {
+            if (characterActions.Busy) return SharedApply.Waiting("The Thinking model is naming this PC's emotes and motions.");
+            await CharacterActions.ReplaceAllAsync(directory, setting.Value, token);
+            if (characterActions.Current is not null)
+                await characterActions.LoadAsync(avatar.IsShowing ? avatar.InspectedProfile : homeAvatar, force: true, token);
+            return SharedApply.Done;
+        });
+        yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
+            Task.FromResult<SharedLocal?>(localVoices.Available
+                ? new(JsonSerializer.Serialize(new SharedSwitch(localVoices.Enabled), SharedJson), null, localVoices.EnabledChangedAt is null,
+                    localVoices.EnabledChangedAt)
+                : null),
+            (setting, _) =>
+            {
+                var value = JsonSerializer.Deserialize<SharedSwitch>(setting.Value, SharedJson) ?? throw new JsonException();
+                if (value.On != localVoices.Enabled) localVoices.SetEnabled(value.On);
+                return Task.FromResult(SharedApply.Done);
+            });
+        yield return new DelegateSection(VoiceIdKey, "Voice ID", _ =>
+        {
+            if (!voiceIdentity.Available) return Task.FromResult<SharedLocal?>(null);
+            var print = voiceIdentity.Current;
+            var value = new SharedVoiceId(Talk.VoiceId, print is null ? null
+                : new SharedVoiceprint(print.Embedding, print.Threshold, print.Consistency, print.CreatedAt, print.SpeechSeconds));
+            var times = new[] { FileTime(Path.Combine(directory, VoiceIdentity.FileName)), FileTime(Path.Combine(directory, "talk-preferences.json")) };
+            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !value.On && print is null,
+                times.Max()));
+        }, (setting, _) =>
+        {
+            var value = JsonSerializer.Deserialize<SharedVoiceId>(setting.Value, SharedJson) ?? throw new JsonException();
+            if (value.Voiceprint is { } print)
+            {
+                if (print.Embedding is not { Length: Martlet.Audio.SpeakerEncoder.EmbeddingSize } || print.Embedding.Any(v => !float.IsFinite(v)) ||
+                    !float.IsFinite(print.Threshold) || print.Threshold is < VoiceIdentity.MinimumThreshold or > VoiceIdentity.MaximumThreshold)
+                    return Task.FromResult(SharedApply.Waiting("Its voiceprint was made by a newer Martlet. Update this PC to use it."));
+                var current = voiceIdentity.Current;
+                if (current is null || !current.Embedding.SequenceEqual(print.Embedding) || current.Threshold != print.Threshold ||
+                    current.Consistency != print.Consistency || current.CreatedAt != print.CreatedAt || current.SpeechSeconds != print.SpeechSeconds)
+                    voiceIdentity.Save(new Voiceprint(print.Embedding, print.Threshold, print.Consistency, print.CreatedAt, print.SpeechSeconds));
+            }
+            else if (voiceIdentity.Current is not null) voiceIdentity.Delete();
+            if (Talk.VoiceId != value.On) SaveTalk(Talk with { VoiceId = value.On });
+            return Task.FromResult(SharedApply.Done);
+        });
+        yield return new DelegateSection(SmartHomeKey, "Smart home permissions", _ =>
+        {
+            if (!smartHome.Connected) return Task.FromResult<SharedLocal?>(null);
+            var saved = smartHome.Preferences;
+            var value = new SharedHomePermissions(saved.Control, saved.AllowSensitive, saved.ModelTools);
+            // Turning control on with the connection is what connecting does, not a choice of its own.
+            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !saved.AllowSensitive && !saved.ModelTools,
+                smartHome.ChangedAt));
+        }, (setting, _) =>
+        {
+            var value = JsonSerializer.Deserialize<SharedHomePermissions>(setting.Value, SharedJson) ?? throw new JsonException();
+            if (!smartHome.Connected) return Task.FromResult(SharedApply.Waiting("Home Assistant isn't connected on this PC yet."));
+            if (!smartHome.SetControl(value.Control, value.AllowSensitive, value.ModelTools))
+                return Task.FromResult(SharedApply.Waiting("They couldn't be saved on this PC."));
+            if (value.ModelTools && value.Control) mcpTools.EnsureStarted(retry: true);
+            if (SmartHomeCanRender()) RenderTab();
+            return Task.FromResult(SharedApply.Done);
+        });
+        yield return new DelegateSection(UpdatesKey, "App updates", _ =>
+        {
+            var value = new SharedUpdates(updateChecksEnabled, updatePreferences.IntervalMinutes, updatePreferences.AutoInstall,
+                updatePreferences.AutoUpdateHosts);
+            var times = new[] { FileTime(Path.Combine(directory, "update-checks.txt")), FileTime(Path.Combine(directory, UpdatePreferences.FileName)) };
+            return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, times.All(t => t is null), times.Max()));
+        }, (setting, _) =>
+        {
+            var value = JsonSerializer.Deserialize<SharedUpdates>(setting.Value, SharedJson) ?? throw new JsonException();
+            if (!UpdatePreferences.Intervals.Contains(value.IntervalMinutes))
+                return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
+            ApplySharedUpdates(value.Checks, new UpdatePreferences
+            {
+                IntervalMinutes = value.IntervalMinutes, AutoInstall = value.AutoInstall, AutoUpdateHosts = value.AutoUpdateHosts
+            });
+            return Task.FromResult(SharedApply.Done);
+        });
     }
 
-    private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness);
+    private sealed record SharedSpeechDisplay(bool SpeechBubbles, bool Subtitles);
+    private sealed record SharedSwitch(bool On);
+    private sealed record SharedVoiceprint(float[] Embedding, float Threshold, float Consistency, DateTimeOffset CreatedAt, double SpeechSeconds);
+    private sealed record SharedVoiceId(bool On, SharedVoiceprint? Voiceprint);
+    private sealed record SharedHomePermissions(bool Control, bool AllowSensitive, bool ModelTools);
+    private sealed record SharedUpdates(bool Checks, int IntervalMinutes, bool AutoInstall, bool AutoUpdateHosts);
+
+    private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness,
+        ListeningSensitivity WordCheck = ListeningSensitivity.Normal);
 
     /// <summary>The character as it travels: which model (a bundled one; one of your characters by its ID, shown from each
     /// computer's own copy; or a model file at the same place on every computer), its renderer, its Audio2Face mapping and
@@ -441,7 +550,7 @@ public partial class MainWindow
 /// always its own; Martlet versions without it pass it on unchanged.</summary>
 internal sealed record SharedPc(string Role, string? Host)
 {
-    internal const string Prefix = "pc.";
+    internal const string Prefix = SharedSettings.DevicePrefix;
     internal const string CompanionRole = "companion";
     internal const string HostRole = "host";
     private static readonly JsonSerializerOptions Json = new()
@@ -458,7 +567,7 @@ internal sealed record SharedPc(string Role, string? Host)
         return key.Length > 64 ? key[..64] : key;
     }
 
-    internal static bool IsKey(string key) => key.StartsWith(Prefix, StringComparison.Ordinal);
+    internal static bool IsKey(string key) => SharedSettings.IsDeviceKey(key);
 
     internal DeviceRole? DeviceRole => Role switch
     {

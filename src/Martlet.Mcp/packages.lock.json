@@ -129,7 +129,8 @@
           "Martlet.Home": "[0.31.0, )",
           "Martlet.Mcp.Client": "[0.31.0, )",
           "Martlet.Providers": "[0.31.0, )",
-          "Martlet.Sherpa": "[0.31.0, )"
+          "Martlet.Sherpa": "[0.31.0, )",
+          "System.Speech": "[10.0.12, )"
         }
       },
       "martlet.providers": {
@@ -192,6 +193,12 @@
         "dependencies": {
           "SoundFlow": "1.4.0"
         }
+      },
+      "System.Speech": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "IrIKdPfbeCtgDeKQvJE2EtS8sSLxxpBRzCCpkg/4jORLwmhSUrVZtIrnbbaWQxo3tjnXK6aHH6MNsvi3S3PuTg=="
       }
     }
   }

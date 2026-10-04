@@ -1,0 +1,17 @@
+# voicebench core (Python 3.12, Windows x64). Install-VoiceBench.ps1 installs these into the bench venv.
+numpy
+soundfile
+soxr
+jiwer
+whisper-normalizer
+httpx
+huggingface_hub
+pyarrow
+nvidia-ml-py
+sounddevice
+# Speech-to-text: sherpa-onnx is the runtime Martlet ships (Parakeet, Moonshine); faster-whisper (CTranslate2) with the
+# CUDA 12 cuBLAS and cuDNN 9 libraries it loads on Windows.
+sherpa-onnx==1.13.8
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

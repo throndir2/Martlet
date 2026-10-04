@@ -9,11 +9,11 @@ listening** (once a microphone is tested), or push-to-talk; it streams the reply
 voice. How it listens, speaks and sees is chosen in Companion. Optional local
 **Voice ID** recognizes your enrolled voice and ignores other people before
 anything is uploaded. **People** recognition (part of Martlet, on by default) tells everyone at the
-microphone apart, learns the names they go by and shares that list with your
-other computers; **Parakeet** listens on this PC without Docker (see
+microphone apart, learns the names they go by and keeps that list the same on
+all your computers; **Parakeet** listens on this PC without Docker (see
 [VOICES](docs/VOICES.md)). Each message or utterance is its own bounded action; no
 credentials or audio are accessed on launch; network remains idle except for
-update checks (on by default; can be turned off), host updates, [who-does-what sync](docs/CLUSTER.md) when enabled, or [Martlet network](docs/NETWORK.md) sync with paired hosts. Text-only never requests TTS or opens output.
+update checks (on by default; can be turned off), host updates, keeping Martlet the same on all your computers ([CLUSTER](docs/CLUSTER.md), through paired hosts only), or [Martlet network](docs/NETWORK.md) sync with paired hosts. Text-only never requests TTS or opens output.
 Actual account/device/first-conversation qualification remains **NOT RUN**.
 
 The desktop starts with a short welcome tour, then a Home page that lists what
@@ -23,12 +23,19 @@ every computer and cloud service with its hardware and roles, where **Who does
 what** hands jobs such as Audio2Face lip-sync to any paired host on the spot and
 installs or removes host roles remotely, a host dashboard
 for PCs that lend their GPU, and Companion and Settings pages for everything
-else. Opt-in [shared who does what](docs/CLUSTER.md) keeps those assignments in
-sync on every host and every one of your computers, and moves a job to another
-host that runs the same engine when its host stops answering. Your computers
-form one [Martlet network](docs/NETWORK.md): pair a host once (for example a
-Linux PC set up over SSH) and every PC in the network pairs with it by itself.
-See the [desktop UI design](docs/UI_DESIGN.md).
+else. See the [desktop UI design](docs/UI_DESIGN.md).
+
+**One Martlet on all your computers.** Martlet is one app that lives on every
+computer you install it on: the same companion with the same settings, API
+keys, memories, people, voices, characters and Home Assistant everywhere, kept
+in sync through your paired hosts ([CLUSTER](docs/CLUSTER.md), on by default).
+Each computer is a companion PC (where you talk) or a host PC (lending its
+GPU); adding a host to your [Martlet network](docs/NETWORK.md) (pair it once,
+for example a Linux PC set up over SSH, and every PC pairs with it by itself)
+adds what it can do to the whole app: jobs move between hosts on the spot and
+fail over to another host that runs the same engine. Only what belongs to a
+computer itself stays with it: its devices, screens, role, startup choices and
+installed engines.
 
 Resumable configuration and explicit Windows credential actions are available
 through **Setup / resume**; see [SETUP](docs/SETUP.md). Saved API routes are not
@@ -74,7 +81,10 @@ IP camera address) or other video sources. See
 browser, a calendar and anything else with an MCP server. Add servers on
 **Companion > Tools**: browse and search the GitHub or official MCP Registry and
 install one with a click, or edit mcp.json (the standard `mcpServers` format); the
-talk window asks before each tool call unless you always allow it. See [MCP](docs/MCP.md).
+talk window asks before each tool call unless you always allow it. The same page
+has Martlet's own **Terminal** (off by default): turn it on and Martlet can run
+PowerShell or Command Prompt commands when you ask, hidden and never as
+administrator, asking before each one unless you change that. See [MCP](docs/MCP.md).
 
 **Voices (F5)**: add your own voice recordings on **Companion > Voice >
 Voices** and switch between them in one click. F5 copies a voice from a short
@@ -128,7 +138,7 @@ There is no remote memory, embedding, vector database or automatic backup.
 | [Prerequisites](docs/PREREQUISITES.md) | Every runtime prerequisite by feature and machine: what is bundled, what the installer and **Martlet prerequisites** tool install on request (WebView2, microphone access, Windows speech, Ollama, WSL 2 + Docker Desktop), what hosts install, and what you supply |
 | [Delivery and release plan](docs/DELIVERY.md) | PR-sized backlog, dependencies, acceptance criteria, release gates, and traceability |
 | [Research and provenance](docs/RESEARCH.md) | Dated primary sources, verified constraints, and unresolved integration questions |
-| [MCP: tools while you talk, and local MCP control](docs/MCP.md) | Martlet as an MCP client: MCP servers on this PC (stdio or streamable HTTP, standard `mcpServers` mcp.json) give replies tools, with per-call confirmations in the talk window and a tool log on Companion > Tools; plus Martlet's own stdio MCP server for headless diagnostics and desktop UI Automation |
+| [MCP: tools while you talk, and local MCP control](docs/MCP.md) | Martlet as an MCP client: MCP servers on this PC (stdio or streamable HTTP, standard `mcpServers` mcp.json) give replies tools, with per-call confirmations in the talk window and a tool log on Companion > Tools; the built-in Terminal (off by default; PowerShell or Command Prompt, asks before each command); plus Martlet's own stdio MCP server for headless diagnostics and desktop UI Automation |
 | [Implemented foundation and decisions](docs/FOUNDATION.md) | Accepted/deferred decisions, exact APIs/bounds, current behavior and next ownership |
 | [Resumable setup and local audio](docs/SETUP.md) | V02a configuration/vault actions and V02b explicit local device tests, historical checkpoints, strict migration and remaining live gates |
 | [Explicit API conversation](docs/CONVERSATION.md) | V04b typed/PTT path, hands-free voice activity, local Voice ID, exact supported models and bounds, fresh authorization, Stop/cleanup, troubleshooting and separately authorized live-trial checklist |

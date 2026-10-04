@@ -96,6 +96,9 @@
           "Martlet.Gateway.F5": "[0.31.0, )"
         }
       },
+      "martlet.memory": {
+        "type": "Project"
+      },
       "martlet.perception": {
         "type": "Project"
       },

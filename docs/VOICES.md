@@ -18,13 +18,14 @@ are recognized and learned only from the microphone, never from
 ## Companion › People
 
 - **Recognize voices in conversations.** On unless you turned it off
-  (`voice-recognition.txt`). Martlet's Desktop folder includes sherpa-onnx
+  (`voice-recognition.txt`, the same on all your computers). Martlet's Desktop folder includes sherpa-onnx
   1.13.8 with ONNX Runtime 1.28.2 (from the official NuGet runtime package) and
   the two voice models (about 41 MB together, in `voice-recognition\`). The
   build downloads the models once and keeps each only if it matches its pinned
   SHA-256; packaging checks the shipped bytes again. If the files are missing
   (a damaged installation), People says so and asks you to reinstall Martlet.
-- **On all my computers.** On by default (`voice-sharing.txt`). See
+- **Your computers.** The list is the same on all your computers while **Keep
+  Martlet the same on all my computers** is on. See
   [sharing](#sharing-between-your-computers).
 - **Voices Martlet knows.** Every voice it has heard, the owner's first, then
   named ones, then the most recently heard. For each voice you can:
@@ -90,7 +91,7 @@ ends. `voices.json` holds only voiceprints (256 numbers per sample) and names.
 
 ## Sharing between your computers
 
-The list is shared like [who does what](CLUSTER.md), through your paired
+The list is part of [one Martlet on all your computers](CLUSTER.md), through your paired
 Martlet hosts:
 
 - Each host keeps a copy in `voices.json` beside `host.json` (0600, gateway
@@ -98,21 +99,28 @@ Martlet hosts:
   `GET /martlet/v1/voices` and `POST /martlet/v1/voices` (merge a copy in,
   return the merged result) to paired devices over the pinned, signed
   connection. Hosts never use the list.
-- While Martlet runs with sharing on, every 30 seconds and a few seconds after
-  any change, the desktop reads each paired host's copy, merges it into its
-  own and posts the merged list to every host whose copy differs.
+- While Martlet runs and **Keep Martlet the same on all my computers** is on
+  (Devices › Settings for all devices; there is no separate People switch),
+  every 30 seconds and a few seconds after any change, the desktop reads each
+  paired host's copy, merges it into its own and posts the merged list to every
+  host whose copy differs.
 - Each voice is a last-writer-wins entry stamped with the same hybrid revision
   as the cluster plan; forgetting and merging leave tombstones so a voice does
   not come back from an older copy. The merge is commutative, associative and
   idempotent. At most 64 voices and 64 tombstones, 1 MiB.
 - So when another computer becomes your companion PC, it already knows the
-  same people and their names. Sync runs whichever role this PC has, and works
-  without the who-does-what sync.
+  same people and their names. Sync runs whichever role this PC has.
+- Whether Martlet recognizes voices at all (`voice-recognition.txt`) and Voice
+  ID with the owner's voiceprint (`voice-id.json`) are
+  [shared settings](CLUSTER.md#one-martlet-on-every-computer), the same on
+  every computer.
 
 Hosts older than this version answer that they don't know the list; the
-People page names them and suggests **Update host**. Turning sharing off stops
-all voice sync; copies already on your hosts stay there until you forget the
-voices (which syncs tombstones) or remove the host.
+People page names them and suggests **Update host**. Turning the switch off
+stops all voice sync; copies already on your hosts stay there until you forget
+the voices (which syncs tombstones) or remove the host. Older Martlet versions
+had their own *Sync across my computers* switch (`voice-sharing.txt`); it is no
+longer read.
 
 ## Parakeet on this PC (Listening)
 

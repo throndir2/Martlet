@@ -22,6 +22,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
         // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
         "LiveStop", "LiveRefreshContext",
+        // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
+        // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
+        "LiveToolDeny",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
         // shows; its Set up, Pair and role buttons do the work.
         "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
@@ -42,7 +45,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // status, virtualization services and pending restart. It starts, sets up and pairs nothing.
         "CheckHostService",
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
-        // answers; Not now only hides the setup form. Sign in, Set up, Connect, Share, Add, Install and Restart do the work.
+        // answers; Not now only hides the setup form. Sign in, Set up, Connect, Disconnect, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
@@ -102,8 +105,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
         // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
         // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
-        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects.
-        "SettingsSyncStatus", "SettingsSyncWaiting",
+        // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
+        // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
+        // forgotten on other computers (never a fact).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it.
         "SelectedDeviceRelease", "SelectedDeviceUpdate",
@@ -127,9 +132,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
-        // Companion › Listening › How you talk: what talking over Martlet takes (a sustained voice on the microphone; never a
-        // short sound or what this PC plays). Fixed text.
-        "TalkBargeInAbout",
+        // Companion › Listening › How you talk: what talking over Martlet takes (real words; never a hum, a cough, laughter, a
+        // quick "yeah" or what this PC plays). Fixed text. Word check: the chosen option (Relaxed, Normal or Sensitive; choosing
+        // one with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation.
+        "TalkBargeInAbout", "TalkWordCheck", "TalkWordCheckAbout",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
@@ -170,13 +176,21 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
         "NodeAgentStatus", "HostReachNow", "HostReachHint",
-        // Companion › Smart home: the connection in words (address, name, version, whether it is shared; never the token),
-        // the typed address, Find's result line, the setup form's target and outcome (never the password fields), sharing,
-        // the flexible-requests state, the devices check and the Home Assistant summary (version, installation, integrations,
-        // last backup) or why it couldn't be read.
+        // Companion › Smart home: the connection in words (address, name, version, whether the other computers use it; never the
+        // token), the typed address, Find's result line, the setup form's target and outcome (never the password fields), the
+        // one connection for all computers, the flexible-requests state, the devices check and the Home Assistant summary
+        // (version, installation, integrations, last backup) or why it couldn't be read.
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
+        // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
+        // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
+        // start folder's path is never returned), and the fixed question turning Ask before every command off asks. In the talk
+        // window, a waiting tool call's heading ("Run this command?") and question (which shell or server, and the seconds
+        // left); never the command or arguments (LiveToolApprovalArguments).
+        "ToolsTerminalStatus", "ToolsTerminalShell", "ToolsTerminalTimeLimit", "ToolsTerminalNoAskQuestion",
+        "LiveToolApprovalTitle", "LiveToolApprovalText",
         // Devices › Apps and API keys: how many keys and how many hosts have them; the created dialog's title, host addresses
         // with their public key pins, and the example request (it names $MARTLET_API_KEY, never the key). The key itself
         // (ApiKeyValue) is never returned.
@@ -551,16 +565,22 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     /// <summary>Martlet's notification-area icon: "status" reads whether the icon is shown and the main window visible; "open"
     /// and "menu" send the icon what Explorer sends for a left click (show Martlet) and a right click (its menu, at the mouse
-    /// pointer), granting it the foreground as Explorer does when this process may, then ui_snapshot lists the menu's Tray*
-    /// items; every action reports menuOpen. "close" presses the main window's close button, which hides Martlet in the
-    /// notification area by default and exits it when Keep running when closed is off, so it needs --allow-ui-effects.</summary>
-    internal object Tray(string action)
+    /// pointer or at x, y), granting it the foreground as Explorer does when this process may, then ui_snapshot lists the menu's
+    /// Tray* items; every action reports menuOpen and, while it is open, menuBounds. "close" presses the main window's close
+    /// button, which hides Martlet in the notification area by default and exits it when Keep running when closed is off, so it
+    /// needs --allow-ui-effects.</summary>
+    internal object Tray(string action, int? x = null, int? y = null)
     {
         if (!TrayActions.Contains(action)) throw new ArgumentException($"Unknown ui_tray action '{action}'.");
         if (action == "close" && !allowEffects)
             throw new InvalidOperationException("Closing Martlet's window can exit it, so it requires --allow-ui-effects.");
+        if ((x is null) != (y is null)) throw new ArgumentException("Give both x and y, or neither.");
+        if (x is not null && action is not ("open" or "menu")) throw new ArgumentException("x and y only apply to \"open\" and \"menu\".");
+        if (x is < short.MinValue or > short.MaxValue || y is < short.MinValue or > short.MaxValue)
+            throw new ArgumentOutOfRangeException(x is < short.MinValue or > short.MaxValue ? nameof(x) : nameof(y), "Screen pixels fit in 16 bits.");
         if (action == "status" && processId is int exited && !Running(exited))
-            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
+            return new { processId = exited, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false,
+                menuBounds = (int[]?)null };
         var windows = ConnectedWindows();
         var pid = processId!.Value;
         var icon = TrayWindow(pid);
@@ -568,7 +588,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         {
             case "open" or "menu":
                 if (icon == 0) throw new InvalidOperationException("Martlet has no notification-area icon.");
-                GetCursorPos(out var pointer);
+                // Explorer passes where the click was in physical screen pixels, whatever the app's DPI awareness.
+                var pointer = x is int clickX && y is int clickY ? new NativePoint { X = clickX, Y = clickY } : PhysicalPointer();
                 var at = (nint)((pointer.Y & 0xFFFF) << 16 | (pointer.X & 0xFFFF));
                 // Explorer lets the clicked icon's app take the foreground; this only works while this process may take it itself.
                 AllowSetForegroundWindow(pid);
@@ -583,19 +604,34 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
         if (action != "status") Thread.Sleep(500);
         if (!Running(pid))
-            return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false };
+            return new { processId = pid, running = false, trayIcon = false, mainWindowVisible = false, inTray = false, menuOpen = false,
+                menuBounds = (int[]?)null };
         var now = Windows(pid);
         var visible = MainWindowVisible(now);
         icon = TrayWindow(pid);
+        var menu = TrayMenuWindow(now);
         return new { processId = pid, running = true, trayIcon = icon != 0 && GetProp(icon, TrayAddedProperty) != 0, mainWindowVisible = visible,
-            inTray = icon != 0 && !visible, menuOpen = TrayMenuOpen(now) };
+            inTray = icon != 0 && !visible, menuOpen = menu is not null,
+            menuBounds = menu is null ? null : Placement((nint)menu.Current.NativeWindowHandle).Bounds };
     }
 
-    /// <summary>The icon's menu is open: a Martlet popup window (not the main window) holds the TrayMenu.</summary>
-    private static bool TrayMenuOpen(AutomationElement[] windows) =>
-        windows.Where(window => window.Current.AutomationId != "MartletMainWindow").Any(window =>
+    /// <summary>The window holding the icon's open menu: a Martlet popup window (not the main window) with the TrayMenu.</summary>
+    private static AutomationElement? TrayMenuWindow(AutomationElement[] windows) =>
+        windows.Where(window => window.Current.AutomationId != "MartletMainWindow").FirstOrDefault(window =>
             window.Current.AutomationId == "TrayMenu" ||
             window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "TrayMenu")) is not null);
+
+    /// <summary>The mouse pointer in physical screen pixels, as Explorer reports it to the icon.</summary>
+    private static NativePoint PhysicalPointer()
+    {
+        var previous = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+        try
+        {
+            GetCursorPos(out var pointer);
+            return pointer;
+        }
+        finally { if (previous != 0) SetThreadDpiAwarenessContext(previous); }
+    }
 
     private static bool Running(int pid)
     {

@@ -25,9 +25,10 @@ public static partial class ContractRules
 
     public static void Identifier(string? value)
     {
-        Require(value is { Length: > 0 and <= 64 } && IdentifierPattern().IsMatch(value),
-            "Use an identifier of 1-64 ASCII letters, digits, dots, underscores or hyphens.");
+        Require(IsIdentifier(value), "Use an identifier of 1-64 ASCII letters, digits, dots, underscores or hyphens.");
     }
+
+    public static bool IsIdentifier(string? value) => value is { Length: > 0 and <= 64 } && IdentifierPattern().IsMatch(value);
 
     public static void Text(string? value, int maximum)
     {

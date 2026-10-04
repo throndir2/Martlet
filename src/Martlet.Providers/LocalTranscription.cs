@@ -3,11 +3,15 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Providers;
 
+/// <summary>What a speech-to-text model on this PC heard: the text (empty when nothing was said) and what the engine said about
+/// it, when it says.</summary>
+public sealed record LocalTranscript(string Text, TranscriptionEvidence? Evidence = null);
+
 /// <summary>Transcribes one utterance with a speech-to-text model running inside Martlet on this PC (Parakeet). An empty
 /// result means no speech was recognized; failures throw.</summary>
 public interface ILocalTranscriber
 {
-    Task<string> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken);
+    Task<LocalTranscript> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken);
 }
 
 /// <summary>One push-to-talk or hands-free utterance transcribed on this PC instead of by a cloud provider or host. It checks
@@ -48,11 +52,12 @@ public sealed class LocalTranscriptionAdapter(ILocalTranscriber transcriber, Tim
         stop.CancelAfter(deadline - now);
         try
         {
-            var text = await transcriber.TranscribeAsync(modelId, audio.Pcm, stop.Token).ConfigureAwait(false);
+            var heard = await transcriber.TranscribeAsync(modelId, audio.Pcm, stop.Token).ConfigureAwait(false);
+            var text = heard.Text;
             if (text.Length > limits.MaxTextCharacters) return Failed(context, ProviderFailureCode.ResponseTooLarge);
             return string.IsNullOrWhiteSpace(text)
-                ? new(context, EvidenceProvenance.Live, TranscriptionOutcome.NoSpeech)
-                : new(context, EvidenceProvenance.Live, TranscriptionOutcome.Completed, text.Trim());
+                ? new(context, EvidenceProvenance.Live, TranscriptionOutcome.NoSpeech, evidence: heard.Evidence)
+                : new(context, EvidenceProvenance.Live, TranscriptionOutcome.Completed, text.Trim(), evidence: heard.Evidence);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || operationCancellationToken.IsCancellationRequested)
         {

@@ -53,7 +53,7 @@ internal sealed class RecordingTranscriber : IDisposable
 
     private static RecordingTranscriber Parakeet(ParakeetListener listener, IDisposable? owned) =>
         new("Parakeet on this PC", ParakeetEngine.MaximumSeconds * 1000,
-            (pcm, token) => listener.TranscribeAsync(SherpaComponents.ParakeetModelId, pcm, token), owned);
+            async (pcm, token) => (await listener.TranscribeAsync(SherpaComponents.ParakeetModelId, pcm, token).ConfigureAwait(false)).Text, owned);
 
     private static RecordingTranscriber Host(HostTextTarget target, string modelId)
     {

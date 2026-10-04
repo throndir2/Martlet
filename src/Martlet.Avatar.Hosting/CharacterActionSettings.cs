@@ -255,6 +255,50 @@ public static partial class CharacterActions
 
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
+    private static readonly JsonSerializerOptions ShareJson = new(Json) { WriteIndented = false };
+
+    /// <summary>Every model's settings as the owner's computers share them (compact, sorted by model ID), so the emotes and
+    /// motions named or edited on one computer are the same on all of them.</summary>
+    public static string Share(string dataDirectory) =>
+        JsonSerializer.Serialize(new Document(1, [.. LoadAll(dataDirectory).OrderBy(m => m.ModelId, StringComparer.Ordinal)]), ShareJson);
+
+    /// <summary>Whether this computer has any emote and motion settings of its own yet.</summary>
+    public static bool HasAny(string dataDirectory) => LoadAll(dataDirectory).Count > 0;
+
+    /// <summary>Replaces this computer's settings with <paramref name="shared"/> (another computer's <see cref="Share"/>).
+    /// Throws <see cref="ContractException"/> when they are unreadable here (written by a newer Martlet) or invalid.</summary>
+    public static async Task ReplaceAllAsync(string dataDirectory, string shared, CancellationToken token = default)
+    {
+        Document? document;
+        try { document = JsonSerializer.Deserialize<Document>(shared, Json); }
+        catch (Exception error) when (error is JsonException or NotSupportedException)
+        {
+            throw new ContractException(ErrorCode.UnsupportedVersion, "They were saved by a newer Martlet. Update this PC to use them.");
+        }
+        ContractRules.Require(document is { Version: 1, Models: not null }, "They were saved by a newer Martlet. Update this PC to use them.",
+            ErrorCode.UnsupportedVersion);
+        var models = document!.Models!.Where(m => m is { ModelId: not null, Actions: not null }).ToArray();
+        ContractRules.Require(models.Length <= MaximumModels && models.Select(m => m.ModelId).Distinct(StringComparer.Ordinal).Count() == models.Length,
+            "The shared emote and motion settings list too many models.");
+        foreach (var model in models)
+            if (Problem(model) is { } problem) throw new ContractException(ErrorCode.InvalidContract, problem);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, [.. models.OrderBy(m => m.ModelId, StringComparer.Ordinal)]), Json);
+        ContractRules.Require(bytes.Length <= MaximumBytes, "The emote and motion settings are too large.", ErrorCode.PayloadTooLarge);
+        await Gate.WaitAsync(token);
+        try
+        {
+            Directory.CreateDirectory(dataDirectory);
+            var temporary = System.IO.Path.Combine(dataDirectory, $"character-actions.{Guid.NewGuid():N}.tmp");
+            try
+            {
+                await File.WriteAllBytesAsync(temporary, bytes, token);
+                File.Move(temporary, Path(dataDirectory), overwrite: true);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        finally { Gate.Release(); }
+    }
+
     /// <summary>Saves one model's settings (the newest <see cref="MaximumModels"/> models are kept). Throws
     /// <see cref="ContractException"/> when they can't be saved.</summary>
     public static async Task<CharacterActionSettings> SaveAsync(string dataDirectory, CharacterActionSettings settings, DateTimeOffset now,

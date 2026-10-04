@@ -62,10 +62,11 @@ public sealed class EchoTimeline
     }
 }
 
-/// <summary>Whether the user is talking over Martlet, from the microphone alone and only once it is clearly a voice: at least
-/// <see cref="Required"/> of loud frames, where a quiet stretch longer than <see cref="Gap"/> starts the count again. A
-/// cough, a click, a short "mm-hmm" or a word of the room's chatter never gets there, and frames that are what this PC plays
-/// (<see cref="HeardSource.Speakers"/>) never count. Fed one 20 ms voice-activity frame at a time.</summary>
+/// <summary>Whether a sustained voice on the microphone is the user's own, from the microphone alone: at least
+/// <see cref="Required"/> of loud frames, where a quiet stretch longer than <see cref="Gap"/> starts the count again, and
+/// frames that are what this PC plays (<see cref="HeardSource.Speakers"/>) never count. Always listening uses it to tell the
+/// user talking over the speakers' sound from that sound; whether talking over Martlet stops it is decided by its words
+/// (Martlet.Conversation's BargeInPolicy). Fed one 20 ms voice-activity frame at a time.</summary>
 public sealed class TalkOverDetector
 {
     /// <summary>How much voice talking over Martlet takes before it stops.</summary>

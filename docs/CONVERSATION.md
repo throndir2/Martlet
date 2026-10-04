@@ -368,27 +368,122 @@ voice pipeline never waits for a whole reply:
   stops for the rest of the reply while its text keeps streaming.
 - **Barge-in.** Optional and off by default. With always listening, ticking
   *Let me interrupt Martlet by talking* in Companion › Listening keeps the
-  microphone open while Martlet speaks. Talking over a reply stops it: the Thinking request is
-  canceled, the queued audio is dropped and what you said is answered next,
-  with the reply so far kept in context. Only the microphone can do this, and
-  only with a sustained voice (`TalkOverDetector`): at least a second of
-  voice-loud 20 ms frames, where a pause longer than half a second starts the
-  count again, so a cough, a click, a quick "mm-hmm" or a word from across the
-  room never stops Martlet. What this PC plays never does either: the PC
-  listener ([hearing what this PC plays](#hearing-what-this-pc-plays)) never
-  interrupts anything, and with [echo reduction](#echo-reduction) the
-  microphone's frames that were the speakers' sound don't count. Words that
-  were heard but didn't talk over Martlet wait and are answered after the
-  reply; restarting a reply because you kept talking applies only before
-  Martlet starts saying it. Through speakers this relies on echo reduction (on
-  by default); if Martlet still stops itself, use headphones or turn the
-  choice off. With it off (the default), listening holds off while Martlet
-  speaks, and Stop, Esc or the talk button still interrupt. Preferences saved
-  before barge-in became opt-in had it on only because it was the old default,
-  so it starts off once after updating; tick it again to use it.
+  microphone open while Martlet speaks. Talking over a reply with real words
+  stops it: the Thinking request is canceled, the queued audio is dropped and
+  what you said is answered next, with the reply so far kept in context. Only
+  the microphone can do this, and only with words (`BargeInPolicy`, the one
+  place that decides): a stop word ("stop", "wait", "hold on", "shh", "never
+  mind"...) or Martlet's name stops it at once, a quick backchannel ("yeah",
+  "right", "okay", "mm-hmm", "thank you") never does and is answered after the
+  reply, and anything else needs two words (*Word check* Normal; one on
+  Sensitive, three on Relaxed). A hum, a long "mmmm", laughter, a cough or a
+  breath never stops Martlet, however long it lasts. With Parakeet on this PC
+  as Listening, Martlet checks your words while you talk (`BargeInGate`): once
+  your voice has gone on for 300 ms (200 ms Sensitive, 450 ms Relaxed), again
+  100 ms later, then every 400 ms more, and the moment you pause for 160 ms, a
+  quick Parakeet transcript of what you said so far (with the listener's
+  pre-roll) goes through the [utterance filter](#listening-for-words) and the
+  policy. A check never blocks the microphone, at most one runs at a time and
+  each stretch of voice gets at most six. On this PC (MCP
+  `utterance_filter_check`, Windows-voice fixtures, Normal) "Stop!" stopped a
+  reply 440-590 ms after the voice began, "Wait, hold on a second." about
+  590 ms and "Can you tell me more about that?" about 440 ms; each check took
+  about 100-250 ms of Parakeet on the processor. With a host's or a cloud
+  speech-to-text there is no quick check (it would be a second upload): the
+  utterance's own transcript decides once you pause, so Martlet stops after
+  your pause and the transcription. Each stop writes *Barge-in: Martlet stopped
+  its reply N ms after you started talking over it (why; how it knew)* to the
+  desktop log (never what you said). What this PC plays never stops Martlet:
+  the PC listener ([hearing what this PC plays](#hearing-what-this-pc-plays))
+  never interrupts anything, and with [echo reduction](#echo-reduction) the
+  microphone's frames that were the speakers' sound don't count toward the
+  voice. Words that were heard but didn't stop Martlet wait and are answered
+  after the reply; restarting a reply because you kept talking applies only
+  before Martlet starts saying it. Through speakers this relies on echo
+  reduction (on by default); if Martlet still stops itself, use headphones or
+  turn the choice off. With it off (the default), listening holds off while
+  Martlet speaks, and Stop, Esc or the talk button still interrupt. Preferences
+  saved before barge-in became opt-in had it on only because it was the old
+  default, so it starts off once after updating; tick it again to use it.
+- **What is said aloud decides what stops it.** Each reply carries a playback
+  mode (`PlaybackMode`: `Reply`, or `Song` for singing). A song keeps going
+  while you talk and stops only when asked to: a stop word with Martlet's name
+  or with "sing", "singing", "song" or "music" ("okay okay Martlet, stop
+  singing"). The mode is `LiveConversationController.Start(..., playback:)`
+  and the controller's `Speaking`; the policy reads it, so a new kind of
+  playback plugs in there without touching the listener.
 - **Measured.** Each spoken reply's snapshot reports `FirstTextAfter` and
   `FirstAudioAfter` (from the start of the reply), and the desktop log records
   them as *Reply latency: first words after … ms, first audio after … ms*.
+
+## Listening for words
+
+Always listening hears everything near the microphone, and speech-to-text
+writes something for much of it: "Mm.", "Hmm.", "Uh-huh." for sounds that
+aren't words, "Yeah." for a cough or a breath (Parakeet and whisper both do),
+"Thank you." or "Thanks for watching!" for silence and music (whisper learned
+those from subtitles). `UtteranceFilter` (Martlet.Providers) drops these
+before they become a turn or stop Martlet; push-to-talk and typing are never
+filtered. It is local and deterministic: about 3-8 µs per utterance on this PC
+(`utterance_filter_check`'s `filterCost`), no request, and nothing in the
+Thinking request changes, so the time to Martlet's first word and the prompt
+cache are untouched.
+
+- **Not words.** Only fillers and vocalizations (mm, hmm, uh, um, er, ah, oh,
+  huh, uh-huh, mm-hmm, and their stretched forms), laughter (haha, "Ha ha ha
+  ha."), sound markers ([Music], (coughs), *laughs*, ♪) or punctuation.
+  "Uh-huh" and "mm-hmm" count as an answer for 30 seconds after a reply that
+  ends by asking something.
+- **Made up from noise.** Phrases speech-to-text writes for noise ("Thank
+  you.", "Thanks.", "Bye.", "you", "Yeah.") go when the evidence that they were
+  said is weak; credits and calls to subscribe ("Subtitles by the Amara.org
+  community", "Thanks for watching!") go unless the engine was clearly sure.
+  Text that repeats itself (whisper's compression ratio above 2.4) goes too.
+- **Evidence.** What the engine says where it says it: Parakeet's mean and
+  lowest token probability (`TranscriptionEvidence`, carried by
+  `ILocalTranscriber` and `TranscriptionResult.Evidence`; uncalibrated, never
+  the participation policy's confidence) and, for any engine that gives them,
+  whisper's no-speech and average log probabilities. And always how much of
+  the utterance was a voice: the loud 20 ms frames the speakers don't explain
+  (`LiveConversationOperation.Voiced`). Measured on this PC: Parakeet's
+  "Yeah." for a cough had a mean of 0.67-0.70 but a lowest token of
+  0.20-0.32, a Windows voice saying it 0.79 and 0.51; whisper.cpp's "Yeah."
+  for two coughs had a word probability of 0.07. A paired host's whisper and
+  cloud speech-to-text send only text: whisper.cpp's `verbose_json` (with the
+  probabilities) took about 65 ms longer per utterance on this PC (190 against
+  255 ms), so Martlet doesn't ask for it, and there the voice decides (a phrase
+  speech-to-text makes up needs 400 ms of voice on Normal).
+- **Too many words for the voice.** More than about seven words per second of
+  voice plus one ("I think the second one is better." from 250 ms of voice).
+- **Unsure and lone words.** A short utterance the engine was unsure of, a
+  lone word that says nothing on its own ("the", "so", "you"), or a lone word
+  shorter than 200 ms of voice. Short answers and commands ("yes", "no",
+  "stop", "wait", "okay", "hello") stay, more readily right after Martlet asked
+  something, and anything with Martlet's name (or the persona's) is kept.
+- **Word check.** Companion › Listening › *Word check* (`TalkWordCheck`,
+  `TalkPreferences.WordCheck`, shared with your other computers): Relaxed,
+  Normal (default) or Sensitive (`ListeningSensitivity`) sets the evidence
+  thresholds (`UtteranceFilter.For`), the voice before barge-in checks words
+  and how many words stop a reply. Relaxed also needs a lone word to be
+  clearly heard (Parakeet 0.75) and drops a lone "Yeah." that isn't an answer.
+- **What you see.** An ignored utterance shows as a faded note in the talk
+  window, *Ignored "Mmm" (not words).*, several in a row sharing one note, and
+  the desktop log records *Always listening ignored what it heard: reason
+  (kind, voice, evidence, word check)*, never the words. What the PC plays
+  that isn't words is simply let go.
+- **Martlet stays quiet.** What passes the filter but isn't meant for Martlet
+  (people talking in the room, a muttered word) still goes to the Thinking
+  model with the always-listening instructions (Companion › Prompts ›
+  *Always listening*), which ask it to answer exactly `[pass]` then; the reply
+  is never spoken or shown, the talk window notes *Martlet stayed quiet.*, the
+  latency line ends *; Martlet stayed quiet* and the pass stays in context.
+  `StayQuiet` (Martlet.Conversation) reads only the reply's text, so it works
+  the same for a transcript and for a Thinking model that hears the audio.
+- **Thinking models that hear.** With no transcript there is nothing to filter:
+  the voice-activity gate (`ListeningOptions.MinimumUtterance`, the speakers'
+  frames left out) and `StayQuiet` still apply. Barge-in still needs words:
+  Parakeet's quick check when Listening is Parakeet on this PC (it needs no
+  turn transcript), otherwise whatever transcript the route has.
 
 ## Echo reduction
 

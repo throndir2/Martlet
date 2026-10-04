@@ -298,12 +298,15 @@
                                 <StackPanel>
                                     <CheckBox x:Name="ClusterSyncChoice" Checked="ClusterSync_Changed" Unchecked="ClusterSync_Changed"
                                               Content="Keep Martlet the same on all my computers"
-                                              ToolTip="Your paired computers share who does what and Martlet's settings: how it thinks, listens and speaks (with your API keys), its character, personality and replies. Audio devices stay with each computer. No conversations are shared."
+                                              ToolTip="Martlet is one app on all your computers: who does what, its settings (how it thinks, listens and speaks with your API keys, its character, personality, replies and the rest), what it remembers, the people and voices it knows, your characters and Home Assistant travel through your paired hosts. Audio devices, cameras and what this PC itself is stay with each computer. No conversations are shared."
                                               AutomationProperties.AutomationId="ClusterSync"/>
                                     <TextBlock x:Name="ClusterStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,2,0,0"
                                                AutomationProperties.AutomationId="ClusterStatus" AutomationProperties.LiveSetting="Polite"/>
                                     <TextBlock x:Name="SettingsSyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,6,0,0"
                                                AutomationProperties.AutomationId="SettingsSyncStatus" AutomationProperties.LiveSetting="Polite"/>
+                                    <TextBlock x:Name="MemorySyncStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
+                                               Text="Memories: not synced yet."
+                                               AutomationProperties.AutomationId="MemorySyncStatus" AutomationProperties.LiveSetting="Polite"/>
                                     <TextBlock x:Name="SettingsSyncWaitingText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="24,4,0,0"
                                                Visibility="Collapsed" AutomationProperties.AutomationId="SettingsSyncWaiting"/>
                                     <Button x:Name="SettingsSyncClaimButton" Content="Use this PC's settings on all my computers" Margin="24,8,0,0"

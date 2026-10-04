@@ -176,7 +176,7 @@ public partial class MainWindow
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
         CompanionTab.Replies => "Control reply length and creativity.",
-        CompanionTab.Tools => "Add tools Martlet can use while you talk, and choose when it must ask first.",
+        CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
         CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
         _ => ""
     };

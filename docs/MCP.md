@@ -102,7 +102,8 @@ action. Unanswered calls are declined after 60 seconds, and a declined call tell
 the model so. *Always allow* adds the tool to the server's `autoApprove` list.
 The model, not you, chooses what to pass, and text a tool reads (a web page, file
 or email) can try to steer it, so only skip confirmation for tools whose effects
-you are comfortable with.
+you are comfortable with. Terminal commands ([Terminal](#terminal)) ask with *Run
+this command?* and offer only *Allow once* and *Deny*.
 
 **Servers other features manage.** A Martlet feature can add its own server with
 `McpToolService.SetManagedServer(name, definition with ManagedBy, policy)` (for example a Home
@@ -133,6 +134,46 @@ a reply stops. It declares no client capabilities, so servers can't ask it for
 sampling, roots or elicitation. Text, resource text and structured results reach
 the model; images and audio are described, not sent. The client library is
 `src\Martlet.Mcp.Client`; the Desktop glue is `McpToolService`.
+
+### Terminal
+
+**Companion > Tools > Terminal** lets Martlet run commands on this PC when you
+ask, as one built-in tool beside the MCP servers' tools: `run_terminal_command`
+with a `command` string (at most 4,000 characters). It is **off by default** and
+its settings stay on this PC (`terminal.json` in the data folder; never part of
+the settings your computers share):
+
+- *Let Martlet run terminal commands*: off until you turn it on.
+- *Shell*: Windows PowerShell (default), PowerShell 7 (`pwsh`, when installed) or
+  Command Prompt.
+- *Starts in*: your home folder (default) or a folder you choose.
+- *Time limit*: 15 seconds, 30 seconds (default) or 1 minute per command, so a
+  confirmation and the command both fit in one reply.
+- *Ask before every command*: on by default. The talk window shows the command
+  and its start folder with *Allow once* and *Deny* (never *Always allow*); no
+  answer within 60 seconds means Deny. Turning it off asks once to be sure.
+
+Each command runs hidden in a new shell (nothing carries over between commands),
+as you and never as administrator, with its input closed so a command that waits
+for typing ends at once; `NO_COLOR=1` and `GIT_TERMINAL_PROMPT=0` keep output
+plain and git from waiting for a password. Output and errors are read as UTF-8
+(Command Prompt runs the command in a cmd started after `chcp 65001`), in the
+order they arrive, without color codes; long output keeps its first 3,000 and
+last 7,000 characters. At the time limit, or when the reply stops, the shell and
+everything it started are stopped; a program the command started in the
+background keeps running, and output it holds open is not waited for beyond a
+second after the shell ends. The model gets the exit code (or that it was
+stopped) and the output; the Tools page's *Recent tool use* lists each command
+(`Terminal > command`), and the desktop log notes each run without the command or
+its output (`{"name":"logs_tail","arguments":{"contains":"Terminal:"}}`).
+
+The terminal follows the same rules as MCP tools: only replies to what you say or
+type, only on a Thinking route that does function calling, and its settings as
+they are now apply to the next command even mid-reply (turning it off blocks the
+rest). The tool's description tells the model the shell, start folder, time limit
+and whether you approve each command, and asks it to prefer commands that only
+read and to say the result in a sentence or two. The command, its start folder and
+what it prints go to the Thinking model.
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -172,7 +213,9 @@ request or handles credentials.
 
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
-recognition choice (`on (default)` until it is turned off) and sharing choice,
+recognition choice (`on (default)` until it is turned off; a shared setting) and
+`sharing` (the voice list travels while *Keep Martlet the same on all my
+computers* is on, from `cluster-sync.txt`),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
@@ -300,15 +343,53 @@ from a data directory (optional absolute `dataDirectory`, default the current
 user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
 the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
-`replies`, `prompts`, `memory`, `lorebooks`, `character`, `talk`,
-`speech-display`, `appearance`, or a newer Martlet's), `updatedBy`, `updatedAt`,
+`replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
+`talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
+`smart-home`, `updates`, a computer's own `pc.<device ID>`, or a newer
+Martlet's), `updatedBy`, `updatedAt`,
 `revision`, `usesKey`, `characters`, `off` (the value is null) and `here`:
 `same` when this PC had exactly that value at its last sync, `different` while
 it can't follow it yet (or changed it since), `unknown` when it never had the
 setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
-memory, how you talk and the theme. It never returns keys, key digests,
-personality, prompt or lorebook text, and contacts nothing.
+memory, how you talk, speech bubbles and subtitles, the theme, recognizing
+voices (`on`), what Martlet may do with Home Assistant (`control`,
+`allow_sensitive`, `model_tools`) and app updates (`checks`,
+`interval_minutes`, `auto_install`, `auto_update_hosts`). It never returns keys,
+key digests, personality, prompt, lorebook or emote text, or the Voice ID
+voiceprint, and contacts nothing.
+
+`memory_sync_status` reads [one memory on every computer](MEMORY.md#one-memory-on-every-computer)
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the disposable one in `Invoke-MartletMcp.ps1`): `sync` as above,
+`state` (`none` before the first memory sync, else `loaded`), `syncedAt`,
+`facts` (how many facts the store had at the last sync), `byComputer` (how many
+of those each computer wrote) and `forgotten` (the tombstones every computer
+agreed on). It reads only `memory-sync.json` (IDs, revisions, digests and device
+IDs), never a fact, and contacts nothing.
+
+`memory_sync_selftest` (no arguments) rehearses shared memories end to end with
+the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
+`MemoryRehearsal.cs`; returns `{exitCode, report}`): two real gateways
+(`lab-memory-1`, `lab-memory-2`; Kestrel, pinned TLS, signed requests, an
+in-memory `memories.json`) and three simulated desktops (`lab-desktop-a..c`),
+each with a real `Martlet.Memory` store in a temporary folder, the desktop's
+paired client (`HostMemories.cs`) and the real sync engine
+(`Martlet.Core.Sync.MemorySyncNode`) wired as the desktop wires them. Its steps:
+A remembers a typed and a conversation fact and both hosts keep them; B takes
+them (same IDs, revisions and provenance) and recalls the cat fact; B edits it
+and A takes revision 2; A forgets a fact and every computer forgets it for good;
+offline edits on A and B of different facts (both kept) and of the same fact
+(the later edit wins); a host that was down while A remembered a fact gets it
+after restarting; a new computer with a fact of its own takes everything and
+shares its fact; a fact expiring in two seconds is forgotten everywhere once
+expired; a newer Martlet's fact passes through hosts and desktops without
+entering this version's stores; a new memory folder takes everything again and
+forgets nothing; 600 old conversation facts from two computers end as the same
+512 everywhere (oldest conversation facts forgotten, typed facts kept); no fact
+in any desktop data folder while the hosts' copy holds them; and an unsigned
+request refused (HTTP 401). Synthetic facts, loopback only; the folder is
+deleted.
 
 `settings_sync_selftest` (no arguments) rehearses shared settings end to end
 with the production code (`src\Martlet.NodeLinkCheck`, mode `settings`,
@@ -781,6 +862,28 @@ and `headers` names, `disabled`, `autoApproveAll`, `autoApprove`, the MCP
 directory `registry` and `registryVersion` it was installed from, the `secrets`
 names it uses and its `problem`. It starts no server and reads no credentials.
 
+`terminal_status` reads Companion › Tools › Terminal from a data directory's
+`terminal.json` (optional absolute `dataDirectory`, default the current user's):
+`state` (`none`, `loaded` or `unreadable`, which reads as the defaults),
+`enabled` (off by default), `shell` and `shellName`, `shellInstalled`,
+`installedShells`, `askFirst` (on by default), `timeLimitSeconds`, `startFolder`
+(`home` or `chosen`, never the path) and `startFolderExists`, and `tool`:
+`run_terminal_command`'s name, description and parameters exactly as the Thinking
+model gets them, with the start folder shown as `{folder}`. It runs nothing.
+`terminal_check` runs the desktop's production terminal runner with fixed,
+harmless commands (never anything a model or the owner chose) in the saved shell
+or `shell` (`WindowsPowerShell`, `PowerShell` or `CommandPrompt`), in a fresh
+temporary folder it removes afterwards, whether or not the terminal is on. It
+returns `ok` and each step: `output` (UTF-8 text such as `héllo ✓ 日本` and the
+start folder), `special-characters` (quotes, `&` and `|` reach the shell as
+typed), `errors` (an error line kept, exit code 3), `input-closed` (a command
+that reads input ends at once), `time-limit` (a 2-second limit stops the shell
+and its loopback `ping` child; `childProcessesLeft` must be 0), `long-output`
+(20,000 lines kept as their start and end, under 11,000 characters), `refused`
+(empty, too long and multi-line Command Prompt commands) and
+`program-outlives-shell` (a background loopback ping keeps running while the run
+ends with the shell), each with what the model would be told, plus `tool`.
+
 `mcp_directory_plan` shows how the MCP directory would install one registry
 entry without fetching, writing or starting anything: pass `server` (a
 server.json object as the v0.1 API returns it, or the whole list item with
@@ -1086,7 +1189,9 @@ default 60): `reduceEcho` (the saved choice, on by default) with
 `reduceEchoSource` (`saved` or `default`), `bargeIn` (*Let me interrupt Martlet
 by talking*, optional and off by default) with `bargeInSource` (`saved`,
 `default`, or `reset` for a file saved before barge-in became opt-in that had
-it on only by the old default), and `canceller` (`WebRTC AEC3` once
+it on only by the old default), `wordCheck` (*Word check*: `Relaxed`, `Normal`
+by default, or `Sensitive`) with `wordCheckSource` (`saved` or `default`), and
+`canceller` (`WebRTC AEC3` once
 the native canceller loads, otherwise null with `cancellerProblem` and `ok`
 false). Its `rehearsal` runs the production microphone path
 (`MicrophoneCapture`, `EchoReducer`, the WebRTC canceller, the capture
@@ -1104,8 +1209,10 @@ while the speakers played, the user's voice included), and per part the levels
 `firstSecondsReducedDb` (0-1.5 s, while the canceller learns the room),
 `userOnly.keptDb` and `bothTalking.userAloneDb`, plus `speechFrames*`: the
 20 ms frames Martlet's own voice-activity detector counted as speech. Its
-`talkOver` runs the barge-in gate (`TalkOverDetector`, `requiredMs` 1000 and
-`gapMs` 500, with the capture's own `EchoTimeline`, `speakersRemovedDb` 10)
+`talkOver` runs the voice gate (`TalkOverDetector`, `requiredMs` 1000 and
+`gapMs` 500, with the capture's own `EchoTimeline`, `speakersRemovedDb` 10),
+which tells the user's own voice from the speakers' sound (what actually stops
+Martlet is real words: `utterance_filter_check`),
 over the cleaned recording the way always listening does, for `martletOnly`,
 `userOnly`, `shortSound` (the first 0.8 s of the user alone) and
 `bothTalking`: `userFrames` and `speakerFrames` (loud 20 ms frames that were
@@ -1116,6 +1223,49 @@ without reduction but not with it, it still heard the user alone (kept within
 3 dB) and over Martlet, and `talkOver.ok`: Martlet's echo and the short sound
 never talked over it, while the user over Martlet did, no sooner than
 `requiredMs`. It contacts nothing.
+
+`utterance_filter_check` checks [listening for words](CONVERSATION.md#listening-for-words)
+and barge-in (Companion › Listening › **Word check**; optional absolute
+`dataDirectory`, default the current user's, `sensitivity` `relaxed`, `normal`
+or `sensitive` to override the saved choice, `audio` default true, absolute
+`speechDirectory` where Parakeet is downloaded, default the current user's,
+and absolute `martletDirectory` for the sherpa-onnx runtime, which the script
+fills with this checkout's Desktop build). It runs the production
+`UtteranceFilter` and `BargeInPolicy` on `samples` (up to 64 of `text` with
+optional `voicedMs`, `meanProbability`, `minimumProbability`,
+`noSpeechProbability`, `averageLogProbability`, `engine`, `afterQuestion`,
+`persona`, `playback` `reply` or `song`, and `expectKeep`/`expectInterrupt`),
+by default a fixed set with the outcome Normal must give (fillers, laughter,
+sound tags, "Thank you." from noise or said clearly, subtitle credits, lone
+words, short answers, stop words, backchannels, too many words for the voice,
+a whisper loop, Martlet's name, a song that only stops when asked, and the
+"Yeah." Parakeet and whisper.cpp wrote for coughs on this PC with their
+measured evidence; another sensitivity only reports what it makes of them).
+Each sample returns `keep`, `kind`, `Reason`, `Words`, `shown` (the talk
+window's *Ignored ...* note), `interrupts` and `interruptReason`. It returns
+`wordCheck` (the one used) with `savedWordCheck`/`savedWordCheckSource`,
+`bargeIn` (the saved choice), `limits` (`UtteranceFilter.For`),
+`bargeInPolicy` (`voiceBeforeCheckMs`, `firstRecheckMs`, `recheckMs`,
+`pauseMs`, `wordsToInterrupt`) and `filterCost` (`microsecondsPerCall` over
+thousands of calls: what the filter adds to a reply). With `audio` and
+Parakeet downloaded, `audio` runs fixtures through the real local
+speech-to-text path (`ParakeetEngine`, the desktop's model): "Stop!", "Wait,
+hold on a second.", "Can you tell me more about that?", "Yes." (after a
+question), "Yeah.", "Mmmmmm.", "Hmm." and "Ha ha ha ha!" said by a Windows
+voice (System.Speech, rendered to memory, never played), plus a hum, two
+coughs, a breath, typing, music and noise, each after 0.3 s and before 1 s of
+faint noise. Per fixture: `voicedMs` (loud frames by the production
+voice-activity detector), Parakeet's `transcript`, `evidence` and
+`transcribeMs`, the filter's verdict, and `bargeIn`: the production
+`BargeInGate` fed 20 ms at a time as if Martlet were speaking, each quick check
+transcribing the stretch so far (no other check starts while one runs, as in
+the listener) with its `quick` transcripts, probabilities and milliseconds,
+`interrupted`, `reason` and `afterMs` (from the start of the voice to the
+decision). `stopDelayMs` summarizes the fixtures that stopped Martlet. `ok`
+needs every expectation met: words kept, non-words and noise dropped, stop
+words and the question stopping Martlet, backchannels and non-words never.
+Nothing is recorded or played and nothing leaves this PC; without Parakeet,
+`audio.ran` is false with the reason.
 
 `pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
 (Companion › Listening › Watch along › **Hear what this PC plays**; optional
@@ -1231,9 +1381,10 @@ these status texts, as does the talk window's `LiveStatus` (the line under "Mart
 `PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
 its field loses focus, on Enter or two seconds after typing stops, then syncs);
-like `PeopleRecognize` (ticked by default),
-`PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
-change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
+like `PeopleRecognize` (ticked by default; a shared setting),
+`PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
+change data or download and need `--allow-ui-effects` (People has no sharing
+switch of its own: the list follows `ClusterSync`). On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `Node-pc:<device ID>` for another Martlet computer that runs no host service,
 `Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
@@ -1278,7 +1429,11 @@ roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked 
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and
-what was last taken from another computer), `SettingsSyncWaiting` (text, shown
+what was last taken from another computer), `MemorySyncStatus` (text: how many
+facts Martlet remembers, on how many hosts they are the same, when checked, how
+many were taken from or forgotten because of other computers, or why it waits:
+no host paired, the switch or memory off, the store in use; never a fact),
+`SettingsSyncWaiting` (text, shown
 only when this PC can't follow a setting yet: which, and why),
 `SettingsSyncClaim` (*Use this PC's settings on all my computers*; it changes
 every computer's settings, so it needs `--allow-ui-effects` and then
@@ -1621,7 +1776,9 @@ measured from the top-left of the character's screen). `ui_select` and
 `ui_set_text` on them save `speech-display.json` (`StaticBubble`,
 `BubbleOffsetX`, `BubbleOffsetY`), so they need `--allow-ui-effects`;
 `SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
-isn't a number from -4000 to 4000.
+isn't a number from -4000 to 4000. Where the bubble sits depends on the
+computer's screens, so it stays with each computer; whether bubbles and
+subtitles show is the same on all of them (the `speech-display` shared setting).
 
 Companion › Character's *Your characters* card lists the built-in character and
 every [shared character](CLUSTER.md#the-shared-character-models) in the order
@@ -1766,7 +1923,36 @@ that rule; `SpeakingEngineRelease` stops them after a confirmation
 (`martlet-host remove`, downloads kept) and needs `--allow-ui-effects`.
 `f5_voices` returns the chosen engine as `chosenEngine`.
 
-On Companion › Tools (`CompanionTab-Tools`), each server has
+On Companion › Tools (`CompanionTab-Tools`), the Terminal card comes first:
+`ToolsTerminalOn` (*Let Martlet run terminal commands*, off by default) and
+`ToolsTerminalAskFirst` (*Ask before every command*, on by default) report their
+state as `checkedState`; `ToolsTerminalStatus` reads the state in words (*Off.
+Martlet can't run commands on this PC.*, *On. Windows PowerShell, asks before
+every command, stops a command after 30 seconds.*, or what keeps it from working:
+the shell isn't installed, the start folder is gone, Thinking isn't set up or
+can't use tools, or the model turned tools down); `ToolsTerminalShell` and
+`ToolsTerminalTimeLimit` return the chosen shell and time limit. Everything
+there saves `terminal.json`, so it needs `--allow-ui-effects`: `ui_toggle` on the
+check boxes, `ui_select` on `ToolsTerminalShell` (*Windows PowerShell*,
+*PowerShell 7*, *Command Prompt*, with *(not installed)* when missing) and
+`ToolsTerminalTimeLimit` (*15 seconds*, *30 seconds*, *1 minute*),
+`ToolsTerminalHome` (*Use my home folder*, shown only for a chosen folder) and
+`ToolsTerminalFolder` (*Choose folder...*, a Windows folder picker MCP can't
+drive; the folder's path is never returned). Turning *Ask before every command*
+off asks first: the dialog's `ToolsTerminalNoAskQuestion` is returned, and
+`ConfirmationYes` (*Run without asking*) or `ConfirmationNo` (*Keep asking*)
+answers it. `terminal_status` reads the saved result. In the talk window, a
+waiting call shows `LiveToolApproval` with `LiveToolApprovalTitle` (*Allow this
+tool?*, or *Run this command?* for the terminal) and `LiveToolApprovalText`
+(*Martlet wants to run this in Windows PowerShell, on this PC as you.
+Automatically denied in 52 s.*); the command or arguments
+(`LiveToolApprovalArguments`) are never returned, and `LiveStatus` reads *Allow
+the command? Answer above.*, then *Running a command…*. `LiveToolDeny` is a
+passive click (it only declines the call); `LiveToolAllow` and `LiveToolAlways`
+run it, so they need `--allow-ui-effects`. With the terminal on, Home's
+`HealthCheck-tools` tile shows (*Tools: OK. Terminal on*).
+
+Below it, each MCP server has
 `ToolsServerState-<name>`, `ToolsServerOn-<name>`, `ToolsServerTrust-<name>`,
 `ToolsRestart-<name>` and, for mcp.json servers, `ToolsRemove-<name>` (asks with
 `ConfirmationYes`/`ConfirmationNo`, then edits mcp.json). `ToolsBrowseDirectory`
@@ -1799,17 +1985,17 @@ service type and lists who answers; `SmartHomeSetupCancel` only hides the setup
 form. Everything else needs `--allow-ui-effects` and a disposable Home Assistant:
 `SmartHomeCheck` (*Set up a new one*, reads the onboarding state of the address
 in `SmartHomeAddress`), `SmartHomeFoundUse-<n>`, `SmartHomeSignIn` (opens the
-browser), `SmartHomeConnect` (with `SmartHomeToken`), `SmartHomeDisconnect`, the
-setup form (`SmartHomeOwnerName`, `SmartHomeOwnerUser`, `SmartHomeOwnerPassword`,
-`SmartHomeOwnerConfirm`, `SmartHomeSetupControl`, `SmartHomeSetupShare`,
-`SmartHomeSetUp`), `SmartHomeShareOnConnect`, `SmartHomeInstall-<host>` and
-`SmartHomeHostUse-<host>`, `SmartHomeShare`, `SmartHomeStopShare` (asks first),
-`SmartHomeUseShared`, `SmartHomeShareCheck`, `SmartHomeDevicesRefresh`,
+browser), `SmartHomeConnect` (with `SmartHomeToken`), `SmartHomeDisconnect`
+(asks first; with a paired host and the switch on it disconnects every
+computer), the setup form (`SmartHomeOwnerName`, `SmartHomeOwnerUser`,
+`SmartHomeOwnerPassword`, `SmartHomeOwnerConfirm`, `SmartHomeSetupControl`,
+`SmartHomeSetUp`), `SmartHomeInstall-<host>` and
+`SmartHomeHostUse-<host>`, `SmartHomeShareCheck`, `SmartHomeDevicesRefresh`,
 `SmartHomeDeviceAdd-<n>`, `SmartHomeDeviceIgnore-<n>`, `SmartHomeAddMqtt`,
 `SmartHomeUpdateInstall-<n>` and `SmartHomeRestart` (both ask first;
 `ConfirmationYes`), `SmartHomeBackup`, `SmartHomeOpen` and
 `SmartHomeManageRefresh`. Snapshots return `SmartHomeStatus` (connected or not,
-address, name, version, shared), `SmartHomeAddress`, `SmartHomeFindStatus`,
+address, name, version, whether the other computers use it), `SmartHomeAddress`, `SmartHomeFindStatus`,
 `SmartHomeFound-<n>` (*Home: http://192.168.1.20:8123 (Home Assistant
 2026.9.4)*), `SmartHomeSetupTarget`, `SmartHomeSetupStatus`,
 `SmartHomeHost-<host>` (whether that host runs or can run Home Assistant, or
@@ -1927,13 +2113,27 @@ retrying (it never stops by itself). The talk window's `LiveStop` (Stop, Esc)
 is a passive click: it only stops a reply, recording or vision. Changing How
 you talk on Companion › Listening (`TalkModePushToTalk`, `TalkModeAlways`)
 applies to an open talk window at once (`LivePtt` replaces `LiveMic`). With
-always listening, the same card has `TalkBargeIn` (*Let me interrupt Martlet by
+always listening, the same card has `TalkWordCheck` (*Word check*: *Relaxed*,
+*Normal (recommended)* or *Sensitive*; returned as the chosen option, and
+`ui_select` on it needs `--allow-ui-effects` because it saves
+`talk-preferences.json`; an open talk window restarts listening with it) and
+`TalkWordCheckAbout` (returned: that Martlet ignores sounds that aren't words
+and words speech-to-text makes up from noise, what Relaxed and Sensitive change,
+that short answers and Martlet's name always count and that ignored sounds show
+faded in the talk window; `utterance_filter_check` runs the filter itself),
+then `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
 `talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
 and off by default, and what talking over
-Martlet takes, about a second of your voice on the microphone, never a short
-sound or what this PC plays; `echo_check`'s `talkOver` rehearses the gate itself). Below it, the *Speakers and echo* card has
+Martlet takes: real words, a word like "stop" or "wait" right away, never a hum,
+a cough, laughter, a quick "yeah" or what this PC plays, checked while you talk
+with Parakeet on this PC and otherwise once you pause; `utterance_filter_check`
+rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate). In the
+talk window, what always listening ignored shows in `LiveHistory` as a faded
+note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
+*Always listening ignored what it heard: ...* and *Barge-in: Martlet stopped its
+reply N ms after you started talking over it (...)*, never the words. Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
@@ -1978,12 +2178,20 @@ notification area by default, and Martlet started with `--tray` (Start with
 Windows) shows no window, so `ui_connect` also attaches when only the icon's
 window exists (it returns `inTray`). `ui_tray` drives the icon:
 `{"name":"ui_tray"}` (or `"action":"status"`) returns `running`, `trayIcon`
-(the icon is in the notification area), `mainWindowVisible`, `inTray` and
-`menuOpen` (the icon's menu is open);
+(the icon is in the notification area), `mainWindowVisible`, `inTray`,
+`menuOpen` (the icon's menu is open) and `menuBounds` (the open menu's
+`[x, y, width, height]` in physical screen pixels, null when closed);
 `"action":"open"` and `"action":"menu"` post the icon what Explorer
-sends for a left click (show Martlet) and a right click (its menu at the mouse
-pointer), and let Martlet take the foreground as Explorer does when the MCP
-server may itself, so they need no flag; `"action":"close"` presses the main window's
+sends for a left click (show Martlet) and a right click (its menu), at the
+mouse pointer or at optional `x`, `y`, in physical screen pixels as Explorer
+reports them whatever Martlet's display scale, and let Martlet take the
+foreground as Explorer does when the MCP server may itself, so they need no
+flag. The menu opens beside that point (its corner on it, flipped to stay on
+the screen) even when Martlet's display scale differs from the monitor's (the
+scale changed after Martlet started, or a monitor with another scale): to
+check that here, launch the desktop with `__COMPAT_LAYER=DPIUNAWARE` set on a
+display scaled above 100% and compare `menuBounds` with `x`, `y`.
+`"action":"close"` presses the main window's
 close button, which hides Martlet or (with *Keep running when closed* off) exits
 it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
 `TrayMenu` and its items: `TrayStatus` (status text: *Martlet is running*,
@@ -2098,9 +2306,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status` and `voices_engine_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check` and `utterance_filter_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `thinking_steps_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `utterance_filter_check`, `context_check`, `thinking_steps_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

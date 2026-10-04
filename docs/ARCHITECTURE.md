@@ -1,5 +1,18 @@
 # Architecture and provider contracts
 
+**One app, many computers.** Martlet is one application that runs on each of
+the owner's computers. Every computer runs the same desktop app with the same
+companion: who does each job ([cluster plan](CLUSTER.md#model)), the settings
+and API keys ([shared settings](CLUSTER.md#one-martlet-on-every-computer)),
+memories ([shared memories](MEMORY.md#one-memory-on-every-computer)), people,
+speaking voices, characters and the Home Assistant connection are replicated
+as last-writer-wins documents through the paired host gateways, which keep a
+private copy each and never talk to each other. A computer is a companion PC
+(talking) or a host PC (its gateway and roles lend GPU work to the app); adding
+a host adds capabilities to the whole app. Only per-computer facts (devices,
+screens, role, startup, installed engines, pairing and security choices) stay
+local. The sections below describe the original component contracts.
+
 The [Voice Studio expansion](VOICE_STUDIO.md) adds five planned self-hosted
 TTS adapters, isolated engine runtimes, shared source-voice/dataset ownership
 and preview-versus-active selection. VS01 implements only Core's local Voice

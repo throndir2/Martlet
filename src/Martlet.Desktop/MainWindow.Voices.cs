@@ -401,6 +401,11 @@ public partial class MainWindow
     private async Task SyncSpeakingVoicesAsync()
     {
         if (speakingVoiceBusy || closing || store is null) return;
+        if (!clusterEnabled)
+        {
+            speakingVoiceStatus = "Keep Martlet the same on all my computers is off, so your voices stay on this PC.";
+            return;
+        }
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.Count == 0)
         {
