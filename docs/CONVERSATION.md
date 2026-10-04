@@ -244,9 +244,10 @@ Ollama on this PC for them), and the talk window's context line ends with
 ## Thinking longer and background work
 
 Replies answer right away (Thinking steps are Off by default). **Thinking
-longer** (Companion › Replies, beside Thinking steps; on by default) lets
-Martlet decide, sparingly, that a task needs real thought and work it out in
-the background while the conversation carries on.
+longer** (Companion › Deep thinking; on by default) lets Martlet decide,
+sparingly, that a task needs real thought and hand it to **Deep thinking**,
+which works it out in the background while Thinking keeps talking with you:
+parallel thinking, ideally on another machine.
 
 **How it goes.** Replies on a Thinking route that does function calling (OpenAI
 or a Chat Completions endpoint, Ollama on this PC included; not a paired host's
@@ -265,13 +266,47 @@ holds up the reply. `cancel_thinking` (optional `id`) stops a think.
 **The background request** runs on its own runtime with Thinking steps **On**
 at the chosen effort (*Medium* or *High*: `reasoning_effort` medium/high for
 Ollama on this PC, OpenAI and Gemini, OpenRouter's `reasoning.effort`, the chat
-template's `enable_thinking` elsewhere; the OpenAI route's models just write it
-out), whatever replies use, on the current Thinking model and the Thinking
-fallback. It has its own bounds: 8,192 output tokens (Medium) or 16,384
-(High), up to 65,534 stream events and the time limit (2, 5 or 10 minutes) for
-the whole job. It is never spoken. Its message continues a reply's request
-exactly (Companion › Prompts › *Thinking longer: the task*); the picture or
-recording the message went with isn't sent again.
+template's `enable_thinking` elsewhere, a paired computer's Ollama `think`;
+the OpenAI route's models just write it out), whatever replies use. It has its
+own bounds: 8,192 output tokens (Medium) or 16,384 (High), up to 65,534 stream
+events and the time limit (2, 5 or 10 minutes) for the whole job. It is never
+spoken. Its message continues a reply's request (Companion › Prompts ›
+*Thinking longer: the task*); the picture or recording the message went with
+isn't sent again.
+
+**Where it thinks** (Companion › Deep thinking › *Where it thinks*; this PC's
+own choice, `deep-thinking.json` in the data folder, never shared, because
+which machine is free to think depends on the computer you talk to):
+
+- *Same as Thinking* (default): Thinking's own model, with its tools described
+  so the request starts like the reply's and shares its prompt cache, and the
+  Thinking fallback.
+- *Another of your computers*: a paired computer's Ollama (its Thinking role)
+  through its pinned gateway with this PC's pairing. The conversation's newest
+  exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
+  tools), and the computer loads 32,768 tokens of context for it. A computer's
+  Martlet must be this version or later for thinks over a minute: an older one
+  takes at most 60 seconds and 4,096 tokens a request (Martlet holds a think
+  there to that and logs that the computer should be updated).
+- *Ollama on this PC*: a model of its own here (a larger one can think while a
+  small, fast one answers you).
+- *A cloud provider or server*: OpenRouter, NVIDIA Build, OpenAI or any
+  OpenAI-compatible server (HTTPS, or a server on this PC), with its own key in
+  Windows Credential Manager, Thinking's key for the same base URL, or none. The
+  conversation that fits the model's context and the task go there, no tools.
+
+**Parallel or in quiet moments** (`DeepThinkingPlan`, shown on the page as
+`DeepThinkingParallel`). A think runs alongside the conversation unless it would
+share the hardware the conversation needs: Thinking's own server on this PC
+(Ollama or LM Studio answer one request at a time and keep one conversation in
+their prompt cache), any server on this PC while Thinking or the voice runs on
+this PC (one graphics card), or a paired computer that also does Thinking, the
+voice or listening (its gateway serves one request per job, and its graphics
+card is shared). Ollama on this PC runs with `OLLAMA_NUM_PARALLEL` 1 by default;
+more slots split its context and still share the graphics card, so a second
+request on the same machine always slows the first words of a reply. In the
+waiting case a think works only while the conversation is quiet (see below);
+otherwise it is never paused, and replies keep their own latency.
 
 **While it runs** you keep talking and Martlet keeps replying. The talk window
 shows a chip per job (*Thinking about: …* with its time and *Cancel*) and the
@@ -282,14 +317,14 @@ closing the conversation, quitting Martlet or the time limit do. At most one
 think runs at a time (a second call is refused and Martlet is told to wait or
 cancel the first) and at most 3, 6 (default) or 12 start in any hour.
 
-**A model on this PC** (Ollama, LM Studio or another server on loopback)
-usually serves one request at a time, and a request with another start would
-push the conversation out of its cache. So there a think works only while the
-conversation is quiet: it waits until nothing is being said, answered or
-remembered, and the moment you start talking, type, hold to talk or Martlet
+**In quiet moments.** When a think shares the conversation's hardware, a request
+with another start would push the conversation out of a local model's cache, or
+make a reply wait behind it. So it works only while the conversation is quiet:
+it waits until nothing is being said, answered or remembered, and the moment you start talking, type, hold to talk or Martlet
 starts a reply, glance or after-reply request, it stops its request at once and
 starts it again from the latest exchange once it's quiet (the conversation since
-stays in the cache). A reply never waits behind it.
+stays in the cache). A reply never waits behind it. On another machine, none of
+this is needed: the think just runs.
 
 **Delivery.** When a job finishes (or fails, or runs out of time) its result is
 added at the end of the conversation as a new message, never by rewriting
@@ -338,6 +373,10 @@ think_longer is the first kind and a song is next. A kind is a
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
+4. If the work needs hardware the conversation also uses, pass the runner a
+   `Busy` check (as `BackgroundThink` does from `DeepThinkingPlan`) and stop
+   when it says so; work on its own machine (a song made by a host role on a
+   computer that isn't speaking) just runs, in parallel.
 
 The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
 the chip and `LiveJobs`, `background-jobs.json` (kinds, states and times only),

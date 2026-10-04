@@ -576,8 +576,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("think_longer_status", "Companion > Replies > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
             "(on by default, effort, time limit, hourly limit, when it shares the result) and whether any was chosen, the Thinking " +
-            "route (whether it does function calling, whether the model turned tools down, whether it runs on this PC so a think " +
-            "only works while the conversation is quiet, and what a background think sends for Thinking steps at that effort), " +
+            "route (whether it does function calling, whether the model turned tools down), Companion > Deep thinking (this PC's " +
+            "deep-thinking.json: same as Thinking, an endpoint or a paired computer, never a key; whether a think runs in parallel " +
+            "with the conversation or waits for quiet moments and why, and what it sends for Thinking steps at that effort), " +
             "think_longer and cancel_thinking exactly as the Thinking model gets them with the Thinking longer prompt, and the " +
             "desktop's background-jobs.json: each running or finished job's id, kind, state, progress, times, result length, " +
             "problem and delivery (never its task or result), how many thinks started in the last hour, and the running think's " +
@@ -593,7 +594,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the end of the conversation (as soon as Martlet is free, or in the notes of the next message), the limits (one think " +
             "at a time beside a song job, the hourly limit, Cancel, Martlet's cancel, the time limit, the conversation ending) and, " +
             "for a model on this PC, a think waiting for a quiet moment, stopping at once when the conversation needs the model " +
-            "and starting again from the same request. reasoningMs (200-3000, default 1200) is how long the fixture's hidden " +
+            "and starting again from the same request; the production Deep thinking plan for eight setups (parallel or waiting); a " +
+            "think on a destination of its own running in parallel while replies go to the conversation's endpoint (no tools, " +
+            "Thinking steps on, never stopped); and a long conversation fitted into a paired computer's 16 KiB and 16 messages. " +
+            "reasoningMs (200-3000, default 1200) is how long the fixture's hidden " +
             "reasoning takes. Loopback only; reads no credentials.", new
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }

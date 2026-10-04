@@ -181,11 +181,13 @@ what it prints go to the Thinking model.
 
 ### Thinking longer
 
-**Companion > Replies > Thinking longer** (on by default) gives every reply on a
+**Companion > Deep thinking > Thinking longer** (on by default) gives every reply on a
 route that does function calling Martlet's own `think_longer` (`task`, the
 complete instruction, and an optional `reason`) and `cancel_thinking` (optional
 `id`). The call never asks first and returns at once; the task is worked out in
-a background request with Thinking steps on and brought up when it's done
+a background request with Thinking steps on, by Deep thinking (the Thinking
+model, another of your computers, Ollama on this PC or a cloud provider, chosen
+on each PC), and brought up when it's done
 ([Thinking longer and background work](CONVERSATION.md#thinking-longer-and-background-work)).
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
 started think-1`); the desktop log notes each start, pause and end without the
@@ -1273,21 +1275,26 @@ with first words after about 0.1 s and 16 tokens against about 1-3 s and
 and nothing leaves loopback. A paired host's `think` (desktop client, gateway,
 Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN.
 
-`think_longer_status` shows Companion › Replies › **Thinking longer** as replies
-use it (optional absolute `dataDirectory`, default the current user's):
-`settings`, `thinkLonger` (`enabled`, on by default; `effort` *Medium* or
-*High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12; `delivery` *WhenFree* or
-*NextMessage*; `chosen`), `thinking` (the route's `routeType`, `model`,
+`think_longer_status` shows Companion › **Deep thinking** as replies use it
+(optional absolute `dataDirectory`, default the current user's): `settings`,
+`thinkLonger` (`enabled`, on by default; `effort` *Medium* or *High*; `minutes`
+2, 5 or 10; `perHour` 3, 6 or 12; `delivery` *WhenFree* or *NextMessage*;
+`chosen`), `thinking` (the Thinking route's `routeType`, `model`,
 `supportsTools`, `toolsRejected` from `tools-unsupported.json`, `offered`,
-`onThisPc`/`waitsForQuiet` for a model on this PC, its Thinking steps `use`,
-what a background think `sends` at that effort, such as
-`{"reasoning_effort":"medium"}`, and its `outputTokens`), `tools`
+`onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
+*loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
+`model`, `hostId`, an endpoint's `origin`, `ownKey` and `usesThinkingKey`
+(never a key), `parallel`/`waitsForQuiet` and `why` from the production
+`DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at that
+effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
+`outputTokens` and `carriesTools`, true only with the Thinking model), `tools`
 (`think_longer` and `cancel_thinking` exactly as the model gets them), the
 filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
 `resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
-`startedLastHour`; and the running think's `local`, `attempts` and `pauses`),
+`startedLastHour`; and the running think's `where`, `parallel`, `why`,
+`waitsForQuiet`, `attempts` and `pauses`),
 never a task or result. Read-only.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
@@ -1312,9 +1319,21 @@ the conversation ending (dropped). `local`: a think for a model on this PC waits
 for a quiet moment without sending anything, stops its request when the
 conversation needs the model (`stoppedAfterMs`), sends nothing while paused and
 then finishes from the same request (`attempts` 2, `pauses` 1,
-`sameRequestAgain`). Each part has an `ok`; on this PC the tool returned in
-5 ms and a paused think's request was gone 123-140 ms later (the fixture writes
-every 50 ms). Loopback only; reads no credentials.
+`sameRequestAgain`). `plans`: the production `DeepThinkingPlan` for eight setups
+(Same as Thinking with Thinking local or on OpenRouter; OpenRouter, or Ollama on
+this PC, with Thinking local; Ollama on this PC with the voice on another
+computer or in this PC's host service; a paired computer that does nothing else,
+or also speaks), each `parallel` against `expected` with its `why`.
+`parallel`: a think on a destination of its own (the plan says parallel; a
+second fixture endpoint stands in for the other machine) keeps working while
+three replies go to the conversation's endpoint (`replyFirstWordsMs`), is never
+stopped (`attempts` 1, `pauses` 0) and its request has no tools, Thinking steps
+on and the conversation then the task. `hostFit`: a 160-message conversation
+fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
+kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
+this PC the tool returned in 5 ms, a paused think's request was gone 123-140 ms
+later (the fixture writes every 50 ms) and replies beside a parallel think
+answered in 2 ms. Loopback only; reads no credentials.
 
 `echo_check` checks [echo reduction](CONVERSATION.md#echo-reduction)
 (Companion › Listening › **Reduce echo from my speakers**; optional absolute
@@ -2221,18 +2240,34 @@ so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
 only stops that job, and the next thing you say tells Martlet), with the status
 line reading *Starting to think it over in the background…* while
 `think_longer` runs and *Martlet is bringing up what it worked on…* while
-Martlet's own report is on its way; Companion › Replies' `RepliesThinkLonger`
-(*Let Martlet think longer when it needs to*; `checkedState` is the saved
-choice), `RepliesThinkLongerStatus` (*On. When a task needs it, Martlet says
-it'll think it over and works on it in the background (Medium effort, up to 5
-minutes, at most 6 an hour) while you keep talking, then brings it up as soon as
-it's free.*, with *Its model is on this PC, so it thinks only while you aren't
-talking and pauses for every reply.* for a model on this PC, *Off. ...*, or what
-keeps it from working: no Thinking, a paired host's model, a model that turned
-tools down) and the choices `RepliesThinkLongerEffort`, `RepliesThinkLongerTime`,
-`RepliesThinkLongerPerHour` and `RepliesThinkLongerDelivery` (returned;
-`ui_toggle` and `ui_select` on them save the reply settings, so they need
-`--allow-ui-effects`)
+Martlet's own report is on its way; Companion › **Deep thinking**'s
+`DeepThinkingNow` (*Thinks on diva (gemma4:27b), in parallel with the
+conversation.*, *Thinks on the Thinking model (gemma4:e4b), in quiet moments.*,
+or *Off. When on, it thinks on ...*) and `DeepThinkingParallel` (why: *Thinking
+runs on this PC and its server answers one request at a time, so a think waits
+for quiet moments.*, *diva does none of the conversation's jobs, so a think runs
+there alongside the conversation.*), `ThinkLongerOn` (*Let Martlet think longer
+when it needs to*; `checkedState` is the saved choice), `ThinkLongerStatus`
+(*On. When a task needs it, Martlet says it'll think it over and works on it in
+the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
+talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
+from working: no Thinking, a paired host's model, a model that turned tools
+down) and the choices `ThinkLongerEffort`, `ThinkLongerTime`,
+`ThinkLongerPerHour` and `ThinkLongerDelivery` (returned; `ui_toggle` and
+`ui_select` on them save the reply settings, so they need
+`--allow-ui-effects`); *Where it thinks* with the passive options
+`DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
+`DeepPlace-Cloud` (each only shows its card): each paired computer's
+`DeepThinkingHost-<host ID>` (*diva: Ollama runs gemma4:27b.*, *Thinks here
+(...)*, *Ollama isn't installed there...*) or `DeepThinkingHosts` when none is
+paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded) and
+`DeepThinkingKeyStatus` (what the key field will do; never a key or typed base
+URL). `DeepThinkingUseSame`, `DeepThinkingUseHost-<host ID>` (checks that
+computer and saves its Ollama route), `DeepThinkingUseLocal` and
+`DeepThinkingSaveCloud` (with `DeepThinkingProvider`, `DeepThinkingBaseUrl`,
+`DeepThinkingModel`, `DeepThinkingKey` and `DeepThinkingConsent`) save
+`deep-thinking.json` and need `--allow-ui-effects`; the next think uses it.
+Companion › Replies' `RepliesOpenDeepThinking` (passive) opens the page
 and Companion › Lip-sync's `LipSyncNow` and `LipSyncNowProblem` (whether this
 PC's own Audio2Face service answers). Lip-sync's places are *This PC* and
 *Another of your computers*; under *This PC*, `LipSyncDockerTitle` (*Audio2Face,

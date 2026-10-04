@@ -22,6 +22,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
         // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
         "LiveStop", "LiveRefreshContext",
+        // Companion › Replies' Open Deep thinking only opens that page.
+        "RepliesOpenDeepThinking",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
@@ -77,7 +79,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
-        "LiveJobCancel-"];
+        "LiveJobCancel-",
+        // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer") only show that place's card; its own
+        // Use buttons commit (and need --allow-ui-effects).
+        "DeepPlace-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -160,12 +165,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
         // it needs --allow-ui-effects) and how the Thinking route takes it.
         "RepliesThinking", "RepliesThinkingStatus",
-        // Companion › Replies › Thinking longer: what it does on the Thinking route (on by default) or what keeps it from
-        // working, and the chosen effort, time limit, hourly limit and when it shares results (choosing one with ui_select, or the
-        // RepliesThinkLonger check box, saves it, so it needs --allow-ui-effects). In the talk window, the background work line
-        // (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id> holds that).
-        "RepliesThinkLongerStatus", "RepliesThinkLongerEffort", "RepliesThinkLongerTime", "RepliesThinkLongerPerHour",
-        "RepliesThinkLongerDelivery", "LiveJobs",
+        // Companion › Deep thinking: where a think goes and whether it runs alongside the conversation or waits for quiet moments
+        // (and why); Thinking longer's state (on by default) or what keeps it from working, and the chosen effort, time limit,
+        // hourly limit and when it shares results (choosing one with ui_select, or the ThinkLongerOn check box, saves them, so
+        // they need --allow-ui-effects); what Ollama on this PC has downloaded and what an endpoint's key field will do (never a
+        // key or base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
+        // background work line (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id>
+        // holds that).
+        "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
+        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingKeyStatus", "LiveJobs",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -284,6 +292,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.").
+        "DeepThinkingHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
         // or "...: not made yet" for a Thinking palette not made).
