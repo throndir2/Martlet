@@ -21,16 +21,20 @@ FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047
 
 ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_ROOT_USER_ACTION=ignore
 
-COPY host/requirements.lock host/requirements-match.lock /tmp/
+COPY host/requirements.lock /tmp/requirements.lock
 RUN grep -A1 '^setuptools==' /tmp/requirements.lock | sed 's/ \\$//; s/^ *//' | tr '\n' ' ' > /tmp/setuptools.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile -r /tmp/setuptools.lock \
  && python3.11 -m pip install --no-deps --require-hashes --no-compile --no-build-isolation \
       --extra-index-url https://download.pytorch.org/whl/cu128 -r /tmp/requirements.lock \
- && python3.11 -m pip install --no-deps --require-hashes --no-compile --target /opt/martlet-singing/match-site \
-      -r /tmp/requirements-match.lock \
- && rm -rf /opt/martlet-singing/match-site/bin \
- && rm -f /tmp/requirements.lock /tmp/requirements-match.lock /tmp/setuptools.lock \
+ && rm -f /tmp/requirements.lock /tmp/setuptools.lock \
  && find /usr/local/lib/python3.11/site-packages -name __pycache__ -type d -prune -exec rm -rf {} +
+
+# The voice-match stage's own Transformers (4.46.3, for SoulX-Singer's and VevoSing's Llama code), first on that process's path
+# only (martlet_singing.match; ACE-Step keeps 4.57).
+COPY host/requirements-match.lock /tmp/requirements-match.lock
+RUN python3.11 -m pip install --no-deps --require-hashes --no-compile --target /opt/martlet-singing/match-site \
+      -r /tmp/requirements-match.lock \
+ && rm -rf /opt/martlet-singing/match-site/bin /tmp/requirements-match.lock
 
 COPY --from=sources /src /opt/martlet-singing/src
 COPY martlet_singing /opt/martlet-singing/app/martlet_singing
