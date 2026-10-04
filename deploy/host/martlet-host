@@ -1655,15 +1655,16 @@ cmd_add() {
       fail "Preparing ${role} failed; the running one is unchanged. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
   done 3< <(conf_values "${conf}" prepare)
 
+  local start_failed="Building or starting ${role} failed (the output above shows why). Check the host's disk space and network, then run 'martlet-host add ${role}' again: the build steps it finished are reused."
   if [[ ${#stops[@]} -gt 0 ]]; then
     # Build (or pull) this role's image while the engine it replaces still works, then free the graphics card for it.
     say "Preparing ${role} while ${stops[*]} still runs"
-    role_compose "${role}" up --no-start
+    role_compose "${role}" up --no-start || fail "${start_failed}"
     release_roles "${role}" "${stops[@]}"
   fi
 
   say "Starting ${role}"
-  role_compose "${role}" up -d
+  role_compose "${role}" up -d || fail "${start_failed}"
   ready_address="$(role_ready_address "${role_network}")"
   note "Waiting for ${role} on ${ready_address}:${port} (up to ${minutes:-10} minutes; first starts can be slow)..."
   local ready=0 attempt
