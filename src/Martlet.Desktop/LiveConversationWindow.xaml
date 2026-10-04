@@ -76,7 +76,7 @@
                                         AutomationProperties.AutomationId="LiveToolAllow"/>
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="Allow this tool?" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="ToolApprovalTitle" Text="Allow this tool?" FontWeight="SemiBold" AutomationProperties.AutomationId="LiveToolApprovalTitle"/>
                                 <TextBlock x:Name="ToolApprovalText" TextWrapping="Wrap" Margin="0,2,0,0"
                                            AutomationProperties.LiveSetting="Assertive" AutomationProperties.AutomationId="LiveToolApprovalText"/>
                             </StackPanel>

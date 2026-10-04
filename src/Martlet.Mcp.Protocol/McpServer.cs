@@ -407,6 +407,26 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
+            "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
+            "this PC has, whether every command asks first (on by default), the time limit, whether commands start in the home folder " +
+            "or a chosen one (never its path) and whether it exists, and run_terminal_command exactly as the Thinking model gets it " +
+            "(the start folder shown as {folder}). Read-only; runs nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("terminal_check", "Rehearse Companion > Tools > Terminal with the desktop's production terminal runner and fixed, " +
+            "harmless commands (never anything a model or the owner chose), in the saved shell or shell (WindowsPowerShell, " +
+            "PowerShell or CommandPrompt), in a fresh temporary folder removed afterwards: UTF-8 output and the start folder, quotes " +
+            "and & | in a command, an error line with exit code 3, closed input (a command that reads input ends at once), a 2-second time limit stopping " +
+            "the shell and its child process (a loopback ping), 20,000 lines of output kept as its start and end, the commands " +
+            "refused before anything runs, and a program the command starts in the background (a 3-second loopback ping) not " +
+            "holding up the run. Returns ok, each step and what the model would be told. Runs whether or not the " +
+            "terminal is on; local only, reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" },
+            shell = new { type = "string", @enum = Enum.GetNames<TerminalShell>() }
+        }),
         Tool("echo_check", "Companion > Listening > Reduce echo from my speakers: the saved choice (on by default), the saved " +
             "Let me interrupt Martlet by talking choice (bargeIn, opt-in and off by default) and whether the " +
             "WebRTC echo canceller loads, then a rehearsal of the production microphone path (MicrophoneCapture, EchoReducer, the " +
@@ -565,6 +585,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
+                "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
                 "character_status" => await CharacterStatusAsync(arguments, cancellation),
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),

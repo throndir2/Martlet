@@ -1094,10 +1094,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var lore = await ScanLoreAsync(operation, input!.UserText, history, persona, worker).ConfigureAwait(false);
             if (lore is not null) operation.LatencyTimeline?.Mark("lore");
 
-            // Tools from MCP servers on this PC, only for the user's own turns and routes that do function calling.
+            // Tools from MCP servers on this PC and the terminal when it is on, only for the user's own turns and routes that do
+            // function calling.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
-            if (own is not null && tools is { HasEnabledServers: true } && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
+            if (own is not null && tools is { HasTools: true } && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
                 toolset = await tools.PrepareAsync(worker).ConfigureAwait(false);

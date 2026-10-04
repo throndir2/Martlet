@@ -22,6 +22,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision); it starts nothing and never pauses listening.
         // Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops nothing.
         "LiveStop", "LiveRefreshContext",
+        // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
+        // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
+        "LiveToolDeny",
         // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
         // shows; its Set up, Pair and role buttons do the work.
         "AddComputer", "OpenHosts", "HostsStepWhere", "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
@@ -177,6 +180,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
+        // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
+        // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
+        // start folder's path is never returned), and the fixed question turning Ask before every command off asks. In the talk
+        // window, a waiting tool call's heading ("Run this command?") and question (which shell or server, and the seconds
+        // left); never the command or arguments (LiveToolApprovalArguments).
+        "ToolsTerminalStatus", "ToolsTerminalShell", "ToolsTerminalTimeLimit", "ToolsTerminalNoAskQuestion",
+        "LiveToolApprovalTitle", "LiveToolApprovalText",
         // Devices › Apps and API keys: how many keys and how many hosts have them; the created dialog's title, host addresses
         // with their public key pins, and the example request (it names $MARTLET_API_KEY, never the key). The key itself
         // (ApiKeyValue) is never returned.
