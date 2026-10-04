@@ -33,6 +33,40 @@ internal static class MemoryJson
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: false) }
     };
 
+    private static readonly JsonSerializerOptions CompactOptions = new(Options) { WriteIndented = false };
+
+    /// <summary>One fact as it travels to the owner's other computers.</summary>
+    internal static string WriteFact(MemoryFact fact)
+    {
+        MemoryGuard.Require(fact is not null);
+        fact!.ValidatePersisted();
+        return JsonSerializer.Serialize(fact, CompactOptions);
+    }
+
+    /// <summary>A fact another computer shared, read as strictly as the store reads its own.</summary>
+    internal static MemoryFact ReadFact(string json)
+    {
+        MemoryGuard.Require(json is { Length: > 0 });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        MemoryGuard.Require(bytes.Length <= 64 * 1024, MemoryFailure.LimitExceeded);
+        try
+        {
+            RejectDuplicateProperties(bytes);
+            var fact = JsonSerializer.Deserialize<MemoryFact>(bytes, Options);
+            MemoryGuard.Require(fact is not null, MemoryFailure.InvalidData);
+            fact!.ValidatePersisted();
+            return fact;
+        }
+        catch (MemoryException)
+        {
+            throw;
+        }
+        catch (Exception error) when (error is JsonException or NotSupportedException or InvalidOperationException)
+        {
+            throw new MemoryException(MemoryFailure.InvalidData);
+        }
+    }
+
     internal static byte[] WriteStore(MemoryStoreDocument document)
     {
         ValidateStore(document);

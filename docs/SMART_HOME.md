@@ -125,16 +125,20 @@ Assistant without leaving Martlet:
    Bluetooth) and refuses to install over another Home Assistant on port 8123.
    After installing, Martlet opens the setup form for it. The Devices map offers
    **Install Home Assistant** / **Remove Home Assistant** on eligible hosts.
-5. **Sharing with the owner's other computers** (owner decision 2026-10-02):
-   after a connection is made (setup, sign-in or token, with "Share it with my
-   other computers" on, the default) Martlet gives every paired host the address
-   and token (`/martlet/v1/home-assistant`, newest revision wins; hosts keep it
-   0600, see [CLUSTER](CLUSTER.md)). Every 60 seconds each desktop reads its
-   hosts' copies: a computer without a connection takes the shared one (and
-   turns on "Use Home Assistant when I ask"), a computer that follows it takes
-   newer ones, and **Stop sharing** makes the hosts forget the token and
-   followers disconnect. A connection made on one PC alone is never replaced
-   (**Use the shared one** switches on request).
+5. **Sharing with the owner's other computers** (owner decisions 2026-10-02
+   and 2026-10-03: Home Assistant is one connection for the whole app). While
+   **Keep Martlet the same on all my computers** is on, a connection made on any
+   computer (setup, sign-in or token) goes to every paired host at once
+   (`/martlet/v1/home-assistant`, newest revision wins; hosts keep it 0600, see
+   [CLUSTER](CLUSTER.md#the-shared-home-assistant-connection)). Every 60 seconds
+   each desktop reads its hosts' copies and takes a newer connection, replacing
+   whatever it used (turning on "Use Home Assistant when I ask" the first time it
+   connects); a computer whose connection the hosts don't know yet gives it to
+   them. **Disconnect** disconnects every computer (the hosts forget the token).
+   What Martlet may do with it ("Use Home Assistant when I ask", locks, doors and
+   alarms, flexible requests) is a [shared setting](CLUSTER.md#one-martlet-on-every-computer)
+   too. With the switch off, the connection stays on the computer where it was
+   made.
 6. **Devices Home Assistant found** lists Home Assistant's open discovery flows
    (`config_entries/flow/progress`, with integration names from
    `manifest/list`). **Add** confirms a step that needs no input; a step that

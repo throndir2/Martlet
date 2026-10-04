@@ -13,5 +13,7 @@
     <ProjectReference Include="..\Martlet.Gateway.Dia\Martlet.Gateway.Dia.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Audio2Face\Martlet.Avatar.Audio2Face.csproj" />
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
+    <!-- memories (memory_sync_selftest) keeps real memory stores the same through the hosts. -->
+    <ProjectReference Include="..\Martlet.Memory\Martlet.Memory.csproj" />
   </ItemGroup>
 </Project>

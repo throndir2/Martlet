@@ -213,7 +213,9 @@ request or handles credentials.
 
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
-recognition choice (`on (default)` until it is turned off) and sharing choice,
+recognition choice (`on (default)` until it is turned off; a shared setting) and
+`sharing` (the voice list travels while *Keep Martlet the same on all my
+computers* is on, from `cluster-sync.txt`),
 whether a Martlet folder (optional absolute `martletDirectory`, default the
 installed release's `Desktop` folder; `Invoke-MartletMcp.ps1` passes this
 checkout's Desktop build when it exists) includes the sherpa-onnx runtime and
@@ -341,15 +343,53 @@ from a data directory (optional absolute `dataDirectory`, default the current
 user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
 the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
-`replies`, `prompts`, `memory`, `lorebooks`, `character`, `talk`,
-`speech-display`, `appearance`, or a newer Martlet's), `updatedBy`, `updatedAt`,
+`replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
+`talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
+`smart-home`, `updates`, a computer's own `pc.<device ID>`, or a newer
+Martlet's), `updatedBy`, `updatedAt`,
 `revision`, `usesKey`, `characters`, `off` (the value is null) and `here`:
 `same` when this PC had exactly that value at its last sync, `different` while
 it can't follow it yet (or changed it since), `unknown` when it never had the
 setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
-memory, how you talk and the theme. It never returns keys, key digests,
-personality, prompt or lorebook text, and contacts nothing.
+memory, how you talk, speech bubbles and subtitles, the theme, recognizing
+voices (`on`), what Martlet may do with Home Assistant (`control`,
+`allow_sensitive`, `model_tools`) and app updates (`checks`,
+`interval_minutes`, `auto_install`, `auto_update_hosts`). It never returns keys,
+key digests, personality, prompt, lorebook or emote text, or the Voice ID
+voiceprint, and contacts nothing.
+
+`memory_sync_status` reads [one memory on every computer](MEMORY.md#one-memory-on-every-computer)
+from a data directory (optional absolute `dataDirectory`, default the current
+user's; the disposable one in `Invoke-MartletMcp.ps1`): `sync` as above,
+`state` (`none` before the first memory sync, else `loaded`), `syncedAt`,
+`facts` (how many facts the store had at the last sync), `byComputer` (how many
+of those each computer wrote) and `forgotten` (the tombstones every computer
+agreed on). It reads only `memory-sync.json` (IDs, revisions, digests and device
+IDs), never a fact, and contacts nothing.
+
+`memory_sync_selftest` (no arguments) rehearses shared memories end to end with
+the production code (`src\Martlet.NodeLinkCheck`, mode `memories`,
+`MemoryRehearsal.cs`; returns `{exitCode, report}`): two real gateways
+(`lab-memory-1`, `lab-memory-2`; Kestrel, pinned TLS, signed requests, an
+in-memory `memories.json`) and three simulated desktops (`lab-desktop-a..c`),
+each with a real `Martlet.Memory` store in a temporary folder, the desktop's
+paired client (`HostMemories.cs`) and the real sync engine
+(`Martlet.Core.Sync.MemorySyncNode`) wired as the desktop wires them. Its steps:
+A remembers a typed and a conversation fact and both hosts keep them; B takes
+them (same IDs, revisions and provenance) and recalls the cat fact; B edits it
+and A takes revision 2; A forgets a fact and every computer forgets it for good;
+offline edits on A and B of different facts (both kept) and of the same fact
+(the later edit wins); a host that was down while A remembered a fact gets it
+after restarting; a new computer with a fact of its own takes everything and
+shares its fact; a fact expiring in two seconds is forgotten everywhere once
+expired; a newer Martlet's fact passes through hosts and desktops without
+entering this version's stores; a new memory folder takes everything again and
+forgets nothing; 600 old conversation facts from two computers end as the same
+512 everywhere (oldest conversation facts forgotten, typed facts kept); no fact
+in any desktop data folder while the hosts' copy holds them; and an unsigned
+request refused (HTTP 401). Synthetic facts, loopback only; the folder is
+deleted.
 
 `settings_sync_selftest` (no arguments) rehearses shared settings end to end
 with the production code (`src\Martlet.NodeLinkCheck`, mode `settings`,
@@ -1294,9 +1334,10 @@ these status texts, as does the talk window's `LiveStatus` (the line under "Mart
 `PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
 `PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
 its field loses focus, on Enter or two seconds after typing stops, then syncs);
-like `PeopleRecognize` (ticked by default),
-`PeopleShare`, `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
-change data or download and need `--allow-ui-effects`. On Devices, `Node-<id>`
+like `PeopleRecognize` (ticked by default; a shared setting),
+`PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet`, they
+change data or download and need `--allow-ui-effects` (People has no sharing
+switch of its own: the list follows `ClusterSync`). On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
 `Node-pc:<device ID>` for another Martlet computer that runs no host service,
 `Node-cloud:<server>`, `Node-add`, `Node-missing:brain`) and
@@ -1341,7 +1382,11 @@ roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked 
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and
-what was last taken from another computer), `SettingsSyncWaiting` (text, shown
+what was last taken from another computer), `MemorySyncStatus` (text: how many
+facts Martlet remembers, on how many hosts they are the same, when checked, how
+many were taken from or forgotten because of other computers, or why it waits:
+no host paired, the switch or memory off, the store in use; never a fact),
+`SettingsSyncWaiting` (text, shown
 only when this PC can't follow a setting yet: which, and why),
 `SettingsSyncClaim` (*Use this PC's settings on all my computers*; it changes
 every computer's settings, so it needs `--allow-ui-effects` and then
@@ -1684,7 +1729,9 @@ measured from the top-left of the character's screen). `ui_select` and
 `ui_set_text` on them save `speech-display.json` (`StaticBubble`,
 `BubbleOffsetX`, `BubbleOffsetY`), so they need `--allow-ui-effects`;
 `SetupCharacterSpeechDisplay` reads back the saved position, or says an offset
-isn't a number from -4000 to 4000.
+isn't a number from -4000 to 4000. Where the bubble sits depends on the
+computer's screens, so it stays with each computer; whether bubbles and
+subtitles show is the same on all of them (the `speech-display` shared setting).
 
 Companion › Character's *Your characters* card lists the built-in character and
 every [shared character](CLUSTER.md#the-shared-character-models) in the order
@@ -1891,17 +1938,17 @@ service type and lists who answers; `SmartHomeSetupCancel` only hides the setup
 form. Everything else needs `--allow-ui-effects` and a disposable Home Assistant:
 `SmartHomeCheck` (*Set up a new one*, reads the onboarding state of the address
 in `SmartHomeAddress`), `SmartHomeFoundUse-<n>`, `SmartHomeSignIn` (opens the
-browser), `SmartHomeConnect` (with `SmartHomeToken`), `SmartHomeDisconnect`, the
-setup form (`SmartHomeOwnerName`, `SmartHomeOwnerUser`, `SmartHomeOwnerPassword`,
-`SmartHomeOwnerConfirm`, `SmartHomeSetupControl`, `SmartHomeSetupShare`,
-`SmartHomeSetUp`), `SmartHomeShareOnConnect`, `SmartHomeInstall-<host>` and
-`SmartHomeHostUse-<host>`, `SmartHomeShare`, `SmartHomeStopShare` (asks first),
-`SmartHomeUseShared`, `SmartHomeShareCheck`, `SmartHomeDevicesRefresh`,
+browser), `SmartHomeConnect` (with `SmartHomeToken`), `SmartHomeDisconnect`
+(asks first; with a paired host and the switch on it disconnects every
+computer), the setup form (`SmartHomeOwnerName`, `SmartHomeOwnerUser`,
+`SmartHomeOwnerPassword`, `SmartHomeOwnerConfirm`, `SmartHomeSetupControl`,
+`SmartHomeSetUp`), `SmartHomeInstall-<host>` and
+`SmartHomeHostUse-<host>`, `SmartHomeShareCheck`, `SmartHomeDevicesRefresh`,
 `SmartHomeDeviceAdd-<n>`, `SmartHomeDeviceIgnore-<n>`, `SmartHomeAddMqtt`,
 `SmartHomeUpdateInstall-<n>` and `SmartHomeRestart` (both ask first;
 `ConfirmationYes`), `SmartHomeBackup`, `SmartHomeOpen` and
 `SmartHomeManageRefresh`. Snapshots return `SmartHomeStatus` (connected or not,
-address, name, version, shared), `SmartHomeAddress`, `SmartHomeFindStatus`,
+address, name, version, whether the other computers use it), `SmartHomeAddress`, `SmartHomeFindStatus`,
 `SmartHomeFound-<n>` (*Home: http://192.168.1.20:8123 (Home Assistant
 2026.9.4)*), `SmartHomeSetupTarget`, `SmartHomeSetupStatus`,
 `SmartHomeHost-<host>` (whether that host runs or can run Home Assistant, or
@@ -2199,7 +2246,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status` and `voices_engine_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `prompts_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `thinking_steps_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `character_status`, `hearing_check`, `echo_check`, `pc_audio_check`, `context_check`, `thinking_steps_check`, `character_models` and `character_actions` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

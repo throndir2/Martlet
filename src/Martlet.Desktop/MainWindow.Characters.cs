@@ -286,6 +286,11 @@ public partial class MainWindow
     private async Task SyncCharacterModelsAsync()
     {
         if (characterModelBusy || closing || store is null) return;
+        if (!clusterEnabled)
+        {
+            characterModelStatus = "Keep Martlet the same on all my computers is off, so your characters stay on this PC.";
+            return;
+        }
         var hosts = NetworkMap.Hosts(Inputs());
         if (hosts.Count == 0)
         {

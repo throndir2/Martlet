@@ -61,8 +61,10 @@ what each one is.
   with a check box, its tag, its voice cue and when to use it, a **Try** button
   (while the character shows) and what it changes. Edits save as you type, per
   model (by its ID, the same ID as the shared character list), in
-  `character-actions.json` on this PC. **Use the model's own names** goes back to
-  the defaults.
+  `character-actions.json`, which is the same on all your computers (the
+  `character-actions` [shared setting](CLUSTER.md#one-martlet-on-every-computer)):
+  a model the Thinking model named on one computer is named on all of them.
+  **Use the model's own names** goes back to the defaults.
 - **Voice cues**: a voice cue links an emote or motion to a sound or tone the
   voice engine performs, by meaning across engines (`laugh` is Chatterbox
   Turbo's `[laugh]` and Dia's `(laughs)`). When the voice speaks that tag, the

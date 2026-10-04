@@ -124,6 +124,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeSettingsSync();
+        InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
         InitializeNearby();
@@ -193,6 +194,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartSettingsSync();
+        StartMemorySync();
         StartNetwork();
         StartApiKeys();
         StartVoiceSync();
@@ -325,7 +327,10 @@ public partial class MainWindow : ThemedWindow
     private async void Memory_Click(object sender, RoutedEventArgs e)
     {
         if (memory is null || closing || saving || model?.IsRunning == true) return;
-        new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog();
+        memoryWindowOpen = true;
+        try { new MemoryWindow(memory, setupOperations) { Owner = this }.ShowDialog(); }
+        finally { memoryWindowOpen = false; }
+        QueueMemorySync();
         await RefreshAsync();
     }
 
