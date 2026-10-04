@@ -1109,13 +1109,16 @@ sentence at a time, the way OpenRouter streams; a fixture Martlet host voice (a
 quiet tone, NOT AI) fails on the `failAt`-th piece (1-4, default 1) it is asked
 to say, as `voiceFailure`: `server` (default; the host's voice worker failed,
 `worker.failed`), `unavailable` (it is reloading, `worker.unavailable`),
-`stall` (no audio until the voice's time runs out, shortened to a few seconds)
+`stall` (no audio until the voice's time runs out, shortened to a few seconds),
+`slow` (every piece slower than real time: half of its audio, a 1.5 s pause,
+then the rest, as Chatterbox streams on a busy host's graphics card)
 or `none`; a fixture speaker opens no device and plays nothing. It returns
 `reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
 turn's `SpeechFailure`), `provider` and `failedJob`, `piecesAsked`,
 `piecesSpoken`, `speechLimitReached`, `speakerOpens`, `samplesPlayed`,
-`mayHavePlayed`) and `captions`, what the speech bubble and subtitles were
+`mayHavePlayed`, and `pauses` and `pausedMs`: how often and how long the
+speakers ran dry mid-piece waiting for the voice's next audio) and `captions`, what the speech bubble and subtitles were
 given (`complete`, `shown`, `spoken`, `unsaid` and each line's `text`, `atMs`
 and `spoken`): a line as each piece starts playing and, after the voice
 failed, every sentence it couldn't say, one after another for its reading
@@ -1129,7 +1132,13 @@ is streamed a word at a time instead, like a model's tokens, and spoken with
 speech breaks chosen like `voice_tags`' (`dataDirectory`'s `persona`, else the
 one Martlet uses, else the defaults; `breaks` on top); `voice.pieces` lists
 exactly what the voice was asked to say, in order, with `voice.persona` and
-`voice.breaks`. Use `voiceFailure` `none` to hear every piece. It reads no
+`voice.breaks`. Use `voiceFailure` `none` to hear every piece. With `slow`,
+`ok` needs every piece spoken whole, nothing stopped, and the reply latency
+line saying *The voice paused N times for X ms in all, waiting for its next
+audio.* with at least one pause per piece of about the gap each. Before the
+playback fix, a pause that long ended the voice after 1 s
+(`PlaybackFailed`, `StreamTruncated`): a paired host making speech slower than
+real time cut each reply short. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
@@ -1183,7 +1192,10 @@ to the total: *end of speech*, *recording*, *Voice ID*, *speech-to-text*,
 *voice authorization*, *voice synthesis*, *playback start* and *speakers*
 (steps that didn't happen are left out). It goes on with the time to the first
 words and audio from the reply's start, the number of spoken pieces, how much
-speech the first piece held and how long it took to make, and the model IDs
+speech the first piece held and how long it took to make, when the speakers ran
+dry mid-reply waiting for a voice made slower than real time how often and how
+long (*The voice paused 2 times for 3120 ms in all, waiting for its next
+audio.*; left out below 100 ms), and the model IDs
 (`Models: Thinking ..., voice ..., speech-to-text ...`). What each step covers
 is in [Voice latency](VOICE_LATENCY.md#measure-first-the-reply-latency-line).
 
@@ -1194,9 +1206,11 @@ user's) for the newest `replies` (1-500, default 20) and returns `measured`
 audio from the reply's start), `firstAudio` (from the moment that counts for
 you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
 Median, P90, Min, Max}` in ms), `steps` (the same for every step),
-`slowestSteps` (the five with the largest median) and `newest` (each reply's
+`slowestSteps` (the five with the largest median), `voicePauses` (`replies`
+whose voice paused, `pauses` in all and `pausedMs` statistics) and `newest` (each reply's
 `at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
-`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `models`,
+`spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
+`voicePausedMs`, `models`,
 `interrupted`, `legacy`). It only reads the log: no audio, network or provider
 request.
 

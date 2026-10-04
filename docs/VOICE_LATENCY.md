@@ -60,6 +60,17 @@ sending them. MCP's `latency_report` summarizes the newest lines (median and
 see [MCP](MCP.md#latency). The Chatterbox service also logs, per reply, how
 much speech it made and how long it took (never the words).
 
+A voice made slower than real time (Chatterbox streams in growing chunks, and a
+busy or smaller graphics card can take longer to make each chunk than it lasts)
+leaves the speakers waiting mid-sentence. The voice then pauses until the next
+audio arrives, for up to 10 s, instead of being cut short (it used to stop after
+1 s with `PlaybackFailed, audio StreamTruncated`, dropping the rest of the reply),
+and the line ends with *The voice paused 2 times for 3120 ms in all, waiting
+for its next audio.* A Martlet host's own log (Diagnostics, *Host gateway*)
+says, for each reply it spoke, how much speech it made, when its first audio
+left and whether that was slower than real time. Pauses don't change the time
+to the first audio.
+
 ## Where the time goes today
 
 From the desktop log before this change (it measured from the reply's start
