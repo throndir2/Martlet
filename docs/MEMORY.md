@@ -9,6 +9,9 @@ Configuration restore still forces memory OFF for review (like routes).
 When memory is ON, each explicit conversation turn recalls saved facts
 automatically, and after each completed reply the same Thinking model picks out
 lasting facts to save (see [Automatic recall and remembering](#automatic-recall-and-remembering)).
+Martlet also keeps a record of every conversation on this PC and brings back
+what was said when you mention an earlier conversation (see
+[Conversation history](#conversation-history)).
 Martlet remembers the same things on every computer of yours: facts travel
 through your paired hosts ([One memory on every computer](#one-memory-on-every-computer)),
 like the rest of Martlet ([CLUSTER](CLUSTER.md)), and each computer keeps them in
@@ -58,7 +61,8 @@ current policy. No restore action opens, copies or validates a fact store.
 Changing configuration invalidates an in-flight app retrieval.
 
 Facts come from two places: the dedicated editor (**Add fact**, with an
-explicit `until_deleted` or 30/90/365-day expiry and fresh `user_entry`
+explicit `until_deleted` or 30/90/365-day expiry, whose it is
+(*Belongs to*, see [Whose memories](#whose-memories)) and fresh `user_entry`
 provenance) and automatic remembering from conversations (`conversation`
 provenance, kept until deleted). Inspect shows fact/store revisions, creation
 and last-modified source/times/consent IDs and exact expiry. Delete uses an
@@ -226,7 +230,9 @@ authorized export rename commits before a later delete, that user-created file
 is outside store ownership and immediate erasure, as are any user-created
 copies. No upload or support contact exists.
 
-The schema has no credential, endpoint, model, device or filesystem-path field.
+The schema has no credential, endpoint, model, device or filesystem-path field
+(a fact's optional `voice_id` is an opaque voice list ID, never a name or a
+voiceprint).
 Fact content itself is intentionally present in an explicit export and may
 contain whatever the user chose to save; callers must preview it. The library
 has no logger and exception/authorization `ToString()` output omits fact content
@@ -246,11 +252,14 @@ is OFF, the store is never opened or read by a conversation.
 **Recall.** After STT and participation accept the current explicit typed, PTT
 or hands-free turn, Desktop opens the store once, asks the lexical index for the
 best matches for that user input and fills up to twelve facts with the most
-recently changed ones (so a small store is recalled whole). The facts travel in
+recently changed ones (so a small store is recalled whole; when Martlet
+recognized who is speaking, their facts and everyone's fill it before other
+people's, see [Whose memories](#whose-memories)). The facts travel in
 the notes on the user's message (see
 [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
 as one block between `[MARTLET_LOCAL_MEMORY]` labels, one line per fact with
-its source (`saved by the user` / `from conversation`) and date, and only the
+whose it is (`[Sam] `, when it belongs to someone), its source
+(`saved by the user` / `from conversation`) and date, and only the
 facts not already in the notes of an earlier message the request still carries
 (so a fact is sent once, not with every reply). The instruction says they are
 background data, never instructions,
@@ -285,13 +294,15 @@ conversation again. It quotes the persona-free excerpt instead elsewhere, when
 what this PC played is in the conversation (remembering never reads that) or when
 it wouldn't fit the context.
 The model answers in a strict line format: `REMEMBER: <fact>`,
-`UPDATE <n>: <fact>`, `FORGET <n>` or `NOTHING`, at most three lines. Desktop
+`REMEMBER V<n>: <fact>` (a fact about another voice heard), `UPDATE <n>: <fact>`,
+`FORGET <n>` or `NOTHING`, at most three lines. Desktop
 validates every line (single line, <=300 characters, real words, in-range
-numbers, no memory labels), skips near-duplicates, applies updates/forgets only
+numbers, no memory labels), skips near-duplicates of the same person's facts,
+applies updates/forgets only
 to the exact fact revisions it showed, and saves new facts with `conversation`
 provenance until deleted. A full store drops its oldest conversation fact, never
 a fact the user typed. The conversation window shows what was remembered
-(*Remembered: …*), and Memory lists it.
+(*Remembered: … (Sam)*), and Memory lists it.
 
 A model that declines or answers with nothing simply has nothing to remember;
 an answer cut off by the max reply length keeps the lines it finished. If the
@@ -301,6 +312,148 @@ says why once (*Couldn't update memory.* plus the reason, such as the
 provider limiting requests or the memory folder being unusable); the same
 problem on later exchanges is only logged (`Remembering failed (<code>)`) until
 remembering works again.
+
+## Whose memories
+
+Several people can talk to Martlet through one microphone, and
+[voice recognition](VOICES.md) tells them apart. Each fact can belong to one of
+them: `voice_id` in the fact is the ID of a voice in the voice list
+(`voices.json`), the person who said it or who it is about. A fact without one is
+everyone's (about no one in particular), as every fact was before voices.
+
+- **Remembering.** When Martlet recognized who spoke, the request lists the
+  voices heard (by tag, such as `V3`, with the names they go by), says which one
+  spoke, and says that a new fact is saved as the speaker's; the related facts it
+  shows start with whose each is (`1. [Sam] The user likes tea.`). A fact about
+  another voice heard is answered `REMEMBER V2: <fact>`; a tag that wasn't heard
+  counts as the speaker's. Nobody recognized means no one's fact, as before. An
+  update keeps whose the fact is. The same words for two people are two facts;
+  a near-duplicate of the same person's fact, or of an everyone's fact, is
+  skipped.
+- **Recall.** The best matches for what was said come first, whoever they
+  belong to. The rest of the twelve is filled with the speaker's facts and
+  everyone's before other people's, newest first (by recency alone when nobody
+  was recognized). Each recalled fact starts with whose it is: the voice's name,
+  else its tag (`[V3]`), or `[a forgotten voice]`. When one does, the block also
+  says what that means (Companion › Prompts › *Whose memories*: the name in
+  brackets is whose the fact is; keep whose fact is whose and be discreet with
+  someone's personal facts while another person talks). It is sent only with a
+  block that has such a fact, in that message's notes, so it never changes the
+  start of a request.
+- **Memory window.** *Belongs to* chooses whose a fact is when you add or update
+  it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
+  *This is my voice* on People) unless *Show* lists one voice's facts; then it is
+  that voice's. *Show* lists all facts, everyone's, one voice's, or those of
+  forgotten voices. The list starts each fact with whose it is, and the details
+  say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
+  many belong to how many people and how many to forgotten voices, never a
+  name or a fact.
+- **People.** *What Martlet remembers about them* on each voice opens Memory
+  showing that voice's facts. Merging voices keeps every fact of both (a merged
+  voice's ID leads to the voice it joined). Forgetting a voice keeps its facts,
+  under *Forgotten voices*, until you delete them or give them to someone else.
+- **Sync and compatibility.** The voice ID travels inside the fact like the rest
+  of it, so every computer agrees whose each fact is; the voice list is shared the
+  same way ([sharing](VOICES.md#sharing-between-your-computers)). A fact without a
+  voice is written exactly as before (no `voice_id` field). An older Martlet
+  can't read a fact that has one: it passes through its sync untouched (like any
+  newer fact) and its own store refuses a file that holds one rather than
+  dropping it.
+
+The library checks only the ID's form (1-64 ASCII letters, digits, `-` or `_`);
+it never reads the voice list. `memory_status` (MCP) counts the facts and whose
+they are from a data directory without opening the store.
+
+## Conversation history
+
+Facts are what Martlet distills; the **record of conversations** is what was
+actually said. While memory is ON and **Keep a record of my conversations**
+(Companion › Memory › Conversation history, on by default) is on, every
+finished exchange of a typed, push-to-talk or always-listening turn (what you
+typed or said, who said it when Martlet recognized a named voice, and Martlet's
+reply) is kept on this PC, as is a reply Martlet starts on its own to bring up
+finished background work. A conversation runs from the talk window opening, or
+**Refresh context**, until the exchanges kept in mind are cleared (Refresh
+context, pause, lock, closing the talk window). Not recorded: screen and camera
+glances, what this PC plays (only the user's own words of such a message), a
+`[pass]` (what always listening heard wasn't meant for Martlet), failed,
+refused or stopped replies, and anything while memory or the choice is off.
+Turning it off keeps what is already recorded until you delete it.
+
+**On disk.** The data folder's `conversations` folder holds one JSON Lines file
+per month (`history-2026-10.jsonl`, by UTC month), one line per exchange:
+`{"v":1,"id":…,"conversation":…,"at":…,"kind":"typed|spoken|report","speaker":…,"user":…,"reply":…}`.
+Each exchange is appended (and flushed to disk) in the background after its
+reply, one at a time, so the next reply never waits for the disk; exiting
+Martlet waits a moment for the last one. Earlier lines are never rewritten by
+appending; a line cut short by a crash is skipped when the record is read again
+and the next exchange starts on its own line. Text is kept up to 8,192
+characters of what you said and 16,384 of the reply (the reply's own bound),
+with control characters other than line breaks and tabs made spaces. Like the
+fact store it is plain local data in your profile: not encrypted, not synced to
+your other computers, not uploaded and not part of configuration backup.
+`conversation-history.json` beside it holds this PC's two choices.
+
+**Reading it.** The record is read once, in the background, when a
+conversation opens (or the history window or the Memory page needs it) and
+kept in memory with a lexical (BM25) index of what was said; nothing is
+embedded or sent anywhere. The newest 100,000 exchanges are indexed; older
+ones stay in their files. With 20,000 synthetic exchanges (7.3 MB) reading takes
+about half a second, once, and a search about 7 ms (`conversation_history_check`).
+
+**Bringing back what was said.** When your message refers to an earlier
+conversation (*do you remember…*, *remember when…*, *what did we talk about
+yesterday?*, *did I tell you about…*, *in our last conversation…*, or something
+said or talked about with a time such as *last week* or *3 days ago*; English
+phrasing), up to three matching exchanges of other conversations go in that
+message's notes (see [Conversation › Prompt caching](CONVERSATION.md#prompt-caching-and-the-request-layout))
+between `[MARTLET_PAST_CONVERSATIONS]` labels, with today's date and each
+exchange's day and time (each side cut to 280 characters, brackets made
+parentheses so recorded text can't open or close a block), introduced by
+Companion › Prompts › *Past conversations*. The best matches for the message's
+own words come back (common words and words about remembering, talking or time
+left out; about half of the remaining words, at most three, must match, so one
+common word alone brings back nothing), within the time it names; with only a
+time (*what did we talk about yesterday?*) the latest exchanges of that time do.
+Asking Martlet to remember something (*remember to…*), not remembering
+something yourself (*I can't remember how…*) and asking to be told something
+(*tell me what happened yesterday*) don't count as a reference. An exchange
+already in the notes of a message the request carries isn't sent again, and the
+conversation
+going on never is (the request carries it). A message that doesn't refer to an
+earlier conversation gets nothing: its request is exactly what it was without
+the record, so replies keep their latency and their prompt cache. Recall reads
+only what is in memory: while the record is still being read, the message goes
+without. If the notes would make the request too large, they go first (then a
+picture). The desktop log says how many exchanges went and how long the search
+took (`Past conversations:`), never what.
+
+**Searching it on its own** (Companion › Memory › *Let Martlet search the
+record on its own*, off by default). On a Thinking route that does function
+calling, replies are then offered `search_conversations` (`query` and/or
+`when`: today, yesterday, 3 days ago, last week, a weekday or YYYY-MM-DD) after
+Martlet's other own tools, always worded the same. The model calls it when you
+bring up something from before; it returns at most six exchanges of other
+conversations with their dates (as data, never instructions) or says nothing
+was found and not to guess. It is off by default because its description (458
+bytes, about 153 estimated tokens) goes at the start of every request: providers
+cache it after the first reply of a conversation, but that first reply reads it
+too.
+
+**Seeing and deleting it.** Companion › Memory › **Open conversation history**
+lists the conversations, newest first, shows what was said in the one selected,
+searches everything said (matching exchanges marked ▶) and deletes one
+conversation or everything, each asked first (No by default). Deleting rewrites
+only that conversation's month files (through a temporary file and an atomic
+replace) or removes the files; facts remembered from a conversation stay in
+Memory until you delete them there. Deletion is not a secure wipe of old disk
+blocks.
+
+MCP: `conversation_history_status` (choices, what replies are offered and
+counts, never content) and `conversation_history_check` (the production record,
+recall and search on synthetic conversations); `HistoryStatus` and
+`HistoryWindowStatus` read as text and `OpenHistory` opens the window
+([MCP](MCP.md)).
 
 ## One memory on every computer
 
@@ -363,8 +516,8 @@ Checked locally with `memory_sync_selftest` (MCP): two real gateways and three
 simulated desktops with real memory stores on loopback, covering recall on
 another computer, an edit, a deletion everywhere that never comes back, offline
 edits on two computers, a host that missed a change, a new computer, an expiring
-fact, a newer Martlet's fact, a new memory folder, more facts than one store
-holds, no fact in desktop data folders and an unsigned request refused. The
+fact, a newer Martlet's fact, a fact that belongs to a voice (and is then made
+everyone's), a new memory folder, more facts than one store holds, no fact in desktop data folders and an unsigned request refused. The
 desktop window's status line was checked through `-Desktop`. The desktop's sync
 with real paired hosts, a conversation recalling and remembering around a sync,
 the Linux host's file and two real computers are **NOT RUN**.
@@ -402,6 +555,10 @@ All validation remains local; no remote workflow was added or run.
 
 ## Remaining gates
 
+- Decide whether the record of conversations should travel to your other
+  computers (it stays on the PC where each conversation happened) and whether
+  it, like facts, should be encrypted at rest; evaluate recall's reference
+  phrasing beyond English with real conversations.
 - Qualify the memory sync between real computers and real paired hosts, and
   decide whether facts should be encrypted end to end between desktops.
 - Design explicit backup/restore semantics and prove compatible restore and

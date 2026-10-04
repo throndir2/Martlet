@@ -116,7 +116,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "folder) includes the voice recognition runtime and models, whether any Parakeet model is downloaded (parakeet) and, in " +
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
-            "and counts of known voices (never names, voiceprints or audio). Read-only; no audio, network or models run.", new
+            "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
+            "(from the saved personas) and the most names one voice has. Read-only; no audio, network or models run.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" }
@@ -134,6 +135,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             speechDirectory = new { type = "string" },
             models = new { type = "array", maxItems = 3, items = new { type = "string", @enum = Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id).ToArray() } },
             phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
+        }),
+        Tool("voices_naming_check", "Rehearse learning names (Companion › People) with the production checks and changes on a fixture " +
+            "voice list in memory: the companion's own names (persona names, \"You are ...\" in persona text, \"I'm ...\" in Martlet's " +
+            "reply) are never given to a voice, a heard voice drops one it learned by mistake, a voice keeps many names and shows the " +
+            "one it asked for (CALL), a wrong learned name is dropped (NOT) but never one the owner typed, names go only to voices " +
+            "heard, and two voices merge into the owner's (SAME) at most once per exchange. Optional dataDirectory supplies the saved " +
+            "personas' names (one more scenario); optional answer (a Thinking answer of NAME/CALL/NOT/SAME lines about V1-V3) and " +
+            "reply (Martlet's reply) are checked against the same fixture. Never reads or writes the saved voice list; no audio, model " +
+            "or network.", new
+        {
+            dataDirectory = new { type = "string" },
+            answer = new { type = "string" },
+            reply = new { type = "string" }
         }),
         Tool("voices_engine_check", "Run the voice recognition engine that ships in a Martlet folder (optional absolute " +
             "martletDirectory, default the installed release's Desktop folder): load its sherpa-onnx runtime and the WeSpeaker and " +
@@ -172,8 +186,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "its own syntax with each tag's engine-independent cue, the Thinking prompt it adds (Companion > Prompts > Voice sounds " +
             "and tones, from dataDirectory's settings when given), the pieces the real speech segmenter hands that engine for a " +
             "spoken reply, broken where the persona's speech breaks allow (Personality > Where the voice pauses: dataDirectory's " +
-            "persona by name, else the one Martlet uses, else the defaults; \"breaks\" overrides commas, periods, questionMarks, " +
-            "exclamationMarks and shortEndingWords), the text the chat and captions show and, with characterTags (the character's " +
+            "persona by name, else the one Martlet uses, else the defaults;             \"breaks\" overrides periods, questionMarks, " +
+                        "exclamationMarks and shortEndingWords; commas, semicolons and dashes never break), the text the chat and captions show and, with characterTags (the character's " +
             "tags such as \"{blush}\"), the character cues found in each spoken piece (piece index, -1 for cues after the last " +
             "words; tag; character offset). Synthesizes and contacts nothing.", new
         {
@@ -331,6 +345,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("memory_status", "Read what Martlet remembers, and whose, from a data directory: whether memory is on and where it is kept " +
+            "(settings.json), then the memory store's facts counted by where they came from (typed, conversation), how many expire, and " +
+            "whose they are: everyone's, each voice they belong to by its tag from voices.json (V3, whether it is named or the owner's) " +
+            "and those of forgotten voices. Never a fact's text, a name, a voice ID or a path. Read-only (it never opens or locks the " +
+            "store); contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("memory_sync_selftest", "Rehearse one memory on every computer end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, signed requests, in-memory memories.json) and three simulated desktops, each with a real Martlet.Memory " +
             "store in a temporary folder, the desktop's paired client and the real memory sync engine (Martlet.Core.Sync.MemorySyncNode). " +
@@ -443,7 +465,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
             "fails on the failAt-th piece (1-4, default 1) it is asked to say, as voiceFailure: server (the host worker failed), " +
-            "unavailable (it is reloading), stall (no audio until the voice's time runs out) or none; a fixture speaker opens no " +
+            "unavailable (it is reloading), stall (no audio until the voice's time runs out), slow (every piece slower than real " +
+            "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
+            "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; a fixture " +
+            "speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
             "spoken; after the voice fails every unsaid sentence is still shown, one per reading time. ok means the text completed, " +
@@ -620,6 +645,25 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "reasoning takes. Loopback only; reads no credentials.", new
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
+        }),
+        Tool("conversation_history_status", "Companion > Memory > Conversation history, from a data directory: whether memory is " +
+            "on, this PC's choices (conversation-history.json: keep a record of conversations, on by default; let Martlet search it " +
+            "on its own, off by default), whether exchanges are recorded and recalled when a message mentions an earlier " +
+            "conversation, whether replies are offered search_conversations (exactly as the Thinking model gets it, with its size " +
+            "in UTF-8 bytes and estimated tokens) and the Past conversations prompt, and what the record in the data folder's " +
+            "conversations folder holds: files, bytes, conversations, exchanges, unreadable lines and the oldest and newest times. " +
+            "Never what was said. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("conversation_history_check", "Rehearse the record of conversations with the production code (ConversationHistory and " +
+            "PastConversations) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
+            "cut short by a crash skipped after a restart, an ordinary message recalling nothing, \"Do you remember...\" and " +
+            "\"What did we talk about yesterday?\" bringing back the right exchanges (never the conversation going on), " +
+            "search_conversations by words and by time and its answers, deleting one conversation and everything, and reading " +
+            "bulkExchanges (1,000-100,000, default 20,000) exchanges with recall timings. Nothing leaves this PC.", new
+        {
+            bulkExchanges = new { type = "integer", minimum = 1_000, maximum = 100_000 }
         })
     ];
 
@@ -704,6 +748,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
                     cancellation),
+                "voices_naming_check" => VoiceNamingCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"),
+                    OptionalString(arguments, "reply")),
                 "voices_engine_check" => await Task.Run(() => VoicesEngineCheck(arguments), cancellation),
                 "f5_voices" => F5Voices(arguments),
                 "voice_recording_check" => await VoiceRecordingCheckAsync(RequiredString(arguments, "path"), cancellation),
@@ -731,6 +777,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "settings_sync_status" => SettingsSyncStatus(arguments),
                 "settings_sync_selftest" => await NodeLinkCheckAsync(cancellation, "settings"),
                 "memory_sync_status" => MemorySyncStatus(arguments),
+                "memory_status" => await MemoryStatusAsync(arguments, cancellation),
                 "memory_sync_selftest" => await NodeLinkCheckAsync(cancellation, "memories"),
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
@@ -761,6 +808,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
+                "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
                 _ => throw new ArgumentException($"Unknown tool '{name}'.")
             };
             return new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result) } } };
@@ -791,10 +840,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             try
             {
                 var list = Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(path));
+                Martlet.Core.Speakers.CompanionNames? companion;
+                try { companion = VoiceNamingCheck.SavedCompanion(directory).Names; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+                {
+                    companion = null;
+                }
+                companion ??= Martlet.Core.Speakers.CompanionNames.Martlet;
                 roster = new
                 {
                     state = "loaded", voices = list.Live.Count, named = list.Live.Count(v => v.Named), owner = list.Live.Count(v => v.Owner),
                     withLearnedNames = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation)),
+                    // Voices that learned one of the companion's own names; Martlet drops it when it next hears them.
+                    withCompanionName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
+                        companion.Matches(n.Text))),
+                    mostNames = list.Live.Select(v => v.Names.Count).DefaultIfEmpty(0).Max(),
                     merged = list.Live.Sum(v => v.MergedVoices), tombstones = list.Voices.Count(v => v.Removed)
                 };
             }
@@ -1311,7 +1371,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             set.TryGetProperty(stop, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : current;
         breaks = breaks with
         {
-            Commas = Stop("commas", breaks.Commas), Periods = Stop("periods", breaks.Periods),
+            Periods = Stop("periods", breaks.Periods),
             QuestionMarks = Stop("questionMarks", breaks.QuestionMarks), ExclamationMarks = Stop("exclamationMarks", breaks.ExclamationMarks),
             ShortEndingWords = set.TryGetProperty("shortEndingWords", out var words) && words.TryGetInt32(out var count) ? count : breaks.ShortEndingWords
         };
@@ -1325,7 +1385,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         type = "object",
         properties = new
         {
-            commas = new { type = "boolean" }, periods = new { type = "boolean" }, questionMarks = new { type = "boolean" },
+            periods = new { type = "boolean" }, questionMarks = new { type = "boolean" },
             exclamationMarks = new { type = "boolean" },
             shortEndingWords = new { type = "integer", minimum = 0, maximum = Martlet.Core.Settings.SpeechBreaks.MaximumShortEndingWords }
         }
@@ -1334,7 +1394,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
     /// <summary>Speech breaks as MCP reports them (Personality › Where the voice pauses).</summary>
     internal static object Breaks(Martlet.Core.Settings.SpeechBreaks breaks) => new
     {
-        commas = breaks.Commas, periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
+        periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
         exclamationMarks = breaks.ExclamationMarks, shortEndingWords = breaks.ShortEndingWords, isDefault = breaks.IsDefault
     };
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's
@@ -1675,6 +1735,93 @@ internal sealed class McpServer(DesktopAutomation desktop)
             byComputer = state.Observed.Values.GroupBy(s => s.By, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal)
                 .Select(g => new { device = g.Key, facts = g.Count() }).ToArray(),
             forgotten = state.Forgotten.Count
+        };
+    }
+
+    /// <summary>What Martlet remembers and whose, from a data directory: the memory setting in settings.json, then the store's
+    /// authoritative file (".martlet-memory.v1.json", the name Martlet.Memory's MemoryStore uses) read as JSON without opening or
+    /// locking the store, and voices.json for the voices facts belong to. Counts and voice tags only: never a fact's text, a
+    /// name, a voice ID or a path.</summary>
+    private static async Task<object> MemoryStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var loaded = await new Martlet.Core.Settings.SettingsStore(directory).LoadAsync(cancellation);
+        var settings = loaded.Settings?.Memory;
+        var memory = loaded.State switch
+        {
+            Martlet.Core.Settings.SettingsLoadState.FirstRun => "not set up",
+            Martlet.Core.Settings.SettingsLoadState.Loaded when settings is null => "on (default)",
+            Martlet.Core.Settings.SettingsLoadState.Loaded => settings!.Enabled ? "on" : "off",
+            _ => "unreadable"
+        };
+        var storage = settings?.StoragePolicy == Martlet.Core.Settings.MemoryStoragePolicy.CustomLocalDirectory ? "custom folder" : "Martlet folder";
+        string folder;
+        try { folder = (settings ?? Martlet.Core.Settings.MemorySettings.Create()).ResolveDirectory(directory); }
+        catch (Martlet.Core.Contracts.ContractException) { return new { memory, storage, state = "unreadable" }; }
+
+        var roster = Martlet.Core.Speakers.VoiceRoster.Empty;
+        string voiceList;
+        var voicesPath = Path.Combine(directory, "voices.json");
+        try
+        {
+            if (File.Exists(voicesPath))
+            {
+                roster = Martlet.Core.Speakers.VoiceRoster.Parse(File.ReadAllBytes(voicesPath));
+                voiceList = "loaded";
+            }
+            else voiceList = "none";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            voiceList = "unreadable";
+        }
+
+        var path = Path.Combine(folder, ".martlet-memory.v1.json");
+        if (!File.Exists(path)) return new { memory, storage, state = "none", voiceList };
+        List<(string? Voice, string? Source, string? Retention)> facts = [];
+        try
+        {
+            byte[] bytes;
+            await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                if (stream.Length > 8 * 1024 * 1024) return new { memory, storage, state = "unreadable", voiceList };
+                bytes = new byte[stream.Length];
+                await stream.ReadExactlyAsync(bytes, cancellation);
+            }
+            using var document = JsonDocument.Parse(bytes);
+            foreach (var fact in document.RootElement.GetProperty("facts").EnumerateArray())
+            {
+                string? Text(params string[] names)
+                {
+                    var element = fact;
+                    foreach (var name in names)
+                        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out element)) return null;
+                    return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+                }
+                facts.Add((Text("voice_id"), Text("created_from", "source_kind"), Text("retention", "kind")));
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or
+            InvalidOperationException)
+        {
+            return new { memory, storage, state = "unreadable", voiceList };
+        }
+        var owned = facts.Where(f => f.Voice is not null).Select(f => roster.Resolve(f.Voice!)).ToArray();
+        return new
+        {
+            memory, storage, state = "loaded", voiceList,
+            facts = facts.Count,
+            typed = facts.Count(f => f.Source is "user_entry" or "user_reviewed_import"),
+            fromConversation = facts.Count(f => f.Source == "conversation"),
+            expiring = facts.Count(f => f.Retention == "expires_at"),
+            whose = new
+            {
+                everyone = facts.Count(f => f.Voice is null),
+                voices = owned.OfType<Martlet.Core.Speakers.KnownVoice>().GroupBy(v => v.Id, StringComparer.Ordinal)
+                    .OrderBy(g => g.First().Number)
+                    .Select(g => new { voice = g.First().Tag, named = g.First().Named, owner = g.First().Owner, facts = g.Count() }).ToArray(),
+                forgottenVoices = owned.Count(v => v is null)
+            }
         };
     }
 

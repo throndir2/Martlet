@@ -33,9 +33,16 @@ public sealed class LocalSpeechNativeTests
             Assert.True(first.Speaker!.Added);
             var other = voices.Recognize(Read("b1"));
             Assert.True(other.Speaker!.Added);
-            var again = voices.Recognize(Read("a2"));
+            // A name learned by mistake that is the companion's own is dropped when the voice is heard again.
+            var (applied, refused) = voices.Apply([new(VoiceUpdateKind.Name, first.Speaker.Voice!.Id, "Jane"),
+                new(VoiceUpdateKind.Name, first.Speaker.Voice.Id, "Sam")]);
+            Assert.Equal(2, applied.Count);
+            Assert.Empty(refused);
+            var again = voices.Recognize(Read("a2"), CompanionNames.From(["Jane"]));
             Assert.Equal(VoiceMatchKind.Known, again.Speaker!.Kind);
             Assert.Equal(first.Speaker.Voice!.Id, again.Speaker.Voice!.Id);
+            Assert.Equal(new[] { "Sam" }, again.Speaker.Voice.Names.Select(n => n.Text).ToArray());
+            Assert.Equal("Sam", voices.Roster.Resolve(first.Speaker.Voice.Id)!.DisplayName);
             Assert.Equal(2, voices.Roster.Live.Count);
             Assert.True(File.Exists(Path.Combine(data.FullName, LocalVoices.RosterFile)));
             using var reloaded = new LocalVoices(data.FullName, "desk-test");

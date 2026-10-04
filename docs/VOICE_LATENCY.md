@@ -50,7 +50,7 @@ after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of sp
 | Thinking authorization, connection | Per-request permission; then until the provider's response headers (network, TLS, queueing) |
 | Thinking before reasoning, hidden reasoning | A reasoning model's thinking before its first word (shown only when the provider streams it) |
 | Thinking first words | Until the first word when no reasoning was streamed |
-| first sentence | Until the first piece the voice can say (a clause of 24+ characters or a sentence) |
+| first sentence | Until the first piece the voice can say (a sentence; commas, semicolons and dashes never end a piece) |
 | voice authorization, voice synthesis | Per-piece permission; then until the voice's first audio arrives |
 | playback start, speakers | Handing audio to the speakers until Windows plays it |
 
@@ -59,6 +59,17 @@ sending them. MCP's `latency_report` summarizes the newest lines (median and
 90th percentile of the total and of every step, the slowest steps, the models);
 see [MCP](MCP.md#latency). The Chatterbox service also logs, per reply, how
 much speech it made and how long it took (never the words).
+
+A voice made slower than real time (Chatterbox streams in growing chunks, and a
+busy or smaller graphics card can take longer to make each chunk than it lasts)
+leaves the speakers waiting mid-sentence. The voice then pauses until the next
+audio arrives, for up to 10 s, instead of being cut short (it used to stop after
+1 s with `PlaybackFailed, audio StreamTruncated`, dropping the rest of the reply),
+and the line ends with *The voice paused 2 times for 3120 ms in all, waiting
+for its next audio.* A Martlet host's own log (Diagnostics, *Host gateway*)
+says, for each reply it spoke, how much speech it made, when its first audio
+left and whether that was slower than real time. Pauses don't change the time
+to the first audio.
 
 ## Where the time goes today
 
@@ -432,7 +443,7 @@ Research summary (sources checked 2026-10-03; vendor claims marked):
 | End of speech | 800 ms | 800 ms (500 ms setting) | 200-300 ms | Smart Turn v3 with a shorter pause |
 | Speech-to-text | not logged | logged | 0-150 ms | Parakeet 110M (about 90 ms) on a short utterance, or none: a Thinking model that hears takes the recording |
 | Desktop prep | about 115 ms | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
-| Thinking to first clause | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
+| Thinking to first sentence | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
 | Voice to first audio | 1.2-4.2 s | 0.35-0.4 s | 0.25-0.3 s | Done: CUDA graph and streaming; a GPU the character doesn't share |
 | Playback | 30-50 ms | 30-50 ms | 30 ms | |
 | **Total** | **5.5-10 s** | **about 1.5-2.5 s** (estimate) | **about 0.7-1.2 s** | |
