@@ -51,15 +51,17 @@ internal static class HostAgentRun
                 throw new OperationCanceledException();
 
             var input = answers;
-            if (role is not null && action.Verb == HostVerb.Add && input is null)
+            if (role is not null && action.Verb == HostVerb.Add)
             {
-                run.Status($"Reading what {role} needs on {name}...");
+                run.Status(input is null ? $"Reading what {role} needs on {name}..." : $"Checking {name}'s graphics cards for {role}...");
                 var described = await RunCommandAsync(connection, name, NodeCommandKinds.DescribeRole,
                     new Dictionary<string, string> { ["role"] = role }, null, run, line => !line.StartsWith("role.", StringComparison.Ordinal));
                 if (described.State != NodeCommandState.Succeeded)
                     throw new InvalidOperationException(described.Summary ?? $"Could not read the {role} role on {name}.");
                 var inputs = HostRemote.ParseRole(described.Output.Where(line => line.StartsWith("role.", StringComparison.Ordinal)));
-                input = HostInputDialog.ForRole(run, name, role, inputs, recommended, agent: true) ?? throw new OperationCanceledException();
+                input = (input is null
+                    ? HostInputDialog.ForRole(run, name, role, inputs, recommended, agent: true)
+                    : HostInputDialog.WithGpu(run, name, role, inputs, input, recommended)) ?? throw new OperationCanceledException();
             }
 
             (string Kind, Dictionary<string, string> Arguments, Dictionary<string, string>? Secrets) request = action.Verb switch

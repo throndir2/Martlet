@@ -383,6 +383,12 @@ internal static class HostActions
                 var inputs = await remote.DescribeAsync(target, role, sudo, hostKey, run.Output, run.Token);
                 input = HostInputDialog.ForRole(run, ssh.ToString(), role, inputs, recommended) ?? throw new OperationCanceledException();
             }
+            else if (role is not null && add && input is not null)
+            {
+                run.Status($"Checking {ssh}'s graphics cards for {role}...");
+                var inputs = await remote.DescribeAsync(target, role, sudo, hostKey, run.Output, run.Token);
+                input = HostInputDialog.WithGpu(run, ssh.ToString(), role, inputs, input, recommended) ?? throw new OperationCanceledException();
+            }
             else if (role is not null && !add && !confirmed && !ConfirmationDialog.Confirm(run,
                          $"Remove {role} from {ssh}? Its saved data stays so you can add it again later.",
                          "Remove role"))
@@ -431,6 +437,12 @@ internal static class HostActions
                 run.Status($"Checking what {role} needs...");
                 var inputs = await HostLocal.DescribeAsync(target, role, run.Output, run.Token);
                 input = HostInputDialog.ForRole(run, "this PC", role, inputs, recommended, local: true) ?? throw new OperationCanceledException();
+            }
+            else if (role is not null && add && input is not null)
+            {
+                run.Status($"Checking this PC's graphics cards for {role}...");
+                var inputs = await HostLocal.DescribeAsync(target, role, run.Output, run.Token);
+                input = HostInputDialog.WithGpu(run, "this PC", role, inputs, input, recommended) ?? throw new OperationCanceledException();
             }
             run.Status(action.Verb switch
             {

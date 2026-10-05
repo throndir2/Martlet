@@ -651,12 +651,17 @@ def _card_free_mib() -> int:
 
 
 def card_memory() -> dict[str, int] | None:
-    """The graphics card's used and total memory as the driver counts it (all processes), or None without nvidia-smi."""
+    """The graphics card's used and total memory as the driver counts it (all processes), or None without nvidia-smi.
+    On a host with several cards it is the one the role is pinned to (CUDA_VISIBLE_DEVICES holds its UUID)."""
+    import os
     import subprocess
 
+    command = ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"]
+    pinned = os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",")[0].strip()
+    if pinned.startswith("GPU-"):
+        command.append("--id=" + pinned)
     try:
-        output = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
-                                capture_output=True, text=True, timeout=3, check=True).stdout.split("\n")[0]
+        output = subprocess.run(command, capture_output=True, text=True, timeout=3, check=True).stdout.split("\n")[0]
         used, total = (int(v.strip()) for v in output.split(","))
         return {"used_mib": used, "total_mib": total}
     except (OSError, subprocess.SubprocessError, ValueError):

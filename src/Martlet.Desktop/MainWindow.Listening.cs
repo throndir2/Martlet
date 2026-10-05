@@ -18,7 +18,7 @@ namespace Martlet.Desktop;
 /// with the choices already made here and switches the job over. No console window and no second round of questions.</summary>
 public partial class MainWindow
 {
-    private sealed record GpuProbe(GpuNow? Gpu, string? SttAccelerator);
+    private sealed record GpuProbe(IReadOnlyList<GpuNow> Gpus, string? SttAccelerator);
 
     private GpuProbe? gpuProbe;
     private Task? gpuProbing;
@@ -36,7 +36,7 @@ public partial class MainWindow
             try
             {
                 var token = lifetime.Token;
-                var gpu = ListeningAdvisor.ReadGpuAsync(token);
+                var gpu = ListeningAdvisor.ReadGpusAsync(token);
                 var accelerator = ListeningAdvisor.InstalledAcceleratorAsync(token);
                 // What the host service here runs also counts against the graphics card.
                 if (ThisPcHost() is { } thisPc) await ThisPcOffersAsync(thisPc);
@@ -72,7 +72,7 @@ public partial class MainWindow
     private ListeningAdvice ListeningAdviceNow()
     {
         var containers = ThisPcHost() is { } thisPc ? HardwareStore?.Find(thisPc.HostId)?.NvidiaContainers : null;
-        return ListeningAdvisor.Advise(gpuProbe?.Gpu, machine.BestGpu, GpuLoads(), machine.Threads,
+        return ListeningAdvisor.Advise(gpuProbe?.Gpus ?? [], machine.BestGpu, GpuLoads(), machine.Threads,
             containers switch { "yes" => true, "no" => false, _ => null });
     }
 
@@ -315,10 +315,7 @@ public partial class MainWindow
                 "Speech stays on this PC and recordings aren't saved.",
                 "Set it up"))
             return;
-        await SetUpJobHereAsync(job, new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["choice.accelerator"] = accelerator, ["choice.STT_MODEL"] = model
-        }, $"Listen with Whisper {where}");
+        await SetUpJobHereAsync(job, advice.InstallAnswers(gpu), $"Listen with Whisper {where}");
     }
 
     /// <summary>One run window for a job on this PC: sets up and pairs the host service when needed, installs the job's
@@ -350,8 +347,12 @@ public partial class MainWindow
                 var target = host.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
                 await HostLocal.EnsureImageAsync(target, run);
+                // Several graphics cards: the owner picks the one this engine runs on.
+                run.Status($"Checking this PC's graphics cards for {job.Engine}...");
+                var inputs = await HostLocal.DescribeAsync(target, job.HostRoleKind, run.Output, run.Token);
+                var chosen = HostInputDialog.WithGpu(run, "this PC", job.Engine, inputs, answers) ?? throw new OperationCanceledException();
                 run.Status($"Installing {job.Engine} on this PC...");
-                var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: answers);
+                var exit = await HostLocal.EngineAsync(target, ["add", job.HostRoleKind], run.Output, run.Token, answers: chosen);
                 if (exit != 0) throw new InvalidOperationException($"Installing {job.Engine} stopped (exit {exit}). {job.Title} didn't change. The output has details.");
                 run.Status($"Switching {job.Job} to {job.Engine} on this PC...");
                 var route = await WaitForRouteAsync(host, job, run);

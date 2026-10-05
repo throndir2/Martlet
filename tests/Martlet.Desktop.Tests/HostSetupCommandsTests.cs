@@ -140,6 +140,70 @@ public sealed class HostSetupCommandsTests
         });
     }
 
+    // "martlet-host describe ollama" on a host with an RTX 3090 (running chatterbox) and an RTX 3080.
+    private static readonly string[] TwoGpuDescribe =
+    [
+        "role.title=Ollama", "role.requires=docker", "role.terms=", "role.installed=no",
+        "role.choice=OLLAMA_MODEL|Model|gemma4:e2b gemma4:26b|gemma4:e2b", "role.suggested=OLLAMA_MODEL", "role.accelerator=gpu cpu",
+        "role.gpu=GPU-3090aaaa-0000|NVIDIA GeForce RTX 3090|24576|chatterbox",
+        "role.gpu=GPU-3080bbbb-1111|NVIDIA GeForce RTX 3080|10240|"
+    ];
+
+    [Fact]
+    public void Each_role_can_be_put_on_its_own_graphics_card_when_the_host_has_several()
+    {
+        var role = HostRemote.ParseRole(TwoGpuDescribe);
+        Assert.Equal(["GPU-3090aaaa-0000", "GPU-3080bbbb-1111"], role.Gpus.Select(g => g.Id));
+        Assert.Equal(["chatterbox"], role.Gpus[0].UsedBy);
+        Assert.Empty(role.Gpus[1].UsedBy);
+        Assert.Equal("NVIDIA GeForce RTX 3080 (10 GB), free", role.Gpus[1].Describe());
+        var oneCard = HostRemote.ParseRole(TwoGpuDescribe[..^1]);
+        Assert.Single(oneCard.Gpus);
+
+        RunSta(() =>
+        {
+            var dialog = HostInputDialog.RoleDialog("gpu-pc", "ollama", role);
+            var card = Find<ComboBox>(dialog, "HostInput-choice.gpu");
+            Assert.StartsWith("Automatic", (string)card.SelectedItem);
+            Assert.False(HostInputDialog.Cleaned(dialog.Answers())!.ContainsKey("choice.gpu"));
+            card.SelectedItem = ((IEnumerable<string>)card.ItemsSource).Single(t => t.Contains("3080", StringComparison.Ordinal));
+            Assert.Equal("GPU-3080bbbb-1111", dialog.Answers()["choice.gpu"]);
+            card.SelectedItem = ((IEnumerable<string>)card.ItemsSource).Single(t => t.StartsWith("All cards", StringComparison.Ordinal));
+            Assert.Equal("all", dialog.Answers()["choice.gpu"]);
+            dialog.Close();
+
+            // One card (or none): nothing to choose.
+            var single = HostInputDialog.RoleDialog("gpu-pc", "ollama", oneCard);
+            Assert.Null(FindOrNull<ComboBox>(single, "HostInput-choice.gpu"));
+            single.Close();
+
+            // One-click installs ask only for the card, preselecting Martlet's suggestion; never for one card or the processor.
+            var answers = new Dictionary<string, string> { ["choice.accelerator"] = "gpu", ["choice.gpu"] = "GPU-3080bbbb-1111" };
+            var gpuOnly = HostInputDialog.GpuDialog("this PC", "Whisper", role, answers)!;
+            Assert.Equal("GPU-3080bbbb-1111", gpuOnly.Answers()["choice.gpu"]);
+            gpuOnly.Close();
+            Assert.Null(HostInputDialog.GpuDialog("this PC", "Whisper", oneCard, answers));
+            Assert.Null(HostInputDialog.GpuDialog("this PC", "Whisper", role, new Dictionary<string, string> { ["choice.accelerator"] = "cpu" }));
+        });
+    }
+
+    [Fact]
+    public void Listening_goes_on_the_card_with_the_most_memory_free()
+    {
+        GpuNow[] cards =
+        [
+            new("NVIDIA GeForce RTX 3090", 24, 20, "590.1", "GPU-3090aaaa-0000"),
+            new("NVIDIA GeForce RTX 3080", 10, 1, "590.1", "GPU-3080bbbb-1111")
+        ];
+        var advice = ListeningAdvisor.Advise(cards, null, [], 12, true);
+        Assert.True(advice.UseGpu);
+        Assert.Equal("GPU-3080bbbb-1111", advice.GpuId);
+        Assert.Equal("GPU-3080bbbb-1111", advice.InstallAnswers(gpu: true)["choice.gpu"]);
+        Assert.False(advice.InstallAnswers(gpu: false).ContainsKey("choice.gpu"));
+        Assert.Null(ListeningAdvisor.Advise([cards[0]], null, [], 12, true).GpuId);
+        Assert.Equal("GPU-3080bbbb-1111", ListeningAdvisor.Parse("NVIDIA GeForce RTX 3080, 10240, 1024, 590.1, GPU-3080bbbb-1111")!.Id);
+    }
+
     private static T Find<T>(DependencyObject root, string id) where T : DependencyObject =>
         LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>()
             .Select(child => child is T match && System.Windows.Automation.AutomationProperties.GetAutomationId(child) == id

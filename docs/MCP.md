@@ -3013,6 +3013,11 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
 required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+On a host with two or more NVIDIA cards the dialog adds
+`HostInput-choice.gpu` (Automatic, each card by name and memory with the roles
+already on it, or All cards); one-click installs on such a host (listening,
+voice, singing on this PC) show a dialog with only that combo box before
+installing. Hosts with one card never show it.
 Adding a voice engine to a host that runs another one says in the dialog's
 message that installing it stops that engine there (`martlet-host describe`
 reports it as `role.stops`).
