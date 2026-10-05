@@ -38,12 +38,13 @@ internal static class LocalDeepThinking
         return OllamaSideBySide.Decide(thinking, deep, loaded, downloads, memory, Learned);
     }
 
-    /// <summary>This PC's graphics card memory: the total and what is in use now from the NVIDIA driver, else the total Windows
-    /// reports for the card; null when neither is known.</summary>
+    /// <summary>This PC's graphics card memory: the total and what is in use now from the NVIDIA driver (every card together,
+    /// since Ollama here spreads its models over all of them), else the total Windows reports for the card; null when neither
+    /// is known.</summary>
     internal static async Task<GraphicsMemory?> GraphicsMemoryAsync(CancellationToken token)
     {
-        if (await ListeningAdvisor.ReadGpuAsync(token).ConfigureAwait(false) is { } now)
-            return new((long)(now.TotalGb * Gib), (long)(now.UsedGb * Gib));
+        if (await ListeningAdvisor.ReadGpusAsync(token).ConfigureAwait(false) is { Count: > 0 } cards)
+            return new((long)(cards.Sum(c => c.TotalGb) * Gib), (long)(cards.Sum(c => c.UsedGb) * Gib));
         return MachineInfo.Read().BestGpu?.MemoryGb is { } total && total > 0 ? new((long)(total * Gib), null) : null;
     }
 

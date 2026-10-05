@@ -532,6 +532,20 @@ cmd_describe() {
     [[ -n "${line}" ]] && printf 'role.suggested=%s\n' "${line%%|*}"
   done < <(conf_values "${conf}" choice_by_vram)
   [[ "$(conf_value "${conf}" gpu)" == optional\|* ]] && printf 'role.accelerator=gpu cpu\n'
+  # On a host with several NVIDIA cards, which card it runs on: role.gpu=<uuid>|<name>|<MiB>|<other roles pinned to it>,
+  # and the card it runs on now (role.gpu_current, "all" when it uses every card).
+  if [[ -n "$(conf_value "${conf}" gpu)" ]]; then
+    detect_nvidia
+    if (( ${#NVIDIA_IDS[@]} > 1 )); then
+      local i current
+      for i in "${!NVIDIA_IDS[@]}"; do
+        printf 'role.gpu=%s|%s|%s|%s\n' "${NVIDIA_IDS[i]}" "${NVIDIA_NAMES[i]}" "${NVIDIA_MBS[i]}" "$(gpu_users "${role}" "${NVIDIA_IDS[i]}")"
+      done
+      if [[ -f "${PROJECTS}/${role}/compose.gpu.yaml" ]]; then
+        current="$(role_gpu "${role}")"; printf 'role.gpu_current=%s\n' "${current:-all}"
+      fi
+    fi
+  fi
   return 0
 }
 
@@ -621,19 +635,72 @@ require_nvidia_toolkit() {
 
 # Largest NVIDIA GPU memory (MiB) that role containers can use here, or 0. Natively a working driver is enough (the
 # NVIDIA Container Toolkit is installed on demand); with Docker it asks the Docker host through a GPU container.
+# Each card is also listed (NVIDIA_IDS: UUIDs in nvidia-smi order, with NVIDIA_NAMES, NVIDIA_MBS and NVIDIA_USED in MiB),
+# so a host with several cards can put each role on its own card.
 NVIDIA_MB=0
+NVIDIA_IDS=(); NVIDIA_NAMES=(); NVIDIA_MBS=(); NVIDIA_USED=()
 detect_nvidia() {
-  local query=(--query-gpu=memory.total --format=csv,noheader,nounits) lines=() line
+  local query=(--query-gpu=uuid,name,memory.total,memory.used --format=csv,noheader,nounits) lines=() line uuid name total used
   if [[ "${MODE}" == docker ]]; then
     mapfile -t lines < <(timeout 120 docker run --rm --gpus all --entrypoint nvidia-smi "${IMAGE}" "${query[@]}" 2>/dev/null || true)
   elif command -v nvidia-smi >/dev/null 2>&1; then
     mapfile -t lines < <(timeout 30 nvidia-smi "${query[@]}" 2>/dev/null || true)
   fi
-  NVIDIA_MB=0
+  NVIDIA_MB=0; NVIDIA_IDS=(); NVIDIA_NAMES=(); NVIDIA_MBS=(); NVIDIA_USED=()
   for line in "${lines[@]}"; do
-    line="${line//[^0-9.]/}"; line="${line%%.*}"
-    if [[ "${line}" =~ ^[0-9]+$ ]] && (( line > NVIDIA_MB )); then NVIDIA_MB=${line}; fi
+    IFS=',' read -r uuid name total used <<< "${line}"
+    uuid="${uuid// /}"; name="$(printf '%s' "${name}" | sed 's/^ *//; s/ *$//; s/[|=]//g')"
+    total="${total//[^0-9.]/}"; total="${total%%.*}"; used="${used//[^0-9.]/}"; used="${used%%.*}"
+    [[ "${uuid}" =~ ^GPU-[A-Za-z0-9-]+$ && "${total}" =~ ^[0-9]+$ ]] || continue
+    NVIDIA_IDS+=("${uuid}"); NVIDIA_NAMES+=("${name:-NVIDIA GPU}"); NVIDIA_MBS+=("${total}")
+    [[ "${used}" =~ ^[0-9]+$ ]] || used=0
+    NVIDIA_USED+=("${used}")
+    if (( total > NVIDIA_MB )); then NVIDIA_MB=${total}; fi
   done
+}
+
+# The graphics card (UUID) an installed role was pinned to, or nothing when it uses every card (or the CPU).
+role_gpu() {
+  local project="${PROJECTS}/$1"
+  [[ -f "${project}/compose.gpu.yaml" ]] || return 0
+  conf_value "${project}/.env" MARTLET_GPU 2>/dev/null || true
+}
+
+# The installed roles other than $1 pinned to card $2, space-separated.
+gpu_users() {
+  local self="$1" uuid="$2" other users=()
+  while IFS= read -r other; do
+    [[ -n "${other}" && "${other}" != "${self}" && "$(role_gpu "${other}")" == "${uuid}" ]] && users+=("${other}")
+  done < <(installed_roles)
+  printf '%s' "${users[*]:-}"
+}
+
+# The card for role $1 when nothing was chosen: the one it already runs on, else a card no other role is pinned to,
+# else any card, preferring the most memory free right now.
+automatic_gpu() {
+  local role="$1" current i best="" best_free=-1 free pass
+  current="$(role_gpu "${role}")"
+  for i in "${!NVIDIA_IDS[@]}"; do [[ "${NVIDIA_IDS[i]}" == "${current}" ]] && { printf '%s' "${current}"; return; }; done
+  for pass in free any; do
+    for i in "${!NVIDIA_IDS[@]}"; do
+      [[ "${pass}" == any || -z "$(gpu_users "${role}" "${NVIDIA_IDS[i]}")" ]] || continue
+      free=$(( NVIDIA_MBS[i] - NVIDIA_USED[i] ))
+      if (( free > best_free )); then best_free=${free}; best="${NVIDIA_IDS[i]}"; fi
+    done
+    [[ -n "${best}" ]] && { printf '%s' "${best}"; return; }
+  done
+}
+
+# Installs a role's GPU overlay from $1 to $2. With card $3 (a UUID) it is the only one CUDA sees in the role's services
+# (CUDA_VISIBLE_DEVICES takes UUIDs, so this also holds where Docker exposes every card, as WSL 2 does).
+install_gpu_overlay() {
+  local source="$1" target="$2" gpu="${3:-}"
+  if [[ ! "${gpu}" =~ ^GPU-[A-Za-z0-9-]+$ ]]; then cp "${source}" "${target}"; return; fi
+  awk -v gpu="${gpu}" '
+    /^[^ #]/ { section = ($0 ~ /^services:/) }
+    { print }
+    section && /^  [a-z0-9_-]+:[ \t]*$/ { print "    environment:"; print "      CUDA_VISIBLE_DEVICES: \"" gpu "\"" }
+  ' "${source}" > "${target}"
 }
 
 require_dotnet() {
@@ -1615,8 +1682,10 @@ refresh_installed_role_files() {
       cp "${dir}/compose.yaml" "${project}/compose.yaml"; changed=1
     fi
     gpu_entry="$(conf_value "${dir}/role.conf" gpu)"; overlay="${gpu_entry#*|}"
-    if [[ -f "${project}/compose.gpu.yaml" && -f "${dir}/${overlay}" ]] && ! cmp -s "${dir}/${overlay}" "${project}/compose.gpu.yaml"; then
-      cp "${dir}/${overlay}" "${project}/compose.gpu.yaml"; changed=1
+    if [[ -f "${project}/compose.gpu.yaml" && -f "${dir}/${overlay}" ]]; then
+      install_gpu_overlay "${dir}/${overlay}" "${project}/.compose.gpu.yaml.new" "$(role_gpu "${role}")"
+      if cmp -s "${project}/.compose.gpu.yaml.new" "${project}/compose.gpu.yaml"; then rm -f "${project}/.compose.gpu.yaml.new"
+      else mv -f "${project}/.compose.gpu.yaml.new" "${project}/compose.gpu.yaml"; changed=1; fi
     fi
     if [[ ${changed} == 1 ]]; then
       note "Refreshing ${role} role files from this Martlet version and restarting its containers."
@@ -1713,7 +1782,7 @@ cmd_add() {
 
   # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one; gpu=required
   # roles always add their overlay (they cannot run on the CPU).
-  local gpu_entry gpu_mode overlay="" accelerator="" vram=0
+  local gpu_entry gpu_mode overlay="" accelerator="" vram=0 gpu_choice=""
   gpu_entry="$(conf_value "${conf}" gpu)"
   if [[ -n "${gpu_entry}" ]]; then
     gpu_mode="${gpu_entry%%|*}"; overlay="${gpu_entry#*|}"
@@ -1744,6 +1813,34 @@ cmd_add() {
       require gpu nvidia-toolkit
       (( NVIDIA_MB > 0 )) || detect_nvidia
       vram=${NVIDIA_MB}
+      # Several cards: which one this role runs on (each role on its own card, or "all" to spread a model over every card).
+      if (( ${#NVIDIA_IDS[@]} > 1 )); then
+        local i card_list="" known=0
+        for i in "${!NVIDIA_IDS[@]}"; do card_list+=" ${NVIDIA_IDS[i]} (${NVIDIA_NAMES[i]}, ${NVIDIA_MBS[i]} MiB)"; done
+        note "Graphics cards here:${card_list}"
+        gpu_choice="${INPUT[choice.gpu]:-}"
+        if [[ -z "${gpu_choice}" ]] && ! unattended; then
+          read -r -p "Graphics card for ${role} [a card's GPU-... id, or all] (default automatic): " gpu_choice
+        fi
+        [[ -z "${gpu_choice}" || "${gpu_choice}" == automatic ]] && gpu_choice="$(automatic_gpu "${role}")"
+        if [[ "${gpu_choice}" == all ]]; then
+          vram=0; for i in "${!NVIDIA_MBS[@]}"; do vram=$(( vram + NVIDIA_MBS[i] )); done
+          note "Graphics card: all ${#NVIDIA_IDS[@]} cards (${vram} MiB together)"
+        else
+          for i in "${!NVIDIA_IDS[@]}"; do
+            if [[ "${NVIDIA_IDS[i]}" == "${gpu_choice}" ]]; then known=1; vram=${NVIDIA_MBS[i]}; note "Graphics card: ${NVIDIA_NAMES[i]} (${gpu_choice}, ${vram} MiB)"; fi
+          done
+          if (( ! known )); then
+            # A card that left this host (or one named from another view of it): place the role automatically instead.
+            note "Graphics card '${gpu_choice}' isn't on this host; choosing one automatically."
+            gpu_choice="$(automatic_gpu "${role}")"
+            for i in "${!NVIDIA_IDS[@]}"; do
+              if [[ "${NVIDIA_IDS[i]}" == "${gpu_choice}" ]]; then vram=${NVIDIA_MBS[i]}; note "Graphics card: ${NVIDIA_NAMES[i]} (${gpu_choice}, ${vram} MiB)"; fi
+            done
+          fi
+          env_lines+=("MARTLET_GPU=${gpu_choice}")
+        fi
+      fi
     fi
     env_lines+=("MARTLET_ACCELERATOR=${accelerator}")
   fi
@@ -1859,7 +1956,7 @@ cmd_add() {
   fi
   cp "${dir}/compose.yaml" "${project}/compose.yaml"
   rm -f "${project}/compose.gpu.yaml"
-  if [[ "${accelerator}" == gpu ]]; then cp "${dir}/${overlay}" "${project}/compose.gpu.yaml"; fi
+  if [[ "${accelerator}" == gpu ]]; then install_gpu_overlay "${dir}/${overlay}" "${project}/compose.gpu.yaml" "${gpu_choice}"; fi
   ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )
   fill_volume "martlet-${role}-configs" "${project}/files"
 

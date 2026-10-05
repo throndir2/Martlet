@@ -217,10 +217,7 @@ public partial class MainWindow
                 if (host.Method == HostSetupMethod.ThisPcDocker && job.Role == SetupRole.Stt)
                 {
                     var advice = await ListeningAdviceAsync();
-                    answers = new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["choice.accelerator"] = advice.UseGpu ? "gpu" : "cpu", ["choice.STT_MODEL"] = advice.Model
-                    };
+                    answers = advice.InstallAnswers(advice.UseGpu);
                     how = "Martlet will install it in this PC's host service with the recommended settings and show progress. ";
                 }
                 else if (host.Method == HostSetupMethod.ThisPcDocker && job.RouteType == SetupRouteType.GatewayF5)

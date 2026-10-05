@@ -152,15 +152,20 @@ internal sealed class HostInputDialog : ThemedWindow
         if (!optional) required.Add(key);
     }
 
-    internal void AddChoice(string key, string label, IEnumerable<string> options, string selected)
+    internal void AddChoice(string key, string label, IEnumerable<string> options, string selected) =>
+        AddChoice(key, label, options.Select(option => (option, option)).ToArray(), selected);
+
+    /// <summary>A choice whose options read <c>Text</c> but answer <c>Value</c> (for example a graphics card's name for its UUID).</summary>
+    internal void AddChoice(string key, string label, IReadOnlyList<(string Value, string Text)> options, string selected)
     {
         fieldStarts[key] = fields.Children.Count;
         fields.Children.Add(new Label { Content = label, Padding = new Thickness(0, 6, 0, 4) });
-        var combo = new ComboBox { ItemsSource = options.ToArray(), SelectedItem = selected };
+        var texts = options.Select(o => o.Text).ToArray();
+        var combo = new ComboBox { ItemsSource = texts, SelectedItem = options.FirstOrDefault(o => o.Value == selected).Text ?? selected };
         AutomationProperties.SetName(combo, label);
         AutomationProperties.SetAutomationId(combo, "HostInput-" + key);
         fields.Children.Add(combo);
-        values[key] = () => combo.SelectedItem as string ?? selected;
+        values[key] = () => combo.SelectedItem is string text && options.FirstOrDefault(o => o.Text == text) is { Value: { } value } ? value : selected;
         combo.SelectionChanged += (_, _) => Refresh();
     }
 
@@ -246,6 +251,7 @@ internal sealed class HostInputDialog : ThemedWindow
                     : "Run on (automatic chooses the GPU when available)",
                 options, Pick("choice.accelerator", options)?.Value ?? Automatic);
         }
+        if (inputs.Gpus.Count > 1) AddGpuChoice(dialog, inputs, recommended);
         foreach (var choice in inputs.Choices)
         {
             var key = "choice." + choice.Variable;
@@ -268,6 +274,55 @@ internal sealed class HostInputDialog : ThemedWindow
             if (inputs.SecretWhen.GetValueOrDefault(secret.Name) is { } when)
                 dialog.ShowWhen("secret." + secret.Name, "choice." + when.Variable, when.Value);
         }
+        return dialog;
+    }
+
+    /// <summary>On a host with several NVIDIA cards, which one the role runs on (<c>choice.gpu</c>): automatic, one card, or
+    /// every card together.</summary>
+    private static void AddGpuChoice(HostInputDialog dialog, HostRoleInputs inputs, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
+    {
+        (string Value, string Text)[] cards =
+        [
+            (Automatic, inputs.GpuCurrent is { } current
+                ? "Automatic (keeps " + (inputs.Gpus.FirstOrDefault(g => g.Id == current)?.Name ?? "every card") + ")"
+                : "Automatic (a card no other role uses, with the most free memory)"),
+            .. inputs.Gpus.Select((g, i) => (g.Id, $"Card {i + 1}: {g.Describe()}")),
+            ("all", "All cards (one model spread over every card)")
+        ];
+        var pick = recommended?.GetValueOrDefault("choice.gpu") is { Value: { } value } chosen && cards.Any(c => c.Value == value)
+            ? chosen : ((string Value, string Why)?)null;
+        dialog.AddChoice("choice.gpu", pick is { } p
+                ? $"Graphics card (recommended: {inputs.Gpus.FirstOrDefault(g => g.Id == p.Value)?.Name ?? p.Value}, {p.Why})"
+                : "Graphics card (when it runs on the GPU)",
+            cards, pick?.Value ?? Automatic);
+    }
+
+    /// <summary>For an install whose other answers Martlet already made (one-click setups): on a host with several NVIDIA
+    /// cards, asks which one the role runs on and adds it to <paramref name="answers"/>; null when canceled. Hosts with one
+    /// card, roles without a GPU and roles going on the processor ask nothing. A <c>choice.gpu</c> already in the answers is
+    /// preselected as the recommendation.</summary>
+    internal static Dictionary<string, string>? WithGpu(Window owner, string host, string role, HostRoleInputs inputs,
+        IReadOnlyDictionary<string, string> answers, IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null)
+    {
+        var result = new Dictionary<string, string>(answers, StringComparer.Ordinal);
+        if (GpuDialog(host, role, inputs, answers, recommended) is not { } dialog) return result;
+        if (Cleaned(dialog.Ask(owner)) is not { } picked) return null;
+        result.Remove("choice.gpu");
+        foreach (var (key, value) in picked) result[key] = value;
+        return result;
+    }
+
+    internal static HostInputDialog? GpuDialog(string host, string role, HostRoleInputs inputs, IReadOnlyDictionary<string, string> answers,
+        IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null)
+    {
+        if (inputs.Gpus.Count < 2 || answers.GetValueOrDefault("choice.accelerator") == "cpu") return null;
+        var suggested = answers.GetValueOrDefault("choice.gpu") is { } id
+            ? new Dictionary<string, (string, string)>(StringComparer.Ordinal) { ["choice.gpu"] = (id, "it has the most graphics memory free") }
+            : recommended;
+        var dialog = new HostInputDialog($"Graphics card for {role}", $"Which graphics card runs {role} on {host}?",
+            $"{host} has {inputs.Gpus.Count} NVIDIA graphics cards. Choose the one {role} uses, so each part of Martlet " +
+            "(thinking, listening, its voice) can have a card of its own.", "_Continue");
+        AddGpuChoice(dialog, inputs, suggested);
         return dialog;
     }
 
