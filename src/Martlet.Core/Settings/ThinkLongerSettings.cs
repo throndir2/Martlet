@@ -34,8 +34,18 @@ public sealed record ThinkLongerSettings : IContract
     public int? PerHour { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ThinkDelivery? Delivery { get; init; }
+    /// <summary>Companion › Deep thinking › Web research: whether Martlet may search the web and read pages in the background
+    /// when the user asks it to look something up (the research tool). Off until the owner turns it on, since the search words
+    /// go to a search engine and the pages' sites see the request; Thinking longer off turns it off too.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? WebResearch { get; init; }
 
-    [JsonIgnore] public bool IsDefault => Enabled is null && Effort is null && Minutes is null && PerHour is null && Delivery is null;
+    public const bool DefaultWebResearch = false;
+
+    [JsonIgnore] public bool IsDefault => Enabled is null && Effort is null && Minutes is null && PerHour is null && Delivery is null &&
+        WebResearch is null;
+    /// <summary>Whether Martlet may research on the web: the owner turned it on and Thinking longer is on.</summary>
+    [JsonIgnore] public bool Researches => On && (WebResearch ?? DefaultWebResearch);
     [JsonIgnore] public bool On => Enabled ?? DefaultEnabled;
     [JsonIgnore] public ThinkEffort HowHard => Effort ?? DefaultEffort;
     [JsonIgnore] public ThinkDelivery When => Delivery ?? DefaultDelivery;
@@ -53,7 +63,8 @@ public sealed record ThinkLongerSettings : IContract
             Effort = settings.Effort == DefaultEffort ? null : settings.Effort,
             Minutes = null,
             PerHour = null,
-            Delivery = settings.Delivery == DefaultDelivery ? null : settings.Delivery
+            Delivery = settings.Delivery == DefaultDelivery ? null : settings.Delivery,
+            WebResearch = settings.WebResearch == DefaultWebResearch ? null : settings.WebResearch
         };
         return lean.IsDefault ? null : lean;
     }

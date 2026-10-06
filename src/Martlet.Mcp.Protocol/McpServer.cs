@@ -919,6 +919,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("discord_companion_check", "Martlet's Discord companion as saved in a data directory (discord.json and " +
+            "discord-companion.json): friends (names, how many take calls), friend requests waiting for the owner, recent declines, the " +
+            "private call channels it made and when the bot's picture last changed (never the token). Then rehearses the production " +
+            "DiscordCompanion against an in-memory Discord (no token; contacts nothing): /friend ask (and asking twice), the owner's " +
+            "approval and welcome DM, a call (the private channel 'character & person' and its permission overwrites for @everyone, " +
+            "the friend, the bot and the owner, the ring DM with a jump link and a server invite), calling again (channel reused, " +
+            "joined), cleanup, calls turned off, /friend remove, the presence each state shows and its rate limit, and the avatar " +
+            "rate limit. requestFrom (a Discord user ID as a string, with requestName) files a friend request into the given " +
+            "dataDirectory as /friend ask would (requires an explicit, disposable dataDirectory), so Companion > Discord's Friends " +
+            "and calls card lists it for DiscordFriendApprove-<id>.", new
+        {
+            dataDirectory = new { type = "string" },
+            person = new { type = "string", maxLength = 64 },
+            character = new { type = "string", maxLength = 64 },
+            requestFrom = new { type = "string", pattern = "^[0-9]{1,20}$" },
+            requestName = new { type = "string", maxLength = 64 }
+        }),
         Tool("vision_history_check", "How what Martlet sees is kept in the conversation (docs/SCREEN_COMMENTARY.md), rehearsed with " +
             "the desktop's production code: Companion > Prompts > What you saw as a data directory's settings.json sends it (seen), " +
             "then sample look replies (or reply) through the production speech segmenter and chat stripper with the [seen: ...] " +
@@ -1024,6 +1041,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         }),
+        Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
+            "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
+            "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
+            "unwrapped, page reader keeping readable text, public-address guard on every connection and redirect), research loop " +
+            "(WebResearchRun: first search and pages, then model steps of SEARCH, READ or the report, each a background think through " +
+            "the conversation runtime and Chat Completions adapter), report creation and its web page (ResearchReports), against " +
+            "fixtures on 127.0.0.1 (a search page, web pages including a PDF and a redirect to a private address, and a model with " +
+            "canned answers, NOT AI): a reply says it'll look into it and calls research (returns at once, the reply completes while " +
+            "the job runs), the steps' requests, the note the conversation gets (offer first, perform_creation with the report's " +
+            "id), the report kept in a temporary Creations library and shown as a page; plus the settings (off by default, off with " +
+            "Thinking longer off), the address guard and the limits (busy beside a think, Cancel, the hourly limit, a failed search). " +
+            "Loopback only; no real search or model; reads no credentials.", new { }),
         Tool("songs_status", "Martlet singing in conversation (sing_song, play_song, stop_singing), from a data directory: whether " +
             "background work (Thinking longer, which the song tools come with) is on; the song creations (each song's key, " +
             "length, lines and timed words, tempo, engine, mouth track source, assets and whether it is the FIXTURE - NOT AI song; never its " +
@@ -1242,6 +1271,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "discord_companion_check" => await DiscordCompanionCheck.RunAsync(DataDirectory(arguments),
+                    arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out _),
+                    OptionalString(arguments, "person"), OptionalString(arguments, "character"),
+                    OptionalString(arguments, "requestFrom") is { } from
+                        ? ulong.TryParse(from, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
+                            ? id : throw new ArgumentException("requestFrom must be a Discord user ID.")
+                        : null,
+                    OptionalString(arguments, "requestName"), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
@@ -1251,6 +1288,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
+            "research_check" => await ResearchCheck.RunAsync(cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),

@@ -102,6 +102,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
         // so they need --allow-ui-effects.
         "NavTasks", "HostRunHide", "TasksClear",
+        // Companion › Discord › Friends and calls: What Discord allows only expands. Approve, Decline, Call, Remove, Add, the
+        // may-call boxes and Update picture now change things or contact Discord, so they need --allow-ui-effects.
+        "DiscordFriendsAbout",
         // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
         // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
         // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
@@ -148,6 +151,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
+        // Companion › Discord › Friends and calls: how many friends and waiting requests, the call now and the last call's
+        // outcome; the bot's Discord status ("Discord status: Online, "Hanging out"."); when its picture last changed and why
+        // it didn't; and what the last action on the card did. Counts, names and fixed wording; never a token.
+        "DiscordFriendsStatus", "DiscordPresenceStatus", "DiscordAvatarStatus", "DiscordFriendsResult",
         // Companion › Discord's text-chat line: counts of messages seen, considered, answered, passed, dropped and failed, the
         // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
         "DiscordTextStatus",
@@ -332,6 +339,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
+        // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
+        // needs --allow-ui-effects.
+        "WebResearchStatus", "WebResearchDisclosure",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -490,6 +501,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
+        // Companion › Discord › Friends and calls: each friend's line ("DiscordFriend-123" reads "Ana (123) — Martlet also knows
+        // Ana by voice"). Never a token.
+        "DiscordFriend-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",

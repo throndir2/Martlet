@@ -2025,6 +2025,41 @@ problem: none.*; no message text, names or IDs). The live bot logs each
 answered, passed, dropped or failed turn as *Discord text: Answered (Mentions,
 addressed), 1 message(s)*.
 
+`discord_companion_check` shows Martlet's [Discord](DISCORD.md) companion
+state as saved in a data directory (`discord.json` and `discord-companion.json`:
+friends' names and how many take calls, friend requests waiting, recent
+declines, the call channels it made, when the bot's picture last changed; never
+the token), then rehearses the production `DiscordCompanion` against an
+in-memory Discord (`DiscordRehearsalTransport`; NOT Discord, no token, no
+network): `friendRequest` (`/friend ask` and asking twice, the owner's approval
+and its welcome DM, `/friend remove`), `call` (the private channel `Hiyori &
+Ana` with its permission `overwrites`: @everyone denied ViewChannel and Connect,
+the friend, the bot and the owner allowed to talk; the ring DM with its jump
+link and a server invite; calling again reuses the channel and joins; the
+channel is removed after the call; a friend who turned calls off is refused),
+`presence` (the status and text for each Martlet state and the 20-second rate
+limit) and `avatar` (the same character is skipped, a new one waits 30 minutes,
+Update now 10). Optional `person` and `character` name the rehearsal. With
+`requestFrom` (a Discord user ID as a string) and `requestName` it also files a
+friend request into the given `dataDirectory`, as `/friend ask` would; it
+refuses without an explicit (disposable) `dataDirectory`. The desktop then lists
+it on Companion › Discord › Friends and calls (see below).
+
+Companion › Discord's **Friends and calls** card: `DiscordFriendsStatus` (*2
+friends, 1 request waiting. No call now. Last call: ...*), `DiscordPresenceStatus`
+(*Discord status: Online, "Hanging out".*), `DiscordAvatarStatus` (when the
+bot's picture last changed and why it didn't), `DiscordFriendsResult` (what the
+last action did) and each friend's line `DiscordFriend-<user id>` (*Ana (123) —
+Martlet also knows Ana by voice* when exactly one voice in People has that
+name) are readable values. `DiscordFriendsAbout` (What Discord allows) only
+expands. `DiscordFriendApprove-<id>`, `DiscordFriendDecline-<id>`,
+`DiscordFriendMayCall-<id>`, `DiscordCall-<id>`, `DiscordFriendRemove-<id>`,
+`DiscordFriendAdd` (with `DiscordFriendAddId` and `DiscordFriendAddName`) and
+`DiscordAvatarUpdate` change `discord.json`/`discord-companion.json` or contact
+Discord, so they need `--allow-ui-effects` (Call and Update picture now only do
+something while the bot is connected). The desktop log notes *Discord: someone
+asked to be Martlet's friend* and *Discord: call_on_discord ran.*
+
 `discord_voice_check` rehearses [Discord](DISCORD.md) voice without Discord. It
 loads `libdave.dll` (Discord's DAVE end-to-end voice encryption, which NetCord
 calls) beside `Martlet.Mcp` and in `martletDirectory` (the script passes this
@@ -2168,10 +2203,12 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 (optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
 *Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
-`delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
+`delivery` *WhenFree* or *NextMessage*; `chosen`; `webResearch`, Companion ›
+Deep thinking › *Web research*, off by default, and `researches`, whether it
+applies with Thinking longer), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
-`onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
+`researchOffered` (whether replies get `research`), `onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
 *loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
 `model`, `hostId`, `hostRoute` (a paired computer's route a think goes to:
 `martlet.gateway.deep-thinking-chat.v1` for its Deep thinking role, else its
@@ -2187,8 +2224,9 @@ that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
 `hostRole`, `available`, `rank` (lower goes first), `checksFit` and `why`, then
 `usable`, `maxThinks` (how many run at once) and the pool's `available` and
 `why`), `tools`
-(`think_longer` and `cancel_thinking` exactly as the model gets them), the
-filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
+(`think_longer` and `cancel_thinking`, and `research` while web research is on,
+exactly as the model gets them), the filled `prompt` and `researchPrompt`, and
+`jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
 `resultCharacters`, `cut`, `problem`, `canceledBy`, `delivery` and `place`, the
@@ -2326,6 +2364,36 @@ plain reply's up to the end of the One moment instruction
 text). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
+
+`research_check` rehearses [web research](CONVERSATION.md#web-research) end to
+end with Martlet's own tool texts and job kind (`WebResearch`), scheduler
+(`BackgroundJobs`), web client (`WebAccess`), research loop (`WebResearchRun`,
+each step a `BackgroundThink` through the conversation runtime and Chat
+Completions adapter) and report creation (`ResearchReports`), against fixtures
+on 127.0.0.1 (NOT AI): a DuckDuckGo-like search page (an ad, results behind
+redirect links), web pages (one with scripts and navigation, a PDF, one
+redirecting to 192.168.1.1, one only a later step asks for) and a model with
+canned answers. `settings`: off by default, on only with Thinking longer on,
+saved lean. `guard`: which addresses count as public (`WebAccess.IsPublic`: no
+loopback, private, shared, link-local, cloud metadata, ULA, multicast or mapped
+private addresses). `flow`: a reply says it'll look into it and calls
+`research`; the tool returns before the reply ends (`toolReturnedMs`,
+`replyMs`) and the job is still running when the reply completes
+(`researchStillRunning`); the job (`research-1`, `Succeeded`, `offer` true,
+`Researching`, 12 minutes, 4 an hour) made 2 searches (`searchQueries`: the
+topic, then the model's), read 3 pages and found 2 unreadable (the PDF, and the
+redirect to a private address, never followed: `privateRedirectFollowed`) in 2
+model steps, each a background message under 16 KiB carrying the numbered
+sources (`steps`); the `note` the conversation gets marks it to offer first and
+says to call `perform_creation` with the report's id; the report is kept as a
+`report` creation in a temporary Creations library (`creation`) and showing it
+writes a page with its source links (`page.links`) and no scripts (`shown`).
+`tool` and `prompt` are exactly what replies get. `limits`: a second research is
+refused as `busy` (and what the model is told) while a think runs beside it,
+Cancel ends it as `Canceled`, the fifth in an hour is refused (`hourly_limit`),
+and a failed first search fails the job (`failedSearch`). Each part has an `ok`.
+No real web search or model is used; reads no credentials; the temporary folder
+is deleted.
 
 `songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
 (optional absolute `dataDirectory`, default the current user's):
@@ -3755,6 +3823,12 @@ down, nowhere to think in parallel) and the choices `ThinkLongerEffort` and
 `ThinkLongerDelivery` (returned; a think has no time limit or hourly limit, so
 there is no choice for either;
 `ui_select` on them saves the reply settings, so it needs
+`--allow-ui-effects`); *Web research*'s `WebResearchStatus` (*Off. Martlet
+never searches the web or reads web pages.*, *Off, because Deep thinking is
+off. ...*, *On. When you ask, Martlet looks it up (up to 12 minutes, at most 4 an
+hour), then offers the report.* or *On, but Martlet can't look things up yet:
+...*), its fixed `WebResearchDisclosure` and the `WebResearchOn` check box
+(`checkedState`; `ui_toggle` saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
 `DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
 `DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what
@@ -4125,7 +4199,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

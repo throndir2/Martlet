@@ -562,7 +562,83 @@ completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
 acting on the user's yes is an ordinary later tool call in that conversation
 (for a song, `play_song` with the song's ID; see [Singing in
-conversation](#singing-in-conversation)).
+conversation](#singing-in-conversation); for a research report,
+`perform_creation` with its ID; see [Web research](#web-research)).
+
+## Web research
+
+*"Martlet, can you look up which toys cats like best?"* Martlet says in
+character that it'll look into it, calls `research` in the same reply and keeps
+talking; a few minutes later it brings up what it found (*"...oh, and I found out
+about those cat toys. Wanna see the report?"*) and shows the report on a yes.
+
+**Consent, off by default.** Searching sends the search words to a third party,
+so it is a switch of its own on Companion › Deep thinking › *Web research*
+(`WebResearchOn`, saved with the reply settings as `ThinkLonger.WebResearch`,
+so all your computers share it, like Deep thinking's Off). Its disclosure
+(`WebResearchDisclosure`) says what leaves the PC: the search words go to
+DuckDuckGo, each page read sees the PC's internet address, and what the pages
+say goes to where Deep thinking thinks with the recent conversation. Deep
+thinking off (Thinking longer off) turns it off too; its status line
+(`WebResearchStatus`) says when Martlet can't use it yet (no Thinking that does
+function calling, nowhere for Deep thinking to think).
+
+**The tool.** While it is on, Thinking longer is on, the Thinking route does
+function calling and Deep thinking can think, every reply gets
+`research(topic, what_to_find)` right after `think_longer` and
+`cancel_thinking`, always worded the same, with the *Web research* prompt
+(Companion › Prompts), so the start of every request stays the same; with it off,
+requests are exactly as before. The prompt has Martlet use it only when the user
+asks to look something up, search for it or research it, and tell them first.
+The call returns at once (`WebResearch.Started`).
+
+**The job** (`research`: one at a time beside a think or a song, 4 an hour, 12
+minutes, `Offer`, *Researching*) runs off the reply path on the thread pool,
+placed like a think on one of Deep thinking's places (`jobs.Start` with
+`ThinkLonger.Places(pool)`: the free place sharing least with the conversation,
+held for the whole job with that place's own runtime and authorization; when
+every place is busy it is refused and the model is told what holds them):
+
+1. Where Deep thinking uses a second model in Ollama on this PC, it first checks
+   it fits beside Thinking's and stops if Thinking's gets pushed off the card, as
+   a think does.
+2. `WebResearchRun` searches for the topic and reads the top 3 results, then asks
+   the model up to 4 times, each a fresh, bounded background request continuing
+   the reply's request exactly like a think (`PrepareThink`, Thinking steps on,
+   its own runtime and authorization; *Thinking input (Web research)* in the
+   log), with the task from Companion › Prompts › *Web research: each step*: what
+   to research, the latest results and the pages read so far as numbered
+   excerpts (at most 13,000 bytes in all, so it fits a paired computer's 16 KiB).
+   The model answers in text, so it also works where Deep thinking takes no
+   tools: `SEARCH: <query>` (another search, then its 2 best unread results),
+   `READ: <link>` (up to 3), or the report (`TITLE`, `SUMMARY`, `REPORT`). The
+   last step always asks for the report.
+3. Caps: 3 searches, 8 pages, 3 MB downloaded, 400 KB and 15 seconds a request,
+   20,000 characters of text kept a page.
+4. The report gets its sources listed by Martlet itself (the pages read, as
+   numbered links) and is kept as a `report` creation (see
+   [CREATIONS](CREATIONS.md)), which the Creations page shows and every paired
+   Martlet computer gets.
+
+The job's result is the title, the summary and how to show it
+(`perform_creation` with the report's ID), and as an `Offer` kind it is brought
+up to be offered first. On a yes, `perform_creation` writes the report as a
+plain web page in `research-reports` in the data folder and opens it in the
+browser. The talk window's task list shows it as *Research* with its step (*Searching the
+web*, *Reading pages (2 of at most 8)*, *Thinking it over*, *Writing the
+report*); the desktop log notes each start, step failure and end with counts only
+(`Web research:` searches, pages, bytes, model steps), never the topic, a query,
+a link or what was read.
+
+**The web client** (`WebAccess`, Martlet's own; no key or account): DuckDuckGo's
+HTML search page (results parsed from its `result__a` links with ads left out and
+its redirect links unwrapped) and a page reader that keeps readable text
+(scripts, styles, navigation and footers left out). It connects only to public
+internet addresses, checked on every connection including each redirect (never
+this PC, the local network, link-local or cloud metadata addresses), uses no
+proxy or cookies and follows at most 4 redirects. DuckDuckGo has no official
+results API, so it may limit or refuse automated searches; the search is behind
+`IWebSearch`, where a self-hosted SearXNG or a keyed search API can be added.
 
 ## Reminders
 

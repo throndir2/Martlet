@@ -62,6 +62,7 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("Now"), now, why));
 
         page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route, plan));
+        page.Children.Add(WebResearchCard(ThinkLongerSettings.Of(homeSettings?.Generation), route, plan));
 
         var where = new StackPanel();
         where.Children.Add(Heading("Where it thinks"));
@@ -167,6 +168,7 @@ public partial class MainWindow
         ThinkLongerSettings Read(ThinkLongerSettings? loaded) => new()
         {
             Enabled = loaded?.Enabled,
+            WebResearch = loaded?.WebResearch,
             Effort = ThinkEfforts[Math.Max(0, effort.SelectedIndex)],
             Delivery = ThinkDeliveries[Math.Max(0, when.SelectedIndex)]
         };
@@ -218,6 +220,81 @@ public partial class MainWindow
         return ($"On. When a task needs it, Martlet says it'll think it over and works on it in the background ({settings.HowHard} " +
             "effort, no time limit, no limit on how many) while you keep talking, " +
             (settings.When == ThinkDelivery.WhenFree ? "then brings it up as soon as it's free." : "then brings it up when you talk next."), false);
+    }
+
+    // ---------- Web research (saved with the reply settings) ----------
+
+    /// <summary>Whether Martlet may look things up on the web when asked (off by default: the search words go to DuckDuckGo and
+    /// the pages' sites see this PC's internet address). It saves at once, with the reply settings, so your computers share it;
+    /// Deep thinking off turns it off too.</summary>
+    private Border WebResearchCard(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
+    {
+        var allow = new CheckBox
+        {
+            IsChecked = settings.WebResearch == true, IsEnabled = settings.On, Margin = new Thickness(0, 8, 0, 6),
+            Content = new TextBlock { Text = "Let Martlet search the web and read pages when I ask it to look something up", TextWrapping = TextWrapping.Wrap }
+        };
+        AutomationProperties.SetAutomationId(allow, "WebResearchOn");
+        AutomationProperties.SetName(allow, "Let Martlet search the web when I ask it to look something up");
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
+        AutomationProperties.SetAutomationId(status, "WebResearchStatus");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+        var (text, problem) = WebResearchStatus(settings, route, plan);
+        status.Text = text;
+        status.SetResourceReference(TextBlock.ForegroundProperty, problem ? "WarningBrush" : "MutedBrush");
+        allow.Checked += (_, _) => SetWebResearchAsync(true).Forget();
+        allow.Unchecked += (_, _) => SetWebResearchAsync(false).Forget();
+        var disclosure = Note("What leaves this PC: your search words go to DuckDuckGo, and each page Martlet reads sees this PC's " +
+            "internet address. What the pages say goes to where Deep thinking thinks, with the recent conversation. Martlet only " +
+            "connects to public websites (never your own network), reads at most 8 pages, takes at most 12 minutes and starts at " +
+            "most 4 an hour. The report and its sources are kept in Creations; Martlet offers to show it in your browser.",
+            new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(disclosure, "WebResearchDisclosure");
+        return Card(Heading("Web research"),
+            Note("Ask Martlet to look something up or research it and it says it'll look into it, searches the web and reads pages " +
+                "in the background while you keep talking, then tells you what it found and offers the full report.", new Thickness(0, 0, 0, 4)),
+            status, allow, disclosure);
+    }
+
+    private (string Text, bool Problem) WebResearchStatus(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
+    {
+        if (!settings.On) return ("Off, because Deep thinking is off. Choose where it thinks below to use web research.", false);
+        if (settings.WebResearch != true) return ("Off. Martlet never searches the web or reads web pages.", false);
+        var (thinking, problem) = ThinkLongerStatus(settings, route, plan);
+        if (problem)
+        {
+            var why = thinking.StartsWith("On, but ", StringComparison.Ordinal) ? thinking[8..]
+                : thinking.StartsWith("On. ", StringComparison.Ordinal) ? thinking[4..] : thinking;
+            return ("On, but Martlet can't look things up yet: " + char.ToLowerInvariant(why[0]) + why[1..], true);
+        }
+        return ($"On. When you ask, Martlet looks it up (up to {BackgroundJobs.Duration(WebResearch.TimeLimit)}, at most " +
+            $"{WebResearch.Kind.MaxPerHour} an hour), then offers the report.", false);
+    }
+
+    /// <summary>Saves whether Martlet may research on the web into the newest reply settings (your computers share it).</summary>
+    private async Task SetWebResearchAsync(bool on)
+    {
+        if (closing) return;
+        var saved = false;
+        for (var attempt = 0; attempt < 20 && !closing && !saved; attempt++)
+        {
+            saved = await SaveRepliesAsync(loaded => GenerationSettings.Normalize((loaded ?? new()) with
+            {
+                ThinkLonger = ThinkLongerSettings.Normalize((loaded?.ThinkLonger ?? new()) with { WebResearch = on })
+            }), _ => { }, on ? "Web research is on. Reload an open conversation to use it." : "Web research is off.");
+            if (!saved)
+                try { await Task.Delay(TimeSpan.FromMilliseconds(250), lifetime.Token); }
+                catch (OperationCanceledException) { return; }
+        }
+        if (saved) ErrorLog.Info($"Web research: turned {(on ? "on" : "off")}.");
+        if (!closing && openTab == CompanionTab.DeepThinking) RenderTab();
+    }
+
+    /// <summary>Opens a research report's web page (written by <see cref="ResearchReports"/>) in the default browser.</summary>
+    private static void OpenReportPage(string path)
+    {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+        ErrorLog.Info("Web research: opened a report in the browser.");
     }
 
     // ---------- where it thinks ----------

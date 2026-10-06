@@ -323,7 +323,7 @@ internal sealed class LiveConversationOperation
 }
 
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
-internal sealed class LiveConversationController : IAsyncDisposable
+internal sealed partial class LiveConversationController : IAsyncDisposable
 {
     private const int MaximumPendingCaptures = 4;
     private readonly object gate = new();
@@ -2109,7 +2109,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
-    /// prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
+    /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
     /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on. Null when there are none.</summary>
@@ -2125,6 +2125,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
             own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
             guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+        }
+        // research while Web research is on (Companion › Deep thinking, off by default) and Deep thinking can think.
+        if (OffersResearch(configured))
+        {
+            own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
+            guidance = Join(guidance, WebResearch.Instructions(configured.Prompts));
         }
         // sing_song, play_song and stop_singing while singing is set up (with the Singing prompt).
         if (singing is { Offered: true } && configured.SupportsTools)
@@ -2153,7 +2159,24 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
         if (configured.SupportsTools && RemindersTool is { } remind)
             own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
+        // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
+        // connection).
+        if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
+            own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
         return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>Rings a Discord friend for call_on_discord; null while Discord isn't wired.</summary>
+    internal IDiscordCaller? DiscordCaller { get; set; }
+
+    private async ValueTask<ConversationToolResult> CallOnDiscordAsync(IDiscordCaller caller, TextToolCall call, CancellationToken token)
+    {
+        if (DiscordCallTool.Person(call.ArgumentsJson) is not { Length: > 0 } person)
+            return new("Say which friend to call (person).", true);
+        var result = await caller.CallAsync(person, token).ConfigureAwait(false);
+        tools?.Record("Martlet", DiscordCallTool.Name, "called", "", false);
+        ErrorLog.Info("Discord: call_on_discord ran.");
+        return new(result);
     }
 
     /// <summary>Runs one reminders call (set, list, cancel) on this PC's reminders, which travel with the shared settings; set by
