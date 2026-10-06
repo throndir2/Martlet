@@ -2743,14 +2743,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     private static string Describe(ConversationSnapshot terminal) =>
-        $"state {terminal.State}, failure {terminal.Failure}" +
-        (terminal.SpeechFailed ? $", voice stopped {terminal.SpeechFailure}" : "") +
+        $"state {terminal.State}, failure {terminal.Failure}" + TimeLimit(terminal.Failure) +
+        (terminal.SpeechFailed ? $", voice stopped {terminal.SpeechFailure}" + TimeLimit(terminal.SpeechFailure) : "") +
         (terminal.ProviderFailure is { } provider ? $", provider {provider}" : "") +
         (terminal.SequenceFailure is { } sequence ? $", stream {sequence.Issue}" : "") +
         (terminal.Playback?.Error?.Code is { } audio ? $", audio {audio}" : "") +
         (terminal.ToolCalls > 0 ? $", {terminal.ToolCalls} tool call(s)" : "") +
         (terminal.ToolsRejected ? ", tools rejected" : "") +
         (terminal.FellBackAfter is { } after ? $", Thinking fallback asked after {after}" : "");
+
+    // AuthorizationExpired and BudgetExpired are the request's own time window running out (a slow or loading model), never a
+    // key, sign-in or pairing problem.
+    internal static string TimeLimit(ConversationFailure? failure) => failure is ConversationFailure.AuthorizationExpired or
+        ConversationFailure.BudgetExpired or ConversationFailure.DeadlineExceeded
+        ? " (it ran out of time: the model took too long to answer; this is not a key or sign-in problem)" : "";
 
     // One local log line per Thinking request that answered: when its first words came and how much of its input the model
     // read from its prompt cache (never what was said). Replies and glances also update the talk window's context line.

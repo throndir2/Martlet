@@ -101,6 +101,11 @@ public sealed class LiveConversationTests
         paired = SetupSettings.SetRouteEnabled(paired, SetupRole.Llm, true, true);
         configuration = LiveConversationConfiguration.From(loaded with { Settings = paired })!;
         Assert.Null(configuration.Unavailable(false, false));
+        // A paired host is on the home network: it gets the local timing, so a loading or slow model isn't cut off at 45 s.
+        Assert.True(configuration.NetworkThinking);
+        Assert.Equal(TimeSpan.FromMinutes(2), configuration.TextLimits.MaxRequestTime);
+        Assert.Equal(LiveConversationConfiguration.ActionLifetime,
+            configuration.Request(new("Hi"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _).Limits.TurnTimeout);
         // Host Ollama's num_predict also pays for thinking: the Chat Completions budget, under a small saved context size.
         Assert.Equal(GenerationSettings.ChatReplyTokens, configuration.TextLimits.MaxOutputTokens);
         Assert.Equal(1_024, LiveConversationConfiguration.From(loaded with
@@ -968,6 +973,26 @@ public sealed class LiveConversationTests
         var huge = new string('h', ConversationContextBuffer.MaximumUtf8Bytes / 2 + 1);
         context.Add(huge, huge);
         Assert.Equal(0, context.Count);
+    }
+
+    [Fact]
+    public async Task ThinkingOnTheHomeNetworkGetsLocalTimingAndCloudKeepsItsOwn()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var route = loaded.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        Assert.False(LiveConversationConfiguration.From(loaded)!.NetworkThinking);
+        Assert.Equal(TimeSpan.FromSeconds(45), LiveConversationConfiguration.From(loaded)!.TextLimits.MaxRequestTime);
+        foreach (var origin in new[] { "http://192.168.1.20:11434/v1", "http://10.0.0.5:8080/v1", "http://gpu-box.local:11434/v1",
+                     "http://127.0.0.1:1234/v1" })
+            Assert.True(LiveConversationConfiguration.InNetwork(route with { RouteType = SetupRouteType.ChatCompletions, Origin = origin }), origin);
+        Assert.False(LiveConversationConfiguration.InNetwork(route with
+        {
+            RouteType = SetupRouteType.ChatCompletions, Origin = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl
+        }));
+        Assert.Contains("not a key or sign-in problem", LiveConversationController.TimeLimit(ConversationFailure.AuthorizationExpired));
+        Assert.Equal("", LiveConversationController.TimeLimit(ConversationFailure.ProviderFailed));
+        fixture.NoEffects();
     }
 
     [Fact]

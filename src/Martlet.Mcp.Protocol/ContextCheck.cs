@@ -32,6 +32,9 @@ internal static class ContextCheck
             {
                 routeType = thinking.RouteType?.ToString() ?? "OpenAi",
                 localOllama = ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin),
+                // On the home network a reply gets two minutes per request (a model may load first); a cloud one 45 s.
+                inNetwork = ContextBudget.IsInNetwork(thinking.RouteType, thinking.Origin),
+                replyRequestSeconds = ContextBudget.IsInNetwork(thinking.RouteType, thinking.Origin) ? 120 : 45,
                 model = thinking.ModelId
             },
             savedContextTokens = generation?.ContextTokens,

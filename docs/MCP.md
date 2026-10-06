@@ -1821,7 +1821,10 @@ request.
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,
-`localOllama`, `model`), `savedContextTokens` (Companion › Replies › Context
+`localOllama`, `inNetwork`, `replyRequestSeconds`, `model`; Thinking on this
+PC, a paired host or a Chat Completions server at a private or local address is
+`inNetwork` and gets 120 s per reply request and the whole action, a cloud
+route 45 s), `savedContextTokens` (Companion › Replies › Context
 size, null when blank), `modelLimit` (what `model-limits.json` says about the
 model: `ContextTokens`, `ModelMaximum`, `Source`, `checkedAt`) and
 `modelLimitsKept`, and `context` (the production `ContextBudget`: `Tokens`,
