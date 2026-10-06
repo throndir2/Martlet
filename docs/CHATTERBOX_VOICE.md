@@ -216,7 +216,11 @@ the starter voice *Annie*, five takes each,
 -26.5 without a tag) nor how noise-like the voice is (spectral flatness 0.158
 and 0.175 against 0.170; a whisper would be far flatter), while `[laugh]` added
 0.56 s and a flatter, louder stretch. The tones stay in the catalog because
-characters' emotes and motions can follow them as cues.
+characters' emotes and motions can follow them as cues. So when a reply asks
+Chatterbox to whisper, the tag reaches the model but the voice does not
+audibly whisper; that is the model, not Martlet. Replies that write another
+form of a tag (`[whisper]`, `*whispers*`, `{hushed}`) are mapped to the
+catalog's tag (`VoiceTags.Synonyms`) instead of silencing their sentence.
 
 The Thinking prompt (Companion › Prompts › *Voice sounds and tones*) lists both
 groups, each under a line saying where its tags go: a sound inline where it

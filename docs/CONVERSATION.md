@@ -1184,7 +1184,14 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   `*nods*`, `(sighs)`, `*clears throat*`). So `[nod]` for `{nod}` plays the
   nod and `*laughs*` is spoken as Chatterbox's `[laugh]` (or Dia's `(laughs)`),
   instead of the tag showing in the chat and silencing the rest of its line.
-  Tones of voice take only other brackets, never `*...*`, and emphasis such as
+  A sound's or tone's other words (`VoiceTags.Synonyms`) count too, in any
+  bracket and as `*...*` when they read as a stage direction (ending in -s or
+  -ing): `[whisper]`, `(whispers)`, `*whispers softly*`, `{hushed}` and
+  `(in a whisper)` are Chatterbox's `[whispering]`, `[sobbing]` its `[crying]`
+  and `*giggles*` its `[chuckle]`. Without them a hallucinated `[whisper]` was
+  unknown bracketed text and silenced its whole sentence.
+  Tones of voice otherwise take only other brackets (and `*...*` for an -ing
+  tone such as `*whispering*`), and emphasis such as
   `*so*` is left alone. When two tags share a spelling, the speaking voice's
   own tag wins, then the character's, then another engine's: `[happy]` is
   Chatterbox's tone while Chatterbox speaks and the character's `{happy}` emote
