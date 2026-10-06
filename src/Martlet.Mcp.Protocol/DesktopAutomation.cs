@@ -144,7 +144,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
         // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
-        "SignInEnrolledList",
+        "SignInEnrolledList", "SignInRefusedList",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start

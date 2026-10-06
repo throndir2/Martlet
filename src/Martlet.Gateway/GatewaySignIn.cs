@@ -56,6 +56,8 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
 
     private readonly object gate = new();
     private readonly Dictionary<string, GatewaySignInAttempt> attempts = new(StringComparer.Ordinal);
+    private readonly List<(string DeviceId, GatewaySignInIdentity Identity, DateTimeOffset At)> refused = [];
+    internal const int MaximumRefused = 8;
     private GatewaySignInDocument document = new();
     private IGatewaySignInStorage? storage;
 
@@ -185,6 +187,9 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             else if (!current.Allowed.Any(a => a.Provider == who.Provider && a.Subject == who.Subject))
             {
                 log(LogLevels.Warn, $"Sign-in by {Display(who)} for {deviceId} refused: that identity is not on this host's allow list.");
+                refused.RemoveAll(r => r.Identity.Provider == who.Provider && r.Identity.Subject == who.Subject);
+                refused.Insert(0, (deviceId, who, clock.GetUtcNow()));
+                if (refused.Count > MaximumRefused) refused.RemoveAt(refused.Count - 1);
                 throw new GatewayProtocolException("signin.not_allowed");
             }
             credentials.RevokeDevice(deviceId, cancellationToken);
@@ -253,6 +258,13 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
                 : current.Allowed.Any(a => a.Provider == enrolled.Provider && a.Subject == enrolled.Subject);
             return allowed ? (new(enrolled.Provider, enrolled.Subject, enrolled.Label), enrolled.EnrolledAt) : null;
         }
+    }
+
+    /// <summary>Identities that signed in but weren't allowed, newest first (in memory, at most <see cref="MaximumRefused"/>), so
+    /// the owner can allow the one that was theirs without looking up a provider's subject.</summary>
+    internal IReadOnlyList<(string DeviceId, GatewaySignInIdentity Identity, DateTimeOffset At)> Refused()
+    {
+        lock (gate) return refused.Where(r => !document.Allows(r.Identity.Provider, r.Identity.Subject)).ToArray();
     }
 
     internal GatewaySignInDocument Snapshot()

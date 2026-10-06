@@ -697,10 +697,18 @@ the reused setup code are refused (`signin.invalid`); the laptop signs in with a
 recovery code, is paired under the host's home origin and its signed requests
 work; it asks to join and the home PC lets it in on the host's attestation
 (`NetworkSyncEngine.ApproveSignedIn`) with no check number, while a PC paired by
-code still waits for one; removing the owner account revokes the laptop
-(`auth.revoked`); the host's security audit holds the sign-in successes and
-failures and no secret. Not covered: the desktop windows, Windows Credential
-Manager, a host reached over the internet and browser sign-in providers.
+code still waits for one; the home PC adds an OpenID Connect provider (its
+client secret kept on the host, `has_client_secret` only) routed to an issuer in
+the same process (`GatewayServer.UseSignInProviderHandler`); a tablet signs in
+through a simulated browser that follows the redirect to the desktop's real
+loopback listener (`LoopbackRedirect`), is refused (`signin.not_allowed`) until
+the home PC allows the identity listed under `refused`, then is paired (the
+host exchanged the code with the client secret and checked the ID token) and
+let into the network the same way; removing the owner account revokes the
+laptop (`auth.revoked`); the host's security audit holds the sign-in successes
+and failures and no secret. Not covered: the desktop windows, Windows
+Credential Manager, a host reached over the internet, a real browser and a real
+issuer.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
@@ -712,6 +720,10 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
 `SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
+`SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
+`SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
+`SignInProviderScopes`, `SignInProviderSave`, `SignInProviderRemove`,
+`SignInRefusedList`, `SignInRefusedAllow`,
 `SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
 `SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
 `SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
