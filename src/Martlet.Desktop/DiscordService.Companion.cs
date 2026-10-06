@@ -128,6 +128,14 @@ internal sealed partial class DiscordService : IDiscordCaller
     internal async Task<string> UpdateAvatarAsync(bool manual, CancellationToken token)
     {
         if (avatarPicture is not { } picture || avatarSource?.Invoke() is not { } source) return "No character to take a picture of.";
+        if (manual && Status.State != DiscordBotState.Online)
+        {
+            // Still take the picture, so the owner (and MCP) can see it works before the bot connects.
+            var taken = await picture(token).ConfigureAwait(false);
+            return taken is { Length: >= 24 }
+                ? $"Took a {PngSize(taken)} picture of the character; it goes to Discord once the bot is connected."
+                : "No picture of the character to use (show the character, or choose one with a picture).";
+        }
         // The profile banner shows the whole character when it is on screen (Discord crops it to the banner's shape).
         return await Companion.AvatarAsync(picture, source, manual, token,
             characterPicture is { } whole ? cancel => whole(false, cancel) : null).ConfigureAwait(false);
@@ -204,6 +212,9 @@ internal sealed partial class DiscordService : IDiscordCaller
         }
         catch (Exception error) when (DiscordCompanion.IsDiscordFailure(error)) { ErrorLog.Warn($"Discord command reply failed: {error.Message}"); }
     }
+
+    private static string PngSize(byte[] png) =>
+        $"{System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16))}×{System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20))}";
 
     private void DisposeCompanion() => sweeper?.Dispose();
 }

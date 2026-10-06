@@ -21,6 +21,7 @@ public partial class MainWindow
     private readonly DispatcherTimer discordPresenceTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private (string Source, byte[]? Png)? discordFallbackPicture;
     private bool discordPresenceBusy;
+    private string discordFriendsResult = "";
 
     /// <summary>Wires the companion features to the character, the conversation and the presence timer (once, at start).</summary>
     private void InitializeDiscordCompanion()
@@ -105,12 +106,12 @@ public partial class MainWindow
         var state = companion.State;
         var status = Note(DiscordFriendsSummary(), new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "DiscordFriendsStatus");
-        var result = Note("", new Thickness(0, 6, 0, 0));
+        var result = Note(discordFriendsResult, new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(result, "DiscordFriendsResult");
         void Done(string message)
         {
-            result.Text = message;
-            if (openTab is { } tab) Dispatcher.BeginInvoke(RenderTab, DispatcherPriority.Background);
+            result.Text = discordFriendsResult = message;
+            if (openTab is not null) Dispatcher.BeginInvoke(RenderTab, DispatcherPriority.Background);
         }
 
         var stack = new List<UIElement>
@@ -215,7 +216,7 @@ public partial class MainWindow
     {
         result.Text = $"Calling {person.Name}…";
         discord.CallAsync(person, lifetime.Token).ContinueWith(task => Dispatcher.BeginInvoke(() =>
-            result.Text = task.IsCompletedSuccessfully ? task.Result.Message : $"Couldn't call {person.Name}."), TaskScheduler.Default);
+            result.Text = discordFriendsResult = task.IsCompletedSuccessfully ? task.Result.Message : $"Couldn't call {person.Name}."), TaskScheduler.Default);
     }
 
     private string DiscordFriendsSummary()
@@ -243,15 +244,22 @@ public partial class MainWindow
         return discord.Companion.LastAvatar is { } note ? $"{last} {note}" : last;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DiscordLastInput { public uint Size; public uint Time; }
-    [DllImport("user32.dll", EntryPoint = "GetLastInputInfo")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DiscordGetLastInputInfo(ref DiscordLastInput info);
+    private static TimeSpan UserIdle() => DiscordIdle.UserIdle();
+}
 
-    private static TimeSpan UserIdle()
+/// <summary>How long since the last keyboard or mouse input on this PC (for the Discord status's Away).</summary>
+internal static class DiscordIdle
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LastInput { public uint Size; public uint Time; }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLastInputInfo(ref LastInput info);
+
+    internal static TimeSpan UserIdle()
     {
-        var info = new DiscordLastInput { Size = (uint)Marshal.SizeOf<DiscordLastInput>() };
-        return DiscordGetLastInputInfo(ref info) ? TimeSpan.FromMilliseconds(unchecked((uint)Environment.TickCount - info.Time)) : TimeSpan.Zero;
+        var info = new LastInput { Size = (uint)Marshal.SizeOf<LastInput>() };
+        return GetLastInputInfo(ref info) ? TimeSpan.FromMilliseconds(unchecked((uint)Environment.TickCount - info.Time)) : TimeSpan.Zero;
     }
 }
