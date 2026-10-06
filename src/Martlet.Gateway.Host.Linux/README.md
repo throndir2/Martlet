@@ -235,6 +235,21 @@ also prints one `martlet-pair-v1.<base64url JSON>` code carrying the origin, hos
 ID, pin, pairing ID and token for pasting into the desktop; `owner-pair` without
 a device shows a short typed code instead (`martlet-host pair`).
 
+Sign-in from outside home ([NETWORK](../../docs/NETWORK.md#joining-from-outside-home-by-signing-in))
+keeps its settings in `signin.json` beside `host.json` (0600, service owner;
+not part of the approved configuration). The owner commands edit it on the host
+and `serve` reads it again on each sign-in, so no restart is needed:
+`owner-signin-status` (owner account, providers, allowed identities and
+computers that signed in; never a secret), `owner-signin-owner --user <name>`
+(password on the first stdin line, prints an authenticator secret and
+`otpauth://` link, takes a current code on the next line, prints ten recovery
+codes once), `owner-signin-allow --provider <id> --subject <subject> [--label
+<text>]`, `owner-signin-disallow --provider <id> --subject <subject>` (the
+service revokes the computers that identity signed in) and `owner-invite
+[--address <name:port>]... [--label <text>]`, which prints a
+`martlet-invite-v1.` line with this host's ID, approved pin, home origin, the
+outside addresses and the network ID (needs the service approval for the pin).
+
 ## Binding changes, certificates and recovery
 
 Existing durable factories remain loopback-only/default No. Explicit named

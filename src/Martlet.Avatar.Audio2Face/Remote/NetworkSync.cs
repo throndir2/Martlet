@@ -373,6 +373,23 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
         return (state, approved);
     }
 
+    /// <summary>Lets in every desktop whose join request a member host of the network attests was paired by signing in (the
+    /// owner account, or an identity the owner allowed on that host). The owner set that sign-in up at home, so the sign-in is
+    /// the owner's approval and a check number would only repeat it. Requests through a host that is not an active member of
+    /// this PC's roster are left for an Allow. Returns the new state and the requests it let in.</summary>
+    public (NetworkLocalState State, IReadOnlyList<HostJoinRequest> Approved) ApproveSignedIn(NetworkLocalState state,
+        IReadOnlyList<HostJoinRequest> joins)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(joins);
+        if (state.Roster is not { } roster) return (state, []);
+        var approved = joins.Where(j => j.SignIn is not null && j.DeviceId != signer.DeviceId && roster.Host(j.HostId) is { Removed: false } &&
+                !(roster.Desktop(j.DeviceId) is { Removed: true } removed && removed.Key == j.Key))
+            .DistinctBy(j => j.DeviceId, StringComparer.Ordinal).ToArray();
+        foreach (var join in approved) state = Approve(state, join);
+        return (state, approved);
+    }
+
     /// <summary>Removes a desktop or host from the network (signed by this PC); the next sync shares it, hosts revoke the
     /// removed desktop and a removed host stops trusting the network's desktops.</summary>
     public NetworkLocalState Remove(NetworkLocalState state, string kind, string id)
