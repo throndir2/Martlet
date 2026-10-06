@@ -185,7 +185,7 @@ internal static class HostSupplyCheck
         """.Replace("\r\n", "\n");
 
     /// <summary>This checkout's tracked and new files (as they are now) in one top-level folder, like GitHub's archive.</summary>
-    private static async Task<int> ArchiveCheckoutAsync(string root, string archive, CancellationToken token)
+    internal static async Task<int> ArchiveCheckoutAsync(string root, string archive, CancellationToken token)
     {
         var (listed, list) = await ProcessAsync("git", ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"], null,
             TimeSpan.FromSeconds(60), token);
@@ -212,7 +212,7 @@ internal static class HostSupplyCheck
         return count;
     }
 
-    private static string FindCheckout()
+    internal static string FindCheckout()
     {
         var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         var source = output.Parent?.Parent?.Parent?.Parent?.FullName
@@ -249,12 +249,12 @@ internal static class HostSupplyCheck
             (await ProcessAsync("docker", Exec(true, command), write, TimeSpan.FromMinutes(15), token)).Exit;
     }
 
-    private static Task<(int Exit, string Output)> DockerAsync(IReadOnlyList<string> arguments, string? input, TimeSpan limit,
+    internal static Task<(int Exit, string Output)> DockerAsync(IReadOnlyList<string> arguments, string? input, TimeSpan limit,
         CancellationToken cancellation) =>
         ProcessAsync("docker", arguments, input is null ? null : (stream, token) => stream.WriteAsync(new UTF8Encoding(false).GetBytes(input), token).AsTask(),
             limit, cancellation);
 
-    private static async Task<(int Exit, string Output)> ProcessAsync(string program, IReadOnlyList<string> arguments,
+    internal static async Task<(int Exit, string Output)> ProcessAsync(string program, IReadOnlyList<string> arguments,
         Func<Stream, CancellationToken, Task>? input, TimeSpan limit, CancellationToken cancellation)
     {
         var start = new ProcessStartInfo(program)

@@ -12,17 +12,24 @@ public sealed class HostSetupCommandsTests
     [Fact]
     public void Exposure_runs_only_known_options_and_canonical_outside_addresses()
     {
+        var arguments = Martlet.Core.Nodes.NodeCommandRules.ExposureArguments(["GPU-Box.tailnet.ts.net:9443"], false, true);
         Assert.Equal("exposure --outside gpu-box.tailnet.ts.net:9443 --allow-pairing-outside-home no --treat-all-as-outside yes",
-            HostSetupCommands.Engine(HostAction.Exposure(["--outside", "gpu-box.tailnet.ts.net:9443", "--allow-pairing-outside-home", "no",
-                "--treat-all-as-outside", "yes"])));
-        Assert.Equal("exposure --clear-outside", HostSetupCommands.Engine(HostAction.Exposure(["--clear-outside"])));
-        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure([])));
-        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure(["--outside", "x;reboot"])));
-        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure(["--outside", "Home.Example.net:9443"])));
-        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure(["--config", "/etc/x"])));
-        Assert.Contains("--yes exposure --clear-outside", HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshDocker), HostSetupCommands.Engine(HostAction.Exposure(["--clear-outside"])), false));
+            HostSetupCommands.Engine(HostAction.Exposure(arguments)));
+        var clear = Martlet.Core.Nodes.NodeCommandRules.ExposureArguments([], true, false);
+        Assert.Equal("exposure --clear-outside --allow-pairing-outside-home yes --treat-all-as-outside no",
+            HostSetupCommands.Engine(HostAction.Exposure(clear)));
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => Martlet.Core.Nodes.NodeCommandRules.ExposureArguments(["x;reboot"], false, false));
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => HostAction.Exposure(new Dictionary<string, string>
+        {
+            ["outside"] = "Home.Example.net:9443", ["pairing_codes_outside"] = "no", ["treat_all_as_outside"] = "no"
+        }));
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => HostAction.Exposure(new Dictionary<string, string>
+        {
+            ["outside"] = "", ["pairing_codes_outside"] = "no", ["treat_all_as_outside"] = "no", ["config"] = "/etc/x"
+        }));
+        Assert.Contains("--yes exposure --clear-outside", HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshDocker),
+            HostSetupCommands.Engine(HostAction.Exposure(clear)), false));
     }
-
     [Fact]
     public void This_pc_docker_builds_this_version_then_runs_the_engine_with_the_lan_address()
     {

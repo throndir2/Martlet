@@ -33,6 +33,7 @@ internal static class HostAgentRun
             HostVerb.Add => $"{action.AddVerb} {role} on {name}",
             HostVerb.Remove => $"Remove {role} from {name}",
             HostVerb.Update => $"Update {name}",
+            HostVerb.Exposure => $"Set how {name} is reached from outside home",
             _ => $"{name}: status"
         };
         return HostRunWindow.RunAsync(owner, title, run => ClusterSync.WithConnectionAsync(pairing, async connection =>
@@ -46,6 +47,8 @@ internal static class HostAgentRun
                     "once: it brings its host service up to date by itself, and from then on this PC updates and manages it from here.");
             }
             run.Output.Report(AgentText(name, list.Agent));
+            if (action.Verb == HostVerb.Exposure && list.Agent is { } agent && !agent.Kinds.Contains(NodeCommandKinds.Exposure))
+                throw new InvalidOperationException($"Martlet on {name} is older than Outside access. Update it first (Update host), then try again.");
             if (role is not null && action.Verb == HostVerb.Remove && !confirmed && !ConfirmationDialog.Confirm(run,
                     $"Stop {role} on {name} and remove it from its gateway? Its data volumes are kept, so adding it again is quick.", "Remove role"))
                 throw new OperationCanceledException();
@@ -69,6 +72,7 @@ internal static class HostAgentRun
                 HostVerb.Update => (NodeCommandKinds.Update, new Dictionary<string, string> { ["version"] = version }, null),
                 HostVerb.Add => (NodeCommandKinds.AddRole, Choices(role!, input), Secrets(input)),
                 HostVerb.Remove => (NodeCommandKinds.RemoveRole, new Dictionary<string, string> { ["role"] = role! }, null),
+                HostVerb.Exposure => (NodeCommandKinds.Exposure, new Dictionary<string, string>(action.Arguments), null),
                 _ => (NodeCommandKinds.Status, new Dictionary<string, string>(), null)
             };
             run.Status(action.Verb switch
@@ -77,6 +81,7 @@ internal static class HostAgentRun
                 HostVerb.Add => $"Installing {role} on {name}. Large downloads can take a while; this PC picks the role up when it runs.",
                 HostVerb.Remove => $"Removing {role} from {name}...",
                 HostVerb.Update => $"Updating {name} to Martlet {version}...",
+                HostVerb.Exposure => $"Saving how {name} is reached from outside home; its gateway restarts...",
                 _ => $"Reading {name}'s status..."
             });
             var command = await RunCommandAsync(connection, name, request.Kind, request.Arguments, request.Secrets, run);

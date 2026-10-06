@@ -297,10 +297,12 @@ and *treat every connection as outside home* (for a host behind a port proxy or
 TCP relay that hides the real source, such as a gateway Docker publishes).
 
 **This PC's host service and other hosts Martlet manages.** On the Devices map,
-select this PC (or a host Martlet reaches over SSH) and choose **Outside access**
+select this PC, a host Martlet reaches over SSH, or a host whose own Martlet runs
+its commands (the `host.exposure` command between computers; an older Martlet
+there is asked to update first) and choose **Outside access**
 (`NodeAction-OutsideAccess`): outside addresses, *Allow typed pairing codes from
 outside home* and *Treat every connection as coming from outside home*. Martlet
-runs `martlet-host exposure` there (`--outside`, `--clear-outside`,
+runs `martlet-host exposure` there (`martlet-host pair` serves the same choices) (`--outside`, `--clear-outside`,
 `--allow-pairing-outside-home`, `--treat-all-as-outside`), which saves
 `exposure.json` through the gateway and restarts it; the network's next sync
 signs the addresses into the roster. Docker publishes the gateway's port, so a
@@ -490,3 +492,19 @@ window listing computers reported by a live host, letting a computer in through
 its own live host service or following a live host's
 update (all need a pairing secret in Windows Credential Manager) and two
 physical PCs on a real LAN.
+
+Reaching the network from outside home is checked on real sockets with MCP
+`outside_path_check`: this checkout's Linux gateway (`owner-init`,
+`owner-exposure`, `owner-pair`, `serve`) in disposable containers on a Docker
+network numbered from TEST-NET-3, its port published on 127.0.0.1, so it sees
+every connection coming from 203.0.113.1 (outside). The desktop's real pairing
+client, connection, network sync and route fallback reach it with its home
+address dead: a typed code is refused from outside and a device card pairs, the
+roster signs the address the host advertises, home fails and the outside
+address answers (the next connection goes straight there), a stranger is locked
+out on the sixth request and the audit and host log name 203.0.113.1. Also
+`exposure_selftest` (loopback, every guard rule), `host_engine_check`'s
+exposure steps (the engine) and `node_link_check`'s `exposure-command` (the
+`host.exposure` command through a real gateway and the desktop's agent loop).
+**NOT RUN:** a real router port forward, overlay network or internet path, and
+saving Outside access against a live host service (it restarts that service).

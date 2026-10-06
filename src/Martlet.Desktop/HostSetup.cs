@@ -29,10 +29,16 @@ internal sealed record HostAction(HostVerb Verb, string? Role = null)
     internal static HostAction Change(string role) => new(HostVerb.Add, role) { Changing = true };
     internal static HostAction Remove(string role) => new(HostVerb.Remove, role);
 
-    /// <summary>martlet-host exposure with these options (docs/NETWORK.md, "Reaching your network from outside home").</summary>
-    internal static HostAction Exposure(IReadOnlyList<string> options) => new(HostVerb.Exposure) { Options = options };
+    /// <summary>martlet-host exposure (docs/NETWORK.md, "Reaching your network from outside home"), from checked
+    /// <see cref="Martlet.Core.Nodes.NodeCommandKinds.Exposure"/> arguments (<see cref="Martlet.Core.Nodes.NodeCommandRules.ExposureArguments"/>):
+    /// the same arguments a host's Martlet runs it with.</summary>
+    internal static HostAction Exposure(IReadOnlyDictionary<string, string> arguments) => new(HostVerb.Exposure)
+    {
+        Arguments = arguments, Options = Martlet.Core.Nodes.NodeCommandRules.ExposureOptions(arguments)
+    };
 
-    /// <summary>The options of an <see cref="Exposure"/> action.</summary>
+    /// <summary>The arguments and martlet-host options of an <see cref="Exposure"/> action.</summary>
+    internal IReadOnlyDictionary<string, string> Arguments { get; init; } = new Dictionary<string, string>();
     internal IReadOnlyList<string> Options { get; init; } = [];
 
     internal bool Changing { get; init; }

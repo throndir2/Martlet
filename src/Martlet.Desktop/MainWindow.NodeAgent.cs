@@ -292,6 +292,8 @@ public partial class MainWindow
             NodeCommandKinds.DescribeRole => ["describe", role!],
             NodeCommandKinds.AddRole => ["add", role!],
             NodeCommandKinds.RemoveRole => ["remove", role!],
+            // Checked against the closed argument rules again here: only known options and canonical addresses reach the engine.
+            NodeCommandKinds.Exposure => ["exposure", .. NodeCommandRules.ExposureOptions(command.Arguments)],
             _ => throw new InvalidOperationException($"Martlet on {here} does not run {command.Kind}.")
         };
         if (command.Kind == NodeCommandKinds.AddRole && CannotHand(nodeAgentHostId ?? "", role!, HostRoles.All.FirstOrDefault(r => r.Kind == role)?.Job ?? "")
@@ -320,6 +322,7 @@ public partial class MainWindow
             NodeCommandKinds.Status => $"{here}'s host service status is shown above.",
             NodeCommandKinds.DescribeRole => $"Read what {role} needs on {here}.",
             NodeCommandKinds.AddRole => $"{role} is running in {here}'s host service.",
+            NodeCommandKinds.Exposure => $"{here}'s host service serves with its new outside access settings.",
             _ => $"{role} was removed from {here}'s host service."
         }, 0);
     }
