@@ -2121,7 +2121,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             var settings = configured.ThinkLonger;
             // How many think at once comes from the settings alone (never what is busy), so the tools stay the same each reply.
-            var definitions = ThinkLonger.Definitions(settings, ThinkLonger.Places(pool).Count);
+            var definitions = ThinkLonger.Definitions(settings, ThinkLonger.Slots(ThinkLonger.Places(pool)));
             own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
             own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
             guidance = ThinkLonger.Instructions(settings, configured.Prompts);
@@ -2299,10 +2299,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
-        var places = ThinkLonger.Places(pool);
-        var start = jobs.Start(ThinkLonger.Kind(settings, places.Count), ThinkLonger.Label(task!), async (job, token) =>
+        var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory));
+        var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)), ThinkLonger.Label(task!), async (job, token) =>
         {
-            // The place the job list picked for it: free, and the one sharing least with the conversation.
+            // The place the broker picked for it: a free slot on the place sharing least with the conversation and kept free
+            // for no other work, waiting in line for the first that frees up when every one is busy.
             var spot = pool.Find(job.Place!.Id)!;
             var place = spot.Settings;
             var where = place.Separate ? place.Describe() : thinkingModel;
@@ -2358,19 +2359,30 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 ErrorLog.Info($"Background thinking: {job.Id} ended on {spot.Computer} after {BackgroundJobs.Duration(job.Elapsed)} " +
                     $"({think.Attempts} request{(think.Attempts == 1 ? "" : "s")}, alongside the conversation).");
             }
-        }, places);
+        }, places, wait: true);
         if (start.Job is not { } started)
         {
             tools?.Record(server, ThinkLonger.Name, "not started: " + start.Refusal, ThinkLonger.Label(task!), false);
             ErrorLog.Info($"Background thinking: a new think wasn't started ({start.Refusal}: {start.Message})");
             return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Refused(start), true));
         }
+        var slots = ThinkLonger.Slots(places);
+        var busy = jobs.Places.Leases.Count(lease => places.Any(p => p.Id == lease.Place.Id));
+        var terms = $"thinking steps on, {settings.HowHard} effort, no time limit, " +
+            $"{jobs.StartedWithinHour(ThinkLonger.KindName)} this hour (no hourly limit)";
+        if (started.Place is not { } seat)
+        {
+            tools?.Record(server, ThinkLonger.Name, "queued " + started.Id, ThinkLonger.Label(task!), false);
+            ErrorLog.Info($"Background thinking: {started.Id} waits in line ({jobs.Places.Position(started.Id)} in line) for one of " +
+                $"{places.Count} place{(places.Count == 1 ? "" : "s")} ({slots} at once; busy: {start.Queued}; {terms})" +
+                (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
+            return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser, start.Queued)));
+        }
         tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
-        var chosen = pool.Find(started.Place!.Id)!;
+        var chosen = pool.Find(seat.Id)!;
         ErrorLog.Info($"Background thinking: started {started.Id} on {(chosen.Settings.Separate ? chosen.Settings.Describe() : thinkingModel)} " +
-            $"(placed on {chosen.Computer}, {jobs.Places.Leases.Count(lease => places.Any(p => p.Id == lease.Place.Id))} of " +
-            $"{places.Count} place{(places.Count == 1 ? "" : "s")} busy; thinking steps on, {settings.HowHard} effort, " +
-            $"no time limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} this hour (no hourly limit); " +
+            $"(placed on {chosen.Computer}{(seat.Duties.Count > 0 ? $", also kept for {string.Join(" and ", seat.Duties)}" : "")}, " +
+            $"{busy} of {slots} slot{(slots == 1 ? "" : "s")} on {places.Count} place{(places.Count == 1 ? "" : "s")} busy; {terms}; " +
             $"in parallel with the conversation: {chosen.Plan.Why})" +
             (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
@@ -2427,7 +2439,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
-        Func<string, LyricsWriter>? writer = null;
+        Func<string, CancellationToken, Task<LyricsWriter>>? writer = null;
         var where = "";
         if (arguments.Lyrics is null)
         {
@@ -2443,15 +2455,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 return new(SongTools.WriteLyricsYourself(plan.Why), true);
             }
             var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
-            var places = ThinkLonger.Places(pool);
+            var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory));
             where = places.Count == 1
                 ? pool.Usable[0].Settings is { Separate: true } only ? only.Describe() : thinkingModel
                 : $"whichever of {places.Count} Deep thinking places is free";
             var task = SongTools.WritingTask(configured.Prompts, arguments);
-            writer = holder =>
+            writer = async (holder, wait) =>
             {
                 var runtime = SongRuntime();
-                var lease = jobs.Places.TryAcquire(places, holder, share: true)!;
+                // The broker's choice, as for a think: waits in line while every place is busy.
+                var lease = await jobs.Places.AcquireAsync(places, holder, wait).ConfigureAwait(false);
                 var spot = pool.Find(lease.Place.Id)!;
                 var place = spot.Settings;
                 var at = place.Separate ? place.Describe() : thinkingModel;
@@ -2499,7 +2512,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     // The song job: the singing computer is checked, the lyrics written (when none were given), the song made, its mouth timed
     // to its vocals and the song kept as a creation (shared with every paired Martlet computer).
     private async Task<BackgroundJobOutcome> MakeSongAsync(BackgroundJob job, SingArguments arguments, SongSetup setup, string library,
-        CreationAuthor author, Func<string, LyricsWriter>? writerFor, TimeSpan writing, CancellationToken token)
+        CreationAuthor author, Func<string, CancellationToken, Task<LyricsWriter>>? writerFor, TimeSpan writing, CancellationToken token)
     {
         job.Report(BackgroundJobState.Running, "Checking the singing computer");
         var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
@@ -2515,7 +2528,19 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         string? problem;
         if (writerFor is not null)
         {
-            var (writer, beside, place) = writerFor(job.Id);
+            LyricsWriter seated;
+            using (var patience = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                patience.CancelAfter(writing);
+                job.Report(BackgroundJobState.Waiting, "waiting for a free computer to write the lyrics");
+                try { seated = await writerFor(job.Id, patience.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    return BackgroundJobOutcome.Failed($"no computer came free to write the lyrics within {BackgroundJobs.Duration(writing)}");
+                }
+            }
+            job.Report(BackgroundJobState.Running);
+            var (writer, beside, place) = seated;
             using var held = place;
             BackgroundJobOutcome lyrics;
             using (var limit = CancellationTokenSource.CreateLinkedTokenSource(token))
@@ -2559,6 +2584,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         else (written, problem) = SongTools.ParseWritten("LYRICS:\n" + arguments.Lyrics, arguments);
         if (written is null) return BackgroundJobOutcome.Failed(problem ?? "the lyrics didn't come out right");
+        // The singing computer is busy with this song until it is done (after the lyrics, which may be written there): no
+        // background think is placed there meanwhile.
+        using var singer = BackgroundDuties.Singer(dataDirectory) is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
         job.Report(BackgroundJobState.Running, "Writing the music");
         var request = new SongRequest
         {
@@ -2925,6 +2953,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         object Describe(BackgroundJob job) => new
         {
             id = job.Id, kind = job.Kind.Name, state = job.State.ToString(), progress = job.Progress, place = job.Place?.Name,
+            inLine = jobs.Places.Position(job.Id),
             startedAt = job.StartedUtc, finishedAt = job.FinishedUtc, elapsedSeconds = Math.Round(job.Elapsed.TotalSeconds, 1),
             timeLimitSeconds = job.Kind.TimeLimit?.TotalSeconds, offer = job.Kind.Offer,
             resultCharacters = job.Result?.Length, cut = job.Cut, problem = job.Problem, canceledBy = job.CanceledBy,
@@ -2955,7 +2984,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 available = spot.Plan.Available, rank = spot.Plan.Rank,
                 heldBy = jobs.Places.Leases.Where(lease => lease.Place.Id == spot.Key).Select(lease => lease.Holder)
             }),
-            maxThinks = pool is null ? 0 : ThinkLonger.Places(pool).Count
+            maxThinks = pool is null ? 0 : ThinkLonger.Slots(ThinkLonger.Places(pool)),
+            // Who waits for a free place now, first in line first, and the other work each computer is kept free for.
+            line = jobs.Places.Line,
+            keptFor = BackgroundDuties.Of(dataDirectory)
         });
     }
 

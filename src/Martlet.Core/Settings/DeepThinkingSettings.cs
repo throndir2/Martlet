@@ -39,6 +39,18 @@ public sealed record DeepThinkingSettings
     public string? HostRouteId { get; init; }
     public DateTimeOffset? ChosenAt { get; init; }
 
+    /// <summary>How many thinks this place runs at once, when its computer says (a Deep thinking role with several models or
+    /// parallel slots on its graphics card); null: <see cref="ThinksAtOnce"/>'s default.</summary>
+    public int? Slots { get; init; }
+
+    /// <summary>How many thinks run here at once: <see cref="Slots"/>, else one on a computer of yours (its graphics card) and
+    /// <see cref="CloudThinksAtOnce"/> on a cloud provider or another server (Same as Thinking is offered only for one that answers
+    /// several requests at once).</summary>
+    [JsonIgnore]
+    public int ThinksAtOnce => Slots ?? (Place == DeepThinkingPlace.Host || OnThisPc ? 1 : CloudThinksAtOnce);
+
+    public const int CloudThinksAtOnce = 4;
+
     /// <summary>The most places Deep thinking thinks on at once: this one and up to seven more.</summary>
     public const int MaxPlaces = 8;
 
@@ -123,6 +135,7 @@ public sealed record DeepThinkingSettings
     public void Validate()
     {
         ContractRules.Defined(Place);
+        ContractRules.Require(Slots is null or >= 1 and <= MaxPlaces, $"A place runs 1-{MaxPlaces} thinks at once.");
         switch (Place)
         {
             case DeepThinkingPlace.Endpoint:
