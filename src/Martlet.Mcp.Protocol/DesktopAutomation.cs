@@ -163,6 +163,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
         "SignInEnrolledList", "SignInRefusedList",
+        // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
+        // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
+        "DiscordVoiceStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start

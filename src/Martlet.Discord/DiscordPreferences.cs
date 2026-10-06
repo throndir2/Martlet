@@ -26,6 +26,10 @@ public sealed record DiscordPreferences
     public DiscordChatMode ServerChat { get; init; } = DiscordChatMode.Off;
     public DiscordChatMode DirectChat { get; init; } = DiscordChatMode.Always;
     public DiscordChatMode VoiceChat { get; init; } = DiscordChatMode.Sometimes;
+    /// <summary>Join the owner's voice channel whenever the owner joins or moves to one in a server Martlet is in.</summary>
+    public bool VoiceFollowOwner { get; init; }
+    /// <summary>Leave a voice channel after being the only one in it this many minutes.</summary>
+    public int VoiceLeaveAloneMinutes { get; init; } = 2;
     /// <summary>Anyone may DM Martlet, not only <see cref="People"/> and the owner.</summary>
     public bool DirectFromAnyone { get; init; }
     public IReadOnlyList<DiscordChannelRule> Channels { get; init; } = [];

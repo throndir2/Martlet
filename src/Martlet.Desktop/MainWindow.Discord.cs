@@ -192,6 +192,7 @@ public partial class MainWindow
                     link: true, id: "DiscordFixIntent")));
         }
         children.Add(Status(discord.TextStatusLine, "DiscordTextStatus"));
+        children.Add(Status(discord.VoiceSummary, "DiscordVoiceStatus"));
         children.Add(Row(reconnect));
         return Card([.. children]);
     }

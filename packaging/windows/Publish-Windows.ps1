@@ -61,6 +61,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt') -Destination (Join-Path $staging 'notices\Audio2Face-Protos-LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.F5\BundledVoices\NOTICES.txt') -Destination (Join-Path $staging 'notices\F5-Voices-NOTICES.txt')
     Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt') -Destination (Join-Path $staging 'notices\Voice-Recognition-NOTICES.txt')
+    Copy-Item -LiteralPath (Join-Path $root 'src\Martlet.Discord\DISCORD-VOICE-NOTICES.txt') -Destination (Join-Path $staging 'notices\Discord-Voice-NOTICES.txt')
     Copy-RuntimeNotices $staging (Join-Path $build 'obj\Martlet.Desktop\project.assets.json')
     $provenance = Get-PackageProvenance $staging $OutputDirectory $source $sdkReceipt -NodePath $node -Channel $channel
     Assert-PackagingSourceReceipt $source $root

@@ -55,9 +55,6 @@ internal sealed partial class DiscordService : IDiscordCaller
         }
     }
 
-    /// <summary>Joins a call channel once Martlet can talk in Discord voice; null until then (the ring then says it joins later).</summary>
-    internal Func<ulong, ulong, CancellationToken, Task>? JoinCall { get; set; }
-
     internal string Character => characterName?.Invoke() is { Length: > 0 } name ? name : Status.BotName ?? "Martlet";
 
     /// <summary>Wires the companion features: commands, the transport on each connection and the cleanup of call channels.
@@ -99,12 +96,21 @@ internal sealed partial class DiscordService : IDiscordCaller
         {
             if (task.Exception is { } failed) ErrorLog.Warn($"Discord call cleanup failed: {failed.GetBaseException().Message}");
         }, TaskScheduler.Default), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        // A call ends when everyone else leaves its channel (Martlet leaves too) and its channel goes once Martlet has left it.
+        VoiceEmptied += (guild, channel) =>
+        {
+            if (friends.State.Calls.Any(call => call.ChannelId == channel)) LeaveVoiceAsync(guild).Forget();
+        };
+        VoiceLeft += (_, channel) => friends.EndCallAsync(channel, CancellationToken.None).ContinueWith(task =>
+        {
+            if (task.Exception is { } failed) ErrorLog.Warn($"Discord call cleanup failed: {failed.GetBaseException().Message}");
+        }, TaskScheduler.Default);
     }
 
     // ---------- the owner's actions (Martlet's window) ----------
 
     internal Task<DiscordCallResult> CallAsync(DiscordPerson person, CancellationToken token) =>
-        Companion.CallAsync(person.UserId, Character, JoinCall, token);
+        Companion.CallAsync(person.UserId, Character, JoinVoiceAsync, token);
 
     public bool CanCall
     {

@@ -193,13 +193,20 @@ public sealed class DiscordCompanion
             await transport.SendDirectAsync(person.UserId, DiscordCalls.RingText(character, plan.GuildId, channel, invite, joinVoice is not null),
                 null, token).ConfigureAwait(false);
             var joined = false;
+            string? joinProblem = null;
             if (joinVoice is not null)
             {
-                await joinVoice(plan.GuildId, channel, token).ConfigureAwait(false);
-                joined = true;
+                // The friend already has the link, so a failed join still counts as ringing them.
+                try
+                {
+                    await joinVoice(plan.GuildId, channel, token).ConfigureAwait(false);
+                    joined = true;
+                }
+                catch (Exception error) when (IsDiscordFailure(error)) { joinProblem = error.Message; }
             }
-            return Finish(new(true, joined ? $"Calling {person.Name} in {plan.ChannelName}." :
-                $"Rang {person.Name} in {plan.ChannelName}; Martlet joins once it can talk in Discord voice.", plan, channel, joined, invite is not null));
+            return Finish(new(true, joined ? $"Calling {person.Name} in {plan.ChannelName}."
+                : joinProblem is not null ? $"Rang {person.Name} in {plan.ChannelName}, but Martlet couldn't join: {joinProblem}"
+                : $"Rang {person.Name} in {plan.ChannelName}; Martlet joins once it can talk in Discord voice.", plan, channel, joined, invite is not null));
         }
         catch (Exception error) when (IsDiscordFailure(error))
         {

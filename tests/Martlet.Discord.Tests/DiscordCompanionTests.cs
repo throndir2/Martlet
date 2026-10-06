@@ -216,6 +216,12 @@ public sealed class DiscordCompanionTests
             Assert.Equal(first.ChannelId, joined);
             Assert.Single(companion.State.Calls);
 
+            var failed = await companion.CallAsync(Ana, "Hiyori", (_, _, _) => throw new InvalidOperationException("libdave is missing."),
+                CancellationToken.None);
+            Assert.True(failed.Rang);
+            Assert.False(failed.Joined);
+            Assert.Contains("couldn't join: libdave is missing.", failed.Message);
+
             transport.SetOccupants(first.ChannelId, 1);
             clock.Now = T0.AddMinutes(20);
             Assert.Equal(0, await companion.SweepAsync(CancellationToken.None));

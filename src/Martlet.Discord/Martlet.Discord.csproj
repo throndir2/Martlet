@@ -9,5 +9,28 @@
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
     <PackageReference Include="NetCord" />
+    <!-- Opus is encoded and decoded in managed code (Concentus), so no native opus ships. -->
+    <PackageReference Include="Concentus" />
   </ItemGroup>
+  <!-- Discord voice is end-to-end encrypted (DAVE). NetCord calls libdave, so Discord's official unmodified libdave v1.2.1
+       Windows x64 build ships beside Martlet.Desktop.exe (notices: DISCORD-VOICE-NOTICES.txt). The build downloads the
+       release archive once into obj, checks its pinned SHA-256 (packaging\windows\toolchain.json pins the same) and only then
+       unpacks libdave.dll. Transport encryption uses .NET's AES-GCM, so libsodium is not needed. -->
+  <PropertyGroup>
+    <LibDaveCache>$(BaseIntermediateOutputPath)libdave\</LibDaveCache>
+    <LibDaveUrl>https://github.com/discord/libdave/releases/download/v1.2.1%2Fcpp/libdave-Windows-X64-boringssl.zip</LibDaveUrl>
+    <LibDaveSha256>eb4a7bbcd755b916d306cc6364a64de63c62355296e3779b262f9a6afae8ea2f</LibDaveSha256>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(LibDaveCache)bin\libdave.dll" Link="libdave.dll" CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <Target Name="DownloadLibDave" BeforeTargets="PrepareForBuild;GetCopyToOutputDirectoryItems"
+          Condition="!Exists('$(LibDaveCache)bin\libdave.dll')">
+    <DownloadFile SourceUrl="$(LibDaveUrl)" DestinationFolder="$(LibDaveCache)" DestinationFileName="libdave.zip.partial"
+                  SkipUnchangedFiles="false" Retries="3" />
+    <VerifyFileHash File="$(LibDaveCache)libdave.zip.partial" Algorithm="SHA256" Hash="$(LibDaveSha256)" />
+    <Unzip SourceFiles="$(LibDaveCache)libdave.zip.partial" DestinationFolder="$(LibDaveCache)" OverwriteReadOnlyFiles="true" />
+    <Delete Files="$(LibDaveCache)libdave.zip.partial" />
+  </Target>
 </Project>
