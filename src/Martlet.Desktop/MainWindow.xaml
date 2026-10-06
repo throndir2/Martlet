@@ -320,6 +320,28 @@
                     <Border x:Name="DetailCard" Style="{DynamicResource CardStyle}" Padding="26,22">
                         <StackPanel x:Name="DetailContent" AutomationProperties.Name="Selected device" AutomationProperties.LiveSetting="Polite"/>
                     </Border>
+                    <!-- What your computers can run: parts covered here, online or not at all, the totals and what else fits (MainWindow.DeviceCapacity.cs) -->
+                    <Border x:Name="CapacityCard" Style="{DynamicResource CardStyle}" Padding="26,22" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="CapacityCard" AutomationProperties.Name="What your computers can run">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE9D9;" Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="What your computers can run" FontSize="18" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Text="From Martlet's estimates of what each part needs. Select a computer above to see its share."/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="CapacityCoverageText" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       AutomationProperties.AutomationId="CapacityCoverage"/>
+                            <TextBlock x:Name="CapacityTotalsText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       AutomationProperties.AutomationId="CapacityTotals"/>
+                            <TextBlock x:Name="CapacityFitsText" TextWrapping="Wrap" FontWeight="SemiBold"
+                                       AutomationProperties.AutomationId="CapacityFits"/>
+                        </StackPanel>
+                    </Border>
                     <!-- Your Martlet network: the owner's computers that trust each other (MainWindow.Network.cs) -->
                     <Border x:Name="NetworkCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Your Martlet network">
                         <StackPanel>

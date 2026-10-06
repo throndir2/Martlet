@@ -989,6 +989,7 @@ public partial class MainWindow
         networkDevicesShown = NetworkDevicesSignature();
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
+        RenderNetworkCapacity(nodes);
         RenderNetwork();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         mapNodes = nodes;

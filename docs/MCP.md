@@ -2971,7 +2971,28 @@ PC, then those needing attention, then by name) with `DeviceFilter-all`,
 its count) and a `DeviceSearch` box (`ui_set_text`, `--allow-ui-effects`).
 `DevicesSummary` returns *53 devices, 2 need attention. Select one to see
 details.* and `DeviceListStatus` *Showing 12 of 53 devices.* (or *No device
-matches "gpu".*). Martlet remembers up to 64 paired hosts. `SelectedDevice` and `SelectedDeviceHealth`
+matches "gpu".*). Martlet remembers up to 64 paired hosts.
+
+The selected computer's **Resources** section (`DeviceResources`, for This PC
+and paired hosts) shows how much of the device each job takes, from the
+placement engine's measure of today's setup (`PlacementEngine.Measure` over the
+footprint catalog). `DeviceSpecs` returns its hardware (*NVIDIA GeForce RTX
+5090 (32 GB) · 64 GB memory · 32 processor threads*), one
+`DeviceResource-<vram|ram|cpu|disk>` per resource it reported (*Graphics
+memory: 14 of 32 GB planned (44%), 15 GB free for Martlet.*; This PC's memory
+adds *In use now: 9.5 GB (59%).*, read live; hosts report no live use yet), one
+`DeviceShare-<option>` per job (*Deep thinking (Gemma 4 12B): 25% graphics
+memory, 3% memory, 6% processor.*), `DeviceHeadroom` (*Left free: ...*) and
+`DeviceAlsoFits-<n>` from `PlacementEngine.Afford` (*Room for another Deep
+thinking model (Gemma 4 12B) here.*). The **What your computers can run** card
+(`CapacityCard`) returns `CapacityCoverage` (*On your computers: Thinking
+(gpu-box). Online: Voice (OpenAI voice). Not set up: Singing, Pictures.*),
+`CapacityTotals` (*Totals across 2 computers: 32 GB graphics memory, 80 GB
+memory, ...*) and `CapacityFits` (*Your computers could also run 2 more Thinking
+models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).*). All are
+read-only.
+
+`SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
