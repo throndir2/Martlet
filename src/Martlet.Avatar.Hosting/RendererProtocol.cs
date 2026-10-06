@@ -42,9 +42,11 @@ public sealed record RendererVoice(bool Muted);
 public sealed record RendererLock(bool Locked);
 /// <summary>The camera view (Martlet in your Discord calls): the character in its own ordinary 16:9 window (titled "Martlet
 /// camera", in the taskbar, not on top) on a solid <paramref name="Background"/> (#RRGGBB) so OBS can capture that window
-/// cleanly and key the color out, then share it as a virtual camera. Off puts the overlay back where and how it was. While on,
-/// the window keeps its size (zoom only zooms the camera) and its place isn't saved.</summary>
-public sealed record RendererCamera(bool On, string Background = "#00B140");
+/// cleanly and key the color out, then share it as a virtual camera; or, with <paramref name="Picture"/> (the full path of a
+/// PNG, JPEG or WebP file on this PC), on that picture, filling the window (the color shows only if it can't be read). Off
+/// puts the overlay back where and how it was. While on, the window keeps its size (zoom only zooms the camera) and its place
+/// isn't saved.</summary>
+public sealed record RendererCamera(bool On, string Background = "#00B140", string? Picture = null);
 /// <summary>Where the character overlay is: its window's top-left corner and the character frame's width and height, in
 /// device-independent pixels, and whether its place is locked. <paramref name="Screen"/> names the monitor it is on (Windows'
 /// device name, such as <c>\\.\DISPLAY2</c>) and <paramref name="ScreenLeft"/>, <paramref name="ScreenTop"/> its top-left
