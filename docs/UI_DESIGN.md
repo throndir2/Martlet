@@ -566,13 +566,15 @@ in a character palette (Martlet's pink otherwise). Everything refers to them as
 `DynamicResource`, so a palette swaps at once.
 Windows' high contrast always wins.
 
-Settings › Appearance offers *Pink light*, *Rose dark* and four palettes made
-from the character this PC shows: **Character light** and **Character dark**
-(Martlet's rules) and **Character light/dark by Thinking**. They follow the
-character: choosing or showing another character recolors Martlet within a
-moment, and the last colors are kept in `appearance-colors.json` so Martlet
-starts in them. Under the choice the page shows the character's main colors and
-a small picture of Martlet's window in each of the four palettes.
+Settings › Appearance offers *Pink light*, *Rose dark* and two palettes made by
+Martlet's rules from the character this PC shows: **Character light** and
+**Character dark**. They follow the character: choosing or showing another
+character recolors Martlet within a moment, and the last colors are kept in
+`appearance-colors.json` so Martlet starts in them. Under the choice the page
+shows the character's main colors and a small picture of Martlet's window in
+each of the two palettes. (The *by Thinking* palettes an older Martlet offered
+were retired: they looked the same as the rules' own. A saved or shared choice
+of one reads as the matching rule-based palette.)
 
 **Reading the colors** (`Martlet.Avatar.Hosting`, `CharacterTheme.cs`): the
 model's textures (a Live2D model's texture sheets, a VRM's base color
@@ -583,8 +585,7 @@ more. Each color has its share of the textures and a kind: vivid, muted,
 neutral or skin. They are read once per model and kept in
 `character-themes.json` by the model's ID. Texture sheets over-represent some
 parts (mouths, eyes, effects), so the rules can pick a color that is small on
-the character itself; the Thinking palettes, which also see a picture, are the
-remedy.
+the character itself.
 
 **Martlet's rules** (in OKLCH): the backgrounds are near white (light) or
 near black (dark), tinted with the hue that covers most of the model, more
@@ -598,35 +599,7 @@ model's color is used as it is whenever it already keeps the rules; otherwise
 only its lightness moves. Glow is a second vivid color (or the tint), success
 and warning keep their green and amber, moved off the accent's hue when close.
 
-**The Thinking palettes**: the Thinking model chooses, Martlet's rules design.
-Small models asked for whole palettes made plain, black-and-white ones (and
-copied any palette they were shown), while the rules reliably make calm,
-cohesive ones; what the rules can't do is know which color *is* the
-character, since texture sheets over-represent mouths, eyes and effects. So
-*Make with Thinking* (and, once for each new character, choosing a Thinking
-palette while Thinking is set up) asks only that: the prompt *Character theme
-colors* (Companion › Prompts) and a message with who the character is (its name
-in your character list, with the name its files give it) and where it is from
-(what you type under **Who the character is and where it's from**, saved for that
-character in `character-themes.json`, else what its files say: a VRM's authors,
-copyright and references, or *Live2D's official sample* for the built-in
-Hiyori), its main colors and one JPEG: the character as it shows on screen (a
-snapshot from the overlay, cropped, at most 320 pixels) beside its texture
-sheet, or the sheet alone (a VRM's own thumbnail beside it) while it is hidden.
-It answers JSON with the `accent` (the character's signature color, the one
-fans would name first; from what it knows of the character when it recognizes
-it), the `glow` (a second color of theirs), the `tint` the backgrounds lean
-toward and the `strength` of that tint (`subtle`, `balanced` or `bold`), and a
-short reason. Martlet's rules then build both palettes around those colors,
-exactly as they build their own; a gray or near-white accent, a gray glow or a
-hueless tint is refused and the rules' own is used. A model that can't take
-pictures is asked again with the message alone. An edited prompt that still
-asks for whole `light` and `dark` palettes is accepted too: their plain grays
-take the hue of the rule-based palette and the rules below are kept. Until it
-has answered, the Thinking choices use the rule-based palettes.
-
-**Rules every palette keeps**, the Thinking model's included
-(`CharacterThemeRules.Repair`): light backgrounds with dark text in a light
+**Rules every palette keeps** (`CharacterThemeRules.Repair`): light backgrounds with dark text in a light
 palette and dark backgrounds with light text in a dark one; text 7:1 on
 `Canvas`, `Surface` and `Soft`; `Muted`, `Accent`, `Success` and `Warning`
 4.5:1 on them; `OnAccent` 4.5:1 on `Accent`; `Border` and `Focus` 3:1 on
@@ -638,12 +611,7 @@ page says how many were adjusted.
 Verified looks (2026-10-03, `character_theme` previews and the desktop): the
 rules give calm, readable palettes for all ten models tried (the Live2D samples
 Hiyori, Haru, Mao, Mark, Natori, Ren and Rice, the VRM samples Seed-san and
-Constraint Twist, and a VTube Studio model). Asked for whole palettes, Gemma 4
-(12B and E2B on Ollama) made plainer, black-and-white ones that needed many
-fixes; asked for the choice, Gemma 4 12B answered in about 2-3 s each and picked
-what the texture sheets hide (Seed-san's teal trims instead of the red of its
-mouth texture, Hiyori's blue ribbon, Constraint Twist's coral, Natori's blue
-tie), with palettes as cohesive as the rules' own.
+Constraint Twist, and a VTube Studio model).
 
 ## Motion system
 

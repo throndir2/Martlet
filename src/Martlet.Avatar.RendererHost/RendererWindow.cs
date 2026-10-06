@@ -821,7 +821,7 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "snapshot" or "gaze"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "gaze")
                 {

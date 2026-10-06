@@ -133,8 +133,7 @@ public static class ThemeColor
         return difference > 180 ? 360 - difference : difference;
     }
 
-    /// <summary>A plain-words name for a color ("dark grayish blue", "light pink", "near black"), for the Thinking model and
-    /// the owner.</summary>
+    /// <summary>A plain-words name for a color ("dark grayish blue", "light pink", "near black"), for the owner.</summary>
     public static string Name(Oklch color)
     {
         if (color.C < 0.025)

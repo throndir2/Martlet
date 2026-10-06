@@ -837,33 +837,15 @@ with the production code: `modelPath` (a `.model3.json` or `.vrm` on this PC),
 else the model `dataDirectory`'s `avatar.json` shows, else the built-in
 character (only where the Live2D runtime is beside the server). It returns
 `renderer`, `key`, `textures`, `thumbnail` (a VRM's own picture), `analyzeMs`,
-`identity` (`fromFiles`: the `Name` and `Source` the model's files give, a
-VRM's meta or VTube Studio's name; `told`: the `name` and `about` the Thinking
-model is told, from `name` and `about` when given, which stand in for the
-character list's name and the owner's words in Settings › Appearance, else the
-saved words in `dataDirectory` or the files),
 `swatches` (each main color's `Hex`, `share`, `Kind` and `Name`), `sources`
 (`tint` and `tintStrength`, the `accents` candidates best first, the `light`
 and `darkest` neutrals), `rules` (`light` and `dark`: `colors` by role,
-`problems` and the `lowestContrast` of each role), `request` (the Thinking
-`instructions`, `message`, `picture` kind and `pictureSize`) and `saved` (the
-colors and Thinking palettes in `dataDirectory`'s `character-themes.json`).
-With `answer` (a simulated Thinking reply: the usual choice
-`{"accent","glow","tint","strength","why"}`, or whole `light` and `dark`
-palettes), `parsed` is what the production parser makes of it (`Choice`, the
-`light` and `dark` palettes the rules built around it, `Why`, `Fixes`). With
-`live: true` it asks Ollama on this PC (`model`, or the saved local Thinking
-model) with the real instructions, message and picture over loopback (Thinking
-steps Off) and returns `live` (`Outcome`, `FirstWordsMs`, `TotalMs`, `reply`,
-`read`, `problem`, `theme`); on this PC Gemma 4 12B answered the choice in
-about 2-3 s once loaded (much longer while a game or another GPU job ran). With
-`previewDirectory` (an absolute folder) it writes `<label>-rules-light.png`,
-`-rules-dark.png`, `-thinking-light.png` and `-thinking-dark.png` (Martlet's
-window drawn with the real styles in each palette; the Thinking ones from
-`answer`, `live` or the saved palettes) and `<label>-picture.jpg` (what the
-Thinking model is sent); `label` defaults to the key. It never returns the
-model's path, writes only to `previewDirectory` and contacts only Ollama on
-this PC with `live`.
+`problems` and the `lowestContrast` of each role) and `saved` (how many colors
+`dataDirectory`'s `character-themes.json` keeps for the model). With
+`previewDirectory` (an absolute folder) it writes `<label>-rules-light.png` and
+`<label>-rules-dark.png` (Martlet's window drawn with the real styles in each
+palette); `label` defaults to the key. It never returns the model's path,
+writes only to `previewDirectory` and contacts nothing.
 
 `nearby_status` reads whether this PC lets Martlet on the owner's other
 computers [find it](ARCHITECTURE.md#finding-your-other-computers) (optional
@@ -3312,22 +3294,14 @@ talk window* while it is open), and while the talk window is open `TrayPause` or
 current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
 column in the dark palettes; `ui_snapshot` returns the palette as `AppearanceTheme`
-(*Pink light*, *Rose dark*, *Character light*, *Character dark*, *Character
-light by Thinking* or *Character dark by Thinking*; choosing one with
+(*Pink light*, *Rose dark*, *Character light* or *Character dark*; choosing one with
 `ui_select` saves `appearance.txt`, so it needs `--allow-ui-effects`) and
 Settings' line about it as `AppearanceStatus`. Settings › Appearance also has
 `AppearanceCharacterStatus` (the character's colors: how many and where the
 accent comes from, or why they couldn't be read; never its name),
 `AppearanceColor-<n>` (each main color: *#2B3440 31% dark grayish blue*),
-`AppearancePreview-<rules|thinking>-<light|dark>` (each character palette's
-colors by role, or *not made yet*), `AppearanceThinkingStatus` (when and from
-what the Thinking model made its palettes, its reason, or how asking went) and
-`AppearanceThinkingMake` (*Make with Thinking*; it sends the character's colors,
-name, where it is from and picture to the Thinking model, so it needs
-`--allow-ui-effects`). `AppearanceCharacterAbout` (who the character is and
-where it's from, typed by the owner; it saves on its own) and
-`AppearanceIdentity` (what the Thinking model is told) are listed without their
-text, since they carry the character's name. The
+and `AppearancePreview-rules-<light|dark>` (each character palette's colors by
+role). The
 desktop log records *Read N colors from the character's textures.* and
 *Applied the Character dark palette (#D194AE accent on #161E24).*
 `character_theme` makes the same colors and palettes headlessly.

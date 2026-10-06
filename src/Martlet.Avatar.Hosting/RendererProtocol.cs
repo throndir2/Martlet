@@ -53,10 +53,6 @@ public sealed record RendererPlacement(bool Locked, double Left, double Top, dou
 /// <summary>The overlay's palette: Martlet's own light or dark one, or a character palette's <paramref name="Colors"/> by role
 /// (#RRGGBB).</summary>
 public sealed record RendererTheme(bool Dark, IReadOnlyDictionary<string, string>? Colors = null);
-/// <summary>Asks for a small PNG of the character as it shows now (at most 320 pixels on its longer side, cropped to the
-/// character, transparent around it). The reply's <c>snapshot</c> is a <c>data:image/png;base64,</c> URL, or null when the
-/// renderer couldn't take one.</summary>
-public sealed record RendererSnapshot;
 /// <summary>
 /// Shows (or with null text, hides) the speech bubble. By default it follows the character's head through moves, zoom and pan,
 /// choosing the side with room on screen, then shifts by the offsets (device-independent pixels, +x right, +y down). Static

@@ -96,56 +96,19 @@ public sealed class AppearanceTests
     }
 
     [Fact]
-    public void ThinkingAnswerIsReadAndKeptToTheRules()
+    public void RetiredThinkingPalettesReadAsTheCharacterPalettes()
     {
-        const string answer = "```json\n{\"light\":{\"canvas\":\"#F4F5F7\",\"surface\":\"#FFFFFF\",\"soft\":\"#E6E8EC\",\"text\":\"#1A2228\"," +
-            "\"muted\":\"#9AA0A6\",\"border\":\"#C0C4C8\",\"accent\":\"#77435B\",\"onAccent\":\"#FFFFFF\",\"focus\":\"#77435B\"," +
-            "\"success\":\"#2D5A27\",\"warning\":\"#B24A20\",\"glow\":\"#F1E8EC\"},\"dark\":{\"canvas\":\"#E0E0E0\",\"surface\":\"#2D363D\"," +
-            "\"soft\":\"#3F3A3C\",\"text\":\"#E2E4E9\",\"muted\":\"#879B9E\",\"border\":\"#5E656C\",\"accent\":\"#A65675\",\"onAccent\":\"#FFFFFF\"," +
-            "\"focus\":\"#BC978B\",\"success\":\"#4CAF50\",\"warning\":\"#FF9800\",\"glow\":\"#3D232F\"},\"why\":\"Slate and plum.\"}\n```";
-        var (theme, problem) = Martlet.Avatar.Hosting.CharacterThemePrompt.Parse(answer, "textures", DateTimeOffset.UnixEpoch);
-        Assert.Null(problem);
-        Assert.NotNull(theme);
-        Assert.Equal("Slate and plum.", theme.Why);
-        Assert.Contains(theme.Fixes, fix => fix.StartsWith("Dark: Canvas", StringComparison.Ordinal));
-        Assert.Empty(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(theme.Light));
-        Assert.Empty(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(theme.Dark));
-        Assert.Equal("#77435B", theme.Light["Accent"]);
-        Assert.Equal((null, "The answer has no dark palette."), (Martlet.Avatar.Hosting.CharacterThemePrompt.Parse(
-            "{\"light\":{}}", "textures", DateTimeOffset.UnixEpoch).Theme, "The answer has no dark palette."));
-        // With Martlet's own palettes, plain grays take the character's hue (keeping their lightness) and loud text calms down.
-        Martlet.Avatar.Hosting.CharacterSwatch[] swatches = [new("#1A2228", 0.5, "neutral"), new("#77435B", 0.1, "muted")];
-        var plain = answer.Replace("#F4F5F7", "#F0F0F0", StringComparison.Ordinal).Replace("#E2E4E9", "#FBF566", StringComparison.Ordinal);
-        var (tinted, _) = Martlet.Avatar.Hosting.CharacterThemePrompt.Parse(plain, "textures", DateTimeOffset.UnixEpoch, swatches);
-        Assert.NotNull(tinted);
-        Assert.True(Martlet.Avatar.Hosting.Oklch.FromHex(tinted.Light["Canvas"]).C > 0.003);
-        Assert.True(Martlet.Avatar.Hosting.Oklch.FromHex(tinted.Dark["Text"]).C <= 0.055);
-        Assert.Contains(tinted.Fixes, fix => fix.Contains("plain gray", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void ThinkingChoiceIsBuiltIntoBothPalettesByTheRules()
-    {
-        Martlet.Avatar.Hosting.CharacterSwatch[] swatches =
-            [new("#1A2228", 0.4, "neutral"), new("#5E656C", 0.3, "neutral"), new("#77435B", 0.05, "muted"), new("#4CB9D9", 0.01, "vivid")];
-        var (theme, problem) = Martlet.Avatar.Hosting.CharacterThemePrompt.Parse(
-            "{\"accent\":\"#C2185B\",\"glow\":\"#4CB9D9\",\"tint\":\"#5E656C\",\"strength\":\"bold\",\"why\":\"Crimson on slate.\"}",
-            "character", DateTimeOffset.UnixEpoch, swatches);
-        Assert.Null(problem);
-        Assert.NotNull(theme);
-        Assert.Equal(new Martlet.Avatar.Hosting.CharacterThemeChoice("#C2185B", "#4CB9D9", "#5E656C", "bold"), theme.Choice);
-        Assert.Empty(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(theme.Light));
-        Assert.Empty(Martlet.Avatar.Hosting.CharacterThemeRules.Problems(theme.Dark));
-        // The chosen accent's hue leads both palettes, and a bold tint colors the backgrounds more than the rules alone.
-        var accent = Martlet.Avatar.Hosting.Oklch.FromHex("#C2185B").H;
-        Assert.True(Martlet.Avatar.Hosting.ThemeColor.HueDistance(Martlet.Avatar.Hosting.Oklch.FromHex(theme.Light["Accent"]).H, accent) < 10);
-        Assert.True(Martlet.Avatar.Hosting.ThemeColor.HueDistance(Martlet.Avatar.Hosting.Oklch.FromHex(theme.Dark["Accent"]).H, accent) < 10);
-        Assert.True(Martlet.Avatar.Hosting.Oklch.FromHex(theme.Light["Soft"]).C >=
-            Martlet.Avatar.Hosting.Oklch.FromHex(Martlet.Avatar.Hosting.CharacterThemeRules.Build(swatches, false)["Soft"]).C);
-        // A gray "accent" is refused and the rules' own accent is used.
-        var (gray, _) = Martlet.Avatar.Hosting.CharacterThemePrompt.Parse("{\"accent\":\"#808080\"}", "textures", DateTimeOffset.UnixEpoch, swatches);
-        Assert.Equal("#77435B", gray!.Choice!.Accent);
-        Assert.Contains(gray.Fixes, fix => fix.Contains("too gray", StringComparison.Ordinal));
+        Assert.Equal(AppearanceTheme.CharacterLight, Appearance.Parse("ThinkingLight"));
+        Assert.Equal(AppearanceTheme.CharacterDark, Appearance.Parse("ThinkingDark"));
+        Assert.Null(Appearance.Parse("4"));
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Appearance." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "appearance.txt"), "ThinkingDark");
+            Assert.Equal(AppearanceTheme.CharacterDark, Appearance.Load(directory));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]

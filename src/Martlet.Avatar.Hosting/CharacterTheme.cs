@@ -1,6 +1,4 @@
 using System.Buffers.Binary;
-using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Martlet.Avatars;
@@ -18,27 +16,6 @@ public static class ThemeRoles
 
     /// <summary>The backgrounds text is read on.</summary>
     public static IReadOnlyList<string> Backgrounds { get; } = [Canvas, Surface, Soft];
-
-    /// <summary>What each role is drawn on, in words (the Thinking model's instructions use the same words).</summary>
-    public static string Describe(string role) => role switch
-    {
-        Canvas => "window background",
-        Surface => "cards and panels",
-        Soft => "buttons, chips and input backgrounds",
-        Text => "main text",
-        Muted => "secondary text",
-        Border => "card, button and input borders",
-        Accent => "primary buttons, selection, links, icons and headings (also used as text)",
-        OnAccent => "text and check marks on accent",
-        Focus => "keyboard focus and hover rings",
-        Success => "OK and ready status text",
-        Warning => "problem status text",
-        Glow => "large soft decorative halos behind the mascot",
-        _ => throw new ArgumentOutOfRangeException(nameof(role))
-    };
-
-    /// <summary>The role's JSON name in the Thinking model's answer: <c>canvas</c>, <c>onAccent</c>...</summary>
-    public static string JsonName(string role) => char.ToLowerInvariant(role[0]) + role[1..];
 }
 
 /// <summary>One complete palette: a #RRGGBB color for every <see cref="ThemeRoles"/> role, light or dark.</summary>
@@ -316,8 +293,7 @@ public sealed record ThemeCheck(string Role, string On, double Ratio, double Min
     public bool Ok => Ratio + 1e-9 >= Minimum;
 }
 
-/// <summary>Martlet's own rules for a character's light and dark palettes, and the checks every palette (the Thinking model's
-/// too) is held to: dark backgrounds with light text in a dark palette and the other way round in a light one, text at least
+/// <summary>Martlet's own rules for a character's light and dark palettes, and the checks every palette is held to: dark backgrounds with light text in a dark palette and the other way round in a light one, text at least
 /// 7:1 on every background, secondary text, accent, success and warning at least 4.5:1, text on the accent 4.5:1, and borders
 /// and focus rings 3:1 (WCAG 2).</summary>
 public static class CharacterThemeRules
@@ -333,24 +309,6 @@ public static class CharacterThemeRules
     {
         /// <summary>The model's most vivid color.</summary>
         public CharacterSwatch Accent => Accents[0];
-        /// <summary>The glow's color when it was chosen (by the Thinking model), else null: a second vivid color or the tint.</summary>
-        public CharacterSwatch? Glow { get; init; }
-    }
-
-    /// <summary>The colors from <see cref="Pick(IReadOnlyList{CharacterSwatch})"/>, with what the Thinking model chose in their
-    /// place: its accent, glow and background tint, and how strongly the backgrounds are tinted.</summary>
-    public static Sources Pick(IReadOnlyList<CharacterSwatch> swatches, CharacterThemeChoice? choice)
-    {
-        var sources = Pick(swatches);
-        if (choice is null) return sources;
-        CharacterSwatch Chosen(string hex) => new(hex, 0.1, CharacterColors.Kind(Oklch.FromHex(hex)));
-        return sources with
-        {
-            Accents = [Chosen(choice.Accent)],
-            Tint = choice.Tint is { } tint ? Chosen(tint) : sources.Tint,
-            TintStrength = (choice.Tint is null ? sources.TintStrength : 1) * choice.StrengthFactor,
-            Glow = choice.Glow is { } glow ? Chosen(glow) : null
-        };
     }
 
     private sealed record Family(List<CharacterSwatch> Members)
@@ -435,7 +393,7 @@ public static class CharacterThemeRules
     }
 
     /// <summary>The backgrounds (Canvas, Surface, Soft) of a palette: near white or near black, tinted with the model's
-    /// main hue (more strongly for a bold choice); a dark palette's canvas is the model's own darkest color when it shares that
+    /// main hue; a dark palette's canvas is the model's own darkest color when it shares that
     /// hue.</summary>
     private static Dictionary<string, Oklch> Backgrounds(Sources sources, bool dark)
     {
@@ -461,16 +419,15 @@ public static class CharacterThemeRules
         return colors;
     }
 
-    /// <summary>The rule-based palette for a model with these colors; with <paramref name="choice"/>, built around the
-    /// accent, glow, tint and strength the Thinking model chose.</summary>
-    public static ThemePalette Build(IReadOnlyList<CharacterSwatch> swatches, bool dark, CharacterThemeChoice? choice = null)
+    /// <summary>The rule-based palette for a model with these colors.</summary>
+    public static ThemePalette Build(IReadOnlyList<CharacterSwatch> swatches, bool dark)
     {
-        var sources = Pick(swatches, choice);
+        var sources = Pick(swatches);
         var (tint, tintC) = Tint(sources);
         var colors = Backgrounds(sources, dark);
         var backgrounds = colors.Values.Select(c => c.Hex).ToArray();
         var accentSource = ChooseAccent(sources, dark);
-        var glowSource = sources.Glow?.Color ?? sources.Accents.FirstOrDefault(s => ThemeColor.HueDistance(s.Color.H, accentSource.H) >= 45)?.Color
+        var glowSource = sources.Accents.FirstOrDefault(s => ThemeColor.HueDistance(s.Color.H, accentSource.H) >= 45)?.Color
             ?? (sources.Tint is { } tinted && ThemeColor.HueDistance(tinted.Color.H, accentSource.H) >= 45 && tinted.Color.C >= 0.01 ? tinted.Color : accentSource);
         var accentBase = AccentBase(accentSource);
         var successHue = ThemeColor.HueDistance(accentSource.H, 150) < 25 ? 170.0 : 150.0;
@@ -644,259 +601,17 @@ public static class CharacterThemeRules
     }
 }
 
-/// <summary>What the Thinking model chose for a character: its <see cref="Accent"/> (signature color), <see cref="Glow"/>
-/// (a second color), <see cref="Tint"/> (the color the backgrounds lean toward) and <see cref="Strength"/> (how strongly
-/// they are tinted). Martlet's rules build the palettes around them.</summary>
-public sealed record CharacterThemeChoice(string Accent, string? Glow, string? Tint, string Strength)
-{
-    public const string Subtle = "subtle", Balanced = "balanced", Bold = "bold";
-
-    [JsonIgnore]
-    public double StrengthFactor => Strength switch { Subtle => 0.6, Bold => 1.6, _ => 1.0 };
-}
-
-/// <summary>A palette pair the Thinking model made for a character, after Martlet's rules were checked and kept.</summary>
-public sealed record CharacterThinkingTheme
-{
-    public required ThemePalette Light { get; init; }
-    public required ThemePalette Dark { get; init; }
-    /// <summary>The colors it chose, which Martlet's rules built <see cref="Light"/> and <see cref="Dark"/> around, or null
-    /// when it wrote whole palettes itself.</summary>
-    public CharacterThemeChoice? Choice { get; init; }
-    /// <summary>Its reason in a few words, or null.</summary>
-    public string? Why { get; init; }
-    /// <summary>What the Thinking model saw: <c>character</c> (the character as it shows), <c>thumbnail</c> (the model's own
-    /// picture), <c>textures</c> (its texture sheet) or <c>none</c> (only the list of colors).</summary>
-    public required string Picture { get; init; }
-    public required DateTimeOffset At { get; init; }
-    /// <summary>What Martlet changed to keep its rules, in words.</summary>
-    public IReadOnlyList<string> Fixes { get; init; } = [];
-}
-
-/// <summary>The request to the Thinking model and reading its answer.</summary>
-public static class CharacterThemePrompt
-{
-    public const string Character = "character", Thumbnail = "thumbnail", Textures = "textures", NoPicture = "none";
-
-    /// <summary>Companion › Prompts › Character theme colors, or null when the owner emptied it.</summary>
-    public static string? Instructions(Martlet.Core.Settings.PromptSettings? prompts) =>
-        Martlet.Core.Settings.PromptSettings.Fill(prompts, Martlet.Core.Settings.PromptCatalog.CharacterTheme);
-
-    /// <summary>The message: who the character is and where it is from (when known), what the picture shows and the model's
-    /// main colors with their shares and names. Martlet's own palettes are left out: a model given them copies them.</summary>
-    public static string Message(IReadOnlyList<CharacterSwatch> swatches, AvatarRenderer renderer, string picture, string? name = null,
-        string? source = null)
-    {
-        var text = new StringBuilder();
-        if (Clean(name, 80) is { } who) text.Append(CultureInfo.InvariantCulture, $"Character: {who}\n");
-        if (Clean(source, 240) is { } from) text.Append(CultureInfo.InvariantCulture, $"Who it is and where it is from: {from}\n");
-        text.Append(renderer == AvatarRenderer.Vrm ? "A VRM 3D character model.\n" : "A Live2D character model.\n");
-        text.Append(picture switch
-        {
-            Character => "The picture shows the character as it appears on the user's screen (left) and its texture sheet: the " +
-                "parts it is painted with, laid out flat (right).\n",
-            Thumbnail => "The picture shows the model's own thumbnail (left) and its texture sheet: the parts it is painted with, " +
-                "laid out flat (right).\n",
-            Textures => "The picture shows the model's texture sheet: the parts the character is painted with, laid out flat.\n",
-            _ => ""
-        });
-        text.Append("Its main colors, with how much of the model each covers:\n");
-        for (var i = 0; i < swatches.Count; i++)
-            text.Append(CultureInfo.InvariantCulture, $"{i + 1}. {swatches[i].Hex} {swatches[i].Share * 100:0.#}% {swatches[i].Name}\n");
-        return text.ToString();
-    }
-
-    /// <summary>The palettes from the Thinking model's answer, or null with why it couldn't be read. Its usual answer is a
-    /// choice (accent, glow, tint, strength) that Martlet's rules build both palettes around from the model's
-    /// <paramref name="swatches"/>; an answer with whole light and dark palettes is kept to the rules instead, its plain grays
-    /// taking the character's hue from the rule-based palettes. <see cref="CharacterThinkingTheme.Fixes"/> says what changed.</summary>
-    public static (CharacterThinkingTheme? Theme, string? Problem) Parse(string? answer, string picture, DateTimeOffset now,
-        IReadOnlyList<CharacterSwatch>? swatches = null)
-    {
-        if (string.IsNullOrWhiteSpace(answer)) return (null, "The Thinking model didn't answer.");
-        var start = answer.IndexOf('{');
-        var end = answer.LastIndexOf('}');
-        if (start < 0 || end <= start) return (null, "The answer has no JSON object.");
-        JsonDocument document;
-        try { document = JsonDocument.Parse(answer.AsMemory(start, end - start + 1), new() { MaxDepth = 8, AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip }); }
-        catch (JsonException) { return (null, "The answer's JSON couldn't be read."); }
-        using (document)
-        {
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return (null, "The answer isn't a JSON object.");
-            ThemePalette? Read(string name, bool dark, out string? problem)
-            {
-                problem = null;
-                var found = root.EnumerateObject().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-                if (found.Value.ValueKind != JsonValueKind.Object) { problem = $"The answer has no {name} palette."; return null; }
-                var colors = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var role in ThemeRoles.All)
-                {
-                    var value = found.Value.EnumerateObject().FirstOrDefault(p => Same(p.Name, role)).Value;
-                    if (value.ValueKind != JsonValueKind.String || !ThemeColor.TryParse(value.GetString(), out var hex))
-                    {
-                        problem = $"The {name} palette has no {ThemeRoles.JsonName(role)} color.";
-                        return null;
-                    }
-                    colors[role] = hex;
-                }
-                return new() { Dark = dark, Colors = colors };
-            }
-            var why = root.EnumerateObject().FirstOrDefault(p => p.Name.Equals("why", StringComparison.OrdinalIgnoreCase)).Value;
-            var reason = why.ValueKind == JsonValueKind.String ? Clean(why.GetString(), 200) : null;
-            string? Field(string name) => root.EnumerateObject().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value
-                is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
-            if (Field("accent") is { } accentText)
-            {
-                if (swatches is not { Count: > 0 }) return (null, "Martlet needs the character's colors to build the palettes.");
-                var notes = new List<string>();
-                string? Color(string role, string? text, Func<Oklch, bool> usable, string unusable)
-                {
-                    if (text is null) return null;
-                    if (!ThemeColor.TryParse(text, out var hex)) { notes.Add($"{role} {Clean(text, 20)} isn't a color; Martlet's own is used"); return null; }
-                    if (usable(Oklch.FromHex(hex))) return hex;
-                    notes.Add($"{role} {hex} {unusable}; Martlet's own is used");
-                    return null;
-                }
-                var rules = CharacterThemeRules.Pick(swatches);
-                var accent = Color("accent", accentText, c => c is { C: >= 0.04, L: >= 0.12 and <= 0.95 }, "is too gray to be an accent") ?? rules.Accent.Hex;
-                var strength = Field("strength")?.Trim().ToLowerInvariant() is CharacterThemeChoice.Subtle or CharacterThemeChoice.Bold
-                    ? Field("strength")!.Trim().ToLowerInvariant() : CharacterThemeChoice.Balanced;
-                var choice = new CharacterThemeChoice(accent,
-                    Color("glow", Field("glow"), c => c.C >= 0.03, "is too gray to glow"),
-                    Color("tint", Field("tint"), c => c.C >= 0.01, "has no hue to tint with"), strength);
-                var (builtLight, lightRepairs) = CharacterThemeRules.Repair(CharacterThemeRules.Build(swatches, false, choice));
-                var (builtDark, darkRepairs) = CharacterThemeRules.Repair(CharacterThemeRules.Build(swatches, true, choice));
-                return (new()
-                {
-                    Light = builtLight, Dark = builtDark, Choice = choice, Why = reason, Picture = picture, At = now.ToUniversalTime(),
-                    Fixes = [.. notes, .. lightRepairs.Select(f => "Light: " + f), .. darkRepairs.Select(f => "Dark: " + f)]
-                }, null);
-            }
-            var light = Read("light", false, out var lightProblem);
-            if (light is null) return (null, lightProblem);
-            var dark = Read("dark", true, out var darkProblem);
-            if (dark is null) return (null, darkProblem);
-            var rulesLight = swatches is { Count: > 0 } ? CharacterThemeRules.Build(swatches, false) : null;
-            var rulesDark = swatches is { Count: > 0 } ? CharacterThemeRules.Build(swatches, true) : null;
-            var (tintedLight, lightTints) = Enliven(light, rulesLight);
-            var (tintedDark, darkTints) = Enliven(dark, rulesDark);
-            var (fixedLight, lightFixes) = CharacterThemeRules.Repair(tintedLight);
-            var (fixedDark, darkFixes) = CharacterThemeRules.Repair(tintedDark);
-            return (new()
-            {
-                Light = fixedLight, Dark = fixedDark, Why = reason, Picture = picture, At = now.ToUniversalTime(),
-                Fixes = [.. lightTints.Concat(lightFixes).Select(f => "Light: " + f), .. darkTints.Concat(darkFixes).Select(f => "Dark: " + f)]
-            }, null);
-        }
-    }
-
-    // Below these chromas a color reads as plain white, gray or black (an accent as gray).
-    private static readonly (string Role, double Plain)[] Tinted =
-    [
-        (ThemeRoles.Canvas, 0.006), (ThemeRoles.Surface, 0.003), (ThemeRoles.Soft, 0.008), (ThemeRoles.Text, 0.006), (ThemeRoles.Muted, 0.008),
-        (ThemeRoles.Border, 0.01), (ThemeRoles.Accent, 0.04), (ThemeRoles.Focus, 0.03), (ThemeRoles.Glow, 0.02)
-    ];
-
-    /// <summary>Plain grays in a Thinking palette take the hue and chroma of the same role in Martlet's rule-based palette, keeping
-    /// their own lightness, so the palette feels like the character instead of black and white.</summary>
-    private static (ThemePalette Palette, IReadOnlyList<string> Fixes) Enliven(ThemePalette palette, ThemePalette? rules)
-    {
-        if (rules is null) return (palette, []);
-        var tinted = new List<string>();
-        var result = palette;
-        foreach (var (role, plain) in Tinted)
-        {
-            var color = Oklch.FromHex(palette[role]);
-            var reference = Oklch.FromHex(rules[role]);
-            if (color.C >= plain || reference.C <= color.C) continue;
-            result = result.With(role, color with { C = reference.C, H = reference.H });
-            tinted.Add(role);
-        }
-        return tinted.Count == 0 ? (palette, [])
-            : (result, [$"{string.Join(", ", tinted)} {(tinted.Count == 1 ? "was" : "were")} plain gray and took the character's hue"]);
-    }
-
-    private static bool Same(string name, string role)
-    {
-        var key = name.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal);
-        if (key.EndsWith("Brush", StringComparison.OrdinalIgnoreCase)) key = key[..^5];
-        return key.Equals(role, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? Clean(string? text, int maximum)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return null;
-        var cleaned = new string(text.Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
-        return cleaned.Length <= maximum ? cleaned : cleaned[..(maximum - 3)] + "...";
-    }
-}
-
-/// <summary>Who a character is, as far as Martlet knows: its <see cref="Name"/> and where it is from (<see cref="Source"/>: the
-/// game, series or creator), from the owner, the character list or the model's own files.</summary>
-public sealed record CharacterIdentity(string? Name, string? Source)
-{
-    public const int MaximumSource = 160;
-
-    /// <summary>What the model's own files say: a VRM's meta (name, authors, copyright, references) or the name VTube Studio
-    /// gives a Live2D model.</summary>
-    public static CharacterIdentity Read(AvatarRenderer renderer, string entry, IReadOnlyList<AvatarAsset> assets)
-    {
-        try
-        {
-            if (renderer != AvatarRenderer.Vrm)
-            {
-                foreach (var asset in assets.Where(a => a.Name.EndsWith(".vtube.json", StringComparison.OrdinalIgnoreCase)))
-                {
-                    using var vts = JsonDocument.Parse(asset.Bytes, new JsonDocumentOptions { MaxDepth = 64 });
-                    var root = vts.RootElement;
-                    if (root.TryGetProperty("FileReferences", out var files) && Text(files, "Model") == entry && Text(root, "Name") is { } name)
-                        return new(name, null);
-                }
-                return new(null, null);
-            }
-            var glb = assets.FirstOrDefault()?.Bytes ?? [];
-            if (glb.Length < 20 || BinaryPrimitives.ReadUInt32LittleEndian(glb) != 0x46546C67) return new(null, null);
-            var length = (int)BinaryPrimitives.ReadUInt32LittleEndian(glb.AsSpan(12));
-            if (length <= 0 || 20 + length > glb.Length) return new(null, null);
-            using var document = JsonDocument.Parse(glb.AsMemory(20, length), new JsonDocumentOptions { MaxDepth = 64 });
-            if (!document.RootElement.TryGetProperty("extensions", out var extensions) || !extensions.TryGetProperty("VRMC_vrm", out var vrm) ||
-                !vrm.TryGetProperty("meta", out var meta)) return new(null, null);
-            var parts = new List<string>();
-            if (meta.TryGetProperty("authors", out var authors) && authors.ValueKind == JsonValueKind.Array &&
-                authors.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()!.Trim()).Where(a => a.Length > 0).ToArray() is { Length: > 0 } by)
-                parts.Add("made by " + string.Join(", ", by.Take(3)));
-            if (Text(meta, "copyrightInformation") is { } copyright && !parts.Any(p => p.Contains(copyright, StringComparison.OrdinalIgnoreCase)))
-                parts.Add(copyright);
-            if (meta.TryGetProperty("references", out var references) && references.ValueKind == JsonValueKind.Array &&
-                references.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.String).Select(r => r.GetString()!.Trim()).Where(r => r.Length > 0).ToArray() is { Length: > 0 } refs)
-                parts.Add("based on " + string.Join(", ", refs.Take(3)));
-            return new(Text(meta, "name"), parts.Count == 0 ? null : Limit(string.Join("; ", parts)));
-        }
-        catch (Exception error) when (error is JsonException or InvalidOperationException or ArgumentException) { return new(null, null); }
-
-        static string? Text(JsonElement element, string property) =>
-            element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String &&
-            value.GetString()!.Trim() is { Length: > 0 } text && !text.Any(char.IsControl) ? Limit(text) : null;
-    }
-
-    private static string Limit(string text) => text.Length <= MaximumSource ? text : text[..(MaximumSource - 3)] + "...";
-}
-
 /// <summary>One model's colors and palettes as saved in <c>character-themes.json</c> on this PC, by the model's ID.</summary>
 public sealed record CharacterThemeEntry
 {
     public required string ModelId { get; init; }
     public int Analyzer { get; init; }
     public required IReadOnlyList<CharacterSwatch> Swatches { get; init; }
-    /// <summary>Who the character is and where it is from, in the owner's words (Settings › Appearance), or null.</summary>
-    public string? About { get; init; }
-    public CharacterThinkingTheme? Thinking { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
 }
 
-/// <summary><c>character-themes.json</c>: each character model's colors (read once from its textures) and the palettes the
-/// Thinking model made for it, for the newest <see cref="MaximumModels"/> models.</summary>
+/// <summary><c>character-themes.json</c>: each character model's colors (read once from its textures), for the newest
+/// <see cref="MaximumModels"/> models.</summary>
 public static class CharacterThemes
 {
     public const string FileName = "character-themes.json";
@@ -922,8 +637,7 @@ public static class CharacterThemes
             var document = JsonSerializer.Deserialize<Document>(File.ReadAllBytes(path), Json);
             return document is { Version: 1, Models: { } models }
                 ? models.Where(m => m is { ModelId: not null, Swatches: not null } && Martlet.Core.Characters.CharacterModelLibrary.IsSha256(m.ModelId) &&
-                    m.Swatches.All(s => s is not null && ThemeColor.TryParse(s.Hex, out _)) &&
-                    (m.Thinking is null || m.Thinking.Light?.IsValid == true && m.Thinking.Dark?.IsValid == true)).ToArray()
+                    m.Swatches.All(s => s is not null && ThemeColor.TryParse(s.Hex, out _))).ToArray()
                 : [];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or FormatException) { return []; }
@@ -934,8 +648,6 @@ public static class CharacterThemes
     {
         ContractRules.Require(Martlet.Core.Characters.CharacterModelLibrary.IsSha256(entry.ModelId), "The model's ID is invalid.");
         ContractRules.Require(entry.Swatches.Count <= CharacterColors.MaximumSwatches, "Too many colors.");
-        ContractRules.Require(entry.About is null || entry.About.Length <= CharacterIdentity.MaximumSource && !entry.About.Any(char.IsControl),
-            $"Who the character is can be at most {CharacterIdentity.MaximumSource} characters on one line.");
         entry = entry with { UpdatedAt = now.ToUniversalTime() };
         await Gate.WaitAsync(token);
         try
