@@ -158,6 +158,9 @@ public sealed class HostSetupCommandsTests
         var noSystemd = probe with { OperatingSystem = "Alpine Linux v3.22", Systemd = false };
         Assert.Contains("Install Docker Engine", HostRemote.Blocker(HostRemote.Choose(noSystemd), noSystemd, "me@gpu"));
         Assert.Contains("without systemd", HostRemote.Blocker(HostSetupMethod.SshNative, noSystemd, "me@gpu"));
+        // ARM64 Linux (Raspberry Pi 5, Ampere, DGX Spark) is a host too; 32-bit ARM and others are not.
+        Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe with { Architecture = "aarch64" }, "me@pi"));
+        Assert.Contains("64-bit Intel, AMD or ARM", HostRemote.Blocker(HostSetupMethod.SshNative, probe with { Architecture = "armv7l" }, "me@pi"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
 

@@ -178,6 +178,32 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Nvidia_roles_are_x86_64_only_in_the_engine_and_the_catalog_and_stt_has_an_arm64_whisper_of_the_same_commit()
+    {
+        // The NVIDIA CUDA roles pin x86_64-only packages: martlet-host refuses them on ARM64 hosts (requires=x86_64), and so
+        // does the platform catalog before an install is offered.
+        foreach (var dir in Directory.GetDirectories(RolesDirectory()))
+        {
+            var kind = Path.GetFileName(dir);
+            var requires = File.ReadAllLines(Path.Combine(dir, "role.conf"))
+                .Single(l => l.StartsWith("requires=", StringComparison.Ordinal))["requires=".Length..].Split(' ');
+            Assert.True(requires.Contains("nvidia-toolkit") == requires.Contains("x86_64"), $"{kind}: requires={string.Join(' ', requires)}");
+            if (Martlet.Core.Platforms.PlatformCatalog.EngineForHostRole(kind) is { } engine)
+            {
+                var arm = Martlet.Core.Platforms.PlatformCatalog.Check(engine, Martlet.Core.Platforms.PlatformSide.Host,
+                    new Martlet.Core.Platforms.PlatformDevice { Platform = Martlet.Core.Platforms.DevicePlatform.Linux, Name = "pi", Arm64 = true });
+                Assert.True(requires.Contains("x86_64") == (arm.Verdict == Martlet.Core.Platforms.PlatformVerdict.No), $"{kind}: {arm.Verdict} {arm.Reason}");
+            }
+        }
+        var stt = Path.Combine(RolesDirectory(), HostRoles.Stt);
+        var x64 = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(stt, "compose.yaml")), @"whisper\.cpp:main-([0-9a-f]{40})");
+        var arm64 = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(stt, "compose.arm64.yaml")), @"whisper\.cpp:main-arm64-([0-9a-f]{40})");
+        Assert.True(x64.Success && arm64.Success);
+        Assert.Equal(x64.Groups[1].Value, arm64.Groups[1].Value);
+        Assert.Contains("arm64=compose.arm64.yaml", File.ReadAllLines(Path.Combine(stt, "role.conf")));
+    }
+
+    [Fact]
     public void Every_worker_a_role_builds_from_is_in_the_host_image()
     {
         // A role that builds its image from ${MARTLET_SOURCE}/workers/<name> needs that folder in the martlet-host image.

@@ -1223,7 +1223,14 @@ after it stopped at `up -d` (as a failed build or download would, with `.env`
 already naming `beta`) still stops `alpha` before `beta` starts
 (`variant-retry-stops-the-other`); and that `alpha` refuses
 `beta`'s model, then runs on the CPU with its suggested model on this GPU-less
-fixture (`variant-gpu-and-suggestion`). Without Docker or the
+fixture (`variant-gpu-and-suggestion`). With `uname -m` answering `aarch64`
+(a shim), an ARM64 host refuses an add of a role marked `requires=x86_64` (the
+NVIDIA CUDA roles) with *built only for 64-bit Intel or AMD (x86_64)* and
+`describe` prints `role.unavailable=` (`arm64-refuses-x86-only-role`), and a role
+with an ARM64 build (`arm64=<overlay>`, like the `stt` role's whisper.cpp arm64
+image) gets that overlay as `compose.arch.yaml`, runs on the CPU even when the
+GPU is asked for, and `describe` offers no GPU option
+(`arm64-overlay-runs-on-cpu`). Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 

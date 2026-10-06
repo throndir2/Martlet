@@ -15,7 +15,8 @@ namespace Martlet.Mcp;
 /// later ones, a waiting run continues when the holder dies (SIGKILL), so does a run without a terminal or --yes that was
 /// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it, an add whose
 /// image build fails says to run it again, and a role's variants (like the stt role's whisper and Parakeet engines) keep their
-/// own choices, GPU option and prepare step and switch only once the chosen one is prepared. The desktop's own reader
+/// own choices, GPU option and prepare step and switch only once the chosen one is prepared, and an ARM64 host refuses
+/// x86_64-only roles and runs a role's ARM64 overlay on the CPU. The desktop's own reader
 /// (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
 {
@@ -79,7 +80,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 34;
+        const int expected = 36;
         if (steps.Count < expected)
         {
             passed = false;
@@ -449,5 +450,32 @@ internal static class HostEngineCheck
         [[ $refused == 1 && "$(venv)" == "FX_ENGINE=alpha MARTLET_ACCELERATOR=cpu FX_MODEL=a1 COMPOSE_PROFILES=alpha " ]] &&
           [[ "$(calls)" == "alpha|run --rm --no-deps -T -e MARTLET_PREPARE=1 alpha;alpha|up --no-start;beta|down;alpha|up -d;" ]] && ok=1 || ok=0
         step variant-gpu-and-suggestion "$ok" "a beta model for alpha refused: $refused; alpha automatic on this GPU-less host: $(venv); $(calls)"
+
+        # ARM64 hosts (uname -m answers aarch64 through a shim): a role whose containers are x86_64-only (requires=x86_64, the
+        # NVIDIA CUDA roles) is refused with the reason and describe says so; a role with an ARM64 build (arm64=<overlay>,
+        # like the stt role's whisper.cpp arm64 image) adds that overlay and runs on the CPU, with no GPU option offered.
+        mkdir -p /tmp/arm "${E%/*}/roles/fixture-x86" "${E%/*}/roles/fixture-arm"
+        printf '%s\n' '#!/bin/bash' '[[ "$1" == -m ]] && { echo aarch64; exit 0; }' 'exec /usr/bin/uname "$@"' > /tmp/arm/uname
+        chmod 755 /tmp/arm/uname
+        printf '%s\n' 'title=Fixture x86 (FIXTURE, installs nothing)' 'requires=x86_64 docker' port=50996 > "${E%/*}/roles/fixture-x86/role.conf"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-x86/compose.yaml"
+        PATH="/tmp/arm:/tmp/variant:$PATH" timeout 15 "$E" describe fixture-x86 </dev/null >/tmp/arm/describe 2>&1
+        printf '%s\n' end | PATH="/tmp/arm:/tmp/variant:$PATH" timeout 30 "$E" --yes add fixture-x86 >/tmp/arm/add 2>&1; rc=$?
+        [[ $rc == 1 ]] && has /tmp/arm/add "built only for 64-bit Intel or AMD (x86_64)" && [[ ! -e /tmp/d/roles/fixture-x86/compose.yaml ]] &&
+          has /tmp/arm/describe "role.unavailable=This role's container is built only for 64-bit Intel or AMD" && ok=1 || ok=0
+        step arm64-refuses-x86-only-role "$ok" "add on an aarch64 host: exit $rc, $(grep -m1 -oE 'Stopped: [^(]*' /tmp/arm/add || tail -n1 /tmp/arm/add); describe: $(grep -c '^role.unavailable=' /tmp/arm/describe) unavailable line"
+
+        printf '%s\n' 'title=Fixture arm (FIXTURE, installs nothing)' requires=docker port=50995 'gpu=optional|compose.gpu.yaml' \
+          arm64=compose.arm64.yaml > "${E%/*}/roles/fixture-arm/role.conf"
+        for f in compose.yaml compose.gpu.yaml compose.arm64.yaml; do printf 'services: {}\n' > "${E%/*}/roles/fixture-arm/$f"; done
+        PATH="/tmp/arm:/tmp/variant:$PATH" timeout 15 "$E" describe fixture-arm </dev/null >/tmp/arm/describe2 2>&1
+        : > /tmp/variant/calls
+        printf '%s\n' choice.accelerator=gpu end | PATH="/tmp/arm:/tmp/variant:$PATH" timeout 30 "$E" --yes add fixture-arm >/tmp/arm/add2 2>&1
+        files="$(ls /tmp/d/roles/fixture-arm | tr '\n' ' ')"
+        [[ -e /tmp/d/roles/fixture-arm/compose.arch.yaml && ! -e /tmp/d/roles/fixture-arm/compose.gpu.yaml ]] &&
+          grep -qx 'MARTLET_ACCELERATOR=cpu' /tmp/d/roles/fixture-arm/.env && grep -q -- '-f compose.arch.yaml up -d' /tmp/variant/calls &&
+          has /tmp/arm/add2 "runs its ARM64 build on the CPU" && has /tmp/arm/describe2 'role.title=' &&
+          ! has /tmp/arm/describe2 'role.accelerator=' && ok=1 || ok=0
+        step arm64-overlay-runs-on-cpu "$ok" "add with gpu asked on an aarch64 host: files $files; $(grep MARTLET_ACCELERATOR /tmp/d/roles/fixture-arm/.env); $(tr '\n' ';' < /tmp/variant/calls)"
         """;
 }

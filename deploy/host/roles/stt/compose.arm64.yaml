@@ -1,0 +1,7 @@
+# ARM64 hosts (Raspberry Pi 5 class, Ampere, Docker Desktop on Windows on Arm or Apple silicon): martlet-host adds this
+# overlay for the whisper engine (role.conf arm64=compose.arm64.yaml). It swaps in whisper.cpp's official arm64 CPU image
+# of the same pinned commit (v1.9.4, built by whisper.cpp from the same .devops/main.Dockerfile); the model download,
+# checks and server command stay those of compose.yaml. There is no arm64 CUDA build, so it runs on the CPU.
+services:
+  stt:
+    image: ghcr.io/ggml-org/whisper.cpp:main-arm64-927cfce34f31707e17f2bff35c349632fb9e2c3a

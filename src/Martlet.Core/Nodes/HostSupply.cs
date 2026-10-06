@@ -19,7 +19,14 @@ public sealed record HostSupplyNeeds(string DotnetSdk, IReadOnlyList<HostSupplyI
 
 /// <summary>What a host already has: installed .NET SDK versions, the files in its supply directory (name to SHA-512)
 /// and where ~/Martlet came from ("git", the SHA-512 of the source archive it was unpacked from, or null).</summary>
-public sealed record HostSupplyState(IReadOnlySet<string> Sdks, IReadOnlyDictionary<string, string> Files, string? Source);
+public sealed record HostSupplyState(IReadOnlySet<string> Sdks, IReadOnlyDictionary<string, string> Files, string? Source)
+{
+    /// <summary>The computer's processor as <c>uname -m</c> reports it (x86_64, aarch64), or null from an older state.</summary>
+    public string? Architecture { get; init; }
+
+    /// <summary>The .NET runtime identifier of the SDK this computer needs: linux-arm64 on ARM64, otherwise linux-x64.</summary>
+    public string SdkRid => Architecture is "aarch64" or "arm64" ? "linux-arm64" : "linux-x64";
+}
 
 /// <summary>How a host without internet access reaches a host account: Martlet's SSH runner on the desktop, docker exec in checks.</summary>
 public interface IHostSupplyChannel
@@ -60,9 +67,10 @@ public static partial class HostSupply
     private const string Remote = "$HOME/" + RemoteDirectory;
     private const int MaximumProjectFileBytes = 4 << 20;
 
-    /// <summary>Prints "sdk &lt;version&gt;" per installed .NET SDK, "source git|&lt;sha512&gt;" for ~/Martlet and
-    /// "file &lt;sha512&gt; &lt;name&gt;" per supply file.</summary>
+    /// <summary>Prints "arch &lt;uname -m&gt;", "sdk &lt;version&gt;" per installed .NET SDK, "source git|&lt;sha512&gt;" for
+    /// ~/Martlet and "file &lt;sha512&gt; &lt;name&gt;" per supply file.</summary>
     public const string StateScript =
+        "echo arch $(uname -m); " +
         "if [ -x ~/.dotnet/dotnet ]; then ~/.dotnet/dotnet --list-sdks 2>/dev/null | sed -n 's/^\\([0-9][^ ]*\\) .*/sdk \\1/p'; fi; " +
         "if [ -d ~/Martlet/.git ]; then echo source git; elif [ -f ~/Martlet/.martlet-supplied ]; then echo source $(cat ~/Martlet/.martlet-supplied); fi; " +
         "if [ -d " + Remote + " ]; then cd " + Remote + " && find . -type f -exec sha512sum {} + | sed 's|^\\([0-9a-f]*\\)  \\./|file \\1 |'; fi; true";
@@ -192,19 +200,21 @@ public static partial class HostSupply
         }
     }
 
-    /// <summary>The linux-x64 .NET SDK archive for <paramref name="version"/>, with the SHA-512 Microsoft publishes for it.</summary>
-    public static async Task<HostSupplyItem> DotnetSdkAsync(HostSupplyOpen open, string version, CancellationToken token)
+    /// <summary>The <paramref name="rid"/> (linux-x64 or linux-arm64) .NET SDK archive for <paramref name="version"/>, with
+    /// the SHA-512 Microsoft publishes for it.</summary>
+    public static async Task<HostSupplyItem> DotnetSdkAsync(HostSupplyOpen open, string version, CancellationToken token, string rid = "linux-x64")
     {
         var channel = string.Join('.', version.Split('.').Take(2));
         var url = $"https://builds.dotnet.microsoft.com/dotnet/release-metadata/{channel}/releases.json";
         await using var download = await open(url, token) ?? throw new FileNotFoundException($"{url} was not found.");
         using var document = await JsonDocument.ParseAsync(download.Content, cancellationToken: token);
-        return DotnetSdk(document.RootElement, version) ??
-            throw new InvalidDataException($"Microsoft's release list has no Linux x64 download of the .NET SDK {version}.");
+        return DotnetSdk(document.RootElement, version, rid) ??
+            throw new InvalidDataException($"Microsoft's release list has no {rid} download of the .NET SDK {version}.");
     }
 
-    internal static HostSupplyItem? DotnetSdk(JsonElement releases, string version)
+    internal static HostSupplyItem? DotnetSdk(JsonElement releases, string version, string rid = "linux-x64")
     {
+        if (rid is not ("linux-x64" or "linux-arm64")) throw new ArgumentOutOfRangeException(nameof(rid));
         foreach (var release in releases.GetProperty("releases").EnumerateArray())
         {
             var sdks = release.TryGetProperty("sdks", out var list) && list.ValueKind == JsonValueKind.Array
@@ -213,11 +223,11 @@ public static partial class HostSupply
             foreach (var sdk in sdks.Where(s => s.TryGetProperty("version", out var v) && v.GetString() == version))
                 foreach (var file in sdk.GetProperty("files").EnumerateArray())
                 {
-                    if (file.GetProperty("name").GetString() != "dotnet-sdk-linux-x64.tar.gz") continue;
+                    if (file.GetProperty("name").GetString() != $"dotnet-sdk-{rid}.tar.gz") continue;
                     var url = file.GetProperty("url").GetString() ?? "";
                     var hash = file.GetProperty("hash").GetString()?.ToLowerInvariant() ?? "";
                     if (!url.StartsWith("https://", StringComparison.Ordinal) || !Sha512Pattern().IsMatch(hash)) return null;
-                    return new($"dotnet-sdk-{version}-linux-x64.tar.gz", url, hash);
+                    return new($"dotnet-sdk-{version}-{rid}.tar.gz", url, hash);
                 }
         }
         return null;
@@ -229,17 +239,19 @@ public static partial class HostSupply
         var sdks = new HashSet<string>(StringComparer.Ordinal);
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
         string? source = null;
+        string? architecture = null;
         foreach (var line in lines)
         {
             var parts = line.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
             switch (parts)
             {
+                case ["arch", var arch]: architecture = arch; break;
                 case ["sdk", var version]: sdks.Add(version); break;
                 case ["source", var where]: source = where; break;
                 case ["file", var hash, var name] when Sha512Pattern().IsMatch(hash): files[name] = hash; break;
             }
         }
-        return new(sdks, files, source);
+        return new(sdks, files, source) { Architecture = architecture };
     }
 
     public static async Task<string> Sha512Async(string path, CancellationToken token)
@@ -350,11 +362,11 @@ public sealed class HostSupplier(HostSupplyOpen open, string cacheDirectory, IPr
         if (installSource) send.Add((HostSupply.SourceArchive, sourceArchive, sourceSum));
         if (!state.Sdks.Contains(needs.DotnetSdk))
         {
-            var sdk = await HostSupply.DotnetSdkAsync(open, needs.DotnetSdk, token);
+            var sdk = await HostSupply.DotnetSdkAsync(open, needs.DotnetSdk, token, state.SdkRid);
             keep.Add(sdk.Name);
             if (state.Files.GetValueOrDefault(sdk.Name) != sdk.Sha512)
             {
-                output.Report($"Downloading the .NET SDK {needs.DotnetSdk} for Linux on this PC (about 230 MB, kept for next time)...");
+                output.Report($"Downloading the .NET SDK {needs.DotnetSdk} for Linux ({state.SdkRid}) on this PC (about 230 MB, kept for next time)...");
                 send.Add((sdk.Name, await HostSupply.FetchAsync(open, sdk, Cached(sdk), reuse: true, output, token), sdk.Sha512!));
             }
         }

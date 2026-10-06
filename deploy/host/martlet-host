@@ -36,7 +36,7 @@
 # it, and Martlet's automatic updates (no terminal, no --yes) stop with exit 75 and "MARTLET-BUSY ..." instead (see below).
 #
 # Methods (same commands, same roles; see README.md):
-#   native  any x86_64 Linux with systemd: ./deploy/host/martlet-host <command> (locally or over SSH)
+#   native  any x86_64 or arm64 (aarch64) Linux with systemd: ./deploy/host/martlet-host <command> (locally or over SSH)
 #   docker  any Docker host, including Windows (Docker Desktop) and remote Docker over SSH:
 #           docker run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock \
 #             -e MARTLET_HOST_ADDRESS=<host LAN IPv4> martlet-host <command>
@@ -75,7 +75,7 @@ HOLD_READY="Network holder ready."
 HELPER_IMAGE="busybox:1.36.1"
 DOTNET_SDK="10.0.401"
 # A computer without internet access: the files Martlet downloaded on the desktop and sent over SSH (see "Computers
-# without internet" in README.md): dotnet-sdk-<version>-linux-x64.tar.gz and the gateway's NuGet packages in nuget/.
+# without internet" in README.md): dotnet-sdk-<version>-linux-<x64|arm64>.tar.gz and the gateway's NuGet packages in nuget/.
 # Empty when this computer downloads them itself.
 SUPPLY="${MARTLET_SUPPLY:-}"
 
@@ -567,6 +567,9 @@ cmd_describe() {
   if [[ " ${requires} " == *" docker-engine "* && "${MODE}" == docker ]] && ! docker_engine_supported; then
     printf 'role.unavailable=%s\n' "${DOCKER_ENGINE_FAILURE}"
   fi
+  if [[ " ${requires} " == *" x86_64 "* && "$(host_arch)" == arm64 ]]; then
+    printf 'role.unavailable=%s\n' "${X86_64_FAILURE}"
+  fi
   printf 'role.terms=%s\n' "$(conf_value "${conf}" terms)"
   state=no; [[ -f "$(installed_file "${role}")" ]] && state=yes
   printf 'role.installed=%s\n' "${state}"
@@ -599,7 +602,9 @@ cmd_describe() {
   while IFS= read -r line; do
     [[ -n "${line}" ]] && printf 'role.suggested=%s\n' "${line%%|*}"
   done < <(conf_values "${conf}" choice_by_vram)
-  [[ "$(conf_any_value "${conf}" gpu)" == optional\|* ]] && printf 'role.accelerator=gpu cpu\n'
+  # ARM64 hosts run roles with an arm64 overlay on the CPU, so their GPU option is not offered there.
+  [[ "$(conf_any_value "${conf}" gpu)" == optional\|* && ( "$(host_arch)" != arm64 || -z "$(conf_any_value "${conf}" arm64)" ) ]] &&
+    printf 'role.accelerator=gpu cpu\n'
   # What an installed role runs with now, so Martlet shows it when you change the role's settings (adding it again keeps
   # what isn't answered): role.choice_current=<VAR>|<value> and role.accelerator_current=gpu|cpu.
   local kind value
@@ -649,9 +654,41 @@ require() {
       docker) require_docker ;;
       docker-engine) require_docker_engine ;;
       nvidia-toolkit) require_nvidia_toolkit ;;
+      x86_64) require_x86_64 ;;
       *) fail "Unknown requirement '${item}' in role.conf." ;;
     esac
   done
+}
+
+# The processor the roles' containers run on: x64 or arm64 (Docker's engine when it answers, else this computer).
+HOST_ARCH=""
+host_arch() {
+  if [[ -z "${HOST_ARCH}" ]]; then
+    local arch=""
+    # Docker method: the Docker engine's machine (this container may be emulated); natively, this computer.
+    [[ "${MODE}" == docker ]] && arch="$(docker info --format '{{.Architecture}}' 2>/dev/null </dev/null || true)"
+    [[ -n "${arch}" ]] || arch="$(uname -m)"
+    case "${arch}" in x86_64|amd64) HOST_ARCH=x64 ;; aarch64|arm64) HOST_ARCH=arm64 ;; *) HOST_ARCH="${arch}" ;; esac
+  fi
+  printf '%s' "${HOST_ARCH}"
+}
+
+X86_64_FAILURE="This role's container is built only for 64-bit Intel or AMD (x86_64) computers (its pinned NVIDIA CUDA packages have no ARM64 build); this host is ARM64. Install it on an x86_64 host with an NVIDIA GPU."
+
+# role.conf requires=x86_64: the role's image pins x86_64-only packages (the NVIDIA CUDA roles).
+require_x86_64() {
+  [[ "$(host_arch)" != arm64 ]] || fail "${X86_64_FAILURE}"
+}
+
+# role.conf arm64=<overlay>: on ARM64 hosts the role (or the variant whose section names it) runs that Compose overlay
+# instead, a CPU build for ARM64 (for example whisper.cpp's official arm64 image), so its GPU option is not offered there.
+arm64_overlay() {
+  local overlay
+  [[ "$(host_arch)" == arm64 ]] || return 0
+  overlay="$(conf_value "$1" arm64)"
+  [[ -z "${overlay}" ]] && return 0
+  [[ "${overlay}" =~ ^[a-z0-9.-]+\.yaml$ && -f "$(dirname "$1")/${overlay}" ]] || return 1
+  printf '%s' "${overlay}"
 }
 
 require_gpu() {
@@ -891,7 +928,7 @@ install_gpu_overlay() {
 require_dotnet() {
   if [[ -x "${DOTNET}" ]] && "${DOTNET}" --list-sdks | grep -q "^${DOTNET_SDK} "; then return; fi
   if [[ -n "${SUPPLY}" ]]; then
-    local sdk="${SUPPLY}/dotnet-sdk-${DOTNET_SDK}-linux-x64.tar.gz"
+    local sdk="${SUPPLY}/dotnet-sdk-${DOTNET_SDK}-linux-$(host_arch).tar.gz"
     [[ -f "${sdk}" ]] || fail "Martlet did not send the .NET SDK ${DOTNET_SDK} this computer needs. Set it up again from Martlet."
     ask "Install the .NET SDK ${DOTNET_SDK} that Martlet sent from your PC into ~/.dotnet (no sudo)?" ||
       fail "The .NET SDK is required to build the Martlet gateway."
@@ -1674,7 +1711,8 @@ cmd_serve() {
 cmd_setup() {
   [[ $EUID -ne 0 ]] || fail "Run as your normal user; martlet-host asks before using sudo."
   if [[ "${MODE}" == native ]]; then
-    [[ "$(uname -m)" == "x86_64" ]] || fail "Only x86_64 hosts are supported."
+    [[ "$(host_arch)" == x64 || "$(host_arch)" == arm64 ]] ||
+      fail "Only 64-bit Intel/AMD (x86_64) and ARM (aarch64) hosts are supported; this computer is $(uname -m)."
     command -v systemctl >/dev/null 2>&1 ||
       fail "Native setup needs a Linux with systemd (it runs the gateway as a user service); use the Docker method elsewhere."
     [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
@@ -1862,6 +1900,8 @@ role_compose() {
   [[ -n "${profiles}" ]] || profiles="$(conf_value "${project}/.env" COMPOSE_PROFILES)"
   [[ -n "${profiles}" ]] || profiles="$(conf_value "$(role_dir "${role}")/role.conf" profile_legacy)"
   secret_env+=("COMPOSE_PROFILES=${profiles}")
+  # Present only when the role was added on an ARM64 host and has an ARM64 build (role.conf arm64=<overlay>).
+  if [[ -f "${project}/compose.arch.yaml" ]]; then files+=(-f compose.arch.yaml); fi
   # Present only when the role was added to run on the NVIDIA GPU (role.conf gpu=optional|<overlay>).
   if [[ -f "${project}/compose.gpu.yaml" ]]; then files+=(-f compose.gpu.yaml); fi
   # Through sudo, name the variables to keep: sudo-rs (Ubuntu 25.10's sudo) ignores -E.
@@ -1918,7 +1958,7 @@ reconnect_roles() {
 }
 
 refresh_installed_role_files() {
-  local role record kind feature dir project changed gpu_entry overlay
+  local role record kind feature dir project changed gpu_entry overlay arch_overlay
   while IFS= read -r role; do
     [[ -n "${role}" ]] || continue
     record="$(installed_file "${role}")"
@@ -1932,6 +1972,11 @@ refresh_installed_role_files() {
       cp "${dir}/compose.yaml" "${project}/compose.yaml"; changed=1
     fi
     gpu_entry="$(conf_any_value "${dir}/role.conf" gpu)"; overlay="${gpu_entry#*|}"
+    arch_overlay="$(conf_any_value "${dir}/role.conf" arm64)"
+    if [[ -f "${project}/compose.arch.yaml" && -n "${arch_overlay}" && -f "${dir}/${arch_overlay}" ]] &&
+       ! cmp -s "${dir}/${arch_overlay}" "${project}/compose.arch.yaml"; then
+      cp "${dir}/${arch_overlay}" "${project}/compose.arch.yaml"; changed=1
+    fi
     if [[ -f "${project}/compose.gpu.yaml" && -f "${dir}/${overlay}" ]]; then
       install_gpu_overlay "${dir}/${overlay}" "${project}/.compose.gpu.yaml.new" "$(role_gpu "${role}")"
       if cmp -s "${project}/.compose.gpu.yaml.new" "${project}/compose.gpu.yaml"; then rm -f "${project}/.compose.gpu.yaml.new"
@@ -2060,8 +2105,15 @@ cmd_add() {
 
   # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one; gpu=required
   # roles always add their overlay (they cannot run on the CPU). Inside a [VAR=value] section only that variant has it.
-  local gpu_entry gpu_mode overlay="" accelerator="" vram=0 gpu_choice=""
+  local gpu_entry gpu_mode overlay="" accelerator="" vram=0 gpu_choice="" arch_overlay
   gpu_entry="$(conf_value "${conf}" gpu)"
+  arch_overlay="$(arm64_overlay "${conf}")" || fail "Invalid arm64 entry in role.conf."
+  if [[ -n "${arch_overlay}" && -n "${gpu_entry}" ]]; then
+    say "GPU or CPU"
+    note "This host is ARM64: ${role} runs its ARM64 build on the CPU."
+    gpu_entry=""; accelerator=cpu
+    env_lines+=("MARTLET_ACCELERATOR=cpu")
+  fi
   if [[ -n "${gpu_entry}" ]]; then
     gpu_mode="${gpu_entry%%|*}"; overlay="${gpu_entry#*|}"
     [[ "${gpu_mode}" =~ ^(optional|required)$ && "${overlay}" =~ ^[a-z0-9.-]+\.yaml$ && -f "${dir}/${overlay}" ]] ||
@@ -2234,6 +2286,8 @@ cmd_add() {
     if [[ "${previous_profiles}" != "${profiles}" ]]; then switching=1; fi
   fi
   cp "${dir}/compose.yaml" "${project}/compose.yaml"
+  rm -f "${project}/compose.arch.yaml"
+  if [[ -n "${arch_overlay}" ]]; then cp "${dir}/${arch_overlay}" "${project}/compose.arch.yaml"; fi
   rm -f "${project}/compose.gpu.yaml"
   if [[ "${accelerator}" == gpu ]]; then install_gpu_overlay "${dir}/${overlay}" "${project}/compose.gpu.yaml" "${gpu_choice}"; fi
   ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )

@@ -66,6 +66,29 @@ public sealed class PlatformCatalogTests
     }
 
     [Fact]
+    public void Arm64_linux_hosts_serve_ollama_and_whisper_but_not_the_x86_64_nvidia_containers()
+    {
+        var spark = PlatformDevice.FromHost("spark", Report("spark", new HostGpu("NVIDIA GB10", "nvidia", 122880, "580")) with
+        {
+            Architecture = "aarch64"
+        });
+        Assert.Equal(DevicePlatform.Linux, spark.Platform);
+        Assert.True(spark.Arm64);
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("ollama", PlatformSide.Host, spark).Verdict);
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("whisper", PlatformSide.Host, spark).Verdict);
+        foreach (var engine in new[] { "f5", "chatterbox", "xtts", "gpt-sovits", "dia", "singing", "pictures", "audio2face" })
+        {
+            var check = PlatformCatalog.Check(engine, PlatformSide.Host, spark);
+            Assert.Equal(PlatformVerdict.No, check.Verdict);
+            Assert.Contains("x86_64", check.Reason, StringComparison.Ordinal);
+            Assert.Contains("ARM64", check.Reason, StringComparison.Ordinal);
+        }
+
+        var pc = PlatformDevice.FromHost("gpu-1", Report("gpu-1", new HostGpu("RTX 4070", "nvidia", 12288, "580")) with { Architecture = "x64" });
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("f5", PlatformSide.Host, pc).Verdict);
+    }
+
+    [Fact]
     public void Every_engine_names_a_known_job_and_at_most_one_entry_per_platform_and_side()
     {
         foreach (var engine in PlatformCatalog.Engines)
