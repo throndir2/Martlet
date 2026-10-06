@@ -165,6 +165,7 @@ public partial class MainWindow
         await StepAsync("stopping Martlet's background work", "", () =>
         {
             // The talk window stops listening, vision and any reply before the conversation it uses is disposed below.
+            messaging.Dispose();
             openConversation?.End();
             ReleaseShell();
             ageTimer.Stop();

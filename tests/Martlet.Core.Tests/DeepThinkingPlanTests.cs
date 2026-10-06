@@ -103,4 +103,65 @@ public sealed class DeepThinkingPlanTests
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() =>
             (LocalOllama("gemma4:12b") with { HostRouteId = SelfHostSetup.DeepThinkingRouteId }).Validate());
     }
+
+    private static DeepThinkingSettings Role(string hostId) => Host(hostId) with { HostRouteId = SelfHostSetup.DeepThinkingRouteId };
+
+    [Fact]
+    public void A_file_saved_before_the_pool_reads_as_one_place_and_a_pool_round_trips()
+    {
+        var folder = Directory.CreateTempSubdirectory("martlet-deep-").FullName;
+        try
+        {
+            // deep-thinking.json as one place was saved before Think here too existed: it reads unchanged, with no pool.
+            File.WriteAllText(Path.Combine(folder, DeepThinkingSettings.FileName),
+                """{"Place":"Endpoint","Origin":"https://openrouter.ai/api/v1","ModelId":"x-ai/grok-4.3","ChosenAt":"2026-09-01T10:00:00+00:00"}""");
+            var (old, state) = DeepThinkingSettings.Read(folder);
+            Assert.Equal("loaded", state);
+            Assert.Equal(DeepThinkingPlace.Endpoint, old.Place);
+            Assert.Equal("x-ai/grok-4.3", old.ModelId);
+            Assert.Null(old.Pool);
+            Assert.Single(old.Places);
+
+            var pooled = old.WithPool([Role("diva"), Role("ripley"), Role("diva"), new DeepThinkingSettings()]);
+            Assert.Equal([$"endpoint:{OpenRouter}|x-ai/grok-4.3", "host:diva", "host:ripley"], pooled.Places.Select(p => p.Key));
+            Assert.True(pooled.Save(folder));
+            var (read, readState) = DeepThinkingSettings.Read(folder);
+            Assert.Equal("loaded", readState);
+            Assert.Equal(pooled.Places.Select(p => p.Key), read.Places.Select(p => p.Key));
+            Assert.Equal("openrouter.ai (x-ai/grok-4.3), diva's Deep thinking (gemma4:27b) and ripley's Deep thinking (gemma4:27b)", read.DescribeAll());
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+        // The same computer twice, a nested pool or Same as Thinking among the others is refused.
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => (Role("diva") with { Pool = [Role("diva")] }).Validate());
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => (Role("diva") with { Pool = [Role("ripley") with { Pool = [Role("imouto")] }] }).Validate());
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() => (Role("diva") with { Pool = [new DeepThinkingSettings()] }).Validate());
+        Assert.Throws<Martlet.Core.Contracts.ContractException>(() =>
+            (Role("a") with { Pool = [.. Enumerable.Range(0, DeepThinkingSettings.MaxPlaces).Select(i => Role($"h{i}"))] }).Validate());
+    }
+
+    [Fact]
+    public void A_pool_thinks_on_every_usable_place_and_ranks_what_shares_least_with_the_conversation_first()
+    {
+        var divaThinks = Gateway(SetupRole.Llm, SetupRouteType.GatewayOllama, "diva", "https://diva.local:9443");
+        var imoutoSpeaks = Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "imouto", "https://imouto.local:9443");
+        // diva's Ollama does Thinking (it can't think there without its role); ripley is free; imouto speaks.
+        var deep = Host("diva").WithPool([Role("imouto"), Role("ripley"), LocalOllama("gemma4:12b")]);
+        var pool = DeepThinkingPool.For(deep, [divaThinks, imoutoSpeaks]);
+        Assert.Equal(["diva", "imouto", "ripley", "this PC"], pool.Spots.Select(s => s.Computer));
+        Assert.Equal(["imouto", "ripley", "this PC"], pool.Usable.Select(s => s.Computer));
+        Assert.Equal([1, 0, 1], pool.Usable.Select(s => s.Plan.Rank));
+        Assert.True(pool.Plan.Available);
+        Assert.Contains("Up to 3 thinks run at once", pool.Plan.Why, StringComparison.Ordinal);
+        Assert.Equal("ripley", pool.Find("host:ripley")!.Computer);
+        // One place that can't think is the whole story when it is the only one.
+        var only = DeepThinkingPool.For(Host("diva"), [divaThinks]);
+        Assert.False(only.Plan.Available);
+        Assert.Equal(DeepThinkingPlan.For(Host("diva"), [divaThinks]), only.Plan);
+        // Same as Thinking on a cloud provider shares Thinking's provider; a second model beside Thinking's on this PC ranks last.
+        Assert.Equal(2, DeepThinkingPlan.For(new(), [CloudThinking]).Rank);
+        Assert.Equal(3, DeepThinkingPlan.For(LocalOllama("gemma4:12b"), [LocalThinking]).Rank);
+        Assert.Equal("openrouter.ai", new DeepThinkingSettings().Computer(CloudThinking));
+        Assert.Equal("this PC", new DeepThinkingSettings().Computer(LocalThinking));
+        Assert.Equal("diva", new DeepThinkingSettings().Computer(divaThinks));
+    }
 }

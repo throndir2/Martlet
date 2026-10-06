@@ -63,6 +63,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord: Step by step only expands the setup steps. The portal and invite buttons open the browser, and
         // Save, Forget, Reconnect, the on/off box and every choice change things, so they need --allow-ui-effects.
         "DiscordSetupSteps",
+        // Messaging: Cancel only withdraws the pairing code shown (nothing is sent or saved). Connect, Pair a chat, Open BotFather,
+        // Open in Telegram, Remove, Disconnect and the two check boxes do the work.
+        "MessagingPairCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
@@ -307,7 +310,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // where and why it stopped; never its title or words: LiveSongLine holds those).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
-        "DeepThinkingKeyStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -360,6 +363,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DiscordServers", "DiscordProblem", "DiscordInviteStatus", "DiscordServerLink", "DiscordHomeLink", "DiscordUserLink",
         "DiscordChatModes", "DiscordServerChat", "DiscordDirectChat", "DiscordVoiceChat", "DiscordRuleChannelsStatus",
         "DiscordPeopleCount", "DiscordOwnerStatus", "DiscordOwnerId", "DiscordHomeServer",
+        // Companion › Messaging: whether Martlet answers the Telegram bot on this PC now or why not (bot username, chat count,
+        // when it last answered; never the token), the connect outcome, how many chats are paired and the pairing note (when
+        // the code expires; never the code itself, MessagingPairCode, or chat names).
+        "MessagingStatus", "MessagingNote", "MessagingChats", "MessagingPairStatus",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
@@ -478,7 +485,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
         // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
         // conversation model on diva (now gemma4-e4b)").
-        "DeepThinkingHost-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "SetupChangeHost-",
+        // Each paired computer's Think here too box ("DeepThinkingPool-diva" reads "Think on diva too" and whether it is ticked;
+        // ticking it saves deep-thinking.json, so it needs --allow-ui-effects).
+        "DeepThinkingHost-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
