@@ -7,6 +7,8 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Installation;
+using Martlet.Core.Planning;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
@@ -21,8 +23,8 @@ public partial class MainWindow
     private bool welcomeJoined;
     private bool welcomeNeedsKey;
     private bool welcomeScanning;
-    private WelcomePreference welcomePreference = WelcomePreference.LocalOnly;
-    private WelcomeSpecs? welcomeSpecs;
+    private HostingPreference welcomePreference = HostingPreference.PreferLocal;
+    private Martlet.Core.Planning.MachineSpecs? welcomeSpecs;
     private IReadOnlyList<GpuNow> welcomeGpus = [];
     private WelcomePlan? welcomePlan;
     private IReadOnlyList<NearbyMartlet> welcomeFound = [];
@@ -156,15 +158,25 @@ public partial class MainWindow
         catch (OperationCanceledException) { welcomeGpus = []; }
         if (closing) return;
         var specs = welcomeSpecs = DefaultSetup.Specs(machine, welcomeGpus);
-        string Gb(double? value) => value is { } gb ? gb.ToString("0.#", CultureInfo.InvariantCulture) + " GB" : "unknown";
-        SpecRow("Gpu", "Graphics card", specs.GpuName is null ? "None Martlet can use" : $"{specs.GpuName}{(specs.GpuVendor is { } v && !specs.GpuName.Contains(v, StringComparison.OrdinalIgnoreCase) ? $" ({v})" : "")}");
-        SpecRow("Vram", "Graphics memory", specs.VramGb is null ? "None" : Gb(specs.VramGb) +
-            (specs.VramUsedGb is { } used ? $", {Gb(used)} in use now" : ""));
-        SpecRow("Ram", "Memory", Gb(specs.RamGb));
-        SpecRow("Cpu", "Processor", $"{specs.Threads} threads" + (specs.Processor is { } cpu ? $" · {cpu}" : ""));
-        WizardSpecs.Text = specs.Describe();
+        static string Gb(double value) => value.ToString("0.#", CultureInfo.InvariantCulture) + " GB";
+        var card = specs.Gpus.MaxBy(g => g.VramGb);
+        SpecRow("Gpu", "Graphics card", card is null ? "None Martlet can use" : $"{card.Name} ({card.Vendor})");
+        SpecRow("Vram", "Graphics memory", card is null ? "None" : Gb(card.VramGb) +
+            (welcomeGpus.Count > 0 ? $", {Gb(card.UsedGb)} in use now" : ""));
+        SpecRow("Ram", "Memory", machine.MemoryGb is null ? $"unknown (planned as {Gb(specs.RamGb)})" : Gb(specs.RamGb));
+        SpecRow("Cpu", "Processor", $"{specs.CpuThreads} threads" + (machine.Processor is { } cpu ? $" · {cpu}" : ""));
+        WizardSpecs.Text = DescribeSpecs(specs);
         WizardSpecsNextButton.IsEnabled = true;
-        ErrorLog.Info($"Welcome: this PC has {specs.Describe()}.");
+        ErrorLog.Info($"Welcome: this PC has {WizardSpecs.Text}.");
+    }
+
+    private string DescribeSpecs(Martlet.Core.Planning.MachineSpecs specs)
+    {
+        var card = specs.Gpus.MaxBy(g => g.VramGb);
+        var gpu = card is null ? "no graphics card Martlet can use"
+            : $"{card.Name} ({card.Vendor}, {card.VramGb.ToString("0.#", CultureInfo.InvariantCulture)} GB graphics memory" +
+              (welcomeGpus.Count > 0 ? $", {card.UsedGb.ToString("0.#", CultureInfo.InvariantCulture)} GB in use" : "") + ")";
+        return $"{gpu} · {specs.RamGb.ToString("0", CultureInfo.InvariantCulture)} GB memory · {specs.CpuThreads} processor threads";
     }
 
     private void SpecRow(string id, string label, string value)
@@ -182,15 +194,39 @@ public partial class MainWindow
 
     // ---------- steps 3 and 4: preference and the suggestion ----------
 
-    private void WizardPreferLocal_Click(object sender, RoutedEventArgs e) => ShowWelcomePlan(WelcomePreference.LocalOnly);
-    private void WizardPreferOnline_Click(object sender, RoutedEventArgs e) => ShowWelcomePlan(WelcomePreference.FreeOnline);
+    private void WizardPreferLocal_Click(object sender, RoutedEventArgs e) => ShowWelcomePlan(HostingPreference.PreferLocal);
+    private void WizardPreferOnline_Click(object sender, RoutedEventArgs e) => ShowWelcomePlan(HostingPreference.PreferHosted);
 
-    private void ShowWelcomePlan(WelcomePreference preference)
+    private void ShowWelcomePlan(HostingPreference preference)
     {
         welcomePreference = preference;
         welcomeNeedsKey = false;
         ShowTour(TourPlan);
         RenderWelcomePlan();
+    }
+
+    /// <summary>The paired hosts' hardware as the placement engine reads it, for the join suggestion.</summary>
+    private PlanRequest? WelcomeNetwork()
+    {
+        if (!welcomeJoined) return null;
+        var hosts = NetworkMap.Hosts(Inputs()).Select(h => h.HostId).ToHashSet(StringComparer.Ordinal);
+        IReadOnlyList<HostHardware> reports;
+        try { reports = HardwareStore?.Load() ?? []; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException) { reports = []; }
+        var machines = reports.Where(r => hosts.Contains(r.HostId)).Select(r => Martlet.Core.Planning.MachineSpecs.FromHostHardware(r)).ToArray();
+        return new PlanRequest(machines);
+    }
+
+    private IReadOnlyCollection<string> ConfiguredProviders()
+    {
+        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        if (thinking?.CredentialId is null) return [];
+        return thinking.Origin switch
+        {
+            ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl => ["nvidia-build"],
+            ChatCompletionsEndpointCatalog.OpenRouterBaseUrl => ["openrouter"],
+            _ => thinking.RouteType == SetupRouteType.OpenAi ? ["openai"] : []
+        };
     }
 
     private void RenderWelcomePlan()
@@ -202,52 +238,77 @@ public partial class MainWindow
             WizardPlanSummary.Text = "Go back a step: Martlet hasn't read this PC's hardware yet.";
             return;
         }
-        var plan = welcomePlan = DefaultSetup.Recommend(specs, welcomeGpus, machine.BestGpu, CultureInfo.CurrentUICulture, welcomePreference);
+        var plan = welcomePlan = DefaultSetup.Recommend(specs, welcomeGpus, machine.BestGpu, CultureInfo.CurrentUICulture, welcomePreference,
+            ConfiguredProviders(), WelcomeNetwork());
         var routes = homeSettings?.Setup?.Routes ?? [];
         WizardPlanTitle.Text = welcomeJoined ? "Here's what this PC can do for your network" : "Here's what fits this PC";
-        var chose = welcomePreference == WelcomePreference.LocalOnly ? "everything stays on your computers" : "free online services are fine";
-        WizardPlanSummary.Text = (welcomeJoined
-            ? "Jobs your Martlet network already does stay where they are; this PC sets up the rest. "
-            : "") + $"You chose: {chose}. " +
-            (plan.ThinkingOnline ? "Thinking goes online, so you'll get a free NVIDIA key next." : "Everything runs on this PC.");
-        foreach (var part in plan.Parts) WizardPlanList.Children.Add(PlanCard(plan, part, routes));
+        var summary = $"You chose: {WelcomePreferences.Describe(welcomePreference)}. ";
+        if (welcomeJoined)
+            summary += "Jobs your Martlet network already does stay where they are; this PC sets up the ones it should take on. ";
+        summary += plan.ThinkingHosted is { } hosted
+            ? $"Thinking goes online with {hosted.Option.DisplayName}" + (ConfiguredProviders().Contains(hosted.Option.ProviderId ?? "") ? "." : ", so you'll get a free key next.")
+            : plan.Placement.External.Count == 0 ? "Everything runs on your computers." : "";
+        WizardPlanSummary.Text = summary.Trim();
+        foreach (var component in WelcomePlan.Shown) WizardPlanList.Children.Add(PlanCard(plan, component, routes));
+        if (plan.Joining.Count > 0)
+        {
+            var heading = new TextBlock { Text = "What changes now that this PC joined", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 4) };
+            WizardPlanList.Children.Add(heading);
+            for (var i = 0; i < plan.Joining.Count; i++)
+            {
+                var line = new TextBlock { Text = "• " + plan.Joining[i].Why, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+                AutomationProperties.SetAutomationId(line, $"WizardJoinSuggestion-{i}");
+                WizardPlanList.Children.Add(line);
+            }
+        }
         var (vram, ram, cpu) = plan.Total();
-        WizardPlanTotals.Text = $"All together on this PC: {vram}% graphics memory, {ram}% memory, {cpu}% processor while Martlet talks.";
+        WizardPlanTotals.Text = $"All together on this PC: {vram}% graphics memory, {ram}% memory, {cpu}% processor while Martlet talks." +
+            (plan.Placement.Notes.Count > 0 ? " " + string.Join(" ", plan.Placement.Notes) : "");
         WizardAcceptButton.IsEnabled = true;
-        ErrorLog.Info($"Welcome: suggested {string.Join(" | ", plan.Parts.Select(plan.Describe))}");
+        ErrorLog.Info($"Welcome: suggested ({welcomePreference}) {string.Join(" | ", WelcomePlan.Shown.Select(plan.Describe))}" +
+            (plan.Joining.Count > 0 ? " Joining: " + string.Join(" | ", plan.Joining.Select(j => $"{j.Kind} {j.Component} {j.ToOptionId}")) : ""));
     }
 
-    private Border PlanCard(WelcomePlan plan, WelcomePart part, IReadOnlyList<SetupRoute> routes)
+    private Border PlanCard(WelcomePlan plan, PlanComponent component, IReadOnlyList<SetupRoute> routes)
     {
-        var role = part.Job switch
+        var role = component switch
         {
-            WelcomeJob.Thinking => SetupRole.Llm,
-            WelcomeJob.Listening => SetupRole.Stt,
-            WelcomeJob.Voice => SetupRole.Tts,
+            PlanComponent.Thinking => SetupRole.Llm,
+            PlanComponent.Listening => SetupRole.Stt,
+            PlanComponent.Voice => SetupRole.Tts,
             _ => (SetupRole?)null
         };
         var kept = role is { } r && routes.FirstOrDefault(x => x.Role == r) is { } route ? PlaceName(route) : null;
+        var assignment = plan.Placement.Primary(component);
+        var name = ComponentRanking.Name(component);
         var stack = new StackPanel();
         var title = new TextBlock { FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
-        title.Text = kept is null ? $"{WelcomePart.Title(part.Job)}: {part.What}, {part.Where}" : $"{WelcomePart.Title(part.Job)}: keeps {kept}";
+        title.Text = kept is not null ? $"{name}: keeps {kept}"
+            : assignment is null ? $"{name}: left out"
+            : $"{name}: {assignment.Option.DisplayName}, {WelcomePlan.Where(assignment)}";
         stack.Children.Add(title);
-        var reason = new TextBlock { Text = kept is null ? part.Reason : "Already set up, so it stays as it is.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 6) };
+        var why = kept is not null ? "Already set up, so it stays as it is."
+            : assignment is null ? plan.Placement.Dropped.FirstOrDefault(d => d.Component == component)?.Why ?? ""
+            : assignment.Why + (plan.Placement.Fallback(component) is { } fallback
+                ? $" If it's down, {fallback.Option.DisplayName} ({WelcomePlan.Where(fallback)}) can take over; set that up later in Companion › Thinking."
+                : "");
+        var reason = new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 6) };
         reason.SetResourceReference(StyleProperty, "Muted");
         stack.Children.Add(reason);
-        var (vram, ram, cpu) = plan.Share(part);
-        if (kept is null)
+        if (kept is null && assignment is not null)
         {
+            var (vram, ram, cpu) = plan.Share(component);
             var bars = new UniformGrid { Columns = 3 };
-            bars.Children.Add(Bar("Graphics memory", vram, plan.Specs.VramGb is not null));
+            bars.Children.Add(Bar("Graphics memory", vram, plan.Specs.Gpus.Count > 0));
             bars.Children.Add(Bar("Memory", ram, true));
             bars.Children.Add(Bar("Processor", cpu, true));
             stack.Children.Add(bars);
         }
         var card = new Border { CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 12, 16, 12), Margin = new Thickness(0, 0, 0, 8), Child = stack };
         card.SetResourceReference(Border.BackgroundProperty, "SoftBrush");
-        AutomationProperties.SetAutomationId(card, "WizardPlanCard-" + part.Job);
-        AutomationProperties.SetAutomationId(title, "WizardPlanItem-" + part.Job);
-        AutomationProperties.SetName(title, kept is null ? plan.Describe(part) : title.Text);
+        AutomationProperties.SetAutomationId(card, "WizardPlanCard-" + component);
+        AutomationProperties.SetAutomationId(title, "WizardPlanItem-" + component);
+        AutomationProperties.SetName(title, kept is null ? plan.Describe(component) : title.Text);
         return card;
     }
 
@@ -267,13 +328,13 @@ public partial class MainWindow
     {
         if (welcomePlan is not { } plan) return;
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        if (plan.ThinkingOnline && thinking is null)
+        if (plan.ThinkingHosted?.Option.ProviderId == "nvidia-build" && thinking is null)
         {
             welcomeNeedsKey = true;
             ShowWelcomeKey();
             return;
         }
-        ApplyWelcomeAsync(thinking: !plan.ThinkingOnline).Forget();
+        ApplyWelcomeAsync().Forget();
     }
 
     // ---------- step 5: a free NVIDIA Build key ----------
@@ -281,12 +342,14 @@ public partial class MainWindow
     private void ShowWelcomeKey()
     {
         var model = ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId;
-        WizardKeyIntro.Text = $"Martlet thinks with {model} on NVIDIA Build, free for personal use with an NVIDIA account. It takes about two minutes.";
+        WizardKeyIntro.Text = $"Martlet thinks with {model} on NVIDIA Build: free, no card needed, with a free NVIDIA account. It takes " +
+            "about two minutes. NVIDIA logs what is sent to improve its products, so don't share personal data or voices with it. " +
+            "Listening stays on this PC (Parakeet), so Thinking gets the words you said, not your voice.";
         WizardKeySteps.Text =
-            "1. Press Open build.nvidia.com below and sign in, or create a free NVIDIA account.\n" +
-            "2. Choose Generate API Key (on the API Keys page), give it any name and press Generate Key.\n" +
-            "3. Copy the key: it starts with nvapi- and NVIDIA shows it only once.\n" +
-            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again.";
+            "1. Press Open build.nvidia.com below and sign in, or create a free NVIDIA account with your email and confirm the email NVIDIA sends.\n" +
+            "2. On the API Keys page choose Generate API Key. Accept NVIDIA's trial terms if asked; some accounts must verify a phone number.\n" +
+            "3. Copy the key now: it starts with nvapi- and isn't shown again.\n" +
+            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again. The same key also works for Pictures.";
         WizardKeyStatus.Text = "";
         ShowTour(TourKey);
     }
@@ -328,7 +391,7 @@ public partial class MainWindow
             }
             ErrorLog.Info("Welcome: Thinking uses NVIDIA Build with the key saved in Windows Credential Manager.");
             welcomeNeedsKey = false;
-            await ApplyWelcomeAsync(thinking: false);
+            await ApplyWelcomeAsync();
         }
         finally { if (!closing) WizardKeySaveButton.IsEnabled = true; }
     }
@@ -336,27 +399,33 @@ public partial class MainWindow
     private void WizardKeySkip_Click(object sender, RoutedEventArgs e)
     {
         welcomeNeedsKey = false;
-        ApplyWelcomeAsync(thinking: false).Forget();
+        ApplyWelcomeAsync().Forget();
     }
 
     // ---------- step 6: apply ----------
 
-    /// <summary>Sets up the accepted suggestion after one confirmation (<see cref="SetUpDefaultsAsync"/>), then lip-sync, and
-    /// leaves the owner on Home. <paramref name="thinking"/>: set up local Thinking too.</summary>
-    private async Task ApplyWelcomeAsync(bool thinking)
+    /// <summary>Sets up what the accepted suggestion puts on this PC after one confirmation (<see cref="SetUpDefaultsAsync"/>:
+    /// jobs already set up, or done by another computer in the network or online, are left alone), then lip-sync (Audio2Face here
+    /// or on the host the plan chose, otherwise the voice's loudness), and leaves the owner on Home.</summary>
+    private async Task ApplyWelcomeAsync()
     {
         if (welcomePlan is not { } plan) return;
         HideTour();
         Navigate(NavHome);
-        var lipSync = plan.Parts.First(p => p.Job == WelcomeJob.LipSync);
-        var audio2Face = lipSync.VramGb > 0;
-        var lipSyncLine = audio2Face
+        bool Here(PlanComponent component) => plan.Placement.Primary(component)?.MachineId == DefaultSetup.ThisPc;
+        var lipSync = plan.Placement.Primary(PlanComponent.LipSync);
+        var lipSyncHost = lipSync is { MachineId: { } id } && id != DefaultSetup.ThisPc && FindHost(id) is not null ? id : null;
+        var lipSyncLine = plan.Setup.LipSyncOnGpu
             ? "Lip-sync: Audio2Face on the graphics card (Martlet sets up its host service in Docker on this PC). The mouth follows the voice's loudness until it's ready."
+            : lipSyncHost is not null ? $"Lip-sync: Audio2Face on {lipSyncHost}."
             : "Lip-sync: the mouth opens and closes with the voice's loudness. Nothing to install.";
-        if (!await SetUpDefaultsAsync(thinking, extra: lipSyncLine, planned: plan.ThinkingOnline == !thinking ? plan.Setup : null)) return;
+        ErrorLog.Info($"Welcome: applying the suggestion ({welcomePreference}).");
+        if (!await SetUpDefaultsAsync(Here(PlanComponent.Thinking), Here(PlanComponent.Listening), Here(PlanComponent.Voice),
+                extra: lipSyncLine, planned: plan.Setup))
+            return;
         if (closing) return;
-        if (audio2Face) await SetUpThisPcHostAsync(AssignLipSyncAsync);
-        else await AssignLipSyncAsync("off");
+        if (plan.Setup.LipSyncOnGpu) await SetUpThisPcHostAsync(AssignLipSyncAsync);
+        else await AssignLipSyncAsync(lipSyncHost is null ? "off" : "host:" + lipSyncHost);
         if (!closing) ActionText.Text = DefaultSetupOutcome();
     }
 }

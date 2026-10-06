@@ -1,199 +1,175 @@
 using System.Globalization;
+using Martlet.Core.Planning;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>What Set it all up for me does on a PC that isn't in a Martlet network: Thinking with the smallest model that hears
-/// (Gemma 4 E2B) in Ollama here; a voice that fits (a voice engine on the NVIDIA graphics card when it has room beside the
-/// Thinking model, otherwise a Windows voice on the processor); and listening on the Windows default microphone with Parakeet
-/// on the processor, or Whisper on the graphics card when room is left after the voice. The voice comes before listening on
-/// the graphics card. <paramref name="ThinkingOnGpu"/>: the Thinking model fits the graphics card (Ollama otherwise runs part
-/// of it on the processor). <paramref name="Listening"/> is the Whisper advice used when <paramref name="ListenOnGpu"/>.</summary>
+/// <summary>What Set it all up for me sets up on this PC, as the placement engine (<see cref="PlacementEngine"/>) planned it:
+/// Thinking in Ollama here (<paramref name="ThinkingOnGpu"/>: on the graphics card, otherwise on the processor) unless it is
+/// hosted or set up already; a voice engine on the NVIDIA card when it has room, otherwise a Windows voice; listening on the
+/// Windows default microphone with Parakeet on the processor, or Whisper on the card (<paramref name="Listening"/>'s GPU
+/// model) when <paramref name="ListenOnGpu"/>; and lip-sync by Audio2Face on the card when <paramref name="LipSyncOnGpu"/>,
+/// otherwise by the voice's loudness.</summary>
 internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOnGpu, SpeechEngine? Voice, bool ListenOnGpu,
-    ListeningAdvice Listening, string ParakeetModel, string Gpu)
+    ListeningAdvice Listening, string ParakeetModel, string Gpu, bool LipSyncOnGpu = false)
 {
-    /// <summary>One line per job, as the tour and the confirmation show them.</summary>
+    /// <summary>One line per job, as the confirmation shows them.</summary>
     internal string Describe(bool thinking = true, bool listening = true, bool voice = true)
     {
         var lines = new List<string>();
         if (thinking)
-            lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", partly on the processor")}). " +
-                "It's the smallest model that also hears your voice.");
+            lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", on the processor")}). " +
+                (Thinking.Hears ? "It's the fastest model that also hears your voice." : "It's the fastest model that fits."));
         if (voice)
             lines.Add(Voice is { } engine
                 ? $"Voice: {engine.Name} on the graphics card. Martlet speaks with a Windows voice until it's ready."
-                : "Voice: a Windows voice on the processor, since the graphics card has no room for a voice engine beside Thinking.");
+                : "Voice: a Windows voice on the processor, since the graphics card has no room for a voice engine.");
         if (listening)
             lines.Add(ListenOnGpu
                 ? $"Listening: your Windows default microphone, with Whisper ({Listening.GpuModel}) on the graphics card. Parakeet on the processor listens until it's ready."
-                : $"Listening: your Windows default microphone, with Parakeet on the processor{(Voice is null ? "" : ", leaving the graphics card to Thinking and the voice")}.");
+                : $"Listening: your Windows default microphone, with Parakeet on the processor{(Voice is null ? "" : ", leaving the graphics card to the voice")}.");
         return string.Join("\n", lines);
     }
 }
 
 internal static class DefaultSetup
 {
-    /// <summary>Graphics memory a voice engine takes while it speaks (Chatterbox Turbo; the setup advisor's estimate).</summary>
-    internal const double VoiceGb = 4;
-    /// <summary>Graphics memory Audio2Face lip-sync takes on this PC's host service.</summary>
-    internal const double LipSyncGb = 3;
-    /// <summary>What Windows and the desktop keep on the card.</summary>
-    private const double DesktopGb = 0.8;
+    /// <summary>The PC the user talks to, as the placement engine names it.</summary>
+    internal const string ThisPc = "this-pc";
 
-    /// <summary>The welcome wizard's suggestion for this PC: <see cref="Plan"/>, with Thinking moved to NVIDIA Build when the
-    /// owner allows free online services and Thinking would otherwise crowd this PC (partly on the processor, or taking the card
-    /// a voice engine needs), and lip-sync by Audio2Face when the card has room left, otherwise by voice loudness.</summary>
-    internal static WelcomePlan Recommend(WelcomeSpecs specs, IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, CultureInfo language,
-        WelcomePreference preference)
-    {
-        var local = Plan(gpus, windowsGpu, specs.Threads, language);
-        var online = preference == WelcomePreference.FreeOnline &&
-            (!local.ThinkingOnGpu || local.Voice is null && Plan(gpus, windowsGpu, specs.Threads, language, thinkingGb: 0).Voice is not null);
-        var plan = online ? Plan(gpus, windowsGpu, specs.Threads, language, thinkingGb: 0) : local;
-        var parts = new List<WelcomePart>();
-        var model = MainWindow.LocalChatModels.First(m => m.Id == plan.Thinking.Id);
-        var modelGb = ListeningAdvisor.OllamaModelGb(model.Id);
-        var cardGb = specs.VramGb ?? 0;
-        var cardFree = Math.Max(0, cardGb - Math.Max(specs.VramUsedGb ?? 0, DesktopGb));
-        if (online)
-            parts.Add(new(WelcomeJob.Thinking, $"{ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId} on NVIDIA Build", WelcomePlace.Online, 0, 0.2, 0.2,
-                local.ThinkingOnGpu
-                    ? "Online, so this PC's graphics card is left for a natural voice. Free with an NVIDIA key; what you say goes to NVIDIA."
-                    : $"Online: {model.Id} doesn't fit this PC's graphics card, and on the processor replies would be slow. Free with an NVIDIA key; what you say goes to NVIDIA."));
-        else if (plan.ThinkingOnGpu)
-            parts.Add(new(WelcomeJob.Thinking, $"{model.Id} in Ollama", WelcomePlace.ThisPc, modelGb, 1, 1,
-                "The smallest local model that also hears your voice, on the graphics card for quick replies."));
-        else
-        {
-            var onCard = Math.Min(cardFree, modelGb);
-            parts.Add(new(WelcomeJob.Thinking, $"{model.Id} in Ollama", WelcomePlace.ThisPc, onCard, modelGb - onCard + 1, Math.Max(4, specs.Threads / 2),
-                cardGb > 0 ? "Partly on the processor: the graphics card has too little room, so replies are slower."
-                    : "On the processor: this PC has no graphics card Martlet can use, so replies are slower." +
-                      (preference == WelcomePreference.LocalOnly ? " Free online services would answer faster." : "")));
-        }
-        parts.Add(plan.Voice is { } engine
-            ? new(WelcomeJob.Voice, engine.Name, WelcomePlace.ThisPc, VoiceGb, 2, 1, "A natural voice on the graphics card. A Windows voice speaks until it's ready.")
-            : new(WelcomeJob.Voice, "Windows voice", WelcomePlace.ThisPc, 0, 0.1, 0.5,
-                cardGb >= SpeechEngines.Default.MinimumGpuMemoryGb ? $"{SpeechEngines.Default.Name} doesn't fit beside Thinking on the graphics card, so a Windows voice speaks."
-                    : $"{SpeechEngines.Default.Name} needs an NVIDIA graphics card with {SpeechEngines.Default.MinimumGpuMemoryGb:0} GB or more, so a Windows voice speaks."));
-        parts.Add(plan.ListenOnGpu
-            ? new(WelcomeJob.Listening, $"Whisper {plan.Listening.GpuModel}", WelcomePlace.ThisPc, plan.Listening.GpuModel == "large-v3-turbo" ? 2.5 : 1, 1, 1,
-                "On the graphics card beside the voice, with your default microphone.")
-            : new(WelcomeJob.Listening, "Parakeet", WelcomePlace.ThisPc, 0, 0.8, 2, "On the processor with your default microphone: quick and needs no graphics card."));
-        var used = parts.Sum(p => p.VramGb);
-        var audio2Face = gpus.MaxBy(g => g.TotalGb) is { } card && card.TotalGb >= 4 && cardFree - used >= LipSyncGb;
-        parts.Add(audio2Face
-            ? new(WelcomeJob.LipSync, "Audio2Face", WelcomePlace.ThisPc, LipSyncGb, 2, 1,
-                "Natural mouth movement on the graphics card, in Docker. The mouth follows the voice's loudness until it's ready.")
-            : new(WelcomeJob.LipSync, "Voice loudness", WelcomePlace.ThisPc, 0, 0, 0.1,
-                gpus.Count == 0 ? "The mouth opens with the voice's loudness: Audio2Face needs an NVIDIA graphics card."
-                    : "The mouth opens with the voice's loudness: the graphics card has no room left for Audio2Face."));
-        return new(specs, preference, plan, parts);
-    }
-
-    /// <summary>This PC's hardware for planning, from Windows (<paramref name="machine"/>) and nvidia-smi (<paramref name="gpus"/>).</summary>
-    internal static WelcomeSpecs Specs(MachineInfo machine, IReadOnlyList<GpuNow> gpus)
-    {
-        var card = gpus.MaxBy(g => g.TotalGb);
-        var windows = machine.BestGpu;
-        var name = card?.Name ?? windows?.Name;
-        var vendor = name is null ? null
-            : name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) || card is not null ? "NVIDIA"
-            : name.Contains("AMD", StringComparison.OrdinalIgnoreCase) || name.Contains("Radeon", StringComparison.OrdinalIgnoreCase) ? "AMD"
-            : name.Contains("Intel", StringComparison.OrdinalIgnoreCase) ? "Intel" : "Other";
-        return new(vendor, name, card?.TotalGb ?? windows?.MemoryGb, card?.UsedGb, machine.MemoryGb, machine.Threads, machine.Processor);
-    }
+    /// <summary>What the first-run setup plans: the conversation and the character. Deep thinking, singing and pictures are
+    /// added later, each from its own page.</summary>
+    internal static readonly PlanComponent[] Conversation =
+        [PlanComponent.Thinking, PlanComponent.Voice, PlanComponent.Listening, PlanComponent.Character, PlanComponent.LipSync];
 
     /// <summary>The smallest suggested model that hears your recording: the omni model Martlet starts with.</summary>
     internal static LocalChatModel SmallestHearingModel =>
         MainWindow.LocalChatModels.Where(m => m.Hears).MinBy(m => ListeningAdvisor.OllamaModelGb(m.Id))!;
 
-    /// <summary>Plans the default setup from this PC's NVIDIA cards as nvidia-smi reports them now (<paramref name="gpus"/>; empty
-    /// without an NVIDIA driver), the card Windows reports, the processor's threads and the display language.
-    /// <paramref name="thinkingGb"/> is the graphics memory Thinking takes here: null plans the default model; 0 means Thinking
-    /// runs elsewhere (a cloud provider, another computer).</summary>
-    internal static DefaultSetupPlan Plan(IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, int threads, CultureInfo language, double? thinkingGb = null)
+    /// <summary>This PC for the placement engine: its NVIDIA cards as nvidia-smi reports them now (memory in use counts), or
+    /// the card Windows reports when nvidia-smi doesn't answer, plus memory and processor threads.</summary>
+    internal static MachineSpecs Specs(IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, double? ramGb, int threads)
     {
-        var thinking = SmallestHearingModel;
-        var llmGb = thinkingGb ?? ListeningAdvisor.OllamaModelGb(thinking.Id);
+        IReadOnlyList<MachineGpu> cards = gpus.Count > 0
+            ? [.. gpus.Select(g => new MachineGpu(g.Name, GpuVendor.Nvidia, g.TotalGb) { UsedGb = g.UsedGb })]
+            : windowsGpu is { MemoryGb: > 0 } windows ? [new MachineGpu(windows.Name, MachineGpu.VendorOf(windows.Name), windows.MemoryGb.Value)]
+            : [];
+        return MachineSpecs.ThisPc(cards, ramGb ?? 16, threads);
+    }
+
+    internal static MachineSpecs Specs(MachineInfo machine, IReadOnlyList<GpuNow> gpus) =>
+        Specs(gpus, machine.BestGpu, machine.MemoryGb, machine.Threads);
+
+    /// <summary>Plans the default setup for this PC with the placement engine. <paramref name="thinkingGb"/> is the graphics
+    /// memory Thinking takes here: null plans Thinking too; 0 means Thinking runs elsewhere (a cloud provider, another
+    /// computer); more means the local model already set up keeps that much of the card.</summary>
+    internal static DefaultSetupPlan Plan(IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, int threads, CultureInfo language,
+        double? thinkingGb = null, double? ramGb = null)
+    {
+        var specs = Specs(gpus, windowsGpu, ramGb, threads);
+        if (thinkingGb is > 0 && specs.Gpus.Count > 0)
+            specs = specs with { Gpus = [specs.Gpus[0] with { UsedGb = specs.Gpus[0].UsedGb + thinkingGb.Value }, .. specs.Gpus.Skip(1)] };
+        var wanted = thinkingGb is null ? Conversation : Conversation.Where(c => c != PlanComponent.Thinking).ToArray();
+        var plan = PlacementEngine.Plan(new PlanRequest([specs]) { Preference = HostingPreference.PreferLocal, Wanted = wanted });
+        return FromPlacement(plan, gpus, windowsGpu, threads, language);
+    }
+
+    /// <summary>The setup steps for what <paramref name="plan"/> places on this PC. Whisper on the card shares the voice
+    /// engine's host service and needs an NVIDIA driver for CUDA 13, so it runs only beside a voice engine on a current driver.</summary>
+    internal static DefaultSetupPlan FromPlacement(PlacementPlan plan, IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, int threads,
+        CultureInfo language)
+    {
+        var thinking = plan.Primary(PlanComponent.Thinking) is { MachineId: ThisPc, Option: { } local }
+            ? MainWindow.LocalChatModels.FirstOrDefault(m => m.Id == local.ModelId) is { } model ? (model, local.UsesGpu) : (SmallestHearingModel, local.UsesGpu)
+            : (SmallestHearingModel, false);
+        var voice = plan.Primary(PlanComponent.Voice) is { MachineId: ThisPc, Option.HostRoleKind: { } role }
+            ? SpeechEngines.All.FirstOrDefault(e => e.HostRoleKind == role) : null;
         var card = gpus.MaxBy(g => g.TotalGb);
-        var cardGb = card?.TotalGb ?? windowsGpu?.MemoryGb ?? 0;
-        var thinkingOnGpu = cardGb - Math.Max(card?.UsedGb ?? 0, DesktopGb) >= llmGb;
-        var engine = SpeechEngines.Default;
-        // The voice engine needs an NVIDIA card big enough for it and room left on it beside Thinking (and what already runs).
-        var voiceFree = card is null ? 0 : card.TotalGb - Math.Max(card.UsedGb, DesktopGb + llmGb);
-        var voiceOnGpu = card is not null && card.TotalGb >= engine.MinimumGpuMemoryGb - 0.25 && voiceFree >= VoiceGb;
-        var loads = new List<GpuLoad>();
-        if (llmGb > 0) loads.Add(new($"Ollama {thinking.Id}", llmGb));
-        if (voiceOnGpu) loads.Add(new(engine.Name, VoiceGb));
-        var listening = ListeningAdvisor.Advise(gpus, windowsGpu, loads, threads, null);
-        // Whisper on the card shares the voice engine's host service; without it, Parakeet on the processor needs no Docker.
-        var listenOnGpu = voiceOnGpu && listening.UseGpu;
+        var listening = ListeningAdvisor.Advise(gpus, windowsGpu, [], threads, null);
+        var whisper = plan.Primary(PlanComponent.Listening) is { MachineId: ThisPc, Option: { UsesGpu: true } stt } ? stt : null;
+        var listenOnGpu = whisper is not null && voice is not null && card is not null && card.DriverMajor is not < ListeningAdvisor.MinimumDriver;
+        if (listenOnGpu) listening = listening with { UseGpu = true, GpuModel = whisper!.ModelId ?? listening.GpuModel };
+        var lipSync = plan.Primary(PlanComponent.LipSync) is { MachineId: ThisPc, Option.UsesGpu: true };
         var gpu = card is not null ? $"{card.Name} ({card.TotalGb.ToString("0.#", CultureInfo.InvariantCulture)} GB)"
             : windowsGpu?.Describe() ?? "no dedicated graphics card";
-        return new(thinking, thinkingOnGpu, voiceOnGpu ? engine : null, listenOnGpu, listening,
-            LocalSpeechSetup.RecommendedParakeetModel(language), gpu);
+        return new(thinking.Item1, thinking.Item2, voice, listenOnGpu, listening, LocalSpeechSetup.RecommendedParakeetModel(language), gpu, lipSync);
+    }
+
+    /// <summary>The welcome wizard's suggestion for this PC from the placement engine, with the owner's preference: "keep
+    /// everything on my computers" plans nothing hosted; "free online services are fine" lets Thinking go to NVIDIA Build so
+    /// this PC's card goes to the voice and face. <paramref name="network"/>, when this PC joined a Martlet network, adds the
+    /// network's machines and current setup, and the suggestion becomes what this PC should take on.</summary>
+    internal static WelcomePlan Recommend(MachineSpecs specs, IReadOnlyList<GpuNow> gpus, GpuInfo? windowsGpu, CultureInfo language,
+        HostingPreference preference, IReadOnlyCollection<string>? configuredProviders = null, PlanRequest? network = null)
+    {
+        var machines = network is null ? [specs] : (IReadOnlyList<MachineSpecs>)[.. network.Machines.Where(m => m.Id != specs.Id), specs];
+        var request = (network ?? new PlanRequest(machines)) with
+        {
+            Machines = machines, Preference = preference, ConfiguredProviders = configuredProviders ?? [], Wanted = Conversation
+        };
+        var plan = PlacementEngine.Plan(request);
+        var joining = network is null ? [] : PlacementEngine.SuggestForJoiningMachine(request with { Machines = [.. machines.Where(m => m.Id != specs.Id)] }, specs);
+        return new(specs, preference, plan, FromPlacement(plan, gpus, windowsGpu, specs.CpuThreads, language), joining);
+    }
+}
+
+/// <summary>The welcome wizard's suggestion: the engine's plan for this PC (and its network when joining), the setup steps
+/// that apply it, and, when joining, what changes because this PC joined.</summary>
+internal sealed record WelcomePlan(MachineSpecs Specs, HostingPreference Preference, PlacementPlan Placement, DefaultSetupPlan Setup,
+    IReadOnlyList<PlanSuggestion> Joining)
+{
+    /// <summary>The jobs the wizard shows, in rank order.</summary>
+    internal static readonly PlanComponent[] Shown = [PlanComponent.Thinking, PlanComponent.Voice, PlanComponent.Listening, PlanComponent.LipSync];
+
+    internal bool ThinkingOnline => Placement.Primary(PlanComponent.Thinking) is { IsExternal: true };
+
+    internal Assignment? ThinkingHosted => Placement.Primary(PlanComponent.Thinking) is { IsExternal: true } hosted ? hosted : null;
+
+    internal MachineUsage? Here => Placement.Usage(Specs.Id);
+
+    /// <summary>A component's share of this PC in percent: graphics memory (of the card it is on), memory and processor.</summary>
+    internal (int Vram, int Ram, int Cpu) Share(PlanComponent component)
+    {
+        if (Here is not { } here) return (0, 0, 0);
+        var items = here.Items.Where(i => i.Component == component).ToList();
+        int Percent(double used, double capacity) => capacity <= 0 ? 0 : (int)Math.Round(used / capacity * 100);
+        var vram = items.Where(i => i.GpuIndex is not null).Sum(i => Percent(i.Use.VramGb, here.Gpus[i.GpuIndex!.Value].TotalGb));
+        return (vram, Percent(items.Sum(i => i.Use.RamGb), Specs.RamGb), Percent(items.Sum(i => i.Use.CpuThreads), Specs.CpuThreads));
+    }
+
+    /// <summary>Everything the plan puts on this PC, as shares of the whole card, memory and processor.</summary>
+    internal (int Vram, int Ram, int Cpu) Total()
+    {
+        if (Here is not { } here) return (0, 0, 0);
+        var card = here.Gpus.FirstOrDefault();
+        int Percent(double used, double capacity) => capacity <= 0 ? 0 : (int)Math.Round(used / capacity * 100);
+        return (card is null ? 0 : Percent(here.Items.Where(i => i.GpuIndex == card.Index).Sum(i => i.Use.VramGb), card.TotalGb),
+            Percent(here.Ram.Used, Specs.RamGb), Percent(here.Cpu.Used, Specs.CpuThreads));
+    }
+
+    internal static string Where(Assignment assignment) => assignment.MachineId switch
+    {
+        null => "online (free)",
+        DefaultSetup.ThisPc => "this PC",
+        _ => "another of your computers"
+    };
+
+    /// <summary>One line per job, as MCP and the log read it: what, where, its share of this PC and why (or why it's left out).</summary>
+    internal string Describe(PlanComponent component)
+    {
+        var name = ComponentRanking.Name(component);
+        if (Placement.Primary(component) is not { } assignment)
+            return $"{name}: not set up. " + (Placement.Dropped.FirstOrDefault(d => d.Component == component)?.Why ?? "");
+        var (vram, ram, cpu) = Share(component);
+        var line = $"{name}: {assignment.Option.DisplayName}, {Where(assignment)}. Uses {vram}% graphics memory, {ram}% memory, {cpu}% processor. {assignment.Why}";
+        if (Placement.Fallback(component) is { } fallback) line += $" If it's down: {fallback.Option.DisplayName} ({Where(fallback)}).";
+        return line;
     }
 }
 
 /// <summary>The welcome wizard's answer to "where may Martlet do its thinking?".</summary>
-internal enum WelcomePreference { LocalOnly, FreeOnline }
-
-internal enum WelcomeJob { Thinking, Listening, Voice, LipSync }
-
-internal enum WelcomePlace { ThisPc, Online, OtherComputer }
-
-/// <summary>This PC's hardware as the welcome wizard read it: the main graphics card's vendor, name, memory and memory in use
-/// (nvidia-smi; Windows reports the total only), system memory and the processor's threads.</summary>
-internal sealed record WelcomeSpecs(string? GpuVendor, string? GpuName, double? VramGb, double? VramUsedGb, double? RamGb, int Threads, string? Processor)
+internal static class WelcomePreferences
 {
-    internal string Describe()
-    {
-        var gpu = GpuName is null ? "no dedicated graphics card"
-            : VramGb is { } gb ? $"{GpuName} ({gb.ToString("0.#", CultureInfo.InvariantCulture)} GB graphics memory)" : GpuName;
-        var ram = RamGb is { } r ? $"{r.ToString("0", CultureInfo.InvariantCulture)} GB memory" : "memory unknown";
-        return $"{gpu} · {ram} · {Threads} processor threads" + (Processor is null ? "" : $" ({Processor})");
-    }
-}
-
-/// <summary>One part of the suggestion: the job, what does it, where, and what it takes of this PC (graphics memory and memory
-/// in GB, processor threads) with the reason in plain words.</summary>
-internal sealed record WelcomePart(WelcomeJob Job, string What, WelcomePlace Place, double VramGb, double RamGb, double Threads, string Reason)
-{
-    internal static string Title(WelcomeJob job) => job switch
-    {
-        WelcomeJob.Thinking => "Thinking",
-        WelcomeJob.Listening => "Listening",
-        WelcomeJob.Voice => "Voice",
-        _ => "Lip-sync"
-    };
-
-    internal string Where => Place switch
-    {
-        WelcomePlace.Online => "online (free)",
-        WelcomePlace.OtherComputer => "another of your computers",
-        _ => "this PC"
-    };
-}
-
-/// <summary>The welcome wizard's suggestion: each part with its share of this PC, and the default-setup plan that applies it.</summary>
-internal sealed record WelcomePlan(WelcomeSpecs Specs, WelcomePreference Preference, DefaultSetupPlan Setup, IReadOnlyList<WelcomePart> Parts)
-{
-    internal bool ThinkingOnline => Parts.Any(p => p.Job == WelcomeJob.Thinking && p.Place == WelcomePlace.Online);
-
-    /// <summary>A share of this PC's resource in percent (0 when the PC lacks it).</summary>
-    internal static int Percent(double used, double? total) => total is > 0 ? (int)Math.Clamp(Math.Round(used / total.Value * 100), 0, 999) : 0;
-
-    internal (int Vram, int Ram, int Cpu) Share(WelcomePart part) =>
-        (Percent(part.VramGb, Specs.VramGb), Percent(part.RamGb, Specs.RamGb), Percent(part.Threads, Specs.Threads));
-
-    internal (int Vram, int Ram, int Cpu) Total() =>
-        (Percent(Parts.Sum(p => p.VramGb), Specs.VramGb), Percent(Parts.Sum(p => p.RamGb), Specs.RamGb), Percent(Parts.Sum(p => p.Threads), Specs.Threads));
-
-    /// <summary>One line per part, as MCP and the log read it.</summary>
-    internal string Describe(WelcomePart part)
-    {
-        var (vram, ram, cpu) = Share(part);
-        return $"{WelcomePart.Title(part.Job)}: {part.What}, {part.Where}. Uses {vram}% graphics memory, {ram}% memory, {cpu}% processor. {part.Reason}";
-    }
+    internal static string Describe(HostingPreference preference) => preference == HostingPreference.PreferLocal
+        ? "everything stays on your computers" : "free online services are fine";
 }

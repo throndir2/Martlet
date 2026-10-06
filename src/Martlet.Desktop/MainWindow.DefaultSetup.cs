@@ -31,7 +31,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { gpus = []; }
         var current = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         double? thinkingGb = thinking ? null : IsLocalOllama(current) ? ListeningAdvisor.OllamaModelGb(current!.ModelId) : 0;
-        return DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb);
+        return DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb);
     }
 
     /// <summary>Sets up the chosen jobs that aren't set up yet, as planned for this PC (or as <paramref name="planned"/>, the
