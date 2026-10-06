@@ -84,7 +84,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // task has finished), and Clear finished only drops finished tasks' kept output from the list; neither stops, sends or
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
         // so they need --allow-ui-effects.
-        "NavTasks", "HostRunHide", "TasksClear"
+        "NavTasks", "HostRunHide", "TasksClear",
+        // Companion › Listening › Martlet in your Discord calls › Check this PC only reads: it lists the playback devices' names,
+        // looks for Discord's process and sets up a process loopback and closes it unstarted (nothing is recorded or played).
+        // The mode's checkboxes, choices and Open camera view change things, so they need --allow-ui-effects.
+        "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -228,6 +232,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Listening › Martlet in your Discord calls: the mode's line (on or off, whether Martlet hears the Discord
+        // app alone or everything but itself, who-is-talking source and the output its voice goes to), the who-is-talking line
+        // (its source and how many people were named, never who), the output line (the device's name), the camera view's line
+        // (open or closed, its background), Check this PC's result, and the What to hear, Voice output and camera background
+        // choices (choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects). Never the owner's
+        // Discord name or anything heard or seen.
+        "DiscordCallStatus", "DiscordCallAttribution", "DiscordCallOutputStatus", "DiscordCallCameraStatus", "DiscordCallDoctor",
+        "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground",
         // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
         // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
         // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and

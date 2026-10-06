@@ -417,6 +417,7 @@ public partial class MainWindow
         if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
         if (section == CompanionTab.Listening) page.Children.Add(EchoCard());
         if (section == CompanionTab.Listening) page.Children.Add(PcAudioCard());
+        if (section == CompanionTab.Listening) page.Children.Add(DiscordCallsCard());
         if (section == CompanionTab.Listening) page.Children.Add(HearVoiceCard());
         if (section == CompanionTab.Listening)
             page.Children.Add(Card(Heading("Who is talking"),

@@ -115,6 +115,41 @@ public sealed class WasapiPcAudioSourceFactory(int? martletProcessId = null) : I
         finally { source.Dispose(); }
     }
 
+    /// <summary>Only what one app plays: <paramref name="processId"/> and the processes it started (Discord's voice runs in
+    /// one of its child processes), on every output, through a Windows process loopback (Windows 10 version 2004 or later).
+    /// Martlet's own sound is never in it. <paramref name="label"/> names it (its <see cref="IPcAudioSource.Output"/>). Throws
+    /// <see cref="CaptureDeviceException"/> or <see cref="PlatformNotSupportedException"/> when Windows can't.</summary>
+    public static IPcAudioSource OpenApp(int processId, string label, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var source = new ProcessSource { Output = label };
+        try
+        {
+            source.Initialize(processId, cancellationToken, only: true);
+            return source;
+        }
+        catch
+        {
+            try { source.Dispose(); }
+            catch (CaptureDeviceException) { }
+            throw;
+        }
+    }
+
+    /// <summary>Whether this Windows can hear one app alone (sets up a process loopback of <paramref name="processId"/>, this
+    /// process when null, and closes it without starting: nothing is recorded).</summary>
+    public static PcAudioProbe ProbeApp(int? processId = null, CancellationToken cancellationToken = default)
+    {
+        var source = new ProcessSource();
+        try
+        {
+            source.Initialize(processId ?? Environment.ProcessId, cancellationToken, only: true);
+            return new(true, source.Format, null);
+        }
+        catch (Exception error) when (error is not OperationCanceledException) { return new(false, null, Describe(error)); }
+        finally { source.Dispose(); }
+    }
+
     private static string Describe(Exception error) => error switch
     {
         AggregateException { InnerException: { } inner } => Describe(inner),
@@ -134,13 +169,15 @@ public sealed class WasapiPcAudioSourceFactory(int? martletProcessId = null) : I
         private bool initialized, started, disposed;
 
         public bool WithoutMartlet => true;
+        public string? Output { get; init; }
         public CaptureSourceFormat Format { get; } = WasapiCaptureDeviceFactory.DescribeFormat(ProcessFormat);
 
-        public void Initialize(int processId, CancellationToken token)
+        public void Initialize(int processId, CancellationToken token, bool only = false)
         {
             if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
-                throw new PlatformNotSupportedException("Leaving Martlet out needs Windows 10 version 2004 or later.");
-            activation = AudioClient.ActivateProcessLoopbackAsync((uint)processId, ProcessLoopbackMode.ExcludeTargetProcessTree);
+                throw new PlatformNotSupportedException("Hearing one app (or leaving Martlet out) needs Windows 10 version 2004 or later.");
+            activation = AudioClient.ActivateProcessLoopbackAsync((uint)processId,
+                only ? ProcessLoopbackMode.IncludeTargetProcessTree : ProcessLoopbackMode.ExcludeTargetProcessTree);
             if (!activation.Wait((int)Activation.TotalMilliseconds, token))
                 throw new CaptureDeviceException(ErrorCode.AudioDeviceUnavailable);
             client = activation.GetAwaiter().GetResult();

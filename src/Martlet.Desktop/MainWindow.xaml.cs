@@ -81,6 +81,7 @@ public partial class MainWindow : ThemedWindow
         discord = new(store?.DataDirectory, vault);
         // A Discord message naming the companion (a persona's name) is meant for Martlet.
         discord.CompanionNames = () => Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name)).Names;
+        discordCalls = new(store?.DataDirectory);
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);
@@ -109,13 +110,13 @@ public partial class MainWindow : ThemedWindow
             var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(store.DataDirectory),
                 DesktopSongSource.Fixture ? new SilentSongOutput() : speakers is SimulatedSpeakers ? speakers : new WasapiDeviceFactory(),
                 captions.Feed, avatar, (vocals, rate, token) => avatar.AnalyzeSongAsync(vocals, rate, OwnLipSyncEndpoint(), token));
-            conversation = new(setupOperations, setupService, vault, microphones, speakers,
+            conversation = new(setupOperations, setupService, vault, microphones, discordCalls.Output(speakers),
                 memory: memory, generatedSpeech: avatar.Observer, revokeAvatar: avatar.Revoke, voiceIdentity: voiceIdentity,
                 dataDirectory: store!.DataDirectory, spokenText: captions.Feed, smartHome: smartHome, lorebooks: lorebooks,
                 tools: mcpTools, voices: localVoices, localListener: parakeet,
                 echoReducer: simulated is not null ? null
                     : new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
-                pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
+                pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(discordCalls.Sources(new WasapiPcAudioSourceFactory())),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.VoiceVolume = Talk.VoiceVolume;
