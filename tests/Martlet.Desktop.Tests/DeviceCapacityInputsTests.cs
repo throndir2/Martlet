@@ -94,6 +94,22 @@ public sealed class DeviceCapacityInputsTests
     }
 
     [Fact]
+    public void Joining_hands_the_engine_the_other_computers_and_what_they_run_today()
+    {
+        var (inputs, nodes) = Network();
+        var network = DeviceCapacityInputs.JoinNetwork(inputs, nodes, Catalog);
+        Assert.Equal(["gpu-box"], network.Machines.Select(m => m.Id));
+        // This PC is the newcomer: its own character is left out; the host's jobs stay as today's setup.
+        Assert.Equal(
+        [
+            new CurrentAssignment(PlanComponent.Thinking, "think:e4b", "gpu-box"),
+            new CurrentAssignment(PlanComponent.DeepThinking, "deep:12b", "gpu-box")
+        ], network.Current);
+        // A host that hasn't reported its hardware isn't a machine the engine can place on, so its jobs aren't either.
+        Assert.Empty(DeviceCapacityInputs.JoinNetwork(inputs with { HostHardware = [] }, nodes, Catalog).Current);
+    }
+
+    [Fact]
     public void A_host_without_a_hardware_report_still_lists_its_jobs()
     {
         var (inputs, nodes) = Network();

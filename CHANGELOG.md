@@ -21,6 +21,7 @@ Each release's section here is also its notes on GitHub.
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Changed
+- When this PC joins your Martlet network, the welcome wizard's suggestions take into account what your other computers already run. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Fixed
