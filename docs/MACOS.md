@@ -1,5 +1,11 @@
 # macOS: what it takes, and the plan
 
+> **Superseded in part, 2026-10-06:** the Mac companion and Mac host are now
+> built in .NET (Avalonia companion shared with Linux, .NET gateway as the Mac
+> host) per [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md). The
+> Swift sections below remain the iPhone/iPad plan and the reference for
+> Apple-only engines; the platform research below still applies.
+
 **Plan, 2026-09-30. No macOS code, build or Mac test exists yet; everything
 below is design and dated platform research, and every Mac result is NOT
 RUN.** The owner wants Macs supported in both roles, on both Apple silicon and
