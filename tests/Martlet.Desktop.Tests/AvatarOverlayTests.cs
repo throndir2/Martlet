@@ -68,6 +68,71 @@ public sealed class AvatarOverlayTests
     }
 
     [Fact]
+    public Task Speech_bubble_is_drawn_in_the_overlay_palette_and_follows_it_in_Martlets_typeface() => OnDispatcher(async () =>
+    {
+        using var input = new PendingInput();
+        using var output = new MemoryStream();
+        var window = new RendererWindow(input, output);
+        window.Show();
+        try
+        {
+            await Dispatcher.Yield();
+            var characterLight = new Dictionary<string, string>
+            {
+                ["Canvas"] = "#F2F8F8", ["Surface"] = "#F7FBFC", ["Soft"] = "#DDEFEF", ["Text"] = "#1F2E30", ["Muted"] = "#4C6466",
+                ["Border"] = "#5E8689", ["Accent"] = "#00707A", ["OnAccent"] = "#FFFFFF", ["Focus"] = "#005A62", ["Success"] = "#2E6B2E",
+                ["Warning"] = "#8A4F00", ["Glow"] = "#B9E2F0"
+            };
+            var characterDark = new Dictionary<string, string>
+            {
+                ["Canvas"] = "#161E24", ["Surface"] = "#212C33", ["Soft"] = "#2C3A44", ["Text"] = "#ECEFF1", ["Muted"] = "#B8BFC4",
+                ["Border"] = "#7C858B", ["Accent"] = "#D194AE", ["OnAccent"] = "#211018", ["Focus"] = "#E8AAC4", ["Success"] = "#83D494",
+                ["Warning"] = "#F8BF6C", ["Glow"] = "#294050"
+            };
+            // Martlet's own palettes and two character palettes, each applied while the previous one's bubble still shows.
+            foreach (var (theme, colors) in new (AppearanceTheme, IReadOnlyDictionary<string, string>?)[]
+            {
+                (AppearanceTheme.Light, null), (AppearanceTheme.Dark, null),
+                (AppearanceTheme.CharacterLight, characterLight), (AppearanceTheme.CharacterDark, characterDark)
+            })
+            {
+                window.ApplyOverlayTheme(theme.IsDark(), colors);
+                var shown = window.ShowSpeech(new RendererSay("Hi! While I talk, what I say shows up here."));
+                var palette = Appearance.Palette(theme, SystemParameters.HighContrast, colors);
+                var drawn = Assert.IsType<RendererBubbleColors>(shown.Colors);
+                Assert.Equal(Hex(palette, "SurfaceBrush"), drawn.Fill);
+                Assert.Equal(Hex(palette, "AccentBrush"), drawn.Outline);
+                Assert.Equal(Hex(palette, "TextBrush"), drawn.Text);
+                Assert.Equal(SystemParameters.HighContrast ? null : Hex(palette, "GlowBrush"), drawn.Halo);
+                Assert.Equal(", in the " + theme.Name() + " colors",
+                    MainWindow.BubbleTheme(shown, theme.Name(), key => palette[key] as Brush, SystemParameters.HighContrast));
+            }
+            // A bubble that isn't in the palette Martlet's windows use says what differs.
+            if (!SystemParameters.HighContrast)
+            {
+                var stale = window.ShowSpeech(new RendererSay("Still me."));
+                var rose = Appearance.Palette(AppearanceTheme.Dark, highContrast: false);
+                Assert.StartsWith(", but not in the Rose dark colors (fill #212C33, outline #D194AE, text #ECEFF1, halo #294050",
+                    MainWindow.BubbleTheme(stale, "Rose dark", key => rose[key] as Brush, highContrast: false));
+            }
+            Assert.Equal("", MainWindow.BubbleTheme(new RendererBubble("left", 1, 2, 3, 4, true), "Pink light", _ => null, false));
+
+            // Martlet's own typeface, as its windows use it.
+            var viewport = Assert.IsAssignableFrom<Grid>(window.Content);
+            var bubble = Assert.IsType<System.Windows.Controls.Primitives.Popup>(viewport.Children[2]);
+            var speech = Assert.Single(Assert.IsType<Canvas>(bubble.Child).Children.OfType<TextBlock>());
+            var appFont = Assert.IsType<Style>(window.FindResource("AppWindowStyle")).Setters.OfType<Setter>()
+                .Single(setter => setter.Property == Control.FontFamilyProperty).Value;
+            Assert.Equal(appFont.ToString(), speech.FontFamily.Source);
+            Assert.Equal("CharacterSpeech", AutomationProperties.GetAutomationId(speech));
+        }
+        finally { window.Close(); }
+
+        static string Hex(ResourceDictionary palette, string key) =>
+            ((SolidColorBrush)palette[key]).Color is var c ? $"#{c.R:X2}{c.G:X2}{c.B:X2}" : "";
+    });
+
+    [Fact]
     public Task Overlay_supports_keyboard_positioning_recovery_and_escape_close() => OnDispatcher(async () =>
     {
         using var input = new PendingInput();

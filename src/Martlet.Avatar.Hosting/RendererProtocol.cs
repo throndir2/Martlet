@@ -61,8 +61,12 @@ public sealed record RendererTheme(bool Dark, IReadOnlyDictionary<string, string
 public sealed record RendererSay(string? Text, bool Static = false, double OffsetX = 0, double OffsetY = 0);
 /// <summary>Where the speech bubble is: "left", "right" or "above" the character's head, "static", or "hidden"; its
 /// body's screen rectangle in device-independent pixels (zero when hidden); and, when it was just shown, whether the text as
-/// laid out on screen lies within that body (null when hidden or unknown).</summary>
-public sealed record RendererBubble(string Placement, double Left, double Top, double Width, double Height, bool? TextFits = null);
+/// laid out on screen lies within that body and the <paramref name="Colors"/> it is drawn in (null when hidden or unknown).</summary>
+public sealed record RendererBubble(string Placement, double Left, double Top, double Width, double Height, bool? TextFits = null,
+    RendererBubbleColors? Colors = null);
+/// <summary>The colors a shown speech bubble is drawn in (#RRGGBB): its fill, outline and text, and its halo (null without
+/// one, as in Windows' high contrast). They come from the overlay's palette: Surface, Accent, Text and Glow.</summary>
+public sealed record RendererBubbleColors(string Fill, string Outline, string Text, string? Halo);
 /// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed camera) or "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
 /// <summary>
