@@ -28,7 +28,7 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                          minutes, and a "cancel" line on stdin stops waiting.
           owner-network-reset  leave this host's Martlet network (removes network.json; pairings stay). Stop the
                          service first; the next desktop that pairs adds the host to its own network.
-          owner-exposure ... [--outside <name:port>]... [--clear-outside] [--allow-pairing-outside-home yes|no]
+          owner-exposure ... [--outside <name:port>]... [--clear-outside] [--allow-pairing-outside-home yes|no] (typed codes)
                          [--treat-all-as-outside yes|no]: how this host is reached from outside home (exposure.json
                          beside host.json; docs/NETWORK.md). Outside addresses (an overlay address such as Tailscale's, or
                          a router port forward) are advertised to member desktops, which sign them into the network; with

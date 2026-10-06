@@ -692,9 +692,11 @@ throwaway certificate) on `127.0.0.1`, a desktop that pairs while at home
 through its paired client, then the host told to treat every connection as
 outside home, and a stranger's pinned HTTPS client. It runs
 `src\Martlet.NodeLinkCheck` (mode `exposure`, `ExposureRehearsal.cs`) and returns
-`{exitCode, report}` like `network_selftest`. Its steps: a pairing card used
-from outside is refused (`pair.outside_home`) and stays open; once the owner
-allows pairing from outside the same card pairs; five failed requests lock the
+`{exitCode, report}` like `network_selftest`. Its steps: a typed pairing code
+used from outside is refused (`pair.outside_home`, also as the desktop's code
+pairing sees it) and stays open; a one-use card opened for one named device
+pairs from outside without the opt-in; once the owner allows typed codes from
+outside the same code pairs; five failed requests lock the
 address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
@@ -1081,7 +1083,12 @@ an automatic `update` stops with `MARTLET-BUSY` naming all three adds; a
 waiting `--yes update` holds back a role change asked for after it
 (`later-change-waits-for-update`); once the adds are killed every waiting
 change continues (`waiting-changes-continue`); and no records are left in
-`engine.holders/` (`ended-changes-leave-no-records`). The desktop's reader
+`engine.holders/` (`ended-changes-leave-no-records`). With a fake `dotnet` and
+`systemctl`, `exposure` without options asks the gateway once and restarts
+nothing (`exposure-prints`), with options and no `--yes` or terminal it stops
+with *Nothing changed.* (`exposure-asks-first`), and `--yes exposure --outside
+... --treat-all-as-outside yes` passes exactly those options to the gateway's
+`owner-exposure` and restarts it (`exposure-saves-and-restarts`). The desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
 `/tmp/fake`): an automatic `setup` while an `add` engine session runs in the
@@ -2573,6 +2580,14 @@ than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
 example *Update available: Update to Martlet 0.40.0*); clicking it runs the
 same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
+paired host Martlet manages (this PC's host service, or one over SSH), `SelectedDeviceOutside`
+(in *Details*) returns its outside access in counts and choices only (*2 outside
+addresses; pairing codes from outside home refused; every connection treated as
+outside home.*), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+(`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
+default for Docker hosts; `HostInputCancel` closes it, `HostInputOk` runs
+`martlet-host exposure` and restarts the host's gateway, so it needs
+`--allow-ui-effects`). For a
 paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
 as this PC knows it, kept current by the release every host announces on each
 network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and

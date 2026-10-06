@@ -111,13 +111,15 @@ public sealed class ExposureGuardTests
     {
         var (guard, _, log) = NewGuard();
         var outside = From("203.0.113.30");
-        Assert.Equal("pair.outside_home", Assert.Throws<GatewayProtocolException>(() => guard.Admit(outside, "pair")).Failure.Code);
-        Assert.Contains(guard.Recent(), e => e is { Outcome: "refused", RouteClass: "pair" });
-        Assert.Contains(log, line => line.Contains("Refused a pairing attempt from 203.0.113.30"));
+        Assert.Equal("pair.outside_home", Assert.Throws<GatewayProtocolException>(() => guard.Admit(outside, "pair-code")).Failure.Code);
+        Assert.Contains(guard.Recent(), e => e is { Outcome: "refused", RouteClass: "pair-code" });
+        Assert.Contains(log, line => line.Contains("Refused a pairing code from 203.0.113.30"));
         guard.Exposure = new() { AllowPairingOutsideHome = true };
-        guard.Admit(outside, "pair");
-        // Joining (a member desktop's signed key) is not a guessable pairing code and works from anywhere.
+        guard.Admit(outside, "pair-code");
+        // A card opened for one named device (32 random bytes) and joining (a member desktop's signed key) can't be guessed
+        // and work from anywhere.
         guard.Exposure = new();
+        guard.Admit(From("203.0.113.31"), "pair");
         guard.Admit(From("203.0.113.31"), "join");
     }
 
@@ -197,12 +199,17 @@ public sealed class ExposureGuardTests
         host.Server.Exposure = new() { TreatAllAsOutside = true };
 
         var card = host.OpenPairing(deviceId: "desktop-b");
-        using (var refused = await host.SendPairingAsync(card, card.SpkiFingerprint, deviceId: "desktop-b"))
+        var codeWindow = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+        using (var codeRequest = new HttpRequestMessage(HttpMethod.Post, host.Origin.CanonicalOrigin + GatewayPairingCode.Path)
+        {
+            Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json")
+        })
+        using (var refused = await host.Client.SendAsync(codeRequest))
         {
             Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
             Assert.Equal("pair.outside_home", await GatewayTestHost.FailureCode(refused));
         }
-        Assert.True(host.Server.Pairing.IsOpen(card.PairingId));
+        Assert.True(host.Server.Pairing.IsOpen(codeWindow.PairingId));
 
         for (var i = 0; i < GatewayRequestGuard.FreeFailures; i++)
         {
