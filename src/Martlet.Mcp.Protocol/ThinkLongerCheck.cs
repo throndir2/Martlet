@@ -46,6 +46,8 @@ internal static class ThinkLongerCheck
         var effort = settings.HowHard == ThinkEffort.High ? GenerationSupport.ReasoningEffortHigh : GenerationSupport.ReasoningEffortOn;
         var (deep, deepState) = DeepThinkingSettings.Read(dataDirectory);
         var plan = DeepThinkingPlan.For(deep, loaded.Settings?.Setup?.Routes ?? []);
+        var pool = DeepThinkingPool.For(deep, loaded.Settings?.Setup?.Routes ?? []);
+        var places = ThinkLonger.Places(pool);
         (SetupRouteType? Type, string? Origin) deepRoute = deep.Place switch
         {
             DeepThinkingPlace.Host => (SetupRouteType.GatewayOllama, null),
@@ -57,13 +59,13 @@ internal static class ThinkLongerCheck
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
             thinkLonger = new
             {
-                enabled = settings.On, effort = settings.HowHard.ToString(), minutes = (int)settings.TimeLimit.TotalMinutes,
-                perHour = settings.Hourly, delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null
+                enabled = settings.On, effort = settings.HowHard.ToString(), timeLimit = "none", hourlyLimit = "none",
+                delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null
             },
             thinking = route is null ? null : new
             {
                 routeType = route.RouteType?.ToString() ?? "OpenAi", model = route.ModelId, supportsTools, toolsRejected = rejected,
-                offered = settings.On && supportsTools && !rejected && plan.Available,
+                offered = settings.On && supportsTools && !rejected && pool.Plan.Available,
                 onThisPc = local
             },
             deepThinking = new
@@ -79,9 +81,22 @@ internal static class ThinkLongerCheck
                 sends = deepRoute.Type == SetupRouteType.GatewayOllama ? "{\"think\":true}"
                     : GenerationSupport.ReasoningJson(deepRoute.Type, deepRoute.Origin, true, effort),
                 outputTokens = ThinkLonger.OutputTokens(settings.HowHard),
-                carriesTools = !deep.Separate
+                carriesTools = !deep.Separate,
+                // Every place it thinks on (the one chosen first, then each computer ticked Think here too): several thinks run at
+                // once, one on each usable place, the one sharing least with the conversation (lowest rank) first.
+                pool = new
+                {
+                    places = pool.Spots.Select(spot => new
+                    {
+                        computer = spot.Computer, where = spot.Settings.Separate ? spot.Settings.Describe() : route?.ModelId,
+                        place = spot.Settings.Place.ToString(), hostRole = spot.Settings.OnHostRole, available = spot.Plan.Available,
+                        rank = spot.Plan.Rank, checksFit = spot.Plan.ChecksFit, why = spot.Plan.Why
+                    }),
+                    usable = places.Count, maxThinks = ThinkLonger.Kind(settings, places.Count).MaxActive,
+                    available = pool.Plan.Available, why = pool.Plan.Why
+                }
             },
-            tools = ThinkLonger.Definitions(settings).Select(tool => new
+            tools = ThinkLonger.Definitions(settings, places.Count).Select(tool => new
             {
                 name = tool.Name, description = tool.Description, parameters = JsonNode.Parse(tool.ParametersJson)
             }).ToArray(),
@@ -133,15 +148,115 @@ internal static class ThinkLongerCheck
         var parallel = await ParallelAsync(fixture, other, cancellation);
         var sideBySide = await SideBySideAsync(cancellation);
         var host = HostFit();
+        var pool = await PoolAsync(reasoning, cancellation);
+        var moment = await MomentAsync(fixture, cancellation);
         return new
         {
-            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok,
+            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok && moment.Ok,
             endpoint = fixture.BaseUrl,
             note = "Fixture endpoints on 127.0.0.1 with canned replies (NOT AI) and a fixture Ollama model list; the scheduler, runner, " +
-                "tool texts, request layout, Deep thinking plan, side-by-side fit, runtime and adapter are Martlet's own.",
+                "tool texts, request layout, Deep thinking plan, side-by-side fit, moment plan, runtime and adapter are Martlet's own.",
             flow = flow.Report, limits = limits.Report, plans = plans.Report, parallel = parallel.Report,
-            sideBySide = sideBySide.Report, hostFit = host.Report
+            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report, moment = moment.Report
         };
+    }
+
+    // ---------- one moment: whatever starts a reply takes everything else that waits ----------
+
+    // The owner's example: while they play, a song and a report finish and the PC plays the game's sounds; a look comes due. The
+    // production plan (MomentTurn) makes it one reply that takes the PC's lines, the picture and both finished jobs (the song
+    // marked to offer), sent to the fixture with the One moment instruction at the same place as a plain reply's, so the start of
+    // every request stays the same. Then what each trigger takes when something else waits.
+    private static async Task<(bool Ok, object Report)> MomentAsync(Fixture fixture, CancellationToken cancellation)
+    {
+        using var jobs = new BackgroundJobs();
+        var song = new BackgroundJobKind("song", 1, 3, TimeSpan.FromMinutes(15), Offer: true, Doing: "Making a song");
+        var think = new BackgroundJobKind(ThinkLonger.KindName, 1, 10, TimeSpan.FromMinutes(5), Doing: "Thinking about");
+        var songJob = jobs.Start(song, "victory song", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("song-1: Monster Slayer (0:48)."))).Job;
+        var reportJob = jobs.Start(think, "dragon lore report", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("Dragons hoard gold; three facts."))).Job;
+        var waited = Stopwatch.StartNew();
+        while ((songJob?.Finished != true || reportJob?.Finished != true) && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
+        var cases = new (string Name, MomentTrigger Trigger, bool Pc, bool Jobs, bool Look, MomentRoute Route, bool TakesPc, bool TakesJobs, bool TakesLook)[]
+        {
+            ("A look comes due while the PC played and work finished", MomentTrigger.Look, true, true, true, MomentRoute.Reply, true, true, true),
+            ("A look comes due while only work finished", MomentTrigger.Look, false, true, true, MomentRoute.Report, false, true, true),
+            ("A look and nothing else", MomentTrigger.Look, false, false, true, MomentRoute.Glance, false, false, true),
+            ("Finished work comes up while the PC played", MomentTrigger.Report, true, true, false, MomentRoute.Reply, true, true, false),
+            ("Finished work comes up while a look is due", MomentTrigger.Report, false, true, true, MomentRoute.Report, false, true, true),
+            ("The PC's pace came up while work finished", MomentTrigger.PcAudio, true, true, false, MomentRoute.Reply, true, true, false),
+            ("The PC's pace came up while you held the work (Esc)", MomentTrigger.PcAudio, true, false, false, MomentRoute.Reply, true, false, false),
+            ("You talk while all of it waits", MomentTrigger.User, true, false, true, MomentRoute.Reply, true, true, true)
+        };
+        var planned = cases.Select(c => (c, Plan: MomentTurn.Plan(c.Trigger, c.Pc, c.Jobs, c.Look))).ToArray();
+        var plansOk = planned.All(p => p.Plan.Route == p.c.Route && p.Plan.PcAudio == p.c.TakesPc && p.Plan.Jobs == p.c.TakesJobs &&
+            p.Plan.Look == p.c.TakesLook);
+
+        // The plain reply and the combined one, as the desktop asks: the persona, then the One moment instruction first among the
+        // reply's own; the combined message carries the PC's marked lines and the finished work in its notes.
+        var moment = PromptSettings.Fill(null, PromptCatalog.Moment, ("silent", StayQuiet.Marker))!;
+        var pcPrompt = PromptSettings.Fill(null, PromptCatalog.PcAudio, ("marker", "[PC audio]"), ("silent", StayQuiet.Marker))!;
+        var permissions = new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl));
+        await using var replies = ConversationRuntime.Create(new NoCredentials());
+        async Task<(ConversationSnapshot Done, string? Body)> AskAsync(BoundedTextInput input)
+        {
+            var before = fixture.Bodies("chat").Count;
+            var turn = replies.Start(new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, Model), ReplyLimits,
+                new ConversationLimits { TurnTimeout = TimeSpan.FromSeconds(60) }, chat: new ChatCompletionsTarget(fixture.BaseUrl, true),
+                generation: new GenerationSettings { Reasoning = false }), permissions, cancellation);
+            var done = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(30), cancellation);
+            await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+            return (done, fixture.Bodies("chat").Skip(before).FirstOrDefault());
+        }
+        TextHistoryMessage[] history = [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey, good luck with the boss!")];
+        var plain = await AskAsync(new BoundedTextInput("How am I doing?", string.Join("\n\n", Persona, moment), history));
+        var plan = planned[0].Plan;
+        var delivery = plan.Jobs ? jobs.Take(onItsOwn: true) : null;
+        string[] played = ["[PC audio] The monster roars and falls.", "[PC audio] Quest complete!"];
+        var notes = delivery is null ? null : BackgroundJobs.ReportNotes(null, delivery.Jobs);
+        var combined = await AskAsync(new BoundedTextInput(string.Join("\n", played), string.Join("\n\n", Persona, moment, pcPrompt), history,
+            notes: notes));
+        if (combined.Done.State == ConversationState.Completed) delivery?.Complete();
+        else delivery?.Return();
+        string System(string? body) => body is null ? "" : (string?)Messages(body).FirstOrDefault(m => (string?)m["role"] == "system")?["content"] ?? "";
+        string User(string? body) => body is null ? "" : string.Join("\n", Messages(body).Where(m => (string?)m["role"] == "user").TakeLast(1)
+            .Select(m => m["content"] is JsonValue value && value.TryGetValue<string>(out var text) ? text : m["content"]?.ToJsonString() ?? ""));
+        var plainSystem = System(plain.Body);
+        var combinedSystem = System(combined.Body);
+        var through = plainSystem.IndexOf(moment, StringComparison.Ordinal) + moment.Length;
+        var stableStart = through > moment.Length && combinedSystem.Length >= through && combinedSystem[..through] == plainSystem[..through];
+        var message = User(combined.Body);
+        var carries = new
+        {
+            pcLines = played.All(line => message.Contains(line, StringComparison.Ordinal)),
+            song = message.Contains("Monster Slayer", StringComparison.Ordinal),
+            songOffered = message.Contains("offer it and ask", StringComparison.Ordinal),
+            report = message.Contains("Dragons hoard gold", StringComparison.Ordinal)
+        };
+        // The fixture request carries no image, so what it took is told without the picture the desktop would add.
+        var took = MomentTurn.Describe(false, played.Length, false, null, delivery?.Jobs.Count ?? 0);
+        var requestOk = plain.Done.State == ConversationState.Completed && combined.Done.State == ConversationState.Completed && stableStart &&
+            carries.pcLines && carries.song && carries.songOffered && carries.report && delivery?.Jobs.Count == 2 && !jobs.HasNews &&
+            songJob?.Delivery == BackgroundDeliveryState.Delivered && reportJob?.Delivery == BackgroundDeliveryState.Delivered;
+        var ok = plansOk && requestOk;
+        return (ok, new
+        {
+            ok,
+            plans = new
+            {
+                ok = plansOk,
+                cases = planned.Select(p => new
+                {
+                    name = p.c.Name, trigger = p.c.Trigger.ToString(), route = p.Plan.Route.ToString(), takesPcAudio = p.Plan.PcAudio,
+                    takesFinishedWork = p.Plan.Jobs, takesTheLook = p.Plan.Look, combined = p.Plan.Combined
+                })
+            },
+            combinedTurn = new
+            {
+                ok = requestOk, took, state = combined.Done.State.ToString(),
+                carries, jobsTaken = delivery?.Jobs.Count, newsAfter = jobs.HasNews, delivery = new { song = songJob?.Delivery.ToString(), report = reportJob?.Delivery.ToString() },
+                momentInstruction = moment, sameStartAsAPlainReply = stableStart, sharedStartCharacters = stableStart ? through : 0
+            }
+        });
     }
 
     // ---------- Deep thinking: whether a think can run where it is set to think ----------
@@ -269,6 +384,98 @@ internal static class ThinkLongerCheck
             request = new { tools = sent?["tools"] is not null, thinking = sent?["chat_template_kwargs"]?.ToJsonString(), messages = messages.Count,
                 taskLast = last.Contains(TaskText, StringComparison.Ordinal) }
         });
+    }
+
+    // ---------- Deep thinking on several computers at once ----------
+
+    // The production pool (DeepThinkingPool, ThinkLonger.Places) of three paired computers' Deep thinking roles: diva and
+    // ripley do none of the conversation's jobs, imouto also speaks. The production job list places each think on a free
+    // place (BackgroundJobs.Start with the pool): think-1 on diva, think-2 on ripley (both working at once, each on its own
+    // fixture endpoint standing in for that computer, through a runtime of its own as the desktop's slots do), think-3 on
+    // imouto, and a fourth is refused as busy naming each place; once they finish every place is free and the next goes to diva.
+    private static async Task<(bool Ok, object Report)> PoolAsync(TimeSpan reasoning, CancellationToken cancellation)
+    {
+        var settings = new ThinkLongerSettings();
+        var localThinking = Chat(SetupRole.Llm, GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e4b");
+        var routes = new[] { localThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "imouto", "https://imouto.local:9443") };
+        static DeepThinkingSettings Role(string id) => Host(id) with { HostRouteId = SelfHostSetup.DeepThinkingRouteId };
+        var deep = Role("diva").WithPool([Role("imouto"), Role("ripley")]);
+        var pool = DeepThinkingPool.For(deep, routes);
+        var places = ThinkLonger.Places(pool);
+        var kind = ThinkLonger.Kind(settings, places.Count);
+        var fixtures = new Dictionary<string, Fixture>(StringComparer.Ordinal);
+        foreach (var place in places) fixtures[place.Id] = new Fixture(reasoning);
+        var runtimes = new List<ConversationRuntime>();
+        try
+        {
+            using var jobs = new BackgroundJobs();
+            var conversationInput = new BoundedTextInput(Asked, Persona, [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey!")],
+                tools: ThinkLonger.Definitions(settings, places.Count));
+            BackgroundJobStart Start() => jobs.Start(kind, ThinkLonger.Label(TaskText), (job, token) =>
+            {
+                var fixture = fixtures[job.Place!.Id];
+                var runtime = ConversationRuntime.Create(new NoCredentials());
+                lock (runtimes) runtimes.Add(runtime);
+                var bounds = new ThinkBounds(BoundedTextInput.HardMaxInputUtf8Bytes, BoundedTextInput.HardMaxHistoryMessages, 24_576, Tools: false);
+                return new BackgroundThink(runtime, left =>
+                {
+                    var input = ThinkLonger.Fit(ThinkLonger.Input(conversationInput, Acknowledged, TaskText, null, null), bounds);
+                    return (new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, Model),
+                        ThinkLonger.Limits(ReplyLimits, settings.HowHard, left), ThinkLonger.TurnLimits(left),
+                        chat: new ChatCompletionsTarget(fixture.BaseUrl, true),
+                        generation: new GenerationSettings { Reasoning = true, ReasoningEffort = GenerationSupport.ReasoningEffortOn }),
+                        new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl)));
+                }).RunAsync(job, token);
+            }, places);
+            var first = Start();
+            var second = Start();
+            var waited = Stopwatch.StartNew();
+            bool BothThinking() => first.Job?.Place is { } a && second.Job?.Place is { } b &&
+                fixtures[a.Id].Count("think", inFlight: true) == 1 && fixtures[b.Id].Count("think", inFlight: true) == 1;
+            while (!BothThinking() && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10, cancellation);
+            var together = BothThinking();
+            var third = Start();
+            var fourth = Start();
+            var heldWhileBusy = jobs.Places.Leases.Select(lease => new { place = lease.Place.Name, by = lease.Holder }).ToArray();
+            BackgroundJob[] started = [.. new[] { first, second, third }.Where(s => s.Started).Select(s => s.Job!)];
+            waited.Restart();
+            while (started.Any(job => !job.Finished) && waited.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(20, cancellation);
+            var freed = jobs.Places.Leases.Count == 0;
+            var again = Start();
+            var againPlace = again.Job?.Place?.Name;
+            if (again.Job is { } fifth) jobs.Cancel(fifth.Id, BackgroundJob.CanceledByMartlet);
+            // Each started think's request on its own computer's fixture; the first two overlapping in time.
+            var spans = started.Select(job => fixtures[job.Place!.Id].Served("think").FirstOrDefault()).ToArray();
+            var overlapped = started.Length >= 2 && started[1].StartedUtc < started[0].FinishedUtc && started[0].StartedUtc < started[1].FinishedUtc;
+            var expected = new[] { "diva", "ripley", "imouto" };
+            var ok = pool.Usable.Count == 3 && places.Count == 3 && kind.MaxActive == 3 &&
+                started.Length == 3 && started.Select(job => job.Place!.Name).SequenceEqual(expected) &&
+                together && overlapped && started.All(job => job.State == BackgroundJobState.Succeeded && job.Result == Lyrics) &&
+                fourth.Refusal == "busy" && expected.All(name => fourth.Message?.Contains("on " + name, StringComparison.Ordinal) == true) &&
+                heldWhileBusy.Length == 3 && freed && againPlace == "diva" && spans.All(s => s is { Aborted: false });
+            return (ok, new
+            {
+                ok,
+                configured = pool.Spots.Select(spot => new
+                {
+                    computer = spot.Computer, where = spot.Settings.Describe(), available = spot.Plan.Available, rank = spot.Plan.Rank, why = spot.Plan.Why
+                }),
+                maxThinks = kind.MaxActive, plan = pool.Plan.Why,
+                tool = ThinkLonger.Description(settings, places.Count),
+                placed = started.Select(job => new
+                {
+                    id = job.Id, place = job.Place!.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds
+                }),
+                thinkingAtOnce = together, overlapped,
+                heldWhileBusy, refused = new { refusal = fourth.Refusal, message = fourth.Message, toldModel = ThinkLonger.Refused(fourth) },
+                freedAfter = freed, nextPlacedOn = againPlace
+            });
+        }
+        finally
+        {
+            foreach (var runtime in runtimes) await runtime.DisposeAsync();
+            foreach (var fixture in fixtures.Values) await fixture.DisposeAsync();
+        }
     }
 
     // A think on a paired computer: a long conversation fitted into its gateway's 16 KiB and 16 messages (the newest kept, the
@@ -458,6 +665,24 @@ internal static class ThinkLongerCheck
         // The conversation ending stops everything and drops what wasn't brought up.
         jobs.CancelAll();
         await Until(() => lateSong.Job!.Finished);
+        // Deep thinking's own kind has no time limit and no hourly limit: far more thinks than any old hourly limit start one after
+        // another, and one keeps running past the fixture kind's time limit until it is canceled.
+        using var unlimitedJobs = new BackgroundJobs();
+        var production = ThinkLonger.Kind(new ThinkLongerSettings());
+        var unlimitedStarted = 0;
+        for (var i = 0; i < 20; i++)
+        {
+            var next = unlimitedJobs.Start(production, $"think {i}", Forever);
+            if (!next.Started) break;
+            unlimitedStarted++;
+            unlimitedJobs.Cancel(next.Job!.Id, BackgroundJob.CanceledByYou);
+            await Until(() => next.Job.Finished);
+        }
+        var longRun = unlimitedJobs.Start(production, "a long think", Forever);
+        await Task.Delay(TimeSpan.FromSeconds(1.5), cancellation);
+        var stillRunning = longRun.Job is { Finished: false };
+        unlimitedJobs.CancelAll();
+        var unlimited = production.TimeLimit is null && production.MaxPerHour is null && unlimitedStarted == 20 && stillRunning;
         var timedOut = timed.Job;
         var songRun = songJob.Job!;
         var lateRun = lateSong.Job!;
@@ -467,10 +692,15 @@ internal static class ThinkLongerCheck
             first.Job.Delivery == BackgroundDeliveryState.Delivered &&
             timedOut is { State: BackgroundJobState.TimedOut } && hourly.Refusal == "hourly_limit" &&
             songRun.State == BackgroundJobState.Canceled && songRun.Delivery == BackgroundDeliveryState.Delivered &&
-            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews;
+            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited;
         return (ok, new
         {
             ok,
+            deepThinkingUnlimited = new
+            {
+                ok = unlimited, timeLimit = production.TimeLimit?.ToString() ?? "none", hourlyLimit = production.MaxPerHour?.ToString() ?? "none",
+                startedInARow = unlimitedStarted, runningAfterFixtureLimit = stillRunning, requestTimeHours = ThinkLonger.RequestTime.TotalHours
+            },
             oneAtATime = new { first = first.Job.Id, second = second.Refusal, told = ThinkLonger.Refused(second) },
             besideASong = new { song = songRun.Id, activeTogether = together, offer = song.Offer },
             youCanceled = new

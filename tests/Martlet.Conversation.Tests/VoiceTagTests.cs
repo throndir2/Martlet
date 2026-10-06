@@ -21,7 +21,7 @@ public sealed class VoiceTagTests
     [InlineData("Ha.[chuckle] Right.", "Ha.|[chuckle] Right.")]
     [InlineData("Wow [GASP] really.", "Wow [gasp] really.")]
     [InlineData("A [link](x) here.\nPlain.", "Plain.")]
-    [InlineData("Not a tag [laughing] here.\nPlain.", "Plain.")]
+    [InlineData("Not a tag [yodeling] here.\nPlain.", "Plain.")]
     [InlineData("Ends with [la", "")]
     public void Chatterbox_tags_pass_through_on_every_split(string input, string expected)
     {
@@ -182,8 +182,66 @@ public sealed class VoiceTagTests
         static ConversationRequest With(IReadOnlyList<string> tags) => new(new Martlet.Providers.BoundedTextInput("Hi."),
             Martlet.Providers.Tests.TextFixtures.Selection, new(), new(), controlTags: tags);
         With(ChattinessTags.All).Validate();
+        With([.. ChattinessTags.All, .. SeenTags.All]).Validate();
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => With(["{blush}"]).Validate());
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => With([.. Enumerable.Range(0, 17).Select(i => $"[tag{i}]")]).Validate());
+    }
+
+    private static readonly IReadOnlyList<string> SeenAndChattiness = [.. ChattinessTags.All, .. SeenTags.All];
+
+    [Theory]
+    [InlineData("Nice combo! [seen: a fighting game, final round]", "Nice combo!", "[seen: a fighting game, final round]")]
+    [InlineData("[pass] [Seen: a code editor] [chattiness:quiet]", "[pass]", "[Seen: a code editor]|[chattiness:quiet]")]
+    [InlineData("[pass] [seen:]", "[pass]", "[seen:]")]
+    [InlineData("Hmm [seen: two lines\nnope] ok.", "Hmm [seen: two lines\nnope] ok.", "")]
+    [InlineData("Oh [seen: nested [x] brackets] ok.", "Oh [seen: nested [x] brackets] ok.", "")]
+    [InlineData("Unfinished [seen: a game", "Unfinished [seen: a game", "")]
+    public void The_seen_tag_is_never_shown_and_is_reported_as_written_on_every_split(string input, string shown, string controls)
+    {
+        Assert.Equal(shown, VoiceTags.Strip(input, controlTags: SeenAndChattiness));
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var found = new List<string>();
+            var stripper = new VoiceTagStripper(controlTags: SeenAndChattiness, droppedControl: found.Add);
+            Assert.Equal(shown, stripper.Push(input[..split]) + stripper.Push(input[split..]) + stripper.Finish());
+            Assert.Equal(controls, string.Join('|', found));
+        }
+    }
+
+    [Theory]
+    [InlineData("Nice combo! [seen: a fighting game, final round]", "Nice combo!")]
+    [InlineData("[pass] [seen: a code editor with a C# file]", "")]
+    [InlineData("Whoa. That's close. [seen: racing game] [chattiness:chatty]", "Whoa.|That's close.")]
+    public void The_seen_tag_is_never_spoken(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var segmenter = new SpeechSegmenter(1536, 16_384, "pass", tags: Chatterbox, controlTags: SeenAndChattiness);
+            var pieces = segmenter.Push(input[..split]).Concat(segmenter.Push(input[split..])).Concat(segmenter.Finish()).ToArray();
+            Assert.Equal(expected, string.Join('|', pieces.Where(x => x.Text is not null).Select(x => x.Text)));
+        }
+    }
+
+    [Fact]
+    public void The_seen_tag_never_holds_back_the_words_before_it()
+    {
+        var tagged = new SpeechSegmenter(1536, 16_384, "pass", tags: Chatterbox, breaks: SpeechBreaks.Default,
+            controlTags: SeenAndChattiness);
+        Assert.DoesNotContain(tagged.Push("Whoa, nice combo! "), piece => piece.Text is not null);
+        // "[see" can only be the seen tag: the sentence goes to the voice before the description is written.
+        var early = tagged.Push("[see").Where(piece => piece.Text is not null).Select(piece => piece.Text);
+        Assert.Equal(["Whoa, nice combo!"], early);
+        Assert.DoesNotContain(tagged.Push("n: a fighting game, final round]").Concat(tagged.Finish()), piece => piece.Text is not null);
+    }
+
+    [Fact]
+    public void A_turn_reports_the_seen_tag_and_its_description()
+    {
+        var preview = SpeechTextPreview.For("[pass] [seen:  a  racing game,\tlast lap. ]", null, silentWord: "pass",
+            controlTags: SeenAndChattiness);
+        Assert.Empty(preview.Spoken);
+        Assert.Equal("[pass]", preview.Shown);
+        Assert.Equal("a racing game, last lap", SeenTags.Description(preview.Controls));
     }
 
     private static readonly string[] Character = ["{nod}", "{shake_head}", "{blush}", "{happy}"];
@@ -218,6 +276,17 @@ public sealed class VoiceTagTests
     [InlineData("Ahem (clears throat) listen.", "Ahem [clear throat] listen.")]
     [InlineData("{whispering} It's a secret.", "[whispering] It's a secret.")]
     [InlineData("Hm [chuckles] sure.", "Hm [chuckle] sure.")]
+    [InlineData("[whisper] It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("(whisper) It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("{Whisper} It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("*whispers* It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("*whispering* It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("[whispered] It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("(in a whisper) It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("[hushed] It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("(sobbing) I miss her.", "[crying] I miss her.")]
+    [InlineData("Ha [laughing] okay.", "Ha [laugh] okay.")]
+    [InlineData("*giggles* Stop.", "[chuckle] Stop.")]
     public void Other_spellings_of_the_voices_own_tags_are_spoken_as_the_engine_spells_them(string input, string expected)
     {
         for (int split = 0; split <= input.Length; split++)
@@ -237,6 +306,7 @@ public sealed class VoiceTagTests
     [Theory]
     [InlineData("*laughs* That's great.", "That's great.")]
     [InlineData("Oh (sighs) fine.", "Oh fine.")]
+    [InlineData("[whisper] It's a secret.", "It's a secret.")]
     public void A_voice_without_tags_drops_stage_directions_of_known_sounds_instead_of_the_line(string input, string expected)
     {
         for (int split = 0; split <= input.Length; split++)
@@ -254,6 +324,7 @@ public sealed class VoiceTagTests
     [Theory]
     [InlineData("I'm *so* happy.")]
     [InlineData("I'm *happy* to help.")]
+    [InlineData("I'm *quietly* *afraid* of it.")]
     [InlineData("A [nodding] dog (blushing) here.")]
     [InlineData("Keep [brackets] and (parens).")]
     public void Emphasis_and_words_that_arent_a_tags_spelling_are_left_alone(string input)
@@ -300,7 +371,10 @@ public sealed class VoiceTagTests
         var dia = VoiceTags.Spellings(SpeechEngines.Dia.Tags.Single(t => t.Text == "(laughs)"));
         Assert.Contains(dia, t => t.Text == "[laugh]" && t.Canonical == "(laughs)" && t.Cue == "laugh");
         var happy = VoiceTags.Spellings(Chatterbox.Single(t => t.Text == "[happy]")).Select(t => t.Text).ToArray();
-        Assert.Equal(["(happy)", "<happy>", "{happy}"], happy.Order(StringComparer.Ordinal));
+        Assert.Contains("(happy)", happy);
+        Assert.Contains("<happy>", happy);
+        Assert.Contains("{happy}", happy);
+        Assert.Contains("[cheerfully]", happy);
         Assert.DoesNotContain(happy, t => t.StartsWith('*'));
         Assert.Empty(VoiceTags.Spellings(new VoiceTag("[chattiness:quiet]", VoiceTagKind.Control, "")));
     }

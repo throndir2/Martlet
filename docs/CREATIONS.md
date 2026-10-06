@@ -1,6 +1,6 @@
 # Creations
 
-Martlet makes things: songs now, other kinds later. Everything it makes is a
+Martlet makes things: songs and pictures now, other kinds later. Everything it makes is a
 **creation**, kept the same on all your Martlet computers, and Martlet performs,
 shows or activates any of them itself when you ask in conversation ("sing the rain
 song again", "start from the chorus"). There is no Play button anywhere: the
@@ -54,6 +54,13 @@ word times and mouth track came from and the engine. `perform_creation` options:
 `{"from": "start"}`, or `resume`, a section such as `chorus`, `line:N` or a time
 like `1:05` (the same as `play_song`). Each conversation attaches the handler
 that sings it ([singing in conversation](CONVERSATION.md#singing-in-conversation)).
+
+**Pictures** (`PictureCreations.Kind`, registered by the desktop at startup): one
+asset, `image` (PNG, JPEG or WebP, at most 24 MiB); its text is the description it
+was drawn from and its summary what you asked for; metadata with its shape, size,
+engine, model, where it was drawn, seed and seconds. Martlet *shows* a picture: the
+conversation's handler puts it in the talk window (no options), and the Creations
+page shows it with its details ([Pictures](PICTURES.md)).
 
 ### Audio
 

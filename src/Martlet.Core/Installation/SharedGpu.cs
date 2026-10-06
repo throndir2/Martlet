@@ -14,7 +14,8 @@ public static class SharedGpu
     /// NVIDIA one, which a voice engine needs (Thinking, Deep thinking and Listening run on the processor without one).</summary>
     public static readonly IReadOnlyList<(string Kind, string Name)> OtherGpuRoles =
     [
-        ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Deep thinking"), ("stt", "Listening"), ("singing", "Singing")
+        ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Deep thinking"), ("stt", "Listening"),
+        ("singing", "Singing"), ("pictures", "Pictures")
     ];
 
     /// <summary>Whether a host runs its roles on Windows: this PC's host service (Docker Desktop), or a host whose report says

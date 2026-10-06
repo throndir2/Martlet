@@ -12,19 +12,22 @@ public enum BackgroundJobState { Waiting, Running, Paused, Succeeded, Failed, Ti
 
 /// <summary>A kind of background work Martlet starts during a conversation and brings up when it is done (think_longer's
 /// "think"; later "song"): its <paramref name="Name"/> (lowercase, the job IDs' prefix: think-1, song-1), how many may run at
-/// once, how many may start in any hour, how long one may take, whether its result is something to <paramref name="Offer"/>
+/// once, how many may start in any hour (null: no hourly limit), how long one may take (null: no time limit; it runs until it is
+/// done or canceled), whether its result is something to <paramref name="Offer"/>
 /// (a song to play: Martlet asks first and a later tool acts on the user's yes) rather than simply share, and what the talk
-/// window calls a running one (<paramref name="Doing"/>: "Thinking about", then its label).</summary>
-public sealed record BackgroundJobKind(string Name, int MaxActive, int MaxPerHour, TimeSpan TimeLimit, bool Offer = false,
-    string Doing = "Working on")
+/// window calls a running one (<paramref name="Doing"/>: "Thinking about", then its label). A <paramref name="Notice"/> kind isn't
+/// work but something to tell the user at a time (a due reminder): its result is what to tell them, it is always brought up as
+/// soon as Martlet is free, and it has its own prompts.</summary>
+public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHour, TimeSpan? TimeLimit, bool Offer = false,
+    string Doing = "Working on", bool Notice = false)
 {
     public void Validate()
     {
         ContractRules.Require(Name is { Length: > 0 and <= 16 } && Name.All(c => c is >= 'a' and <= 'z'),
             "A background job kind is 1-16 lowercase letters.");
-        ContractRules.Require(MaxActive is >= 1 and <= 8 && MaxPerHour is >= 1 and <= 60 &&
-            TimeLimit >= TimeSpan.FromSeconds(1) && TimeLimit <= TimeSpan.FromMinutes(30),
-            "A background job kind allows 1-8 at once, 1-60 an hour and at most 30 minutes each.");
+        ContractRules.Require(MaxActive is >= 1 and <= 8 && MaxPerHour is null or (>= 1 and <= 60) &&
+            (TimeLimit is null || TimeLimit >= TimeSpan.FromSeconds(1) && TimeLimit <= TimeSpan.FromMinutes(30)),
+            "A background job kind allows 1-8 at once, 1-60 an hour (or no hourly limit) and at most 30 minutes each (or no time limit).");
         ContractRules.Require(Doing is { Length: > 0 and <= 40 }, "What a running job is called must be 1-40 characters.");
     }
 }
@@ -59,16 +62,22 @@ public sealed class BackgroundJob
     internal readonly CancellationTokenSource Cancellation = new();
     internal string? cancelReason;
     internal Action? Changed;
+    private readonly BackgroundPlaceLease? lease;
 
-    internal BackgroundJob(BackgroundJobKind kind, string id, string label, TimeProvider clock)
+    internal BackgroundJob(BackgroundJobKind kind, string id, string label, TimeProvider clock, BackgroundPlaceLease? lease = null)
     {
         Kind = kind;
         Id = id;
         Label = label;
         this.clock = clock;
+        this.lease = lease;
         startedAt = clock.GetTimestamp();
         StartedUtc = clock.GetUtcNow();
     }
+
+    /// <summary>Where it runs, when it was started on a pool of places (the computer's name in <see cref="BackgroundPlace.Name"/>);
+    /// the place is held until the job finishes.</summary>
+    public BackgroundPlace? Place => lease?.Place;
 
     /// <summary>The job's ID in the conversation and the talk window, such as think-1.</summary>
     public string Id { get; }
@@ -136,6 +145,8 @@ public sealed class BackgroundJob
             delivery = by is CanceledByMartlet ? BackgroundDeliveryState.Delivered
                 : by is CanceledByClosing ? BackgroundDeliveryState.Dropped : BackgroundDeliveryState.Pending;
         }
+        // Its place is free for the next job.
+        lease?.Dispose();
     }
 
     internal bool MoveDelivery(BackgroundDeliveryState from, BackgroundDeliveryState to)
@@ -195,7 +206,8 @@ public sealed class BackgroundDelivery
 }
 
 /// <summary>Martlet's background work during a conversation (think_longer is the first kind; a song is next): each job runs on
-/// its own beside the conversation, within its kind's limits (how many at once, how many an hour, how long each), can be
+/// its own beside the conversation, within its kind's limits (how many at once, how many an hour, how long each), optionally on a
+/// free place of a pool of computers (<see cref="Places"/>: one job per place, the least shared first), can be
 /// canceled at any time, and once it finishes waits to be brought into the conversation (<see cref="Take"/>) as a note at the
 /// end of it. A new kind registers by starting jobs with its own <see cref="BackgroundJobKind"/> and runner; the job list does
 /// the limits, cancellation, time limit and delivery. Thread-safe; <see cref="Changed"/> is raised on any thread.</summary>
@@ -210,12 +222,20 @@ public sealed class BackgroundJobs : IDisposable
     private readonly Dictionary<string, int> numbers = new(StringComparer.Ordinal);
     private bool disposed;
 
-    public BackgroundJobs(TimeProvider? clock = null) => this.clock = clock ?? TimeProvider.System;
+    public BackgroundJobs(TimeProvider? clock = null)
+    {
+        this.clock = clock ?? TimeProvider.System;
+        Places.Changed += Notify;
+    }
 
     /// <summary>Raised on any thread when a job starts, changes state, finishes or is delivered.</summary>
     public event Action? Changed;
 
     public TimeProvider Clock => clock;
+
+    /// <summary>Which places (computers, providers) background work holds now: jobs started on a pool hold theirs until they
+    /// finish; a step of a job may take one for a while (<see cref="BackgroundPlaces.TryAcquire"/>).</summary>
+    public BackgroundPlaces Places { get; } = new();
 
     /// <summary>Every job not finished yet, oldest first.</summary>
     public IReadOnlyList<BackgroundJob> Active { get { lock (gate) return [.. jobs.Where(job => !job.Finished)]; } }
@@ -235,6 +255,12 @@ public sealed class BackgroundJobs : IDisposable
     /// <summary>Whether a finished job is waiting that Martlet should bring up on its own (not only one the user stopped).</summary>
     public bool HasNews { get { lock (gate) return jobs.Any(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet); } }
 
+    /// <summary>Whether a notice (a due reminder) waits: it is brought up as soon as Martlet is free, whenever finished work is.</summary>
+    public bool HasNotice
+    {
+        get { lock (gate) return jobs.Any(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet && job.Kind.Notice); }
+    }
+
     /// <summary>How many jobs of <paramref name="kind"/> started in the last hour.</summary>
     public int StartedWithinHour(string kind)
     {
@@ -249,26 +275,44 @@ public sealed class BackgroundJobs : IDisposable
     /// says why not. <paramref name="run"/> does the work on a thread-pool thread with a token that is canceled by
     /// <see cref="Cancel"/>, <see cref="CancelAll"/> and the kind's time limit; it returns what the job produced (or throws
     /// <see cref="OperationCanceledException"/> once canceled). It returns at once.</summary>
-    public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
+    public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run) =>
+        Start(kind, label, run, null);
+
+    /// <summary>Starts one job of <paramref name="kind"/> on a free place of <paramref name="pool"/> (null: anywhere, as
+    /// above): the best free one (<see cref="BackgroundPlaces.TryAcquire"/>), held until the job finishes, so jobs of every
+    /// kind started on the same places run one per place. <paramref name="run"/> reads where from <see cref="BackgroundJob.Place"/>.
+    /// Refused as <c>busy</c> (the message names what holds each place) when every place is taken.</summary>
+    public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run,
+        IReadOnlyList<BackgroundPlace>? pool)
     {
         ArgumentNullException.ThrowIfNull(kind);
         ArgumentNullException.ThrowIfNull(run);
         kind.Validate();
         ContractRules.Require(!string.IsNullOrWhiteSpace(label) && label.Length <= 200, "A background job needs a short label.");
+        ContractRules.Require(pool is null || pool.Count is > 0 and <= 16, "A background job's pool has 1-16 places.");
         BackgroundJob job;
         lock (gate)
         {
             if (disposed) return new(null, "closed", "Martlet is closing, so it can't start anything now.");
             var running = jobs.Where(job => job.Kind.Name == kind.Name && !job.Finished).ToArray();
             if (running.Length >= kind.MaxActive)
-                return new(null, "busy", running.Length == 1
+                return new(null, "busy", pool is not null
+                    ? $"{Places.Busy(pool)} {(running.Length == 1 ? "is" : "are")} still running, and only {kind.MaxActive} " +
+                      $"{kind.Name}{(kind.MaxActive == 1 ? "" : "s")} run{(kind.MaxActive == 1 ? "s" : "")} at once (one on each place)."
+                    : running.Length == 1
                     ? $"{running[0].Id} is still running and only one {kind.Name} runs at a time." : $"{running.Length} are still running.",
                     running[0]);
             Prune();
-            if (starts.Count(start => start.Kind == kind.Name) >= kind.MaxPerHour)
-                return new(null, "hourly_limit", $"{kind.MaxPerHour} already started in the last hour, the most allowed.");
-            var number = numbers[kind.Name] = numbers.GetValueOrDefault(kind.Name) + 1;
-            job = new(kind, $"{kind.Name}-{number}", label.Trim(), clock) { Changed = Notify };
+            if (kind.MaxPerHour is { } perHour && starts.Count(start => start.Kind == kind.Name) >= perHour)
+                return new(null, "hourly_limit", $"{perHour} already started in the last hour, the most allowed.");
+            var number = numbers.GetValueOrDefault(kind.Name) + 1;
+            var id = $"{kind.Name}-{number}";
+            BackgroundPlaceLease? lease = null;
+            if (pool is not null && (lease = Places.Acquire(pool, id, share: false)) is null)
+                return new(null, "busy", $"Every place it can run on is busy: {Places.Busy(pool)}.",
+                    running.FirstOrDefault() ?? jobs.FirstOrDefault(job => !job.Finished));
+            numbers[kind.Name] = number;
+            job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify };
             jobs.Add(job);
             starts.Add((kind.Name, clock.GetUtcNow()));
             Trim();
@@ -280,7 +324,7 @@ public sealed class BackgroundJobs : IDisposable
 
     private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
     {
-        using var limit = new CancellationTokenSource(job.Kind.TimeLimit, clock);
+        using var limit = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, limit.Token);
         try
         {
@@ -293,7 +337,7 @@ public sealed class BackgroundJobs : IDisposable
         {
             if (job.Cancellation.IsCancellationRequested) job.Finish(BackgroundJobState.Canceled, null, Volatile.Read(ref job.cancelReason));
             else job.Finish(BackgroundJobState.TimedOut, BackgroundJobOutcome.Failed(
-                $"it ran into the {Duration(job.Kind.TimeLimit)} time limit"), null);
+                $"it ran into the {Duration(job.Kind.TimeLimit!.Value)} time limit"), null);
         }
         catch (Exception)
         {
@@ -337,13 +381,15 @@ public sealed class BackgroundJobs : IDisposable
 
     /// <summary>Takes the finished jobs waiting to be brought up, for one reply to carry. <paramref name="onItsOwn"/>: a reply
     /// Martlet starts by itself, which happens only when there is news (a job the user stopped waits for their next message).
+    /// <paramref name="noticesOnly"/>: only notices (due reminders), when other finished work waits for the user's next message.
     /// Null when nothing waits.</summary>
-    public BackgroundDelivery? Take(bool onItsOwn)
+    public BackgroundDelivery? Take(bool onItsOwn, bool noticesOnly = false)
     {
         BackgroundDelivery? taken = null;
         lock (gate)
         {
-            var waiting = jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending).OrderBy(job => job.FinishedUtc).ToArray();
+            var waiting = jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending && (!noticesOnly || job.Kind.Notice))
+                .OrderBy(job => job.FinishedUtc).ToArray();
             if (waiting.Length > 0 && (!onItsOwn || waiting.Any(job => !job.Quiet)))
             {
                 var moved = waiting.Where(job => job.MoveDelivery(BackgroundDeliveryState.Pending, BackgroundDeliveryState.Reserved)).ToArray();
@@ -420,21 +466,45 @@ public sealed class BackgroundJobs : IDisposable
     }
 
     /// <summary>The message of the reply Martlet starts on its own to bring up <paramref name="finished"/> jobs (Companion ›
-    /// Prompts › Background work finished): its note with the results, shortened until a request can carry it.</summary>
+    /// Prompts › Background work finished, and Reminder due for due reminders): its note with the results, shortened until a
+    /// request can carry it.</summary>
     public static BoundedTextInput ReportMessage(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished)
     {
+        var notices = finished.Where(job => job.Kind.Notice).ToArray();
+        var work = finished.Where(job => !job.Kind.Notice).ToArray();
         for (var limit = 10_000; ; limit /= 2)
         {
-            var text = PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(finished, limit)))!;
+            var text = string.Join("\n\n", new[]
+            {
+                notices.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.ReminderDue, ("reminders", Notices(notices, limit))),
+                work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(work, limit)))
+            }.OfType<string>());
             try { return new(text); }
             catch (ContractException) when (limit > 500) { }
         }
     }
 
     /// <summary>What goes in the notes of the user's next message about <paramref name="finished"/> jobs not brought up yet
-    /// (Companion › Prompts › Background work finished, with your message), or null when that prompt was emptied.</summary>
-    public static string? ReportNotes(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished) =>
-        PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(finished, 6_000)));
+    /// (Companion › Prompts › Background work finished, with your message, and Reminder due, with your message), or null when
+    /// those prompts were emptied.</summary>
+    public static string? ReportNotes(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished)
+    {
+        var notices = finished.Where(job => job.Kind.Notice).ToArray();
+        var work = finished.Where(job => !job.Kind.Notice).ToArray();
+        var text = string.Join("\n\n", new[]
+        {
+            notices.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.ReminderDueNotes, ("reminders", Notices(notices, 4_000))),
+            work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(work, 6_000)))
+        }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>The due notices (reminders) as the conversation is told about them, one per line.</summary>
+    public static string Notices(IEnumerable<BackgroundJob> notices, int limit = 4_000)
+    {
+        var text = string.Join("\n", notices.Select(job => "- " + (job.Result ?? job.Label)));
+        return text.Length > limit ? text[..limit].TrimEnd() + "…" : text;
+    }
 
     /// <summary>Stops every job for good (Martlet is closing).</summary>
     public void Dispose()

@@ -23,7 +23,7 @@ public partial class MainWindow
         if (conversation is null || closing || saving || model?.IsRunning == true || Role == DeviceRole.Host) return null;
         var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
-            { Owner = this, Support = support, Gaze = avatar.Gaze };
+            { Owner = this, Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
         if (!IsVisible) window.UseOwnTaskbarButton();
         window.Closed += async (_, _) =>
         {
@@ -135,6 +135,7 @@ public partial class MainWindow
     /// character. Their saved choices stay as they are, so they come back if this PC is your companion PC again.</summary>
     private async Task StopCompanionForHostAsync()
     {
+        messaging.Stop();
         var talking = openConversation is not null;
         openConversation?.End();
         var showing = avatar.IsShowing;

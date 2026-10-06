@@ -647,6 +647,11 @@ internal sealed class LiveConversationConfiguration
 
     internal static string ListeningInstructions => Listening(null)!;
 
+    /// <summary>One moment (Companion › Prompts): every reply and glance is told, the same way each time, that one message may bring
+    /// the user's words, what this PC played, a picture and finished background work together, to answer in one reply.</summary>
+    internal static string? Moment(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.Moment, ("silent", SilentReply));
+
     /// <summary>What starts each line of a message that was heard from what the PC plays (Hear what this PC plays), so the
     /// Thinking model, the history and memory tell it apart from the user's own words.</summary>
     internal const string PcAudioMarker = "[PC audio]";
@@ -656,13 +661,18 @@ internal sealed class LiveConversationConfiguration
     internal static string? PcAudio(PromptSettings? prompts) =>
         PromptSettings.Fill(prompts, PromptCatalog.PcAudio, ("marker", PcAudioMarker), ("silent", SilentReply));
 
-    /// <summary>The text without the lines heard from what the PC plays (null when nothing else is left): what memory and
-    /// learning names may read.</summary>
-    internal static string? WithoutPcAudio(string? text)
+    /// <summary>Replies while Martlet is in the owner's own Discord call: the PC's lines are people in the call (named when
+    /// known) who can hear Martlet's spoken reply.</summary>
+    internal static string? DiscordCall(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.DiscordCall, ("marker", PcAudioMarker), ("silent", SilentReply));
+
+    /// <summary>The text without the lines heard from what the PC plays and without what Martlet saw (<see cref="VisionHistory"/>
+    /// lines; null when nothing else is left): what memory and learning names may read.</summary>
+    internal static string? WithoutMarked(string? text)
     {
-        if (text is null || !text.Contains(PcAudioMarker, StringComparison.Ordinal)) return text;
+        if (text is null || !text.Contains(PcAudioMarker, StringComparison.Ordinal)) return VisionHistory.Without(text);
         var own = string.Join("\n", text.Split('\n').Where(line => !line.TrimStart().StartsWith(PcAudioMarker, StringComparison.Ordinal)));
-        return string.IsNullOrWhiteSpace(own) ? null : own.Trim();
+        return string.IsNullOrWhiteSpace(own) ? null : VisionHistory.Without(own.Trim());
     }
 
     internal VisionSupport Vision() => Vision(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
@@ -806,7 +816,8 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Vision being on in Companion never starts watching by itself.</summary>
     private const string WhenItWatches = "Martlet only looks after you press Start watching (on Home, in the talk window or from the " +
         "notification-area icon). Stop watching, Stop, Esc, Pause, locking Windows or ending the conversation stops it.";
-    /// <summary>A screen glance's or camera look's instructions: the look's prompt, then the chattiness line, or, while Martlet
+    /// <summary>A screen glance's or camera look's instructions: the look's prompt, what you saw (the [seen: ...] tag the look
+    /// ends with, <see cref="SeenTags"/>), then the chattiness line, or, while Martlet
     /// decides how chatty it is (<paramref name="decides"/>), what the levels are and how to switch them
     /// (<see cref="ChattinessDecides"/>), the same at every level so the instructions stay the same when it switches; the level
     /// itself goes in the notes (<see cref="ChattinessNote"/>).</summary>
@@ -821,7 +832,17 @@ internal sealed class LiveConversationConfiguration
             Chattiness.Chatty => PromptCatalog.ChattinessChatty,
             _ => PromptCatalog.ChattinessNormal
         }, silent);
-        return look is null ? mood : mood is null ? look : look + "\n" + mood;
+        var parts = new[] { look, SeenTags.Instructions(prompts, SilentReply), mood }.Where(part => part is not null).ToArray();
+        return parts.Length == 0 ? null : string.Join("\n", parts);
+    }
+
+    /// <summary>The control tags a look or a reply with a picture is offered: the chattiness tags while Martlet decides
+    /// (<paramref name="decides"/>), and the seen tag when there is a <paramref name="picture"/> and Companion › Prompts ›
+    /// What you saw isn't empty. Null when none.</summary>
+    internal static IReadOnlyList<string>? ControlTags(bool decides, bool picture, PromptSettings? prompts)
+    {
+        var seen = picture && SeenTags.Instructions(prompts, SilentReply) is not null;
+        return decides && seen ? [.. ChattinessTags.All, .. SeenTags.All] : decides ? ChattinessTags.All : seen ? SeenTags.All : null;
     }
 
     /// <summary>Companion › Prompts › Chattiness: Martlet decides: the levels, when to switch and the tags that switch them.</summary>

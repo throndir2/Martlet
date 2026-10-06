@@ -601,6 +601,10 @@ internal sealed record SharedPc(string Role, string? Host)
     /// map), so any of your computers can switch any other.</summary>
     internal static string RoleKey(string deviceId) => Name(SharedSettings.RolePrefix, deviceId);
 
+    /// <summary>The name of a computer's reminders entry ("reminders.desktop-b"): the reminders set on it and what it did about
+    /// anyone's. Only that computer writes it.</summary>
+    internal static string ReminderKey(string deviceId) => Name(SharedSettings.RemindersPrefix, deviceId);
+
     private static string Name(string prefix, string deviceId)
     {
         var clean = new string(deviceId.ToLowerInvariant().Select(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.' ? c : '-').ToArray());

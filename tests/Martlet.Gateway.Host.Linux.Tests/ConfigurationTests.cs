@@ -141,6 +141,11 @@ public sealed class ConfigurationTests
             "[{\"kind\":\"stt\",\"endpoint\":\"http://127.0.0.1:8178/\",\"model\":\"large-v3-turbo\"}]")).Roles);
         Assert.IsType<Martlet.Gateway.Stt.SttRelayWorker>(NativeHostPlatform.RoleWorker(stt));
         Assert.Throws<HostInputException>(() => NativeHostPlatform.RoleWorker(stt with { Model = "Large:V3" }));
+        var pictures = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"pictures\",\"endpoint\":\"http://127.0.0.1:50086/\",\"model\":\"z-image-turbo\"}]")).Roles);
+        Assert.IsType<Martlet.Gateway.Pictures.PictureRelayWorker>(NativeHostPlatform.RoleWorker(pictures));
+        Assert.Equal(Martlet.Gateway.GatewayInferenceRoute.PictureRouteId,
+            ((Martlet.Gateway.Pictures.PictureRelayWorker)NativeHostPlatform.RoleWorker(pictures)).Route.RouteId);
         Assert.Empty(HostConfiguration.Parse(Config()).Roles);
         Assert.Empty(HostConfiguration.Parse(RoleConfig("[]")).Roles);
         foreach (var endpoint in new[] { "http://192.168.1.5:52000/", "http://localhost:52000/", "https://127.0.0.1:52000/",
@@ -154,6 +159,25 @@ public sealed class ConfigurationTests
             "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52001/\",\"model\":\"b\"}]")));
         Assert.Throws<HostInputException>(() => HostConfiguration.Parse(
             RoleConfig("[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"a\",\"extra\":1}]")));
+    }
+
+    [Fact]
+    public void Deep_thinking_role_may_run_several_thinks_at_once_and_advertises_its_slots()
+    {
+        static IReadOnlyList<HostRole> Roles(string kind, string slots) => HostConfiguration.Parse(RoleConfig(
+            $"[{{\"kind\":\"{kind}\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\",\"slots\":{slots}}}]")).Roles;
+        var deep = Assert.Single(Roles("deep-thinking", "3"));
+        Assert.Equal(3, deep.Slots);
+        var route = ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(deep)).Route;
+        Assert.Equal((Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, 3), (route.RouteId, route.MaximumConcurrency));
+        // Without slots (every install before the choice) it runs one at a time, as before.
+        var one = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\"}]")).Roles);
+        Assert.Equal(1, ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(one)).Route.MaximumConcurrency);
+        // Only the deep-thinking role has slots, from one to the bound.
+        Assert.Throws<HostInputException>(() => Roles("ollama", "2"));
+        foreach (var bad in new[] { "0", "5", "\"2\"", "-1", "1.5" })
+            Assert.Throws<HostInputException>(() => Roles("deep-thinking", bad));
     }
 
     [Fact]

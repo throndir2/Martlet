@@ -54,6 +54,6 @@ internal sealed record HostExposure(IReadOnlyList<string> Outside, DateTimeOffse
 
     internal string Describe() =>
         $"outside addresses: {(Outside.Count == 0 ? "none" : string.Join(", ", Outside))}; " +
-        $"pairing from outside home: {(AllowPairingOutsideHome ? "allowed" : "refused")}; " +
+        $"pairing codes from outside home: {(AllowPairingOutsideHome ? "allowed" : "refused")}; " +
         $"treat every connection as outside home: {(TreatAllAsOutside ? "yes" : "no")}";
 }

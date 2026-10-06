@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Calls\WindowsCallTextReader.cs reaches Windows' OCR through the Windows Runtime ABI (function pointers). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Martlet.Discord.Tests" />
     <InternalsVisibleTo Include="Martlet.Desktop" />

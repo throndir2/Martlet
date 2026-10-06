@@ -26,6 +26,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
+        // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
+        // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
+        // and the Draw with/Turn off buttons need --allow-ui-effects.
+        "PicturesCheck", "PicturesComfyConnect",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
@@ -56,6 +60,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Disconnect, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
+        // Companion › Discord: Step by step only expands the setup steps. The portal and invite buttons open the browser, and
+        // Save, Forget, Reconnect, the on/off box and every choice change things, so they need --allow-ui-effects.
+        "DiscordSetupSteps",
+        // Messaging: Cancel only withdraws the pairing code shown (nothing is sent or saved). Connect, Pair a chat, Open BotFather,
+        // Open in Telegram, Remove, Disconnect and the two check boxes do the work.
+        "MessagingPairCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
@@ -77,6 +87,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ProblemClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
+        // Character profiles: Home's Manage profiles, the Character and Personality pages' Open profiles and the Profiles page's
+        // links only open a Companion page; New profile... and a profile's Edit (CharacterProfileEdit-<key>) only open the form,
+        // filled in, and Cancel closes it. Nothing is saved until Save; Use (here, Home's HomeCharacterProfile and the icon
+        // menu's TrayCharacterProfile-<key>) and Remove change things, so they need --allow-ui-effects.
+        "HomeManageCharacters", "OpenProfiles", "ProfilesOpenCharacter", "ProfilesOpenVoice", "ProfilesOpenPersonality",
+        "CharacterProfileNew", "CharacterProfileCancel",
         // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
         // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing, Fill in the words (F5AddVoiceFill
         // runs speech-to-text, which may send the recording to the Listening host) and Add voice need --allow-ui-effects.
@@ -85,7 +101,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // task has finished), and Clear finished only drops finished tasks' kept output from the list; neither stops, sends or
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
         // so they need --allow-ui-effects.
-        "NavTasks", "HostRunHide", "TasksClear"
+        "NavTasks", "HostRunHide", "TasksClear",
+        // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
+        // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
+        // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
+        // Save, recovery codes, Remove, Allow and Make invite change or reveal things, so they need --allow-ui-effects.
+        "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose",
+        // Companion › Discord › Martlet in your Discord calls › Check this PC only reads: it lists the playback devices' names,
+        // looks for Discord's process and sets up a process loopback and closes it unstarted (nothing is recorded or played).
+        // The mode's checkboxes, choices and Open camera view change things, so they need --allow-ui-effects.
+        "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -100,12 +125,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
         "LiveJobCancel-",
+        // Companion › Profiles: a profile's Edit ("CharacterProfileEdit-3f2a9c1b") only opens the form; Save writes.
+        "CharacterProfileEdit-",
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
+        // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
+        // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
+        "PicturesPlace-", "PicturesHost-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -121,6 +151,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord's text-chat line: counts of messages seen, considered, answered, passed, dropped and failed, the
         // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
         "DiscordTextStatus",
+        // Sign-in from outside: the join window's status line and the host it checked ("home-host at name:port, key checked"),
+        // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
+        // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
+        "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
+        "SignInEnrolledList", "SignInRefusedList",
         // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
         // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
         "DiscordVoiceStatus",
@@ -134,6 +169,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
+        // Companion › Profiles: how many profiles there are and whether one is in use ("2 profiles. One of them is in use."),
+        // and the profile form's problem ("Give the profile a name."). Never a profile's name.
+        "CharacterProfilesStatus", "CharacterProfileEditorProblem",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
         // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
         // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
@@ -172,6 +210,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // for a Windows computer whose voice engine shares its graphics card with other roles, the warning that it can fall
         // behind (SelectedDeviceSharedGpu, fixed wording with role and engine names).
         "SelectedDeviceRelease", "SelectedDeviceUpdate", "SelectedDeviceSharedGpu",
+        // A managed host's outside access ("2 outside addresses; pairing codes from outside home refused; every connection
+        // treated as outside home."): counts and choices only, never the addresses.
+        "SelectedDeviceOutside",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
@@ -215,6 +256,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (singing_check exercises them headlessly).
         "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingGpu", "SingingQuality", "SingingVoiceMatch",
         "SingingVoiceMatchState", "SingingSetUpVevo",
+        // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
+        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (title, chips,
+        // where it stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
+        // Z-Image Turbo is there), the chosen workflow, a cloud provider's model ID and whether a key is saved or Thinking's is
+        // used (never the key), and the buttons' labels. Pictures themselves are never returned.
+        "PicturesNow", "PicturesTestState", "PicturesEngine", "PicturesFeatures", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
+        "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
+        "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
@@ -235,6 +284,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Discord › Martlet in your Discord calls: the mode's line (on or off, whether Martlet hears the Discord
+        // app alone or everything but itself, who-is-talking source and the output its voice goes to), the who-is-talking line
+        // (its source and how many people were named, never who), the output line (the device's name), the camera view's line
+        // (open or closed, its background), Check this PC's result, and the What to hear, Voice output and camera background
+        // choices (choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects). Never the owner's
+        // Discord name or anything heard or seen.
+        "DiscordCallStatus", "DiscordCallAttribution", "DiscordCallOutputStatus", "DiscordCallCameraStatus", "DiscordCallDoctor",
+        "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground",
+        // What the talk window's newest reply, report or look took together (One moment: your words, lines this PC played, the
+        // picture and what wanted your attention, finished background work), counts only, never what was said, seen or found.
+        "LiveTurnInputs",
         // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
         // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
         // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and
@@ -269,9 +329,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // that, and each task's status reads through LiveJobState- below). The song panel's line (the song's id, state,
         // position, line number and section, lead-in, vamps, ducking, or
         // where and why it stopped; never its title or words: LiveSongLine holds those).
-        "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
+        "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
-        "DeepThinkingKeyStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -315,6 +375,19 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Discord: the next setup step, whether a bot token is saved (with its application ID; never the token, and
+        // DiscordToken is never read), what saving the token last did, the connection (state line, on/off, bot name, servers,
+        // problem such as Message Content Intent being off), the invite links (built from the application ID), the chat modes
+        // and channel rules ("DiscordRule-<channel>" through the prefix below), the rule picker's state, the chosen chat modes
+        // in the combo boxes and the people summary (counts only), the owner's account ID and the home server choice.
+        "DiscordSetupNext", "DiscordConfigured", "DiscordTokenStatus", "DiscordState", "DiscordEnabledStatus", "DiscordBotName",
+        "DiscordServers", "DiscordProblem", "DiscordInviteStatus", "DiscordServerLink", "DiscordHomeLink", "DiscordUserLink",
+        "DiscordChatModes", "DiscordServerChat", "DiscordDirectChat", "DiscordVoiceChat", "DiscordRuleChannelsStatus",
+        "DiscordPeopleCount", "DiscordOwnerStatus", "DiscordOwnerId", "DiscordHomeServer",
+        // Companion › Messaging: whether Martlet answers the Telegram bot on this PC now or why not (bot username, chat count,
+        // when it last answered; never the token), the connect outcome, how many chats are paired and the pairing note (when
+        // the code expires; never the code itself, MessagingPairCode, or chat names).
+        "MessagingStatus", "MessagingNote", "MessagingChats", "MessagingPairStatus",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
@@ -419,7 +492,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
         // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
         // recognition (Available)"; the plan has no personal data).
         "AdvisorChoice-",
@@ -433,7 +506,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
         // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
         // conversation model on diva (now gemma4-e4b)").
-        "DeepThinkingHost-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "SetupChangeHost-",
+        // Each paired computer's Think here too box ("DeepThinkingPool-diva" reads "Think on diva too" and whether it is ticked;
+        // ticking it saves deep-thinking.json, so it needs --allow-ui-effects).
+        "DeepThinkingHost-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
@@ -449,7 +524,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("TaskState-3" reads "Running for 2 min. Waiting for Docker Desktop to start..." or "Done at 3:41 PM after 5 min.
         // gpu-pc is ready.") and its buttons ("TaskShow-3" reads "Show: Set up gpu-pc" or "Show output: ...", "TaskCancel-3"
         // "Cancel: Set up gpu-pc").
-        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-"];
+        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-",
+        // Companion › Profiles: each profile's state ("CharacterProfileState-3f2a9c1b" reads "In use.", "Ready." or why a part
+        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name).
+        "CharacterProfileState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

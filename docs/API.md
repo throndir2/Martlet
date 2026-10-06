@@ -87,7 +87,8 @@ from the model the host advertises:
    route's `payload`. For a chat: `{"input": "...", "temperature": 0.7,
    "maximum_output_tokens": 256, "maximum_context_tokens": 4096}` (optional
    `system` and up to 16 `history` messages `{role, text}`, and `think`
-   `false` to answer without thinking first; a chat takes up to 15 minutes,
+   `false` to answer without thinking first; a chat takes up to 15 minutes (a
+   Deep thinking think, which has no time limit of its own, asks for all of it),
    32,768 output tokens and 32,768 context tokens, so long thinking fits). For
    transcription: `{"sample_rate": 16000, "pcm_base64": "..."}` (mono 16-bit,
    at most 30 s).

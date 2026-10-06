@@ -330,11 +330,12 @@ public sealed record TextGenerationLimits : IContract
     /// <summary>The earlier messages a paired host's gateway takes (and the default bound).</summary>
     public const int DefaultMaxHistoryMessages = 16;
     /// <summary>The largest output budget, event count, stream size and deadline any request may have: a reply uses far less
-    /// (at most 4,096 tokens and two minutes); only a background think (think_longer) reasons this long.</summary>
+    /// (at most 4,096 tokens and two minutes); only a background think (think_longer) reasons this long. A think has no time
+    /// limit of its own, so its deadline is this ceiling: a day, far beyond any think, and the think's Cancel stops it sooner.</summary>
     public const int HardMaxOutputTokens = 32_768;
     public const int HardMaxEvents = 65_534;
     public const int HardMaxStreamBytes = 16_777_216;
-    public static TimeSpan HardMaxRequestTime => TimeSpan.FromMinutes(15);
+    public static TimeSpan HardMaxRequestTime => TimeSpan.FromHours(24);
 
     public int MaxInputBytes { get; init; } = BoundedTextInput.HardMaxUtf8Bytes;
     public int MaxInputTokens { get; init; } = 24_576;

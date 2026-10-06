@@ -633,6 +633,28 @@ public sealed class LiveConversationTests
             request.RootElement.GetProperty("instructions").GetString());
     }
 
+    [Fact]
+    public async Task MessagesFromPairedChatsAreAnsweredWhileLockedButNeverAloud()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Controller.SetSessionLocked(true);
+        Assert.Equal("conversation.controls_blocked",
+            Assert.Throws<LiveActionException>(() => fixture.Controller.Start("hi", voice: false, microphone: false, approved: true)).Code);
+        Assert.Equal("conversation.controls_blocked",
+            Assert.Throws<LiveActionException>(() => fixture.Controller.Start("hi", voice: true, microphone: false, approved: true, remote: true)).Code);
+        Assert.Equal("conversation.invalid_input",
+            Assert.Throws<LiveActionException>(() => fixture.Controller.Start(null, voice: false, microphone: true, approved: true,
+                localCaptureApproved: true, uploadApproved: true, remote: true)).Code);
+        fixture.Answer("Hello from the PC.");
+
+        var operation = fixture.Controller.Start("hi", voice: false, microphone: false, approved: true, remote: true);
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal("Hello from the PC.", operation.Turn!.Content.Text);
+        Assert.Equal(1, fixture.Llm.Calls);
+    }
+
     [Theory]
     [InlineData("consent")]
     [InlineData("pause")]
@@ -973,6 +995,97 @@ public sealed class LiveConversationTests
         var huge = new string('h', ConversationContextBuffer.MaximumUtf8Bytes / 2 + 1);
         context.Add(huge, huge);
         Assert.Equal(0, context.Count);
+    }
+
+    [Fact]
+    public void PassedLooksInARowKeepOnlyTheLastAndVisionLinesAreNeverTheUsersWords()
+    {
+        var context = new ConversationContextBuffer();
+        context.Add("Hi.", "Hello!");
+        Assert.False(context.AddLook(VisionHistory.Look(false, "the user's active window \"Game\"", null, "a menu"), "[pass]", passed: true));
+        Assert.True(context.AddLook(VisionHistory.Look(false, "the user's active window \"Game\"", null, "a boss fight"), "[pass]", passed: true));
+        Assert.Equal(2, context.Count);
+        Assert.False(context.AddLook(VisionHistory.Look(true, "the user's camera \"Desk\"", "a notification just popped up", null),
+            "Ooh, a cat!", passed: false));
+        // A remark ends the quiet stretch: the next pass is kept beside it.
+        Assert.False(context.AddLook(VisionHistory.Look(false, "the user's whole screen", null, null), "[pass]", passed: true));
+        Assert.Equal(
+        [
+            "Hi.", "Hello!",
+            "[Screen] You looked at the user's active window \"Game\": a boss fight.", "[pass]",
+            "[Camera] You looked at the user's camera \"Desk\" (a notification just popped up).", "Ooh, a cat!",
+            "[Screen] You looked at the user's whole screen.", "[pass]"
+        ], context.Snapshot().Select(message => message.Text));
+
+        Assert.Equal("What's this?", LiveConversationConfiguration.WithoutMarked(
+            VisionHistory.After("What's this?", VisionHistory.WithMessage(false, "the user's whole screen", "a chart"))));
+        Assert.Null(LiveConversationConfiguration.WithoutMarked("[PC audio] And now the weather.\n[Camera] You looked at the user's camera."));
+        Assert.Equal("Mine.", LiveConversationConfiguration.WithoutMarked("[PC audio] Theirs.\nMine.\n[Screen] With this message you saw x."));
+    }
+
+    [Fact]
+    public async Task EveryLookAndEveryPictureWithAMessageStayInTheConversationAsWhatWasSeen()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+        var screen = new WatchSource(WatchKind.ActiveWindow);
+        var seenPrompt = SeenTags.Instructions(null, LiveConversationConfiguration.SilentReply)!;
+        static string[] Earlier(JsonDocument body) => [.. body.RootElement.GetProperty("input").EnumerateArray().SkipLast(1)
+            .Select(item => item.GetProperty("content").GetString()!)];
+        LiveConversationOperation Glance() => fixture.Controller.StartCommentary(image, "Program.cs - Code", ChattinessChoice.Normal,
+            voice: false, screenApproved: true, source: screen);
+
+        // A passed look is kept too: where Martlet looked and what it saw (the [seen: ...] words, never shown).
+        fixture.Answer("[pass] ", "[seen: a code ", "editor]");
+        var first = Glance();
+        await fixture.Finish(first);
+        Assert.True(first.Passed);
+        Assert.Equal("[pass]", first.Turn!.Content.Text.Trim());
+        Assert.Equal(["[seen: a code editor]"], first.Turn.Controls);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+            Assert.Contains(seenPrompt, body.RootElement.GetProperty("instructions").GetString());
+
+        // Passes in a row keep only the last; a remark is kept with what was seen, its tag never shown.
+        fixture.Answer("[pass] [seen: a build running]");
+        await fixture.Finish(Glance());
+        fixture.Answer("Green build, nice! ", "[seen: a green build result]");
+        var remark = Glance();
+        await fixture.Finish(remark);
+        Assert.False(remark.Passed);
+        Assert.Equal("Green build, nice!", remark.Turn!.Content.Text.Trim());
+
+        // A message with a picture: its request carries the looks, and it is told to say what it saw.
+        fixture.Answer("Looks tidy. [seen: Program.cs with a Main method]");
+        var asked = fixture.Controller.Start("What do you think?", voice: false, microphone: false, approved: true,
+            seen: new SeenScreen(image, "Program.cs - Code", screen));
+        await fixture.Finish(asked);
+        Assert.True(asked.ScreenSent);
+        Assert.Equal("Looks tidy.", asked.Turn!.Content.Text.Trim());
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            Assert.Contains(seenPrompt, body.RootElement.GetProperty("instructions").GetString());
+            Assert.Equal(
+            [
+                "[Screen] You looked at the user's active window \"Program.cs - Code\": a build running.", "[pass]",
+                "[Screen] You looked at the user's active window \"Program.cs - Code\": a green build result.", "Green build, nice!"
+            ], Earlier(body));
+        }
+
+        // The next request keeps the message with a line saying what came with it; the picture itself is never kept.
+        fixture.Answer("Sure.");
+        await fixture.Finish(fixture.Controller.Start("Thanks.", voice: false, microphone: false, approved: true));
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            var earlier = Earlier(body);
+            Assert.Equal(6, earlier.Length);
+            Assert.StartsWith("What do you think?", earlier[4]);
+            Assert.EndsWith("\n[Screen] With this message you saw the user's active window \"Program.cs - Code\": Program.cs with a Main method.",
+                earlier[4]);
+            Assert.Equal("Looks tidy.", earlier[5]);
+            Assert.DoesNotContain("input_image", body.RootElement.GetRawText());
+            // Without a picture the reply isn't told about the seen tag, so the instructions are as before.
+            Assert.DoesNotContain(seenPrompt, body.RootElement.GetProperty("instructions").GetString());
+        }
     }
 
     [Fact]
@@ -2010,6 +2123,33 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public Task MessagesFromPairedChatsJoinTheConversationAndGetTheReplyEvenWhileLocked() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            fixture.Answer("Hello from the PC.");
+            var reply = window.AskFromMessage("hi there", "Sam (Telegram)", speak: false, CancellationToken.None);
+            await fixture.Advance(() => reply.IsCompleted);
+            Assert.Equal("Hello from the PC.", await reply);
+            Assert.Contains(window.Messages, message => message.IsUser && message.Text == "hi there" && message.Caption.StartsWith("Sam (Telegram)"));
+            Assert.Contains(window.Messages, message => message.Role == ChatRole.Martlet && message.Text == "Hello from the PC.");
+
+            fixture.Events.Signal(true);
+            await fixture.Advance(() => fixture.Controller.Controls.Locked);
+            fixture.Answer("Still here.");
+            reply = window.AskFromMessage("are you there?", "Sam (Telegram)", speak: true, CancellationToken.None);
+            await fixture.Advance(() => reply.IsCompleted);
+            Assert.Equal("Still here.", await reply);
+            Assert.Equal(2, fixture.Llm.Calls);
+            Assert.Equal(0, window.RemoteWaiting);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task LostHeldKeyboardFocusCancelsCaptureInsteadOfSending() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -2415,6 +2555,30 @@ public sealed class LiveConversationTests
             Assert.Equal("Take the coast road.", Find<TextBox>(window, "LiveJobResult-" + first.Id)!.Text);
             Click(window, "TasksCloseButton");
             Assert.Equal(Visibility.Collapsed, Control<Grid>(window, "TasksPanel").Visibility);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task ADueReminderComesUpOnItsOwnEvenWhenFinishedWorkWaitsForTheNextMessage() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { ThinkLonger = new() { Delivery = ThinkDelivery.NextMessage } } });
+        fixture.Answer("Hey, it's dishes time!");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var job = window.Remind("do the dishes", "do the dishes (they asked for it at 3:12 PM, for 4:12 PM)")!;
+            Assert.True(job.Kind.Notice);
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("a reminder they asked you for is due now", body);
+            Assert.Contains("do the dishes (they asked for it at 3:12 PM, for 4:12 PM)", body);
+            Click(window, "TasksChip");
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet reminded you.");
         }
         finally { window.Close(); }
     });

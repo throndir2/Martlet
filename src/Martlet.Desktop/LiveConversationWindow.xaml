@@ -69,6 +69,10 @@
                     <!-- While Martlet decides how chatty it is and vision or hearing this PC is on: the level it picked. -->
                     <TextBlock x:Name="ChattinessText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveChattiness"/>
+                    <!-- What Martlet's last reply took together (your words, what this PC played, the picture, finished work);
+                         never what was said, seen or found. -->
+                    <TextBlock x:Name="TurnInputsText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveTurnInputs"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes); its tooltip has
                          the tokens. Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <WrapPanel x:Name="ContextRow" Margin="0,2,0,0" Visibility="Collapsed">
@@ -193,6 +197,13 @@
                                         </TextBox.Template>
                                     </TextBox>
                                 </Border>
+                                <!-- A picture Martlet shows (draw_picture or perform_creation). Click to open it full size. -->
+                                <Border x:Name="PictureFrame" Visibility="Collapsed" CornerRadius="12" Margin="0,6,0,0" ClipToBounds="True"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
+                                    <Image Source="{Binding Picture}" MaxWidth="420" MaxHeight="420" Stretch="Uniform" Cursor="Hand"
+                                           RenderOptions.BitmapScalingMode="HighQuality" MouseLeftButtonUp="Picture_Click"
+                                           AutomationProperties.AutomationId="LivePicture" AutomationProperties.Name="{Binding Text}"/>
+                                </Border>
                                 <TextBlock x:Name="NoteText" Text="{Binding Note}" Style="{DynamicResource Muted}" FontSize="12" Margin="6,4,6,0"/>
                             </StackPanel>
                             <DataTemplate.Triggers>
@@ -229,6 +240,9 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding HasNote}" Value="False">
                                     <Setter TargetName="NoteText" Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding HasPicture}" Value="True">
+                                    <Setter TargetName="PictureFrame" Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>

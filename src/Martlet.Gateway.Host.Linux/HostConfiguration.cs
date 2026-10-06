@@ -9,8 +9,9 @@ internal sealed class HostApprovalException : Exception;
 internal sealed class HostTerminalException : Exception;
 internal sealed class HostEofException : Exception;
 
-/// <summary>A host role service the gateway relays to: a loopback service on this machine, installed by martlet-host.</summary>
-internal sealed record HostRole(string Kind, Uri Endpoint, string Model);
+/// <summary>A host role service the gateway relays to: a loopback service on this machine, installed by martlet-host.
+/// <paramref name="Slots"/> is how many requests it runs at once (only a deep-thinking role runs more than one).</summary>
+internal sealed record HostRole(string Kind, Uri Endpoint, string Model, int Slots = 1);
 
 internal sealed record HostConfiguration(string HostId, string StateDirectory,
     GatewayHostBinding Binding, uint ServiceUid, uint ServiceGid, string Digest,
@@ -20,7 +21,7 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
     internal const int MaximumRoles = 8;
     internal const string Backend = "linuxServicePermissions";
     /// <summary>Role kinds with a gateway relay worker. Every role is declared the same way in host.json.</summary>
-    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face", "ollama", "deep-thinking", "stt", "f5", "xtts", "gpt-sovits", "chatterbox", "dia", "singing" };
+    internal static readonly IReadOnlySet<string> RoleKinds = new HashSet<string>(StringComparer.Ordinal) { "audio2face", "ollama", "deep-thinking", "stt", "f5", "xtts", "gpt-sovits", "chatterbox", "dia", "singing", "pictures" };
 
     internal static HostConfiguration Parse(byte[] bytes)
     {
@@ -62,14 +63,19 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
             if (list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > MaximumRoles) throw new HostInputException();
             foreach (var item in list.EnumerateArray())
             {
-                StrictJson.Properties(item, "kind", "endpoint", "model");
+                // A deep-thinking role may say how many thinks its Ollama runs at once (OLLAMA_NUM_PARALLEL); one otherwise.
+                var hasSlots = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("slots", out _);
+                if (hasSlots) StrictJson.Properties(item, "kind", "endpoint", "model", "slots");
+                else StrictJson.Properties(item, "kind", "endpoint", "model");
                 var kind = StrictJson.Text(item, "kind");
                 var model = StrictJson.Text(item, "model");
+                var slots = hasSlots ? StrictJson.Number(item, "slots") : 1;
                 if (!RoleKinds.Contains(kind) || roles.Any(role => role.Kind == kind) || !ModelToken(model) ||
                     !Uri.TryCreate(StrictJson.Text(item, "endpoint"), UriKind.Absolute, out var endpoint) ||
-                    !LoopbackRoot(endpoint))
+                    !LoopbackRoot(endpoint) || slots < 1 || slots > Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots ||
+                    hasSlots && kind != "deep-thinking")
                     throw new HostInputException();
-                roles.Add(new(kind, endpoint, model));
+                roles.Add(new(kind, endpoint, model, (int)slots));
             }
         }
         return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)), roles);

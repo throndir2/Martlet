@@ -23,8 +23,9 @@ public sealed record ConversationLimits
 
     internal void Validate()
     {
-        // A reply's turn stays within its 150-second action; a background think (think_longer) may take up to fifteen minutes.
-        ContractRules.Require(TurnTimeout > TimeSpan.Zero && TurnTimeout <= TimeSpan.FromMinutes(15) &&
+        // A reply's turn stays within its 150-second action; a background think (think_longer) has no time limit of its own and
+        // runs within the providers' request ceiling (a day).
+        ContractRules.Require(TurnTimeout > TimeSpan.Zero && TurnTimeout <= TextGenerationLimits.HardMaxRequestTime &&
             ShutdownTimeout > TimeSpan.Zero && ShutdownTimeout <= TimeSpan.FromSeconds(2) &&
             MaxSpeechSegments is >= 1 and <= 32 && MaxSpeechTextBytes is >= 1 and <= 16_384 &&
             MaxReservedSpeechSamples is >= 1 and <= 2_160_000 && EventCapacity is >= 4 and <= 128 &&
