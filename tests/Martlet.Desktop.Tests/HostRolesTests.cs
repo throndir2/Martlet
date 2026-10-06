@@ -153,6 +153,23 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Deep_thinking_role_suggests_the_same_models_as_the_Thinking_role()
+    {
+        // Thinking (ollama) and Deep thinking mirror each other: same models, default and suggestions by GPU memory.
+        static string[] Choices(string kind) => File.ReadAllLines(Path.Combine(RolesDirectory(), kind, "role.conf"))
+            .Where(line => line.StartsWith("choice=OLLAMA_MODEL|", StringComparison.Ordinal) ||
+                line.StartsWith("choice_by_vram=OLLAMA_MODEL|", StringComparison.Ordinal))
+            // A choice line is VAR|label|values|default: the label may differ, the rest may not.
+            .Select(line => line.StartsWith("choice=", StringComparison.Ordinal)
+                ? string.Join('|', line.Split('|').Where((_, i) => i != 1))
+                : line)
+            .ToArray();
+        var thinking = Choices("ollama");
+        Assert.Equal(2, thinking.Length);
+        Assert.Equal(thinking, Choices(HostRoles.DeepThinking));
+    }
+
+    [Fact]
     public void Every_routed_host_role_is_listed_where_roles_are_added()
     {
         // HostRoles feeds the host dashboard's Add roles step, the Devices map's Install commands and Martlet hosts' role cards.
