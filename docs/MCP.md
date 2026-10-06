@@ -3496,12 +3496,17 @@ window shown or not), Martlet holds a Windows power request
 serves <names>*, listed by an administrator's `powercfg /requests`) so idle sleep
 doesn't take the host off the network; the screen can still turn off and Sleep
 or shutting down by hand still work. A host service that misses a check keeps
-the request for 2 minutes. The desktop log records *This PC stays awake while its
-host service <id> serves <names>...* and *This PC can sleep again when it is left
-idle...* on each change. A host PC whose host service serves nobody (a
-disposable data directory holding `device-role.txt` with `Host`, for example)
-reads *This PC can sleep when it is left idle: its host service serves none of
-your other computers right now...*. On a Martlet host
+the request for 2 minutes. A Martlet host PC holds it whenever Martlet runs,
+from the moment it starts and whether its host service serves anyone or not
+(reason *Martlet: this PC is a Martlet host (<id>)*). The desktop log records
+*This PC stays awake while its host service <id> serves <names>...*, *This PC
+stays awake because it is a Martlet host...* and *This PC can sleep again when
+it is left idle...* on each change. A host PC whose host service serves nobody
+(a disposable data directory holding `device-role.txt` with `Host`, for
+example) reads *This PC stays awake because it is a Martlet host...*; a
+companion PC whose own host service serves nobody reads *This PC can sleep when
+it is left idle: its host service serves none of your other computers right
+now...*. On a Martlet host
 `StartCompanion` is disabled but keeps its saved state, `BackgroundStatus` says
 the character and listening don't start there, and the log records *Martlet
 started as a Martlet host: the character and listening stay off on this PC*

@@ -179,6 +179,9 @@ public partial class MainWindow : ThemedWindow
     {
         if (started) return;
         started = true;
+        // A host PC stays awake from the start, before its first network sync or host check (after a Wake-on-LAN wake, Windows
+        // sleeps again within minutes otherwise).
+        UpdateStayAwake();
         ReadMachineAsync().Forget();
         await RefreshAsync();
         if (!closing) ContinueSetupAsync().Forget();
