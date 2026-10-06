@@ -35,7 +35,8 @@ public sealed class SetupAdvisorTests
         // Chatterbox Turbo runs today: the plan says how to set it up, never "Planned".
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Voice").Availability);
         Assert.Contains("Voice engine", Role(advice, "Voice").HowTo, StringComparison.Ordinal);
-        Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
+        // A card with room left takes listening too: Whisper starts its transcript a little sooner and frees the processor.
+        Assert.Equal("Whisper speech recognition on a GPU", Role(advice, "Speech-to-text").Choice);
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Speech-to-text").Availability);
     }
 
@@ -46,7 +47,7 @@ public sealed class SetupAdvisorTests
         {
             var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Fastest, ThisPcGpu = gpu, VoiceInput = true });
             Assert.Contains("small", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
-            Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
+            Assert.Equal(AdvisorAvailability.Available, Role(advice, "Speech-to-text").Availability);
             Assert.DoesNotContain(advice.Roles, r => r.Choice.Contains("Windows speech recognition", StringComparison.Ordinal));
         }
     }
@@ -86,12 +87,12 @@ public sealed class SetupAdvisorTests
         });
 
         Assert.Equal("Computer 2 (GPU)", Role(advice, "Thinking").Where);
-        // Parakeet on the processor is as accurate as Whisper in English, so no card goes to it.
-        Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("Computer 4 (GPU)", Role(advice, "Lip-sync").Where);
+        // Idle cards come first, so listening gets one of its own.
+        Assert.Equal("Computer 5 (GPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal(6, advice.Machines.Count);
-        Assert.StartsWith("Spare", advice.Machines[4].Runs[0], StringComparison.Ordinal);
+        Assert.StartsWith("Spare", advice.Machines[5].Runs[0], StringComparison.Ordinal);
         Assert.Contains(AdvisorNextStep.VoiceLibrary, advice.NextSteps);
     }
 

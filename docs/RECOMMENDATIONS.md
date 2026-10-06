@@ -43,10 +43,10 @@ different (`ComponentRanking.ClaimOrder`):
    audio) is the biggest difference you hear, nobody offers it for free, and a
    hosted voice adds a network trip to every sentence. It gets the first claim
    on an NVIDIA card. Without one, Windows voices speak on the processor.
-3. **Listening** baseline: Parakeet on the processor (about 0.1-0.3 s for a
-   short sentence). It is as accurate as Whisper in English, so it takes no card.
+3. **Listening** baseline: Parakeet on the processor (about 0.25 s for a short
+   sentence, as accurate as Whisper in English), so it needs no card.
 4. **Lip-sync:** advanced lip-sync (Audio2Face-3D) when an NVIDIA card still has
-   about 4 GB free, otherwise loudness. The owner's call: a face that moves well
+   about 1.5 GB free, otherwise loudness. The owner's call: a face that moves well
    matters more than hosting the model locally when a free endpoint can think.
 5. **Thinking, the primary:**
    - a local model on a graphics card when one still fits (the fastest model
@@ -57,13 +57,14 @@ different (`ComponentRanking.ClaimOrder`):
    - otherwise a local model on the processor (seconds per reply).
 6. **Thinking fallbacks** when the primary is a free endpoint that can fail
    (below).
-7. **Listening upgrade:** Whisper on a card only when it is better for the user
-   or Parakeet's processor is overcommitted.
+7. **Listening upgrade:** Whisper on a card when one still has room and it is
+   better, starts its transcript sooner (about 0.21 s against Parakeet's 0.25 s)
+   or Parakeet's processor is overcommitted; it also frees the processor.
 8. **Deep thinking, Singing, Pictures**, in that order, with what is left.
 
-So on an 8 GB card Martlet runs the voice locally and thinks with NVIDIA Build;
-on a 12 GB card it adds advanced lip-sync; on 16 GB or more the voice, lip-sync
-and a local Gemma all fit and nothing leaves your computers.
+So on a 6 GB card Martlet runs the voice locally and thinks with NVIDIA Build;
+an 8 GB card adds advanced lip-sync; on 12 GB or more the voice, lip-sync and a
+local Gemma all fit and nothing of the conversation leaves your computers.
 
 Two settings change the order:
 
@@ -107,8 +108,8 @@ parts are placed, suggests the next tier up with what it needs.
 |---|---|
 | Thinking, local | Gemma 4 E2B (1, hears) · Qwen3.5 4B, Gemma 4 E4B (2) · Gemma 4 12B (3, hears) · Gemma 4 26B (4) |
 | Thinking, hosted | Gemini Flash-Lite, Nemotron omni (3, hear) · NVIDIA Build, OpenRouter (4) · OpenAI (5, paid) |
-| Voice | Windows / macOS voices (1) · XTTS-v2 (3) · Chatterbox Turbo (4) · OpenAI voice (4, paid) |
-| Listening | Parakeet (4) · Whisper large-v3 turbo on a card (4) · OpenAI transcription (5, paid) |
+| Voice | Windows / macOS voices (1) · GPT-SoVITS, Dia (2) · XTTS-v2, F5-TTS (3) · Chatterbox Turbo (4) · OpenAI voice (4, paid) |
+| Listening | Whisper small (2-3) · Parakeet 110M, 0.6B v2 (3) · Parakeet 0.6B v3 (4) · Whisper large-v3 turbo on a card (4) · OpenAI transcription (5, paid) |
 | Lip-sync | Loudness (1) · Audio2Face-3D (4) |
 | Deep thinking | Gemma 4 E4B (2) · 12B (3) · 26B (4) · NVIDIA Build (4, hosted) |
 
@@ -123,6 +124,8 @@ Within a step, options are ranked by a score:
 
 - quality tier × 10;
 - minus 10 for Low and 5 for Medium reliability;
+- minus one point per 200 ms before the first word (at most 50), so XTTS-v2
+  (about 0.3 s) beats F5-TTS (about 1.4 s) at the same tier;
 - **local audio-path work** (voice, listening, lip-sync, character) +20: no
   network trip per sentence, no cost, the voice stays in your network;
 - other local work +5 (Balanced) or +0 (happy with hosted);

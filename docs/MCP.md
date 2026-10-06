@@ -2107,7 +2107,7 @@ and per machine; `catalog` adds the footprint catalog. It saves and contacts
 nothing, for example
 `{"machines":[{"id":"pc","primary":true,"gpus":[{"name":"RTX 4060","vramGb":8}],"ramGb":16,"cpuThreads":12}]}`
 plans Chatterbox Turbo on the card, Thinking on NVIDIA Build with Google Gemini
-behind it, Parakeet and loudness lip-sync, and suggests signing up for both.
+behind it, Parakeet and advanced lip-sync, and suggests signing up for both.
 
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's

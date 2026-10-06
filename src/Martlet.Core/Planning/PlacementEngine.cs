@@ -644,12 +644,13 @@ public static class PlacementEngine
         {
             var current = assignments.FirstOrDefault(a => a.Component == PlanComponent.Listening && a.Role == AssignmentRole.Primary);
             if (current is null || !current.Option.IsLocal || current.Option.UsesGpu) return;
-            // Whisper on a card is no more accurate than Parakeet in English (it covers more languages), so it only moves
-            // there when it is better or the processor running Parakeet is overcommitted.
+            // Whisper on a card only moves there when it is better, starts its transcript sooner, or the processor running
+            // Parakeet is overcommitted (Parakeet keeps up to 8 threads busy while it decodes).
             var node = nodes.First(n => n.Spec.Id == current.MachineId);
             var busy = node.CpuUsed > node.CpuCapacity;
             var upgrade = catalog.For(PlanComponent.Listening)
-                .Where(o => o.UsesGpu && (o.QualityTier > current.Option.QualityTier || busy && o.QualityTier >= current.Option.QualityTier))
+                .Where(o => o.UsesGpu && (o.QualityTier > current.Option.QualityTier || o.QualityTier == current.Option.QualityTier &&
+                    (busy || o.FirstWordMs < current.Option.FirstWordMs)))
                 .OrderByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).FirstOrDefault(Fits);
             if (upgrade is null) return;
             Unplace(current);
