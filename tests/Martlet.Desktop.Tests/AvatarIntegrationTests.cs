@@ -444,6 +444,13 @@ public sealed class AvatarIntegrationTests
     }
 
     [Fact]
+    public void Lock_and_unlock_are_menu_choices_martlet_carries_out()
+    {
+        Assert.Contains("lock", RendererRequest.Actions);
+        Assert.Contains("unlock", RendererRequest.Actions);
+    }
+
+    [Fact]
     public void Mute_and_unmute_are_menu_choices_martlet_carries_out()
     {
         Assert.Contains("mute", RendererRequest.Actions);

@@ -84,13 +84,13 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// <summary>
 /// Something chosen on the character overlay's menu that Martlet itself carries out, sent unprompted on the renderer's
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
-/// window), show the character's "settings", "lock" its place where it is (Martlet saves it and sends
-/// <see cref="RendererLock"/>; unlocking is only in Martlet's window), or "mute" or "unmute" Martlet's voice (Martlet saves it
-/// and sends <see cref="RendererVoice"/>). Zoom, position and keep-on-top stay inside the overlay.
+/// window), show the character's "settings", "lock" its place where it is or "unlock" it (Martlet saves it and sends
+/// <see cref="RendererLock"/>), or "mute" or "unmute" Martlet's voice (Martlet saves it and sends <see cref="RendererVoice"/>).
+/// Zoom, position and keep-on-top stay inside the overlay.
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "mute", "unmute"];
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute"];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
