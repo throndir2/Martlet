@@ -157,6 +157,25 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void Deep_thinking_role_may_run_several_thinks_at_once_and_advertises_its_slots()
+    {
+        static IReadOnlyList<HostRole> Roles(string kind, string slots) => HostConfiguration.Parse(RoleConfig(
+            $"[{{\"kind\":\"{kind}\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\",\"slots\":{slots}}}]")).Roles;
+        var deep = Assert.Single(Roles("deep-thinking", "3"));
+        Assert.Equal(3, deep.Slots);
+        var route = ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(deep)).Route;
+        Assert.Equal((Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, 3), (route.RouteId, route.MaximumConcurrency));
+        // Without slots (every install before the choice) it runs one at a time, as before.
+        var one = Assert.Single(HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\"}]")).Roles);
+        Assert.Equal(1, ((Martlet.Gateway.Ollama.OllamaRelayWorker)NativeHostPlatform.RoleWorker(one)).Route.MaximumConcurrency);
+        // Only the deep-thinking role has slots, from one to the bound.
+        Assert.Throws<HostInputException>(() => Roles("ollama", "2"));
+        foreach (var bad in new[] { "0", "5", "\"2\"", "-1", "1.5" })
+            Assert.Throws<HostInputException>(() => Roles("deep-thinking", bad));
+    }
+
+    [Fact]
     public void Default_No_binding_factories_are_inert_even_with_invalid_inputs()
     {
         Assert.False(DurableGatewayHost.CreateNewForBinding(null!, null!, null!, default, null!, null!).Enabled);

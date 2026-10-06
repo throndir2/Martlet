@@ -48,7 +48,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
             {
                 "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
                 "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
-                "deep-thinking" => Martlet.Gateway.Ollama.OllamaRelayWorker.DeepThinking(role.Endpoint, role.Model),
+                "deep-thinking" => Martlet.Gateway.Ollama.OllamaRelayWorker.DeepThinking(role.Endpoint, role.Model, slots: role.Slots),
                 "f5" => new Martlet.Gateway.F5.F5RelayWorker(role.Endpoint, role.Model),
                 "xtts" => Martlet.Gateway.Xtts.XttsRelay.Create(role.Endpoint, role.Model),
                 "chatterbox" => Martlet.Gateway.F5.ChatterboxRelay.Create(role.Endpoint, role.Model),
@@ -454,7 +454,8 @@ internal static class HostApplication
                     });
                     AttachCommands(owner, directory);
                     owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles."
-                        : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
+                        : "Serving roles: " + string.Join(", ", config.Roles.Select(r =>
+                            r.Slots > 1 ? $"{r.Kind} ({r.Model}, {r.Slots} at once)" : $"{r.Kind} ({r.Model})")) + ".");
                 }
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);

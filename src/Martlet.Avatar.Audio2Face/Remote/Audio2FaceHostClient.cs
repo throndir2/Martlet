@@ -574,7 +574,9 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                     Number("maximum_request_bytes"), Number("maximum_input_bytes"), Number("maximum_output_bytes"),
                     Number("maximum_event_bytes"), Number("maximum_events"), Number("maximum_stream_bytes"),
                     TimeSpan.FromMilliseconds(route.GetProperty("maximum_duration_milliseconds").GetInt64()),
-                    Text("cancellation")));
+                    Text("cancellation"),
+                    route.TryGetProperty("maximum_concurrency", out var concurrency) && concurrency.ValueKind == JsonValueKind.Number &&
+                        concurrency.TryGetInt32(out var slots) && slots is > 0 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots ? slots : 1));
             }
             return routes;
         }
