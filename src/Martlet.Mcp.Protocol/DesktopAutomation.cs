@@ -91,7 +91,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // task has finished), and Clear finished only drops finished tasks' kept output from the list; neither stops, sends or
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
         // so they need --allow-ui-effects.
-        "NavTasks", "HostRunHide", "TasksClear"
+        "NavTasks", "HostRunHide", "TasksClear",
+        // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
+        // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
+        // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
+        // Save, recovery codes, Remove, Allow and Make invite change or reveal things, so they need --allow-ui-effects.
+        "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -129,6 +134,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord's text-chat line: counts of messages seen, considered, answered, passed, dropped and failed, the
         // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
         "DiscordTextStatus",
+        // Sign-in from outside: the join window's status line and the host it checked ("home-host at name:port, key checked"),
+        // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
+        // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
+        "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
+        "SignInEnrolledList",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start

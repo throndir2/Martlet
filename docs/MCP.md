@@ -653,6 +653,46 @@ different computer with another key at the home address is skipped for the
 outside address. Not covered: a real internet source, a router port forward or
 an overlay.
 
+`signin_selftest` (no arguments) rehearses [joining from outside home by
+signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
+production code: one real gateway (`lab-signin-host`, Kestrel, pinned TLS, a
+throwaway certificate, in-memory `signin.json` and `network.json`) on
+`127.0.0.1`, a home PC, a laptop and another PC simulated with the desktop's
+sign-in client (`HostSignIn.cs`) and network sync engine. It runs
+`src\Martlet.NodeLinkCheck` (mode `signin`, `SignInRehearsal.cs`) and returns
+`{exitCode, report}` like `network_selftest`. Its steps: the home PC pairs by
+code and founds the network; it sets up the owner account (a wrong
+authenticator code is refused, the right one gives ten recovery codes, the
+password is kept only as a verifier); a computer outside the network can't
+change sign-in (`signin.denied`); the laptop pins the host from an invite whose
+outside address is `localhost:<port>` (the certificate names `127.0.0.1`, so
+only the pin is trusted) and a forged pin reaches nothing; a wrong password and
+the reused setup code are refused (`signin.invalid`); the laptop signs in with a
+recovery code, is paired under the host's home origin and its signed requests
+work; it asks to join and the home PC lets it in on the host's attestation
+(`NetworkSyncEngine.ApproveSignedIn`) with no check number, while a PC paired by
+code still waits for one; removing the owner account revokes the laptop
+(`auth.revoked`); the host's security audit holds the sign-in successes and
+failures and no secret. Not covered: the desktop windows, Windows Credential
+Manager, a host reached over the internet and browser sign-in providers.
+
+Sign-in from outside in the desktop: Add a computer's **Join with an invite**
+(`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
+`SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
+`SignInPassword`, `SignInCode`, `SignInSubmit`, status `SignInJoinStatus`, the
+checked host `SignInHost`, `SignInJoinClose`); a paired host's **Sign-in from
+outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
+`SignInSettingsStatus`, owner state `SignInOwnerState`, `SignInOwnerUser`,
+`SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
+`SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
+`SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
+`SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
+`SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
+`SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
+`SignInSettingsClose`). Opening and closing both windows are safe clicks; the
+status lines and lists are safe values. Everything else contacts a host or
+changes it and needs `--allow-ui-effects`.
+
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
 (`lab-api-1`, `lab-api-2`: Kestrel, pinned TLS, a throwaway certificate) on

@@ -1,0 +1,306 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json.Nodes;
+using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Access;
+using Martlet.Core.Network;
+using Martlet.Gateway;
+
+namespace Martlet.NodeLinkCheck;
+
+/// <summary>
+/// Rehearses joining from outside home by signing in, end to end with the production code: a real gateway (Kestrel, pinned
+/// TLS) on 127.0.0.1 with in-memory network.json and signin.json, a member desktop at home and a laptop "away" that only has
+/// the owner's invite. The home PC founds the network, sets up the owner account with a real authenticator secret (codes
+/// computed like an authenticator app) and makes an invite whose outside address is "localhost" (so the certificate's name
+/// doesn't match and only the pin is trusted). The laptop pins the host from the invite, is refused with a wrong password,
+/// a reused code and a forged pin, signs in with the right ones, asks to join and is let into the network by the home PC on
+/// the host's sign-in attestation without a check number; a non-member can't change sign-in, and removing the owner
+/// account takes the laptop's access away. Nothing leaves loopback; nothing is written to disk or the credential vault.
+/// </summary>
+internal static class SignInRehearsal
+{
+    private const string Password = "rehearsal owner passphrase";
+
+    internal static async Task<(bool Ok, object Report)> RunAsync(CancellationToken token)
+    {
+        var steps = new List<Step>();
+        var started = DateTimeOffset.UtcNow;
+        await using var host = await LabHost.StartAsync("lab-signin-host");
+        using var keyHome = NetworkKey.Create("lab-home-pc");
+        using var keyLaptop = NetworkKey.Create("lab-laptop");
+        using var keyOther = NetworkKey.Create("lab-other-pc");
+        var home = new LabDesktop(keyHome, "HOME-PC");
+        var laptop = new LabDesktop(keyLaptop, "LAPTOP");
+        var other = new LabDesktop(keyOther, "OTHER-PC");
+
+        async Task Run(string name, Func<Task<(bool Ok, string Detail)>> action)
+        {
+            try
+            {
+                var (ok, detail) = await action();
+                steps.Add(new(name, ok, detail));
+            }
+            catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                steps.Add(new(name, false, $"{error.GetType().Name}: {error.Message}"));
+            }
+        }
+
+        await Run("The home PC pairs with the host by a typed code and founds a network that binds it", async () =>
+        {
+            await home.PairByCodeAsync(host, token);
+            await home.SyncAsync(token);
+            return (host.Server.NetworkState.State == "bound", $"host {host.Server.NetworkState.State} in {host.Server.NetworkState.NetworkId}");
+        });
+        var secret = Totp.NewSecret();
+        var setupCode = "";
+        IReadOnlyList<string> recovery = [];
+        await Run("The home PC sets up the owner account with an authenticator and gets ten recovery codes (no secret read back)", async () =>
+        {
+            var wrong = await FailureAsync(() => home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "owner", ["user"] = "owner", ["password"] = Password, ["totp_secret"] = secret, ["code"] = "000000"
+            }, token));
+            var settings = await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "owner", ["user"] = "owner", ["password"] = Password, ["totp_secret"] = secret,
+                ["code"] = setupCode = Totp.Code(secret, DateTimeOffset.UtcNow)
+            }, token);
+            recovery = settings.RecoveryCodes ?? [];
+            var saved = System.Text.Encoding.UTF8.GetString(host.SignInBytes ?? []);
+            return (wrong == "signin.invalid" && settings.OwnerUser == "owner" && recovery.Count == 10 && !saved.Contains(Password),
+                $"wrong authenticator code: {wrong}; owner {settings.OwnerUser}; recovery codes {recovery.Count}; password kept only as a verifier: {!saved.Contains(Password)}");
+        });
+        await Run("A computer outside the network can't change sign-in", async () =>
+        {
+            await other.PairByCodeAsync(host, token);
+            var refused = await FailureAsync(() => other.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-owner" }, token));
+            return (refused == "signin.denied", $"OTHER-PC: {refused}");
+        });
+        var outside = $"localhost:{new Uri(host.Origin).Port}";
+        var invite = new NetworkInvite
+        {
+            HostId = host.HostId, SpkiFingerprint = host.Fingerprint, Origin = host.Origin, Addresses = [outside],
+            NetworkId = host.Server.NetworkState.NetworkId, Label = "Lab home"
+        };
+        string? origin = null;
+        await Run("The laptop pins the host from the invite (outside address by name, so only the pin is trusted) and lists the sign-ins", async () =>
+        {
+            var parsed = NetworkInvite.Parse(invite.Write());
+            var (answered, providers) = await HostSignInClient.ReadProvidersAsync(parsed, token);
+            origin = answered;
+            var forged = parsed with { SpkiFingerprint = "sha256:" + new string('0', 64) };
+            var refused = await FailureAsync(() => HostSignInClient.ReadProvidersAsync(forged, token));
+            return (answered == "https://" + outside && providers.Any(p => p.Kind == "owner") && refused == "host.unreachable",
+                $"answered at {answered}: {string.Join(", ", providers.Select(p => p.Id))}; with a forged pin: {refused}");
+        });
+        await Run("A wrong password and a reused authenticator code are refused", async () =>
+        {
+            var wrong = await FailureAsync(() => HostSignInClient.SignInAsOwnerAsync(invite, origin!, "owner", "not the passphrase at all",
+                Totp.Code(secret, DateTimeOffset.UtcNow), keyLaptop.DeviceId, "LAPTOP", token));
+            // The code used to set the account up (same 30-second step) works only once.
+            var reused = await FailureAsync(() => HostSignInClient.SignInAsOwnerAsync(invite, origin!, "owner", Password,
+                setupCode, keyLaptop.DeviceId, "LAPTOP", token));
+            return (wrong == "signin.invalid" && reused is "signin.invalid", $"wrong password: {wrong}; reused code: {reused}");
+        });
+        await Run("The laptop signs in with the owner account and a recovery code and is paired (signed requests accepted)", async () =>
+        {
+            var (pairing, credential, who) = await HostSignInClient.SignInAsOwnerAsync(invite, origin!, "owner", Password, recovery[0],
+                keyLaptop.DeviceId, "LAPTOP", token);
+            laptop.Keep(pairing, credential);
+            var works = await laptop.CanUseAsync(host.HostId, token);
+            return (works && who.Provider == "owner" && pairing.Origin == host.Origin,
+                $"signed in as {who}; pairing kept under {pairing.Origin}; signed request {(works ? "accepted" : "refused")}");
+        });
+        await Run("The laptop asks to join; the home PC sees the host's sign-in attestation and lets it in with no check number", async () =>
+        {
+            await laptop.SyncAsync(token);
+            var seen = await home.SyncAsync(token);
+            var join = seen.Joins.FirstOrDefault(j => j.DeviceId == keyLaptop.DeviceId);
+            var approved = home.ApproveSignedIn(seen.Joins);
+            await home.SyncAsync(token);
+            await laptop.SyncAsync(token);
+            var member = laptop.State.Roster?.Trusts(keyLaptop.DeviceId, keyLaptop.PublicKey) == true;
+            return (join?.SignIn is { Provider: "owner" } && approved.Count == 1 && member,
+                $"join attested as {join?.SignIn?.Provider}:{join?.SignIn?.Subject}; let in: {approved.Count}; laptop is a member: {member}");
+        });
+        await Run("OTHER-PC (paired by code, no sign-in) still waits for a check number", async () =>
+        {
+            await other.SyncAsync(token);
+            var seen = await home.SyncAsync(token);
+            var join = seen.Joins.FirstOrDefault(j => j.DeviceId == keyOther.DeviceId);
+            var approved = home.ApproveSignedIn(seen.Joins);
+            return (join is { SignIn: null } && approved.Count == 0, $"OTHER-PC join attested: {join?.SignIn is not null}; let in: {approved.Count}");
+        });
+        await Run("Removing the owner account takes the laptop's access away", async () =>
+        {
+            var settings = await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-owner" }, token);
+            var revoked = await laptop.FailureCodeAsync(host.HostId, token);
+            return (settings.OwnerUser is null && revoked is "auth.revoked" or "auth.invalid", $"owner account: {settings.OwnerUser ?? "none"}; laptop: {revoked}");
+        });
+        await Run("The host's security audit recorded the sign-ins (never a secret)", () =>
+        {
+            var events = host.Server.Guard.Recent().Where(e => e.RouteClass == "signin").ToArray();
+            var text = string.Join(" ", events.Select(e => $"{e.Outcome}:{e.Code}:{e.Subject}"));
+            return Task.FromResult((events.Any(e => e.Outcome == "success") && events.Any(e => e.Outcome == "failure") && !text.Contains(Password),
+                text));
+        });
+
+        var ok = steps.All(s => s.Ok);
+        return (ok, new
+        {
+            ok,
+            passed = steps.Count(s => s.Ok),
+            total = steps.Count,
+            seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
+            scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS, in-memory signin.json and network.json), simulated desktops using " +
+                "the desktop's sign-in client and network sync engine, authenticator codes computed from the secret. Not covered: the " +
+                "desktop windows, Windows Credential Manager, a host reached over the internet, browser sign-in providers.",
+            steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
+        });
+    }
+
+    private static async Task<string?> FailureAsync<T>(Func<Task<T>> action)
+    {
+        try { await action(); return null; }
+        catch (Audio2FaceHostException error) { return error.Code; }
+    }
+
+    private sealed record Step(string Name, bool Ok, string Detail);
+
+    private sealed class LabDesktop(NetworkKey key, string name)
+    {
+        private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
+        private readonly NetworkSyncEngine engine = new(key, name);
+        internal NetworkLocalState State { get; private set; } = NetworkLocalState.Empty;
+
+        internal async Task PairByCodeAsync(LabHost host, CancellationToken token)
+        {
+            var card = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+            var (pairing, secret) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, card.Code.Reveal(), key.DeviceId, name, token);
+            Keep(pairing, secret);
+        }
+
+        internal void Keep(Audio2FaceHostPairing pairing, string secret)
+        {
+            pairings[pairing.HostId] = (pairing, secret);
+            State = State.WithAdopted(pairing.HostId);
+        }
+
+        internal async Task<NetworkSyncResult> SyncAsync(CancellationToken token)
+        {
+            var result = await engine.SyncAsync(State, pairings.Values.Select(p => p.Pairing).ToArray(),
+                pairing => new Audio2FaceHostConnection(pairing, pairings[pairing.HostId].Secret), token);
+            foreach (var (pairing, secret) in result.Paired) pairings[pairing.HostId] = (pairing, secret);
+            foreach (var id in result.Forget) pairings.Remove(id);
+            State = NetworkLocalState.Parse(result.State.Write());
+            return result;
+        }
+
+        internal IReadOnlyList<HostJoinRequest> ApproveSignedIn(IReadOnlyList<HostJoinRequest> joins)
+        {
+            var (state, approved) = engine.ApproveSignedIn(State, joins);
+            State = state;
+            return approved;
+        }
+
+        internal async Task<HostSignInSettings> ChangeAsync(string hostId, JsonObject change, CancellationToken token)
+        {
+            using var connection = new Audio2FaceHostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
+            return await connection.ChangeSignInSettingsAsync(change, token);
+        }
+
+        internal async Task<bool> CanUseAsync(string hostId, CancellationToken token) => await FailureCodeAsync(hostId, token) is null;
+
+        internal async Task<string?> FailureCodeAsync(string hostId, CancellationToken token)
+        {
+            if (!pairings.TryGetValue(hostId, out var pairing)) return "not-paired";
+            return await FailureAsync(async () =>
+            {
+                using var connection = new Audio2FaceHostConnection(pairing.Pairing, pairing.Secret);
+                return await connection.ReadRoutesAsync(token);
+            });
+        }
+    }
+
+    private sealed class LabHost : IAsyncDisposable, IGatewayNetworkStorage, IGatewayAuditSink
+    {
+        private X509Certificate2 certificate = null!;
+        private GatewayListenerHandle? listener;
+        private readonly SignInStore signIn = new();
+        internal GatewayServer Server { get; private set; } = null!;
+        internal string HostId { get; private init; } = "";
+        internal string Origin { get; private set; } = "";
+        internal string Fingerprint { get; private set; } = "";
+        internal byte[]? SignInBytes => signIn.Bytes;
+
+        internal static async Task<LabHost> StartAsync(string hostId)
+        {
+            var host = new LabHost { HostId = hostId };
+            try
+            {
+                host.certificate = Certificate();
+                host.Origin = $"https://127.0.0.1:{FreePort()}";
+                var origin = new GatewayOrigin(host.Origin);
+                var identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
+                host.Fingerprint = identity.SpkiFingerprint;
+                host.Server = new GatewayServer(identity, origin, [], host);
+                host.Server.AttachNetworkStorage(host);
+                host.Server.AttachSignInStorage(host.signIn);
+                host.listener = await host.Server.StartAsync(new GatewayTlsBinding(origin, identity, host.certificate, null), new KestrelGatewayListenerFactory());
+                return host;
+            }
+            catch
+            {
+                await host.DisposeAsync();
+                throw;
+            }
+        }
+
+        public byte[]? Load() => null;
+        public void Save(byte[] bytes) { }
+        public void Record(GatewayAuditEvent gatewayEvent) { }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (listener is not null) await listener.DisposeAsync();
+            certificate?.Dispose();
+        }
+
+        private sealed class SignInStore : IGatewaySignInStorage
+        {
+            internal byte[]? Bytes;
+            public byte[]? Load() => Bytes;
+            public void Save(byte[] bytes) => Bytes = bytes;
+        }
+
+        private static int FreePort()
+        {
+            var probe = new TcpListener(IPAddress.Loopback, 0);
+            probe.Start();
+            try { return ((IPEndPoint)probe.LocalEndpoint).Port; }
+            finally { probe.Stop(); }
+        }
+
+        private static X509Certificate2 Certificate()
+        {
+            using var key = RSA.Create(2048);
+            var request = new CertificateRequest("CN=Martlet sign-in rehearsal", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+            request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+            request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
+            var names = new SubjectAlternativeNameBuilder();
+            names.AddIpAddress(IPAddress.Loopback);
+            request.CertificateExtensions.Add(names.Build());
+            var now = DateTimeOffset.UtcNow;
+            using var ephemeral = request.CreateSelfSigned(now.AddDays(-1), now.AddDays(1));
+            var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+            var pfx = ephemeral.Export(X509ContentType.Pkcs12, password);
+            try { return X509CertificateLoader.LoadPkcs12(pfx, password, X509KeyStorageFlags.UserKeySet); }
+            finally { CryptographicOperations.ZeroMemory(pfx); }
+        }
+    }
+}
