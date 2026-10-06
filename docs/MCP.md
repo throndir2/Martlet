@@ -1424,8 +1424,9 @@ position is unlocked, or `loaded` with `locked`, `left`, `top`, `width` and
 `height` in device-independent pixels; see the character overlay below), `voice`
 (from `talk-preferences.json`: `state` `none`, `loaded` or `unreadable`,
 `speakReplies`, Companion › Voice's *Speak Martlet's replies aloud*, on unless
-saved off, and `muted`, its opposite, which the overlay menu's *Mute voice* and
-*Unmute voice* change; see below) and
+saved off, `muted`, its opposite, which the overlay menu's *Mute voice* and
+*Unmute voice* change, and `volume`, Companion › Voice's *Voice volume* from 0
+to 1, full unless saved lower; see below) and
 `lorebooks` (`books`, `on` and
 `entries` counts). Those editors have no Save button; each change saves on its
 own into the newest saved file, keeping what was saved elsewhere meanwhile
@@ -2663,6 +2664,15 @@ words, like every reply while muted, show in the talk window and as speech
 bubble and subtitle captions, one sentence per reading time
 (`spoken_reply_check` `text-only`).
 
+**Voice volume**: Companion › Voice's `VoiceVolume` slider (0 to 100, full by
+default) sets how loud Martlet speaks and sings on this PC, applied to
+Martlet's own audio (never Windows' volume); a reply or song playing now
+follows within one device buffer. Both it (its number) and `VoiceVolumeLevel`
+(*80%*) are in `SafeValues`. `ui_set_range` on it needs `--allow-ui-effects`
+because it saves `talk-preferences.json` (`VoiceVolume`, 0 to 1, this PC only
+and not shared with paired computers); `character_status`'s `voice.volume`
+reads the saved level (1 without a file).
+
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
@@ -3409,7 +3419,9 @@ spoken turns; `latency_report`, `logs_tail`, `hearing_check`'s `lastTurn` and
 
 For broader **explicitly authorized** live UI testing, start the MCP server
 with `--allow-ui-effects`. This unlocks arbitrary ID-based `ui_click` and
-`ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`
+`ui_select`, plus `ui_set_text` (an empty `text` clears a field), `ui_toggle`,
+`ui_set_range` (sets a slider to `value` within its range and returns its value
+and range, such as Companion › Voice's `VoiceVolume`, 0 to 100)
 and `ui_move` (moves a control that UI Automation can move, such as the
 character overlay's `MoveAvatar`, by `dx`, `dy` screen pixels). It does **not** waive the
 desktop's own per-action confirmations, spending/data disclosures, or Stop

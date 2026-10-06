@@ -87,6 +87,54 @@ public sealed class PlaybackTests
     }
 
     [Fact]
+    public async Task VoiceVolumeScalesWhatReachesTheDeviceAndFollowsAChangeMidPlayback()
+    {
+        var device = new ControlledDevice { AutoConsume = false };
+        await using var sink = new PcmPlaybackSink(device, new() { Prebuffer = TimeSpan.Zero }) { Volume = 0.5 };
+        Assert.Equal(0.5, sink.Volume);
+        var request = Request();
+        var run = sink.Start(request);
+        var data = new byte[2400 * 2];
+        for (var i = 0; i < data.Length; i += 2) BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(i), 1000);
+        run.Submit(new(request.Ids, request.Epoch, 0, 0, request.Format, data));
+        await Until(() => device.Samples >= 1200);
+        Assert.Equal(500, BinaryPrimitives.ReadInt16LittleEndian(device.Bytes));
+        sink.Volume = 0;
+        run.Submit(new(request.Ids, request.Epoch, 1, 2400, request.Format, data));
+        run.CompleteInput(4800);
+        while (!run.Completion.IsCompleted)
+        {
+            device.Consume(1200);
+            await Task.Delay(1);
+        }
+        Assert.Equal(PlaybackState.Completed, (await End(run)).State);
+        var bytes = device.Bytes;
+        Assert.Equal(0, BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(bytes.Length - 2)));
+        sink.Volume = double.NaN;
+        Assert.Equal(1, sink.Volume);
+        sink.Volume = 3;
+        Assert.Equal(1, sink.Volume);
+    }
+
+    [Fact]
+    public void PcmGainScalesSamplesAndLeavesFullVolumeUnchanged()
+    {
+        var pcm = new byte[4];
+        BinaryPrimitives.WriteInt16LittleEndian(pcm, short.MinValue);
+        BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(2), 301);
+        PcmGain.Apply(pcm, 1);
+        Assert.Equal(short.MinValue, BinaryPrimitives.ReadInt16LittleEndian(pcm));
+        PcmGain.Apply(pcm, 0.5);
+        Assert.Equal(-16384, BinaryPrimitives.ReadInt16LittleEndian(pcm));
+        Assert.Equal(150, BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(2)));
+        short[] samples = [short.MaxValue, -200];
+        PcmGain.Apply(samples, 0.25);
+        Assert.Equal([8192, -50], samples);
+        PcmGain.Apply(samples, -1);
+        Assert.Equal([0, 0], samples);
+    }
+
+    [Fact]
     public async Task PrebufferDoesNotPlayUntilThresholdAndEmptyCompletionDoesNotStart()
     {
         var device = new ControlledDevice();

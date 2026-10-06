@@ -20,6 +20,7 @@ public sealed class SongPlayer : IAsyncDisposable
     private readonly IPlaybackDeviceFactory devices;
     private readonly OutputSelection output;
     private readonly Func<bool> talking;
+    private readonly Func<double>? volume;
     private readonly SpokenTextFeed? captions;
     private readonly TimeSpan wait;
     private readonly CancellationTokenSource lifetime = new();
@@ -44,9 +45,10 @@ public sealed class SongPlayer : IAsyncDisposable
     /// <param name="mouth">The song's mouth track (made from its vocals when it was made); its vocals' loudness without one.</param>
     /// <param name="words">The sung words with their times, for word-by-word captions; whole lines without them.</param>
     /// <param name="pumpWait">How long the pump waits between device checks (MCP's check runs it faster than real time).</param>
+    /// <param name="volume">Martlet's voice volume (0 to 1), read for each chunk so a change is heard at once; full without one.</param>
     public SongPlayer(StoredSong song, SongMap map, SongAudio audio, SongStartPlan plan, IPlaybackDeviceFactory devices,
         OutputSelection output, Func<bool> talking, SpokenTextFeed? captions = null, TimeSpan? pumpWait = null,
-        SongMouthTrack? mouth = null, IReadOnlyList<SongWordTime>? words = null)
+        SongMouthTrack? mouth = null, IReadOnlyList<SongWordTime>? words = null, Func<double>? volume = null)
     {
         ArgumentNullException.ThrowIfNull(song);
         ArgumentNullException.ThrowIfNull(devices);
@@ -70,6 +72,7 @@ public sealed class SongPlayer : IAsyncDisposable
         this.devices = devices;
         this.output = output;
         this.talking = talking;
+        this.volume = volume;
         this.captions = captions;
         wait = pumpWait ?? TimeSpan.FromMilliseconds(10);
     }
@@ -176,6 +179,7 @@ public sealed class SongPlayer : IAsyncDisposable
                 {
                     var frames = Mixer.Render(samples, Math.Min(room, chunk));
                     if (frames == 0) break;
+                    if (volume is not null) PcmGain.Apply(samples.AsSpan(0, frames * 2), volume());
                     Buffer.BlockCopy(samples, 0, bytes, 0, frames * 4);
                     var offset = 0;
                     while (offset < frames)

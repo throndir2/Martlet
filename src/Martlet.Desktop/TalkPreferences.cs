@@ -15,7 +15,8 @@ namespace Martlet.Desktop;
 // screen by default; a saved file keeps the choices in it, and Martlet still looks only after Start watching), how chatty it
 // is about what it sees and what the PC plays (ScreenChattiness: a ChattinessChoice, Normal by default; 3 is Martlet
 // decides), and whether Martlet decides where the character looks while it watches your screen (DecideGaze, off by default:
-// the character follows the mouse). The talk window's mic and vision buttons pause them there (Stop and Esc pause vision,
+// the character follows the mouse), and how loud Martlet speaks and sings (VoiceVolume, 0 to 1, full by default; this PC
+// only, since each PC has its own speakers, and applied to Martlet's own audio, never to Windows' volume). The talk window's mic and vision buttons pause them there (Stop and Esc pause vision,
 // never listening). A camera address is saved without its user name or password.
 // Companion › Listening › When Thinking can hear you: with HearVoice on and a Thinking model that hears, what you said goes
 // straight to Thinking as the recording alone while speech-to-text runs beside the reply (the default), or TranscribeFirst
@@ -24,7 +25,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
     bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
-    bool DecideGaze = false, bool TranscribeFirst = false)
+    bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0)
 {
     private const string FileName = "talk-preferences.json";
 
@@ -61,6 +62,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 CameraName = loaded.CameraName ?? "",
                 VideoAddress = WatchSource.WithoutCredentials(loaded.VideoAddress ?? ""),
                 WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
+                VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
                 Version = CurrentVersion
             };
         }

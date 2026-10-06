@@ -132,6 +132,14 @@ internal sealed class ConversationSinging : IAsyncDisposable
     /// <summary>The data directory songs are kept in (as creations), or null where they can't be.</summary>
     internal string? DataDirectory => dataDirectory;
 
+    private double voiceVolume = PcmGain.Full;
+    /// <summary>Companion › Voice › Voice volume (0 to 1): songs play at it, and one playing now follows a change at once.</summary>
+    internal double VoiceVolume
+    {
+        get => Volatile.Read(ref voiceVolume);
+        set => Volatile.Write(ref voiceVolume, PcmGain.Clamp(value));
+    }
+
     /// <summary>The mouth track and sung words for a song just made, from its vocals stem (never the mix): Audio2Face run once
     /// over the vocals when one is reachable, otherwise visemes timed from the sung words (the song maker's, or the words of each
     /// line spread over its singing), otherwise the vocals' loudness; and how well it follows the vocal onsets.</summary>
@@ -187,7 +195,8 @@ internal sealed class ConversationSinging : IAsyncDisposable
         if (target is null) return (null, problem);
         var plan = SongTransport.PlanStart(map, target);
         SongPlayer? stopping;
-        var started = new SongPlayer(song, map, audio, plan, devices, output, talking, captions, mouth: mouth, words: song.WordTimes());
+        var started = new SongPlayer(song, map, audio, plan, devices, output, talking, captions, mouth: mouth, words: song.WordTimes(),
+            volume: () => VoiceVolume);
         lock (gate)
         {
             stopping = player;
