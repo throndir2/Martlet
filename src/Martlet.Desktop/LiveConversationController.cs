@@ -2743,6 +2743,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         try
         {
+            // The pictures computer is busy with this picture until it is drawn: no background think is placed there meanwhile.
+            using var painter = BackgroundDuties.Painter(dataDirectory) is { } computer ? jobs.Places.Hold(computer, job.Id) : null;
             job.Report(BackgroundJobState.Running, "Checking where it's drawn");
             var availability = await maker.GetAvailabilityAsync(token).ConfigureAwait(false);
             if (!availability.Available) return BackgroundJobOutcome.Failed((availability.Reason ?? "pictures aren't available right now").TrimEnd('.'));
