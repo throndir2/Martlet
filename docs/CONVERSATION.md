@@ -367,11 +367,14 @@ Thinking's own model twice needs a second server (for example another `ollama
 serve` on its own port, chosen as a server on this PC under *A cloud provider or
 server*), which holds a second copy of the model in graphics memory.
 
-**While it runs** you keep talking and Martlet keeps replying. The talk window
-shows a chip per job (*Thinking about: …* with its time and *Cancel*) and the
-line above it (`LiveJobs`); the desktop log notes each start, fit check and end
+**While it runs** you keep talking and Martlet keeps replying. The talk window's
+header shows a background tasks chip (a spinner and *1 running*, then *1 ready*
+once it finishes and *1 done* once Martlet brought it up); clicking it opens the
+task list over the conversation: one card per task with its kind, what it is
+about, its status and time, its result (*Show result*) and *Cancel* (`LiveTasks`,
+`LiveJobs`, `LiveJobState-<id>`); the desktop log notes each start, fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
-Stop (Esc) ends a reply, never a think; the chip's Cancel, `cancel_thinking`,
+Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation, quitting Martlet or the time limit do. At most one
 think runs at a time (a second call is refused and Martlet is told to wait or
 cancel the first) and at most 3, 6 (default) or 12 start in any hour.
@@ -411,14 +414,14 @@ think_longer is the first kind and a song is next. A kind is a
    (`LiveConversationController.BuiltIns`: always offered while its feature is
    on, so the request start never changes; the handler returns at once).
 2. In the handler, call `jobs.Start(kind, label, runAsync)`. `label` is a few
-   words for the chip and the conversation (it is never logged). `runAsync(job,
+   words for the task list and the conversation (it is never logged). `runAsync(job,
    token)` does the work on a thread-pool thread and returns
    `BackgroundJobOutcome.Done(result)` (the text the conversation gets; for a
    song, what is ready and how to play it, such as its ID) or
    `BackgroundJobOutcome.Failed(problem)` (a few plain words); the token is
    canceled by Cancel, the conversation ending, Martlet quitting and the time
    limit. While it works it may call `job.Report(Running/Waiting/Paused,
-   "a few words")`, which the chip shows. `Start` returns `BackgroundJobStart`:
+   "a few words")`, which the task's card shows. `Start` returns `BackgroundJobStart`:
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
@@ -430,7 +433,8 @@ think_longer is the first kind and a song is next. A kind is a
    refusing with `BackgroundJobOutcome.Failed` when it doesn't.
 
 The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
-the chip and `LiveJobs`, `background-jobs.json` (kinds, states and times only),
+the header chip and task list (`LiveTasks`, `LiveJobs`; give a new kind its title and icon in
+`LiveConversationWindow.KindTitle`/`KindGlyph`), `background-jobs.json` (kinds, states and times only),
 and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
 completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
@@ -465,8 +469,8 @@ window (as Start listening does, but without listening) to say it. Where Martlet
 can't talk (Thinking isn't set up), a Windows notification shows the reminder
 after 30 seconds instead. A reminder due while no companion PC ran is said late
 with how late it is when Martlet starts within 12 hours, and let go after that.
-The talk window shows a due reminder as a chip (*Reminder: do the dishes ·
-due*) until it is said.
+The talk window's task list shows a due reminder (*Due now. Martlet brings it
+up as soon as it's free.*) until it is said.
 
 **On all your computers.** Reminders travel with the [shared
 settings](CLUSTER.md#one-martlet-on-every-computer) as one entry per computer,
@@ -490,7 +494,10 @@ left out on purpose: in one room the voices would echo, and a reply already
 under way on one PC would be cut across; the PC you are at is where you hear it.
 
 Checked locally: the tool, times, offers, taking it and wording with
-`RemindersTests` and `SharedRemindersTests`, the whole flow on two simulated
+`RemindersTests` and `SharedRemindersTests`, the real controller and talk window
+bringing a due reminder up on its own through a fixture Thinking endpoint while
+finished work waits for the next message, and the tool offered last with every
+request starting the same (Desktop tests), the whole flow on two simulated
 PCs with MCP `reminders_check`, and on a disposable data folder through
 `-Desktop` a due reminder taken by the desktop, brought into a conversation
 started without the window and, with no Thinking set up, shown as a
@@ -527,7 +534,7 @@ computer, which can't think something over while it answers), the result asks
 the reply to write the lyrics itself and call `sing_song` again with them. Then
 the song maker
 (`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
-the Singing card's quality and voice match; the chip follows its stages
+the Singing card's quality and voice match; the task's card follows its stages
 (*Writing the lyrics*, *Writing the music*, *Matching the singing to the
 voice*..., *Timing the mouth to the singing*). Its mouth track is made once,
 from the vocals stem (never the mix; see *Lip sync* below). The finished song is
