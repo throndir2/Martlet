@@ -628,6 +628,18 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
 
+`outside_reachability_check` checks how each host in a data directory's
+network can be reached (optional absolute `dataDirectory`; `contactHosts`).
+Without `contactHosts: true` it only lists each host's `id` and how many
+`outsideAddresses` it has (`checkedNow: false`) and contacts nothing. With it,
+it dials each host's home address and each outside address directly, checks the
+TLS key against the roster's pin and asks `GET /health/live` (no credential):
+per host `home` and `outside` (by `address` number) with `reachable`, `ms` and
+`problem` (`refused`, `no answer in time`, `name not found`, `another key`,
+or `answered 429 ...` when the key answered but the guard throttled the
+address), and `wouldUse` (`home`, `outside <n>` or `none`, home first as the
+desktop dials). It never returns the addresses themselves.
+
 `exposure_selftest` (no arguments) rehearses a host reachable from outside
 home ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)) with the
 production code: one real gateway (`lab-exposure`, Kestrel, pinned TLS, a
@@ -648,7 +660,9 @@ closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
 is used at once (no wait on an outside one); with nothing answering the error
 names every address tried (`host.unreachable`); outside addresses set on the
-host itself are signed into the roster by a member desktop's network sync; and a
+host itself are signed into the roster by a member desktop's network sync; the
+reachability probe behind `outside_reachability_check` tells an answering, a
+closed and a wrong-key address apart; and a
 different computer with another key at the home address is skipped for the
 outside address. Not covered: a real internet source, a router port forward or
 an overlay.
@@ -2510,12 +2524,16 @@ host service, so it needs `--allow-ui-effects`). The + beside the title,
 `NodeAction-AddComputer` and the page's `AddComputer`, so all three are
 passive clicks.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
-(status text: member with how many computers and hosts, waiting to join with
+(status text: member with how many computers and hosts and how many are reached
+from outside home right now, waiting to join with
 the check number, a host PC in no network that only watches, or in no network),
 `NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
 click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
 text, for example `lab-gpu. Host, not paired with this PC yet; added on
-desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`,
+desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`;
+or *Not reachable at home or outside right now*; for a host with outside
+addresses also the guard's totals it reported, *Guard: 3 failed and 1 throttled
+request(s) since it started, 0 address(es) locked out now.*),
 and for another computer where it was last active, *Active now
 on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>` and, for hosts,
 `NetworkOutside-<ID>` (opens the *Outside addresses* dialog, field
