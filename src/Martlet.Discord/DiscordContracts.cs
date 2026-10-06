@@ -20,14 +20,9 @@ public sealed record DiscordLine(string Speaker, string Text, DateTimeOffset At,
 
 /// <summary>One thing said in Discord that Martlet may answer. <paramref name="Addressed"/> means it was meant for Martlet (a
 /// mention, a reply to Martlet, its name, a DM or a slash command); otherwise it is ambient chatter that Martlet answers only
-/// when it decides to. <paramref name="Mode"/> is the place's chat mode: an unaddressed turn in Sometimes mode (the default)
-/// may be passed over, while Always answers everything (<see cref="MayPass"/>).</summary>
+/// when it decides to.</summary>
 public sealed record DiscordTurn(DiscordPlace Place, DiscordSpeaker Speaker, string Text, DiscordTurnSource Source,
-    bool Addressed, IReadOnlyList<DiscordLine> Recent, DiscordChatMode Mode = DiscordChatMode.Sometimes)
-{
-    /// <summary>The reply engine may stay quiet on this turn ([pass], or not asking the model at all).</summary>
-    public bool MayPass => DiscordChatRules.MayPass(Mode, Addressed);
-}
+    bool Addressed, IReadOnlyList<DiscordLine> Recent);
 
 public sealed record DiscordReply(string Text);
 

@@ -92,11 +92,6 @@ public sealed class GatewayServer
     /// /martlet/v1/signin) in <paramref name="storage"/>. Without it nobody can sign in here.</summary>
     public void AttachSignInStorage(IGatewaySignInStorage storage) => application.SignIn.Attach(storage);
 
-    /// <summary>Sends this host's sign-in provider calls (discovery, keys, code exchange) through <paramref name="handler"/>
-    /// instead of the network: for rehearsals with an in-process issuer only.</summary>
-    public void UseSignInProviderHandler(HttpMessageHandler handler) =>
-        application.SignIn.Providers = new GatewaySignInProviders(application.Clock, handler).Create;
-
     /// <summary>Keeps the commands paired computers send this host (served at /martlet/v1/commands) in
     /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
     /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>

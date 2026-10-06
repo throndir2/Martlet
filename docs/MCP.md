@@ -222,6 +222,39 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Pictures
+
+While Companion › Pictures has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
+reply on a route that does function calling also gets `draw_picture`
+(`description`, optional `title`, `shape`, `avoid`), after the song tools. It
+starts a `picture-N` background job and returns at once; the finished picture is
+kept as a `picture` creation and shown in the talk window (`LivePicture`, whose
+click opens `LivePictureViewer`), and `perform_creation` shows a kept one again.
+See [Pictures](PICTURES.md). The talk window's status says *Starting a picture in
+the background…* while it is called, and the desktop log notes `Pictures:`
+lines (where, size, seconds; never the description).
+
+The local server's `pictures_status` reads a data directory's `pictures.json`
+(place, workflow, checkpoint or model, whether an own key is saved; never a key),
+the loaded workflow's node count, the picture creations (shape, size, engine,
+model, seconds, fixture; never titles or descriptions) and the tool and job kind.
+`pictures_check` draws one picture through the production maker: `place`
+`fixture` (default) or `comfyui` with `address` (and `workflow`
+`z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
+reporting availability, every progress stage, the media type, size, SHA-256 and
+seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
+back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+Build (a picture costs money). Desktop automation: Companion › Pictures'
+`PicturesPlace-<place>` and `PicturesHost-<host>` choices, `PicturesCheck` and
+`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesEngine`, `PicturesFeatures`, `PicturesHostState`, `PicturesSetUp`,
+`PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
+`PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
+`PicturesKeyStatus`, `PicturesUseCloud`, `PicturesTurnOff` and `PicturesTest`
+return their text. Set up, Draw with..., Turn pictures off and Draw a test picture
+save, install or draw, so they need `--allow-ui-effects`; the Creations page shows
+a picture as `CreationPicture`.
+
 ### Reminders
 
 On a PC that keeps reminders (any with a data folder), every reply on a route
@@ -697,18 +730,10 @@ the reused setup code are refused (`signin.invalid`); the laptop signs in with a
 recovery code, is paired under the host's home origin and its signed requests
 work; it asks to join and the home PC lets it in on the host's attestation
 (`NetworkSyncEngine.ApproveSignedIn`) with no check number, while a PC paired by
-code still waits for one; the home PC adds an OpenID Connect provider (its
-client secret kept on the host, `has_client_secret` only) routed to an issuer in
-the same process (`GatewayServer.UseSignInProviderHandler`); a tablet signs in
-through a simulated browser that follows the redirect to the desktop's real
-loopback listener (`LoopbackRedirect`), is refused (`signin.not_allowed`) until
-the home PC allows the identity listed under `refused`, then is paired (the
-host exchanged the code with the client secret and checked the ID token) and
-let into the network the same way; removing the owner account revokes the
-laptop (`auth.revoked`); the host's security audit holds the sign-in successes
-and failures and no secret. Not covered: the desktop windows, Windows
-Credential Manager, a host reached over the internet, a real browser and a real
-issuer.
+code still waits for one; removing the owner account revokes the laptop
+(`auth.revoked`); the host's security audit holds the sign-in successes and
+failures and no secret. Not covered: the desktop windows, Windows Credential
+Manager, a host reached over the internet and browser sign-in providers.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
@@ -720,10 +745,6 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
 `SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
-`SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
-`SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
-`SignInProviderScopes`, `SignInProviderSave`, `SignInProviderRemove`,
-`SignInRefusedList`, `SignInRefusedAllow`,
 `SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
 `SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
 `SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
@@ -2131,39 +2152,6 @@ computer it runs on; `startedLastHour`; `thinks`, each running think's `id`,
 with `computer`, `where`, `available`, `rank` and `heldBy` (the job IDs holding
 it now); and `maxThinks`),
 never a task or result. Read-only.
-
-`discord_reply_status` shows Martlet's Discord reply engine (optional absolute
-`dataDirectory`): `file` (*none*, *loaded* or *unreadable*) and `engine`, the
-desktop's `discord-replies.json`, written when the desktop wires the engine at
-start and after every Discord turn: `wired`, `startedAt`, `updatedAt`,
-`replies`, `passes` ([pass] or nothing to add), `skipped` and `lastSkip`
-(*chance*, *cooldown*, *hourly_limit*, *not_twice_in_a_row*, *place_busy*,
-*local.busy*, *local.preempted*), `failures`, `lastError` and `lastErrorAt`
-(codes such as *thinking.not_set_up* or a provider failure), `places` (places
-with history), `running`, `lastReplyAt`, `lastPassAt`, `lastLatencyMs`,
-`lastFirstWordsMs`, `lastInputTokens`, `lastCachedTokens`, `waitingForLocal`,
-`preemptedByLocal`, `route` (`routeType`, `model`, `onYourNetwork`),
-`localStrategy` and `lanes`; and `discord`, discord.json's chat setup
-(`configured`, `enabled`, `ownerSet`, `serverChat`, `directChat`, `voiceChat`,
-`channelRules`, `people`). Never what was said, names, IDs or the token.
-Read-only.
-
-`discord_reply_check` rehearses the engine's production Discord side
-(`DiscordReplier`: per-place history, the ambient gate, multi-party prompt
-shaping, [pass] and Discord's limits) through the production Chat Completions
-adapter against a fixture endpoint on 127.0.0.1 (canned replies, NOT AI).
-`fixture.steps` are seven made-up turns, each with `expected`, `outcome`
-(*reply*, *pass* or *skip:reason*), `replyCharacters`, `reply` and `sent` (each
-message's `role`, `characters` and start; `tools` false): ambient chatter
-skipped by chance, an addressed turn answered, ambient right after it skipped
-by the cooldown, ambient naming Martlet passed with [pass], an over-long answer
-kept within 2000 characters, a voice-call answer without markdown or emoji and
-the owner's DM; `ok` when every outcome matches. The desktop sends the same
-shaped turns inside the live conversation's own request (persona, style, lore,
-memory, reply length; `DiscordReplyEngine`), which `DiscordReplyEngineTests`
-check. With `live: true` it also asks Ollama on this PC (the saved local Thinking
-model, or `model`) two made-up turns with the saved persona: `live.turns`
-(`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
 
 The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
 places think at once, and each paired computer's `DeepThinkingPool-<host>` box
@@ -3968,7 +3956,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

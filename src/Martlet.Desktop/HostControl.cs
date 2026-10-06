@@ -67,6 +67,7 @@ internal static class HostRoles
     internal const string GptSovits = "gpt-sovits";
     internal const string Dia = "dia";
     internal const string Singing = "singing";
+    internal const string Pictures = "pictures";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -124,7 +125,10 @@ internal static class HostRoles
         new(Singing, "Sings", "Singing", "an NVIDIA GPU with at least 6 GB",
             Audio2FaceHostConnection.SongRouteId, "singing",
             "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer). " +
-            "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle.")
+            "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle."),
+        new(Pictures, "Draws", "Pictures", "an NVIDIA GPU with at least 8 GB",
+            Audio2FaceHostConnection.PictureRouteId, "pictures",
+            "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

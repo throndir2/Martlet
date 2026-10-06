@@ -31,15 +31,10 @@ internal sealed partial class GatewayHttpApplication
 
     private GatewaySignInService? signIn;
 
-    internal TimeProvider Clock => clock;
-
     internal GatewaySignInService SignIn => signIn ?? throw new InvalidOperationException("Sign-in is not initialized.");
 
-    internal void InitializeSignIn(GatewayCredentialStore credentials)
-    {
-        var providers = new GatewaySignInProviders(clock);
-        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message)) { Providers = providers.Create };
-    }
+    internal void InitializeSignIn(GatewayCredentialStore credentials) =>
+        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message));
 
     private static bool IsSignInTarget(string rawTarget) =>
         rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInSettingsPath;
@@ -151,10 +146,6 @@ internal sealed partial class GatewayHttpApplication
             {
                 DeviceId = e.DeviceId, Provider = e.Provider, Subject = e.Subject, Label = e.Label, EnrolledAt = e.EnrolledAt
             }).ToArray(),
-            Refused = SignIn.Refused().Select(r => new SignInEnrolledDocument
-            {
-                DeviceId = r.DeviceId, Provider = r.Identity.Provider, Subject = r.Identity.Subject, Label = r.Identity.Label, EnrolledAt = r.At
-            }).ToArray(),
             RecoveryCodes = codes
         }).ConfigureAwait(false);
     }
@@ -245,8 +236,6 @@ internal sealed partial class GatewayHttpApplication
         public required SignInProviderSettingsDocument[] Providers { get; init; }
         public required SignInAllowedDocument[] Allowed { get; init; }
         public required SignInEnrolledDocument[] Enrolled { get; init; }
-        /// <summary>Identities that signed in at a provider but aren't allowed (newest first), so the owner can allow them.</summary>
-        public required SignInEnrolledDocument[] Refused { get; init; }
         /// <summary>Only in the answer to the change that made them; shown once to the owner, kept here only as verifiers.</summary>
         public IReadOnlyList<string>? RecoveryCodes { get; init; }
     }
