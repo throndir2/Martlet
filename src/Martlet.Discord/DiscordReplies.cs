@@ -90,7 +90,8 @@ public sealed class DiscordHistory(DiscordReplyOptions? options = null)
         lock (gate) lines = places.TryGetValue(place, out var kept) ? [.. kept] : [];
         if (recent is null) return lines;
         foreach (var line in recent.Select(Bound))
-            if (!lines.Any(seen => seen.FromMartlet == line.FromMartlet && seen.Speaker == line.Speaker && seen.Text == line.Text &&
+            // Martlet's own lines may carry another of its names; anyone else's match by name too.
+            if (!lines.Any(seen => seen.FromMartlet == line.FromMartlet && (line.FromMartlet || seen.Speaker == line.Speaker) && seen.Text == line.Text &&
                     (seen.At - line.At).Duration() < TimeSpan.FromMinutes(1)))
                 lines.Add(line);
         return [.. lines.OrderBy(line => line.At).TakeLast(options.HistoryLines)];
