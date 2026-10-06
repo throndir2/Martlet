@@ -9,16 +9,23 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
-- **Set it all up for me** in the welcome tour and on Home sets up thinking, listening and a voice that fit your PC in one go: the smallest local model that hears you, your default microphone, and a voice on your graphics card when it has room (a Windows voice otherwise). ([#475](https://github.com/throndir2/Martlet/pull/475))
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Changed
-- A brand-new README with screenshots, a feature tour and a Buy Me a Coffee link. ([#472](https://github.com/throndir2/Martlet/pull/472), [#473](https://github.com/throndir2/Martlet/pull/473))
-- Every release now lists what changed in its notes. ([#474](https://github.com/throndir2/Martlet/pull/474))
 - People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Fixed
 - A voice no longer learns "no name yet" or similar placeholders as its name, and ones learned by mistake are dropped. ([#477](https://github.com/throndir2/Martlet/pull/477))
+
+## [0.49.0] - 2026-10-06
+
+### Added
+- **Set it all up for me** in the welcome tour and on Home sets up thinking, listening and a voice that fit your PC in one go: the smallest local model that hears you, your default microphone, and a voice on your graphics card when it has room (a Windows voice otherwise). ([#475](https://github.com/throndir2/Martlet/pull/475))
+
+### Changed
+- A brand-new README with screenshots, a feature tour and a Buy Me a Coffee link. ([#472](https://github.com/throndir2/Martlet/pull/472), [#473](https://github.com/throndir2/Martlet/pull/473))
+- Every release now lists what changed in its notes. ([#474](https://github.com/throndir2/Martlet/pull/474))
+
 ## [0.48.0] - 2026-10-06
 
 ### Added

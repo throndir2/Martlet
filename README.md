@@ -50,13 +50,12 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.48.0
+## 🆕 What's new in 0.49.0
 
-- 💬 **WhatsApp**: chat with Martlet from WhatsApp, with guided setup.
-- 📹 **Discord camera**: picture backgrounds and free character framing in Discord calls.
-- 🖥️ **Devices**: a folding map and a searchable list for lots of computers.
-- 🗂️ **Conversation history**: edits and deletes follow you across your PC, Telegram, Discord and WhatsApp.
-- ⚖️ **Sharing work**: busy computers, job order and dedicated hosts are respected.
+- ✨ **Set it all up for me**: one click sets up thinking, listening and a voice that fit your PC.
+- 🎙️ **Listening and voice out of the box**: your default microphone and a voice that suits your graphics card, or the processor when it's full.
+- 🧠 **A model that hears you**: Martlet starts with the smallest local model that also hears your voice.
+- 📖 **A fresh README**: screenshots, a feature tour and release notes for every version.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
