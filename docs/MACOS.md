@@ -4,7 +4,10 @@
 > built in .NET (Avalonia companion shared with Linux, .NET gateway as the Mac
 > host) per [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md). The
 > Swift sections below remain the iPhone/iPad plan and the reference for
-> Apple-only engines; the platform research below still applies.
+> Apple-only engines; the platform research below still applies. The Mac
+> companion's macOS integration (overlay, hot key, Keychain, screen looks,
+> login item, menu bar, probe) is built in DX03, not yet run on a Mac: see
+> [DX03 status](DESKTOP_LINUX_MACOS.md#dx03-status-macos-integration-2026-10-06).
 
 **Plan, 2026-09-30. No macOS code, build or Mac test exists yet; everything
 below is design and dated platform research, and every Mac result is NOT
@@ -397,11 +400,11 @@ verify>`. Nothing in this table has run on a Mac.
 | Speaking: Apple voices | apple-voices | yes | yes | yes: serves the new speech route (IO04) | yes: serves the new speech route (IO04) | 14 | Optional downloaded Enhanced/Premium voices | planned MA03 (host), MA04 (companion) |
 | Speaking: Personal Voice | personal-voice | yes: after per-app authorization | unknown: creating one needs Apple silicon; using a synced voice on Intel is unverified | limited: only after an on-Mac confirmation that replies in your voice play on another computer | unknown: same as Intel companion | 14 | Apple silicon to create the voice; Personal Voice authorization | planned MA03 (host), MA04 (companion) |
 | Thinking and vision: MLX models | mlx-llm | yes: on this Mac | no: MLX needs Apple silicon | yes: serves the chat route, including screen images with vision models | no: MLX needs Apple silicon | 14 | Apple silicon; memory per model | planned MA02 |
-| Watch my screen | screen-watch | yes: ScreenCaptureKit | yes: ScreenCaptureKit | no: watching runs on the companion | no: watching runs on the companion | 14 | Screen & System Audio Recording permission (re-confirmed periodically on 15+); protected video reads black | planned MA06 |
-| Character overlay | character-overlay | yes: floating panel over full-screen Spaces | yes: WebGL on Intel graphics, heavier | no: drawn on the companion | no: drawn on the companion | 14 | None; behavior over games that capture the display exclusively is unverified | planned MA05 |
+| Watch my screen | screen-watch | yes: ScreenCaptureKit | yes: ScreenCaptureKit | no: watching runs on the companion | no: watching runs on the companion | 14 | Screen & System Audio Recording permission (re-confirmed periodically on 15+); protected video reads black | one-JPEG looks built in DX03 (`MacScreenCapture`), NOT RUN on a Mac |
+| Character overlay | character-overlay | yes: floating panel over full-screen Spaces | yes: WebGL on Intel graphics, heavier | no: drawn on the companion | no: drawn on the companion | 14 | None; behavior over games that capture the display exclusively is unverified | window behaviors built in DX03 (`MacCharacterOverlay`), NOT RUN on a Mac |
 | Voice ID | voice-id | yes | yes | no: runs on the companion before upload | no: runs on the companion before upload | 14 | Microphone permission; local enrollment | planned MA07 |
 | Local memory | memory | yes | yes | no: stays on the companion | no: stays on the companion | 14 | None | planned MA07 |
-| Push-to-talk hotkey | ptt-hotkey | yes: global hotkey, no Accessibility permission | yes: global hotkey, no Accessibility permission | no: companion feature | no: companion feature | 14 | Combination with Command or Control; a mouse-button key would need Input Monitoring | planned MA04 |
+| Push-to-talk hotkey | ptt-hotkey | yes: global hotkey, no Accessibility permission | yes: global hotkey, no Accessibility permission | no: companion feature | no: companion feature | 14 | Combination with Command or Control (a bare F-key also works, with fn on Mac keyboards); a mouse-button key would need Input Monitoring | built in DX03 (`MacPushToTalkHotkey`), NOT RUN on a Mac |
 | Hands-free listening | hands-free | yes: energy VAD with echo cancellation | yes: energy VAD with echo cancellation | no: companion feature | no: companion feature | 14 | Microphone permission | planned MA04 |
 | Microphone/speaker satellite | satellite | no: a Mac companion using a satellite is not planned (IO10 targets the Windows companion) | no: same as Apple silicon companion | yes: lends its microphone and speakers to another companion | yes: lends its microphone and speakers to another companion | 14 | Microphone permission; user logged in | planned MA09 |
 | Host through Docker Desktop for Mac | docker-host | no: host-only method | no: host-only method | limited: CPU only inside a Linux VM; host image needs the arm64 fix | unknown: expected to work like Docker Desktop on Windows, CPU only; never run | 15 (Docker supports the current and two previous macOS) | Docker Desktop, 4 GB+ RAM | planned MA10 |
