@@ -407,7 +407,9 @@ Windows) and optional `dataDirectory` whose saved prompt edits are used. It
 returns the engine, `supportsTags`, its `tags`, the same split into `sounds`
 (non-word sounds such as `[laugh]`) and `tones` (tones of voice such as
 `[whispering]`), `cues` (each tag's
-engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
+engine-independent cue, such as `laugh` for `[laugh]`), `synonyms` (each tag's
+other words that also count as it, such as `whisper`, `whispers` and `hushed`
+for `[whispering]`), `prompt` (the *Voice
 sounds and tones* instructions the Thinking model gets, the sounds and the tones
 each under a line saying where they go, or null), `spoken` (the
 pieces the real speech segmenter hands that engine for a spoken reply, its own
