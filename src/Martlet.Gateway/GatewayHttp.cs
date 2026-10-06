@@ -49,6 +49,8 @@ internal sealed partial class GatewayHttpApplication
         Network = new(identity, credentials, clock, (level, message) => Logs.Own(level, message));
         ApiKeys = new(identity.HostId, clock);
         Guard = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
+        // A host whose roster entry lists outside addresses is reachable from outside: the guard's limits apply to every source.
+        Network.Changed = roster => Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
     }
 
     /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>

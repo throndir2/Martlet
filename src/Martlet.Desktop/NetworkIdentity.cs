@@ -50,7 +50,12 @@ internal static class NetworkIdentity
     {
         lock (FileGate)
         {
-            try { return NetworkLocalState.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, NetworkLocalState.FileName))); }
+            try
+            {
+                var state = NetworkLocalState.Parse(File.ReadAllBytes(Path.Combine(dataDirectory, NetworkLocalState.FileName)));
+                HostRoutes.Update(state.Roster);
+                return state;
+            }
             catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return NetworkLocalState.Empty; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException)
             {
@@ -71,6 +76,7 @@ internal static class NetworkIdentity
             {
                 File.WriteAllBytes(temporary, state.Write());
                 File.Move(temporary, path, overwrite: true);
+                HostRoutes.Update(state.Roster);
             }
             finally
             {
