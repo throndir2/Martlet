@@ -59,8 +59,8 @@ internal static class ThinkLongerCheck
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
             thinkLonger = new
             {
-                enabled = settings.On, effort = settings.HowHard.ToString(), minutes = (int)settings.TimeLimit.TotalMinutes,
-                perHour = settings.Hourly, delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null,
+                enabled = settings.On, effort = settings.HowHard.ToString(), timeLimit = "none", hourlyLimit = "none",
+                delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null,
                 webResearch = settings.WebResearch == true, researches = settings.Researches
             },
             thinking = route is null ? null : new
@@ -569,6 +569,24 @@ internal static class ThinkLongerCheck
         // The conversation ending stops everything and drops what wasn't brought up.
         jobs.CancelAll();
         await Until(() => lateSong.Job!.Finished);
+        // Deep thinking's own kind has no time limit and no hourly limit: far more thinks than any old hourly limit start one after
+        // another, and one keeps running past the fixture kind's time limit until it is canceled.
+        using var unlimitedJobs = new BackgroundJobs();
+        var production = ThinkLonger.Kind(new ThinkLongerSettings());
+        var unlimitedStarted = 0;
+        for (var i = 0; i < 20; i++)
+        {
+            var next = unlimitedJobs.Start(production, $"think {i}", Forever);
+            if (!next.Started) break;
+            unlimitedStarted++;
+            unlimitedJobs.Cancel(next.Job!.Id, BackgroundJob.CanceledByYou);
+            await Until(() => next.Job.Finished);
+        }
+        var longRun = unlimitedJobs.Start(production, "a long think", Forever);
+        await Task.Delay(TimeSpan.FromSeconds(1.5), cancellation);
+        var stillRunning = longRun.Job is { Finished: false };
+        unlimitedJobs.CancelAll();
+        var unlimited = production.TimeLimit is null && production.MaxPerHour is null && unlimitedStarted == 20 && stillRunning;
         var timedOut = timed.Job;
         var songRun = songJob.Job!;
         var lateRun = lateSong.Job!;
@@ -578,10 +596,15 @@ internal static class ThinkLongerCheck
             first.Job.Delivery == BackgroundDeliveryState.Delivered &&
             timedOut is { State: BackgroundJobState.TimedOut } && hourly.Refusal == "hourly_limit" &&
             songRun.State == BackgroundJobState.Canceled && songRun.Delivery == BackgroundDeliveryState.Delivered &&
-            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews;
+            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited;
         return (ok, new
         {
             ok,
+            deepThinkingUnlimited = new
+            {
+                ok = unlimited, timeLimit = production.TimeLimit?.ToString() ?? "none", hourlyLimit = production.MaxPerHour?.ToString() ?? "none",
+                startedInARow = unlimitedStarted, runningAfterFixtureLimit = stillRunning, requestTimeHours = ThinkLonger.RequestTime.TotalHours
+            },
             oneAtATime = new { first = first.Job.Id, second = second.Refusal, told = ThinkLonger.Refused(second) },
             besideASong = new { song = songRun.Id, activeTogether = together, offer = song.Offer },
             youCanceled = new

@@ -55,6 +55,9 @@ internal sealed class HostTextClient : IHostTextClient
             ErrorLog.Info($"Martlet host {target.HostId} takes at most {LegacyOutputTokens:N0} tokens and " +
                 $"{route.MaximumDuration.TotalSeconds:0} s a request (an older version); update it to this Martlet version for longer thinks.");
         }
+        // The host takes a request for at most its route's longest job; a think (no time limit of its own) asks for that much.
+        var longest = DateTimeOffset.UtcNow + route.MaximumDuration - TimeSpan.FromSeconds(5);
+        if (deadline > longest) deadline = longest;
         await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.PersonalityWithNotes, history, input.UserText,
             generation?.Temperature ?? HostTextGenerationStream.Temperature, outputTokens, limits.MaxContextTokens,
             input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)

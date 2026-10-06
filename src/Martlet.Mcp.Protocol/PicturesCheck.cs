@@ -34,7 +34,7 @@ internal static class PicturesCheck
             kind = new
             {
                 name = PictureTools.Kind.Name, maxActive = PictureTools.Kind.MaxActive, perHour = PictureTools.Kind.MaxPerHour,
-                timeLimitMinutes = PictureTools.Kind.TimeLimit.TotalMinutes, doing = PictureTools.Kind.Doing
+                timeLimitMinutes = PictureTools.Kind.TimeLimit?.TotalMinutes, doing = PictureTools.Kind.Doing
             },
             tool = new
             {

@@ -41,6 +41,7 @@ public static class PromptCatalog
     public const string CommentaryScreen = "commentary_screen";
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
+    public const string SeenTag = "seen_tag";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
@@ -88,7 +89,7 @@ public static class PromptCatalog
         "think_longer works a task out in the background while you keep talking. Use it rarely: only when a request genuinely " +
         "needs careful multi-step reasoning or long creative work (song lyrics, a story, a plan, tricky math or code) and a quick " +
         "answer would fall short; never for casual chat, small talk or quick facts. Always tell the user first, in character and " +
-        "before calling it, that you'll think it over and it may take a while (up to {minutes} minutes), like \"Ooh, let me think " +
+        "before calling it, that you'll think it over and it may take a while, like \"Ooh, let me think " +
         "about that one, give me a bit.\" Give it a complete, self-contained task. Carry on normally meanwhile and never pretend " +
         "it's done; a note brings you the result.";
 
@@ -306,9 +307,8 @@ public static class PromptCatalog
             DefaultToolInstructions, []),
         new(ThinkLonger, ConversationGroup, "Thinking longer",
             "Added to every reply offered think_longer (Companion › Replies › Thinking longer, on by default, on a Thinking route " +
-            "that does function calling), after the tools prompt. It stays the same from reply to reply while the setting is on. " +
-            "{minutes} is the time limit.",
-            DefaultThinkLongerInstructions, ["minutes"]),
+            "that does function calling), after the tools prompt. It stays the same from reply to reply while the setting is on.",
+            DefaultThinkLongerInstructions, []),
         new(BackgroundDone, ConversationGroup, "Background work finished",
             "The message of the reply Martlet starts on its own as soon as it is free, once its background work (a think_longer " +
             "task) finished. It stays in the conversation like a message. {results} lists each finished job, how it ended and " +
@@ -481,6 +481,17 @@ public static class PromptCatalog
             "me?\"); otherwise answer normally. Never describe it unprompted, never mention images or screenshots, and never read " +
             "out private details from it (messages, emails, numbers) unless they ask about them.",
             ["source"]),
+        new(SeenTag, VisionGroup, "What you saw",
+            "Added to every screen glance and camera look, and to replies whose message comes with a picture, after their own " +
+            "instructions; it never changes, so the instructions stay the same. The reply ends with [seen: ...]: a few words on " +
+            "what the picture shows, never shown or spoken. Martlet keeps them in the conversation (as a [Screen] or [Camera] " +
+            "line) instead of the picture, which is never kept. {silent} is the word for staying quiet. Empty it and the " +
+            "conversation keeps only where Martlet looked.",
+            "When you get a picture, end your answer (also after [{silent}]) with [seen: a few words on what it shows right " +
+            "now], like [seen: a racing game, final lap, they're in first]: at most 12 plain words, once, at the very end. It is " +
+            "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
+            "names in them, numbers).",
+            ["silent"]),
 
         new(MemoryCapture, BackgroundGroup, "Remembering",
             "Asks the Thinking model what to remember after each reply. Martlet reads the REMEMBER, UPDATE and FORGET lines it answers; " +
