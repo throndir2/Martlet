@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Martlet
+Comment=Talk with your Martlet companion
+Exec=martlet %U
+Icon=io.github.throndir2.Martlet
+Terminal=false
+Categories=Utility;
+StartupWMClass=Martlet
