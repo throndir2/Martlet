@@ -143,7 +143,7 @@ a relabeled development build.
 ## Developer commands
 
 All validation below runs locally under the
-[repository policy](../../README.md#local-only-validation-policy). Keep every
+[repository policy](../../CONTRIBUTING.md#local-only-validation-policy). Keep every
 package assertion, repeat-publish comparison and smoke gate. The retained
 `Test-WorkflowExit.ps1` exercises the former GitHub pwsh wrapper semantics as a
 local regression; it neither invokes Actions nor requires a workflow definition.

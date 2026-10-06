@@ -299,7 +299,7 @@ plays audio, or changes devices/privacy. Compiling WPF/WASAPI and passing fake-
 device tests is not hardware evidence. No native audio smoke helper is installed.
 
 Use the pinned SDK and existing locked local validation commands under the
-[repository policy](../README.md#local-only-validation-policy); e.g. with
+[repository policy](../CONTRIBUTING.md#local-only-validation-policy); e.g. with
 `CI=true` and an isolated artifact directory consistently supplied to all commands:
 
 ```powershell

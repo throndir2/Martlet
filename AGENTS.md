@@ -153,7 +153,7 @@ or release qualification. Independent review agents and package/smoke gates are
 optional; use them when the change warrants it.
 ## Publication and merge
 
-Follow the [validation policy](README.md#local-only-validation-policy)
+Follow the [validation policy](CONTRIBUTING.md#local-only-validation-policy)
 and [delivery protocol](docs/DELIVERY.md). Before each push, PR creation/update
 or merge, check the applicable workflow triggers so publishing starts no remote
 validation, including self-hosted Actions. If no safe path exists, retain the

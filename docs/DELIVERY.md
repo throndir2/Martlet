@@ -9,7 +9,7 @@ The original empty baseline is historical. Current implementation and evidence
 must not be confused with the broader planned milestones below.
 
 **Current validation policy, 2026-10-03:** follow the
-[repository policy](../README.md#local-only-validation-policy): every change
+[repository policy](../CONTRIBUTING.md#local-only-validation-policy): every change
 passes its targeted tests and MCP verification locally before merge
 ([Validating changes](VALIDATION.md)); never remote validation. Earlier
 hosted-CI plans are superseded. Package-integrity and qualification gates below

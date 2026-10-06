@@ -288,7 +288,7 @@ dotnet test tests\Martlet.Support.Tests --no-build -c Release --artifacts-path $
 Use the repository-pinned SDK, an isolated CLI home, and a single unique local
 artifact directory. Run these direct-project commands locally without keys,
 uploads or application startup under the
-[repository policy](../../README.md#local-only-validation-policy); the former
+[repository policy](../../CONTRIBUTING.md#local-only-validation-policy); the former
 hosted support workflow is removed, not replaced.
 Historical local/hosted fixture evidence is not physical audio, a reproduced real
 provider issue, a clean consumer installation, a signed release, or a shipped support UI.
