@@ -88,6 +88,12 @@
       "martlet.core": {
         "type": "Project"
       },
+      "martlet.credentials.windows": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.45.0, )"
+        }
+      },
       "martlet.diagnostics": {
         "type": "Project",
         "dependencies": {
