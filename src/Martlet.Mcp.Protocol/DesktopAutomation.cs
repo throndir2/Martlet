@@ -280,6 +280,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // when the job left that provider, or ask for one (never the key). Its Use button (SetupCloudSave-<page>) and
         // SetupUseLocalThinking save the route, so they need --allow-ui-effects.
         "SetupJobNow-Thinking", "SetupJobNow-Voice", "SetupJobNow-Listening",
+        // The job's line about your Martlet network: the host your computers use for it and why this PC hasn't switched yet,
+        // or that your other computers use this PC for it (host IDs and reasons only).
+        "SetupJobNetwork-Thinking", "SetupJobNetwork-Voice", "SetupJobNetwork-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
