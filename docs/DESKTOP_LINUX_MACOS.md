@@ -99,19 +99,38 @@ catalog's reason, not silently changed.
 
 ## Installers (part of the release build)
 
-`windows-release.yml` (manual dispatch, the only allowed workflow) gains Linux
-and macOS jobs that attach to the same `v<version>` release, with no tests:
+`windows-release.yml` (manual dispatch, the only allowed workflow; shown as
+*Release (manual) - Windows, Linux and macOS*) builds the Linux and macOS
+packages in parallel with the Windows installer, with no tests. An `attach` job
+waits for all three, fails if the Windows job did not create `v<version>` at
+the built commit, uploads the six files, checks GitHub's SHA-256 digests and
+appends Linux/macOS install text and their SHA-256 lines to the release notes.
 
-- **Linux:** `Martlet-<version>-linux-x64.AppImage`,
-  `martlet_<version>_amd64.deb`, plus arm64 equivalents. Self-contained .NET;
-  the `.deb` depends on `libwebkit2gtk-4.1-0` and `libsecret-1-0`.
-- **macOS:** `Martlet-<version>-macos-arm64.dmg` and
-  `Martlet-<version>-macos-x64.dmg`, `.app` bundle ad-hoc signed (not notarized;
-  first launch needs **Open Anyway** once, see
-  [Unsigned builds](MACOS.md#unsigned-builds-what-the-user-sees)). The Mac host
-  ships inside the app bundle.
-- Packaging scripts live in `packaging/linux` and `packaging/macos` and run
-  locally too (Linux packaging on a Linux validation host or WSL).
+- **Linux** (`packaging/linux/build-linux.sh`, ubuntu-24.04, both
+  architectures built on x64): `Martlet-<version>-linux-x64.AppImage`,
+  `martlet_<version>_amd64.deb`, `Martlet-<version>-linux-arm64.AppImage`,
+  `martlet_<version>_arm64.deb`. Self-contained .NET publish; app id and
+  desktop entry `io.github.throndir2.Martlet` (the portals identify Martlet by
+  it). The `.deb` installs to `/opt/martlet` with a `martlet` command, menu
+  entry and icon, depends on `libwebkit2gtk-4.1-0`, `libsecret-1-0`, libicu,
+  X11 libraries and recommends `libpipewire-0.3-0`. The AppImage (pinned
+  appimagetool 1.9.1 and type2 runtime, checked by SHA-256) uses the
+  distribution's WebKitGTK 4.1, libsecret and libicu.
+- **macOS** (`packaging/macos/build-macos.sh`, macos-26, osx-x64
+  cross-published): `Martlet-<version>-macos-arm64.dmg` and
+  `Martlet-<version>-macos-x64.dmg`. `Martlet.app` holds the companion in
+  `Contents/MacOS` and the Mac host (`Martlet.Gateway.Host.Linux`, DX04) in
+  `Contents/Resources/host`; `Info.plist` (`make-bundle.py`) sets
+  `io.github.throndir2.martlet`, `LSMinimumSystemVersion` 14.0 and the
+  microphone and local network usage texts. Ad-hoc signed
+  (`codesign --force --deep -s -`, host binaries first), not Developer ID
+  signed and not notarized: first launch needs **Open Anyway** once, see
+  [Unsigned builds](MACOS.md#unsigned-builds-what-the-user-sees).
+- Both scripts run locally (`--project`, `--output`, `--dotnet`, `--arch` per
+  architecture). Linux packaging needs bash, curl, sha256sum, file and
+  dpkg-deb (a Linux host, WSL or `mcr.microsoft.com/dotnet/sdk` in Docker).
+  `build-macos.sh` builds and checks the bundles anywhere with python3 and
+  makes the `.dmg` only on a Mac (`--no-dmg` skips it).
 
 ## Delivery slices
 
