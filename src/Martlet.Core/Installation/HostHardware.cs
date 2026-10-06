@@ -69,7 +69,7 @@ public sealed record HostHardware(
 public sealed class HostHardwareStore(string dataDirectory)
 {
     public const string FileName = "host-hardware.json";
-    private const int MaximumHosts = 16;
+    private const int MaximumHosts = 64;
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,

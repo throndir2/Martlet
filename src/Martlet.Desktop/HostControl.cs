@@ -143,8 +143,8 @@ internal static class HostRoles
 internal static class HostRegistry
 {
     internal const string FileName = "hosts.json";
-    internal const int MaximumHosts = 16;
-    private const int MaximumBytes = 65_536;
+    internal const int MaximumHosts = 64;
+    private const int MaximumBytes = 262_144;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private sealed record Document

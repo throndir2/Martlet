@@ -262,14 +262,32 @@
                 <StackPanel Margin="36,30,36,24" MaxWidth="1100">
                     <DockPanel Margin="0,0,0,18">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Map or list (MainWindow.DeviceList.cs): the list shows by itself once the map can't fit every device. -->
+                            <RadioButton x:Name="DevicesViewMap" GroupName="DevicesView" Style="{DynamicResource FilterPill}" Margin="0,0,6,0"
+                                         VerticalAlignment="Center" Checked="DevicesView_Checked"
+                                         AutomationProperties.AutomationId="DevicesViewMap" AutomationProperties.Name="Show devices as a map">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="13" Text="&#xE968;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Map" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="DevicesViewList" GroupName="DevicesView" Style="{DynamicResource FilterPill}" Margin="0,0,16,0"
+                                         VerticalAlignment="Center" Checked="DevicesView_Checked"
+                                         AutomationProperties.AutomationId="DevicesViewList" AutomationProperties.Name="Show devices as a list">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="13" Text="&#xE8FD;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="List" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
                             <Button Content="Refresh" Click="RefreshDevices_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="RefreshDevices"/>
                             <Button Content="Add a computer" Style="{DynamicResource PrimaryButton}" Click="Hosts_Click"
                                     AutomationProperties.AutomationId="AddComputer"/>
                         </StackPanel>
                         <StackPanel>
                             <TextBlock Text="Your devices" Style="{DynamicResource PageTitle}"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0"
-                                       Text="Select a computer or service to see details."/>
+                            <TextBlock x:Name="DevicesSummary" Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
+                                       Text="Select a computer or service to see details."
+                                       AutomationProperties.AutomationId="DevicesSummary" AutomationProperties.LiveSetting="Polite"/>
                         </StackPanel>
                     </DockPanel>
                     <Border x:Name="MapHost" CornerRadius="24" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}"
@@ -278,6 +296,26 @@
                             <Canvas x:Name="MapCanvas" Width="900" Height="364" AutomationProperties.Name="Device map"/>
                         </Viewbox>
                     </Border>
+                    <!-- Every device as a grid of cards, filtered and searched; it scrolls on its own so the details stay close. -->
+                    <StackPanel x:Name="DeviceListHost" Visibility="Collapsed" Margin="0,0,0,18">
+                        <DockPanel Margin="0,0,0,8">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,6">
+                                <Label Content="_Find" Target="{Binding ElementName=DeviceSearch}" Padding="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="DeviceSearch" Width="220" MaxLength="100" VerticalAlignment="Center" TextChanged="DeviceSearch_Changed"
+                                         AutomationProperties.AutomationId="DeviceSearch" AutomationProperties.Name="Find a device by name, status or job"/>
+                            </StackPanel>
+                            <WrapPanel x:Name="DeviceFilters" VerticalAlignment="Center" AutomationProperties.Name="Show devices"/>
+                        </DockPanel>
+                        <TextBlock x:Name="DeviceListStatus" Style="{DynamicResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="DeviceListStatus" AutomationProperties.LiveSetting="Polite"/>
+                        <Border CornerRadius="24" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" Padding="14,14,4,4">
+                            <ScrollViewer x:Name="DeviceListScroll" VerticalScrollBarVisibility="Auto" MaxHeight="420"
+                                          SizeChanged="DeviceListScroll_SizeChanged">
+                                <UniformGrid x:Name="DeviceList" Columns="4" VerticalAlignment="Top" AutomationProperties.Name="Devices"/>
+                            </ScrollViewer>
+                        </Border>
+                    </StackPanel>
                     <StackPanel x:Name="RolesCoverage" AutomationProperties.Name="What isn't working right now"/>
                     <Border x:Name="DetailCard" Style="{DynamicResource CardStyle}" Padding="26,22">
                         <StackPanel x:Name="DetailContent" AutomationProperties.Name="Selected device" AutomationProperties.LiveSetting="Polite"/>
