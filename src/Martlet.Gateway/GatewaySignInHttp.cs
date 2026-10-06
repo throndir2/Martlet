@@ -31,10 +31,15 @@ internal sealed partial class GatewayHttpApplication
 
     private GatewaySignInService? signIn;
 
+    internal TimeProvider Clock => clock;
+
     internal GatewaySignInService SignIn => signIn ?? throw new InvalidOperationException("Sign-in is not initialized.");
 
-    internal void InitializeSignIn(GatewayCredentialStore credentials) =>
-        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message));
+    internal void InitializeSignIn(GatewayCredentialStore credentials)
+    {
+        var providers = new GatewaySignInProviders(clock);
+        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message)) { Providers = providers.Create };
+    }
 
     private static bool IsSignInTarget(string rawTarget) =>
         rawTarget is SignInPath or SignInBeginPath or SignInCompletePath or SignInSettingsPath;
@@ -53,7 +58,7 @@ internal sealed partial class GatewayHttpApplication
             await WriteJsonAsync(context, StatusCodes.Status200OK, new SignInProvidersDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId,
-                Providers = SignIn.Available().Select(p => new SignInProviderDocument { Id = p.Id, Kind = p.Kind, Name = p.Name }).ToArray()
+                Providers = SignIn.Available().Select(p => new SignInProviderDocument { Id = p.Id, Kind = p.Kind, Name = p.Name, RedirectPort = p.RedirectPort }).ToArray()
             }).ConfigureAwait(false);
             return;
         }
@@ -139,12 +144,16 @@ internal sealed partial class GatewayHttpApplication
             Providers = current.Providers.Select(p => new SignInProviderSettingsDocument
             {
                 Id = p.Id, Kind = p.Kind, Name = p.Name, Issuer = p.Issuer, ClientId = p.ClientId, Scopes = p.Scopes,
-                HasClientSecret = p.ClientSecret is not null
+                RedirectPort = p.RedirectPort, HasClientSecret = p.ClientSecret is not null
             }).ToArray(),
             Allowed = current.Allowed.Select(a => new SignInAllowedDocument { Provider = a.Provider, Subject = a.Subject, Label = a.Label, AddedAt = a.AddedAt }).ToArray(),
             Enrolled = current.Enrolled.Select(e => new SignInEnrolledDocument
             {
                 DeviceId = e.DeviceId, Provider = e.Provider, Subject = e.Subject, Label = e.Label, EnrolledAt = e.EnrolledAt
+            }).ToArray(),
+            Refused = SignIn.Refused().Select(r => new SignInEnrolledDocument
+            {
+                DeviceId = r.DeviceId, Provider = r.Identity.Provider, Subject = r.Identity.Subject, Label = r.Identity.Label, EnrolledAt = r.At
             }).ToArray(),
             RecoveryCodes = codes
         }).ConfigureAwait(false);
@@ -194,6 +203,7 @@ internal sealed partial class GatewayHttpApplication
         public required string Id { get; init; }
         public required string Kind { get; init; }
         public required string Name { get; init; }
+        public int? RedirectPort { get; init; }
     }
 
     private sealed record SignInAttemptDocument
@@ -236,6 +246,8 @@ internal sealed partial class GatewayHttpApplication
         public required SignInProviderSettingsDocument[] Providers { get; init; }
         public required SignInAllowedDocument[] Allowed { get; init; }
         public required SignInEnrolledDocument[] Enrolled { get; init; }
+        /// <summary>Identities that signed in at a provider but aren't allowed (newest first), so the owner can allow them.</summary>
+        public required SignInEnrolledDocument[] Refused { get; init; }
         /// <summary>Only in the answer to the change that made them; shown once to the owner, kept here only as verifiers.</summary>
         public IReadOnlyList<string>? RecoveryCodes { get; init; }
     }
@@ -255,6 +267,7 @@ internal sealed partial class GatewayHttpApplication
         public string? Issuer { get; init; }
         public string? ClientId { get; init; }
         public string? Scopes { get; init; }
+        public int? RedirectPort { get; init; }
         public required bool HasClientSecret { get; init; }
     }
 

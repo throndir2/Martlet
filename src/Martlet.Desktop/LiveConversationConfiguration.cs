@@ -648,6 +648,11 @@ internal sealed class LiveConversationConfiguration
 
     internal static string ListeningInstructions => Listening(null)!;
 
+    /// <summary>One moment (Companion › Prompts): every reply and glance is told, the same way each time, that one message may bring
+    /// the user's words, what this PC played, a picture and finished background work together, to answer in one reply.</summary>
+    internal static string? Moment(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.Moment, ("silent", SilentReply));
+
     /// <summary>What starts each line of a message that was heard from what the PC plays (Hear what this PC plays), so the
     /// Thinking model, the history and memory tell it apart from the user's own words.</summary>
     internal const string PcAudioMarker = "[PC audio]";
@@ -656,6 +661,11 @@ internal sealed class LiveConversationConfiguration
     /// usually get [pass].</summary>
     internal static string? PcAudio(PromptSettings? prompts) =>
         PromptSettings.Fill(prompts, PromptCatalog.PcAudio, ("marker", PcAudioMarker), ("silent", SilentReply));
+
+    /// <summary>Replies while Martlet is in the owner's own Discord call: the PC's lines are people in the call (named when
+    /// known) who can hear Martlet's spoken reply.</summary>
+    internal static string? DiscordCall(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.DiscordCall, ("marker", PcAudioMarker), ("silent", SilentReply));
 
     /// <summary>The text without the lines heard from what the PC plays and without what Martlet saw (<see cref="VisionHistory"/>
     /// lines; null when nothing else is left): what memory and learning names may read.</summary>
