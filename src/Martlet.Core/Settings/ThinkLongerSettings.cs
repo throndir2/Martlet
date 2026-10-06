@@ -11,29 +11,25 @@ public enum ThinkEffort { Medium, High }
 public enum ThinkDelivery { WhenFree, NextMessage }
 
 /// <summary>Companion › Replies › Thinking longer: whether Martlet may decide, sparingly, that a task needs real thinking and
-/// work it out in the background with the think_longer tool while the conversation carries on, how hard it thinks, how long it
-/// may take, how many it may start an hour, and when it shares the result. Saved inside <see cref="GenerationSettings"/>, so it
-/// travels with the reply settings; every value is null until changed (on by default, Medium, 5 minutes, 6 an hour, as soon as
-/// Martlet is free).</summary>
+/// work it out in the background with the think_longer tool while the conversation carries on, how hard it thinks and when it
+/// shares the result. A think has no time limit and no hourly limit: it runs until it is done or canceled. Saved inside
+/// <see cref="GenerationSettings"/>, so it travels with the reply settings; every value is null until changed (on by default,
+/// Medium, as soon as Martlet is free).</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ThinkLongerSettings : IContract
 {
     public const bool DefaultEnabled = true;
     public const ThinkEffort DefaultEffort = ThinkEffort.Medium;
-    public const int DefaultMinutes = 5;
-    public const int DefaultPerHour = 6;
     public const ThinkDelivery DefaultDelivery = ThinkDelivery.WhenFree;
-    /// <summary>The time limits offered, in minutes.</summary>
-    public static IReadOnlyList<int> MinuteChoices { get; } = [2, 5, 10];
-    /// <summary>The hourly limits offered.</summary>
-    public static IReadOnlyList<int> PerHourChoices { get; } = [3, 6, 12];
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Enabled { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ThinkEffort? Effort { get; init; }
+    /// <summary>The time limit older versions saved; read so those settings still load, then dropped (there is no limit).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Minutes { get; init; }
+    /// <summary>The hourly limit older versions saved; read so those settings still load, then dropped (there is no limit).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? PerHour { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -42,8 +38,6 @@ public sealed record ThinkLongerSettings : IContract
     [JsonIgnore] public bool IsDefault => Enabled is null && Effort is null && Minutes is null && PerHour is null && Delivery is null;
     [JsonIgnore] public bool On => Enabled ?? DefaultEnabled;
     [JsonIgnore] public ThinkEffort HowHard => Effort ?? DefaultEffort;
-    [JsonIgnore] public TimeSpan TimeLimit => TimeSpan.FromMinutes(Minutes ?? DefaultMinutes);
-    [JsonIgnore] public int Hourly => PerHour ?? DefaultPerHour;
     [JsonIgnore] public ThinkDelivery When => Delivery ?? DefaultDelivery;
 
     /// <summary>The settings in effect for <paramref name="settings"/> (unset is the default for every value).</summary>
@@ -57,8 +51,8 @@ public sealed record ThinkLongerSettings : IContract
         {
             Enabled = settings.Enabled == DefaultEnabled ? null : settings.Enabled,
             Effort = settings.Effort == DefaultEffort ? null : settings.Effort,
-            Minutes = settings.Minutes == DefaultMinutes ? null : settings.Minutes,
-            PerHour = settings.PerHour == DefaultPerHour ? null : settings.PerHour,
+            Minutes = null,
+            PerHour = null,
             Delivery = settings.Delivery == DefaultDelivery ? null : settings.Delivery
         };
         return lean.IsDefault ? null : lean;
@@ -68,9 +62,5 @@ public sealed record ThinkLongerSettings : IContract
     {
         if (Effort is { } effort) ContractRules.Defined(effort);
         if (Delivery is { } delivery) ContractRules.Defined(delivery);
-        ContractRules.Require(Minutes is null || MinuteChoices.Contains(Minutes.Value),
-            "Thinking longer's time limit must be 2, 5 or 10 minutes.");
-        ContractRules.Require(PerHour is null || PerHourChoices.Contains(PerHour.Value),
-            "Thinking longer's hourly limit must be 3, 6 or 12.");
     }
 }

@@ -87,7 +87,7 @@ public static class PromptCatalog
         "think_longer works a task out in the background while you keep talking. Use it rarely: only when a request genuinely " +
         "needs careful multi-step reasoning or long creative work (song lyrics, a story, a plan, tricky math or code) and a quick " +
         "answer would fall short; never for casual chat, small talk or quick facts. Always tell the user first, in character and " +
-        "before calling it, that you'll think it over and it may take a while (up to {minutes} minutes), like \"Ooh, let me think " +
+        "before calling it, that you'll think it over and it may take a while, like \"Ooh, let me think " +
         "about that one, give me a bit.\" Give it a complete, self-contained task. Carry on normally meanwhile and never pretend " +
         "it's done; a note brings you the result.";
 
@@ -287,9 +287,8 @@ public static class PromptCatalog
             DefaultToolInstructions, []),
         new(ThinkLonger, ConversationGroup, "Thinking longer",
             "Added to every reply offered think_longer (Companion › Replies › Thinking longer, on by default, on a Thinking route " +
-            "that does function calling), after the tools prompt. It stays the same from reply to reply while the setting is on. " +
-            "{minutes} is the time limit.",
-            DefaultThinkLongerInstructions, ["minutes"]),
+            "that does function calling), after the tools prompt. It stays the same from reply to reply while the setting is on.",
+            DefaultThinkLongerInstructions, []),
         new(BackgroundDone, ConversationGroup, "Background work finished",
             "The message of the reply Martlet starts on its own as soon as it is free, once its background work (a think_longer " +
             "task) finished. It stays in the conversation like a message. {results} lists each finished job, how it ended and " +
