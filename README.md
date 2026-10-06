@@ -209,14 +209,15 @@ character-colored themes.
 
 1. **[Download Martlet](https://github.com/throndir2/Martlet/releases/latest)**
    (`Martlet-<version>-win-x64.exe`) and run it. No administrator rights needed.
-2. **Follow the welcome tour**, then click **Set up thinking** on Home. Pick
-   *This PC* for free and private (Martlet can install Ollama for you), *another
-   of your computers*, or *a cloud provider* with your API key.
-3. **Click Start talking** and **Show character**. Say hi! 👋
+2. **Follow the welcome tour** and choose **Set it all up for me**. Martlet
+   picks what fits your PC and installs it after one confirmation: the
+   smallest local model that also hears your voice for **thinking**, your
+   default microphone for **listening**, and a **voice** on your graphics card
+   when it has room (a lighter one on the processor when it doesn't).
+3. **Start talking, start listening and show the character.** Say hi! 👋
 
-Want her to hear and speak too? Set up **Listening** and **Voice** in
-**Companion**, or click **Get a setup recommendation** and Martlet will suggest
-the best setup for your hardware.
+Prefer something else, like a cloud provider or another of your computers?
+Change any of it in **Companion**, or click **Get a setup recommendation**.
 
 > [!NOTE]
 > Martlet runs on Windows 10 (version 2004 or later) and Windows 11, 64-bit. A

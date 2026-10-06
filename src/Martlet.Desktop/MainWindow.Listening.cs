@@ -245,17 +245,17 @@ public partial class MainWindow
 
     /// <summary>Listening with Parakeet <paramref name="model"/> on this PC: one confirmation for its download (when needed),
     /// then the route switches to it.</summary>
-    private async Task UseParakeetAsync(ParakeetModel model)
+    private async Task<bool> UseParakeetAsync(ParakeetModel model, bool confirmed = false)
     {
-        if (store is null || setupService is null || parakeet is null || closing || installingParakeet is not null) return;
+        if (store is null || setupService is null || parakeet is null || closing || installingParakeet is not null) return false;
         var root = parakeet.Root;
         if (!parakeet.Installed(model.Id))
         {
             var size = SherpaComponents.Megabytes(model.DownloadBytes);
-            if (!ConfirmationDialog.Confirm(this,
+            if (!confirmed && !ConfirmationDialog.Confirm(this,
                     $"Download {model} ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved.",
                     "Download and use"))
-                return;
+                return false;
             installingParakeet = model.Id;
             parakeetProgress = null;
             RenderTab();
@@ -268,12 +268,12 @@ public partial class MainWindow
                     if (parakeetState is { } line) line.Text = $"{model}. {ParakeetChoice(model).About} {parakeetProgress}";
                 }), lifetime.Token);
             }
-            catch (OperationCanceledException) { return; }
+            catch (OperationCanceledException) { return false; }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
                 System.Net.Http.HttpRequestException or InvalidOperationException)
             {
                 ActionText.Text = $"Couldn't download {model.Name}. " + error.Message + " Listening didn't change.";
-                return;
+                return false;
             }
             finally
             {
@@ -284,13 +284,15 @@ public partial class MainWindow
             }
         }
         parakeet.WarmAsync(model.Id).Forget();
-        await SaveSectionRouteAsync(HostJob.Listening, settings => LocalSpeechSetup.SelectParakeet(settings, model.Id), key: null,
+        var saved = await SaveSectionRouteAsync(HostJob.Listening, settings => LocalSpeechSetup.SelectParakeet(settings, model.Id), key: null,
             $"Martlet now listens with {model} on this PC. Speech stays on this PC.");
         if (!closing && openTab == CompanionTab.Listening) RenderTab();
+        return saved;
     }
 
-    /// <summary>Listening on this PC with whisper on the graphics card or the processor: one confirmation, then one run window.</summary>
-    private async Task UseListeningHereAsync(bool gpu)
+    /// <summary>Listening on this PC with whisper on the graphics card or the processor: one confirmation (unless
+    /// <paramref name="confirmed"/> already did), then one run window.</summary>
+    private async Task UseListeningHereAsync(bool gpu, bool confirmed = false)
     {
         if (store is null || setupService is null || closing) return;
         var advice = await ListeningAdviceAsync();
@@ -309,7 +311,7 @@ public partial class MainWindow
             await AssignJobAsync(job, "host:" + thisPc.HostId);
             return;
         }
-        if (!ConfirmationDialog.Confirm(this,
+        if (!confirmed && !ConfirmationDialog.Confirm(this,
                 $"Listen with Whisper {where}? " +
                 (thisPc is null ? "Martlet will set up Docker Desktop on this PC first. " : "") +
                 $"Martlet will download the {model} speech model and switch listening to it. " +

@@ -861,6 +861,16 @@
                         <StackPanel x:Name="TourStart" Visibility="Collapsed">
                             <TextBlock Text="How would you like to start?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
                             <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="You'll confirm any install, upload or setup change."/>
+                            <Button x:Name="TourDefaults" Style="{DynamicResource CardButton}" Tag="&#xE945;" Margin="0,0,0,12" Click="TourDefaults_Click"
+                                    AutomationProperties.AutomationId="TourDefaults">
+                                <StackPanel>
+                                    <TextBlock Text="Set it all up for me (recommended)" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                               Text="Thinking, listening and a voice that fit this PC, all running here. One confirmation, then Martlet installs what's needed."/>
+                                    <TextBlock x:Name="TourDefaultsPlan" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               AutomationProperties.AutomationId="TourDefaultsPlan"/>
+                                </StackPanel>
+                            </Button>
                             <Button Style="{DynamicResource CardButton}" Tag="&#xE82F;" Margin="0,0,0,12" Click="TourAdvisor_Click"
                                     AutomationProperties.AutomationId="TourAdvisor">
                                 <StackPanel>

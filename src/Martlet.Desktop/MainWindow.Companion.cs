@@ -778,19 +778,20 @@ public partial class MainWindow
     /// (after one confirmation) and loaded, in a run window, and only then does Thinking switch to it: the current Thinking
     /// keeps answering until then, the first reply doesn't wait for the load, and a model that won't download or load leaves
     /// Thinking as it was.</summary>
-    private async Task SaveLocalThinkingAsync(string model)
+    private async Task<bool> SaveLocalThinkingAsync(string model, bool confirmed = false)
     {
         try { ChatCompletionsSetup.ModelId(model); }
-        catch (ContractException error) { ActionText.Text = error.Message; return; }
-        if (!Prerequisites.IsMissing(Prerequisites.Ollama) && !await PrepareLocalThinkingAsync(model)) return;
-        if (closing) return;
-        await SaveSectionRouteAsync(HostJob.Thinking,
+        catch (ContractException error) { ActionText.Text = error.Message; return false; }
+        if (!Prerequisites.IsMissing(Prerequisites.Ollama) && !await PrepareLocalThinkingAsync(model, confirmed)) return false;
+        if (closing) return false;
+        var saved = await SaveSectionRouteAsync(HostJob.Thinking,
             settings => ChatCompletionsSetup.SelectRoute(settings, LocalOllamaBaseUrl, model), key: null,
             $"Martlet now uses {model} in Ollama on this PC." +
             (ollamaModels is { } known && !LocalOllama.Serves(known, model) ? $" Download {model} to use it." : ""));
         // Ollama says how much context it gives the model once it has loaded it (Test model does); nothing leaves this PC.
         if (!closing && IsLocalOllama(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm)))
             CheckNewModelContextAsync().Forget();
+        return saved;
     }
 
     /// <summary>The model chosen last with Use Ollama on this PC. Several can download and load side by side; one chosen
@@ -798,10 +799,11 @@ public partial class MainWindow
     private string? localThinkingWanted;
 
     /// <summary>Gets <paramref name="model"/> ready in this PC's Ollama before Thinking switches to it: starts Ollama when it
-    /// isn't answering, downloads the model when it isn't here (the owner confirms the download), then loads it. Returns
+    /// isn't answering, downloads the model when it isn't here (the owner confirms the download, unless
+    /// <paramref name="confirmed"/> already did), then loads it. Returns
     /// whether Thinking may switch now; otherwise the status line says why it didn't. Choosing another model meanwhile
     /// doesn't wait for this one: the newest choice is the one Thinking switches to.</summary>
-    private async Task<bool> PrepareLocalThinkingAsync(string model)
+    private async Task<bool> PrepareLocalThinkingAsync(string model, bool confirmed = false)
     {
         try
         {
@@ -830,7 +832,7 @@ public partial class MainWindow
             if (download)
             {
                 var size = LocalChatModels.FirstOrDefault(m => m.Id == model)?.Size;
-                if (!ConfirmationDialog.Confirm(this,
+                if (!confirmed && !ConfirmationDialog.Confirm(this,
                         $"{model} isn't downloaded on this PC yet. Download it with Ollama{(size is null ? "" : $" ({size})")}, load it and then " +
                         $"switch Thinking to it?{keeps} The model's own license applies.",
                         "Download and switch", questionId: "LocalModelDownloadQuestion"))

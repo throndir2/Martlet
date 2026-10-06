@@ -252,10 +252,14 @@ public partial class MainWindow
             // A new PC joins your other computers first: it then uses your hosts and the setup they share, with nothing to set
             // up here (Add a computer opens on Martlet on your network).
             var joinFirst = nothingYet && hosts.All(h => h.HostId == localHost?.HostId);
+            // Not in a Martlet network: one click sets up Thinking, Listening and Voice to fit this PC.
+            var alone = hosts.All(h => h.HostId == localHost?.HostId);
             Add("thinking-setup", HealthLevel.Problem, "Set up thinking",
                 "Martlet needs a conversation model before it can reply. Everything else is optional." +
+                (alone ? " Set it all up for me picks Thinking, Listening and a voice that fit this PC." : "") +
                 (joinFirst ? " Already use Martlet on another computer? Connect to it first: this PC then uses your hosts and the same setup." : ""),
-                [Open(CompanionTab.Thinking, "Set up thinking"),
+                [.. alone ? [DefaultsFix()] : Array.Empty<HealthFix>(),
+                 Open(CompanionTab.Thinking, "Set up thinking"),
                  .. joinFirst ? [ConnectComputersFix()] : Array.Empty<HealthFix>(),
                  new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
@@ -329,9 +333,13 @@ public partial class MainWindow
         }
 
         // Listening and its microphone.
+        var standalone = hosts.All(h => h.HostId == localHost?.HostId);
         if (stt is null && store is not null && !settingsBroken)
             Add("listening-setup", HealthLevel.Notice, "Listening isn't set up",
-                "Optional: Martlet hears you talk. You can always type instead.", [Open(CompanionTab.Listening, "Set up listening")]);
+                "Martlet hears you talk on your default microphone once listening is set up. You can always type instead.",
+                [.. standalone ? [new HealthFix("defaults", "Set it up for this PC", () => SetUpDefaultsAsync(thinking: false, voice: false).Forget())]
+                    : Array.Empty<HealthFix>(),
+                 Open(CompanionTab.Listening, "Set up listening")]);
         var micMissing = AudioMissing(output: false);
         if (stt is not null && micMissing)
             Add("microphone", HealthLevel.Warning,
@@ -346,7 +354,10 @@ public partial class MainWindow
         // Voice and its speakers.
         if (tts is null && store is not null && !settingsBroken)
             Add("voice-setup", HealthLevel.Notice, "Voice isn't set up",
-                "Optional: Martlet speaks its replies. Until then it replies in text.", [Open(CompanionTab.Voice, "Set up a voice")]);
+                "Martlet speaks its replies once a voice is set up. Until then it replies in text.",
+                [.. standalone ? [new HealthFix("defaults", "Set it up for this PC", () => SetUpDefaultsAsync(thinking: false, listening: false).Forget())]
+                    : Array.Empty<HealthFix>(),
+                 Open(CompanionTab.Voice, "Set up a voice")]);
         var speakersMissing = AudioMissing(output: true);
         if (tts is not null && speakersMissing)
             Add("speakers", HealthLevel.Warning, "Your chosen speakers aren't connected",

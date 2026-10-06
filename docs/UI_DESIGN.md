@@ -75,17 +75,23 @@ with step dots:
    - *Talk with my companion here* (the PC you sit at).
    - *Lend this PC to Martlet* (a spare or gaming PC with a GPU that runs heavy
      parts, such as lip-sync, for another PC).
-3. **How would you like to start?** (companion mode) *Recommend a setup for me*
+3. **How would you like to start?** (companion mode) *Set it all up for me
+   (recommended)* (on a PC not paired with other computers) reads this PC's
+   graphics card and, after one confirmation, sets up Thinking (the smallest
+   local model that hears, Gemma 4 E2B, in Ollama), Voice (a voice engine on the
+   NVIDIA card when it has room beside Thinking, otherwise a Windows voice) and
+   Listening (the default microphone with Parakeet on the processor, or Whisper
+   on the card when room is left after the voice); its line under the title
+   shows the plan. *Recommend a setup for me*
    opens the setup advisor (its plan adds *Install on this PC* for what it runs
    here), and *I know what I want* opens Companion › *Thinking*. In host mode,
    the tour ends on the host dashboard.
 
-The tour saves only the device role; it contacts nothing and installs nothing.
+The tour saves only the device role; it contacts nothing and installs nothing
+until you choose *Set it all up for me* and confirm.
 Each setup installs what it needs (Thinking's *This PC* installs Ollama, the
 advisor's plan installs its items), and **Prerequisites** under Settings › Tools
-installs any item by hand. A quick start that reads this PC's hardware and
-installs the whole plan in one go is planned
-([A1](USER_STORIES.md#a1-quick-start-on-a-first-pc)); a tick list of single
+installs any item by hand. A tick list of single
 prerequisites was removed because it set up only a fragment of any plan.
 Settings > *This PC's role* changes the role or replays the tour.
 
@@ -105,7 +111,7 @@ The hero card says how Martlet is doing overall:
 
 | State | Headline | Primary action |
 | --- | --- | --- |
-| Nothing saved yet | "Let's bring your companion to life" | *Set up thinking* (opens Companion › *Thinking*) |
+| Nothing saved yet | "Let's bring your companion to life" | *Set it all up for me* (no other computer paired; otherwise *Set up thinking*, which opens Companion › *Thinking*) |
 | A problem stops replies | The problem in one line, such as "Martlet can't reply right now" or "Martlet can't read its settings" | That problem's first fix |
 | Replies work, warnings remain | "Ready, with 2 things to look at" | **Start talking** |
 | Everything checked works | "Ready when you are" (with a time-of-day greeting) | **Start talking** |

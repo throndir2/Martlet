@@ -27,6 +27,7 @@ The installer asks no setup questions and installs no optional prerequisites. Th
 
 - **Talk with my companion here** for the PC you sit at.
 - **Lend this PC to Martlet** for a host PC.
+- **Set it all up for me** (recommended) to set up thinking, listening and a voice that fit this PC, after one confirmation.
 - **Recommend a setup for me** for a guided plan.
 - **I know what I want** to choose destinations yourself.
 

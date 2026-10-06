@@ -470,6 +470,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
         // it, so it needs --allow-ui-effects.
         "LocalModelDownloadQuestion",
+        // Set it all up for me: the tour's plan line (the graphics card, the Thinking model, the voice, the speech recognizer and
+        // the default microphone) and its one confirmation (the same plan, the downloads and the voice engine's terms).
+        // TourDefaults, the Home fixes and ConfirmationYes install and download, so they need --allow-ui-effects.
+        "TourDefaultsPlan", "DefaultSetupQuestion",
         // Creations: the fixed note ("Ask Martlet to sing or show any of these.") and empty state ("Things Martlet makes, like
         // songs, appear here."), how many creations and how large, whether they are shared with the paired computers (with how
         // many and when), and the selected creation's kind line (kind, length, size, when and on which computer it was made),
