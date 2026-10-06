@@ -1151,6 +1151,7 @@ public partial class MainWindow
                 (p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel}. Any exact OpenRouter model ID works."
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel}. Keys start with nvapi-."
+                : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
                 : "Use an HTTPS URL, or a local http://127.0.0.1 address. Enter the exact model ID.");
             consentText.Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there, and requests may cost money. " +
                 OpenAiSetup.Boundary(role);

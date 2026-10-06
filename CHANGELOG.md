@@ -9,12 +9,19 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Devices shows how much of each computer's graphics memory, memory, processor and disk every part of Martlet takes, what is left, and what else would fit there; a new card sums up what your computers cover and could still run, such as room for 2 more Deep thinking models. ([#487](https://github.com/throndir2/Martlet/pull/487))
+- A new welcome wizard: start a new Martlet network or join yours (it finds your other computers), see what this PC has, choose whether free online services are OK, and get a suggested setup that shows how much of the graphics card, memory and processor each part uses. It walks you through a free NVIDIA key when Thinking goes online and sets lip-sync to follow the voice when the PC can't run Audio2Face. ([#489](https://github.com/throndir2/Martlet/pull/489))
+- Martlet for Linux (coming with the Linux download) can show the character on top of your other windows with clicks passing through everywhere but the character, talk while you hold a push-to-talk key, keep your keys in the desktop's keyring (GNOME Keyring or KWallet), watch your screen after you start watching (on Wayland your desktop asks which screen to share each time), and start when you log in. It tells you plainly when your desktop limits one of these. Not yet tried on a real GNOME or KDE desktop. ([#488](https://github.com/throndir2/Martlet/pull/488))
+- Google Gemini is a new Thinking provider, with the free Gemini 3.5 Flash-Lite filled in and steps for getting a free key. It can hear your voice once you allow it, and it makes a good "If Thinking fails" backup for NVIDIA Build. ([#486](https://github.com/throndir2/Martlet/pull/486))
+- A new [Resource footprints](docs/RESOURCE_FOOTPRINTS.md) page lists how much graphics memory, memory, processor and disk each Thinking model, voice engine, listening model, lip-sync, singing and pictures option takes, and which numbers were measured. Setup recommendations use these numbers. ([#485](https://github.com/throndir2/Martlet/pull/485))
+- Releases now include Linux (AppImage and .deb, x64 and arm64) and macOS (Apple silicon and Intel .dmg) downloads of the new desktop companion; the Mac app also carries the Mac host. ([#484](https://github.com/throndir2/Martlet/pull/484))
 - A Mac can be a Martlet host: its `macos-setup` command runs Martlet's host in the background while you're logged in and lends your other computers the Mac's own Ollama and whisper.cpp, on its graphics chip on Apple silicon. Jobs that need an NVIDIA GPU are never offered there. Not yet tried on a real Mac. ([#482](https://github.com/throndir2/Martlet/pull/482))
 - The Docker host image now also builds for Apple-silicon Macs and other ARM64 computers (CPU only). ([#482](https://github.com/throndir2/Martlet/pull/482))
 - Martlet for Mac (coming with the Mac download) can float the character over full-screen games, talk while you hold a push-to-talk key in any app, keep your keys in the Mac's keychain, watch your screen after you allow it, start at login and show what it is doing in the menu bar. It also finds Ollama, LM Studio or Docker Model Runner running on the Mac. ([#480](https://github.com/throndir2/Martlet/pull/480))
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Changed
+- When this PC joins your Martlet network, the welcome wizard's suggestions take into account what your other computers already run. ([#491](https://github.com/throndir2/Martlet/pull/491))
 - People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Fixed

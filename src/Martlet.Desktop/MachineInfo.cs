@@ -108,6 +108,13 @@ internal sealed record MachineInfo(string Name, string Windows, string? Processo
         return GlobalMemoryStatusEx(ref status) ? Math.Round(status.TotalPhysical / (1024d * 1024 * 1024)) : null;
     }
 
+    /// <summary>How much of this PC's memory is in use right now, in GB (one system call), or null.</summary>
+    internal static double? MemoryInUseGb()
+    {
+        var status = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
+        return GlobalMemoryStatusEx(ref status) ? Math.Round((status.TotalPhysical - status.AvailablePhysical) / (1024d * 1024 * 1024), 1) : null;
+    }
+
     private static readonly string[] VirtualAdapters =
         ["Microsoft Basic", "Remote Display", "Hyper-V", "Virtual", "Parsec", "Meta Virtual", "IddSample", "Citrix", "VMware", "Mirage"];
 

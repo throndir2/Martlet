@@ -29,6 +29,25 @@ public sealed class ModelAbilityDetectionTests
     }
 
     [Fact]
+    public void Google_gemini_preset_hears_but_only_once_the_owner_allows_it()
+    {
+        var gemini = ChatCompletionsEndpointCatalog.ById(ChatCompletionsEndpointCatalog.GeminiId)!;
+        Assert.Equal(ChatCompletionsEndpointCatalog.GeminiBaseUrl, gemini.BaseUrl);
+        Assert.Equal("gemini-3.5-flash-lite", gemini.DefaultModelId);
+        Assert.Same(gemini, ChatCompletionsEndpointCatalog.Named(gemini.BaseUrl));
+        Assert.Equal(HearingSupport.Supported,
+            HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, gemini.BaseUrl, gemini.DefaultModelId, null));
+        Assert.Equal(VisionSupport.Supported, VisionModelCatalog.Classify(gemini.DefaultModelId));
+        // The recording leaves this PC, so it goes only after the owner ticks Let Thinking hear my voice.
+        Assert.True(gemini.HearingOptIn);
+        Assert.False(HearingModelCatalog.StaysOnThisPc(SetupRouteType.ChatCompletions, gemini.BaseUrl, gemini.DefaultModelId));
+        Assert.Contains("Let Thinking hear my voice", gemini.Guidance);
+        Assert.Contains("https://aistudio.google.com/apikey", gemini.Guidance);
+        Assert.Equal(ReasoningControl.ReasoningEffort, GenerationSupport.ChatReasoning(gemini.BaseUrl));
+        Assert.False(ChatCompletionsEndpointCatalog.ById(ChatCompletionsEndpointCatalog.NvidiaBuildId)!.HearingOptIn);
+    }
+
+    [Fact]
     public void Nvidia_builds_hosted_omni_model_hears_and_its_text_only_siblings_do_not()
     {
         const string nvidia = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl;

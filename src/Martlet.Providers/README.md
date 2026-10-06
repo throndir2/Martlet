@@ -21,9 +21,12 @@ proxies, cookies, redirects, implicit credentials, automatic retries or discover
 Model IDs support bounded ASCII identifiers including slash and colon, independently
 of OpenAI's fixed catalog.
 
-`ChatCompletionsEndpointCatalog.NamedEndpoints` offers explicit display names and
-canonical base URLs for **OpenRouter** (`https://openrouter.ai/api/v1`) and
-**NVIDIA Build** (`https://integrate.api.nvidia.com/v1`). The Desktop Setup
+`ChatCompletionsEndpointCatalog.NamedEndpoints` offers explicit display names,
+stable preset ids and canonical base URLs for **OpenRouter** (`openrouter`,
+`https://openrouter.ai/api/v1`), **NVIDIA Build** (`nvidia-build`,
+`https://integrate.api.nvidia.com/v1`) and **Google Gemini** (`google-gemini`,
+`https://generativelanguage.googleapis.com/v1beta/openai`; its default hears, but
+only with the owner's opt-in). The Desktop Setup
 window offers these plus a custom HTTPS/literal-loopback base URL option under
 **LLM provider / endpoint**, and the live conversation dispatches the saved
 Chat Completions route for the LLM stage (keyless only for custom endpoints).

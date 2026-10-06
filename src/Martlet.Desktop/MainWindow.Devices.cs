@@ -65,6 +65,7 @@ public partial class MainWindow
                 DetailContent.Children.Add(ComponentRow(node, role, commands));
             }
         }
+        AddResourcesSection(node);
 
         var loose = node.Commands.Where(c => Placed(c) is null && !(c.Action == NodeAction.CheckHost && node.Kind != NodeKind.ThisPc)).ToList();
         var give = loose.Where(c => GiveActions.Contains(c.Action)).ToList();

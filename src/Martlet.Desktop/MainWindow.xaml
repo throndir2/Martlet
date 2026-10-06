@@ -320,6 +320,28 @@
                     <Border x:Name="DetailCard" Style="{DynamicResource CardStyle}" Padding="26,22">
                         <StackPanel x:Name="DetailContent" AutomationProperties.Name="Selected device" AutomationProperties.LiveSetting="Polite"/>
                     </Border>
+                    <!-- What your computers can run: parts covered here, online or not at all, the totals and what else fits (MainWindow.DeviceCapacity.cs) -->
+                    <Border x:Name="CapacityCard" Style="{DynamicResource CardStyle}" Padding="26,22" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="CapacityCard" AutomationProperties.Name="What your computers can run">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE9D9;" Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="What your computers can run" FontSize="18" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Text="From Martlet's estimates of what each part needs. Select a computer above to see its share."/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="CapacityCoverageText" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       AutomationProperties.AutomationId="CapacityCoverage"/>
+                            <TextBlock x:Name="CapacityTotalsText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       AutomationProperties.AutomationId="CapacityTotals"/>
+                            <TextBlock x:Name="CapacityFitsText" TextWrapping="Wrap" FontWeight="SemiBold"
+                                       AutomationProperties.AutomationId="CapacityFits"/>
+                        </StackPanel>
+                    </Border>
                     <!-- Your Martlet network: the owner's computers that trust each other (MainWindow.Network.cs) -->
                     <Border x:Name="NetworkCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Your Martlet network">
                         <StackPanel>
@@ -812,7 +834,7 @@
             </Border>
         </Grid>
 
-        <!-- Welcome tour: shown until this PC's role is chosen -->
+        <!-- Welcome wizard: shown until this PC's role is chosen (docs/WELCOME_WIZARD.md) -->
         <Grid x:Name="Tour" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{DynamicResource CanvasBrush}"
               AutomationProperties.AutomationId="WelcomeTour">
             <Canvas IsHitTestVisible="False" ClipToBounds="True">
@@ -841,52 +863,125 @@
                                     Click="TourBegin_Click" AutomationProperties.AutomationId="TourBegin"/>
                         </StackPanel>
 
-                        <StackPanel x:Name="TourRole" Visibility="Collapsed">
-                            <TextBlock Text="What's this computer for?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="You can change this any time in Settings."/>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE770;" Margin="0,0,0,12" Click="TourCompanion_Click"
-                                    AutomationProperties.AutomationId="TourCompanion">
+                        <!-- Step 1: start a new Martlet network or join one found on the local network (Nearby, port 9444). -->
+                        <StackPanel x:Name="TourNetwork" Visibility="Collapsed">
+                            <TextBlock Text="Is Martlet already on another of your computers?" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" TextWrapping="Wrap"
+                                       Text="Your computers with Martlet form your Martlet network. They share the work, so each does what it's best at."/>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE710;" Margin="0,0,0,12" Click="WizardNewNetwork_Click"
+                                    AutomationProperties.AutomationId="WizardNewNetwork">
                                 <StackPanel>
-                                    <TextBlock Text="Talk with my companion here" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="This is the PC you sit at. Martlet chats with you and shows its character here."/>
+                                    <TextBlock Text="No, this is my first one" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                               Text="Start a new Martlet network on this PC. You can add your other computers later."/>
                                 </StackPanel>
                             </Button>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE7F4;" Margin="0,0,0,4" Click="TourHost_Click"
-                                    AutomationProperties.AutomationId="TourHost">
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE968;" Margin="0,0,0,4" Click="WizardJoinNetwork_Click"
+                                    AutomationProperties.AutomationId="WizardJoinNetwork">
                                 <StackPanel>
-                                    <TextBlock Text="Lend this PC to Martlet" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="Use another PC for heavier Martlet tasks and manage it here."/>
+                                    <TextBlock Text="Yes, join my Martlet network" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                               Text="Martlet looks for your other computers on this network. You allow this PC on one of them by comparing a number."/>
+                                </StackPanel>
+                            </Button>
+                            <Border x:Name="WizardJoinPanel" Visibility="Collapsed" Background="{DynamicResource SoftBrush}" CornerRadius="16"
+                                    Padding="18,14" Margin="0,10,0,0" AutomationProperties.AutomationId="WizardJoinPanel">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <Button x:Name="WizardScanAgainButton" DockPanel.Dock="Right" Style="{DynamicResource LinkButton}" Content="Look again"
+                                                Click="WizardScanAgain_Click" VerticalAlignment="Top" AutomationProperties.AutomationId="WizardScanAgain"/>
+                                        <TextBlock x:Name="WizardScanStatus" TextWrapping="Wrap" FontSize="14" AutomationProperties.LiveSetting="Polite"
+                                                   AutomationProperties.AutomationId="WizardScanStatus"/>
+                                    </DockPanel>
+                                    <!-- One row per Martlet found, built in code (WizardFound-n, WizardConnect-n). -->
+                                    <StackPanel x:Name="WizardFoundList" Margin="0,6,0,0"/>
+                                    <Button Style="{DynamicResource LinkButton}" Content="It isn't listed: enter its address and pairing code" HorizontalAlignment="Left"
+                                            Margin="0,10,0,0" Click="WizardJoinManual_Click" AutomationProperties.AutomationId="WizardJoinManual"/>
+                                </StackPanel>
+                            </Border>
+                            <Button Style="{DynamicResource LinkButton}" Content="This PC only lends its power to my other computers (host PC)" HorizontalAlignment="Left"
+                                    Margin="0,16,0,0" Click="TourHost_Click" AutomationProperties.AutomationId="TourHost"/>
+                        </StackPanel>
+
+                        <!-- Step 2: what this PC has (graphics card, memory, processor). -->
+                        <StackPanel x:Name="TourSpecs" Visibility="Collapsed">
+                            <TextBlock Text="Here's what this PC has" Style="{DynamicResource HeroTitle}" FontSize="26"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,16" TextWrapping="Wrap"
+                                       Text="Martlet reads this on this PC only, to work out what can run here. Nothing is sent anywhere."/>
+                            <Border Background="{DynamicResource SoftBrush}" CornerRadius="16" Padding="18,14">
+                                <StackPanel x:Name="WizardSpecRows"/>
+                            </Border>
+                            <TextBlock x:Name="WizardSpecs" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0"
+                                       AutomationProperties.AutomationId="WizardSpecs"/>
+                            <Button x:Name="WizardSpecsNextButton" Style="{DynamicResource PrimaryButton}" Content="Next" HorizontalAlignment="Right" Padding="24,10"
+                                    Margin="0,18,0,0" Click="WizardSpecsNext_Click" AutomationProperties.AutomationId="WizardSpecsNext"/>
+                        </StackPanel>
+
+                        <!-- Step 3: keep everything on my computers, or free online services are fine. -->
+                        <StackPanel x:Name="TourPreference" Visibility="Collapsed">
+                            <TextBlock Text="Where may Martlet do its thinking?" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" TextWrapping="Wrap"
+                                       Text="Free online services take the heaviest work off a smaller PC. You can change this later in Companion."/>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE72E;" Margin="0,0,0,12" Click="WizardPreferLocal_Click"
+                                    AutomationProperties.AutomationId="WizardPreferLocal">
+                                <StackPanel>
+                                    <TextBlock Text="Keep everything on my computers" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                               Text="What you say and Martlet's replies stay at home. On a smaller PC, replies can be slower."/>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{DynamicResource CardButton}" Tag="&#xE753;" Margin="0,0,0,4" Click="WizardPreferOnline_Click"
+                                    AutomationProperties.AutomationId="WizardPreferOnline">
+                                <StackPanel>
+                                    <TextBlock Text="Free online services are fine" FontSize="17" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                               Text="When this PC is short on room, Martlet thinks with a free NVIDIA model online. You sign up for a free NVIDIA key; what you say goes to NVIDIA."/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
 
-                        <StackPanel x:Name="TourStart" Visibility="Collapsed">
-                            <TextBlock Text="How would you like to start?" Style="{DynamicResource HeroTitle}" FontSize="26"/>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,20" Text="You'll confirm any install, upload or setup change."/>
-                            <Button x:Name="TourDefaults" Style="{DynamicResource CardButton}" Tag="&#xE945;" Margin="0,0,0,12" Click="TourDefaults_Click"
-                                    AutomationProperties.AutomationId="TourDefaults">
-                                <StackPanel>
-                                    <TextBlock Text="Set it all up for me (recommended)" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                               Text="Thinking, listening and a voice that fit this PC, all running here. One confirmation, then Martlet installs what's needed."/>
-                                    <TextBlock x:Name="TourDefaultsPlan" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                               AutomationProperties.AutomationId="TourDefaultsPlan"/>
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE82F;" Margin="0,0,0,12" Click="TourAdvisor_Click"
-                                    AutomationProperties.AutomationId="TourAdvisor">
-                                <StackPanel>
-                                    <TextBlock Text="Recommend a setup for me" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="Three quick questions about your goal and your computers."/>
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{DynamicResource CardButton}" Tag="&#xE713;" Margin="0,0,0,4" Click="TourSetup_Click"
-                                    AutomationProperties.AutomationId="TourSetup">
-                                <StackPanel>
-                                    <TextBlock Text="I know what I want" FontSize="17" FontWeight="SemiBold"/>
-                                    <TextBlock Style="{DynamicResource Muted}" Text="Choose a conversation model and add any needed key."/>
-                                </StackPanel>
-                            </Button>
+                        <!-- Step 4: the recommendation, with what each part uses of this PC. -->
+                        <StackPanel x:Name="TourPlan" Visibility="Collapsed">
+                            <TextBlock x:Name="WizardPlanTitle" Text="Here's what fits this PC" Style="{DynamicResource HeroTitle}" FontSize="26" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="WizardPlanSummary" Style="{DynamicResource Muted}" Margin="0,6,0,14" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="WizardPlanSummary"/>
+                            <!-- One card per part, built in code (WizardPlanItem-<part>). -->
+                            <StackPanel x:Name="WizardPlanList"/>
+                            <TextBlock x:Name="WizardPlanTotals" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       AutomationProperties.AutomationId="WizardPlanTotals"/>
+                            <Button x:Name="WizardAcceptButton" Style="{DynamicResource PrimaryButton}" Content="Use these suggestions" HorizontalAlignment="Stretch"
+                                    Padding="24,12" FontSize="15" Margin="0,18,0,0" Click="WizardAccept_Click" IsEnabled="False"
+                                    AutomationProperties.AutomationId="WizardAccept"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"
+                                       Text="You'll confirm downloads, installs and any key before anything changes."/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+                                <Button Style="{DynamicResource LinkButton}" Content="Ask me three questions instead" Click="TourAdvisor_Click" Margin="0,0,18,0"
+                                        AutomationProperties.AutomationId="TourAdvisor"/>
+                                <Button Style="{DynamicResource LinkButton}" Content="I'll choose myself" Click="TourSetup_Click"
+                                        AutomationProperties.AutomationId="TourSetup"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Step 5 (only when Thinking goes online): a free NVIDIA Build key. -->
+                        <StackPanel x:Name="TourKey" Visibility="Collapsed">
+                            <TextBlock Text="Get your free NVIDIA key" Style="{DynamicResource HeroTitle}" FontSize="26"/>
+                            <TextBlock x:Name="WizardKeyIntro" Style="{DynamicResource Muted}" Margin="0,6,0,14" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="WizardKeyIntro"/>
+                            <TextBlock x:Name="WizardKeySteps" TextWrapping="Wrap" FontSize="14" LineHeight="22" AutomationProperties.AutomationId="WizardKeySteps"/>
+                            <Button Style="{DynamicResource LinkButton}" Content="Open build.nvidia.com" HorizontalAlignment="Left" Margin="0,10,0,0"
+                                    Click="WizardKeyOpen_Click" AutomationProperties.AutomationId="WizardKeyOpen"/>
+                            <Label Content="_NVIDIA API key (starts with nvapi-)" Target="{Binding ElementName=WizardKeyBox}" Padding="0,14,0,4"/>
+                            <PasswordBox x:Name="WizardKeyBox" AutomationProperties.AutomationId="WizardKey" AutomationProperties.Name="NVIDIA API key"/>
+                            <CheckBox x:Name="WizardKeyConsent" Margin="0,12,0,0" AutomationProperties.AutomationId="WizardKeyConsent">
+                                <TextBlock TextWrapping="Wrap"
+                                           Text="Send what I say and Martlet's conversation to NVIDIA Build for Thinking. NVIDIA's terms apply; the free tier has limits."/>
+                            </CheckBox>
+                            <TextBlock x:Name="WizardKeyStatus" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="WizardKeyStatus"/>
+                            <Button x:Name="WizardKeySaveButton" Style="{DynamicResource PrimaryButton}" Content="Save key and set it all up" HorizontalAlignment="Stretch"
+                                    Padding="24,12" Margin="0,14,0,0" Click="WizardKeySave_Click" AutomationProperties.AutomationId="WizardKeySave"/>
+                            <Button Style="{DynamicResource LinkButton}" Content="Skip the key: set up the rest now" HorizontalAlignment="Center" Margin="0,10,0,0"
+                                    Click="WizardKeySkip_Click" AutomationProperties.AutomationId="WizardKeySkip"/>
                         </StackPanel>
 
                         <Grid Margin="0,26,0,0">

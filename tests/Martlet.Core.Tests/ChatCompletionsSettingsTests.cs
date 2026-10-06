@@ -72,11 +72,18 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
     [Fact]
     public void Named_endpoints_are_explicit_and_keep_generic_route_contract()
     {
-        Assert.Equal(new[] { "OpenRouter", "NVIDIA Build" },
+        Assert.Equal(new[] { "OpenRouter", "NVIDIA Build", "Google Gemini" },
             ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint => endpoint.Name));
         Assert.Equal(new[] { ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
-                ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl },
+                ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, ChatCompletionsEndpointCatalog.GeminiBaseUrl },
             ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint => endpoint.BaseUrl));
+        Assert.Equal(new[] { "openrouter", "nvidia-build", "google-gemini" },
+            ChatCompletionsEndpointCatalog.NamedEndpoints.Select(endpoint => endpoint.Id));
+        Assert.All(ChatCompletionsEndpointCatalog.NamedEndpoints, endpoint =>
+        {
+            Assert.Same(endpoint, ChatCompletionsEndpointCatalog.ById(endpoint.Id));
+            Assert.StartsWith("https://", endpoint.KeyUrl);
+        });
         foreach (var endpoint in ChatCompletionsEndpointCatalog.NamedEndpoints)
         {
             var selected = ChatCompletionsSetup.SelectRoute(Settings, endpoint.BaseUrl, "synthetic/model:v1");
