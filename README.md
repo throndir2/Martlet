@@ -50,9 +50,9 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.50.0
+## 🆕 What's new in 0.50.1
 
-- 🐧 **Martlet on Linux and Mac**: a new desktop companion with the character on screen, push-to-talk and spoken replies, with Linux and macOS downloads.
+- 🐧 **Martlet on Linux and Mac**: a new desktop companion with the character on screen, push-to-talk and spoken replies. Linux and macOS downloads are now in the release.
 - 💻 **More computers can help**: Windows on Arm PCs run Martlet, and Macs, Raspberry Pis and other ARM64 machines can host thinking and listening.
 - 🧭 **A new welcome wizard**: start or join your Martlet network and get a setup suggestion that shows what each part uses.
 - 📊 **See what fits**: Devices shows each computer's graphics memory, memory, processor and disk use, and what else would fit.

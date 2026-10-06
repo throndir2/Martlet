@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.50.1] - 2026-10-06
+
 ### Fixed
 - The Mac downloads are back in the release: the Mac app no longer fails to build because of a character folder. ([#500](https://github.com/throndir2/Martlet/pull/500))
 
