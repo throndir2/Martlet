@@ -22,6 +22,11 @@ public sealed record HostPairedDevice(string HostId, string DeviceId, string Dis
 public sealed record HostNetworkView(string HostId, string State, NetworkRoster? Roster, IReadOnlyList<HostJoinRequest> Joins, bool Supported = true,
     IReadOnlyList<HostPairedDevice>? Devices = null, string? MartletVersion = null)
 {
+    /// <summary>Outside addresses the owner set on the host itself (martlet-host owner-exposure), null when never set there.</summary>
+    public IReadOnlyList<string>? AdvertisedAddresses { get; init; }
+    /// <summary>When <see cref="AdvertisedAddresses"/> were set on the host.</summary>
+    public DateTimeOffset? AdvertisedAt { get; init; }
+
     public static HostNetworkView Unsupported(string hostId) => new(hostId, "unsupported", null, [], false);
     public bool Bound => State == "bound" && Roster is not null;
 }
@@ -126,7 +131,19 @@ public sealed partial class Audio2FaceHostConnection
             }
             var release = root.TryGetProperty("martlet_version", out var announced) && announced.ValueKind == JsonValueKind.String
                 ? HostRelease.Normalize(announced.GetString()) : null;
-            return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release);
+            IReadOnlyList<string>? advertised = null;
+            DateTimeOffset? advertisedAt = null;
+            if (root.TryGetProperty("advertised_addresses", out var advertisedList) && advertisedList.ValueKind == JsonValueKind.Array &&
+                root.TryGetProperty("advertised_at", out var at) && at.ValueKind == JsonValueKind.String)
+            {
+                advertised = advertisedList.EnumerateArray().Take(NetworkRoster.MaximumAddresses)
+                    .Select(a => NetworkRoster.NormalizeAddress(a.ValueKind == JsonValueKind.String ? a.GetString() : null)).OfType<string>().ToArray();
+                advertisedAt = at.GetDateTimeOffset();
+            }
+            return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release)
+            {
+                AdvertisedAddresses = advertised, AdvertisedAt = advertisedAt
+            };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ContractException)
         {

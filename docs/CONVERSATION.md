@@ -391,13 +391,16 @@ Thinking's own model twice needs a second server (for example another `ollama
 serve` on its own port, chosen as a server on this PC under *A cloud provider or
 server*), which holds a second copy of the model in graphics memory.
 
-**While it runs** you keep talking and Martlet keeps replying. The talk window
-shows a chip per job (*Thinking about: … · on diva* with its time and
-*Cancel*) and the line above it (`LiveJobs`: *think-1 on diva running for
-0:12*); the desktop log notes each start with where it was placed (*placed on
-diva, 1 of 2 places busy*), fit check and end (`Background thinking:`) and a
-*Thinking input (Background thinking)* line.
-Stop (Esc) ends a reply, never a think; the chip's Cancel, `cancel_thinking`,
+**While it runs** you keep talking and Martlet keeps replying. The talk window's
+header shows a background tasks chip (a spinner and *1 running*, then *1 ready*
+once it finishes and *1 done* once Martlet brought it up); clicking it opens the
+task list over the conversation: one card per task with its kind, what it is
+about, the computer it runs on (*on diva*), its status and time, its result
+(*Show result*) and *Cancel* (`LiveTasks`, `LiveJobs`: *think-1 on diva running
+for 0:12*, `LiveJobState-<id>`); the desktop log notes each start with where it
+was placed (*placed on diva, 1 of 2 places busy*), fit check and end
+(`Background thinking:`) and a *Thinking input (Background thinking)* line.
+Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation, quitting Martlet or the time limit do. At most one
 think runs at a time on each place it thinks on (one place: one at a time; a
 call beyond that is refused and Martlet is told to wait or cancel one) and at
@@ -438,14 +441,14 @@ think_longer is the first kind and a song is next. A kind is a
    (`LiveConversationController.BuiltIns`: always offered while its feature is
    on, so the request start never changes; the handler returns at once).
 2. In the handler, call `jobs.Start(kind, label, runAsync)`. `label` is a few
-   words for the chip and the conversation (it is never logged). `runAsync(job,
+   words for the task list and the conversation (it is never logged). `runAsync(job,
    token)` does the work on a thread-pool thread and returns
    `BackgroundJobOutcome.Done(result)` (the text the conversation gets; for a
    song, what is ready and how to play it, such as its ID) or
    `BackgroundJobOutcome.Failed(problem)` (a few plain words); the token is
    canceled by Cancel, the conversation ending, Martlet quitting and the time
    limit. While it works it may call `job.Report(Running/Waiting/Paused,
-   "a few words")`, which the chip shows. `Start` returns `BackgroundJobStart`:
+   "a few words")`, which the task's card shows. `Start` returns `BackgroundJobStart`:
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
    To run on another computer, pass a pool: `jobs.Start(kind, label, runAsync,
@@ -471,7 +474,8 @@ think_longer is the first kind and a song is next. A kind is a
    refusing with `BackgroundJobOutcome.Failed` when it doesn't.
 
 The job list does the rest: limits, placement, cancellation, the time limit (`TimedOut`),
-the chip and `LiveJobs` (with the place's name), `background-jobs.json` (kinds, states, places and times only),
+the header chip and task list (`LiveTasks`, `LiveJobs`; give a new kind its title and icon in
+`LiveConversationWindow.KindTitle`/`KindGlyph`; each names its place), `background-jobs.json` (kinds, states, places and times only),
 and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
 completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
@@ -509,7 +513,7 @@ computer, which can't think something over while it answers), the result asks
 the reply to write the lyrics itself and call `sing_song` again with them. Then
 the song maker
 (`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
-the Singing card's quality and voice match; the chip follows its stages
+the Singing card's quality and voice match; the task's card follows its stages
 (*Writing the lyrics*, *Writing the music*, *Matching the singing to the
 voice*..., *Timing the mouth to the singing*). Its mouth track is made once,
 from the vocals stem (never the mix; see *Lip sync* below). The finished song is
