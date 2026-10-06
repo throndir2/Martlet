@@ -807,6 +807,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("discord_companion_check", "Martlet's Discord companion as saved in a data directory (discord.json and " +
+            "discord-companion.json): friends (names, how many take calls), friend requests waiting for the owner, recent declines, the " +
+            "private call channels it made and when the bot's picture last changed (never the token). Then rehearses the production " +
+            "DiscordCompanion against an in-memory Discord (no token; contacts nothing): /friend ask (and asking twice), the owner's " +
+            "approval and welcome DM, a call (the private channel 'character & person' and its permission overwrites for @everyone, " +
+            "the friend, the bot and the owner, the ring DM with a jump link and a server invite), calling again (channel reused, " +
+            "joined), cleanup, calls turned off, /friend remove, the presence each state shows and its rate limit, and the avatar " +
+            "rate limit. requestFrom (a Discord user ID as a string, with requestName) files a friend request into the given " +
+            "dataDirectory as /friend ask would (requires an explicit, disposable dataDirectory), so Companion > Discord's Friends " +
+            "and calls card lists it for DiscordFriendApprove-<id>.", new
+        {
+            dataDirectory = new { type = "string" },
+            person = new { type = "string", maxLength = 64 },
+            character = new { type = "string", maxLength = 64 },
+            requestFrom = new { type = "string", pattern = "^[0-9]{1,20}$" },
+            requestName = new { type = "string", maxLength = 64 }
+        }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
@@ -1065,6 +1082,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "discord_companion_check" => await DiscordCompanionCheck.RunAsync(DataDirectory(arguments),
+                    arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out _),
+                    OptionalString(arguments, "person"), OptionalString(arguments, "character"),
+                    OptionalString(arguments, "requestFrom") is { } from
+                        ? ulong.TryParse(from, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
+                            ? id : throw new ArgumentException("requestFrom must be a Discord user ID.")
+                        : null,
+                    OptionalString(arguments, "requestName"), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
