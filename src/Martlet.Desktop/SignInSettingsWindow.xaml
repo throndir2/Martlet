@@ -15,6 +15,8 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock x:Name="HeadingText" Style="{DynamicResource SectionHeading}" TextWrapping="Wrap" AutomationProperties.AutomationId="SignInSettingsTitle"/>
+                <TextBlock x:Name="OutsideWarningText" TextWrapping="Wrap" Margin="0,8,0,0" FontWeight="SemiBold" Visibility="Collapsed"
+                           Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="SignInOutsideWarning"/>
                 <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14"
                            Text="Let one of your computers join this host while it is away from home, by signing in instead of typing a code shown here. A computer that signs in is paired like any other and joins your Martlet network by itself. Remove it from the network or remove its sign-in here to take access away."/>
 
@@ -71,7 +73,8 @@
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="A_llow" Click="Allow_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInAllow"/>
-                            <Button Content="Remove" Click="Disallow_Click" AutomationProperties.AutomationId="SignInDisallow"/>
+                            <Button Content="Remove and remove its computers from the network" Click="Disallow_Click" AutomationProperties.AutomationId="SignInDisallow"
+                                    ToolTip="This host revokes the computers it signed in, and your computers remove them from your Martlet network on their next sync, so they lose every host"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -123,6 +126,8 @@
                     <StackPanel>
                         <TextBlock Text="Computers that signed in" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock x:Name="EnrolledText" TextWrapping="Wrap" Margin="0,4,0,0" AutomationProperties.AutomationId="SignInEnrolledList"/>
+                        <TextBlock Text="Being removed from your network" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                        <TextBlock x:Name="RemovedText" TextWrapping="Wrap" Margin="0,4,0,0" AutomationProperties.AutomationId="SignInRemovedList"/>
                     </StackPanel>
                 </Border>
 

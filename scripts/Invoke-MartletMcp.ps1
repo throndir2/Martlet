@@ -31,6 +31,9 @@ param(
     [string[]]$DesktopArguments = @(),
     [switch]$AllowUiEffects,
     [switch]$KeepDesktop,
+    # Keep pairing secrets in a lab-credentials folder inside the data directory instead of Windows Credential Manager, for the
+    # desktop and MCP processes this starts (MARTLET_LAB_CREDENTIALS); needed by signin_lab.
+    [switch]$LabCredentials,
     [switch]$Build,
     [string]$Configuration = 'Release',
     [int]$WaitMs = 300,
@@ -70,6 +73,11 @@ $ownsData = -not $DataDirectory
 $data = if ($DataDirectory) { $DataDirectory } else {
     Join-Path ([System.IO.Path]::GetTempPath()) ('Martlet.Mcp.Verify.' + [guid]::NewGuid().ToString('N'))
 }
+$labFolder = $null
+if ($LabCredentials) {
+    $labFolder = Join-Path $data 'lab-credentials'
+    $null = New-Item -ItemType Directory -Force -Path $labFolder
+}
 $desktopProcess = $null
 $mcp = $null
 $nextId = 0
@@ -108,6 +116,7 @@ try {
         $start.ArgumentList.Add($data)
         foreach ($argument in $DesktopArguments) { $start.ArgumentList.Add($argument) }
         $start.UseShellExecute = $false
+        if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder }
         $desktopProcess = [System.Diagnostics.Process]::Start($start)
         $DesktopProcessId = $desktopProcess.Id
     }
@@ -115,6 +124,7 @@ try {
     $start = [System.Diagnostics.ProcessStartInfo]::new($server)
     if ($AllowUiEffects) { $start.ArgumentList.Add('--allow-ui-effects') }
     $start.UseShellExecute = $false
+    if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder }
     $start.RedirectStandardInput = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
@@ -147,7 +157,7 @@ try {
         $arguments = $call.arguments
         if ($call.name -like 'doctor_*' -or $call.name -like 'voices_*' -or $call.name -like 'logs_*' -or $call.name -like 'f5_*' -or
             $call.name -like 'cluster_*' -or $call.name -like 'nearby_*' -or $call.name -like 'virtualization_*' -or $call.name -eq 'mcp_servers_status' -or
-            $call.name -eq 'network_status' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'messaging_status' -or $call.name -eq 'discord_status' -or $call.name -eq 'discord_check' -or $call.name -eq 'prompts_status' -or
+            $call.name -eq 'network_status' -or $call.name -eq 'signin_lab' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'messaging_status' -or $call.name -eq 'discord_status' -or $call.name -eq 'discord_check' -or $call.name -eq 'prompts_status' -or
             $call.name -eq 'settings_sync_status' -or $call.name -eq 'memory_sync_status' -or $call.name -eq 'memory_status' -or $call.name -eq 'hearing_check' -or $call.name -eq 'model_ability_check' -or $call.name -eq 'echo_check' -or $call.name -eq 'pc_audio_check' -or $call.name -eq 'discord_call_check' -or $call.name -eq 'character_status' -or $call.name -eq 'character_models' -or $call.name -eq 'character_profiles' -or
             $call.name -eq 'character_actions' -or $call.name -eq 'character_gaze' -or $call.name -eq 'character_theme' -or $call.name -eq 'context_check' -or $call.name -eq 'thinking_steps_check' -or
             $call.name -eq 'latency_report' -or $call.name -like 'terminal_*' -or $call.name -eq 'utterance_filter_check' -or $call.name -eq 'parakeet_check' -or

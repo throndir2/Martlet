@@ -307,6 +307,7 @@ internal sealed partial class GatewayHttpApplication
             join.ProtocolVersion!.Validate();
             GatewayRules.Token(join.DisplayName, 64);
             var (state, networkId, check) = Network.Join(caller.DeviceId, join.DisplayName, join.Key);
+            SignIn.RememberJoinKey(caller.DeviceId, join.Key);
             await WriteJsonAsync(context, StatusCodes.Status200OK, new JoinDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, State = state, NetworkId = networkId,
@@ -328,6 +329,7 @@ internal sealed partial class GatewayHttpApplication
     private ValueTask WriteNetworkAsync(HttpContext context, string deviceId)
     {
         var (roster, state, joins) = Network.Snapshot(deviceId);
+        var member = state == "bound" && roster?.Desktop(deviceId) is { Removed: false };
         return WriteJsonAsync(context, StatusCodes.Status200OK, new NetworkDocument
         {
             ProtocolVersion = GatewayProtocolVersion.Current,
@@ -347,7 +349,11 @@ internal sealed partial class GatewayHttpApplication
             Devices = Network.Devices().Select(d => new PairedDeviceDocument
             {
                 DeviceId = d.DeviceId, DisplayName = d.DisplayName, PairedAt = d.PairedAt, LastSeen = d.LastSeen
-            }).ToArray()
+            }).ToArray(),
+            SignInRemovals = member ? SignIn.Removals(roster).Select(r => new SignInRemovalDocument
+            {
+                DeviceId = r.DeviceId, Key = r.Key, Provider = r.Provider, Subject = r.Subject, Label = r.Label, At = r.At
+            }).ToArray() : null
         }, MaximumNetworkResponseBytes);
     }
 
@@ -399,6 +405,19 @@ internal sealed partial class GatewayHttpApplication
         public required JoinRequestDocument[] Joins { get; init; }
         /// <summary>The computers paired with this host. Desktops older than this list ignore it.</summary>
         public required PairedDeviceDocument[] Devices { get; init; }
+        /// <summary>For a member desktop: computers that joined through a sign-in the owner no longer allows on this host. The
+        /// member removes them from the roster (signed by it), so every host revokes them. Older desktops ignore it.</summary>
+        public SignInRemovalDocument[]? SignInRemovals { get; init; }
+    }
+
+    private sealed record SignInRemovalDocument
+    {
+        public required string DeviceId { get; init; }
+        public string? Key { get; init; }
+        public required string Provider { get; init; }
+        public required string Subject { get; init; }
+        public string? Label { get; init; }
+        public required DateTimeOffset At { get; init; }
     }
 
     private sealed record PairedDeviceDocument

@@ -244,8 +244,12 @@ computers that signed in; never a secret), `owner-signin-owner --user <name>`
 (password on the first stdin line, prints an authenticator secret and
 `otpauth://` link, takes a current code on the next line, prints ten recovery
 codes once), `owner-signin-allow --provider <id> --subject <subject> [--label
-<text>]`, `owner-signin-disallow --provider <id> --subject <subject>` (the
-service revokes the computers that identity signed in) and `owner-invite
+<text>]`, `owner-signin-disallow --provider <id> --subject <subject>` (removes
+it and its computers from the network: the service revokes the computers that
+identity signed in, and member desktops remove them from the roster on their
+next sync; `owner-signin-status` shows them under `pendingRemoval`, then
+`removedFromNetwork` until the roster shows the removal, and `usable` /
+`blockedReason`: whether anyone can sign in, which outside access requires) and `owner-invite
 [--address <name:port>]... [--label <text>]`, which prints a
 `martlet-invite-v1.` line with this host's ID, approved pin, home origin, the
 outside addresses and the network ID (needs the service approval for the pin).

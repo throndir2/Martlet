@@ -43,9 +43,13 @@ public sealed class SignInCommandTests
             Assert.Contains("\"user\":\"owner\"", status.ToString());
             Assert.Contains("me@example.net", status.ToString());
             Assert.Contains("\"recoveryCodesLeft\":10", status.ToString());
+            Assert.Contains("\"removedFromNetwork\":[]", status.ToString());
         }
         using (var disallow = new StringWriter())
+        {
             Assert.Equal(0, await HostApplication.RunAsync(Args("owner-signin-disallow", "--provider", "google", "--subject", "1234"), disallow, default, platform));
+            Assert.Contains("Removed 1234 (google) and its computers from the network", disallow.ToString());
+        }
         Assert.DoesNotContain("me@example.net", Encoding.UTF8.GetString(platform.Fs.Parent.Children["signin.json"].Bytes));
 
         using var invite = new StringWriter();

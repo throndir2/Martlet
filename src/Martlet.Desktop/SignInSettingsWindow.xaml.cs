@@ -56,6 +56,13 @@ public partial class SignInSettingsWindow : ThemedWindow
     private void Show(HostSignInSettings settings, string? done = null)
     {
         shown = settings;
+        var outside = OutsideAddresses();
+        OutsideWarningText.Text = settings.Usable ? ""
+            : outside.Count > 0
+                ? $"Outside access to {host.HostId} is paused: nobody can sign in to it ({(settings.BlockedReason == "signin.no_allowed_identity" ? "no provider has an allowed identity" : "no owner account or provider")}). " +
+                  "Set up the owner account or allow an identity to resume it; its outside addresses are kept."
+                : "Nobody can sign in to this host yet. Set up the owner account (or a provider and an allowed identity) before you make it reachable from outside home.";
+        OutsideWarningText.Visibility = OutsideWarningText.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         RefusedText.Text = settings.Refused.Count == 0 ? "None."
             : string.Join(Environment.NewLine, settings.Refused.Select(r =>
                 $"{r.Label ?? r.Subject} ({r.Provider}: {r.Subject}) from {r.DeviceId} {r.EnrolledAt.ToLocalTime():g}"));
@@ -70,6 +77,9 @@ public partial class SignInSettingsWindow : ThemedWindow
         EnrolledText.Text = settings.Enrolled.Count == 0 ? "None yet."
             : string.Join(Environment.NewLine, settings.Enrolled.Select(e =>
                 $"{e.DeviceId}: signed in as {e.Label ?? e.Subject} ({e.Provider}) {e.EnrolledAt.ToLocalTime():g}"));
+        RemovedText.Text = settings.RemovedFromNetwork.Count == 0 ? "None."
+            : string.Join(Environment.NewLine, settings.RemovedFromNetwork.Select(e =>
+                $"{e.DeviceId}: its sign-in as {e.Label ?? e.Subject} ({e.Provider}) was removed {e.EnrolledAt.ToLocalTime():g}; your computers remove it from the network on their next sync"));
         if (settings.RecoveryCodes is { Count: > 0 } codes)
         {
             RecoveryText.Text = "Recovery codes (each works once instead of an authenticator code; keep them somewhere safe, Martlet won't show them again):" +
@@ -79,8 +89,31 @@ public partial class SignInSettingsWindow : ThemedWindow
         StatusText.Text = done ?? $"Read {host.HostId}'s sign-in settings.";
     }
 
-    private Task ChangeAsync(JsonObject change, string done) =>
-        RunAsync(async connection => Show(await connection.ChangeSignInSettingsAsync(change, lifetime.Token), done), "Saving");
+    private async Task ChangeAsync(JsonObject change, string done)
+    {
+        // A host reachable from outside home is reachable only while someone can sign in to it: ask before a change that
+        // leaves no way to sign in.
+        if (shown is { Usable: true } current && !current.UsableAfter(change) && OutsideAddresses().Count > 0 &&
+            MessageBox.Show(this, $"{host.HostId} is reachable from outside home ({string.Join(", ", OutsideAddresses())}). After this change nobody " +
+                "can sign in to it, so its outside access pauses (its outside addresses are kept) until you set up the owner account or allow " +
+                "an identity again. Continue?", "Martlet", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            StatusText.Text = "Nothing changed.";
+            return;
+        }
+        await RunAsync(async connection => Show(await connection.ChangeSignInSettingsAsync(change, lifetime.Token), done), "Saving");
+    }
+
+    /// <summary>The outside addresses this host has in the network roster or with its pairing here.</summary>
+    private IReadOnlyList<string> OutsideAddresses()
+    {
+        try
+        {
+            if (NetworkIdentity.Load(dataDirectory).Roster?.Host(host.HostId) is { Removed: false, Addresses: { Count: > 0 } listed }) return listed;
+            return HostRegistry.Load(dataDirectory).FirstOrDefault(h => h.HostId == host.HostId)?.OutsideAddresses ?? [];
+        }
+        catch (Exception error) when (error is IOException or ContractException or UnauthorizedAccessException or InvalidDataException) { return []; }
+    }
 
     private void NewSecret_Click(object sender, RoutedEventArgs e)
     {
@@ -127,7 +160,7 @@ public partial class SignInSettingsWindow : ThemedWindow
     private async void Disallow_Click(object sender, RoutedEventArgs e) => await ChangeAsync(new JsonObject
     {
         ["action"] = "disallow", ["provider"] = AllowProviderText.Text.Trim(), ["subject"] = AllowSubjectText.Text.Trim()
-    }, "Removed; computers it signed in lost access.");
+    }, "Removed. This host revoked the computers it signed in, and your computers remove them from your Martlet network on their next sync.");
 
     private void ProviderKind_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {

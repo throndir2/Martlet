@@ -29,6 +29,7 @@ internal static class SignInRehearsal
         var steps = new List<Step>();
         var started = DateTimeOffset.UtcNow;
         await using var host = await LabHost.StartAsync("lab-signin-host");
+        await using var host2 = await LabHost.StartAsync("lab-signin-host-2");
         using var keyHome = NetworkKey.Create("lab-home-pc");
         using var keyLaptop = NetworkKey.Create("lab-laptop");
         using var keyOther = NetworkKey.Create("lab-other-pc");
@@ -49,11 +50,14 @@ internal static class SignInRehearsal
             }
         }
 
-        await Run("The home PC pairs with the host by a typed code and founds a network that binds it", async () =>
+        await Run("The home PC pairs with two hosts by typed codes and founds a network that binds both", async () =>
         {
             await home.PairByCodeAsync(host, token);
             await home.SyncAsync(token);
-            return (host.Server.NetworkState.State == "bound", $"host {host.Server.NetworkState.State} in {host.Server.NetworkState.NetworkId}");
+            await home.PairByCodeAsync(host2, token);
+            await home.SyncAsync(token);
+            return (host.Server.NetworkState.State == "bound" && host2.Server.NetworkState.State == "bound",
+                $"hosts {host.Server.NetworkState.State} and {host2.Server.NetworkState.State} in {host.Server.NetworkState.NetworkId}");
         });
         var secret = Totp.NewSecret();
         var setupCode = "";
@@ -177,6 +181,26 @@ internal static class SignInRehearsal
                 $"first try: {refused}; allowed {waiting.Label} ({waiting.Provider}:{waiting.Subject}); signed in as {who}; client secret used by the host: " +
                 $"{issuer.SecretSeen}; let in: {approved.Count}; member: {member}");
         });
+        await Run("Removing the tablet's identity on the host removes the tablet from the network: the home PC signs the removal on " +
+            "its next sync, so the other host revokes it too", async () =>
+        {
+            await tablet.SyncAsync(token);
+            var before = await tablet.CanUseAsync(host2.HostId, token);
+            var settings = await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "disallow", ["provider"] = "authentik", ["subject"] = "lab-user-42"
+            }, token);
+            var pending = settings.RemovedFromNetwork.Any(r => r.DeviceId == keyTablet.DeviceId);
+            var result = await home.SyncAsync(token);
+            var removed = home.State.Roster?.Desktop(keyTablet.DeviceId) is { Removed: true };
+            var onHost2 = await tablet.FailureCodeAsync(host2.HostId, token);
+            var left = await tablet.SyncAsync(token);
+            var cleared = (await home.ReadAsync(host.HostId, token)).RemovedFromNetwork.Count == 0;
+            return (before && pending && removed && onHost2 is "auth.revoked" or "auth.invalid" && tablet.State.RemovedFrom is not null && cleared,
+                $"tablet used lab-signin-host-2 before: {before}; host listed it for removal: {pending}; removed in the roster by the home PC: " +
+                $"{removed} ({result.Events.FirstOrDefault(e => e.StartsWith("Removed", StringComparison.Ordinal))}); tablet on lab-signin-host-2: " +
+                $"{onHost2}; tablet left the network: {tablet.State.RemovedFrom is not null}; host's removal list cleared: {cleared}");
+        });
         await Run("A Steam account allowed at home by its SteamID64 signs in (OpenID 2.0 assertion confirmed with Steam by the host)", async () =>
         {
             await home.ChangeAsync(host.HostId, new JsonObject
@@ -229,7 +253,7 @@ internal static class SignInRehearsal
 /// <summary>An OpenID Connect issuer in this process (discovery, an RSA key set, a token endpoint that signs ID tokens) and a
     /// simulated browser: <see cref="Browse"/> "signs in" at the authorize URL and follows the redirect to the computer's real
     /// loopback listener.</summary>
-    private sealed class LabIssuer : HttpMessageHandler
+    internal sealed class LabIssuer : HttpMessageHandler
     {
         internal const string Issuer = "https://idp.lab.invalid";
         internal const string ClientId = "martlet-lab";
@@ -328,7 +352,7 @@ internal static class SignInRehearsal
         }
     }
 
-    private sealed class LabDesktop(NetworkKey key, string name)
+    internal sealed class LabDesktop(NetworkKey key, string name)
     {
         private readonly Dictionary<string, (Audio2FaceHostPairing Pairing, string Secret)> pairings = new(StringComparer.Ordinal);
         private readonly NetworkSyncEngine engine = new(key, name);
@@ -389,7 +413,7 @@ internal static class SignInRehearsal
         }
     }
 
-    private sealed class LabHost : IAsyncDisposable, IGatewayNetworkStorage, IGatewayAuditSink
+    internal sealed class LabHost : IAsyncDisposable, IGatewayNetworkStorage, IGatewayAuditSink
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;

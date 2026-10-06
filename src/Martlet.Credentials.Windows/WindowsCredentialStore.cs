@@ -15,7 +15,7 @@ public interface ICredentialNative
 
 public sealed class WindowsCredentialStore(ICredentialNative native) : ICredentialStore, ICredentialTimes
 {
-    public WindowsCredentialStore() : this(new WindowsCredentialNative()) { }
+    public WindowsCredentialStore() : this((ICredentialNative?)LabCredentialNative.FromEnvironment() ?? new WindowsCredentialNative()) { }
 
     public DateTimeOffset? WrittenAt(CredentialBinding binding) =>
         Valid(binding) && native.IsSupported ? native.WrittenAt(Target(binding)) : null;

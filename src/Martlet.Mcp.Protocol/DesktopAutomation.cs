@@ -162,7 +162,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
         // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
-        "SignInEnrolledList", "SignInRefusedList",
+        "SignInEnrolledList", "SignInRefusedList", "SignInRemovedList", "SignInOutsideWarning",
         // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
         // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
         "DiscordVoiceStatus",

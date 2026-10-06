@@ -265,6 +265,29 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
 {
     /// <summary>Identities that signed in at a provider but aren't allowed yet, newest first (DeviceId is the computer that tried).</summary>
     public IReadOnlyList<HostSignInEnrolled> Refused { get; init; } = [];
+    /// <summary>Computers whose sign-in was removed and that member desktops still have to remove from the network
+    /// (EnrolledAt is when the sign-in was removed).</summary>
+    public IReadOnlyList<HostSignInEnrolled> RemovedFromNetwork { get; init; } = [];
+    /// <summary>Why nobody can sign in to the host now ("signin.not_set_up", "signin.no_allowed_identity"), null when someone
+    /// can. Hosts older than this field report null. While it isn't null the host isn't reachable from outside home.</summary>
+    public string? BlockedReason { get; init; }
+    public bool Usable => BlockedReason is null;
+
+    /// <summary>Whether sign-in would still be usable after <paramref name="change"/> (a settings change as sent to the host):
+    /// an owner account, or a provider with an allowed identity, would remain.</summary>
+    public bool UsableAfter(JsonObject change)
+    {
+        var action = (string?)change["action"];
+        var owner = action == "owner" || OwnerUser is not null && action != "remove-owner";
+        var removedProvider = action == "remove-provider" ? (string?)change["id"] : null;
+        var providers = Providers.Select(p => p.Id).Where(id => id != removedProvider)
+            .Concat(action == "provider" && change["provider_config"]?["id"] is { } added ? [(string)added!] : []).ToHashSet();
+        var allowed = Allowed.Where(a => a.Provider != removedProvider &&
+                !(action == "disallow" && a.Provider == (string?)change["provider"] && a.Subject == (string?)change["subject"]))
+            .Select(a => a.Provider)
+            .Concat(action == "allow" && (string?)change["provider"] is { } provider ? [provider] : []);
+        return owner || allowed.Any(providers.Contains);
+    }
 }
 
 public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret)
@@ -346,8 +369,13 @@ public sealed partial class Audio2FaceHostConnection
                 root.TryGetProperty("recovery_codes", out var codes) && codes.ValueKind == JsonValueKind.Array
                     ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null)
             {
+                BlockedReason = root.TryGetProperty("blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String ? blocked.GetString() : null,
                 Refused = root.TryGetProperty("refused", out var refused) && refused.ValueKind == JsonValueKind.Array
                     ? refused.EnumerateArray().Take(16).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
+                        e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray()
+                    : [],
+                RemovedFromNetwork = root.TryGetProperty("removed_from_network", out var removed) && removed.ValueKind == JsonValueKind.Array
+                    ? removed.EnumerateArray().Take(32).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
                         e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray()
                     : []
             };

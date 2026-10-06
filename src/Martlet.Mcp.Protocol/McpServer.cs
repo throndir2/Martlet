@@ -234,7 +234,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("network_status", "Read this PC's Martlet network from a data directory (network.json and whether its network key " +
             "exists): member, waiting for approval (with the check number) or in no network; the network ID; each desktop and host " +
-            "in the roster (ID, name, removed, who changed it last); hosts paired on purpose (adopt) and forgotten here (ignored). " +
+            "in the roster (ID, name, removed, who changed it last); hosts paired on purpose (adopt) and forgotten here (ignored); " +
+            "each paired host in hosts.json with how many outside addresses are kept with its pairing (pairedHosts). " +
             "Read-only; contacts nothing and returns no keys or addresses.", new
         {
             dataDirectory = new { type = "string" }
@@ -253,6 +254,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
             "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
             "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
+        Tool("signin_lab", "A live sign-in lab for the desktop on a disposable data directory, so the Sign-in from outside " +
+            "window can be driven against a real paired host. action \"start\": a real gateway on 127.0.0.1 (Martlet.NodeLinkCheck " +
+            "signin-lab) with an owner account, an OpenID Connect provider (an issuer in that process) and an allowed identity; it " +
+            "pairs the desktop of dataDirectory (hosts.json there; the secret in the lab credential folder of " +
+            "MARTLET_LAB_CREDENTIALS, never Windows Credential Manager, so the MCP server and desktop must run with " +
+            "Invoke-MartletMcp.ps1 -LabCredentials), and a simulated laptop signs in with that identity and keeps syncing the network. " +
+            "\"status\": what the lab sees (whether the desktop bound the host, whether the laptop is a member, was removed, can still " +
+            "use the host, the laptop's network events). \"stop\": ends it (it also ends with this server).", new
+        {
+            action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
+            dataDirectory = new { type = "string" }
+        }, ["action"]),
         Tool("signin_selftest", "Rehearse joining from outside home by signing in, end to end with the production code: a real " +
             "gateway on 127.0.0.1 (pinned TLS, in-memory signin.json and network.json), a member desktop at home that sets up the " +
             "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
@@ -1197,6 +1210,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
+            "signin_lab" => await SignInLabAsync(arguments, cancellation),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
@@ -1632,6 +1646,55 @@ internal sealed class McpServer(DesktopAutomation desktop)
         NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, arguments);
 
     /// <summary>Martlet.NodeLinkCheck's executable in this source checkout's build (the same configuration as this server).</summary>
+    private static System.Diagnostics.Process? signInLab;
+
+    /// <summary>Starts, reads or stops the live sign-in lab (Martlet.NodeLinkCheck signin-lab) for a disposable data directory.</summary>
+    private static async Task<object> SignInLabAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var status = Path.Combine(directory, "signin-lab.json");
+        switch (OptionalString(arguments, "action"))
+        {
+            case "start":
+            {
+                if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
+                if (Environment.GetEnvironmentVariable(Martlet.Credentials.Windows.LabCredentialNative.Variable) is not { Length: > 0 })
+                    throw new InvalidOperationException("Run with Invoke-MartletMcp.ps1 -LabCredentials: the lab keeps its pairing secret in a lab folder, never Windows Credential Manager.");
+                Directory.CreateDirectory(directory);
+                var start = new System.Diagnostics.ProcessStartInfo(NodeLinkCheckProgram())
+                {
+                    UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                start.ArgumentList.Add("signin-lab");
+                start.ArgumentList.Add(directory);
+                var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Couldn't start the sign-in lab.");
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+                timeout.CancelAfter(TimeSpan.FromSeconds(90));
+                var line = await process.StandardOutput.ReadLineAsync(timeout.Token);
+                if (line is null || !line.Contains("\"ready\":true", StringComparison.Ordinal))
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                    throw new InvalidOperationException("The sign-in lab didn't start: " + (line ?? await process.StandardError.ReadToEndAsync(cancellation)));
+                }
+                signInLab = process;
+                return JsonSerializer.Deserialize<JsonElement>(line);
+            }
+            case "status":
+                return File.Exists(status) ? JsonSerializer.Deserialize<JsonElement>(await File.ReadAllBytesAsync(status, cancellation))
+                    : new { ready = false, running = signInLab is { HasExited: false } };
+            case "stop":
+                if (signInLab is { HasExited: false } running)
+                {
+                    running.StandardInput.Close();
+                    if (!running.WaitForExit(10_000)) running.Kill(entireProcessTree: true);
+                }
+                signInLab = null;
+                return new { stopped = true };
+            default:
+                throw new InvalidOperationException("action is start, status or stop.");
+        }
+    }
+
     private static string NodeLinkCheckProgram()
     {
         var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
@@ -2532,7 +2595,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var directory = DataDirectory(arguments);
         var key = File.Exists(Path.Combine(directory, "network", "device_ecdsa"));
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
-        if (!File.Exists(path)) return new { state = "none", key };
+        var pairedHosts = PairedHostsSummary(directory);
+        if (!File.Exists(path)) return new { state = "none", key, pairedHosts };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -2552,8 +2616,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
             hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt, outsideAddresses = m.Addresses?.Count ?? 0 }).ToArray(),
             adopt = local.Adopt,
             ignored = local.Ignored,
-            removedFrom = local.RemovedFrom
+            removedFrom = local.RemovedFrom,
+            pairedHosts
         };
+    }
+
+    /// <summary>hosts.json in short: each paired host's ID and how many outside addresses are kept with its pairing.</summary>
+    private static object? PairedHostsSummary(string directory)
+    {
+        try
+        {
+            var path = Path.Combine(directory, "hosts.json");
+            if (!File.Exists(path)) return Array.Empty<object>();
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            return document.RootElement.GetProperty("hosts").EnumerateArray().Select(h => new
+            {
+                hostId = h.GetProperty("pairing").GetProperty("hostId").GetString(),
+                outsideAddresses = h.TryGetProperty("outsideAddresses", out var outside) && outside.ValueKind == JsonValueKind.Array
+                    ? outside.GetArrayLength() : 0
+            }).ToArray();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return "unreadable";
+        }
     }
 
     /// <summary>Probes each roster host's home and outside addresses (pinned TLS, GET /health/live) when contactHosts is true.</summary>

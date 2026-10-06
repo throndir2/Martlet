@@ -14,13 +14,13 @@ namespace Martlet.Desktop;
 public partial class SignInJoinWindow : ThemedWindow
 {
     private readonly string deviceId;
-    private readonly Func<Audio2FaceHostPairing, string, Task> keep;
+    private readonly Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, Task> keep;
     private readonly CancellationTokenSource lifetime = new();
     private NetworkInvite? invite;
     private string? origin;
     private HostSignInProvider? provider;
 
-    internal SignInJoinWindow(string deviceId, Func<Audio2FaceHostPairing, string, Task> keep, string? invite = null)
+    internal SignInJoinWindow(string deviceId, Func<Audio2FaceHostPairing, string, IReadOnlyList<string>, Task> keep, string? invite = null)
     {
         InitializeComponent();
         this.deviceId = deviceId;
@@ -96,10 +96,9 @@ public partial class SignInJoinWindow : ThemedWindow
             }
             PasswordText.Clear();
             CodeText.Clear();
-            // Until this PC is in the network (whose roster carries the host's outside addresses), reach the host where the
-            // invite says it answers from outside.
-            HostRoutes.Set(result.Pairing.Origin, result.Pairing.HostId, invite.Addresses);
-            await keep(result.Pairing, result.Secret);
+            // The invite's outside addresses are kept with the pairing (and reach the host from now on); the network roster
+            // keeps them up to date once this PC has joined.
+            await keep(result.Pairing, result.Secret, invite.Addresses);
             StatusText.Text = $"Signed in as {result.Identity}. This PC is paired with {result.Pairing.HostId} and joins your Martlet network by " +
                 "itself as soon as one of your computers at home syncs (no check number needed).";
             ErrorLog.Info($"Sign-in: paired with {result.Pairing.HostId} as {result.Identity.Provider}.");

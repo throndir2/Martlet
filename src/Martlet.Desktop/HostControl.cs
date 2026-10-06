@@ -24,6 +24,10 @@ internal sealed record PairedHost
     public string? SshHostKey { get; init; }
     /// <summary>The MAC address it reported for Wake-on-LAN (Prepare this computer), so Martlet can wake it.</summary>
     public string? WakeMac { get; init; }
+    /// <summary>Where the host answers from outside home ("name:port"), kept with the pairing: from the invite a computer
+    /// signed in with, then from the network roster on every sync. A computer that has never been on the home network
+    /// reconnects with these (home address first, these after 1.5 seconds) whatever its network state.</summary>
+    public IReadOnlyList<string>? OutsideAddresses { get; init; }
 
     [JsonIgnore] public string HostId => Pairing.HostId;
     [JsonIgnore] public string Address => new Uri(Pairing.Origin).Host;
@@ -182,6 +186,9 @@ internal static class HostRegistry
         {
             throw new InvalidDataException($"Saved hosts couldn't be read ({error.Message}). Pair again.", error);
         }
+        // Saved outside addresses reach the host until the roster (which wins once this PC syncs it) says otherwise.
+        foreach (var host in hosts.Where(h => h.OutsideAddresses is { Count: > 0 }))
+            HostRoutes.Prime(host.Pairing.Origin, host.HostId, host.OutsideAddresses!);
         for (var i = 0; i < hosts.Count; i++)
             if (hosts[i].Method == HostSetupMethod.OnHost ||
                 thisPcAddress is not null && hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
@@ -211,6 +218,17 @@ internal static class HostRegistry
         {
             if (File.Exists(temporary)) File.Delete(temporary);
         }
+    }
+
+    /// <summary>The hosts with their outside addresses taken from <paramref name="roster"/> where it lists that host (with the
+    /// same home origin); unchanged hosts are returned as they are, so the caller saves only when something changed.</summary>
+    internal static IReadOnlyList<PairedHost> WithRosterAddresses(IReadOnlyList<PairedHost> hosts, Martlet.Core.Network.NetworkRoster? roster)
+    {
+        if (roster is null) return hosts;
+        return hosts.Select(h => roster.Host(h.HostId) is { Removed: false } entry && entry.Origin == h.Pairing.Origin &&
+                !(entry.Addresses ?? []).SequenceEqual(h.OutsideAddresses ?? [])
+            ? h with { OutsideAddresses = entry.Addresses is { Count: > 0 } a ? a.ToArray() : null }
+            : h).ToList();
     }
 
     internal static IReadOnlyList<PairedHost> Upsert(IReadOnlyList<PairedHost> hosts, PairedHost host)
@@ -269,7 +287,7 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
     /// checks it runs Audio2Face, or installs it in the same step). Re-pairing a host keeps its role. A pairing the owner made
     /// here (<paramref name="adopt"/>) is shared with the Martlet network on its next sync, even after a removal.</summary>
     internal async Task<(PairedHost Host, bool LipSync)> AddAsync(AvatarRemoteHost pairing, HostSetupMethod method, string? sshTarget,
-        CancellationToken token, string? sshHostKey = null, bool adopt = true)
+        CancellationToken token, string? sshHostKey = null, bool adopt = true, IReadOnlyList<string>? outsideAddresses = null)
     {
         var (profile, revision) = await LoadProfileAsync(token);
         var hosts = HostRegistry.Load(dataDirectory, profile?.RemoteHost, HostSetupCommands.ThisPcAddress());
@@ -286,6 +304,8 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         if (previous is not null && method == HostSetupMethod.Agent)
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
         if (previous is not null) host = host with { WakeMac = previous.WakeMac };
+        host = host with { OutsideAddresses = outsideAddresses is { Count: > 0 } ? outsideAddresses.ToArray() : previous?.OutsideAddresses };
+        if (host.OutsideAddresses is { Count: > 0 } outside) HostRoutes.Set(pairing.Origin, pairing.HostId, outside);
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
         var lipSync = profile?.RemoteHost?.HostId == pairing.HostId;
         if (lipSync) await profiles.SaveAsync(profile! with { RemoteHost = pairing }, revision, token);
@@ -294,6 +314,17 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
             if (old is not null && old.CredentialId != pairing.CredentialId) store.DeleteAvatarHostSecret(old.HostId, old.CredentialId);
         if (adopt) NetworkIdentity.Adopt(dataDirectory, pairing.HostId);
         return (host, lipSync);
+    }
+
+    /// <summary>Keeps every paired host's outside addresses in step with <paramref name="roster"/> (saved only when changed).
+    /// Returns the hosts whose addresses changed.</summary>
+    internal IReadOnlyList<string> KeepRosterAddresses(Martlet.Core.Network.NetworkRoster? roster)
+    {
+        var hosts = HostRegistry.Load(dataDirectory);
+        var updated = HostRegistry.WithRosterAddresses(hosts, roster);
+        var changed = updated.Where((h, i) => !ReferenceEquals(h, hosts[i])).Select(h => h.HostId).ToArray();
+        if (changed.Length > 0) HostRegistry.Save(dataDirectory, updated);
+        return changed;
     }
 
     /// <summary>Forgets a host here (list, lip-sync assignment and secret). The host itself still lists this device until revoked there.</summary>

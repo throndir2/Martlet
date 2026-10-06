@@ -15,6 +15,10 @@ public sealed record HostJoinRequest(string HostId, string DeviceId, string Disp
     public HostSignInAttestation? SignIn { get; init; }
 }
 
+/// <summary>A computer that joined through a sign-in the owner no longer allows on <see cref="HostId"/>: its device ID and, when
+/// the host saw it ask to join, its network key.</summary>
+public sealed record HostSignInRemoval(string HostId, string DeviceId, string? Key, string Provider, string Subject, string? Label, DateTimeOffset At);
+
 /// <summary>A computer paired with a host, as that host reports it: when its current pairing was made and when it last made
 /// a signed request (null when it hasn't since the host's gateway started).</summary>
 public sealed record HostPairedDevice(string HostId, string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen);
@@ -31,6 +35,9 @@ public sealed record HostNetworkView(string HostId, string State, NetworkRoster?
     public IReadOnlyList<string>? AdvertisedAddresses { get; init; }
     /// <summary>When <see cref="AdvertisedAddresses"/> were set on the host.</summary>
     public DateTimeOffset? AdvertisedAt { get; init; }
+    /// <summary>For a member: computers that joined through a sign-in the owner no longer allows on this host; this PC removes
+    /// them from the network on sync (<see cref="NetworkSyncEngine"/>).</summary>
+    public IReadOnlyList<HostSignInRemoval> SignInRemovals { get; init; } = [];
 
     public static HostNetworkView Unsupported(string hostId) => new(hostId, "unsupported", null, [], false);
     public bool Bound => State == "bound" && Roster is not null;
@@ -152,7 +159,14 @@ public sealed partial class Audio2FaceHostConnection
             }
             return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release)
             {
-                AdvertisedAddresses = advertised, AdvertisedAt = advertisedAt
+                AdvertisedAddresses = advertised, AdvertisedAt = advertisedAt,
+                SignInRemovals = root.TryGetProperty("sign_in_removals", out var removals) && removals.ValueKind == JsonValueKind.Array
+                    ? removals.EnumerateArray().Take(32).Select(r => new HostSignInRemoval(pairing.HostId, r.GetProperty("device_id").GetString()!,
+                        r.TryGetProperty("key", out var key) && key.ValueKind == JsonValueKind.String ? key.GetString() : null,
+                        r.GetProperty("provider").GetString()!, r.GetProperty("subject").GetString()!,
+                        HostSignInClient.Clean(r.TryGetProperty("label", out var label) && label.ValueKind == JsonValueKind.String ? label.GetString() : null),
+                        r.GetProperty("at").GetDateTimeOffset())).ToArray()
+                    : []
             };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ContractException)

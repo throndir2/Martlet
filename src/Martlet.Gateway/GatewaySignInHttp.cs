@@ -140,6 +140,7 @@ internal sealed partial class GatewayHttpApplication
         await WriteJsonAsync(context, StatusCodes.Status200OK, new SignInSettingsDocument
         {
             ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, Attached = SignIn.Attached,
+            BlockedReason = SignIn.Attached ? GatewaySignInSettings.BlockedReason(current) : "signin.not_set_up",
             Owner = current.Owner is { } owner ? new() { User = owner.User, RecoveryCodesLeft = owner.RecoveryCodes.Count, CreatedAt = owner.CreatedAt } : null,
             Providers = current.Providers.Select(p => new SignInProviderSettingsDocument
             {
@@ -150,6 +151,10 @@ internal sealed partial class GatewayHttpApplication
             Enrolled = current.Enrolled.Select(e => new SignInEnrolledDocument
             {
                 DeviceId = e.DeviceId, Provider = e.Provider, Subject = e.Subject, Label = e.Label, EnrolledAt = e.EnrolledAt
+            }).ToArray(),
+            RemovedFromNetwork = current.Removed.Select(r => new SignInEnrolledDocument
+            {
+                DeviceId = r.DeviceId, Provider = r.Provider, Subject = r.Subject, Label = r.Label, EnrolledAt = r.At
             }).ToArray(),
             Refused = SignIn.Refused().Select(r => new SignInEnrolledDocument
             {
@@ -242,12 +247,18 @@ internal sealed partial class GatewayHttpApplication
         public required GatewayProtocolVersion ProtocolVersion { get; init; }
         public required string HostId { get; init; }
         public required bool Attached { get; init; }
+        /// <summary>Whether someone can sign in here now; while not, the host isn't reachable from outside home.</summary>
+        public bool Usable => BlockedReason is null;
+        public string? BlockedReason { get; init; }
         public SignInOwnerDocument? Owner { get; init; }
         public required SignInProviderSettingsDocument[] Providers { get; init; }
         public required SignInAllowedDocument[] Allowed { get; init; }
         public required SignInEnrolledDocument[] Enrolled { get; init; }
         /// <summary>Identities that signed in at a provider but aren't allowed (newest first), so the owner can allow them.</summary>
         public required SignInEnrolledDocument[] Refused { get; init; }
+        /// <summary>Computers whose sign-in is no longer allowed and that your member desktops still have to remove from the
+        /// network (they do on their next sync); <c>enrolled_at</c> is when the sign-in was removed.</summary>
+        public required SignInEnrolledDocument[] RemovedFromNetwork { get; init; }
         /// <summary>Only in the answer to the change that made them; shown once to the owner, kept here only as verifiers.</summary>
         public IReadOnlyList<string>? RecoveryCodes { get; init; }
     }
