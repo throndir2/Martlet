@@ -339,7 +339,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
-            "with Thinking steps on), and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
+            "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
+            "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +

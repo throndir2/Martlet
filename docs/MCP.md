@@ -696,10 +696,15 @@ bound fits the saved settings; a think on the
 Deep thinking route is held mid-answer while a reply streams on Thinking's
 route, and the reply finishes first (parallel, never queued); each request
 reached its own Ollama (the think with `"think":true`, its own model and a
-32,768-token context, the reply without Thinking steps); and the chat client
+32,768-token context, the reply without Thinking steps); two thinks run at once
+on the Deep thinking role's two slots (`OllamaRelayWorker.DeepThinking` with
+`slots: 2`, advertised as the route's `maximum_concurrency` and read as
+`HostRoute.MaximumConcurrency`) while a reply streams, a third is turned away
+with `job.busy` and each finishes once released; and the chat client
 refuses a route whose ID and path don't match. Nothing leaves loopback and
 nothing is written to disk or Windows Credential Manager; it does not cover
-`martlet-host` installing the role, a real Ollama or model, a GPU or a real LAN.
+`martlet-host` installing the role, a real Ollama or model (the slots' graphics
+memory), a GPU or a real LAN.
 
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with

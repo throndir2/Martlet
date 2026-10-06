@@ -9,12 +9,14 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Avatar.Audio2Face.Remote;
 
-/// <summary>One route a paired host offers (one per installed role), as advertised by its signed capabilities.</summary>
+/// <summary>One route a paired host offers (one per installed role), as advertised by its signed capabilities.
+/// <paramref name="MaximumConcurrency"/> is how many requests it runs at once: the Deep thinking role's thinks at once (its
+/// slots), one for every other route and for hosts that don't say.</summary>
 public sealed record HostRoute(
     string RouteId, string Path, string ContractId, string ContractVersion, string DestinationId, string WorkerId,
     string AdapterVersion, string ModelId, string ModelRevision, string ModelSha256, string ArtifactIdentitySha256,
     int MaximumRequestBytes, int MaximumInputBytes, int MaximumOutputBytes, int MaximumEventBytes, int MaximumEvents,
-    int MaximumStreamBytes, TimeSpan MaximumDuration, string Cancellation)
+    int MaximumStreamBytes, TimeSpan MaximumDuration, string Cancellation, int MaximumConcurrency = 1)
 {
     public const string OllamaChatRouteId = SelfHostSetup.OllamaRouteId;
     public const string OllamaChatPath = SelfHostSetup.OllamaPath;
