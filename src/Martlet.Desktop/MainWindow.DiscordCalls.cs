@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Avatar.Hosting;
 using Martlet.Core.Creations;
 using Martlet.Discord.Calls;
 
@@ -116,6 +117,21 @@ public partial class MainWindow
                 : "The camera view is on, but the character isn't showing yet; it opens there as soon as the character shows.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(cameraStatus, "DiscordCallCameraStatus");
+        var framing = Note($"Framing: {saved.CameraFraming}. In the camera window, drag the character to move it, use the mouse " +
+            "wheel to zoom it in or out and the arrow keys to nudge it; Home resets it and Shift+drag moves the window. " +
+            "OBS captures it as framed.", new Thickness(0, 4, 0, 2));
+        AutomationProperties.SetAutomationId(framing, "DiscordCallCameraFraming");
+        var framingOpen = discordCalls.CameraOpen && avatar.IsShowing;
+        Button Frame(string label, string action, string id)
+        {
+            var button = PageButton(label, () => FrameCallCameraAsync(action).Forget(), id: id);
+            button.IsEnabled = framingOpen;
+            return button;
+        }
+        var framingButtons = Row(Frame("Bigger", "in", "DiscordCallCameraZoomIn"), Frame("Smaller", "out", "DiscordCallCameraZoomOut"),
+            Frame("Left", "left", "DiscordCallCameraLeft"), Frame("Right", "right", "DiscordCallCameraRight"),
+            Frame("Up", "up", "DiscordCallCameraUp"), Frame("Down", "down", "DiscordCallCameraDown"),
+            Frame("Reset framing", "reset", "DiscordCallCameraReset"));
 
         var check = PageButton("Check this PC", () => CheckCallAsync().Forget(), link: true, id: "DiscordCallCheck");
         var doctor = Note(callDoctor ?? "Check this PC to see whether Windows can hear the Discord app alone and your output is connected.",
@@ -141,7 +157,7 @@ public partial class MainWindow
             Note("Open the camera view, add it to OBS as a Window Capture of \"Martlet camera\", key out a color background with a " +
                 "Chroma Key filter (a picture needs none), then Start Virtual Camera in OBS and pick \"OBS Virtual Camera\" as your " +
                 "camera in Discord. Martlet installs no camera driver.", new Thickness(0, 0, 0, 4)),
-            Note("Background:", new Thickness(0, 0, 0, 0)), background, CallPicturePanel(saved), Row(camera), cameraStatus,
+            Note("Background:", new Thickness(0, 0, 0, 0)), background, CallPicturePanel(saved), Row(camera), cameraStatus, framing, framingButtons,
             Row(check), doctor]);
     }
 
@@ -393,6 +409,51 @@ public partial class MainWindow
             ActionText.Text = "Couldn't change the camera view: " + error.Message;
         }
         if (!closing && openTab == CompanionTab.Discord) RenderTab();
+    }
+
+    /// <summary>Frames the character in the open camera view from the Discord card: "in", "out", "left", "right", "up", "down"
+    /// or "reset", then saves the framing.</summary>
+    private async Task FrameCallCameraAsync(string action)
+    {
+        try
+        {
+            var view = await avatar.ZoomAsync(action, CancellationToken.None);
+            if (view is not { Camera: true }) throw new InvalidOperationException("The camera view isn't open.");
+            SaveCallFraming(view);
+            ActionText.Text = $"Camera framing: {discordCalls.Preferences.CameraFraming}.";
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.IO.IOException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        {
+            ActionText.Text = "Couldn't frame the character: " + error.Message;
+        }
+        if (!closing && openTab == CompanionTab.Discord && !tabEdited) RenderTab();
+    }
+
+    /// <summary>The character was moved or zoomed in the camera window and has settled: saves the framing, so the camera view
+    /// opens framed the same way next time.</summary>
+    private async Task RememberCallFramingAsync()
+    {
+        try
+        {
+            if (await avatar.ZoomAsync("status", lifetime.Token) is not { Camera: true } view || closing) return;
+            SaveCallFraming(view);
+            if (openTab == CompanionTab.Discord && !tabEdited) RenderTab();
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        {
+            if (!closing) ErrorLog.Warn("The camera view's framing couldn't be read to save it.", error);
+        }
+    }
+
+    private void SaveCallFraming(RendererView view)
+    {
+        double zoom = view.Zoom, x = view.X ?? 0, y = view.Y ?? 0;
+        avatar.RememberCameraFraming(zoom, x, y);
+        if (discordCalls.Save(prefs => prefs with { CameraZoom = zoom, CameraX = x, CameraY = y }))
+            ErrorLog.Info($"Camera framing saved: {discordCalls.Preferences.CameraFraming}.");
+        else ErrorLog.Warn("The camera view's framing couldn't be saved.");
     }
 
     // ---------- set_camera_background: Martlet changes its own webcam background ----------

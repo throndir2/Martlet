@@ -271,24 +271,32 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private int voiceMuted;
     private RendererCamera? camera;
 
-    /// <summary>The camera view (its background color and any picture) while the character shows in its own 16:9 window for OBS
-    /// (Martlet in your Discord calls), or null for the usual overlay.</summary>
+    /// <summary>The camera view (its background color, any picture and the framing it opens with) while the character shows in
+    /// its own 16:9 window for OBS (Martlet in your Discord calls), or null for the usual overlay.</summary>
     internal RendererCamera? Camera => Volatile.Read(ref camera);
 
     /// <summary>Opens the camera view (the character on <paramref name="view"/>'s solid color or picture in an ordinary 16:9
-    /// window) or closes it (null). Returns whether the showing character now shows it; hidden, it shows that way when it shows
-    /// next.</summary>
+    /// window, framed as asked when it opens; a change of background keeps the current framing) or closes it (null). Returns
+    /// whether the showing character now shows it; hidden, it shows that way when it shows next.</summary>
     internal async Task<bool> SetCameraAsync(RendererCamera? view, CancellationToken token)
     {
         await changes.WaitAsync(token);
         try
         {
+            view = view is { On: true } ? view : null;
             Volatile.Write(ref camera, view);
             if (renderer is not { HasExited: false } current || profile is null) return false;
             await current.SendAsync("camera", view ?? new RendererCamera(false), token);
             return view is not null;
         }
         finally { changes.Release(); }
+    }
+
+    /// <summary>Remembers how the character is framed in the open camera view, so it opens framed that way when it shows
+    /// again.</summary>
+    internal void RememberCameraFraming(double zoom, double x, double y)
+    {
+        if (Camera is { } open) Volatile.Write(ref camera, open with { Zoom = zoom, X = x, Y = y });
     }
 
     /// <summary>Martlet's voice is muted (Speak Martlet's replies aloud is off): a newly shown character's menu offers Unmute

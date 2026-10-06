@@ -220,6 +220,14 @@ public sealed class DiscordCallTests
             var loaded = DiscordCallPreferences.Load(directory);
             Assert.Equal(saved with { OwnerName = "Ben" }, loaded);
             Assert.Equal("#FF00FF", loaded.CameraColor);
+            Assert.Equal("the character at its fitted size, centered", loaded.CameraFraming);
+            var framed = loaded with { CameraZoom = 1.5, CameraX = 0.125, CameraY = -0.05 };
+            Assert.True(framed.Save(directory));
+            Assert.Equal(framed, DiscordCallPreferences.Load(directory));
+            Assert.Equal("the character at 150% of its fitted size, 12.5% right and 5% down of center", framed.CameraFraming);
+            File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{\"CameraZoom\":99,\"CameraX\":-50}");
+            var clamped = DiscordCallPreferences.Load(directory);
+            Assert.Equal((16d, -8d, 0d), (clamped.CameraZoom, clamped.CameraX, clamped.CameraY));
             File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{ not json");
             Assert.False(DiscordCallPreferences.Load(directory).On);
             File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{\"On\":true,\"OutputId\":\"\",\"OutputName\":\"x\"}");

@@ -209,14 +209,20 @@ by default) Martlet stops a reply once someone in the call has talked over it fo
 someone in the Discord call...*).
 
 **Webcam: the character.** *Open camera view* moves the character into its own ordinary 16:9 window titled *Martlet camera*
-(in the taskbar, not on top) on a solid green, blue, magenta or black background, or on a picture; its size and place are
-fixed and never saved, and closing it puts the overlay back where it was. For a picture, *Choose a picture file...* takes a
+(in the taskbar, not on top) on a solid green, blue, magenta or black background, or on a picture; the window's size is fixed
+and its place is never saved, and closing it puts the overlay back where it was, zoomed as it was. For a picture, *Choose a picture file...* takes a
 PNG, JPEG or WebP (24 MB at most), *A picture from Creations...* uses one Martlet drew before, and, while Companion › Pictures
 has a place, *Draw it* draws a 16:9 picture from your instruction there (a cloud provider asks first, as it may cost money)
 and keeps it in Creations too. The picture is copied to `discord-camera-background` in Martlet's data folder, fills the window
 and becomes the *Picture* background choice; if that file is gone the camera goes back to green. In OBS (installed by you):
 add a Window Capture of *Martlet camera*, add a Chroma Key filter for a color background (a picture needs none), **Start
 Virtual Camera**, then pick **OBS Virtual Camera** as your camera in Discord. Martlet ships no virtual camera driver.
+
+**Framing the character.** Frame the character in the camera window before OBS captures it: drag it anywhere in the window,
+use the mouse wheel to zoom it in (up to 16×) or out (down to a quarter of its fitted size) around the cursor, nudge it with
+the arrow keys (Shift for 1 pixel), and press Home or 0 to reset it; Shift+drag moves the window. The Discord card's
+*Bigger*, *Smaller*, *Left*, *Right*, *Up*, *Down* and *Reset framing* buttons do the same. The framing is saved in
+`discord-calls.json`, the camera view opens framed that way next time, and a change of background keeps it.
 
 **Martlet changes its own background.** While the mode is on, every reply on a route that does function calling also gets
 `set_camera_background`: when someone in the call (or you) asks for a different background, or a new one fits, Martlet
@@ -226,7 +232,9 @@ Creations and becomes the background when it's ready. A picture goes through the
 as the card's choices, so it stays the background until changed, and shows at once while the camera view is open.
 
 **Settings and status.** `discord-calls.json` (`DiscordCallPreferences`): `On`, `Capture`, `SeeSpeakers`, `OwnerName`,
-`OutputId`/`OutputName`, `AlsoSpeakers`, `BargeIn`, `CameraBackground`, `CameraPicture` (`File`, `Creation` or `Drawn`). The card's status lines, *Check this PC* and MCP's
+`OutputId`/`OutputName`, `AlsoSpeakers`, `BargeIn`, `CameraBackground`, `CameraPicture` (`File`, `Creation` or `Drawn`),
+`CameraZoom` (1 fits the view's height), `CameraX`/`CameraY` (the character's middle from the view's center, as fractions of its
+width and height, +x right, +y up). The card's status lines, *Check this PC* and MCP's
 `discord_call_check` (a doctor check plus a simulated call utterance) are described in [MCP](MCP.md).
 
 ## Voice

@@ -130,14 +130,15 @@ internal sealed class DiscordCallService
     /// <summary>The camera view is open (the character in its own 16:9 window on a solid background or picture for OBS).</summary>
     internal bool CameraOpen { get; set; }
 
-    /// <summary>The camera view as the saved background shows it: its color and, for a picture, the picture's file.</summary>
+    /// <summary>The camera view as the saved background shows it: its color and, for a picture, the picture's file, and how the
+    /// character is framed in it.</summary>
     internal Martlet.Avatar.Hosting.RendererCamera CameraView
     {
         get
         {
             var saved = Preferences;
             return new(true, saved.CameraColor, saved.CameraBackground == DiscordCameraBackground.Picture && DiscordCallPreferences.HasPicture(directory)
-                ? DiscordCallPreferences.PicturePath(directory!) : null);
+                ? DiscordCallPreferences.PicturePath(directory!) : null, saved.CameraZoom, saved.CameraX, saved.CameraY);
         }
     }
 

@@ -4062,9 +4062,13 @@ while Companion › Pictures has a place or `MARTLET_PICTURES_FIXTURE=1`, it
 draws a 16:9 picture, keeps it as a `picture` creation and uses it) and
 `DiscordCallCameraPicture` (the saved picture's preview),
 `DiscordCallCamera` (*Open camera view* / *Close camera
-view*) and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
+view*), the camera framing buttons `DiscordCallCameraZoomIn` (*Bigger*),
+`DiscordCallCameraZoomOut` (*Smaller*), `DiscordCallCameraLeft`,
+`DiscordCallCameraRight`, `DiscordCallCameraUp`, `DiscordCallCameraDown`
+(each moves the character 10 pixels) and `DiscordCallCameraReset` (*Reset
+framing*), enabled while the camera view shows, and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
 playback devices, looks for Discord and sets up a process loopback unstarted).
-Toggling, choosing, the picture controls and the camera button save
+Toggling, choosing, the picture controls, the camera button and the framing buttons save
 `discord-calls.json`, draw or show a window, so they need `--allow-ui-effects`.
 Returned (SafeValues):
 `DiscordCallStatus` (*Off. Martlet isn't in your Discord calls.* or *On.
@@ -4076,7 +4080,11 @@ or that the chosen output isn't connected), `DiscordCallCameraStatus` (open
 or closed, with its background), `DiscordCallCameraPictureStatus` (*The
 camera shows a picture from a file.* / *from Creations* / *Martlet drew*,
 *Drawing it on ...…*, or why a picture couldn't be used; never a title or the
-instruction), `DiscordCallDoctor` (Check this PC's result)
+instruction), `DiscordCallCameraFraming` (*Framing: the character at its
+fitted size, centered.* or, say, *at 150% of its fitted size, 12.5% right and
+5% up of center*, the saved framing, which dragging, the wheel and the arrow
+keys in the camera window also save once they settle; `SetupCharacterView`
+then reads the camera's zoom), `DiscordCallDoctor` (Check this PC's result)
 and the three choices. While the mode is on, the talk window's `LivePcAudio`
 line says *In your Discord call.* or *Hearing someone in your Discord call…*
 (its `help` is the mode's line) and lines from the call show in

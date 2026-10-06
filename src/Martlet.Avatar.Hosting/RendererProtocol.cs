@@ -44,9 +44,17 @@ public sealed record RendererLock(bool Locked);
 /// camera", in the taskbar, not on top) on a solid <paramref name="Background"/> (#RRGGBB) so OBS can capture that window
 /// cleanly and key the color out, then share it as a virtual camera; or, with <paramref name="Picture"/> (the full path of a
 /// PNG, JPEG or WebP file on this PC), on that picture, filling the window (the color shows only if it can't be read). Off
-/// puts the overlay back where and how it was. While on, the window keeps its size (zoom only zooms the camera) and its place
-/// isn't saved.</summary>
-public sealed record RendererCamera(bool On, string Background = "#00B140", string? Picture = null);
+/// puts the overlay back where and how it was. While on, the window keeps its size and its place isn't saved; the character
+/// is framed freely inside it: dragged anywhere, zoomed in or out (<see cref="MinimumZoom"/> to <see cref="MaximumZoom"/>) and
+/// nudged with the arrow keys. Opening it starts from <paramref name="Zoom"/> and the character's middle at
+/// <paramref name="X"/>, <paramref name="Y"/> (fractions of the window's width and height from its center, +x right, +y up); a
+/// change of background keeps the current framing. Once a framing change settles the overlay sends a "framed"
+/// <see cref="RendererRequest"/>.</summary>
+public sealed record RendererCamera(bool On, string Background = "#00B140", string? Picture = null, double Zoom = 1, double X = 0,
+    double Y = 0)
+{
+    public const double MinimumZoom = 0.25, MaximumZoom = 16, Farthest = 8;
+}
 /// <summary>Where the character overlay is: its window's top-left corner and the character frame's width and height, in
 /// device-independent pixels, and whether its place is locked. <paramref name="Screen"/> names the monitor it is on (Windows'
 /// device name, such as <c>\\.\DISPLAY2</c>) and <paramref name="ScreenLeft"/>, <paramref name="ScreenTop"/> its top-left
@@ -81,7 +89,9 @@ public sealed record RendererBubble(string Placement, double Left, double Top, d
 /// <summary>The colors a shown speech bubble is drawn in (#RRGGBB): its fill, outline and text, and its halo (null without
 /// one, as in Windows' high contrast). They come from the overlay's palette: Surface, Accent, Text and Glow.</summary>
 public sealed record RendererBubbleColors(string Fill, string Outline, string Text, string? Halo);
-/// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed camera) or "status" (no change).</summary>
+/// <summary>Overlay zoom command: "in", "out", "reset" (default size, unzoomed and centered camera), "left", "right", "up" or
+/// "down" (moves the character 10 pixels within its view: anywhere in the camera view, or while zoomed in on the overlay) or
+/// "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
 /// <summary>
 /// Turns the character's head and eyes toward a point on the desktop (<paramref name="X"/>, <paramref name="Y"/> in physical
@@ -101,21 +111,25 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// window), show the character's "settings", "lock" its place where it is or "unlock" it (Martlet saves it and sends
 /// <see cref="RendererLock"/>), or "mute" or "unmute" Martlet's voice (Martlet saves it and sends <see cref="RendererVoice"/>).
 /// "placed" says the character was moved or resized and has settled: Martlet then asks where it is ("where", replied to with
-/// <see cref="RendererPlacement"/>) and saves that on this PC. Zoom, position and keep-on-top stay inside the overlay.
+/// <see cref="RendererPlacement"/>) and saves that on this PC. "framed" says the character was moved or zoomed within the camera
+/// view and has settled: Martlet then reads the view ("zoom" "status") and saves the framing. Zoom, position and keep-on-top
+/// stay inside the overlay.
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed"];
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed"];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
 /// (negative when it extends above the screen; null if unknown), its camera zoom, how far the top of the character's head
 /// sits below the frame's top edge as a fraction of its height (negative when cut off; null until reported), and the
 /// overlay's full drawing width: the frame plus the transparent room beside it the model can move into (null if unknown), and
-/// whether its place is locked (null if unknown).
+/// whether its place is locked (null if unknown). <paramref name="X"/> and <paramref name="Y"/> are where the character's middle
+/// sits as fractions of the drawing's width and height from its center (+x right, +y up), and <paramref name="Camera"/> whether
+/// this is the camera view (null if unknown).
 /// </summary>
 public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null,
-    bool? Locked = null);
+    bool? Locked = null, double? X = null, double? Y = null, bool? Camera = null);
 /// <summary>Over the character's renderer pipe: a picture of the character as it shows now (Discord's bot picture and
 /// <c>/selfie</c>). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole character; the
 /// longer side is at most <paramref name="Edge"/> pixels (64 to 512). Replied to with <see cref="RendererPicture"/>.</summary>
