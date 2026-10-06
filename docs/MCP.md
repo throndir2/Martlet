@@ -1526,6 +1526,21 @@ directory's `smart-home.json`: `connected`, `address`, `name`, `version`,
 `shared` (this PC follows the connection shared through the hosts), `sharedBy`
 and `sharedRevision`.
 
+`discord_status` reads a data directory's `discord.json` (Companion ›
+Discord): `state` (`none`, `loaded` or `unreadable`), `configured`,
+`applicationId`, `token` (`readable` when Windows Credential Manager holds the
+bot token, `none`, or the credential error; never the token), `enabled`,
+`ownerSet`, `homeServerSet`, `serverChat`, `directChat`, `voiceChat`,
+`directFromAnyone`, `channelRules`, `people`, `peopleMayCall`, `chat` (one
+line) and `next` (the next setup step). `discord_check` (optional `seconds`,
+3-30, default 15) connects the saved bot once with the production
+`DiscordBot` and disconnects: `state` (`Online`, `Failed`, `Connecting` when
+Discord didn't answer in time, or `notConfigured`/`tokenUnreadable`),
+`botName`, `servers`, `problem`, `messageContentIntentOff` (Discord closed
+with 4014: turn on Message Content Intent), `tokenRejected` (4004),
+`milliseconds` and `next`. It sends no messages; a desktop already connected
+with the same bot stays connected.
+
 `prompts_status` reads Companion › Prompts from a data directory's
 `settings.json` (optional absolute `dataDirectory`, default the current
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
@@ -3097,7 +3112,7 @@ checking the page.
 Companion › Character's *Emotes and motions* card lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
 shows (or would show). `CharacterActionsStatus` reads how many emotes and
-motions the model has (with Martlet's nod and shake) and whether they were named
+motions the model has (with the Martlet gestures its rig supports) and whether they were named
 by the Thinking model (and when) or from the model's own files, or why they
 couldn't be read; `CharacterActionsNaming` the Thinking model's naming
 (*Asking the Thinking model...*, *The Thinking model named 10 emotes and motions
@@ -3329,6 +3344,35 @@ why not), `SmartHomeShareState`, `SmartHomeShareStatus`,
 backup), `SmartHomeManageProblem` and `SmartHomeUpdate-<n>`. Token and password
 fields are never returned; outcomes of actions are in `logs_tail` (`Status:`
 lines).
+
+Companion › Discord (`CompanionTab-Discord`): `DiscordSetupSteps` (*Step by
+step*) only expands the setup steps. Everything else needs
+`--allow-ui-effects`, a disposable data directory and no real bot token:
+`DiscordOpenPortal`, `DiscordOpenBotPage`, `DiscordFixIntent` and the invite
+buttons `DiscordInviteServer`, `DiscordInviteHome` and `DiscordInviteUser` open
+the browser; `DiscordToken` (a password box, never returned) with
+`DiscordTokenSave` saves the token in Windows Credential Manager and connects
+(a token that isn't one shows *That isn't a Discord bot token...* in
+`DiscordTokenStatus` and saves nothing); `DiscordForget` asks first
+(`ConfirmationYes`) and removes it; `DiscordEnabled` (on/off) and
+`DiscordReconnect` connect or disconnect the bot; `DiscordServerChat`,
+`DiscordDirectChat` and `DiscordVoiceChat` (*Off*, *Only when mentioned*,
+*Sometimes*, *Always*; `ui_select`), `DiscordDirectFromAnyone`, the channel
+rule picker (`DiscordRuleChannel`, `DiscordRuleMode`, `DiscordRuleAdd`,
+`DiscordRuleRemove-<channel>`), `DiscordOwnerId` with `DiscordOwnerSave`
+(digits, a `<@mention>` or a link), `DiscordOwnerPick-<n>` (*That's me:
+name*, from people the bot saw write) and `DiscordHomeServer` save
+`discord.json`. Snapshots return `DiscordSetupNext` (the next setup step),
+`DiscordConfigured` (*A bot token is saved for application 123...*),
+`DiscordTokenStatus`, `DiscordState` (*Online as Martlet in 2 servers.*, or
+*Not connected:* and why), `DiscordEnabledStatus`, `DiscordBotName`,
+`DiscordServers`, `DiscordProblem` (a rejected token, or *Turn on Message
+Content Intent...*), the invite links `DiscordServerLink`, `DiscordHomeLink`
+and `DiscordUserLink` (each with its `Copy-` button), `DiscordChatModes`, the
+three chat-mode choices, `DiscordRule-<channel>` (*Server › #general:
+Always*), `DiscordRuleChannelsStatus`, `DiscordPeopleCount` (counts only),
+`DiscordOwnerStatus`, `DiscordOwnerId` and `DiscordHomeServer`. The token is
+never returned.
 
 A host role's Add dialog (`HostInputDialog`) lists its choices as
 `HostInput-choice.<VAR>` combo boxes whose selected value snapshots return (for
@@ -3845,7 +3889,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

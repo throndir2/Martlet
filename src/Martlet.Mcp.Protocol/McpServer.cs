@@ -388,7 +388,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture (nod, shake) with what it changes, its tag, voice cue, when to use it, whether " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; Live2D smile, blush, surprise; VRM wave, shrug, bounce) with what it changes, its tag, voice cue, when to use it, whether " +
             "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
             "and the Thinking naming prompt. With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
@@ -723,6 +723,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the connection is shared through the paired hosts (shared revision, which host it came from). Read-only.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("discord_status", "Read Companion > Discord's saved setup from a data directory's discord.json: whether a bot token is saved " +
+            "and readable in Windows Credential Manager (never the token), the application ID, whether the bot connects when Martlet runs, " +
+            "the chat modes, channel-rule and people counts, whether the owner's account and home server are set, and the next setup step. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("discord_check", "Connect the data directory's saved Discord bot once with Martlet's production bot host and report whether " +
+            "Discord accepts it: Online with the bot's name and server count, a rejected token, or Message Content Intent left off in the " +
+            "Developer Portal; then disconnect. Sends no messages. Needs a saved token (Companion > Discord).", new
+        {
+            dataDirectory = new { type = "string" },
+            seconds = new { type = "integer", minimum = 3, maximum = 30 }
         }),
         Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
             "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
@@ -1099,6 +1112,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "discord_status" => DiscordCheck.Status(DataDirectory(arguments)),
+                "discord_check" => await DiscordCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "seconds"), cancellation),
                 "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
                 "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
@@ -1774,6 +1789,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
             expressions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Expression),
             motions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Motion),
+            gestures = inventory.Sources.Where(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Gesture).Select(s => s.Name).ToArray(),
             fromVTubeStudio = extras is null ? null : new
             {
                 expressions = extras.Expressions.Select(e => new { e.Name, e.File }), motions = extras.Motions.Select(m => new { m.Group, m.File })

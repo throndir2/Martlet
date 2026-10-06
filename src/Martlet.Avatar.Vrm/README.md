@@ -25,8 +25,10 @@ extensionless declaration imports.
 
 Emotes (docs/AVATARS.md "Emotes and motions"): `setAction(name, on)` fades an
 authored emotion or custom expression in or out, one at a time (mouth, blink and
-gaze presets are refused), and `playGesture("nod" | "shake")` adds Martlet's own
-head gesture to the idle neck and head look-at. VRM files carry no motions.
+gaze presets are refused), and `playGesture(name)` plays one of Martlet's own
+gestures the model has the humanoid bones for (`gestures`: `nod`, `shake`,
+`tilt`, `bow`, `sway`, `wave`, `shrug`, `bounce`) on the idle pose. VRM files
+carry no motions.
 
 `dev` bundles all JavaScript locally to ignored `public/app.js`, then serves only
 three allowlisted static files at **http://127.0.0.1:4178**. It does not serve the
