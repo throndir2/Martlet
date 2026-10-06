@@ -315,6 +315,19 @@ which machine is free to think depends on the computer you talk to):
   there, with its current model selected. The old model keeps thinking until the
   new one is downloaded and loaded; then this PC (and each of your computers, on
   its next check) thinks with the new one.
+  The same dialog asks how many thinks it runs at once (*Thinks at once*, 1 to
+  4: its Ollama's `OLLAMA_NUM_PARALLEL`), so one graphics card counts as several
+  places for background work. Ollama loads the model once and reserves one
+  think's context per slot when it loads, so only the choice costs memory, never
+  a running think: Martlet recommends the most that fit on that computer's card
+  beside its other roles (Thinking's model with its context, the voice, lip-sync,
+  listening) for each model (`DeepThinkingSlots`, shown under the choice as
+  `HostInputFit-OLLAMA_NUM_PARALLEL-OLLAMA_MODEL`), so the Thinking and voice
+  models are never pushed off the card. The role advertises its slots as its
+  route's `maximum_concurrency`, the gateway admits that many thinks at once
+  (one more gets `job.busy`), and a host check reads them
+  (`HostCheck.DeepThinkingSlots`; the host's line says "Deep thinking (2 thinks at
+  once)").
   The conversation's newest
   exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
   tools), and the computer loads 32,768 tokens of context for it. A computer's
@@ -367,11 +380,14 @@ Thinking's own model twice needs a second server (for example another `ollama
 serve` on its own port, chosen as a server on this PC under *A cloud provider or
 server*), which holds a second copy of the model in graphics memory.
 
-**While it runs** you keep talking and Martlet keeps replying. The talk window
-shows a chip per job (*Thinking about: …* with its time and *Cancel*) and the
-line above it (`LiveJobs`); the desktop log notes each start, fit check and end
+**While it runs** you keep talking and Martlet keeps replying. The talk window's
+header shows a background tasks chip (a spinner and *1 running*, then *1 ready*
+once it finishes and *1 done* once Martlet brought it up); clicking it opens the
+task list over the conversation: one card per task with its kind, what it is
+about, its status and time, its result (*Show result*) and *Cancel* (`LiveTasks`,
+`LiveJobs`, `LiveJobState-<id>`); the desktop log notes each start, fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
-Stop (Esc) ends a reply, never a think; the chip's Cancel, `cancel_thinking`,
+Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation, quitting Martlet or the time limit do. At most one
 think runs at a time (a second call is refused and Martlet is told to wait or
 cancel the first) and at most 3, 6 (default) or 12 start in any hour.
@@ -411,14 +427,14 @@ think_longer is the first kind and a song is next. A kind is a
    (`LiveConversationController.BuiltIns`: always offered while its feature is
    on, so the request start never changes; the handler returns at once).
 2. In the handler, call `jobs.Start(kind, label, runAsync)`. `label` is a few
-   words for the chip and the conversation (it is never logged). `runAsync(job,
+   words for the task list and the conversation (it is never logged). `runAsync(job,
    token)` does the work on a thread-pool thread and returns
    `BackgroundJobOutcome.Done(result)` (the text the conversation gets; for a
    song, what is ready and how to play it, such as its ID) or
    `BackgroundJobOutcome.Failed(problem)` (a few plain words); the token is
    canceled by Cancel, the conversation ending, Martlet quitting and the time
    limit. While it works it may call `job.Report(Running/Waiting/Paused,
-   "a few words")`, which the chip shows. `Start` returns `BackgroundJobStart`:
+   "a few words")`, which the task's card shows. `Start` returns `BackgroundJobStart`:
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
@@ -430,13 +446,76 @@ think_longer is the first kind and a song is next. A kind is a
    refusing with `BackgroundJobOutcome.Failed` when it doesn't.
 
 The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
-the chip and `LiveJobs`, `background-jobs.json` (kinds, states and times only),
+the header chip and task list (`LiveTasks`, `LiveJobs`; give a new kind its title and icon in
+`LiveConversationWindow.KindTitle`/`KindGlyph`), `background-jobs.json` (kinds, states and times only),
 and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
 completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
 acting on the user's yes is an ordinary later tool call in that conversation
 (for a song, `play_song` with the song's ID; see [Singing in
 conversation](#singing-in-conversation)).
+
+## Reminders
+
+*"Remind me to do the dishes in an hour."* Every reply on a route that does
+function calling gets Martlet's own `reminders` tool (last, after
+`manage_memories`, always worded the same so the start of every request stays
+the same): `set` with `text` and `in_minutes` or `at` (a local time such as
+*17:30*, *5:30 pm*, *tomorrow 9:00* or *2026-12-24 18:00*: the next such time,
+up to a year ahead), `list` and `cancel` with an `id`. Set answers with the id
+and when it is due, so Martlet confirms it with the right time without a clock
+of its own.
+
+**When it is due**, Martlet brings it up the way it brings up finished
+background work, whatever *When it shares the result* says for Thinking longer:
+
+- *Martlet is free* (nobody talking, nothing to answer, no reply or look, not
+  paused, quiet for 2 seconds): it starts a reply of its own whose message is
+  its note (Companion › Prompts › *Reminder due*): *"Hey, it's dishes time!"*
+- *You talk first* (or Martlet is mid-reply and you talk again): the reminder
+  goes in the notes of your message (Companion › Prompts › *Reminder due, with
+  your message*), so it fits into the answer: *"Nice job on that boss! Oh, and
+  by the way, you wanted me to remind you about the dishes."*
+
+When no conversation runs on that PC, Martlet starts one without the talk
+window (as Start listening does, but without listening) to say it. Where Martlet
+can't talk (Thinking isn't set up), a Windows notification shows the reminder
+after 30 seconds instead. A reminder due while no companion PC ran is said late
+with how late it is when Martlet starts within 12 hours, and let go after that.
+The talk window's task list shows a due reminder (*Due now. Martlet brings it
+up as soon as it's free.*) until it is said.
+
+**On all your computers.** Reminders travel with the [shared
+settings](CLUSTER.md#one-martlet-on-every-computer) as one entry per computer,
+`reminders.<device ID>`: the reminders set there and what that computer did
+about anyone's (offered, took, said, canceled, let go). Only that computer
+writes its entry, so nothing conflicts and no host needs updating; any computer
+lists and cancels any reminder. When it is due and other companion PCs could
+say it, **the one you used most recently says it, once**:
+
+1. each running companion PC records an offer with how long since someone used
+   it (keyboard, mouse or talking with Martlet there) and syncs at once;
+2. 6 seconds later it syncs again and the offer with the shortest idle time
+   (then the lowest device ID) takes it; the others stay quiet;
+3. that PC says it and marks it said, and every computer sees it settled.
+
+A PC that took it and didn't say it within 10 minutes (it closed, say) lets the
+others try again. A PC alone (sync off, or no other companion PC) says it at
+once. Two companion PCs that can't reach a host meanwhile can't see each other's
+offers, so each says it. Saying the same line on every computer at once was
+left out on purpose: in one room the voices would echo, and a reply already
+under way on one PC would be cut across; the PC you are at is where you hear it.
+
+Checked locally: the tool, times, offers, taking it and wording with
+`RemindersTests` and `SharedRemindersTests`, the real controller and talk window
+bringing a due reminder up on its own through a fixture Thinking endpoint while
+finished work waits for the next message, and the tool offered last with every
+request starting the same (Desktop tests), the whole flow on two simulated
+PCs with MCP `reminders_check`, and on a disposable data folder through
+`-Desktop` a due reminder taken by the desktop, brought into a conversation
+started without the window and, with no Thinking set up, shown as a
+notification and marked said (`reminders_status`). A real model setting and
+saying one, and two real companion PCs through a real host, are **NOT RUN**.
 
 ## Singing in conversation
 
@@ -468,7 +547,7 @@ computer, which can't think something over while it answers), the result asks
 the reply to write the lyrics itself and call `sing_song` again with them. Then
 the song maker
 (`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
-the Singing card's quality and voice match; the chip follows its stages
+the Singing card's quality and voice match; the task's card follows its stages
 (*Writing the lyrics*, *Writing the music*, *Matching the singing to the
 voice*..., *Timing the mouth to the singing*). Its mouth track is made once,
 from the vocals stem (never the mix; see *Lip sync* below). The finished song is
@@ -1167,7 +1246,14 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   `*nods*`, `(sighs)`, `*clears throat*`). So `[nod]` for `{nod}` plays the
   nod and `*laughs*` is spoken as Chatterbox's `[laugh]` (or Dia's `(laughs)`),
   instead of the tag showing in the chat and silencing the rest of its line.
-  Tones of voice take only other brackets, never `*...*`, and emphasis such as
+  A sound's or tone's other words (`VoiceTags.Synonyms`) count too, in any
+  bracket and as `*...*` when they read as a stage direction (ending in -s or
+  -ing): `[whisper]`, `(whispers)`, `*whispers softly*`, `{hushed}` and
+  `(in a whisper)` are Chatterbox's `[whispering]`, `[sobbing]` its `[crying]`
+  and `*giggles*` its `[chuckle]`. Without them a hallucinated `[whisper]` was
+  unknown bracketed text and silenced its whole sentence.
+  Tones of voice otherwise take only other brackets (and `*...*` for an -ing
+  tone such as `*whispering*`), and emphasis such as
   `*so*` is left alone. When two tags share a spelling, the speaking voice's
   own tag wins, then the character's, then another engine's: `[happy]` is
   Chatterbox's tone while Chatterbox speaks and the character's `{happy}` emote

@@ -114,6 +114,28 @@ public sealed class ConversationHistoryDesktopTests
     }
 
     [Fact]
+    public async Task TheRemindersToolIsOfferedLastWhenThisPcKeepsReminders()
+    {
+        await using var fixture = await LiveFixture.Create(history: true, tools: true);
+        await fixture.EnableMemory();
+        fixture.Controller.AutoCapture = false;
+        fixture.Answer("Hello!");
+        await fixture.Finish(fixture.Start("Hi there."));
+        var before = ToolNames(fixture.Llm.Body);
+        Assert.DoesNotContain(Reminders.ToolName, before);
+
+        fixture.Controller.RemindersTool = (arguments, token) => Task.FromResult(Reminders.Run(arguments, ReminderBoard.Empty, "desktop-a",
+            ReminderEntry.Empty, DateTimeOffset.UtcNow, TimeZoneInfo.Utc));
+        await fixture.Finish(fixture.Start("Hi again."));
+        var after = ToolNames(fixture.Llm.Body);
+        Assert.Equal([.. before, Reminders.ToolName], after);
+        var instructions = Instructions(fixture.Llm.Body);
+        await fixture.Finish(fixture.Start("And once more."));
+        Assert.Equal(after, ToolNames(fixture.Llm.Body));
+        Assert.Equal(instructions, Instructions(fixture.Llm.Body));
+    }
+
+    [Fact]
     public async Task SearchingTheRecordTellsTheModelWhatWasFoundOrWhatWasWrong()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Desktop." + Guid.NewGuid().ToString("N"));

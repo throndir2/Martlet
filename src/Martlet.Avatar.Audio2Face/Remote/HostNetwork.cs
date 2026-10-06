@@ -8,7 +8,12 @@ using Martlet.Core.Network;
 namespace Martlet.Avatar.Audio2Face.Remote;
 
 /// <summary>A desktop that paired with a host and asks to join the host's Martlet network, as that host reports it to members.</summary>
-public sealed record HostJoinRequest(string HostId, string DeviceId, string DisplayName, string Key, string CheckNumber, DateTimeOffset RequestedAt);
+public sealed record HostJoinRequest(string HostId, string DeviceId, string DisplayName, string Key, string CheckNumber, DateTimeOffset RequestedAt)
+{
+    /// <summary>Who this desktop signed in as to pair with the host (an allowed identity or the owner account), as the host
+    /// attests; null when it paired another way. A member desktop lets such a request in without a check number.</summary>
+    public HostSignInAttestation? SignIn { get; init; }
+}
 
 /// <summary>A computer paired with a host, as that host reports it: when its current pairing was made and when it last made
 /// a signed request (null when it hasn't since the host's gateway started).</summary>
@@ -22,6 +27,11 @@ public sealed record HostPairedDevice(string HostId, string DeviceId, string Dis
 public sealed record HostNetworkView(string HostId, string State, NetworkRoster? Roster, IReadOnlyList<HostJoinRequest> Joins, bool Supported = true,
     IReadOnlyList<HostPairedDevice>? Devices = null, string? MartletVersion = null)
 {
+    /// <summary>Outside addresses the owner set on the host itself (martlet-host owner-exposure), null when never set there.</summary>
+    public IReadOnlyList<string>? AdvertisedAddresses { get; init; }
+    /// <summary>When <see cref="AdvertisedAddresses"/> were set on the host.</summary>
+    public DateTimeOffset? AdvertisedAt { get; init; }
+
     public static HostNetworkView Unsupported(string hostId) => new(hostId, "unsupported", null, [], false);
     public bool Bound => State == "bound" && Roster is not null;
 }
@@ -105,8 +115,13 @@ public sealed partial class Audio2FaceHostConnection
                     var key = join.GetProperty("key").GetString()!;
                     Audio2FaceHostClient.RequireIdentifier(device, "device ID");
                     if (!NetworkKey.IsPublicKey(key)) throw new FormatException();
+                    HostSignInAttestation? signIn = null;
+                    if (join.TryGetProperty("sign_in", out var attested) && attested.ValueKind == JsonValueKind.Object)
+                        signIn = new(attested.GetProperty("provider").GetString()!, attested.GetProperty("subject").GetString()!,
+                            HostSignInClient.Clean(attested.TryGetProperty("label", out var label) ? label.GetString() : null),
+                            attested.GetProperty("at").GetDateTimeOffset());
                     joins.Add(new(pairing.HostId, device, NetworkRoster.CleanName(join.GetProperty("display_name").GetString(), device), key,
-                        join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()));
+                        join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()) { SignIn = signIn });
                 }
             List<HostPairedDevice>? devices = null;
             if (root.TryGetProperty("devices", out var paired) && paired.ValueKind == JsonValueKind.Array)
@@ -126,7 +141,19 @@ public sealed partial class Audio2FaceHostConnection
             }
             var release = root.TryGetProperty("martlet_version", out var announced) && announced.ValueKind == JsonValueKind.String
                 ? HostRelease.Normalize(announced.GetString()) : null;
-            return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release);
+            IReadOnlyList<string>? advertised = null;
+            DateTimeOffset? advertisedAt = null;
+            if (root.TryGetProperty("advertised_addresses", out var advertisedList) && advertisedList.ValueKind == JsonValueKind.Array &&
+                root.TryGetProperty("advertised_at", out var at) && at.ValueKind == JsonValueKind.String)
+            {
+                advertised = advertisedList.EnumerateArray().Take(NetworkRoster.MaximumAddresses)
+                    .Select(a => NetworkRoster.NormalizeAddress(a.ValueKind == JsonValueKind.String ? a.GetString() : null)).OfType<string>().ToArray();
+                advertisedAt = at.GetDateTimeOffset();
+            }
+            return new(pairing.HostId, state, roster, joins, Devices: devices, MartletVersion: release)
+            {
+                AdvertisedAddresses = advertised, AdvertisedAt = advertisedAt
+            };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or ContractException)
         {

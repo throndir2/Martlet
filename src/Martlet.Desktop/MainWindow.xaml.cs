@@ -30,6 +30,7 @@ public partial class MainWindow : ThemedWindow
     private readonly DesktopConversationHistory? conversationHistory;
     private readonly LorebookStore? lorebooks;
     private readonly SmartHome smartHome;
+    private readonly DiscordService discord;
     private readonly McpToolService mcpTools;
     private readonly VoiceIdentity voiceIdentity;
     private readonly LocalVoices localVoices;
@@ -77,6 +78,9 @@ public partial class MainWindow : ThemedWindow
         conversationHistory = store is null ? null : new DesktopConversationHistory(store.DataDirectory);
         lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
         smartHome = new(store?.DataDirectory, vault);
+        discord = new(store?.DataDirectory, vault);
+        // A Discord message naming the companion (a persona's name) is meant for Martlet.
+        discord.CompanionNames = () => Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name)).Names;
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);
@@ -151,6 +155,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeSettingsSync();
+        InitializeReminders();
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
@@ -200,6 +205,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartSettingsSync();
+        StartReminders();
         StartMemorySync();
         StartNetwork();
         StartApiKeys();
@@ -208,6 +214,7 @@ public partial class MainWindow : ThemedWindow
         StartCharacterModels();
         StartCreations();
         StartHomeShare();
+        discord.StartIfEnabledAsync(lifetime.Token).Forget();
         StartNodeAgent();
         StartLogSharing();
         // Parakeet takes a few seconds to load; do it now rather than on the first thing said.

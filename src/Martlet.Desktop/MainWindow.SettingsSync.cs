@@ -208,6 +208,9 @@ public partial class MainWindow
         ActionText.Text = settingsLastChange;
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
         await RefreshHomeAsync();
+        // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
+        if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
+            foreach (var job in clusterObserved.Keys.ToArray()) clusterObserved[job] = ObservedJob(job);
         if (characterChanged && avatar.IsShowing && Role == DeviceRole.Companion && !closing)
         {
             characterChanged = false;
@@ -597,6 +600,10 @@ internal sealed record SharedPc(string Role, string? Host)
     /// computer records its own choice there and follows it when another computer writes it (Make it a host PC on the Devices
     /// map), so any of your computers can switch any other.</summary>
     internal static string RoleKey(string deviceId) => Name(SharedSettings.RolePrefix, deviceId);
+
+    /// <summary>The name of a computer's reminders entry ("reminders.desktop-b"): the reminders set on it and what it did about
+    /// anyone's. Only that computer writes it.</summary>
+    internal static string ReminderKey(string deviceId) => Name(SharedSettings.RemindersPrefix, deviceId);
 
     private static string Name(string prefix, string deviceId)
     {

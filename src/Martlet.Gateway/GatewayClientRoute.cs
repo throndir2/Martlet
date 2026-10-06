@@ -31,7 +31,9 @@ public sealed partial class GatewayInferenceRoute
         GatewayRules.Require(capability.RequiredRole == GatewayRole.Voice &&
             capability.RouteId == expected.Item1 && capability.Path == expected.Item2 &&
             capability.ContractId == expected.Item3 && capability.ContractVersion == expected.Item4 &&
-            capability.MaximumConcurrency == 1 && capability.Streaming &&
+            (capability.MaximumConcurrency == 1 || capability.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId &&
+                capability.MaximumConcurrency is > 1 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots) &&
+            capability.Streaming &&
             capability.MaximumDurationMilliseconds > 0 &&
             capability.MaximumDurationMilliseconds <= GatewayInferenceProtocol.MaximumJobDuration.TotalMilliseconds, "worker.invalid");
         return new(capability.Kind, capability.RequiredRole, capability.RouteId, capability.Path,
@@ -40,6 +42,6 @@ public sealed partial class GatewayInferenceRoute
             capability.ArtifactIdentitySha256, capability.MaximumRequestBytes, capability.MaximumInputBytes,
             capability.MaximumOutputBytes, capability.MaximumEventBytes, capability.MaximumEvents,
             capability.MaximumStreamBytes, TimeSpan.FromMilliseconds(capability.MaximumDurationMilliseconds),
-            capability.Cancellation);
+            capability.Cancellation, maximumConcurrency: capability.MaximumConcurrency);
     }
 }

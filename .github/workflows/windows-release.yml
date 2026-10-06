@@ -94,9 +94,10 @@ jobs:
               [IO.File]::ReadAllText((Resolve-Path -LiteralPath $sums).ProviderPath) -cne $expectedSums) {
             throw 'The installer does not match its build receipt and source commit.'
           }
-          $main = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
-          if ($LASTEXITCODE -ne 0 -or $main.Trim() -cne $env:GITHUB_SHA) {
-            throw 'Main advanced during the build; dispatch again from the current main commit.'
+          # Main may advance during the build; the built commit only has to remain part of main's history.
+          $onMain = & gh api "repos/$env:GITHUB_REPOSITORY/compare/$env:GITHUB_SHA...main" --jq '.status'
+          if ($LASTEXITCODE -ne 0 -or $onMain.Trim() -notin @('identical', 'ahead')) {
+            throw 'The built commit is no longer part of main; dispatch again from the current main commit.'
           }
           $existing = & gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>&1
           if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists; refusing to move or reuse it." }

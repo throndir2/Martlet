@@ -14,6 +14,23 @@
         <Border DockPanel.Dock="Top" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Background tasks (thinking longer, a song...): how many Martlet is running or has ready, shown once it starts
+                         one. It opens the task list over the conversation (TasksPanel). -->
+                    <Button x:Name="TasksChip" Click="TasksChip_Click" Padding="12,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
+                            ToolTip="Background tasks. Martlet keeps working on these while you talk."
+                            AutomationProperties.AutomationId="LiveTasks">
+                        <StackPanel Orientation="Horizontal">
+                            <Grid Width="14" Height="14" Margin="0,0,7,0" VerticalAlignment="Center">
+                                <Ellipse x:Name="TasksTrack" Stroke="{DynamicResource BorderBrush}" StrokeThickness="2"/>
+                                <Path x:Name="TasksSpinner" Data="M 7,1 A 6,6 0 0 1 13,7" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <Ellipse x:Name="TasksDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+                                <TextBlock x:Name="TasksGlyph" Style="{DynamicResource Icon}" FontSize="12" Text="&#xE73E;"
+                                           Foreground="{DynamicResource MutedBrush}" Visibility="Collapsed"/>
+                            </Grid>
+                            <TextBlock x:Name="TasksText" FontSize="13" TextWrapping="NoWrap" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button x:Name="MicChip" Click="Mic_Click" Padding="14,6" MinHeight="34" Margin="0,0,8,0" Visibility="Collapsed"
                             ToolTipService.ShowOnDisabled="True" AutomationProperties.AutomationId="LiveMic">
                         <StackPanel Orientation="Horizontal">
@@ -70,16 +87,6 @@
         <!-- The message box stays in view below the history. -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,12,16,14">
             <StackPanel>
-                <!-- Background work Martlet started (think_longer): what it works on, for how long, and Cancel. It keeps going
-                     while you talk; Stop (Esc) never stops it. -->
-                <Border x:Name="JobsPanel" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                        CornerRadius="14" Padding="12,8" Margin="0,0,0,10" Visibility="Collapsed" AutomationProperties.AutomationId="LiveJobsPanel">
-                    <StackPanel>
-                        <TextBlock x:Name="JobsText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveJobs"/>
-                        <StackPanel x:Name="JobChips" Margin="0,2,0,0"/>
-                    </StackPanel>
-                </Border>
                 <!-- The song Martlet sings (sing_song, play_song): where it is, the line being sung, and Stop singing. Only Martlet
                      performs songs (asked in conversation); nothing here plays one. It keeps going while you talk; Stop (Esc) ends
                      it with a quick fade, Stop singing musically. -->
@@ -166,7 +173,7 @@
         </Border>
 
         <Grid>
-            <ScrollViewer x:Name="HistoryScroll" VerticalScrollBarVisibility="Auto" Padding="18,16,18,6" ScrollChanged="History_ScrollChanged" Focusable="False">
+            <ScrollViewer x:Name="HistoryScroll" VerticalScrollBarVisibility="Auto" Padding="18,16,18,6" ScrollChanged="History_ScrollChanged" PreviewMouseDown="History_PreviewMouseDown" Focusable="False">
                 <ItemsControl x:Name="History" Focusable="False" AutomationProperties.AutomationId="LiveHistory" AutomationProperties.Name="Conversation">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -243,6 +250,34 @@
                 <TextBlock Text="Say hi to Martlet" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center"/>
                 <TextBlock x:Name="EmptyDetail" Style="{DynamicResource Muted}" TextAlignment="Center" Margin="0,4,0,0"/>
             </StackPanel>
+            <!-- Background tasks (the header's LiveTasks opens it): every task Martlet runs or ran in this conversation, newest
+                 work first: what it is about, where it is, how long it took and what it found; Cancel stops one still running.
+                 They keep going while you talk; Stop (Esc) never stops them. The shadow sits on its own layer so text stays crisp. -->
+            <Grid x:Name="TasksPanel" HorizontalAlignment="Right" VerticalAlignment="Top" Width="380" Margin="14,10,14,10"
+                  Visibility="Collapsed" AutomationProperties.AutomationId="LiveTasksPanel" AutomationProperties.Name="Background tasks">
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.22" Color="Black"/>
+                    </Border.Effect>
+                </Border>
+                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="14">
+                    <DockPanel>
+                        <DockPanel DockPanel.Dock="Top" Margin="16,10,8,0">
+                            <Button x:Name="TasksCloseButton" DockPanel.Dock="Right" Click="TasksClose_Click" Padding="7" MinHeight="0"
+                                    Background="Transparent" BorderThickness="0" ToolTip="Close (Esc)"
+                                    AutomationProperties.Name="Close background tasks" AutomationProperties.AutomationId="LiveTasksClose">
+                                <TextBlock Style="{DynamicResource Icon}" FontSize="11" Text="&#xE711;"/>
+                            </Button>
+                            <TextBlock Text="Background tasks" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <TextBlock x:Name="JobsText" DockPanel.Dock="Top" Style="{DynamicResource Muted}" FontSize="12" Margin="16,2,16,10"
+                                   AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveJobs"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                            <StackPanel x:Name="JobCards" Margin="8,0,8,8"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
         </Grid>
     </DockPanel>
 </local:ThemedWindow>

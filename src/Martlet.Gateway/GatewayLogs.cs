@@ -360,7 +360,7 @@ internal sealed partial class GatewayHttpApplication
         var failure = GatewayFailures.Get(code);
         var what = context?.Items[RouteItem] is string route
             ? $"{route} request from {context.Items[DeviceItem] as string ?? "a paired device"}"
-            : context is null ? "A request" : $"{context.Request.Method} {context.Request.Path}";
+            : context is null ? "A request" : $"{context.Request.Method} {context.Request.Path} from {GatewayRequestGuard.Address(context)}";
         var level = code == "job.canceled" ? LogLevels.Info : status >= 500 ? LogLevels.Error : LogLevels.Warn;
         Logs.Own(level, $"{what} failed: {code} (HTTP {status}). {failure.Summary} Trace {traceId}.",
             repeatKey: $"{code}|{(context?.Items[RouteItem] as string) ?? context?.Request.Method}");

@@ -24,6 +24,20 @@ if (args is ["network"])
     Console.WriteLine(JsonSerializer.Serialize(networkReport));
     return networkOk ? 0 : 1;
 }
+// With "exposure" it rehearses a host reachable from outside home (ExposureRehearsal) and prints its report.
+if (args is ["exposure"])
+{
+    var (exposureOk, exposureReport) = await Martlet.NodeLinkCheck.ExposureRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(exposureReport));
+    return exposureOk ? 0 : 1;
+}
+// With "signin" it rehearses joining from outside home by signing in (SignInRehearsal) and prints its report.
+if (args is ["signin"])
+{
+    var (signInOk, signInReport) = await Martlet.NodeLinkCheck.SignInRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(signInReport));
+    return signInOk ? 0 : 1;
+}
 // With "api" it rehearses API keys for software outside the network (ApiRehearsal) and prints its report.
 if (args is ["api"])
 {

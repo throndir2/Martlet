@@ -88,6 +88,10 @@ public sealed class GatewayServer
     /// <summary>This host's network state: "unbound", "bound" or "removed", and the ID of its network (null when unbound).</summary>
     public (string State, string? NetworkId) NetworkState => (application.Network.State, application.Network.Roster?.NetworkId);
 
+    /// <summary>Keeps this host's sign-in settings (owner account, providers, allowed identities; served without secrets at
+    /// /martlet/v1/signin) in <paramref name="storage"/>. Without it nobody can sign in here.</summary>
+    public void AttachSignInStorage(IGatewaySignInStorage storage) => application.SignIn.Attach(storage);
+
     /// <summary>Keeps the commands paired computers send this host (served at /martlet/v1/commands) in
     /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
     /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>
@@ -100,6 +104,17 @@ public sealed class GatewayServer
 
     /// <summary>Adds a line to this host's own log (for example a configuration problem the host found at start).</summary>
     public void RecordActivity(string level, string message) => application.Logs.Own(level, message);
+
+    /// <summary>Rate limits, lockouts and the audit log of authentication and pairing decisions (also served to paired
+    /// desktops at /martlet/v1/security/audit).</summary>
+    public GatewayRequestGuard Guard => application.Guard;
+
+    /// <summary>The owner's choices for reaching this host from outside home (see docs/NETWORK.md).</summary>
+    public GatewayExposure Exposure
+    {
+        get => application.Guard.Exposure;
+        set => application.Guard.Exposure = value;
+    }
 
     public GatewayServer(
         GatewayHostIdentity identity,

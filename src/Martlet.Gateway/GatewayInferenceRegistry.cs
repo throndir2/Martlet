@@ -120,7 +120,7 @@ public sealed class GatewayInferenceRouteRegistry
                 admittedRequests.Remove(expired);
             if (registration.Admission.Quarantined)
                 throw new GatewayProtocolException("worker.quarantined");
-            if (registration.Admission.Active ||
+            if (registration.Admission.Active >= registration.Route.MaximumConcurrency ||
                 activeJobs.ContainsKey(request.RequestId))
                 throw new GatewayProtocolException("job.busy");
             GatewayRules.Require(!admittedRequests.ContainsKey(request.RequestId), "job.replay");
@@ -128,7 +128,7 @@ public sealed class GatewayInferenceRouteRegistry
             GatewayRules.Require(ReferenceEquals(registration.Worker.Route, registration.Route),
                 "worker.identity");
             admittedRequests.Add(request.RequestId, request.DeadlineUtc);
-            registration.Admission.Active = true;
+            registration.Admission.Active++;
             if (activeJobs.Count == 0)
                 idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
             var job = new GatewayInferenceJob(
@@ -182,7 +182,7 @@ public sealed class GatewayInferenceRouteRegistry
         {
             if (!activeJobs.Remove(job.Request.RequestId))
                 return;
-            job.Registration.Admission.Active = false;
+            job.Registration.Admission.Active--;
             if (!healthy)
                 job.Registration.Admission.Quarantined = true;
             if (activeJobs.Count == 0)
@@ -225,7 +225,8 @@ public sealed class GatewayInferenceRouteRegistry
 
     internal sealed class WorkerAdmission
     {
-        internal bool Active;
+        /// <summary>Jobs running on the worker now, at most its route's <see cref="GatewayInferenceRoute.MaximumConcurrency"/>.</summary>
+        internal int Active;
         internal bool Quarantined;
     }
 

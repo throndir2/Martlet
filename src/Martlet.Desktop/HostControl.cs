@@ -357,11 +357,13 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
 /// sync (<see cref="ClusterSync"/>).</summary>
 internal static class HostControl
 {
-    /// <summary>Which Martlet roles (and models) a reachable host runs, in words.</summary>
-    internal static string Describe(IReadOnlyDictionary<string, string> offers) => offers.Count == 0
+    /// <summary>Which Martlet roles (and models) a reachable host runs, in words; a Deep thinking role that runs several thinks
+    /// at once (<paramref name="routes"/>) says how many.</summary>
+    internal static string Describe(IReadOnlyDictionary<string, string> offers, IReadOnlyList<HostRoute>? routes = null) => offers.Count == 0
         ? "Connected. No host roles installed."
         : "Connected. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
-            .Select(r => r.Name)) + ".";
+            .Select(r => r.Kind == HostRoles.DeepThinking && new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots is > 1 and var slots
+                ? $"{r.Name} ({slots} thinks at once)" : r.Name)) + ".";
 
     /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports.</summary>
     internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token)
@@ -377,7 +379,7 @@ internal static class HostControl
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var route in routes)
                 if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
-            var text = Describe(offers);
+            var text = Describe(offers, routes);
             string? version = null;
             try
             {

@@ -32,6 +32,8 @@
     <!-- MCP client: tools from MCP servers on this PC for user-started replies (McpToolService). -->
     <ProjectReference Include="..\Martlet.Mcp.Client\Martlet.Mcp.Client.csproj" />
     <ProjectReference Include="..\Martlet.Home\Martlet.Home.csproj" />
+    <!-- Martlet's Discord bot (NetCord), hosted in this process: DiscordService. -->
+    <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
     <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />
     <!-- Voice recognition (Martlet.Sherpa) is part of Martlet: the unmodified sherpa-onnx 1.13.8 runtime with ONNX Runtime
          (sherpa-onnx-c-api.dll, onnxruntime.dll) ships beside Martlet.Desktop.exe. -->

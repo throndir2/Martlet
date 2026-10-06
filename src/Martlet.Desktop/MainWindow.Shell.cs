@@ -375,6 +375,7 @@ public partial class MainWindow
         EvaluateCoverage();
         RenderHealth(force: true);
         RenderHost();
+        RenderHomeCharacters();
         if (openTab is not null && !tabEdited) RenderTab();
     }
 
@@ -676,17 +677,27 @@ public partial class MainWindow
         if (state?.Roles is not { } installed)
             return new("roles", "Add roles", "Add tasks this host can handle once the host service runs. " + nvidia, false, true, []);
         string Name(string kind) => HostRoles.All.FirstOrDefault(r => r.Kind == kind)?.Name ?? kind;
-        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal)).ToList();
+        // Jobs your Martlet network gives this PC (it was set up to do them, as a companion or a host PC) need their roles here.
+        var needed = clusterEnabled && state.HostId is { } self
+            ? ClusterJobs.All.Where(j => clusterPlan.For(j)?.HostId == self).Select(j => (Job: j, Kind: ClusterSync.RoleKind(j)))
+                .Where(n => !installed.Contains(n.Kind, StringComparer.Ordinal)).ToList()
+            : [];
+        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal))
+            .OrderBy(r => needed.Any(n => n.Kind == r.Kind) ? 0 : 1).ToList();
         IReadOnlyList<StepCommand> commands =
         [
-            .. missing.Select((r, i) => new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add), installed.Count == 0 && i == 0)),
+            .. missing.Select((r, i) => new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add),
+                needed.Any(n => n.Kind == r.Kind) || installed.Count == 0 && i == 0)),
             .. HostRoles.All.Where(r => installed.Contains(r.Kind, StringComparer.Ordinal))
                 .Select(r => new StepCommand($"Remove {r.Name}", () => LaunchHost(r.Remove)))
         ];
+        var asked = needed.Count == 0 ? ""
+            : $"Your computers use this PC for {JoinNames([.. needed.Select(n => n.Job)])}, so add " +
+              $"{JoinNames([.. needed.Select(n => Name(n.Kind))])} here; until then they keep what they use now. ";
         return new("roles", "Add roles",
-            installed.Count == 0 ? "No roles yet. Add tasks this host can handle. " + nvidia
-                : $"Runs {JoinNames([.. installed.Select(Name)])}. Add or remove roles any time.",
-            installed.Count > 0, true, commands);
+            asked + (installed.Count == 0 ? "No roles yet. Add tasks this host can handle. " + nvidia
+                : $"Runs {JoinNames([.. installed.Select(Name)])}. Add or remove roles any time."),
+            installed.Count > 0 && needed.Count == 0, true, commands);
     }
 
     private HomeStep UpdateStep(LocalHostServiceState? state, bool setUp)
@@ -1343,6 +1354,9 @@ public partial class MainWindow
             var recommended = answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? ListeningAdvisor.HostAnswers(HardwareStore?.Find(host.HostId), System.Globalization.CultureInfo.CurrentUICulture,
                     local ? (await ListeningAdviceAsync()).Answers() : null)
+                // Deep thinking's thinks at once: what fits on its graphics card beside the host's other roles, for each model.
+                : answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.DeepThinking
+                ? DeepThinkingFit.Recommend(HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers)
                 : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
                 host.Pairing, confirmed);

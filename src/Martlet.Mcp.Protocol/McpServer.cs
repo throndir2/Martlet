@@ -239,10 +239,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("outside_reachability_check", "Check how each host in this PC's Martlet network (network.json in a data directory) can " +
+            "be reached: its home address and each owner-set outside address (overlay or port forward), each dialed directly, checked " +
+            "against the host key pinned in the roster and asked GET /health/live (no credential, nothing else). Returns per host which " +
+            "address answered, in how many ms, why the others didn't (refused, no answer in time, name not found, another key) and which " +
+            "one a desktop would use (home first). Contacts the owner's hosts only when contactHosts is true; otherwise it lists what it " +
+            "would check. Returns host IDs and address numbers, never the addresses.", new
+        {
+            dataDirectory = new { type = "string" },
+            contactHosts = new { type = "boolean" }
+        }),
         Tool("network_selftest", "Rehearse the Martlet network end to end with the production code: three real gateways on " +
             "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
             "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
             "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
+        Tool("signin_selftest", "Rehearse joining from outside home by signing in, end to end with the production code: a real " +
+            "gateway on 127.0.0.1 (pinned TLS, in-memory signin.json and network.json), a member desktop at home that sets up the " +
+            "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
+            "only has the invite: it pins the host (reached by name, so only the pin is trusted), is refused with a wrong password, " +
+            "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
+            "with no check number; a non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
+            "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
             "it runs or reaches over SSH; this PC's own host service set up from the host dashboard is found from Docker by the " +
@@ -327,13 +344,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
             "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { }),
+        Tool("exposure_selftest", "Rehearse a host reachable from outside home end to end with the production code: one real gateway " +
+            "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
+            "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
+            "guessing is locked out with a doubling Retry-After, routes anyone may call have a per-address budget, and the paired " +
+            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. Loopback only; " +
+            "writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
             "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
             "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
-            "with Thinking steps on), and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
+            "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
+            "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
@@ -348,6 +372,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the computer it was added on, whether this PC's copy is complete and whether this PC shows it (avatar.json); copies " +
             "still waiting in character-models-incoming; and what this PC shows (built-in, a shared copy, a copy no longer listed or " +
             "a model file outside the list). Never returns character names or file paths. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("character_profiles", "Read the character profiles (Companion > Profiles) from a data directory: each profile's key (first " +
+            "8 hex digits of its ID, as in CharacterProfileState-<key>), whether its personality is saved, what its look is (keep, " +
+            "builtin, a listed character whose copy is ready or still copying here, or missing) and its voice (keep, listed or " +
+            "missing); the profile switched to last; and which profile matches what Martlet uses now (the active persona, the look " +
+            "in avatar.json and the voice the speaking route keeps or the shared list chose). Never returns names. Read-only; " +
+            "contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -717,6 +750,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("discord_status", "Read Companion > Discord's saved setup from a data directory's discord.json: whether a bot token is saved " +
+            "and readable in Windows Credential Manager (never the token), the application ID, whether the bot connects when Martlet runs, " +
+            "the chat modes, channel-rule and people counts, whether the owner's account and home server are set, and the next setup step. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("discord_check", "Connect the data directory's saved Discord bot once with Martlet's production bot host and report whether " +
+            "Discord accepts it: Online with the bot's name and server count, a rejected token, or Message Content Intent left off in the " +
+            "Developer Portal; then disconnect. Sends no messages. Needs a saved token (Companion > Discord).", new
+        {
+            dataDirectory = new { type = "string" },
+            seconds = new { type = "integer", minimum = 3, maximum = 30 }
+        }),
         Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
             "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
             "this PC has, whether every command asks first (on by default), the time limit, whether commands start in the home folder " +
@@ -814,6 +860,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("discord_text_check", "Discord text chat (src\\Martlet.Discord DiscordTextChat, the production pipeline the desktop's " +
+            "bot uses) fed simulated messages through a fake transport and a fixture reply engine (NOT AI, NOT Discord): chat modes " +
+            "(Off, Mentions, Sometimes, Always), addressing (DM, @mention, reply to Martlet, its name), other bots ignored, per-place " +
+            "recent lines, stale turns dropped, replies split under 2,000 characters with @everyone/@here neutralized, quoted replies " +
+            "in channels and /martlet delivery. Without messages it runs fixed scenarios on fixture preferences (scenarios, each " +
+            "passed with a detail); with messages (1-16 of {text, place: server|dm, author: owner|known|stranger|bot, mention, " +
+            "replyToMartlet, channelId, command}) it uses the data directory's discord.json. Returns outcomes, what was sent and the " +
+            "text-chat stats (the desktop's DiscordTextStatus line). Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 4096 },
+            messages = new { type = "array", maxItems = 16, items = new { type = "object" } }
+        }),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
             "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
@@ -851,6 +910,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
+        Tool("reminders_status", "Martlet's reminders (the reply model's reminders tool: set, list, cancel; docs/CONVERSATION.md#reminders), " +
+            "from a data directory's shared-settings.json: every computer's reminders entry, each reminder's text, due and set times, " +
+            "the computer it was set on, its state (Pending, Done, Canceled, Missed) and who settled it, and each computer's marks " +
+            "(Bid with its idle seconds, Claim, Done, Cancel, Missed), plus the tool exactly as the model gets it. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("reminders_check", "Rehearse reminders end to end with the production code on two simulated companion PCs whose entries " +
+            "merge through the shared settings: setting one with the tool (in minutes and at a local time), the other PC listing and " +
+            "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
+            "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
+            "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
         Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
             "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
@@ -1023,7 +1094,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
+                "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
+            "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
@@ -1034,9 +1107,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "app_update_check" => await AppUpdateCheck.RunAsync(NodeLinkCheckProgram(), cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
+                "exposure_selftest" => await NodeLinkCheckAsync(cancellation, "exposure"),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
+                "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
@@ -1069,6 +1144,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "discord_status" => DiscordCheck.Status(DataDirectory(arguments)),
+                "discord_check" => await DiscordCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "seconds"), cancellation),
                 "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
                 "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
@@ -1088,10 +1165,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
+                "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
@@ -1773,6 +1853,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             sounds = (engine?.Tags ?? []).Where(tag => tag.Kind == Martlet.Core.Settings.VoiceTagKind.Sound).Select(tag => tag.Text).ToArray(),
             tones = (engine?.Tags ?? []).Where(tag => tag.Kind == Martlet.Core.Settings.VoiceTagKind.Emotion).Select(tag => tag.Text).ToArray(),
             cues = (engine?.Tags ?? []).Select(tag => new { tag = tag.Text, cue = tag.Cue }).ToArray(),
+            synonyms = (engine?.Tags ?? []).Where(tag => Martlet.Core.Settings.VoiceTags.Synonyms.ContainsKey(tag.Cue))
+                .Select(tag => new { tag = tag.Text, words = Martlet.Core.Settings.VoiceTags.Synonyms[tag.Cue] }).ToArray(),
             prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
             persona = persona?.Name, breaks = Breaks(breaks),
             spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown,
@@ -1840,6 +1922,64 @@ internal sealed class McpServer(DesktopAutomation desktop)
         periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
         exclamationMarks = breaks.ExclamationMarks, shortEndingWords = breaks.ShortEndingWords, isDefault = breaks.IsDefault
     };
+    /// <summary>The character profiles saved in a data directory (Companion › Profiles), by key, with whether each part
+    /// resolves here and which one matches what Martlet uses now. Names are the owner's and are never returned.</summary>
+    private static object CharacterProfiles(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var settingsPath = Path.Combine(directory, "settings.json");
+        var settings = File.Exists(settingsPath) ? Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(settingsPath)) : null;
+        var companion = settings?.Companion;
+        string? shownPath = null;
+        try
+        {
+            using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
+            shownPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+        var library = Martlet.Avatar.Hosting.SharedCharacterModels.Load(directory) ?? Martlet.Core.Characters.CharacterModelLibrary.Empty;
+        var modelNow = shownPath is null || Martlet.Avatar.Hosting.BundledLive2D.IsBuiltIn(shownPath)
+            ? Martlet.Core.Settings.CharacterProfile.BuiltInModel
+            : Martlet.Avatar.Hosting.SharedCharacterModels.ForPath(directory, library, shownPath)?.Id;
+        Martlet.Core.Voices.SpeakingVoiceLibrary voices;
+        try { voices = Martlet.Core.Voices.SpeakingVoiceLibrary.Parse(File.ReadAllBytes(Path.Combine(directory, "speaking-voices.json"))); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            voices = Martlet.Core.Voices.SpeakingVoiceLibrary.Empty.Seed(Martlet.F5.F5SharedVoices.Starters);
+        }
+        var voiceNow = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Tts) is
+            { RouteType: Martlet.Core.Settings.SetupRouteType.GatewayF5, Reference: { } reference }
+            ? reference.ReferenceRevision : voices.ChosenVoice?.Id;
+        var current = companion?.CurrentCharacter(modelNow, voiceNow);
+        var profiles = companion?.CharacterList ?? [];
+        return new
+        {
+            state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
+            count = profiles.Count,
+            lastUsed = profiles.FirstOrDefault(c => c.Id == companion!.ActiveCharacterId)?.Key,
+            current = current?.Key,
+            look = modelNow is null ? "model-file-outside-list" : modelNow == Martlet.Core.Settings.CharacterProfile.BuiltInModel ? "builtin"
+                : "shared:" + Martlet.Avatar.Hosting.SharedCharacterModels.Key(modelNow),
+            voiceChosen = voiceNow is not null,
+            profiles = profiles.Select(p => new
+            {
+                key = p.Key,
+                personaSaved = companion!.Personas.Any(persona => persona.Id == p.PersonaId),
+                personaActive = p.PersonaId == companion.ActivePersonaId,
+                look = p.ModelId switch
+                {
+                    null => "keep",
+                    Martlet.Core.Settings.CharacterProfile.BuiltInModel => "builtin",
+                    var id => library.Live.FirstOrDefault(m => m.Id == id) is { } model
+                        ? Martlet.Avatar.Hosting.SharedCharacterModels.IsComplete(directory, model) ? "ready" : "copying"
+                        : "missing"
+                },
+                voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
+                inUse = p.Id == current?.Id
+            }).ToArray()
+        };
+    }
+
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's
     /// SharedCharacterModels): keys, renderers, sizes and whether each copy is complete here. Names and paths are the owner's
     /// and are never returned.</summary>
@@ -2292,11 +2432,49 @@ internal sealed class McpServer(DesktopAutomation desktop)
             founder = roster?.Founder?.Id,
             waiting = local.Waiting is { } wait ? new { hostId = wait.HostId, checkNumber = wait.CheckNumber, since = wait.Since } : null,
             desktops = roster?.Members.Where(m => m.IsDesktop).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
-            hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
+            hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt, outsideAddresses = m.Addresses?.Count ?? 0 }).ToArray(),
             adopt = local.Adopt,
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom
         };
+    }
+
+    /// <summary>Probes each roster host's home and outside addresses (pinned TLS, GET /health/live) when contactHosts is true.</summary>
+    private static async Task<object> OutsideReachabilityAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var contact = OptionalBool(arguments, "contactHosts") == true;
+        var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        Martlet.Core.Network.NetworkRoster? roster = null;
+        try { if (File.Exists(path)) roster = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            return new { state = "unreadable" };
+        }
+        if (roster is null) return new { state = "none", hosts = Array.Empty<object>() };
+        var hosts = new List<object>();
+        foreach (var host in roster.ActiveHosts.Where(h => h.Origin is not null && h.Spki is not null))
+        {
+            var outside = host.Addresses ?? [];
+            if (!contact)
+            {
+                hosts.Add(new { id = host.Id, outsideAddresses = outside.Count, checkedNow = false });
+                continue;
+            }
+            var timeout = TimeSpan.FromSeconds(4);
+            var probes = await Task.WhenAll(new string?[] { null }.Concat(outside).Select(address =>
+                Martlet.Avatar.Audio2Face.Remote.HostRoutes.ProbeAsync(host.Origin!, host.Spki!, address, timeout, cancellation)));
+            var home = probes[0];
+            var outsideResults = probes.Skip(1).Select((p, i) => new { address = i + 1, reachable = p.Reachable, ms = p.Milliseconds, problem = p.Problem }).ToArray();
+            var use = home.Reachable ? "home" : outsideResults.FirstOrDefault(o => o.reachable) is { } first ? $"outside {first.address}" : "none";
+            hosts.Add(new
+            {
+                id = host.Id, outsideAddresses = outside.Count, checkedNow = true,
+                home = new { reachable = home.Reachable, ms = home.Milliseconds, problem = home.Problem },
+                outside = outsideResults, wouldUse = use
+            });
+        }
+        return new { state = "member", contacted = contact, hosts };
     }
 
     /// <summary>"Let my other computers find this PC" as the desktop keeps it (the file names match Martlet.Desktop's Nearby and
