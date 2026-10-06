@@ -31,6 +31,30 @@ public sealed class PlatformCatalogTests
     }
 
     [Fact]
+    public void Linux_and_mac_companions_offer_cloud_routes_and_refuse_windows_and_nvidia_engines()
+    {
+        var linux = new PlatformDevice { Platform = DevicePlatform.Linux, Name = "This computer", Arm64 = false, Gpus = [] };
+        var intelMac = new PlatformDevice { Platform = DevicePlatform.MacOs, Name = "This computer", Arm64 = false, Gpus = [] };
+        foreach (var device in new[] { linux, intelMac })
+        {
+            foreach (var engine in new[] { "openai-llm", "chat-completions", "openai-stt", "openai-tts", "loudness-lipsync", "character-overlay" })
+                Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check(engine, PlatformSide.Companion, device).Verdict);
+            Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("windows-speech", PlatformSide.Companion, device).Verdict);
+            Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("windows-voices", PlatformSide.Companion, device).Verdict);
+            Assert.Equal(PlatformVerdict.NotYet, PlatformCatalog.Check("hands-free", PlatformSide.Companion, device).Verdict);
+        }
+        Assert.Contains("NVIDIA", PlatformCatalog.Check("audio2face", PlatformSide.Companion, intelMac).Reason, StringComparison.Ordinal);
+        Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("f5", PlatformSide.Companion, intelMac).Verdict);
+        Assert.Contains("Apple silicon", PlatformCatalog.Check("mlx-llm", PlatformSide.Companion, linux).Reason, StringComparison.Ordinal);
+        var intelMlx = PlatformCatalog.Check("mlx-llm", PlatformSide.Companion, intelMac);
+        Assert.Equal(PlatformVerdict.No, intelMlx.Verdict);
+        Assert.Contains("Intel processor", intelMlx.Reason, StringComparison.Ordinal);
+        Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("apple-on-device-llm", PlatformSide.Companion, intelMac with { OsVersion = new(26, 0) }).Verdict);
+        Assert.Contains("Linux and macOS desktop plan", PlatformCatalog.Check("screen-watch", PlatformSide.Companion, linux).Reason,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Phone_hosts_report_their_platform_and_cannot_take_desktop_engines()
     {
         var iphone = PlatformDevice.FromHost("iphone", Report("iphone") with

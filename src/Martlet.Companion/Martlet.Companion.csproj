@@ -7,6 +7,7 @@
     <AssemblyName>Martlet.Companion</AssemblyName>
     <RootNamespace>Martlet.Companion</RootNamespace>
     <ApplicationIcon />
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
@@ -15,14 +16,39 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Controls.WebView" />
+    <!-- Cross-platform audio: miniaudio (PipeWire/PulseAudio/ALSA on Linux, CoreAudio on macOS) with its native libraries. -->
+    <PackageReference Include="SoundFlow" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
     <ProjectReference Include="..\Martlet.Companion.Platform\Martlet.Companion.Platform.csproj" />
     <ProjectReference Include="..\Martlet.Platform.Linux\Martlet.Platform.Linux.csproj" />
     <ProjectReference Include="..\Martlet.Platform.MacOS\Martlet.Platform.MacOS.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="..\Martlet.Desktop\Assets\Martlet.png" Link="Assets\Martlet.png" />
     <InternalsVisibleTo Include="Martlet.Companion.Tests" />
   </ItemGroup>
+  <!-- The character renderer: the Windows renderer's web bundle (VRM and Live2D, src\Martlet.Avatar.RendererHost\web) is
+       reused as is. It is built when the VRM package's npm dependencies are installed (npm ci in src\Martlet.Avatar.Vrm);
+       without them the app runs and the character window says the bundle is missing. -->
+  <PropertyGroup>
+    <CharacterWeb>$(MSBuildProjectDirectory)\..\Martlet.Avatar.RendererHost\web</CharacterWeb>
+    <NodeExecutable Condition="'$(NodeExecutable)' == ''">node</NodeExecutable>
+  </PropertyGroup>
+  <Target Name="BuildCharacterBundle" BeforeTargets="PrepareForBuild"
+          Condition="!Exists('$(CharacterWeb)\dist\app.js') and Exists('$(MSBuildProjectDirectory)\..\Martlet.Avatar.Vrm\node_modules\esbuild')">
+    <Exec Command="&quot;$(NodeExecutable)&quot; &quot;$(CharacterWeb)\build.mjs&quot; &quot;$(IntermediateOutputPath).&quot;" />
+  </Target>
+  <Target Name="IncludeCharacterBundle" AfterTargets="BuildCharacterBundle">
+    <ItemGroup>
+      <_CharacterFiles Include="$(CharacterWeb)\dist\app.js;$(CharacterWeb)\dist\app.js.LEGAL.txt;$(CharacterWeb)\dist\THIRD-PARTY-NOTICES.txt" Condition="Exists('$(CharacterWeb)\dist\app.js')" />
+      <Content Include="@(_CharacterFiles)" Link="character\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <_CharacterLive2D Include="$(CharacterWeb)\live2d-dist\**\*" />
+      <Content Include="@(_CharacterLive2D)" Link="character\live2d\%(_CharacterLive2D.RecursiveDir)%(_CharacterLive2D.Filename)%(_CharacterLive2D.Extension)"
+               CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

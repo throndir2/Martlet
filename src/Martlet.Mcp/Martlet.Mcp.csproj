@@ -10,5 +10,8 @@
     <!-- Built alongside so node_link_check can run it as its own process (it needs the ASP.NET Core runtime; the server does not). -->
     <ProjectReference Include="..\Martlet.NodeLinkCheck\Martlet.NodeLinkCheck.csproj" ReferenceOutputAssembly="false" Private="false"
                       SkipGetTargetFrameworkProperties="true" />
+    <!-- Built alongside so companion_status can run Martlet.Companion's status mode (Martlet for Linux and macOS). -->
+    <ProjectReference Include="..\Martlet.Companion\Martlet.Companion.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
 </Project>

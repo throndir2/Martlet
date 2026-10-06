@@ -10,6 +10,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
 {
     private static readonly HashSet<string> SafeClicks = new(StringComparer.Ordinal)
     {
+        // Martlet for Linux and macOS (Martlet.Companion) on a Windows dev run: its three tabs (passive navigation).
+        "TalkTab", "SettingsTab", "ComputerTab",
         "OpenTroubleshooting", "OpenSetup", "OpenAudioSetup", "OpenLiveConversation",
         "OpenConfigurationRecovery", "RefreshDiagnostics",
         "SetupClose", "AudioClose", "CloseLive", "SupportClose",
@@ -159,6 +161,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
+        // Martlet.Companion: its status line, headless status JSON (no secrets), guardrail refusals, engines not offered here and
+        // their reasons, local-model warnings, the key-storage note and the chosen engines.
+        "StatusLine", "CharacterState", "CompanionStatus", "Refusals", "NotOffered", "ThinkingWarnings", "KeyNote", "ThinkingEngine", "ListeningEngine",
+        "SpeakingEngine",
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
         // Companion › Discord › Friends and calls: how many friends and waiting requests, the call now and the last call's
         // outcome; the bot's Discord status ("Discord status: Online, "Hanging out"."); when its picture last changed and why
@@ -596,8 +602,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         if (pid <= 0) throw new ArgumentException("A positive Martlet desktop process ID is required.");
         using var process = Process.GetProcessById(pid);
-        if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("The process is not Martlet.Desktop.");
+        if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(process.ProcessName, "Martlet.Companion", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("The process is not Martlet.Desktop or Martlet.Companion.");
         var windows = Windows(pid);
         // A Martlet in the notification area (closed to it, or started with Windows) has no visible window but its icon's window;
         // one that couldn't start shows only its problem dialog.
@@ -888,7 +895,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         if (processId is not int pid) throw new InvalidOperationException("Connect to a running Martlet desktop first.");
         using var process = Process.GetProcessById(pid);
-        if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(process.ProcessName, "Martlet.Desktop", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(process.ProcessName, "Martlet.Companion", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The attached Martlet process exited.");
         var windows = Windows(pid);
         if (!MainWindowVisible(windows) && !ProblemShown(windows) && TrayWindow(pid) == 0)

@@ -20,6 +20,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
     private static readonly object[] Tools =
     [
+        Tool("companion_status", "Martlet for Linux and macOS (src/Martlet.Companion), headless: runs its --status and returns what it " +
+            "detected about the computer (OS, architecture, Apple silicon vs Intel, NVIDIA, Wayland/X11), which platform services " +
+            "work, and the platform-catalog guardrails (engines offered per job, the rest with the catalog's reason, local-model " +
+            "warnings). platform simulates linux-x64, linux-nvidia, linux-arm64, macos-arm64 or macos-x64 from this computer; " +
+            "settingsFile checks a settings.json from another device against it and returns what is refused and why. No audio, " +
+            "network or window. Build src/Martlet.Companion first (building Martlet.Mcp builds it).", new
+        {
+            platform = new { type = "string", @enum = new[] { "linux-x64", "linux-nvidia", "linux-arm64", "macos-arm64", "macos-x64" } },
+            settingsFile = new { type = "string" }
+        }),
         Tool("doctor_status", "Read local diagnostic status without starting audio or network.", new
         {
             dataDirectory = new { type = "string" }
@@ -82,7 +92,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }
         }),
 
-        Tool("ui_connect", "Attach to an already-running Martlet.Desktop process in this interactive session.", new
+        Tool("ui_connect", "Attach to an already-running Martlet.Desktop (or, on a Windows dev run, Martlet.Companion) process in this interactive session.", new
         {
             pid = new { type = "integer", minimum = 1 }
         }, ["pid"]),
@@ -1206,6 +1216,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             var arguments = parameters.TryGetProperty("arguments", out var value) ? value : default;
             object result = name switch
             {
+                "companion_status" => await CompanionStatusAsync(OptionalString(arguments, "platform"), OptionalString(arguments, "settingsFile"), cancellation),
                 "doctor_status" => await DoctorAsync(["status", "--json"], arguments, cancellation),
                 "doctor_list" => await DoctorAsync(["list", "--json"], arguments, cancellation),
                 "doctor_run" => await DoctorAsync(
@@ -1742,6 +1753,41 @@ internal sealed class McpServer(DesktopAutomation desktop)
             default:
                 throw new InvalidOperationException("action is start, status or stop.");
         }
+    }
+
+    /// <summary>companion_status: Martlet.Companion --status [--as platform] [--import file] from this checkout's build.</summary>
+    private static async Task<object> CompanionStatusAsync(string? platform, string? settingsFile, CancellationToken cancellation)
+    {
+        if (platform is not null && platform is not ("linux-x64" or "linux-nvidia" or "linux-arm64" or "macos-arm64" or "macos-x64"))
+            throw new ArgumentException("platform is linux-x64, linux-nvidia, linux-arm64, macos-arm64 or macos-x64.");
+        if (settingsFile is not null && !File.Exists(settingsFile))
+            throw new ArgumentException("settingsFile must be an existing settings.json.");
+        var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        var configuration = output.Parent?.Name ?? "Release";
+        var source = output.Parent?.Parent?.Parent?.Parent?.FullName
+            ?? throw new InvalidOperationException("Run companion_status from a Martlet source checkout's build.");
+        var program = Path.Combine(source, "Martlet.Companion", "bin", configuration, "net10.0", "Martlet.Companion.exe");
+        if (!File.Exists(program))
+            throw new InvalidOperationException($"Build src\\Martlet.Companion ({configuration}) first; building Martlet.Mcp builds it too.");
+        var start = new System.Diagnostics.ProcessStartInfo(program)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add("--status");
+        if (platform is not null) { start.ArgumentList.Add("--as"); start.ArgumentList.Add(platform); }
+        if (settingsFile is not null) { start.ArgumentList.Add("--import"); start.ArgumentList.Add(settingsFile); }
+        using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Could not start Martlet.Companion.");
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        limit.CancelAfter(TimeSpan.FromSeconds(30));
+        var text = process.StandardOutput.ReadToEndAsync(limit.Token);
+        try { await process.WaitForExitAsync(limit.Token); }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException("Martlet.Companion --status did not finish within 30 seconds.");
+        }
+        using var document = JsonDocument.Parse((await text).Trim());
+        return new { exitCode = process.ExitCode, status = document.RootElement.Clone() };
     }
 
     private static string NodeLinkCheckProgram()
