@@ -450,6 +450,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (closed) return;
         Settle();
         Collect();
+        FollowCall();
         if (loading is not null) return;
         // While Windows is locked only messages from paired chats are answered (text only, never aloud).
         if (locked)
@@ -922,7 +923,7 @@ public partial class LiveConversationWindow : ThemedWindow
         catch (VoiceIdentityException error) { CantListen(error.Message); }
     }
 
-    private bool HearingPc => listening && preferences.HearPc && controller.CanHearPc;
+    private bool HearingPc => listening && (preferences.HearPc || CallOn) && controller.CanHearPc;
 
     private void KeepHearingPc()
     {
@@ -970,6 +971,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (keepHeard) return;
         playingQueue.Clear();
         pcHeld.Clear();
+        Calls?.Attribution.Reset();
     }
 
     private long After(TimeSpan delay) => clock.GetTimestamp() + (long)(delay.TotalSeconds * clock.TimestampFrequency);
@@ -1065,8 +1067,11 @@ public partial class LiveConversationWindow : ThemedWindow
             LeftOutYourVoice();
             return;
         }
-        var bubble = Messages.Count > 0 && Messages[^1] is { IsPcAudio: true } last && last.Text.Length + text.Length < MaximumPcBubble
-            ? last : Add(ChatRole.PcAudio, "", "Playing on this PC");
+        // In the call mode each line is named after who said it and shows on its own.
+        var (said, label) = CallLine(text);
+        text = said;
+        var bubble = !CallOn && Messages.Count > 0 && Messages[^1] is { IsPcAudio: true } last && last.Text.Length + text.Length < MaximumPcBubble
+            ? last : Add(ChatRole.PcAudio, "", label);
         bubble.Text = bubble.Text.Length == 0 ? text : bubble.Text + " " + text;
         // A very long stretch goes to Martlet by its end, so it always fits in one message.
         var kept = text.Length <= MaximumPcLine ? text : "…" + text[^(MaximumPcLine - 1)..].TrimStart();
@@ -1215,6 +1220,7 @@ public partial class LiveConversationWindow : ThemedWindow
     // listener never interrupts anything).
     private void Interrupt()
     {
+        CallBargeIn();
         var quick = listener is { TalkingOver: true } live ? live.TalkOver : null;
         var said = heardInterrupt;
         heardInterrupt = null;
@@ -1337,6 +1343,7 @@ public partial class LiveConversationWindow : ThemedWindow
         heardQueue.Clear();
         // The newest of what the PC played that fits beside your own words.
         var playing = TakePlaying(length);
+        CallAnswered();
         if (batch.Count == 0 && playing.Count == 0) return false;
         var everything = batch.Concat(playing).OrderBy(entry => entry.At).ToList();
         // One moment: the reply takes what else waits too (finished work Martlet may bring up, and the look vision wanted). A
@@ -1355,18 +1362,18 @@ public partial class LiveConversationWindow : ThemedWindow
             owned = straight
                 ? controller.Start(null, Voice, microphone: false, approved: true, spoken: true, heard: batch[^1].Voices,
                     recording: recording, seen: seen, timeline: timeline, words: [.. batch.Select(entry => entry.Words!)],
-                    hearLocalOnly: hearing.LocalOnly, attention: about, look: plan.Look)
+                    hearLocalOnly: hearing.LocalOnly, attention: about, look: plan.Look, discordCall: CallOn)
                 : playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
                     seen: seen, timeline: timeline, chattiness: BackgroundChattiness, hearLocalOnly: hearing.LocalOnly,
-                    attention: about, look: plan.Look)
+                    attention: about, look: plan.Look, discordCall: CallOn)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
                     seen: seen, pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
                     timeline: timeline, chattiness: BackgroundChattiness, bringUp: batch.Count == 0 && plan.Jobs, attention: about,
-                    look: plan.Look);
+                    look: plan.Look, discordCall: CallOn);
             answering = everything;
             yielded = null;
             answeredAt = clock.GetTimestamp();
@@ -1437,6 +1444,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool PcDue()
     {
         if (playingQueue.Count == 0 || pcListener is { Hearing: true } or { Transcribing: > 0 }) return false;
+        if (CallDue()) return true;
         var pace = PcPace;
         if (answeredAt != 0 && clock.GetElapsedTime(answeredAt) < pace) return false;
         return clock.GetElapsedTime(playingQueue[0].At) >= pace || clock.GetElapsedTime(pcHeardAt) >= PcLull;
@@ -2134,6 +2142,7 @@ public partial class LiveConversationWindow : ThemedWindow
     /// for Martlet's voice) and whether it left your own voice played back out.</summary>
     private (string Line, string Detail) PcAudio()
     {
+        if (CallStatus() is { } call) return call;
         if (!preferences.HearPc) return ("", "");
         if (!controller.CanHearPc) return ("Martlet can't hear what this PC plays here.", "");
         if (!listening) return ("Also hears this PC once you start listening.", "");

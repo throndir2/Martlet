@@ -209,10 +209,10 @@ internal sealed class RendererWindow : Window
         }
     }
 
-    private bool CanZoomIn => (!placementLocked && FrameWidth < MaxFrameWidth - 0.5) || viewZoom < MaxViewZoom;
-    private bool CanZoomOut => viewZoom > 1 || (!placementLocked && FrameWidth > MinFrameWidth + 0.5);
+    private bool CanZoomIn => (!FixedSize && FrameWidth < MaxFrameWidth - 0.5) || viewZoom < MaxViewZoom;
+    private bool CanZoomOut => viewZoom > 1 || (!FixedSize && FrameWidth > MinFrameWidth + 0.5);
     private bool IsDefaultZoom => viewZoom == 1 && Math.Abs(FrameWidth - Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width)) < 0.5;
-    private bool CanResetZoom => placementLocked ? viewZoom != 1 : !IsDefaultZoom;
+    private bool CanResetZoom => FixedSize ? viewZoom != 1 : !IsDefaultZoom;
 
     /// <summary>
     /// Zooms in by growing the overlay up to its screen-height limit, then by zooming the camera into the
@@ -221,7 +221,7 @@ internal sealed class RendererWindow : Window
     /// </summary>
     private void Zoom(double factor, Point? anchor)
     {
-        if (factor > 1 && !placementLocked && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
+        if (factor > 1 && !FixedSize && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
         else if (factor > 1 || viewZoom > 1)
         {
             var point = anchor ?? new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3);
@@ -232,7 +232,7 @@ internal sealed class RendererWindow : Window
             var applied = zoom / viewZoom;
             SetView(zoom, cx - (cx - viewX) * applied, cy - (cy - viewY) * applied);
         }
-        else if (!placementLocked) ResizeOverlay(FrameWidth * factor);
+        else if (!FixedSize) ResizeOverlay(FrameWidth * factor);
     }
 
     // Resizes the character's frame (and the room beside it) keeping the overlay's bottom-center anchored, except that
@@ -257,14 +257,14 @@ internal sealed class RendererWindow : Window
     private void ResetZoom()
     {
         SetView(1, 0, 0);
-        if (!placementLocked) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
+        if (!FixedSize) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
     }
 
     /// <summary>Back to the default spot, size and zoom on the main screen. The overlay's own Home and menu leave a locked
     /// place alone; Martlet's Reset position (<paramref name="evenLocked"/>) moves it there too, keeping it locked.</summary>
     private void ResetToDefault(bool evenLocked = false)
     {
-        if (placementLocked && !evenLocked) return;
+        if (placementLocked && !evenLocked || camera is not null) return;
         SetView(1, 0, 0);
         PlaceOnDesktop();
         PlacementChanged();
@@ -274,6 +274,42 @@ internal sealed class RendererWindow : Window
 
     // Locked, the overlay can't be dragged, nudged, sent home or resized until it is unlocked.
     private bool placementLocked;
+    // The camera view (RendererCamera): the overlay as it was before, while the character shows in its 16:9 window.
+    private (double Left, double Top, double Width, double Height, bool Topmost)? camera;
+    private bool FixedSize => placementLocked || camera is not null;
+
+    private void UseCamera(RendererCamera request)
+    {
+        if (request.On)
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(request.Background ?? "", "^#[0-9A-Fa-f]{6}$"))
+                throw new InvalidDataException("The camera background is invalid.");
+            var color = (Color)ColorConverter.ConvertFromString(request.Background);
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            camera ??= (Left, Top, Width, Height, Topmost);
+            Background = brush;
+            viewport.Background = brush;
+            var area = SystemParameters.WorkArea;
+            Width = Math.Min(960, area.Width);
+            Height = Width * 9 / 16;
+            Left = area.Left + (area.Width - Width) / 2;
+            Top = area.Top + (area.Height - Height) / 2;
+            Topmost = false;
+            ShowInTaskbar = true;
+            Title = "Martlet camera";
+        }
+        else if (camera is { } before)
+        {
+            camera = null;
+            Background = Brushes.Transparent;
+            viewport.Background = Brushes.Transparent;
+            (Left, Top, Width, Height, Topmost) = before;
+            ShowInTaskbar = false;
+            Title = "Martlet character overlay";
+        }
+        SendView();
+    }
     // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
     private bool voiceMuted;
     private MenuItem? muteItem;
@@ -308,7 +344,7 @@ internal sealed class RendererWindow : Window
     /// that on this PC, so it shows there again after Hide/Show, a restart, a shutdown or an update.</summary>
     private void PlacementChanged()
     {
-        if (!CanRequest) return;
+        if (!CanRequest || camera is not null) return;
         if (placedTimer is null)
         {
             placedTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
@@ -917,8 +953,14 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "camera")
+                {
+                    UseCamera(RendererProtocol.Data<RendererCamera>(message));
+                    await ReplyAsync("ok", new { camera = camera is not null });
+                    continue;
+                }
                 if (message.Kind == "gaze")
                 {
                     await ReplyAsync("look", Gaze(RendererProtocol.Data<RendererGaze>(message)));
