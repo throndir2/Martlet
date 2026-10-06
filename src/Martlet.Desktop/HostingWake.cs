@@ -8,7 +8,9 @@ namespace Martlet.Desktop;
 /// serves another of the owner's computers, Windows must not put this PC to sleep when it is left idle, or those computers
 /// lose its jobs (speaking, lip-sync, listening...) until someone wakes it. Requests from other computers don't count as
 /// activity to Windows, so a host PC left alone otherwise sleeps mid-conversation. A host service that misses a check
-/// (restarting after an update, for example) keeps this PC awake for <see cref="Grace"/> before it may sleep again.</summary>
+/// (restarting after an update, for example) keeps this PC awake for <see cref="Grace"/> before it may sleep again. A Martlet
+/// host PC stays awake whenever Martlet runs there, serving or not: your other computers reach it (to pair, hand it jobs or
+/// wake it with Wake-on-LAN, after which Windows otherwise sleeps again within minutes) only while it is awake.</summary>
 internal sealed class HostingWake
 {
     internal static readonly TimeSpan Grace = TimeSpan.FromMinutes(2);
@@ -23,9 +25,13 @@ internal sealed class HostingWake
 
     internal IReadOnlyList<string> Served { get; private set; } = [];
 
-    /// <summary>Takes in what the latest check found: this PC's own host service (null when it runs none) and the other
-    /// computers it serves (empty when it serves none, or didn't answer). Returns true when <see cref="Reason"/> changed.</summary>
-    internal bool Observe(string? hostId, IReadOnlyList<string> served, DateTimeOffset now)
+    /// <summary>Whether this PC stays awake only because it is a Martlet host PC (its host service serves nobody right now).</summary>
+    internal bool HostPcOnly => Reason is not null && Served.Count == 0;
+
+    /// <summary>Takes in what the latest check found: whether this PC is a Martlet host PC, its own host service (null when it
+    /// runs none or isn't known yet) and the other computers it serves (empty when it serves none, or didn't answer). Returns
+    /// true when <see cref="Reason"/> changed.</summary>
+    internal bool Observe(bool hostPc, string? hostId, IReadOnlyList<string> served, DateTimeOffset now)
     {
         string? next;
         if (hostId is not null && served.Count > 0)
@@ -36,6 +42,13 @@ internal sealed class HostingWake
             next = $"Martlet: this PC's host service {hostId} serves {Names(served)}";
         }
         else if (hostId is not null && Reason is not null && servedAt is { } at && now - at < Grace) next = Reason;
+        else if (hostPc)
+        {
+            servedAt = null;
+            HostId = hostId;
+            Served = [];
+            next = hostId is null ? "Martlet: this PC is a Martlet host" : $"Martlet: this PC is a Martlet host ({hostId})";
+        }
         else
         {
             servedAt = null;

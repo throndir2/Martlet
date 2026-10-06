@@ -316,7 +316,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ApiKeysStatus", "ApiKeyCreatedTitle", "ApiKeyHosts", "ApiKeyExample",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching). StayAwakeStatus (shown only when this PC runs its own
-        // host service): whether Martlet keeps this PC awake because that host service serves other computers (host ID and
+        // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
         // Settings › Appearance: the palette (Pink light, Rose dark, Character light or Character dark; menus and every window

@@ -67,11 +67,11 @@ public sealed class HostingWakeTests
     {
         var wake = new HostingWake();
 
-        Assert.True(wake.Observe("miku-host", ["DIVA", "IMOUTO"], Start));
+        Assert.True(wake.Observe(false, "miku-host", ["DIVA", "IMOUTO"], Start));
         Assert.Equal("Martlet: this PC's host service miku-host serves DIVA and IMOUTO", wake.Reason);
         Assert.Equal("miku-host", wake.HostId);
-        Assert.False(wake.Observe("miku-host", ["DIVA", "IMOUTO"], Start.AddSeconds(20)));
-        Assert.True(wake.Observe("miku-host", ["DIVA"], Start.AddSeconds(40)));
+        Assert.False(wake.Observe(false, "miku-host", ["DIVA", "IMOUTO"], Start.AddSeconds(20)));
+        Assert.True(wake.Observe(false, "miku-host", ["DIVA"], Start.AddSeconds(40)));
         Assert.Equal("Martlet: this PC's host service miku-host serves DIVA", wake.Reason);
     }
 
@@ -79,11 +79,11 @@ public sealed class HostingWakeTests
     public void AMissedCheckKeepsItAwakeForTheGraceThenLetsItSleep()
     {
         var wake = new HostingWake();
-        wake.Observe("miku-host", ["DIVA"], Start);
+        wake.Observe(false, "miku-host", ["DIVA"], Start);
 
-        Assert.False(wake.Observe("miku-host", [], Start + HostingWake.Grace - TimeSpan.FromSeconds(1)));
+        Assert.False(wake.Observe(false, "miku-host", [], Start + HostingWake.Grace - TimeSpan.FromSeconds(1)));
         Assert.NotNull(wake.Reason);
-        Assert.True(wake.Observe("miku-host", [], Start + HostingWake.Grace));
+        Assert.True(wake.Observe(false, "miku-host", [], Start + HostingWake.Grace));
         Assert.Null(wake.Reason);
         Assert.Null(wake.HostId);
         Assert.Empty(wake.Served);
@@ -94,10 +94,29 @@ public sealed class HostingWakeTests
     {
         var wake = new HostingWake();
 
-        Assert.False(wake.Observe(null, ["DIVA"], Start));
+        Assert.False(wake.Observe(false, null, ["DIVA"], Start));
         Assert.Null(wake.Reason);
-        wake.Observe("miku-host", ["DIVA"], Start);
-        Assert.True(wake.Observe(null, [], Start.AddSeconds(20)));
+        wake.Observe(false, "miku-host", ["DIVA"], Start);
+        Assert.True(wake.Observe(false, null, [], Start.AddSeconds(20)));
+        Assert.Null(wake.Reason);
+    }
+
+    [Fact]
+    public void AHostPcStaysAwakeWhetherItServesOrNot()
+    {
+        var wake = new HostingWake();
+
+        Assert.True(wake.Observe(true, null, [], Start));
+        Assert.Equal("Martlet: this PC is a Martlet host", wake.Reason);
+        Assert.True(wake.HostPcOnly);
+        Assert.True(wake.Observe(true, "miku-host", [], Start.AddSeconds(20)));
+        Assert.Equal("Martlet: this PC is a Martlet host (miku-host)", wake.Reason);
+        Assert.True(wake.Observe(true, "miku-host", ["DIVA"], Start.AddSeconds(40)));
+        Assert.Equal("Martlet: this PC's host service miku-host serves DIVA", wake.Reason);
+        Assert.False(wake.HostPcOnly);
+        wake.Observe(true, "miku-host", [], Start.AddSeconds(60) + HostingWake.Grace);
+        Assert.Equal("Martlet: this PC is a Martlet host (miku-host)", wake.Reason);
+        Assert.True(wake.Observe(false, "miku-host", [], Start.AddSeconds(80) + HostingWake.Grace));
         Assert.Null(wake.Reason);
     }
 
