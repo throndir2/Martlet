@@ -17,6 +17,9 @@ public sealed record PlanRequest(IReadOnlyList<MachineSpecs> Machines)
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
     public IReadOnlyCollection<PlanComponent>? Wanted { get; init; }
     public IReadOnlyList<CurrentAssignment> Current { get; init; } = [];
+    /// <summary>Latency first: a local Thinking model claims the graphics card before the voice (the setup advisor's
+    /// "Fastest replies"). Hosted endpoints stay allowed by the preference.</summary>
+    public bool ThinkingFirst { get; init; }
 
     public bool Wants(PlanComponent component) => Wanted is null || Wanted.Contains(component);
 }
@@ -59,8 +62,9 @@ public sealed record DroppedComponent(PlanComponent Component, DropReason Reason
 
 /// <summary>RunLocally: replace a hosted option with a local one. Upgrade: a better option in the same component.
 /// Add: a component that was missing. Move: same option, another machine. SignUp: a free provider to sign up for.
-/// AddFallback: a backup for a flaky hosted primary. Drop: a component the new plan leaves out.</summary>
-public enum SuggestionKind { RunLocally, Upgrade, Add, Move, SignUp, AddFallback, Drop }
+/// AddFallback: a backup for a flaky hosted primary. Drop: a component the new plan leaves out. Downgrade: a lesser option
+/// replaces one that no longer fits (a machine left).</summary>
+public enum SuggestionKind { RunLocally, Upgrade, Add, Move, SignUp, AddFallback, Drop, Downgrade }
 
 public sealed record PlanSuggestion(SuggestionKind Kind, PlanComponent Component, string? MachineId, string? FromOptionId,
     string? ToOptionId, string Why);
@@ -78,6 +82,10 @@ public sealed record PlacementPlan(
 
     public Assignment? Fallback(PlanComponent component) =>
         Assignments.FirstOrDefault(a => a.Component == component && a.Role == AssignmentRole.Fallback);
+
+    /// <summary>The fallback chain, in the order Martlet tries it.</summary>
+    public IReadOnlyList<Assignment> Fallbacks(PlanComponent component) =>
+        Assignments.Where(a => a.Component == component && a.Role == AssignmentRole.Fallback).ToArray();
 
     public IReadOnlyList<Assignment> On(string machineId) => Assignments.Where(a => a.MachineId == machineId).ToArray();
 

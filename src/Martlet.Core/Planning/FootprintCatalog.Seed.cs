@@ -8,8 +8,9 @@ namespace Martlet.Core.Planning;
 public sealed partial class FootprintCatalog
 {
     private const string Doc = "docs/RESOURCE_FOOTPRINTS.md";
-    private static readonly string[] DockerNvidia = ["windows", "linux"];
-    private static readonly string[] WindowsOnly = ["windows"];
+    // Properties, not fields: Default (in the other part of the class) builds the seed before field initializers here run.
+    private static string[] DockerNvidia => ["windows", "linux"];
+    private static string[] WindowsOnly => ["windows"];
 
     /// <summary>A Thinking model in Ollama on a graphics card (8,192-token context, the KV cache included in VRAM).</summary>
     private static ComponentOption Ollama(string id, string name, ResourceUse steady, ResourceUse peak, int tier, int firstWordMs,
@@ -58,13 +59,29 @@ public sealed partial class FootprintCatalog
             Hosting = OptionHosting.External, ProviderId = "nvidia-build", ModelId = Settings.ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId,
             QualityTier = 4, FirstWordMs = 500, SeesImages = true, FreeTier = true, NeedsSignup = true,
             Reliability = OptionReliability.Medium, Evidence = FootprintEvidence.Measured,
-            Source = "ChatCompletionsEndpointCatalog (checked 2026-10-01: about 0.5 s per reply; models retire often)"
+            Source = "docs/HOSTED_THINKING.md and ChatCompletionsEndpointCatalog (checked 2026-10-01: about 0.5 s per reply; up to 40 " +
+                "requests a minute; models retire often; does not hear)"
+        },
+        new()
+        {
+            Id = "hosted:gemini", Component = PlanComponent.Thinking, DisplayName = "Google Gemini (free tier)", Hosting = OptionHosting.External,
+            ProviderId = "google-ai-studio", ModelId = "gemini-3.5-flash-lite", QualityTier = 3, HearsAudio = true, SeesImages = true,
+            FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.High, Evidence = FootprintEvidence.Sourced,
+            Source = "docs/HOSTED_THINKING.md (OpenAI-compatible at generativelanguage.googleapis.com/v1beta/openai; 99.5-100% uptime)"
+        },
+        new()
+        {
+            Id = "hosted:nvidia-build-omni", Component = PlanComponent.Thinking, DisplayName = "NVIDIA Build Nemotron omni (free endpoint)",
+            Hosting = OptionHosting.External, ProviderId = "nvidia-build", ModelId = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            QualityTier = 3, HearsAudio = true, SeesImages = true, FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.Low,
+            Evidence = FootprintEvidence.Sourced, Source = "docs/HOSTED_THINKING.md (72.6% 1-day uptime on OpenRouter; latency not measured)"
         },
         new()
         {
             Id = "hosted:openrouter", Component = PlanComponent.Thinking, DisplayName = "OpenRouter", Hosting = OptionHosting.External,
             ProviderId = "openrouter", ModelId = "google/gemma-4-26b-a4b-it", QualityTier = 4, FirstWordMs = 800, SeesImages = true,
-            FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.Low, Source = "Hosted: uses no local resources"
+            NeedsSignup = true, Reliability = OptionReliability.Medium, Evidence = FootprintEvidence.Sourced,
+            Source = "docs/HOSTED_THINKING.md (:free variants allow 50 requests a day until credits are bought)"
         },
         new()
         {
@@ -114,6 +131,12 @@ public sealed partial class FootprintCatalog
         },
         new()
         {
+            Id = "macos-speech", Component = PlanComponent.Voice, DisplayName = "macOS system voices", RunsInApp = true, Platforms = ["macos"],
+            Steady = new(0, 0.1, 0.9, 0), Peak = new(0, 0.2, 1, 0), QualityTier = 1, FirstWordMs = 50,
+            Source = $"Estimate: like Windows voices (AVSpeechSynthesizer) ({Doc})"
+        },
+        new()
+        {
             Id = "hosted:openai-tts", Component = PlanComponent.Voice, DisplayName = "OpenAI voice", Hosting = OptionHosting.External,
             ProviderId = "openai", QualityTier = 4, FirstWordMs = 600, NeedsSignup = true, Source = "Hosted: uses no local resources"
         },
@@ -124,7 +147,7 @@ public sealed partial class FootprintCatalog
         {
             Id = "parakeet-tdt-0.6b-v3-cpu", Component = PlanComponent.Listening, DisplayName = "Parakeet on the processor",
             ModelId = "parakeet-tdt-0.6b-v3", RunsInApp = true, Steady = new(0, 0.9, 2.6, 0.67), Peak = new(0, 0.9, 8.4, 0.67),
-            QualityTier = 3, FirstWordMs = 250, Evidence = FootprintEvidence.Measured,
+            QualityTier = 4, FirstWordMs = 250, Evidence = FootprintEvidence.Measured,
             Source = $"Measured: sherpa-onnx 1.13.8 on an i7-13700K; disk is the pinned download (ParakeetModels) ({Doc})"
         },
         new()
@@ -225,6 +248,13 @@ public sealed partial class FootprintCatalog
             Gpu = GpuRequirement.Nvidia, MinGpuGb = 8, Platforms = DockerNvidia, Steady = new(7, 12, 2, 31), Peak = new(8, 20, 4, 31),
             QualityTier = 3,
             Source = $"Disk: 20.7 GB of pinned models (docs/PICTURES_HOST.md) plus image estimate; VRAM and RAM estimate for bf16 with --lowvram ({Doc})"
+        },
+        new()
+        {
+            Id = "hosted:nvidia-build-pictures", Component = PlanComponent.Pictures, DisplayName = "NVIDIA Build FLUX (free endpoint)",
+            Hosting = OptionHosting.External, ProviderId = "nvidia-build", ModelId = Pictures.PicturesSettings.NvidiaDefaultModel,
+            QualityTier = 3, FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.Medium, Evidence = FootprintEvidence.Sourced,
+            Source = "docs/HOSTED_THINKING.md (the same nvapi- key covers NVIDIA's FLUX models)"
         }
     ];
 }

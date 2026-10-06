@@ -15,7 +15,8 @@ public sealed class SetupAdvisorTests
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Thinking").Availability);
         Assert.NotNull(Role(advice, "Thinking").HowTo);
         Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
-        Assert.Equal("Online", Role(advice, "Voice").Where);
+        // Free first: with the GPU kept for games and no paid provider set up, Windows voices speak on the processor.
+        Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
         Assert.DoesNotContain(AdvisorNextStep.Hosts, advice.NextSteps);
     }
@@ -85,7 +86,8 @@ public sealed class SetupAdvisorTests
         });
 
         Assert.Equal("Computer 2 (GPU)", Role(advice, "Thinking").Where);
-        Assert.Equal("Computer 3 (GPU)", Role(advice, "Speech-to-text").Where);
+        // Parakeet on the processor is as accurate as Whisper in English, so no card goes to it.
+        Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("Computer 4 (GPU)", Role(advice, "Lip-sync").Where);
         Assert.Equal(6, advice.Machines.Count);
@@ -98,7 +100,7 @@ public sealed class SetupAdvisorTests
     {
         var advice = SetupAdvisor.Recommend(new() { CustomVoice = true });
 
-        Assert.Equal("Online", Role(advice, "Voice").Where);
+        Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
         Assert.Contains(advice.Notes, n => n.StartsWith("A custom voice needs an NVIDIA GPU", StringComparison.Ordinal));
     }
 
@@ -112,7 +114,9 @@ public sealed class SetupAdvisorTests
         });
 
         Assert.Equal("gpu-box (GPU)", Role(advice, "Thinking").Where);
-        Assert.Contains("large", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
+        // The fastest model that hears runs; a smarter one that also fits is offered as an upgrade.
+        Assert.Contains("small", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
+        Assert.Contains(advice.Notes, n => n.Contains("also fits", StringComparison.Ordinal));
         Assert.Equal("old-laptop (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("NVIDIA, 24 GB", advice.Machines.Single(m => m.Name == "gpu-box").Hardware);
         Assert.StartsWith("Not needed", advice.Machines.Single(m => m.Name == "nas").Runs[0], StringComparison.Ordinal);
