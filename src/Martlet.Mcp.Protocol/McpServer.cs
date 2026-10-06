@@ -330,7 +330,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
             "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
-            "the desktop's paired client. Checks both routes and their models are advertised, a think on the Deep thinking route runs " +
+            "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
+            "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
             "with Thinking steps on), and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),

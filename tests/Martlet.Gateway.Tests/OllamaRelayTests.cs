@@ -254,6 +254,10 @@ public sealed class OllamaRelayTests
         var replyRoute = Assert.Single(routes, r => r.RouteId == HostRoute.OllamaChatRouteId);
         var deepRoute = Assert.Single(routes, r => r.RouteId == HostRoute.DeepThinkingRouteId);
         Assert.Equal(("qwen3-8b", HostRoute.DeepThinkingPath), (deepRoute.ModelId, deepRoute.Path));
+        // Handing Thinking to this host saves the route it advertises, long-think bound included.
+        var saved = replyRoute.Snapshot(Martlet.Core.Settings.SetupRouteType.GatewayOllama);
+        saved.Validate();
+        Assert.Equal((int)GatewayInferenceProtocol.MaximumJobDuration.TotalSeconds, saved.MaximumDurationSeconds);
 
         var thought = new List<string>();
         var firstThought = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

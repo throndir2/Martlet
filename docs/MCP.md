@@ -660,7 +660,10 @@ simulated desktop that pairs and streams through the desktop's paired client
 (`HostChat.cs`). It runs `src\Martlet.NodeLinkCheck` (mode `deep-thinking`,
 `DeepThinkingRehearsal.cs`) and returns `{exitCode, report}` like
 `network_selftest`. Its steps: the host advertises both routes with their own
-paths and models and the same contract and fifteen-minute bound; a think on the
+paths and models and the same contract and fifteen-minute bound; Thinking's
+advertised route saves as this PC's Thinking route through the desktop's own
+handoff (`HostHandoff.ToHost` with `HostRoute.Snapshot`), so its long-think
+bound fits the saved settings; a think on the
 Deep thinking route is held mid-answer while a reply streams on Thinking's
 route, and the reply finishes first (parallel, never queued); each request
 reached its own Ollama (the think with `"think":true`, its own model and a

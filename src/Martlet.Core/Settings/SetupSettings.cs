@@ -63,6 +63,9 @@ public static class SelfHostSetup
     public const string F5ContractId = "martlet.f5.worker";
     public const string SttContractId = "martlet.transcription-relay";
     public const string F5RightsStatementVersion = "voice-rights-v1";
+    /// <summary>The longest one request on a gateway route may run (a background think on the host's Ollama). The gateway's
+    /// routes and the saved route snapshot share it, so every route a host advertises can be saved.</summary>
+    public const int MaximumGatewayRouteDurationSeconds = 15 * 60;
 
     /// <summary>A paired Martlet host's gateway route (its credential is that pairing's device credential).</summary>
     public static bool IsGateway(SetupRouteType? routeType) =>
@@ -239,7 +242,7 @@ public sealed record GatewayRouteSnapshot : IContract
             MaximumEventBytes is > 0 and <= 262_144 &&
             MaximumEvents is > 1 and <= 16_384 &&
             MaximumStreamBytes >= MaximumEventBytes && MaximumStreamBytes <= 8 * 1024 * 1024 &&
-            MaximumDurationSeconds is > 0 and <= 120,
+            MaximumDurationSeconds is > 0 and <= SelfHostSetup.MaximumGatewayRouteDurationSeconds,
             "The gateway route limits are unsupported.");
         ContractRules.Defined(Cancellation);
         SelfHostSetup.Utc(ObservedAtUtc);

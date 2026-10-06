@@ -17,8 +17,9 @@ public static class GatewayInferenceProtocol
     public static readonly TimeSpan MaximumCancellationDuration = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan MaximumRetirementDuration = TimeSpan.FromSeconds(2);
     /// <summary>The longest a route lets one request run: a background think (think_longer) on the conversation model. Before
-    /// it, every route took at most two minutes (the conversation model one).</summary>
-    public static readonly TimeSpan MaximumJobDuration = TimeSpan.FromMinutes(15);
+    /// it, every route took at most two minutes (the conversation model one). A desktop saves the route with the same bound.</summary>
+    public static readonly TimeSpan MaximumJobDuration =
+        TimeSpan.FromSeconds(Martlet.Core.Settings.SelfHostSetup.MaximumGatewayRouteDurationSeconds);
     /// <summary>The most output tokens a conversation-model request may ask for (a background think's budget); 4,096 before it.</summary>
     public const int MaximumOllamaOutputTokens = 32_768;
 }

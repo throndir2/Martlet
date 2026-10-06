@@ -456,24 +456,7 @@ public partial class MainWindow
                 $"{(running.Count == 1 ? "uses" : "use")} graphics card memory; remove {(running.Count == 1 ? "it" : "them")} on the Devices map." : "");
     }
 
-    internal static GatewayRouteSnapshot Snapshot(HostRoute route, SetupRouteType routeType) => new()
-    {
-        SchemaVersion = 1, RouteType = routeType, RegistryId = SelfHostSetup.RegistryId,
-        RegistryVersion = SelfHostSetup.RegistryVersion, RouteId = route.RouteId, Path = route.Path, ContractId = route.ContractId,
-        ContractVersion = route.ContractVersion, DestinationId = route.DestinationId, WorkerId = route.WorkerId,
-        WorkerPackageRevision = route.AdapterVersion, AdapterVersion = route.AdapterVersion, ModelId = route.ModelId,
-        ModelRevision = route.ModelRevision, ModelSha256 = route.ModelSha256, ArtifactIdentitySha256 = route.ArtifactIdentitySha256,
-        MaximumRequestBytes = route.MaximumRequestBytes, MaximumInputBytes = route.MaximumInputBytes,
-        MaximumOutputBytes = route.MaximumOutputBytes, MaximumEventBytes = route.MaximumEventBytes, MaximumEvents = route.MaximumEvents,
-        MaximumStreamBytes = route.MaximumStreamBytes, MaximumDurationSeconds = (int)Math.Ceiling(route.MaximumDuration.TotalSeconds),
-        Cancellation = route.Cancellation switch
-        {
-            "discard_only" => GatewayCancellationMode.DiscardOnly,
-            "cooperative_compute_cancel" => GatewayCancellationMode.CooperativeComputeCancel,
-            _ => GatewayCancellationMode.RequestAbort
-        },
-        ObservedAtUtc = DateTimeOffset.UtcNow, ProbeRevision = Guid.NewGuid()
-    };
+    internal static GatewayRouteSnapshot Snapshot(HostRoute route, SetupRouteType routeType) => route.Snapshot(routeType);
 }
 
 /// <summary>The route a job used before it went to a host, kept verbatim (including its recorded selection) next to the
