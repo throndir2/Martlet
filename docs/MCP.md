@@ -788,6 +788,19 @@ arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `model-file-outside-list`). Character names and file paths are never returned.
 Read-only; it contacts nothing.
 
+`character_profiles` reads the character profiles (Companion › Profiles) from a
+data directory (optional absolute `dataDirectory`, default the current user's):
+`state` (`no-settings`, `none` or `loaded`), `count`, `lastUsed` (the key of the
+profile switched to last), `current` (the key of the profile that matches what
+Martlet uses now: the active persona, the look in `avatar.json` and the voice the
+speaking route keeps or the shared voice list chose; null when none does),
+`look` (what this PC shows: `builtin`, `shared:<key>` or
+`model-file-outside-list`), `voiceChosen`, and per profile its `key` (the first 8
+hex digits of its ID, as in `CharacterProfileState-<key>`), `personaSaved`,
+`personaActive`, `look` (`keep`, `builtin`, `ready`, `copying` or `missing`),
+`voice` (`keep`, `listed` or `missing`) and `inUse`. Names are never returned.
+Read-only; it contacts nothing.
+
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
 directory (optional absolute `dataDirectory`; the script gives a disposable one):
 `state` (`none`, `loaded` or `unreadable` for `creations.json`), `live`,
@@ -2918,6 +2931,32 @@ file") joins the shared list as soon as it is saved (once it names an existing m
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
 
+**Character profiles** (`CompanionTab-Profiles`, first under *Who it is*) switch
+the look, the voice and the personality together. `CharacterProfilesNow` is the
+Now card (it names the character, so it isn't a safe value);
+`CharacterProfilesStatus` reads how many profiles there are and whether one is
+in use ("2 profiles. One of them is in use." or "None matches what Martlet uses
+now."). Each row's `CharacterProfileState-<key>` (the first 8 hex digits of the
+profile's ID) reads "In use.", "Ready." or why a part can't switch here ("Its
+look is still copying to this PC. Using it switches the rest.", "Its voice is no
+longer in your voices."), never a name. Its controls are
+`CharacterProfileUse-<key>` (disabled while in use), `CharacterProfileEdit-<key>`
+(passive: opens the form) and `CharacterProfileRemove-<key>` (asks with
+`ConfirmationYes`/`ConfirmationNo`). `CharacterProfileNew` (passive) opens the
+form filled in with what Martlet uses now: `CharacterProfileName`,
+`CharacterProfilePersona`, `CharacterProfileLook` ("Keep the current look", the
+built-in character or one of your characters), `CharacterProfileVoice` ("Keep
+the current voice" or one of your voices), `CharacterProfileSave` and
+`CharacterProfileCancel` (passive); `CharacterProfileEditorProblem` returns why
+it couldn't save. `ProfilesOpenCharacter`, `ProfilesOpenVoice`,
+`ProfilesOpenPersonality`, the Character and Personality pages' `OpenProfiles`
+and Home's `HomeManageCharacters` only open pages. Home's `HomeCharacterProfile`
+combo box lists every profile ("A mix of your own" when none matches) and
+switches on selection; the notification-area menu's `TrayCharacterProfiles`
+submenu has `TrayCharacterProfile-<key>` items, the one in use ticked. Use,
+Save, Remove and switching from Home or the menu need `--allow-ui-effects`.
+`character_profiles` reads them headlessly.
+
 The **Creations** page (`NavCreations`, between Companion and Diagnostics; its
 content is `CreationsPage`) lists [what Martlet made](CREATIONS.md), newest first.
 `CreationsNote` reads the fixed "Ask Martlet to sing or show any of these.",
@@ -3692,7 +3731,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
