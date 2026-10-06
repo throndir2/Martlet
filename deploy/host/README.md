@@ -20,10 +20,10 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
 | --- | --- | --- | --- |
 | **Desktop: this PC with Docker Desktop** | Windows + Docker Desktop (WSL 2) | Martlet > **Martlet hosts** > *This PC* | containers `martlet-host-net` + `martlet-host-gateway` |
 | **Desktop: another Windows PC that runs Martlet** | Martlet there (*Use as a Martlet host*) + Docker Desktop | Martlet on that PC sets itself up; pair the main PC with the code its host dashboard shows. The main PC then updates it and installs roles there [through Martlet on that PC](../../docs/CLUSTER.md#commands-between-your-computers) | same containers on that PC |
-| **Desktop: another computer over SSH, Docker** | SSH server + Docker (the one prerequisite; Linux x86_64; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* > **Add this computer** (runs in Martlet) | same containers on that host |
-| **Desktop: another computer over SSH, native** | Any x86_64 Linux with systemd, SSH and sudo (Ubuntu, Debian, Fedora, openSUSE, Arch, ...; no version check) | Martlet hosts > *over SSH, native* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
+| **Desktop: another computer over SSH, Docker** | SSH server + Docker (the one prerequisite; Linux x86_64 or ARM64; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* > **Add this computer** (runs in Martlet) | same containers on that host |
+| **Desktop: another computer over SSH, native** | Any x86_64 or ARM64 (aarch64) Linux with systemd, SSH and sudo (Ubuntu, Debian, Fedora, openSUSE, Arch, Raspberry Pi OS, ...; no version check) | Martlet hosts > *over SSH, native* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
 | **On the host, Docker** | any Docker host | `docker run ... martlet-host <command>` (below) | containers |
-| **On the host, native** | Any x86_64 Linux with systemd | `./deploy/host/martlet-host <command>` (below) | systemd user service |
+| **On the host, native** | Any x86_64 or ARM64 Linux with systemd | `./deploy/host/martlet-host <command>` (below) | systemd user service |
 | **On a Mac, native** | macOS 14+, Apple silicon or Intel; Ollama and/or whisper.cpp installed | the Mac host's `macos-setup` ([Mac](#mac)) | launchd agent `io.github.throndir2.martlet.host` |
 
 For SSH hosts the desktop does everything itself (see [Driving Linux hosts from
@@ -307,7 +307,8 @@ or over `ssh -t user@host`. How it fits together:
 
 ### Native Linux
 
-On any x86_64 Linux with systemd (any distribution and release), as your normal user:
+On any x86_64 or ARM64 (aarch64) Linux with systemd (any distribution and release), as your normal user
+(ARM64: see [ARM64 hosts](#arm64-hosts) for which roles run there):
 
 ```sh
 git clone https://github.com/throndir2/Martlet ~/Martlet
@@ -351,9 +352,34 @@ Mac.
 
 The **Docker method** also works on Docker Desktop for Mac, CPU only (Docker
 gives containers no Mac GPU): the host image builds for Apple silicon (arm64)
-as well as x86_64. Ollama's image is multi-architecture; the pinned whisper.cpp
-image is x86_64 only, so Docker runs it emulated and slowly there, and the
-native Mac host is the better listening host. Not yet run on a Mac.
+as well as x86_64, and it is an [ARM64 host](#arm64-hosts): Ollama and
+whisper.cpp (its official arm64 image) on the CPU, no NVIDIA roles. The native
+Mac host is the faster listening and thinking host (Metal). Not yet run on a
+Mac.
+
+### ARM64 hosts
+
+Raspberry Pi 5 class boards, Ampere/Graviton servers, NVIDIA DGX Spark and
+Jetson, Docker Desktop on Windows on Arm (Snapdragon X) and Docker Desktop on
+Apple silicon are ARM64 (aarch64) hosts. Every method works on them: the host
+image builds for arm64, native setup installs the arm64 .NET SDK (or Martlet
+sends it, [without internet](#computers-without-internet)), and the machine
+report says `architecture: arm64`, which Martlet uses to offer only what runs
+there:
+
+| Role | On ARM64 |
+| --- | --- |
+| `ollama`, `deep-thinking` | Yes: Ollama's official image is multi-architecture. CPU on a Raspberry Pi (1-3B models; 8 GB+ board); NVIDIA GPU on DGX Spark/Jetson-class machines with the NVIDIA Container Toolkit |
+| `stt` (whisper) | Yes, on the CPU: `martlet-host` adds `roles/stt/compose.arm64.yaml` (role.conf `arm64=`), whisper.cpp's official arm64 image of the same pinned commit; the GPU option is not offered (no arm64 CUDA build). `base` or `small` on a Raspberry Pi 5 |
+| `stt` (Parakeet) | Yes, on the CPU: its hash-pinned aarch64 wheels |
+| `home-assistant` | Yes (Docker Engine on Linux, as on x86_64) |
+| `f5`, `chatterbox`, `xtts`, `gpt-sovits`, `dia`, `singing`, `pictures`, `audio2face` | No: their images pin x86_64 CUDA packages (`requires=x86_64`). `add` and `describe` say so, and Martlet's Devices map and menus show them disabled with that reason |
+
+Docker Desktop on Windows on Arm and on Macs gives containers no GPU, so those
+hosts are CPU-only. Not yet run on a real ARM64 host (NOT RUN: no ARM64
+hardware here); the engine's ARM64 decisions are checked by
+[`host_engine_check`](../../docs/MCP.md) and the arm64 whisper.cpp image was run
+under emulation.
 
 ### Computers without internet
 
@@ -662,7 +688,8 @@ script that runs directly on the computer as your SSH user with sudo (not
 inside the `martlet-host` container), so it works for Docker-method and native
 hosts alike, and before Martlet is installed there at all. The desktop sends the
 script over the SSH connection, so the computer needs no Martlet checkout.
-Ubuntu (any release) and Ubuntu-based distributions on x86_64 are supported;
+Ubuntu (any release) and Ubuntu-based distributions on x86_64 or ARM64 (aarch64;
+NVIDIA's `sbsa` CUDA repository there) are supported;
 other systems are refused with a clear reason (they can still be set up natively).
 
 | Item | What it does |

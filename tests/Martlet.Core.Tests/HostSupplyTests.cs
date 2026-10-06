@@ -107,6 +107,17 @@ public sealed class HostSupplyTests
         var sdk = HostSupply.DotnetSdk(releases.RootElement, "10.0.401");
         Assert.Equal(new HostSupplyItem("dotnet-sdk-10.0.401-linux-x64.tar.gz", "https://builds.dotnet.microsoft.com/x.tar.gz", hash), sdk);
         Assert.Null(HostSupply.DotnetSdk(releases.RootElement, "10.0.402"));
+        Assert.Equal(new HostSupplyItem("dotnet-sdk-10.0.401-linux-arm64.tar.gz", "https://example/arm.tar.gz", hash),
+            HostSupply.DotnetSdk(releases.RootElement, "10.0.401", "linux-arm64"));
+    }
+
+    [Fact]
+    public void Arm64_hosts_get_the_arm64_sdk_and_older_states_the_x64_one()
+    {
+        Assert.Equal("linux-arm64", HostSupply.ReadState(["arch aarch64", "sdk 10.0.401"]).SdkRid);
+        Assert.Equal("aarch64", HostSupply.ReadState(["arch aarch64"]).Architecture);
+        Assert.Equal("linux-x64", HostSupply.ReadState(["arch x86_64"]).SdkRid);
+        Assert.Equal("linux-x64", HostSupply.ReadState(["sdk 10.0.401"]).SdkRid);
     }
 
     [Fact]

@@ -106,6 +106,9 @@ public sealed record PlatformRequirement
 {
     public Version? MinimumOs { get; init; }
     public bool AppleSilicon { get; init; }
+    /// <summary>The engine's container is built for x86_64 only (its pinned CUDA wheels have no ARM64 build). Hosts that
+    /// don't report their processor predate ARM64 hosts, so only a reported ARM64 host is refused.</summary>
+    public bool X64 { get; init; }
     public double? NvidiaGb { get; init; }
     public double? MemoryGb { get; init; }
     public string? Feature { get; init; }
@@ -113,6 +116,7 @@ public sealed record PlatformRequirement
     public string Describe()
     {
         var parts = new List<string>();
+        if (X64) parts.Add("a 64-bit Intel or AMD (x86_64) computer");
         if (NvidiaGb is { } gb) parts.Add($"an NVIDIA GPU with {gb:0} GB+");
         if (AppleSilicon) parts.Add("Apple silicon (M1 or later)");
         if (Feature == PlatformFeatures.AppleIntelligence) parts.Add("Apple Intelligence");
@@ -125,6 +129,9 @@ public sealed record PlatformRequirement
     internal PlatformCheck Check(PlatformDevice device, string engine)
     {
         var unknown = new List<string>();
+        // Windows on Arm gets the NVIDIA check's own "Windows on Arm" reason below, which says more.
+        if (X64 && device.Arm64 == true && !device.WindowsOnArm)
+            return No($"{engine}'s container is built only for 64-bit Intel or AMD (x86_64) computers; {device.Name} has an ARM64 processor.");
         if (NvidiaGb is { } need)
         {
             if (device.WindowsOnArm)
@@ -201,9 +208,11 @@ public static class PlatformCatalog
     private const string NoCloudOnHosts = "cloud routes run on the device you talk to; hosts never hold cloud keys";
     private const string PccDecision = "needs Apple's entitlement and most likely the paid Apple Developer Program, which Martlet doesn't use";
 
-    private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4 };
-    private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6 };
-    private static readonly PlatformRequirement Nvidia8 = new() { NvidiaGb = 8 };
+    // NVIDIA container roles: their images pin x86_64 CUDA wheels, so ARM64 hosts (Raspberry Pi, Ampere, DGX Spark, Docker
+    // Desktop on Windows on Arm or Apple silicon) are refused with that reason before the GPU check.
+    private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4, X64 = true };
+    private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6, X64 = true };
+    private static readonly PlatformRequirement Nvidia8 = new() { NvidiaGb = 8, X64 = true };
     private static readonly PlatformRequirement AppleSilicon = new() { AppleSilicon = true };
     private static readonly PlatformRequirement Os26 = new() { MinimumOs = new(26, 0) };
     private static readonly PlatformRequirement IosIntelligence = new() { MinimumOs = new(26, 0), Feature = PlatformFeatures.AppleIntelligence };
@@ -251,8 +260,8 @@ public static class PlatformCatalog
                 "also Ollama, LM Studio or Docker Model Runner on this computer: the GPU on Apple silicon or with NVIDIA/AMD on Linux, the CPU only on an Intel Mac")),
         new("ollama", ClusterJobs.Thinking, "Ollama",
         [
-            Works(Linux, Host, "an NVIDIA GPU makes replies fast; small models also run on the CPU"),
-            Works(Win, Host, "through Docker Desktop (This PC's host service), or as a local server through Chat Completions"),
+            Works(Linux, Host, "an NVIDIA GPU makes replies fast; small models also run on the CPU; x86_64 or ARM64 (Raspberry Pi 5 class: 1-3B models)"),
+            Works(Win, Host, "through Docker Desktop (This PC's host service; on Windows on Arm CPU-only), or as a local server through Chat Completions"),
             Works(Mac, Host, "the Mac host (DX04) relays to Ollama installed on the Mac: on the GPU (Metal) on Apple silicon, CPU-only and 1-4B models on an Intel Mac; not yet run on a real Mac"),
             Impossible(Ios, Host, "Ollama does not run on iPhone or iPad; Apple Intelligence does the thinking there"),
             NotPlanned(Android, Host, "Ollama has no Android build; Android hosts use a LiteRT, llama.cpp or Gemini Nano model on the same route")
@@ -298,8 +307,8 @@ public static class PlatformCatalog
         new("openai-stt", ClusterJobs.Listening, "OpenAI transcription", Cloud()),
         new("whisper", ClusterJobs.Listening, "Speech recognition (whisper or Parakeet)",
         [
-            Works(Linux, Host, "whisper or Parakeet run well on the CPU; an NVIDIA GPU makes whisper faster"),
-            Works(Win, Host, "through Docker Desktop (This PC's host service)"),
+            Works(Linux, Host, "whisper or Parakeet run well on the CPU (x86_64 or ARM64); an NVIDIA GPU makes whisper faster on x86_64"),
+            Works(Win, Host, "through Docker Desktop (This PC's host service; on Windows on Arm CPU-only)"),
             Works(Mac, Host, "the Mac host (DX04) runs whisper.cpp from Homebrew: on the GPU (Metal) on Apple silicon, base/small models on an Intel Mac's CPU; Parakeet isn't offered; not yet run on a real Mac"),
             NotPlanned(Ios, Host, "iPhones and iPads use Apple speech recognition instead"),
             Planned(Android, Host, "AN04", "tiny/base models on old phones; speed unmeasured")

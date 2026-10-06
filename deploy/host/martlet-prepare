@@ -22,8 +22,8 @@
 # Output: "==> item: ..." progress lines, one "MARTLET-ITEM <item> <ok|changed|skipped|failed> <message>" line per
 # item, and a final machine-readable line "MARTLET-RESULT {json}" (ok, reboot_required, reboot_reasons, items).
 # With --status, the status JSON line follows, so the caller sees the new state without signing in again.
-# Supports Ubuntu (any release) and Ubuntu-based distributions on x86_64; anything else is refused (Martlet's host setup
-# itself, martlet-host, runs on any x86_64 Linux with systemd).
+# Supports Ubuntu (any release) and Ubuntu-based distributions on x86_64 or arm64 (aarch64: Raspberry Pi 5, Ampere, NVIDIA
+# DGX Spark); anything else is refused (Martlet's host setup itself, martlet-host, runs on any such Linux with systemd).
 set -uo pipefail
 export LC_ALL=C
 
@@ -90,8 +90,8 @@ detect_os() {
   SUPPORTED=0; REASON=""
   if [[ "${OS_ID}" != ubuntu && " ${OS_LIKE} " != *" ubuntu "* ]]; then
     REASON="This computer runs ${OS_NAME}. Martlet prepares Ubuntu-based systems only; prepare it by hand (Martlet's host setup itself works on any Linux with systemd)."
-  elif [[ "${ARCH}" != x86_64 ]]; then
-    REASON="This computer is ${ARCH}. Martlet prepares x86_64 (64-bit Intel/AMD) computers only."
+  elif [[ "${ARCH}" != x86_64 && "${ARCH}" != aarch64 ]]; then
+    REASON="This computer is ${ARCH}. Martlet prepares 64-bit Intel/AMD (x86_64) and ARM (aarch64) computers only."
   else
     SUPPORTED=1
   fi
@@ -694,13 +694,15 @@ tool_cuda() {
   if [[ -n "$(cuda_nvcc)" ]]; then TOOL_HAD+=("CUDA $(cuda_version)"); return 0; fi
   nvidia_present || { TOOL_HAD+=("CUDA skipped (no NVIDIA GPU)"); return 0; }
   need_packages curl ca-certificates || return 1
-  local repo="ubuntu${OS_VERSION//./}"
+  local repo="ubuntu${OS_VERSION//./}" cuda_arch=x86_64
+  # ARM64 servers with NVIDIA GPUs (Grace, DGX Spark) use NVIDIA's sbsa repository.
+  [[ "${ARCH}" == aarch64 ]] && cuda_arch=sbsa
   if ! installed cuda-keyring; then
     local deb; deb="$(mktemp --suffix=.deb)"
     # NVIDIA publishes repositories for some Ubuntu releases only (LTS ones); otherwise use the newest LTS one.
-    [[ "${OS_ID}" == ubuntu ]] && curl -fsIo /dev/null "https://developer.download.nvidia.com/compute/cuda/repos/${repo}/x86_64/cuda-keyring_1.1-1_all.deb" || repo=ubuntu2404
+    [[ "${OS_ID}" == ubuntu ]] && curl -fsIo /dev/null "https://developer.download.nvidia.com/compute/cuda/repos/${repo}/${cuda_arch}/cuda-keyring_1.1-1_all.deb" || repo=ubuntu2404
     step "adding NVIDIA's CUDA package repository (${repo})"
-    curl -fsSL -o "${deb}" "https://developer.download.nvidia.com/compute/cuda/repos/${repo}/x86_64/cuda-keyring_1.1-1_all.deb" &&
+    curl -fsSL -o "${deb}" "https://developer.download.nvidia.com/compute/cuda/repos/${repo}/${cuda_arch}/cuda-keyring_1.1-1_all.deb" &&
       as_root dpkg -i "${deb}" || { rm -f "${deb}"; return 1; }
     rm -f "${deb}"
     APT_READY=0

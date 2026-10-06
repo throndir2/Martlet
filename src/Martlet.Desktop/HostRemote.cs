@@ -120,8 +120,8 @@ internal sealed partial class HostRemote(HostShell shell)
         HostSetupMethod.SshNative when !probe.Systemd =>
             $"{target} runs {probe.OperatingSystem ?? "an unknown system"} without systemd, which Martlet needs to run the host " +
             "without Docker. Choose the Docker method instead.",
-        _ when probe.Architecture is { } arch && arch != "x86_64" =>
-            $"{target} is not a 64-bit Intel or AMD computer.",
+        _ when probe.Architecture is { } arch && arch is not ("x86_64" or "aarch64" or "arm64") =>
+            $"{target} is not a 64-bit Intel, AMD or ARM computer.",
         _ => null
     };
 

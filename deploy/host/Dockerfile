@@ -15,16 +15,17 @@ RUN dotnet publish src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csp
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12
 # x86_64 and arm64 (Apple-silicon Macs with Docker Desktop, CPU only; ARM64 Linux): the Docker CLI and Compose plugin
-# for the architecture this image is built for (BuildKit sets TARGETARCH), each checked against its pinned SHA-256.
-ARG TARGETARCH=amd64
+# for the architecture this image is built for (BuildKit sets TARGETARCH; the legacy builder uses this machine's), each
+# checked against its pinned SHA-256.
+ARG TARGETARCH
 ARG DOCKER_CLI_VERSION=27.3.1
 ARG COMPOSE_VERSION=2.29.7
-RUN case "$TARGETARCH" in \
+RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}"; case "$arch" in \
       amd64) cli_arch=x86_64; cli_sum=9b4f6fe406e50f9085ee474c451e2bb5adb119a03591f467922d3b4e2ddf31d3; \
              compose_arch=x86_64; compose_sum=383ce6698cd5d5bbf958d2c8489ed75094e34a77d340404d9f32c4ae9e12baf0 ;; \
       arm64) cli_arch=aarch64; cli_sum=4da6a6c7502b7ab561675a5ff5ac192d9b49d76d0b8847cf17ade246122279f4; \
              compose_arch=aarch64; compose_sum=6e9fbd5daa20dca5d7d89145081ae8155d68ef2928b497d9f85b54fe0f9dbb2c ;; \
-      *) echo "Unsupported architecture: $TARGETARCH (x86_64 and arm64 only)" >&2; exit 1 ;; \
+      *) echo "Unsupported architecture: $arch (x86_64 and arm64 only)" >&2; exit 1 ;; \
     esac \
  && apt-get update \
  && apt-get install -y --no-install-recommends bash ca-certificates curl tar iproute2 procps \

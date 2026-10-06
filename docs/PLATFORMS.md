@@ -112,19 +112,19 @@ steps:
 
 ## Devices that do jobs (hosts)
 
-| Job or feature | Linux (Docker or native with systemd, x86_64) | Windows (Docker Desktop, This PC) | macOS (Martlet's Mac host) | iPhone / iPad | Android |
+| Job or feature | Linux (Docker or native with systemd, x86_64 or ARM64) | Windows (Docker Desktop, This PC; Windows on Arm CPU-only) | macOS (Martlet's Mac host) | iPhone / iPad | Android |
 | --- | --- | --- | --- | --- | --- |
-| Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU) | **Works** | **Built** (DX04, not yet run on a Mac): relays to native Ollama, on the GPU (Metal) on Apple silicon; Intel CPU-only, 1-4B | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android; a LiteRT or llama.cpp model serves the same route |
+| Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU; ARM64 too) | **Works** | **Built** (DX04, not yet run on a Mac): relays to native Ollama, on the GPU (Metal) on Apple silicon; Intel CPU-only, 1-4B | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android; a LiteRT or llama.cpp model serves the same route |
 | Thinking: Apple Intelligence | Impossible | Impossible | Planned (MA02; Apple silicon, macOS 26+) | Planned (IO03; Apple Intelligence devices, iOS 26+) | Impossible |
 | Thinking: MLX models (including vision) | Impossible | Impossible | Planned (MA02; Apple silicon) | - | - |
 | Thinking: Gemini Nano, LiteRT or llama.cpp | - | - | - | - | Planned (AN04): LiteRT and llama.cpp in the background; Gemini Nano **only while the Hosting screen is in front** |
-| Listening: whisper | **Works** (CPU is fine; NVIDIA faster) | **Works** | **Built** (DX04, not yet run on a Mac): whisper.cpp from Homebrew, Metal on Apple silicon; base/small on Intel | Not planned: Apple speech instead | Planned (AN04): tiny/base on old phones |
-| Listening: Parakeet | **Works** (CPU; English or 25 European languages) | **Works** | - | - | - |
+| Listening: whisper | **Works** (CPU is fine; NVIDIA faster on x86_64; ARM64 on the CPU) | **Works** | **Built** (DX04, not yet run on a Mac): whisper.cpp from Homebrew, Metal on Apple silicon; base/small on Intel | Not planned: Apple speech instead | Planned (AN04): tiny/base on old phones |
+| Listening: Parakeet | **Works** (CPU, x86_64 or ARM64; English or 25 European languages) | **Works** | - | - | - |
 | Listening: Apple speech | Impossible | Impossible | Planned (MA02; macOS 26, unverified on Intel) | Planned (IO03, iOS 26+) | Impossible |
 | Listening: Android speech | - | - | - | - | Planned (AN04; Android 13+, unverified that it can take the desktop's audio) |
-| Speaking: F5 voice cloning | **Works**: NVIDIA GPU with **6 GB+** | **Works**: NVIDIA 6 GB+ | F5 on MLX serves the same route (MA03; Apple silicon) | Impossible | Impossible |
+| Speaking: F5 voice cloning | **Works**: x86_64 with an NVIDIA GPU with **6 GB+** (not ARM64) | **Works**: NVIDIA 6 GB+ | F5 on MLX serves the same route (MA03; Apple silicon) | Impossible | Impossible |
 | Speaking: device voices | - | - | Planned (MA03): Apple voices, Personal Voice after you confirm on the Mac | Planned (IO04): Apple voices, Personal Voice after you confirm on the phone | Planned (AN05): Android voices |
-| Lip-sync: Audio2Face | **Works**: NVIDIA GPU with **4 GB+** | **Works**: NVIDIA 4 GB+ | Impossible: no NVIDIA GPU | Impossible | Impossible |
+| Lip-sync: Audio2Face | **Works**: x86_64 with an NVIDIA GPU with **4 GB+** (not ARM64) | **Works**: NVIDIA 4 GB+ | Impossible: no NVIDIA GPU | Impossible | Impossible |
 | Microphone and speaker for another computer (satellite) | Not planned | Not planned | Planned (MA09) | Planned (IO10) | Planned (AN06): old 3-4 GB phones are enough |
 | Keeps hosting in the background | **Yes** | **Yes**, while Docker Desktop runs | **Built** (DX04): yes, as a launchd agent while you are logged in | **No**: only while Martlet is open on the screen | Planned (AN03): yes, with a notification, even with the screen off |
 | Roles installed and removed from your desktop | **Yes** (SSH or console) | **Yes** | No: chosen on the Mac with `macos-setup` | No: switched on in Martlet on the device | No: switched on in Martlet on the device |
@@ -138,10 +138,17 @@ Hardware thresholds come from the host roles and the platform plans:
 Audio2Face needs an NVIDIA GPU with 4 GB+ and F5 needs 6 GB+. Ollama and
 whisper run on any CPU, and a GPU makes them faster. Apple Intelligence
 requires the [Apple Intelligence devices](https://support.apple.com/en-us/121115).
-Gemini Nano needs one of Google's supported phones. ARM64 Linux computers
-such as a Raspberry Pi are **unknown**: the host image builds for ARM64 (DX04)
-and Ollama's image is multi-architecture, but the pinned whisper.cpp image is
-x86_64 only and nothing has been qualified on ARM64 (PL04).
+Gemini Nano needs one of Google's supported phones.
+
+**ARM64 hosts** (Raspberry Pi 5 class, Ampere, NVIDIA DGX Spark or Jetson,
+Docker Desktop on Windows on Arm or Apple silicon) run Ollama, Deep thinking,
+whisper (whisper.cpp's official arm64 image, on the CPU), Parakeet and Home
+Assistant (PL04). The NVIDIA voice, singing, pictures and Audio2Face containers
+pin x86_64 CUDA packages, so Martlet shows them disabled on an ARM64 host with
+that reason ("... built only for 64-bit Intel or AMD (x86_64) computers; pi has
+an ARM64 processor") and `martlet-host add` refuses them. Hosts that predate
+the `architecture` field count as x86_64. Not yet run on real ARM64 hardware
+(NOT RUN).
 
 ## Using the hardware you already own
 
@@ -156,7 +163,8 @@ their plan's slices.
 | Snapdragon X or other Windows on Arm laptop (Windows 11) | Companion with cloud thinking, listening and speaking; GPU jobs (Audio2Face, voice cloning) on another computer | Today (x64 build under emulation; never run on an Arm PC); native ARM64 build PL06 |
 | Any old phone with a camera | A camera for Watch my screen through Phone Link, DroidCam, Camo, iVCam or an IP-camera app | Today, on Windows |
 | Old Intel Mac reinstalled with Ubuntu | Linux host for whisper or a small model on the CPU | Today (never run on Mac hardware) |
-| Raspberry Pi or other ARM Linux | Small whisper or Ollama host once the images are built for ARM64 | PL04 |
+| Raspberry Pi 5 or other ARM64 Linux (8 GB+ suggested) | Host for whisper/Parakeet on the CPU or a small (1-3B) Ollama model | Today (PL04; not yet run on a Pi) |
+| NVIDIA DGX Spark, Jetson or another ARM64 computer with an NVIDIA GPU | Host for Ollama on the GPU and whisper/Parakeet on the CPU; the NVIDIA voice and Audio2Face containers are x86_64-only | Today (PL04; not yet run) |
 | Apple-silicon Mac (16 GB+ ideal, 8 GB works for small models) | Companion with a floating character; host for Ollama/whisper.cpp on the GPU (built: DX04), later F5 on MLX, Apple speech, voices and Apple Intelligence | DX04 (host), MA03-MA07 |
 | Intel Mac (2018-2020, last macOS is 26) | Companion with cloud thinking; host for CPU whisper (built: DX04), later Apple voices and satellite microphone | DX04 (host), MA03-MA09 |
 | iPhone 15 Pro or later, iPad with M-series | Companion while gaming on it; host for thinking, listening and speaking while the app is open | IO03-IO09 |
@@ -279,7 +287,7 @@ The details are in each plan: [iOS](IOS.md#decisions-2026-10-01),
 | PL01 | Platform catalog, coverage card, guardrails in the Windows app, impact-aware forget/remove, machine report platform fields | Done in this change; device results NOT RUN |
 | PL02 | Use Windows speech, Windows voices and whisper.cpp in conversations (today they can be saved but are refused) | Planned |
 | PL03 | Setup advisor asks about Macs, phones, tablets and old PCs, and recommends jobs for them from this catalog | Planned |
-| PL04 | ARM64 Linux hosts (Raspberry Pi 5 class, Docker Desktop on Apple silicon): host and role images for arm64, then qualification. Shared with MA10 | Host image builds for arm64 (DX04); role images and qualification planned |
+| PL04 | ARM64 hosts (Raspberry Pi 5 class, Ampere, DGX Spark, Docker Desktop on Windows on Arm or Apple silicon): host and role images for arm64, then qualification. Shared with MA10 | **Built**: host image (DX04), native setup and offline supply (arm64 .NET SDK), whisper's arm64 image, x86_64-only NVIDIA roles refused by `martlet-host` and the catalog, `martlet-prepare` on aarch64. Qualification on real ARM64 hardware NOT RUN |
 | PL05 | Conversation window shows the coverage card before a turn instead of failing at dispatch | Planned |
 | PL06 | Native Windows on Arm (ARM64) companion and `Martlet-<version>-win-arm64.exe` installer | Planned; today Windows 11 on Arm runs the x64 build under emulation (see [Windows on Arm](#windows-on-arm)) |
 | IO, MA, AN | Platform apps: [iOS](IOS.md#delivery-slices) IO01-IO11, [macOS](MACOS.md#delivery-slices) MA01-MA10, [Android](ANDROID.md#delivery-slices) AN01-AN11 | Planned |
