@@ -263,6 +263,17 @@ public sealed class SharedSettingsNode
         return new(document, applied, recorded, waiting);
     }
 
+    /// <summary>Records <paramref name="value"/> for <paramref name="key"/>, an entry this computer has no section for (asking
+    /// another computer to become a host PC, for example: "role.desktop-b"), stamped as changed here now, so it wins over
+    /// anything older. Call it between syncs; the next <see cref="SyncAsync"/> gives it to the hosts.</summary>
+    public void Put(string key, string value, DateTimeOffset now)
+    {
+        ContractRules.Require(SharedSettings.IsKey(key) && sections.All(s => s.Key != key),
+            "Only another computer's entry can be written this way.");
+        Document = Document.Put(key, value, null, device, now);
+        SharedSettingsState.Save(directory, Document, observed);
+    }
+
     /// <summary>Stamps every setting this computer has (default or not) as changed now, so it becomes the one every computer
     /// uses. Takes effect on the next <see cref="SyncAsync"/> together with the hosts' copies.</summary>
     public async Task<int> ClaimAllAsync(DateTimeOffset now, CancellationToken token)

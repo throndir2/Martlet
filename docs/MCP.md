@@ -452,7 +452,9 @@ the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
 `replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
 `talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
-`smart-home`, `updates`, a computer's own `pc.<device ID>`, or a newer
+`smart-home`, `updates`, a computer's own `pc.<device ID>`, a computer's
+`role.<device ID>` (`companion` or `host`: written by that computer, or by
+another one asking it to switch), or a newer
 Martlet's), `updatedBy`, `updatedAt`,
 `revision`, `usesKey`, `characters`, `off` (the value is null) and `here`:
 `same` when this PC had exactly that value at its last sync, `different` while
@@ -461,8 +463,9 @@ setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
 memory, how you talk, speech bubbles and subtitles, the theme, recognizing
 voices (`on`), what Martlet may do with Home Assistant (`control`,
-`allow_sensitive`, `model_tools`) and app updates (`checks`,
-`interval_minutes`, `auto_install`, `auto_update_hosts`). It never returns keys,
+`allow_sensitive`, `model_tools`), app updates (`checks`,
+`interval_minutes`, `auto_install`, `auto_update_hosts`) and each computer's
+`pc.<device ID>` (`role`, `host`) and `role.<device ID>`. It never returns keys,
 key digests, personality, prompt, lorebook or emote text, or the Voice ID
 voiceprint, and contacts nothing.
 
@@ -2337,7 +2340,11 @@ other computer uses it yet.*). Job owners are `ThinkingOwner`, `ListeningOwner`,
 and `LipSyncOwner`, device commands `NodeAction-<action>`
 (`NodeAction-InstallRole-<role>`, `NodeAction-ChangeRole-<role>` (*Change ... settings*, on the row of a role the host
 runs: its dialog shows what the role runs with now, so it needs `--allow-ui-effects`) and `NodeAction-RemoveRole-<role>` for host
-roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
+roles; on another of your computers that said what it is, `NodeAction-MakeHostPc` (*Make it a host PC*) or
+`NodeAction-MakeCompanionPc` (*Make it a companion PC*, or *Keep it a companion PC* while an ask to become a host PC waits),
+which switch that computer, so they need `--allow-ui-effects` and then `ConfirmationYes`; while the ask waits,
+its `DeviceComponentDetail-member` ends with *Asked by this PC at ... to become a host PC: it switches the next time
+Martlet there syncs its settings ...*), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and

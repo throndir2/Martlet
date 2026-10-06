@@ -72,7 +72,10 @@ is matched by name (*DIVA* runs `diva-host`). A host PC uses no jobs, so its map
 cloud service, a job that runs on each companion PC on those PCs) rather than
 the Setup choice it kept from before it became a host. Before this, a host PC's
 map showed only itself and its own old choices, and no computer showed the
-other desktops.
+other desktops. On any computer, another member's row on the map has **Make it
+a host PC** (or **Make it a companion PC**) to [switch that
+computer](CLUSTER.md#switching-another-computer-between-companion-and-host)
+from here.
 
 ## A PC set up as a host
 
