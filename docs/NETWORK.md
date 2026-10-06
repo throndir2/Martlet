@@ -228,8 +228,16 @@ gets a 0.1-second head start and wins as soon as this PC is back home. A home
 address that answers with another key (another network's computer with the same
 address, at work) is skipped for five minutes. When nothing answers, the error
 names every address tried and what to check. A host's row on the Devices card
-says how many outside addresses it has and whether it was last reached at home or
-from outside.
+says how many outside addresses it has and whether it was last reached at home,
+from outside or not at all, and the card's status line counts the hosts reached
+from outside right now. The desktop log records each change of route (`Martlet
+network: reaching gpu-box from outside home ...`, `... at home again`, or the
+addresses tried when nothing answered). Every five minutes the desktop reads the
+security audit of each paired host that has outside addresses; the host's row
+shows its guard's totals and the log names new failures, lockouts and refused
+pairings with their sources. MCP `outside_reachability_check` (with
+`contactHosts: true`) probes every host's home and outside addresses with the
+pinned key and `GET /health/live`, without a credential.
 
 **The gateway's guard** (`GatewayGuard.cs`), always on:
 

@@ -46,6 +46,7 @@ public partial class MainWindow
     private void InitializeNetwork()
     {
         networkTimer.Tick += (_, _) => SyncNetworkAsync().Forget();
+        InitializeOutsideRoutes();
         if (store is not null) networkState = NetworkIdentity.Load(store.DataDirectory);
         RenderNetwork();
     }
@@ -154,6 +155,7 @@ public partial class MainWindow
             foreach (var line in result.Events) ErrorLog.Info("Martlet network: " + line);
             LogNetworkPicture(state);
             ObserveHostReleases(result.Views);
+            await ReadSecurityAuditsAsync(state.Roster);
             var messages = result.Events.ToList();
             IReadOnlyList<HostJoinRequest> pending = result.Joins;
             // A computer that paired with this PC's own host service was approved here already (the pairing code or Allow shows
@@ -572,7 +574,9 @@ public partial class MainWindow
         {
             var others = roster.ActiveDesktops.Count() - 1;
             var hosts = roster.ActiveHosts.Count();
+            var away = roster.ActiveHosts.Count(h => HostRoutes.For(h.Origin) is { Route: "outside" });
             return $"This PC is in your Martlet network with {Count(others, "other computer")} and {Count(hosts, "host")}. " +
+                (away > 0 ? $"{Count(away, "host")} {(away == 1 ? "is" : "are")} reached from outside home right now. " : "") +
                 "Hosts you pair on any of them are shared with all of them" +
                 (networkCheckedAt is { } at ? $"; checked {at:t}." : ".");
         }
@@ -643,7 +647,7 @@ public partial class MainWindow
         {
             var paired = FindHost(member.Id) is not null;
             detail = "Host, " + (paired ? "paired with this PC" : networkState.Ignored.Contains(member.Id) ? "forgotten on this PC (it stays in the network)" : "not paired with this PC yet") +
-                $"; added on {member.UpdatedBy}." + " " + HostRouteText(member) + (networkNotes.GetValueOrDefault(member.Id) is { } note ? " " + note : "");
+                $"; added on {member.UpdatedBy}." + " " + HostRouteText(member) + HostSecurityText(member.Id) + (networkNotes.GetValueOrDefault(member.Id) is { } note ? " " + note : "");
         }
         row.Children.Add(NetworkRowText($"NetworkMember-{member.Kind}-{member.Id}",
             member.IsDesktop && member.Name != member.Id ? $"{member.Name} ({member.Id})" : member.Name, detail));
