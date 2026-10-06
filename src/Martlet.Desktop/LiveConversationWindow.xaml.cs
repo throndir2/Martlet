@@ -735,7 +735,8 @@ public partial class LiveConversationWindow : ThemedWindow
     // How often one set of things you said may be restarted because you kept talking (a TV in the background must not loop it).
     private const int MaximumRestarts = 3;
 
-    // Keeps one listener running while always listening is on; it holds off by itself while Martlet speaks. With Hear what this PC
+    // Keeps one listener running while always listening is on; it listens on while Martlet speaks when it can tell Martlet's voice
+    // from yours, and otherwise holds off by itself until Martlet is done. With Hear what this PC
     // plays on, a second one hears the PC beside it.
     private void KeepListening()
     {
@@ -1843,8 +1844,9 @@ public partial class LiveConversationWindow : ThemedWindow
             : started && listenProblem is not null ? $"{listenProblem} Martlet will listen when it can. Click to stop listening."
             : started && !listening ? $"{ListeningProblem()} Martlet will listen when it can. Click to stop listening."
             : listening ? (listener is { Held: true }
-                ? "Not listening while Martlet speaks. Click to stop listening."
+                ? "Not listening while Martlet speaks, so it doesn't hear itself. Click to stop listening."
                 : preferences.BargeIn ? "Martlet listens for you, even while it speaks: talk over it to stop it. Click to stop listening."
+                : preferences.ReduceEcho ? "Martlet listens for you, even while it speaks, and answers when you pause. Click to stop listening."
                 : "Martlet listens for you and answers when you pause. Click to stop listening.")
             : micUsable ? "Click to have Martlet listen and answer when you pause. You can keep using the rest of Martlet."
             : ListeningProblem();

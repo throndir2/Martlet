@@ -18,9 +18,9 @@ internal sealed record HeardSpeech(LiveConversationStatus Status, string? Text, 
 
 /// <summary>Always listening (<see cref="LiveConversationController.Listen"/>): one loop on its own slot beside replies. It
 /// records one utterance at a time and transcribes each in order while it already listens for the next, so nothing said while
-/// Martlet thinks is lost. It holds off only while Martlet speaks (so it never hears itself) or other setup work owns the app
-/// slot, and keeps going after microphone and speech-to-text failures. The talk window takes what it heard with
-/// <see cref="TryTake"/>.</summary>
+/// Martlet thinks or speaks is lost. It holds off only while other setup work owns the app slot, and while Martlet speaks when
+/// it can't tell Martlet's own voice from yours (no echo reduction and no barge-in), so it never hears itself; it keeps going
+/// after microphone and speech-to-text failures. The talk window takes what it heard with <see cref="TryTake"/>.</summary>
 internal sealed class LiveListener(ListeningOptions options, Voiceprint? voiceprint)
 {
     private readonly ConcurrentQueue<HeardSpeech> results = new();
@@ -49,7 +49,8 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     internal TalkOverResult? TalkOver => Utterance?.TalkOver;
     /// <summary>Utterances recorded and still being checked or transcribed.</summary>
     internal int Transcribing => Volatile.Read(ref transcribing);
-    /// <summary>Not listening for a moment: Martlet is speaking, or other setup work owns the microphone.</summary>
+    /// <summary>Not listening for a moment: Martlet is speaking and listening can't tell its voice from yours, or other setup
+    /// work owns the microphone.</summary>
     internal bool Held { get => Volatile.Read(ref held) != 0; set => Volatile.Write(ref held, value ? 1 : 0); }
     internal double VoiceLevel => Held ? -100 : Utterance?.VoiceLevel ?? -100;
     /// <summary>The microphone is open and delivering audio right now.</summary>
