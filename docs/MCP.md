@@ -2877,8 +2877,16 @@ expand the pipeline and status fields. On a fresh data directory, `TourSkip`
 dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
 (Welcome › role › how to start; the tour installs nothing). Its role cards
 (`TourCompanion`, `TourHost`) save the device role, so they need
-`--allow-ui-effects`; `TourCompanion` leads to `TourAdvisor`/`TourSetup`, and
-`TourHost` closes the tour on the host dashboard. Companion's side list items (`CompanionTab-<Page>`,
+`--allow-ui-effects`; `TourCompanion` leads to `TourDefaults`/`TourAdvisor`/`TourSetup`, and
+`TourHost` closes the tour on the host dashboard. `TourDefaultsPlan` (a
+readable value) says what *Set it all up for me* would choose on this PC, from a
+live read of its graphics card: "On NVIDIA GeForce RTX 4070 (12 GB): gemma4:e2b
+· Chatterbox Turbo · Whisper small · your default microphone" (a Windows voice
+and Parakeet on the processor when the card has no room); clicking
+`TourDefaults` (or `HealthFix-thinking-setup-defaults` on Home, or
+`HealthFix-listening-setup-defaults` / `HealthFix-voice-setup-defaults` for one
+job) asks one confirmation (`DefaultSetupQuestion`, readable) and then installs
+and downloads, so it needs `--allow-ui-effects`. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus` (on, off, or that the installation
 lacks the voice recognition files), `PeopleSyncStatus` and

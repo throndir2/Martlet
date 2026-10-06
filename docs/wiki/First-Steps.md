@@ -11,9 +11,17 @@ After installing, Martlet helps you choose this PC's role and how to start.
 
 Change it later in **Settings › This PC's role**.
 
-## 2. Set up Thinking
+## 2. Set it all up
 
-On **Home**, choose **Set up thinking** or **Not sure what you need? Get a recommendation**.
+On **Home** (or the tour's last step), choose **Set it all up for me**. Martlet reads this PC's graphics card and, after one confirmation, sets up:
+
+| Job | Default |
+| --- | --- |
+| **Thinking** | The smallest local model that also hears your voice (Gemma 4 E2B) in Ollama on this PC. |
+| **Voice** | A voice engine (Chatterbox Turbo) on the NVIDIA graphics card when it has room beside Thinking; otherwise a Windows voice on the processor. It speaks with a Windows voice until the engine is ready. |
+| **Listening** | Your Windows default microphone, with Parakeet on the processor, or Whisper on the graphics card when room is left after the voice. |
+
+The voice gets the graphics card before listening. A PC paired with your other computers uses their setup instead. To choose yourself, use **Set up thinking** or **Get a recommendation**:
 
 | Choice | Use it when |
 | --- | --- |
@@ -25,15 +33,15 @@ Cloud choices may cost money and send text/images to that provider.
 
 ## 3. Optional setup
 
-- **Companion › Listening** for microphone input and Parakeet.
+- **Companion › Listening** to change the microphone or speech recognizer.
 - **Companion › People** for recognized voices.
-- **Companion › Voice** for spoken replies.
+- **Companion › Voice** to change the voice.
 - **Companion › Character** for the desktop character.
 - **Companion › Vision** for screen or camera commentary.
 
-## 4. Start talking
+## 4. Start talking and listening
 
-Press **Home › Start talking**. You can type, use push-to-talk or start listening after Listening is configured.
+Press **Home › Start listening** to talk hands-free, or **Start talking** to type or use push-to-talk.
 
 ![Talk window](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/talk.png)
 

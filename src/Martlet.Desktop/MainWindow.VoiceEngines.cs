@@ -292,14 +292,14 @@ public partial class MainWindow
 
     /// <summary>One click: Speaking uses <paramref name="engine"/> on <paramref name="host"/> (null: this PC), set up there
     /// first when it isn't yet. The engine choice follows only when Speaking moved (or is moving) to it.</summary>
-    private async Task UseVoiceEngineAsync(SpeechEngine engine, PairedHost? host)
+    private async Task UseVoiceEngineAsync(SpeechEngine engine, PairedHost? host, bool confirmed = false)
     {
         if (store is null || setupService is null || closing) return;
         var before = SpeakingEngineChoice.Current;
         try
         {
             SpeakingEngineChoice.Save(store.DataDirectory, engine);
-            if (host is null) await UseEngineHereAsync(engine);
+            if (host is null) await UseEngineHereAsync(engine, confirmed);
             else await AssignJobAsync(HostJob.SpeakingFor(engine), "host:" + host.HostId);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -337,7 +337,7 @@ public partial class MainWindow
     /// <summary>Speaking with <paramref name="engine"/> on this PC: hands Speaking over when this PC's host service already runs
     /// it, otherwise one confirmation (what it installs, what it replaces and its model's terms) and one run window that sets
     /// up the host service when needed, installs the engine and switches over.</summary>
-    private async Task UseEngineHereAsync(SpeechEngine engine)
+    private async Task UseEngineHereAsync(SpeechEngine engine, bool confirmed = false)
     {
         var job = HostJob.SpeakingFor(engine);
         var thisPc = ThisPcHost();
@@ -355,7 +355,7 @@ public partial class MainWindow
         }
         var leaving = LeavingEngine(thisPc?.HostId, engine);
         var replaced = HostRoles.OtherVoiceEngines(offers, engine.HostRoleKind);
-        if (!ConfirmationDialog.Confirm(this,
+        if (!confirmed && !ConfirmationDialog.Confirm(this,
                 $"Set up {engine.Name} on this PC and speak with it?\n\n" +
                 (thisPc is not null ? ""
                     : machine.DockerInstalled ? "Martlet first sets up its host service in Docker Desktop. "

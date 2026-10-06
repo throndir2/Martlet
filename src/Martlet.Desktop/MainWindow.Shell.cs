@@ -285,6 +285,7 @@ public partial class MainWindow
     {
         SetRole(DeviceRole.Companion);
         ShowTour(TourStart);
+        ShowTourDefaultsAsync().Forget();
     }
 
     private void TourHost_Click(object sender, RoutedEventArgs e)
@@ -295,6 +296,7 @@ public partial class MainWindow
     }
 
     private void TourAdvisor_Click(object sender, RoutedEventArgs e) { HideTour(); Advisor_Click(sender, e); }
+    private void TourDefaults_Click(object sender, RoutedEventArgs e) { HideTour(); SetUpDefaultsAsync().Forget(); }
     private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); OpenCompanion(CompanionTab.Thinking); }
 
 
