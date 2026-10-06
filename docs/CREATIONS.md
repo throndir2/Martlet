@@ -1,6 +1,6 @@
 # Creations
 
-Martlet makes things: songs now, other kinds later. Everything it makes is a
+Martlet makes things: songs and pictures now, other kinds later. Everything it makes is a
 **creation**, kept the same on all your Martlet computers, and Martlet performs,
 shows or activates any of them itself when you ask in conversation ("sing the rain
 song again", "start from the chorus"). There is no Play button anywhere: the
@@ -64,6 +64,13 @@ clean old ones up. `perform_creation` takes no options: the desktop's handler
 writes the report as a plain web page (no scripts, links only to http and https)
 to `research-reports\<key>.html` in the data folder and opens it in the default
 browser.
+
+**Pictures** (`PictureCreations.Kind`, registered by the desktop at startup): one
+asset, `image` (PNG, JPEG or WebP, at most 24 MiB); its text is the description it
+was drawn from and its summary what you asked for; metadata with its shape, size,
+engine, model, where it was drawn, seed and seconds. Martlet *shows* a picture: the
+conversation's handler puts it in the talk window (no options), and the Creations
+page shows it with its details ([Pictures](PICTURES.md)).
 
 ### Audio
 

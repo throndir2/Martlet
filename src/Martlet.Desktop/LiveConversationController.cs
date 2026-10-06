@@ -8,6 +8,7 @@ using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Creations;
 using Martlet.Core.Lorebooks;
+using Martlet.Core.Pictures;
 using Martlet.Core.Settings;
 using Martlet.Core.Singing;
 using Martlet.Participation;
@@ -22,6 +23,9 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
 /// <summary>Talking over Martlet stopped it: why (<see cref="BargeInPolicy"/>), how long after the user's voice began that was
 /// decided, how many quick checks of their words it took and when (controller clock) their voice began.</summary>
 internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt);
+
+/// <summary>A picture Martlet shows in the talk window: its creation key, title, encoded bytes and whether it is a FIXTURE.</summary>
+internal sealed record ShownPicture(string Key, string Title, byte[] Image, bool Fixture);
 
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
 // is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice); HearLocalOnly: only because it
@@ -403,6 +407,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private ICredentialAuthority? songAuthorization;
     // How the shared Creations library's perform_creation sings a song in this conversation.
     private readonly IDisposable? songHandler;
+    // How perform_creation shows a picture in this conversation's talk window.
+    private readonly IDisposable? pictureHandler;
+    /// <summary>Raised off the dispatcher when Martlet shows a picture (one it just drew, or one shown again).</summary>
+    internal event Action<ShownPicture>? PictureShown;
 
     internal bool IsRunning => operations.IsRunning;
     /// <summary>A reply (or a comment on the screen) is running on the shared setup slot.</summary>
@@ -602,6 +610,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
         if (singing is not null)
             songHandler = CreationRegistry.Shared.Handle(SongCreations.KindName, new CreationHandler(SingCreationAsync));
+        if (dataDirectory is not null)
+            pictureHandler = CreationRegistry.Shared.Handle(PictureCreations.KindName, new CreationHandler(ShowPictureCreationAsync));
         jobs.Changed += WriteJobsStatus;
         WriteJobsStatus();
     }
@@ -2014,7 +2024,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
-    /// prompt), research while Web research is on too (with its prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
+    /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
+    /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on. Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
@@ -2045,6 +2056,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             own.Add((songs[2], (call, token) => ValueTask.FromResult(StopSinging(call))));
             guidance = Join(guidance, SongTools.Instructions(configured.Prompts));
         }
+        // draw_picture while pictures are set up (Companion › Pictures).
+        if (configured.SupportsTools && dataDirectory is not null && PictureClient.IsSetUp(dataDirectory))
+            own.Add((PictureTools.Definition, (call, token) => ValueTask.FromResult(DrawPicture(operation, configured, call))));
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
             own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
         var kinds = Creations.Kinds;
@@ -2551,6 +2565,102 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return new(SongTools.Stopped(record));
     }
 
+    // ---------- pictures (draw_picture) ----------
+
+    /// <summary>draw_picture: starts the picture job where Companion › Pictures says and returns at once, telling the model to
+    /// tell the user now unless it already did. The picture is kept as a creation and shown in the talk window when it's done.</summary>
+    private ConversationToolResult DrawPicture(LiveConversationOperation operation, LiveConversationConfiguration configured, TextToolCall call)
+    {
+        const string server = "Martlet";
+        var (arguments, problem) = PictureTools.Parse(call.ArgumentsJson);
+        if (arguments is null)
+        {
+            tools?.Record(server, PictureTools.DrawName, "invalid arguments", "", true);
+            return new(problem!, true);
+        }
+        var maker = dataDirectory is null ? null
+            : PictureClient.For(dataDirectory, configured.Profile, configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
+        if (maker is null)
+        {
+            tools?.Record(server, PictureTools.DrawName, "not started: pictures off", arguments.About, false);
+            return new(PictureTools.Unavailable("pictures aren't set up (Companion › Pictures)"), true);
+        }
+        var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
+        var author = new CreationAuthor
+        {
+            Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,
+            Persona = configured.Persona?.Name is { Length: > 0 } persona ? persona : null
+        };
+        var start = jobs.Start(PictureTools.Kind, arguments.About, (job, token) => MakePictureAsync(job, arguments, maker, author, token));
+        if (start.Job is not { } started)
+        {
+            (maker as IDisposable)?.Dispose();
+            tools?.Record(server, PictureTools.DrawName, "not started: " + start.Refusal, arguments.About, false);
+            ErrorLog.Info($"Pictures: a new picture wasn't started ({start.Refusal}).");
+            return new(PictureTools.Refused(start), true);
+        }
+        tools?.Record(server, PictureTools.DrawName, "started " + started.Id, arguments.About, false);
+        ErrorLog.Info($"Pictures: started {started.Id} ({PictureShapes.Name(arguments.Shape)}, {arguments.Description.Length} characters) on {maker.Where}; " +
+            $"{jobs.StartedWithinHour(PictureTools.KindName)} of {PictureTools.PerHour} this hour.");
+        return new(PictureTools.Started(started, toldUser, maker.Where));
+    }
+
+    // The picture job: the place is checked, the picture drawn, kept as a creation (shared with every paired Martlet computer)
+    // and shown in the talk window.
+    private async Task<BackgroundJobOutcome> MakePictureAsync(BackgroundJob job, DrawArguments arguments, IPictureMaker maker,
+        CreationAuthor author, CancellationToken token)
+    {
+        try
+        {
+            job.Report(BackgroundJobState.Running, "Checking where it's drawn");
+            var availability = await maker.GetAvailabilityAsync(token).ConfigureAwait(false);
+            if (!availability.Available) return BackgroundJobOutcome.Failed((availability.Reason ?? "pictures aren't available right now").TrimEnd('.'));
+            var request = PictureTools.Request(arguments);
+            PictureResult result;
+            try
+            {
+                result = await maker.GenerateAsync(request, new Progress<PictureProgress>(p => job.Report(BackgroundJobState.Running, p.Describe())), token)
+                    .ConfigureAwait(false);
+            }
+            catch (PictureException error)
+            {
+                ErrorLog.Warn($"Pictures: {job.Id} failed on {maker.Where} ({error.Code}: {error.Message}).");
+                return BackgroundJobOutcome.Failed(PictureClient.Problem(error));
+            }
+            job.Report(BackgroundJobState.Running, "Keeping the picture");
+            Creation creation;
+            try
+            {
+                creation = await CreationStore.AddAsync(dataDirectory!, PictureCreations.Draft(result, arguments.Title, arguments.About, request, author),
+                    CreationRegistry.Shared, clock.GetUtcNow(), token).ConfigureAwait(false);
+            }
+            catch (Exception error) when (CreationStore.IsFailure(error))
+            {
+                ErrorLog.Warn($"Pictures: {job.Id} couldn't keep its picture ({error.Message}).");
+                return BackgroundJobOutcome.Failed("there was no room to keep the picture on this PC");
+            }
+            ErrorLog.Info($"Pictures: {job.Id} drew {creation.Key} on {result.Where} ({result.Width}x{result.Height} {result.MediaType}, " +
+                $"{result.Image.Length / 1024} KiB, {result.Model}{(result.Fixture ? ", FIXTURE - NOT AI" : "")}) in {result.Took.TotalSeconds:0.0} s.");
+            PictureShown?.Invoke(new(creation.Key, creation.Title ?? arguments.Title, result.Image, result.Fixture));
+            return BackgroundJobOutcome.Done(PictureTools.Ready(creation.Key, creation.Title ?? arguments.Title, result));
+        }
+        finally
+        {
+            PictureClient.FreeLater(maker);
+            (maker as IDisposable)?.Dispose();
+        }
+    }
+
+    /// <summary>The picture kind's handler for perform_creation: shows it in the talk window again.</summary>
+    private async ValueTask<CreationActionResult> ShowPictureCreationAsync(CreationAction action, CancellationToken token)
+    {
+        var (image, _, problem) = await PictureCreations.LoadAsync(action.Creation, action.Assets, token).ConfigureAwait(false);
+        if (image is null) return new($"{problem} Say you'll show it in a moment.", true);
+        var title = action.Creation.Title ?? "a picture";
+        PictureShown?.Invoke(new(action.Creation.Key, title, image, PictureCreations.Metadata(action.Creation)?.Fixture == true));
+        return new(PictureTools.Shown(title));
+    }
+
     /// <summary>The talk window stops the song: Stop and Esc quickly (a 300 ms fade), the talk button musically. The note says
     /// which.</summary>
     internal SongStopRecord? StopSong(bool musical, string button) =>
@@ -2726,7 +2836,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             updatedAt = clock.GetUtcNow(),
             active = jobs.Active.Select(Describe),
             recent = jobs.Recent.Select(Describe),
-            startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName), song = jobs.StartedWithinHour(SongTools.KindName) },
+            startedLastHour = new { think = jobs.StartedWithinHour(ThinkLonger.KindName), song = jobs.StartedWithinHour(SongTools.KindName),
+                picture = jobs.StartedWithinHour(PictureTools.KindName) },
             thinking = running.Length == 0 ? null : Think(running[0]),
             thinks = running.Select(Think),
             // Where Deep thinking can think (names only) and what holds each place now.
@@ -3572,6 +3683,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         DisposeCaptureRuntimeAsync().Forget();
         singing?.DisposeAsync().AsTask().Forget();
         songHandler?.Dispose();
+        pictureHandler?.Dispose();
         // Never wait for native cleanup on the dispatcher. The shared slot remains reserved until real exit.
         await runtime.DisposeAsync().ConfigureAwait(false);
         if (owned is null || owned.Worker.Completion.IsCompleted) transcription.Dispose();

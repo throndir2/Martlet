@@ -113,6 +113,8 @@ public partial class MainWindow : ThemedWindow
             Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.ResearchReports.Kind);
             Martlet.Core.Creations.CreationRegistry.Shared.Handle(Martlet.Conversation.ResearchReports.KindName,
                 Martlet.Conversation.ResearchReports.Handler(store!.DataDirectory, OpenReportPage));
+            // Pictures Martlet draws (draw_picture) are kept as creations too, and shown in the talk window.
+            Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.PictureCreations.Kind);
             var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(store.DataDirectory),
                 DesktopSongSource.Fixture ? new SilentSongOutput() : speakers is SimulatedSpeakers ? speakers : new WasapiDeviceFactory(),
                 captions.Feed, avatar, (vocals, rate, token) => avatar.AnalyzeSongAsync(vocals, rate, OwnLipSyncEndpoint(), token));
