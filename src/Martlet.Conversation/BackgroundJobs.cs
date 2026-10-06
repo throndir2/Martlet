@@ -61,16 +61,22 @@ public sealed class BackgroundJob
     internal readonly CancellationTokenSource Cancellation = new();
     internal string? cancelReason;
     internal Action? Changed;
+    private readonly BackgroundPlaceLease? lease;
 
-    internal BackgroundJob(BackgroundJobKind kind, string id, string label, TimeProvider clock)
+    internal BackgroundJob(BackgroundJobKind kind, string id, string label, TimeProvider clock, BackgroundPlaceLease? lease = null)
     {
         Kind = kind;
         Id = id;
         Label = label;
         this.clock = clock;
+        this.lease = lease;
         startedAt = clock.GetTimestamp();
         StartedUtc = clock.GetUtcNow();
     }
+
+    /// <summary>Where it runs, when it was started on a pool of places (the computer's name in <see cref="BackgroundPlace.Name"/>);
+    /// the place is held until the job finishes.</summary>
+    public BackgroundPlace? Place => lease?.Place;
 
     /// <summary>The job's ID in the conversation and the talk window, such as think-1.</summary>
     public string Id { get; }
@@ -138,6 +144,8 @@ public sealed class BackgroundJob
             delivery = by is CanceledByMartlet ? BackgroundDeliveryState.Delivered
                 : by is CanceledByClosing ? BackgroundDeliveryState.Dropped : BackgroundDeliveryState.Pending;
         }
+        // Its place is free for the next job.
+        lease?.Dispose();
     }
 
     internal bool MoveDelivery(BackgroundDeliveryState from, BackgroundDeliveryState to)
@@ -197,7 +205,8 @@ public sealed class BackgroundDelivery
 }
 
 /// <summary>Martlet's background work during a conversation (think_longer is the first kind; a song is next): each job runs on
-/// its own beside the conversation, within its kind's limits (how many at once, how many an hour, how long each), can be
+/// its own beside the conversation, within its kind's limits (how many at once, how many an hour, how long each), optionally on a
+/// free place of a pool of computers (<see cref="Places"/>: one job per place, the least shared first), can be
 /// canceled at any time, and once it finishes waits to be brought into the conversation (<see cref="Take"/>) as a note at the
 /// end of it. A new kind registers by starting jobs with its own <see cref="BackgroundJobKind"/> and runner; the job list does
 /// the limits, cancellation, time limit and delivery. Thread-safe; <see cref="Changed"/> is raised on any thread.</summary>
@@ -212,12 +221,20 @@ public sealed class BackgroundJobs : IDisposable
     private readonly Dictionary<string, int> numbers = new(StringComparer.Ordinal);
     private bool disposed;
 
-    public BackgroundJobs(TimeProvider? clock = null) => this.clock = clock ?? TimeProvider.System;
+    public BackgroundJobs(TimeProvider? clock = null)
+    {
+        this.clock = clock ?? TimeProvider.System;
+        Places.Changed += Notify;
+    }
 
     /// <summary>Raised on any thread when a job starts, changes state, finishes or is delivered.</summary>
     public event Action? Changed;
 
     public TimeProvider Clock => clock;
+
+    /// <summary>Which places (computers, providers) background work holds now: jobs started on a pool hold theirs until they
+    /// finish; a step of a job may take one for a while (<see cref="BackgroundPlaces.TryAcquire"/>).</summary>
+    public BackgroundPlaces Places { get; } = new();
 
     /// <summary>Every job not finished yet, oldest first.</summary>
     public IReadOnlyList<BackgroundJob> Active { get { lock (gate) return [.. jobs.Where(job => !job.Finished)]; } }
@@ -257,26 +274,44 @@ public sealed class BackgroundJobs : IDisposable
     /// says why not. <paramref name="run"/> does the work on a thread-pool thread with a token that is canceled by
     /// <see cref="Cancel"/>, <see cref="CancelAll"/> and the kind's time limit; it returns what the job produced (or throws
     /// <see cref="OperationCanceledException"/> once canceled). It returns at once.</summary>
-    public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
+    public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run) =>
+        Start(kind, label, run, null);
+
+    /// <summary>Starts one job of <paramref name="kind"/> on a free place of <paramref name="pool"/> (null: anywhere, as
+    /// above): the best free one (<see cref="BackgroundPlaces.TryAcquire"/>), held until the job finishes, so jobs of every
+    /// kind started on the same places run one per place. <paramref name="run"/> reads where from <see cref="BackgroundJob.Place"/>.
+    /// Refused as <c>busy</c> (the message names what holds each place) when every place is taken.</summary>
+    public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run,
+        IReadOnlyList<BackgroundPlace>? pool)
     {
         ArgumentNullException.ThrowIfNull(kind);
         ArgumentNullException.ThrowIfNull(run);
         kind.Validate();
         ContractRules.Require(!string.IsNullOrWhiteSpace(label) && label.Length <= 200, "A background job needs a short label.");
+        ContractRules.Require(pool is null || pool.Count is > 0 and <= 16, "A background job's pool has 1-16 places.");
         BackgroundJob job;
         lock (gate)
         {
             if (disposed) return new(null, "closed", "Martlet is closing, so it can't start anything now.");
             var running = jobs.Where(job => job.Kind.Name == kind.Name && !job.Finished).ToArray();
             if (running.Length >= kind.MaxActive)
-                return new(null, "busy", running.Length == 1
+                return new(null, "busy", pool is not null
+                    ? $"{Places.Busy(pool)} {(running.Length == 1 ? "is" : "are")} still running, and only {kind.MaxActive} " +
+                      $"{kind.Name}{(kind.MaxActive == 1 ? "" : "s")} run{(kind.MaxActive == 1 ? "s" : "")} at once (one on each place)."
+                    : running.Length == 1
                     ? $"{running[0].Id} is still running and only one {kind.Name} runs at a time." : $"{running.Length} are still running.",
                     running[0]);
             Prune();
             if (starts.Count(start => start.Kind == kind.Name) >= kind.MaxPerHour)
                 return new(null, "hourly_limit", $"{kind.MaxPerHour} already started in the last hour, the most allowed.");
-            var number = numbers[kind.Name] = numbers.GetValueOrDefault(kind.Name) + 1;
-            job = new(kind, $"{kind.Name}-{number}", label.Trim(), clock) { Changed = Notify };
+            var number = numbers.GetValueOrDefault(kind.Name) + 1;
+            var id = $"{kind.Name}-{number}";
+            BackgroundPlaceLease? lease = null;
+            if (pool is not null && (lease = Places.Acquire(pool, id, share: false)) is null)
+                return new(null, "busy", $"Every place it can run on is busy: {Places.Busy(pool)}.",
+                    running.FirstOrDefault() ?? jobs.FirstOrDefault(job => !job.Finished));
+            numbers[kind.Name] = number;
+            job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify };
             jobs.Add(job);
             starts.Add((kind.Name, clock.GetUtcNow()));
             Trim();
