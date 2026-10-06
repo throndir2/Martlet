@@ -88,6 +88,14 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Thinking runs in Ollama on this PC (its OpenAI-compatible endpoint on loopback).</summary>
     internal bool LocalOllama { get; }
 
+    /// <summary>Thinking runs on this PC or another computer on the home network: Ollama here, a paired Martlet host, or a Chat
+    /// Completions server at a loopback, private or .local address. Such a server may first load the model and runs on the
+    /// user's own hardware, so a reply gets the local timing (two minutes per request, the whole action) instead of a cloud's.</summary>
+    internal bool NetworkThinking { get; }
+
+    internal static bool InNetwork(SetupRoute? route) =>
+        MainWindow.IsLocalOllama(route) || ContextBudget.IsInNetwork(route?.RouteType, route?.Origin);
+
     /// <summary>Thinking runs on this PC (Ollama or another OpenAI-compatible server on loopback). Such a server keeps only a
     /// few conversations in its prompt cache, so a request with another start would push the conversation out of it.</summary>
     internal bool LocalThinking => LocalOllama || Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.ChatCompletions } chat &&
@@ -98,7 +106,7 @@ internal sealed class LiveConversationConfiguration
         input.Utf8Bytes <= TextLimits.MaxInputBytes && input.History.Count <= TextLimits.MaxHistoryMessages &&
         input.InputTokenReservation - input.ToolTokenReservation <= TextInputTokens && input.InputTokenReservation <= TextLimits.MaxInputTokens;
 
-    private ConversationLimits Turn(bool tools) => LocalOllama ? LocalOllamaTurnLimits : tools ? ToolTurnLimits : TurnLimits;
+    private ConversationLimits Turn(bool tools) => NetworkThinking ? LocalOllamaTurnLimits : tools ? ToolTurnLimits : TurnLimits;
 
     internal const string ToolInstructions = PromptCatalog.DefaultToolInstructions;
 
@@ -136,6 +144,13 @@ internal sealed class LiveConversationConfiguration
             : GenerationSupport.BudgetIncludesThinking(thinkingRoute)
                 ? ChatTextLimits with { MaxOutputTokens = GenerationSupport.ReplyTokens(thinkingRoute, Generation) }
                 : DefaultTextLimits with { MaxOutputTokens = Generation?.ReplyTokens ?? GenerationSettings.DefaultMaxReplyTokens };
+        NetworkThinking = InNetwork(thinking);
+        if (NetworkThinking)
+            limited = limited with
+            {
+                FirstDeltaTimeout = LocalOllamaTextLimits.FirstDeltaTimeout, IdleTimeout = LocalOllamaTextLimits.IdleTimeout,
+                MaxRequestTime = LocalOllamaTextLimits.MaxRequestTime
+            };
         Context = ContextBudget.For(thinking, Generation, limits);
         // A paired host's gateway takes at most 16 KiB and 16 earlier messages, and no tools; every other route takes the
         // whole context size, with the tools' own room on top.

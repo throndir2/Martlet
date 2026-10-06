@@ -87,6 +87,30 @@ public sealed record ContextBudget(int Tokens, int ReplyTokens, ContextSource So
         routeType == SetupRouteType.ChatCompletions &&
         string.Equals(chatBaseUrl, GenerationSupport.LocalOllamaChatBaseUrl, StringComparison.Ordinal);
 
+    private static readonly string[] NetworkSuffixes = [".local", ".lan", ".home", ".home.arpa", ".internal", ".localdomain", ".ts.net"];
+
+    /// <summary>Thinking runs on this PC or another computer on the home network: a paired Martlet host, or a Chat Completions
+    /// server at a loopback, private, link-local or Tailscale address or a local host name. It gets local timing, not a cloud's.</summary>
+    public static bool IsInNetwork(SetupRouteType? routeType, string? chatBaseUrl)
+    {
+        if (routeType == SetupRouteType.GatewayOllama) return true;
+        if (routeType != SetupRouteType.ChatCompletions || !Uri.TryCreate(chatBaseUrl, UriKind.Absolute, out var uri)) return false;
+        var host = uri.IdnHost.Trim('[', ']');
+        if (System.Net.IPAddress.TryParse(host, out var ip))
+        {
+            if (System.Net.IPAddress.IsLoopback(ip)) return true;
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+            if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                var b = ip.GetAddressBytes();
+                return b[0] == 10 || b[0] == 172 && b[1] is >= 16 and <= 31 || b[0] == 192 && b[1] == 168 ||
+                    b[0] == 169 && b[1] == 254 || b[0] == 100 && b[1] is >= 64 and <= 127;
+            }
+            return ip.IsIPv6LinkLocal || ip.IsIPv6UniqueLocal;
+        }
+        return !host.Contains('.') || NetworkSuffixes.Any(suffix => host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>The context of the saved Thinking route (a legacy route without a type is OpenAI), with what this PC knows about
     /// its model.</summary>
     public static ContextBudget For(SetupRoute? thinking, GenerationSettings? settings, ModelLimits? limits) =>
