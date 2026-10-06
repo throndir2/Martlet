@@ -52,11 +52,22 @@ RID apphost. The actual Linux entrypoint is:
 dotnet /chosen/publish/Martlet.Gateway.Host.Linux.dll serve --config /chosen/private/host.json
 ```
 
-An operator-supplied Linux x86_64/glibc runtime with compatible .NET 10 and
+An operator-supplied Linux x86_64 or arm64/glibc runtime with compatible .NET 10 and
 `Microsoft.AspNetCore.App` 10 is required. The first native custody candidate
 targets Ubuntu 24.04 and persistent local ext4. The process must use a stable
 non-root UID and nonzero GID, matching real/effective UID and real/effective
 GID. Runtime/account/service installation is not performed by these commands.
+
+**macOS (the Mac host).** The same executable runs on macOS 14+ (`osx-arm64`,
+`osx-x64`, published self-contained) with the same `linuxServicePermissions`
+contract on local APFS (`MacFileSystem` in Martlet.Gateway.Persistence), and
+adds `macos-setup`, `macos-pair`, `macos-status`, `macos-machine` and
+`macos-uninstall`, which write the configuration under
+`~/Library/Application Support/Martlet/Host` and run it as a launchd agent.
+On macOS only `ollama`, `deep-thinking` and `stt` roles are accepted; others
+are refused with the platform catalog's reason. The interactive console
+(`init`, `admin`, `rebind`) is Linux-only. See
+[macOS: the Mac host](../../docs/MACOS.md#the-mac-host-dx04). Not run on a Mac.
 
 **Native Linux qualification has NOT RUN on the Windows development host.**
 Overlay/tmpfs/NFS/SMB/FUSE and arbitrary Docker volumes/user-namespace mappings

@@ -234,7 +234,8 @@ internal static class MacHost
 
     internal static string DefaultHostId(string machineName)
     {
-        var text = new string(machineName.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' ? c : '-')
+        var text = new string(machineName.ToLowerInvariant().Where(c => c is not ('\'' or '\u2019'))
+            .Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' ? c : '-')
             .ToArray()).Trim('-', '.', '_');
         if (text.Length > 64) text = text[..64];
         return HostConfiguration.Identifier(text) ? text : "mac-host";

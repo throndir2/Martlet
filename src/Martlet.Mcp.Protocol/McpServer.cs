@@ -369,6 +369,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "HostRoutes must fall back to the outside address. Checks typed codes refused and a device card allowed from outside, " +
             "the roster signing the advertised address, home-fail then outside-succeed, the guard locking out a stranger and the audit " +
             "naming the outside source. Never pulls; removes its containers, volumes and network (keeps a NuGet cache volume).", new { }),
+        Tool("mac_host_check", "Check the Mac host as far as this PC can: publishes this checkout's gateway self-contained for osx-arm64 " +
+            "and osx-x64 in the .NET SDK image (the files the Mac app bundles), runs its macos-setup help and checks macos-status " +
+            "refuses off a Mac, and checks the platform catalog for a Mac host's machine report (Ollama and whisper allowed, F5 and " +
+            "Audio2Face refused for want of an NVIDIA GPU). Running on a Mac is reported NOT RUN. Never pulls.", new { }),
         Tool("exposure_selftest", "Rehearse a host reachable from outside home end to end with the production code: one real gateway " +
             "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
             "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
@@ -1257,6 +1261,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "exposure_selftest" => await NodeLinkCheckAsync(cancellation, "exposure"),
                 "outside_path_check" => await OutsidePathCheck.RunAsync(cancellation),
+            "mac_host_check" => await MacHostCheck.RunAsync(cancellation),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
