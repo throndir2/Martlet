@@ -182,8 +182,66 @@ public sealed class VoiceTagTests
         static ConversationRequest With(IReadOnlyList<string> tags) => new(new Martlet.Providers.BoundedTextInput("Hi."),
             Martlet.Providers.Tests.TextFixtures.Selection, new(), new(), controlTags: tags);
         With(ChattinessTags.All).Validate();
+        With([.. ChattinessTags.All, .. SeenTags.All]).Validate();
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => With(["{blush}"]).Validate());
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => With([.. Enumerable.Range(0, 17).Select(i => $"[tag{i}]")]).Validate());
+    }
+
+    private static readonly IReadOnlyList<string> SeenAndChattiness = [.. ChattinessTags.All, .. SeenTags.All];
+
+    [Theory]
+    [InlineData("Nice combo! [seen: a fighting game, final round]", "Nice combo!", "[seen: a fighting game, final round]")]
+    [InlineData("[pass] [Seen: a code editor] [chattiness:quiet]", "[pass]", "[Seen: a code editor]|[chattiness:quiet]")]
+    [InlineData("[pass] [seen:]", "[pass]", "[seen:]")]
+    [InlineData("Hmm [seen: two lines\nnope] ok.", "Hmm [seen: two lines\nnope] ok.", "")]
+    [InlineData("Oh [seen: nested [x] brackets] ok.", "Oh [seen: nested [x] brackets] ok.", "")]
+    [InlineData("Unfinished [seen: a game", "Unfinished [seen: a game", "")]
+    public void The_seen_tag_is_never_shown_and_is_reported_as_written_on_every_split(string input, string shown, string controls)
+    {
+        Assert.Equal(shown, VoiceTags.Strip(input, controlTags: SeenAndChattiness));
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var found = new List<string>();
+            var stripper = new VoiceTagStripper(controlTags: SeenAndChattiness, droppedControl: found.Add);
+            Assert.Equal(shown, stripper.Push(input[..split]) + stripper.Push(input[split..]) + stripper.Finish());
+            Assert.Equal(controls, string.Join('|', found));
+        }
+    }
+
+    [Theory]
+    [InlineData("Nice combo! [seen: a fighting game, final round]", "Nice combo!")]
+    [InlineData("[pass] [seen: a code editor with a C# file]", "")]
+    [InlineData("Whoa. That's close. [seen: racing game] [chattiness:chatty]", "Whoa.|That's close.")]
+    public void The_seen_tag_is_never_spoken(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var segmenter = new SpeechSegmenter(1536, 16_384, "pass", tags: Chatterbox, controlTags: SeenAndChattiness);
+            var pieces = segmenter.Push(input[..split]).Concat(segmenter.Push(input[split..])).Concat(segmenter.Finish()).ToArray();
+            Assert.Equal(expected, string.Join('|', pieces.Where(x => x.Text is not null).Select(x => x.Text)));
+        }
+    }
+
+    [Fact]
+    public void The_seen_tag_never_holds_back_the_words_before_it()
+    {
+        var tagged = new SpeechSegmenter(1536, 16_384, "pass", tags: Chatterbox, breaks: SpeechBreaks.Default,
+            controlTags: SeenAndChattiness);
+        Assert.DoesNotContain(tagged.Push("Whoa, nice combo! "), piece => piece.Text is not null);
+        // "[see" can only be the seen tag: the sentence goes to the voice before the description is written.
+        var early = tagged.Push("[see").Where(piece => piece.Text is not null).Select(piece => piece.Text);
+        Assert.Equal(["Whoa, nice combo!"], early);
+        Assert.DoesNotContain(tagged.Push("n: a fighting game, final round]").Concat(tagged.Finish()), piece => piece.Text is not null);
+    }
+
+    [Fact]
+    public void A_turn_reports_the_seen_tag_and_its_description()
+    {
+        var preview = SpeechTextPreview.For("[pass] [seen:  a  racing game,\tlast lap. ]", null, silentWord: "pass",
+            controlTags: SeenAndChattiness);
+        Assert.Empty(preview.Spoken);
+        Assert.Equal("[pass]", preview.Shown);
+        Assert.Equal("a racing game, last lap", SeenTags.Description(preview.Controls));
     }
 
     private static readonly string[] Character = ["{nod}", "{shake_head}", "{blush}", "{happy}"];

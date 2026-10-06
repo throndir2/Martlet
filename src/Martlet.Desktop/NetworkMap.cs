@@ -14,7 +14,7 @@ internal enum NodeAction
     Companion, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, ChangeRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
     PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening, UseForSpeaking,
-    MakeHostPc, MakeCompanionPc
+    MakeHostPc, MakeCompanionPc, OutsideAccess
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -78,7 +78,8 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
-    IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null);
+    IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
+    IReadOnlyDictionary<string, string>? HostOutside = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -581,6 +582,11 @@ internal static class NetworkMap
                         Argument: id + "/" + role.Kind, Component: offered ? RoleComponent(role.Kind) : null));
             }
             if (managed) target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id, Component: hostService));
+            // How it is reached from outside home (martlet-host exposure): this PC's host service, or a host Martlet manages over SSH.
+            if (local || paired.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative)
+                target.Commands.Add(new(NodeAction.OutsideAccess, local ? "Outside access for this PC's host service" : "Outside access", Argument: id,
+                    Component: hostService));
+            if (inputs.HostOutside?.GetValueOrDefault(id) is { } outside) target.Facts.Add(new("Outside home", outside, "SelectedDeviceOutside"));
             var hardware = inputs.HostHardware?.FirstOrDefault(h => h.HostId == id);
             // A voice engine on a Windows computer whose graphics card also does other work falls behind when the card fills.
             if (check?.Offers?.Keys.FirstOrDefault(HostRoles.Speaks) is { } voiceKind &&

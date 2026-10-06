@@ -48,6 +48,8 @@ pair --device-id <id> --name <name>
                     waits up to five minutes for it to be redeemed, then restarts the gateway (Martlet uses this itself)
 console             the gateway console: list paired desktops and revoke one
 network-reset       leave this host's Martlet network (pairings stay); the next desktop that pairs adds it to its own network
+exposure            how this host is reached from outside home: [--outside <name:port>]... [--clear-outside]
+                    [--allow-pairing-outside-home yes|no] [--treat-all-as-outside yes|no]; no options prints it (docs/NETWORK.md)
 roles               what this host can run
 describe <role>     a role's terms, secrets (stored or missing, never values), choices, GPU/CPU option and route-less feature, and what an installed one runs with now, machine-readable
 add <role>          install a role, e.g. add ollama, add deep-thinking, add stt, add f5, add xtts, add gpt-sovits, add dia, add singing, add pictures, add audio2face or add home-assistant (same flow for every role); for an installed role it changes what is answered (its model...) and keeps the rest
@@ -129,7 +131,7 @@ what truly collides waits, through kernel locks (`flock`) in the config volume
 | Command | Holds | So it waits for |
 | --- | --- | --- |
 | `add <role>`, `remove <role>` | `engine.lock` shared, `locks/role-<role>.lock` (or `locks/group-<group>.lock` for a role.conf `exclusive=<group>`, such as the voice engines, since adding one stops the others), and `locks/gateway.lock` only while it publishes the change (role record, machine report, `host.json`, the gateway's approval and restart) | another change to the same role or group; a setup or update; another change publishing at that moment |
-| `pair`, `console`, `network-reset`, `machine` | `engine.lock` shared and `locks/gateway.lock` for their whole run | a setup or update; another of these; an add or remove publishing at that moment |
+| `pair`, `console`, `network-reset`, `exposure`, `machine` | `engine.lock` shared and `locks/gateway.lock` for their whole run | a setup or update; another of these; an add or remove publishing at that moment |
 | `setup`, `update` | `engine.lock` exclusively | every change running now; changes asked for after them wait for them (a waiting setup or update holds `engine.gate`, which every change passes first, so a stream of installs never starves it) |
 | a native `add` that first installs Docker Engine or the NVIDIA Container Toolkit | `engine.lock` exclusively, like `update` | every change running now, because installing them restarts Docker under the other changes |
 
