@@ -63,7 +63,8 @@ public sealed class DiscordBot : IAsyncDisposable
         };
         started.Disconnect += args =>
         {
-            if (!args.Reconnect) Publish(new(DiscordBotState.Failed, Status.BotName, Status.BotId, 0, "Discord closed the connection."));
+            if (!args.Reconnect)
+                Publish(new(DiscordBotState.Failed, Status.BotName, Status.BotId, 0, DescribeClose((int?)args.CloseStatus, args.CloseStatusDescription)));
             return default;
         };
         lock (gate) client = started;
@@ -114,4 +115,13 @@ public sealed class DiscordBot : IAsyncDisposable
         : error.Message.Contains("4014", StringComparison.Ordinal)
             ? "Turn on Message Content Intent for the bot in the Developer Portal (Bot > Privileged Gateway Intents)."
             : $"Couldn't connect to Discord: {error.Message}";
+
+    /// <summary>Why Discord closed the gateway for good: 4004 is a rejected token, 4014 a privileged intent the application
+    /// hasn't turned on (Message Content).</summary>
+    internal static string DescribeClose(int? code, string? description) => code switch
+    {
+        4004 or 4014 => Describe(new InvalidOperationException(code.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))),
+        null => "Discord closed the connection.",
+        _ => $"Discord closed the connection ({code}{(string.IsNullOrWhiteSpace(description) ? "" : ": " + description)})."
+    };
 }

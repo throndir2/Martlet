@@ -24,6 +24,9 @@
     <PackageReference Include="System.Speech" />
     <!-- character_models reads the desktop's shared character list and copies (SharedCharacterModels). -->
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
+    <!-- discord_status and discord_check read Companion › Discord's setup and its bot token's presence, and connect it once. -->
+    <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
+    <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
   </ItemGroup>
   <!-- character_theme uses the desktop's own texture decoding and window sample with Martlet's real styles. The
        linked error log (which Controls.xaml's copy buttons use) gets its own namespace, like the renderer's copy. -->

@@ -5,7 +5,7 @@ Runs a sequence of Martlet MCP tool calls against this checkout's build.
 .DESCRIPTION
 Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
 order, and prints one JSON array of results. Doctor, voices_status, voices_naming_check, f5_voices, cluster_status, network_status, nearby_status, logs_tail,
-logs_timeline, logs_export, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, memory_status, character_status, hearing_check, model_ability_check,
+logs_timeline, logs_export, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, discord_status, discord_check, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, memory_status, character_status, hearing_check, model_ability_check,
 echo_check, pc_audio_check, context_check, thinking_steps_check, think_longer_status, conversation_history_status, creations_status, chattiness_status, songs_status, latency_report, character_models,
 character_actions, character_gaze, character_theme, singing_status, utterance_filter_check and parakeet_check calls without an explicit dataDirectory get a disposable one;
 voices_status, voices_engine_check, utterance_filter_check, parakeet_check and straight_voice_check also use this checkout's Desktop
@@ -147,7 +147,7 @@ try {
         $arguments = $call.arguments
         if ($call.name -like 'doctor_*' -or $call.name -like 'voices_*' -or $call.name -like 'logs_*' -or $call.name -like 'f5_*' -or
             $call.name -like 'cluster_*' -or $call.name -like 'nearby_*' -or $call.name -like 'virtualization_*' -or $call.name -eq 'mcp_servers_status' -or
-            $call.name -eq 'network_status' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'prompts_status' -or
+            $call.name -eq 'network_status' -or $call.name -eq 'api_keys_status' -or $call.name -eq 'smart_home_status' -or $call.name -eq 'discord_status' -or $call.name -eq 'discord_check' -or $call.name -eq 'prompts_status' -or
             $call.name -eq 'settings_sync_status' -or $call.name -eq 'memory_sync_status' -or $call.name -eq 'memory_status' -or $call.name -eq 'hearing_check' -or $call.name -eq 'model_ability_check' -or $call.name -eq 'echo_check' -or $call.name -eq 'pc_audio_check' -or $call.name -eq 'character_status' -or $call.name -eq 'character_models' -or
             $call.name -eq 'character_actions' -or $call.name -eq 'character_gaze' -or $call.name -eq 'character_theme' -or $call.name -eq 'context_check' -or $call.name -eq 'thinking_steps_check' -or
             $call.name -eq 'latency_report' -or $call.name -like 'terminal_*' -or $call.name -eq 'utterance_filter_check' -or $call.name -eq 'parakeet_check' -or
