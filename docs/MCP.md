@@ -576,7 +576,8 @@ the folder is deleted and the real vault is never touched.
 `network\device_ecdsa` exists), `networkId`, the roster's `revision` and
 `founder`, `waiting` (`hostId`, `checkNumber`, `since`) while this PC asks to
 join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
-`changedAt`), `adopt` (hosts paired here on purpose, added to the network on
+`changedAt`; hosts also `outsideAddresses`, how many outside addresses the roster
+lists), `adopt` (hosts paired here on purpose, added to the network on
 the next sync), `ignored` (network hosts forgotten here) and `removedFrom`. It
 never returns keys, signatures or host addresses and contacts nothing.
 
@@ -640,7 +641,15 @@ it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
 throttled entries with their source) and the host log lines naming each source.
-Not covered: a real internet source, a router port forward or an overlay.
+Then outside addresses, played by other loopback ports: with the home address
+closed the desktop reaches the host at its outside address, pinned to the same
+key, and the next connection tries it first; with the home address answering it
+is used at once (no wait on an outside one); with nothing answering the error
+names every address tried (`host.unreachable`); outside addresses set on the
+host itself are signed into the roster by a member desktop's network sync; and a
+different computer with another key at the home address is skipped for the
+outside address. Not covered: a real internet source, a router port forward or
+an overlay.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
@@ -2430,8 +2439,12 @@ the check number, a host PC in no network that only watches, or in no network),
 `NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
 click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
 text, for example `lab-gpu. Host, not paired with this PC yet; added on
-desktop-diva.`, and for another computer where it was last active, *Active now
-on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>`, each computer that uses
+desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`,
+and for another computer where it was last active, *Active now
+on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>` and, for hosts,
+`NetworkOutside-<ID>` (opens the *Outside addresses* dialog, field
+`HostInput-addresses`, saved by `HostInputOk`; it signs the roster, so it needs
+`--allow-ui-effects`), each computer that uses
 one of this PC's hosts without being a member `NetworkPaired-<device ID>` (status
 text: which hosts it uses and when it was last active), and each request to join
 `NetworkJoin-<device ID>` (status text with the check number) with
