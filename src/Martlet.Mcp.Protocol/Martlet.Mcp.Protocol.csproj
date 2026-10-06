@@ -18,7 +18,8 @@
     <!-- hearing_check rehearses the production Chat Completions adapter against a loopback fixture. -->
     <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
-    <!-- discord_text_check runs the production Discord text pipeline with a fake transport. -->
+    <!-- discord_text_check runs the production Discord text pipeline with a fake transport; discord_reply_check rehearses the
+         production Discord reply side (DiscordReplier) against a loopback fixture. -->
     <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
     <!-- echo_check rehearses the production echo reduction (EchoReducer and the WebRTC canceller) with fixture devices. -->
     <ProjectReference Include="..\Martlet.EchoCancellation\Martlet.EchoCancellation.csproj" />

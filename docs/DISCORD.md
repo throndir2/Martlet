@@ -89,6 +89,39 @@ the decisions so tests and MCP (`discord_text_check`) run them with a fake trans
 - Status: Companion › Discord's `DiscordTextStatus` line (counts of seen, considered, answered, passed, dropped and failed
   messages, the last reply's place kind and last problem) and *Discord text: ...* lines in the desktop log.
 
+## Reply engine
+
+`DiscordService.Replies` is a `DiscordReplyEngine` (`src\Martlet.Desktop`), wired at start (`DiscordService.UseReplies`).
+Callers pass each `DiscordTurn` with its place's chat `Mode` (`DiscordPreferences.TextMode` or `VoiceChat`); `ReplyAsync`
+returns the reply, or null to stay quiet.
+
+- **Discord side** (`DiscordReplier`, `src\Martlet.Discord\DiscordReplies.cs`): history per place (`DiscordPlace.Key`, the
+  last 40 lines of up to 1,500 characters, 200 places, in memory only and merged with the caller's `Recent` lines); one
+  request per place at a time and two at once; the turn shaped for several people (`DiscordPrompts`: each line "Name: text",
+  everything said since Martlet's last reply in one message, Martlet's own replies as its messages, and instructions naming
+  the DM, server channel or voice call and the owner); the answer cleaned (`DiscordReplyText`: a copied "Martlet:" removed,
+  at most 2,000 characters for text, plain sentences of at most 600 characters without markdown, links or emoji for voice).
+- **Speaking up** (`DiscordAmbientGate`): an unaddressed turn in Sometimes mode goes to the model only past a cooldown since
+  Martlet's last message there (90 s text, 30 s voice), at most 6 unprompted replies an hour per place, never two unprompted
+  replies without 3 lines from others in between, and then always when it names Martlet, otherwise 30% of the time. The
+  model may still answer `[pass]` (said in that turn's note, so the place's instructions never change). An ambient turn
+  never waits behind another in the same place.
+- **Thinking side**: each turn reads the saved settings and builds its request with the live conversation's own
+  `LiveConversationConfiguration.Request`: the persona and its style, lorebooks, the notes prompt and the reply length prompt,
+  with the Discord framing after the persona. Remembered facts go only to the owner's own DMs (others would read them). No
+  pictures, recordings, tools, Home Assistant or past conversations. Requests run on the engine's own two text-only runtimes,
+  never the local conversation's, so its requests, history and prompt cache stay as they were.
+- **Sharing a model with the local conversation**: when Thinking runs on this PC or the home network (Ollama, a paired host,
+  a LAN server), Discord requests go one at a time and only after the local conversation has been quiet for 20 s; an ambient
+  turn is skipped rather than waiting, an addressed one waits up to 90 s. If the local conversation starts a reply while a
+  Discord request runs, the Discord request is stopped at once (an addressed turn asks again once it is quiet). A server
+  that keeps one prompt cache may still have to read the local conversation again after a Discord reply; set
+  `OLLAMA_NUM_PARALLEL=2` (or more) so Ollama keeps both. A cloud route is used as it is.
+- **Observability**: `discord-replies.json` in the data directory (counts, times, the last skip and error codes, latency and
+  prompt-cache use; never what was said) and one `Discord reply (...)` desktop log line per reply. MCP's
+  `discord_reply_status` reads them and `discord_reply_check` rehearses the Discord side against a loopback fixture (see
+  [MCP](MCP.md)).
+
 ## Workstreams
 
 1. **Foundation** (merged first): the project, NetCord, preferences, bot host, token vault, reply contract and this page.
