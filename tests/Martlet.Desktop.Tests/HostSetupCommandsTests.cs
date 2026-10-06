@@ -574,12 +574,19 @@ public sealed class HostSetupCommandsTests
             DateTimeOffset.UnixEpoch, "docker", "Ubuntu 24.04", null, "Ryzen 9", 32, 64, "docker", "yes",
             [new Martlet.Core.Installation.HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24_564, "590.1")]);
         var offers = new Dictionary<string, string> { [HostRoles.Ollama] = "gemma4-e4b", [HostRoles.DeepThinking] = "gemma4-12b" };
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
         var recommended = DeepThinkingFit.Recommend(hardware, offers);
-        // Thinking's gemma4:e4b (with its context) takes about 8.4 GB of the 24 GB card: gemma4:12b fits one think, gemma4:e2b two.
-        Assert.Equal("1", recommended["choice.OLLAMA_NUM_PARALLEL"].Value);
-        Assert.Contains("beside Thinking's gemma4:e4b", recommended["choice.OLLAMA_NUM_PARALLEL"].Why);
-        Assert.Equal("2", recommended["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
+        // Thinking's gemma4:e4b takes about 4.9 GB of the 24 GB card (the footprint catalog). Gemma 4's think contexts are
+        // small (0.3-0.9 GB at 32,768 tokens), so gemma4:12b and gemma4:e2b fit the most; gemma4:26b (18.5 GB) doesn't fit beside it.
+        Assert.Equal("4", recommended["choice.OLLAMA_NUM_PARALLEL"].Value);
+        Assert.Contains("beside Thinking's gemma4:e4b (about 4.9 GB)", recommended["choice.OLLAMA_NUM_PARALLEL"].Why);
+        Assert.Contains("about 0.7 GB each", recommended["choice.OLLAMA_NUM_PARALLEL"].Why);
+        Assert.Equal("4", recommended["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
         Assert.Equal("1", recommended["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:26b"].Value);
+        Assert.Contains("already fills", recommended["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:26b"].Why);
+        // Beside a voice and listening (their catalog sizes, 4.2 and 2.5 GB), gemma4:12b fits three.
+        var busy = new Dictionary<string, string>(offers) { [HostRoles.Chatterbox] = "chatterbox-turbo", [HostRoles.Stt] = "large-v3-turbo" };
+        Assert.Equal("3", DeepThinkingFit.Recommend(hardware, busy)["choice.OLLAMA_NUM_PARALLEL"].Value);
         // Alone on the card, a small model gets more; without an NVIDIA card one at a time.
         Assert.Equal("4", DeepThinkingFit.Recommend(hardware, new Dictionary<string, string>())["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
         Assert.Equal("1", DeepThinkingFit.Recommend(hardware with { Gpus = [] }, offers)["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
@@ -590,10 +597,11 @@ public sealed class HostSetupCommandsTests
             var model = Find<ComboBox>(dialog, "HostInput-choice.OLLAMA_MODEL");
             var slots = Find<ComboBox>(dialog, "HostInput-choice.OLLAMA_NUM_PARALLEL");
             var fit = Find<TextBlock>(dialog, "HostInputFit-OLLAMA_NUM_PARALLEL-OLLAMA_MODEL");
+            // The host's current choice stays selected; the hint shows the recommendation.
             Assert.Equal("1", slots.SelectedItem);
-            Assert.StartsWith("With gemma4:12b: 1 recommended", fit.Text);
-            model.SelectedItem = "gemma4:e2b";
-            Assert.StartsWith("With gemma4:e2b: 2 recommended", fit.Text);
+            Assert.StartsWith("With gemma4:12b: 4 recommended", fit.Text);
+            model.SelectedItem = "gemma4:26b";
+            Assert.StartsWith("With gemma4:26b: 1 recommended", fit.Text);
             slots.SelectedItem = "2";
             Assert.Equal("2", HostInputDialog.Cleaned(dialog.Answers())!["choice.OLLAMA_NUM_PARALLEL"]);
             dialog.Close();
