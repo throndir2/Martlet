@@ -10,6 +10,20 @@ public sealed class HostSetupCommandsTests
         string? hostId = null) => new(method, ssh, address, hostId, "1.2.3");
 
     [Fact]
+    public void Exposure_runs_only_known_options_and_canonical_outside_addresses()
+    {
+        Assert.Equal("exposure --outside gpu-box.tailnet.ts.net:9443 --allow-pairing-outside-home no --treat-all-as-outside yes",
+            HostSetupCommands.Engine(HostAction.Exposure(["--outside", "gpu-box.tailnet.ts.net:9443", "--allow-pairing-outside-home", "no",
+                "--treat-all-as-outside", "yes"])));
+        Assert.Equal("exposure --clear-outside", HostSetupCommands.Engine(HostAction.Exposure(["--clear-outside"])));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure([])));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure(["--outside", "x;reboot"])));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure(["--outside", "Home.Example.net:9443"])));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostSetupCommands.Engine(HostAction.Exposure(["--config", "/etc/x"])));
+        Assert.Contains("--yes exposure --clear-outside", HostSetupCommands.RemoteShell(Target(HostSetupMethod.SshDocker), HostSetupCommands.Engine(HostAction.Exposure(["--clear-outside"])), false));
+    }
+
+    [Fact]
     public void This_pc_docker_builds_this_version_then_runs_the_engine_with_the_lan_address()
     {
         var script = HostSetupCommands.Script(Target(HostSetupMethod.ThisPcDocker, hostId: "gaming-pc-host"), HostAction.Setup);

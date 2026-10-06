@@ -14,7 +14,7 @@ namespace Martlet.Desktop;
 /// them there; <see cref="OnHost"/> is only the Add a computer wizard's install-by-hand choice (saved hosts use Agent).</summary>
 internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost, Agent }
 
-internal enum HostVerb { Setup, Pair, Add, Status, Remove, Update }
+internal enum HostVerb { Setup, Pair, Add, Status, Remove, Update, Exposure }
 
 /// <summary>A martlet-host command. Add and Remove name the role (see <see cref="HostRoles"/>); every role uses the same flow.
 /// <see cref="Changing"/>: adding a role the host already runs, to change its settings (the same <c>add</c>, whose dialog
@@ -28,6 +28,12 @@ internal sealed record HostAction(HostVerb Verb, string? Role = null)
     internal static HostAction Add(string role) => new(HostVerb.Add, role);
     internal static HostAction Change(string role) => new(HostVerb.Add, role) { Changing = true };
     internal static HostAction Remove(string role) => new(HostVerb.Remove, role);
+
+    /// <summary>martlet-host exposure with these options (docs/NETWORK.md, "Reaching your network from outside home").</summary>
+    internal static HostAction Exposure(IReadOnlyList<string> options) => new(HostVerb.Exposure) { Options = options };
+
+    /// <summary>The options of an <see cref="Exposure"/> action.</summary>
+    internal IReadOnlyList<string> Options { get; init; } = [];
 
     internal bool Changing { get; init; }
 
@@ -60,8 +66,14 @@ internal static partial class HostSetupCommands
         HostVerb.Status => "status",
         HostVerb.Remove when action.Role is { } role && RolePattern().IsMatch(role) => $"remove {role}",
         HostVerb.Update => "update",
+        HostVerb.Exposure when action.Options.Count > 0 && action.Options.All(ExposureToken) => "exposure " + string.Join(' ', action.Options),
         _ => throw new ArgumentOutOfRangeException(nameof(action))
     };
+
+    /// <summary>One word of martlet-host exposure: an option, yes or no, or an outside address in its canonical form.</summary>
+    private static bool ExposureToken(string token) =>
+        token is "--outside" or "--clear-outside" or "--allow-pairing-outside-home" or "--treat-all-as-outside" or "yes" or "no" ||
+        Martlet.Core.Network.NetworkRoster.NormalizeAddress(token) == token;
 
     internal static void Validate(HostSetupTarget target, HostAction action)
     {

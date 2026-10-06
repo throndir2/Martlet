@@ -79,7 +79,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 31;
+        const int expected = 34;
         if (steps.Count < expected)
         {
             passed = false;
@@ -234,6 +234,28 @@ internal static class HostEngineCheck
         timeout 15 "$E" update </dev/null >/tmp/after.out 2>&1; rc=$?
         [[ $rc != 75 ]] && ! grep -q '^MARTLET-BUSY' /tmp/after.out && has /tmp/after.out "changes the gateway configuration" && ok=1 || ok=0
         step no-stale-lock "$ok" "the next automatic update got past the lock (exit $rc at the fixture's unapproved configuration)"
+
+        # exposure (Outside access in Martlet): prints without changing anything, asks before a change, and with --yes passes
+        # its options to the gateway's owner-exposure and restarts the gateway. A fake dotnet records the gateway calls.
+        mkdir -p /tmp/h/.dotnet
+        printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> /tmp/dotnet.calls\ncase "$*" in *owner-exposure*) echo "Host check-host has outside addresses: none (FIXTURE).";; esac\nexit 0\n' > /tmp/h/.dotnet/dotnet
+        printf '#!/bin/sh\nexit 0\n' > /tmp/nativebin/systemctl; chmod 755 /tmp/h/.dotnet/dotnet /tmp/nativebin/systemctl
+        : > /tmp/dotnet.calls
+        timeout 15 "$E" exposure </dev/null >/tmp/expo-show.out 2>&1; rc=$?
+        [[ $rc == 0 ]] && has /tmp/expo-show.out "has outside addresses" && grep -qx '.*Martlet.Gateway.Host.Linux.dll owner-exposure --config /tmp/c/gateway/host.json' /tmp/dotnet.calls &&
+          ! grep -q ' health ' /tmp/dotnet.calls && ok=1 || ok=0
+        step exposure-prints "$ok" "exposure without options: exit $rc, asked the gateway once and restarted nothing ($(wc -l < /tmp/dotnet.calls) call)"
+        : > /tmp/dotnet.calls
+        timeout 15 "$E" exposure --treat-all-as-outside yes </dev/null >/tmp/expo-ask.out 2>&1; rc=$?
+        [[ $rc == 1 ]] && has /tmp/expo-ask.out "Nothing changed." && ! grep -q 'treat-all' /tmp/dotnet.calls && ok=1 || ok=0
+        step exposure-asks-first "$ok" "exposure with options and no --yes or terminal: exit $rc, nothing passed to the gateway"
+        : > /tmp/dotnet.calls
+        ( export PATH="/tmp/nativebin:$PATH"; timeout 40 "$E" --yes exposure --outside gpu.example.net:9443 --treat-all-as-outside yes ) </dev/null >/tmp/expo-set.out 2>&1; rc=$?
+        [[ $rc == 0 ]] && has /tmp/expo-set.out "Saved." &&
+          grep -q 'owner-exposure --config /tmp/c/gateway/host.json --outside gpu.example.net:9443 --treat-all-as-outside yes$' /tmp/dotnet.calls &&
+          grep -q ' health --config ' /tmp/dotnet.calls && ok=1 || ok=0
+        step exposure-saves-and-restarts "$ok" "--yes exposure --outside ... --treat-all-as-outside yes: exit $rc; gateway calls: $(tr '\n' '|' < /tmp/dotnet.calls | sed 's#/tmp/d/gateway/Martlet.Gateway.Host.Linux.dll ##g')"
+        rm -f /tmp/h/.dotnet/dotnet /tmp/nativebin/systemctl
 
         log=/tmp/c/logs/engine.log
         has "$log" "busy, stopped without changing anything: leaving the Martlet network" && has "$log" "busy, waiting: leaving the Martlet network" &&
