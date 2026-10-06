@@ -780,7 +780,8 @@ if ($lines.Count -ne $manifest.files.Count + 2 -or @($lines | Where-Object { $_ 
 }
 $script:cases++
 $authoring = Get-Content -LiteralPath "$PSScriptRoot\Martlet.iss" -Raw
-foreach ($required in @('PrivilegesRequired=lowest', 'UsePreviousAppDir=no', 'ArchitecturesAllowed=x64os',
+foreach ($required in @('PrivilegesRequired=lowest', 'UsePreviousAppDir=no', 'ArchitecturesAllowed=x64compatible',
+        'ArchitecturesInstallIn64BitMode=x64compatible', 'SetupArchitecture=x86', 'OnlyOnTheseArchitectures=',
         'MinVersion=10.0.19041', 'CloseApplications=no', 'RestartApplications=no',
         'DefaultDirName={localappdata}\Programs\Martlet Internal', 'INTERNAL DEVELOPMENT ONLY',
         'AppId={{CDFDFAB4-DAF1-4A6D-8823-A55E0A12CD86}')) {

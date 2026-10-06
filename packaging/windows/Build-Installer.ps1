@@ -36,7 +36,7 @@ if ($result.ExitCode -ne 0) {
 $name = if ($PublicRelease) { "Martlet-$releaseVersion-win-x64.exe" }
     else { "Martlet-$($manifest.applicationVersion)-win-x64-INTERNAL-UNSIGNED.exe" }
 $installer = (Get-RequiredFile (Join-Path $staging $name)).FullName
-Assert-X64Pe $installer
+Assert-X86Pe $installer
 if ((Get-Item -LiteralPath $installer).Length -gt 200MB) { throw 'Installer exceeds the 200 MiB planning budget; review before widening it.' }
 $null = Test-PayloadManifest $PayloadRoot -RequireCurrentSource
 $provenance = [ordered]@{

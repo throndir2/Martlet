@@ -18,7 +18,7 @@ internal static class ReportProjection
 {
     private static readonly string[] ProbeIds =
     [
-        "settings.load", "provider.connection", "audio.playback", "application.version", "runtime.version",
+        "settings.load", "provider.connection", "audio.playback", "application.version", "runtime.version", "platform.architecture",
         "audio.input", "pipeline.vad", "pipeline.stt", "pipeline.policy", "pipeline.llm", "pipeline.tts",
         "host.connection", "fixture.session"
     ];

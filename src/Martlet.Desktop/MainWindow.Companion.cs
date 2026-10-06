@@ -1721,7 +1721,8 @@ public partial class MainWindow
         {
             dockerTitle,
             dockerAbout,
-            Note(gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
+            Note(machine.ArmRefusal("audio2face") is { } arm ? arm + " Voice loudness or another computer suits this PC better."
+                : gpu is null ? "No dedicated graphics card was found on this PC; Audio2Face needs an NVIDIA graphics card with 4 GB or more."
                 : $"This PC has {gpu.Describe()}." + (fits ? "" : " Audio2Face needs an NVIDIA graphics card with 4 GB or more, so voice " +
                     "loudness or another computer suits this PC better."), new Thickness(0, 0, 0, 6))
         };

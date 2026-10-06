@@ -744,6 +744,8 @@
                     <Border Style="{DynamicResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Tools" Style="{DynamicResource SectionHeading}"/>
+                            <TextBlock x:Name="ThisPcArchitectureText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       AutomationProperties.AutomationId="ThisPcArchitecture"/>
                             <WrapPanel>
                                 <Button Content="_Troubleshooting" Click="Troubleshooting_Click" Margin="0,4,12,4"
                                         AutomationProperties.AutomationId="OpenTroubleshooting" AutomationProperties.Name="Open troubleshooting" />

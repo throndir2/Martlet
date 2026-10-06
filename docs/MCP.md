@@ -304,6 +304,15 @@ reads; without it, Doctor uses the current user's Martlet directory. No
 headless MCP tool creates a profile, opens a device, plays a tone, sends a
 request or handles credentials.
 
+`doctor_run` with `platform.architecture` reports this PC's processor type:
+`platform.x64`, or on Windows on Arm `platform.arm64_emulated` (the x64 build
+under Windows' x64 emulation; the real processor is read with
+`IsWow64Process2`) or `platform.arm64_native`. The same line is the desktop's
+`ThisPcArchitecture` status field in Settings › Tools ("This PC: x64
+processor; Martlet runs natively.", or the Windows on Arm wording and what it
+means for NVIDIA jobs), and the Devices map's This PC shows it as *Processor
+type*.
+
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
 recognition choice (`on (default)` until it is turned off; a shared setting) and

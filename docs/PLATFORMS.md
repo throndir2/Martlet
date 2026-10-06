@@ -38,10 +38,11 @@ Android apps follow the same rules.
 
 Slice IDs: IO = [iOS plan](IOS.md#delivery-slices), MA = [macOS
 plan](MACOS.md#delivery-slices), AN = [Android plan](ANDROID.md#delivery-slices),
-PL = [below](#delivery-slices). Minimum systems: Windows 10/11 x64 (today),
+PL = [below](#delivery-slices). Minimum systems: Windows 10/11 x64 and Windows
+11 on Arm (today; the x64 build under emulation, [details](#windows-on-arm)),
 macOS 14, iOS/iPadOS 26, Android 8.0.
 
-| Job or feature | Windows | macOS | iPhone / iPad | Android | Linux |
+| Job or feature | Windows (10/11 x64, 11 on Arm) | macOS | iPhone / iPad | Android | Linux |
 | --- | --- | --- | --- | --- | --- |
 | Thinking: OpenAI, OpenRouter, NVIDIA Build, any OpenAI-compatible server | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | Not planned: no Linux companion app; Linux computers are hosts |
 | Thinking on the device itself | **Works**: a local server (Ollama, LM Studio) through Chat Completions | Planned: Apple Intelligence (M1+, macOS 26+; screen images from 27) and Ollama on the Mac's GPU (MA04); MLX models (MA02). Intel: CPU-only 1-4B models | Planned (IO05): Apple Intelligence (iPhone 15 Pro or later, M-series iPad, iOS 26+; images from 27) | Planned (AN07): Gemini Nano on supported flagships, **only while Martlet is in front, never behind a game**; small LiteRT or llama.cpp models (old phones: 0.5-1B, slow) | - |
@@ -51,13 +52,60 @@ macOS 14, iOS/iPadOS 26, Android 8.0.
 | Speaking: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
 | Speaking on the device | Planned (PL02): Windows voices | Planned (MA04): Apple voices, Personal Voice | Planned (IO05): Apple voices, Personal Voice | Planned (AN07): Android voices | - |
 | Your own cloned voice (F5) | **Works** through an NVIDIA host | Through an NVIDIA host (MA07); F5 on MLX on Apple silicon, 16 GB+ suggested (MA03) | Through a host (IO09) | Through a host (AN10) | - |
-| Lip-sync | **Works**: loudness; Audio2Face on this PC or a host (NVIDIA) | Planned (MA05): loudness; Audio2Face through an NVIDIA host | Planned (IO07): same | Planned (AN09): same | - |
+| Lip-sync | **Works**: loudness; Audio2Face on this PC or a host (NVIDIA; on Windows on Arm only through a host) | Planned (MA05): loudness; Audio2Face through an NVIDIA host | Planned (IO07): same | Planned (AN09): same | - |
 | Character over other windows and games | **Works**: transparent always-on-top window | Planned (MA05): floating panel over full-screen games and Spaces | Planned (IO07/IO08): in the app, beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental) | Planned (AN09): needs *Display over other apps*; taps reach the game only through a mostly transparent overlay | - |
 | Watch my screen | **Works** (borderless/windowed games) | Planned (MA06): Screen Recording permission, asked again from time to time | Planned (IO06): only while a screen broadcast you start is running | Planned (AN08): screen-capture permission each session | - |
 | Watch a camera or a phone's camera | **Works**: webcams, capture cards, phone-as-webcam apps (Phone Link, DroidCam, Camo, iVCam), HTTP snapshot/MJPEG/RTSP addresses ([details](SCREEN_COMMENTARY.md#cameras-phones-and-other-video-sources)) | - | The iPhone can serve its camera to Windows (IO06) | Martlet on the phone can serve its camera to Windows (AN11: password-protected plain HTTP, readable on your Wi-Fi, only while sharing); any IP-camera app works today | - |
 | Hands-free listening | **Works** | Planned (MA04), with a global push-to-talk hotkey | Planned (IO05): behind a game only while listening is on | Planned (AN07): behind a game with a notification showing; echo cancellation varies by phone | - |
 | Voice ID, local memory, personas | **Works** | Planned (MA07) | Planned (IO09) | Planned (AN10) | - |
 | Pair with hosts, who does what, failover | **Works** | Planned (MA07) | Planned (IO09) | Planned (AN10) | - |
+
+### Windows on Arm
+
+Windows 11 on Arm PCs (Snapdragon X and similar) install the normal
+`Martlet-<version>-win-x64.exe`; Windows runs it under its x64 emulation
+(Prism), including its x64 native parts (WebView2 loader, WebRTC echo
+cancellation, sherpa-onnx, Discord's libdave). The installer allows
+`x64compatible` systems and refuses **Windows 10 on Arm**, which can't run x64
+apps, with a plain message. Martlet reads the real processor with
+`IsWow64Process2` (under emulation .NET can report x64), shows it on the
+Devices map (*Processor type*), in Settings › Tools and in Doctor's
+`platform.architecture` probe (`platform.arm64_emulated`), and reports This PC
+to the platform catalog as ARM64. NVIDIA graphics cards don't work on Windows
+on Arm, so the catalog refuses NVIDIA engines (Audio2Face, F5 and the other
+voice-cloning engines, singing, pictures) on such a PC with that reason; they
+run on another of your computers. Cloud thinking, listening and speaking,
+loudness lip-sync, the character, watching the screen and pairing work as on
+x64. **NOT RUN:** nothing has been installed or run on a Windows on Arm PC yet.
+
+**Native ARM64 build (PL06, planned).** Packaging is hardened around win-x64
+(per-RID lock files, pinned runtime packs, provenance and PE-architecture
+checks), so a native installer is its own slice. A plain `dotnet publish -r
+win-arm64 --self-contained` of the Desktop already builds (checked 2026-10-06):
+its exe and the avatar renderer's WebView2 loader are ARM64, but it carries the
+x64 `libdave.dll` and no sherpa-onnx or `webrtc-apm.dll` native. Remaining
+steps:
+
+1. Parameterize `packaging/windows` by RID instead of duplicating it:
+   `Publish-Windows.ps1 -RuntimeIdentifier win-arm64`, a `rid` per entry in
+   `toolchain.json` with pinned `microsoft.netcore.app.runtime.win-arm64` and
+   `microsoft.windowsdesktop.app.runtime.win-arm64` packs (hashes), the
+   `net10.0*/win-arm64` targets in every `locks/*.packages.lock.json`,
+   `Assert-PeMachine` with `0xAA64` for the payload, and `runtimes/win-arm64`
+   paths in `Packaging.Common.ps1` and `AvatarEvidence.Common.ps1` (WebView2
+   1.0.4191.47 ships `runtimes/win-arm64/native/WebView2Loader.dll`).
+2. Swap `org.k2fsa.sherpa.onnx.runtime.win-x64` for `.win-arm64` 1.13.8 on that
+   RID.
+3. Turn off what has no ARM64 native, with a visible reason through the catalog
+   rather than a crash: `SoundFlow.Extensions.WebRtc.Apm` 1.4.0 has no
+   win-arm64 `webrtc-apm.dll` (echo cancellation: fall back to push-to-talk or
+   headphones) and discord/libdave v1.2.1 has no Windows ARM64 asset (Discord
+   voice with DAVE end-to-end encryption). Check `OnnxVadInferenceSession` and
+   `Martlet.LocalStt`, which today require an x64 process.
+4. Build `Martlet-<version>-win-arm64.exe` (`ArchitecturesAllowed=arm64`,
+   `Doctor` reports `platform.arm64_native`) and add one minimal arm64 job to
+   `windows-release.yml` (build and upload only, no tests).
+5. Qualify on a real Windows on Arm PC.
 
 ## Devices that do jobs (hosts)
 
@@ -102,6 +150,7 @@ their plan's slices.
 | Gaming PC with an NVIDIA GPU (8 GB+, even an older RTX 20/30) | Host: Audio2Face, your F5 voice, whisper; a small local model if VRAM allows | Today |
 | PC or mini PC without NVIDIA (x86_64, Linux or Windows) | Companion with cloud thinking; host for whisper on the CPU, or a small Ollama model | Today |
 | Old Windows laptop | Companion with OpenAI or OpenRouter; talk to Martlet from another room | Today |
+| Snapdragon X or other Windows on Arm laptop (Windows 11) | Companion with cloud thinking, listening and speaking; GPU jobs (Audio2Face, voice cloning) on another computer | Today (x64 build under emulation; never run on an Arm PC); native ARM64 build PL06 |
 | Any old phone with a camera | A camera for Watch my screen through Phone Link, DroidCam, Camo, iVCam or an IP-camera app | Today, on Windows |
 | Old Intel Mac reinstalled with Ubuntu | Linux host for whisper or a small model on the CPU | Today (never run on Mac hardware) |
 | Raspberry Pi or other ARM Linux | Small whisper or Ollama host once the images are built for ARM64 | PL04 |
@@ -229,4 +278,5 @@ The details are in each plan: [iOS](IOS.md#decisions-2026-10-01),
 | PL03 | Setup advisor asks about Macs, phones, tablets and old PCs, and recommends jobs for them from this catalog | Planned |
 | PL04 | ARM64 Linux hosts (Raspberry Pi 5 class, Docker Desktop on Apple silicon): host and role images for arm64, then qualification. Shared with MA10 | Host image builds for arm64 (DX04); role images and qualification planned |
 | PL05 | Conversation window shows the coverage card before a turn instead of failing at dispatch | Planned |
+| PL06 | Native Windows on Arm (ARM64) companion and `Martlet-<version>-win-arm64.exe` installer | Planned; today Windows 11 on Arm runs the x64 build under emulation (see [Windows on Arm](#windows-on-arm)) |
 | IO, MA, AN | Platform apps: [iOS](IOS.md#delivery-slices) IO01-IO11, [macOS](MACOS.md#delivery-slices) MA01-MA10, [Android](ANDROID.md#delivery-slices) AN01-AN11 | Planned |

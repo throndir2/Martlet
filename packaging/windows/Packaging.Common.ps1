@@ -71,6 +71,15 @@ function Assert-MSBuildPath([string]$Path) {
 }
 
 function Assert-X64Pe([string]$Path) {
+    Assert-PeMachine $Path 0x8664 'native win-x64, not x86 or ARM64'
+}
+
+# Setup.exe is 32-bit x86 so that Windows 10 on Arm can open it and show the clear refusal (see Martlet.iss).
+function Assert-X86Pe([string]$Path) {
+    Assert-PeMachine $Path 0x014C '32-bit x86 Inno Setup (it installs the x64 payload in 64-bit mode)'
+}
+
+function Assert-PeMachine([string]$Path, [uint16]$Machine, [string]$Expected) {
     $null = Get-RequiredFile $Path
     $stream = [IO.File]::OpenRead($Path)
     $reader = [IO.BinaryReader]::new($stream)
@@ -80,8 +89,8 @@ function Assert-X64Pe([string]$Path) {
         $offset = $reader.ReadInt32()
         if ($offset -lt 64 -or $offset -gt ($stream.Length - 6)) { throw "Invalid PE header: $Path" }
         $stream.Position = $offset
-        if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne 0x8664) {
-            throw "Wrong binary architecture: $Path. Expected native win-x64, not x86 or ARM64."
+        if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne $Machine) {
+            throw "Wrong binary architecture: $Path. Expected $Expected."
         }
     }
     finally {

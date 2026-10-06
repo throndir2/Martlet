@@ -675,7 +675,9 @@ public partial class MainWindow
 
     private HomeStep RolesStep(LocalHostServiceState? state)
     {
-        var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}." : "No NVIDIA graphics card found.";
+        var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}."
+            : machine.ProcessorType.WindowsOnArm ? "This is a Windows on Arm PC, where NVIDIA graphics cards don't work, so GPU roles need another computer."
+            : "No NVIDIA graphics card found.";
         // Roles are read from the running host service; until it runs there is nothing to add them to.
         if (state?.Roles is not { } installed)
             return new("roles", "Add roles", "Add tasks this host can handle once the host service runs. " + nvidia, false, true, []);
