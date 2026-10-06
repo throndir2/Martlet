@@ -28,6 +28,8 @@ public static class DiscordVoiceNatives
             return new(false, path, 0, false, 0, false, opus, "libdave.dll didn't load (needs Windows x64).");
         try
         {
+            // libdave logs to standard output by default, which would corrupt a stdio host such as Martlet.Mcp.
+            Call<SetLogSink>(library, "daveSetLogSinkCallback")(QuietSink);
             var version = Call<MaxVersion>(library, "daveMaxSupportedProtocolVersion")();
             var create = Call<SessionCreate>(library, "daveSessionCreate");
             var init = Call<SessionInit>(library, "daveSessionInit");
@@ -79,6 +81,10 @@ public static class DiscordVoiceNatives
     private static T Call<T>(nint library, string name) where T : Delegate =>
         Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
 
+    private static readonly LogSink QuietSink = (_, _, _, _) => { };
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void LogSink(int severity, nint file, int line, nint message);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void SetLogSink(LogSink sink);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ushort MaxVersion();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate nint SessionCreate(nint context, byte[] authSessionId, nint callback, nint userData);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void SessionInit(nint session, ushort version, ulong groupId, byte[] selfUserId);
