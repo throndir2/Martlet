@@ -23,6 +23,7 @@
     <Project Path="src/Martlet.Gateway.Dia/Martlet.Gateway.Dia.csproj" />
     <Project Path="src/Martlet.Gateway.Stt/Martlet.Gateway.Stt.csproj" />
     <Project Path="src/Martlet.Gateway.Singing/Martlet.Gateway.Singing.csproj" />
+    <Project Path="src/Martlet.Gateway.Pictures/Martlet.Gateway.Pictures.csproj" />
     <Project Path="src/Martlet.Memory/Martlet.Memory.csproj" />
     <Project Path="src/Martlet.Mcp/Martlet.Mcp.csproj" />
     <Project Path="src/Martlet.Mcp.Client/Martlet.Mcp.Client.csproj" />

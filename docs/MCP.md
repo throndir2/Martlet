@@ -222,6 +222,39 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Pictures
+
+While Companion › Pictures has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
+reply on a route that does function calling also gets `draw_picture`
+(`description`, optional `title`, `shape`, `avoid`), after the song tools. It
+starts a `picture-N` background job and returns at once; the finished picture is
+kept as a `picture` creation and shown in the talk window (`LivePicture`, whose
+click opens `LivePictureViewer`), and `perform_creation` shows a kept one again.
+See [Pictures](PICTURES.md). The talk window's status says *Starting a picture in
+the background…* while it is called, and the desktop log notes `Pictures:`
+lines (where, size, seconds; never the description).
+
+The local server's `pictures_status` reads a data directory's `pictures.json`
+(place, workflow, checkpoint or model, whether an own key is saved; never a key),
+the loaded workflow's node count, the picture creations (shape, size, engine,
+model, seconds, fixture; never titles or descriptions) and the tool and job kind.
+`pictures_check` draws one picture through the production maker: `place`
+`fixture` (default) or `comfyui` with `address` (and `workflow`
+`z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
+reporting availability, every progress stage, the media type, size, SHA-256 and
+seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
+back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+Build (a picture costs money). Desktop automation: Companion › Pictures'
+`PicturesPlace-<place>` and `PicturesHost-<host>` choices, `PicturesCheck` and
+`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesEngine`, `PicturesFeatures`, `PicturesHostState`, `PicturesSetUp`,
+`PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
+`PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
+`PicturesKeyStatus`, `PicturesUseCloud`, `PicturesTurnOff` and `PicturesTest`
+return their text. Set up, Draw with..., Turn pictures off and Draw a test picture
+save, install or draw, so they need `--allow-ui-effects`; the Creations page shows
+a picture as `CreationPicture`.
+
 ### Reminders
 
 On a PC that keeps reminders (any with a data folder), every reply on a route

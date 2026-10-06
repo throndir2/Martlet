@@ -40,6 +40,9 @@ public sealed class ChatMessage : INotifyPropertyChanged
     public string Text { get => text; set => Set(ref text, value); }
     public string Note { get => note; set { if (Set(ref note, value)) Changed(nameof(HasNote)); } }
     public bool HasNote => note.Length > 0;
+    /// <summary>A picture Martlet shows with this message (draw_picture, or perform_creation showing one again).</summary>
+    public System.Windows.Media.ImageSource? Picture { get; init; }
+    public bool HasPicture => Picture is not null;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     internal void AddNote(string line) => Note = note.Length == 0 ? line : note + "  " + line;
@@ -201,6 +204,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
+        controller.PictureShown += PictureShown;
         controller.VoicesNamed += VoicesNamed;
         controller.ChattinessDecided += ChattinessDecided;
         if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
@@ -2082,7 +2086,8 @@ public partial class LiveConversationWindow : ThemedWindow
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…"
                 : tool == ThinkLonger.Name ? "Starting to think it over in the background…"
-                : tool == SongTools.SingName ? "Starting a song in the background…" : $"Using {tool}…";
+                : tool == SongTools.SingName ? "Starting a song in the background…"
+                : tool == PictureTools.DrawName ? "Starting a picture in the background…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
@@ -2515,6 +2520,42 @@ public partial class LiveConversationWindow : ThemedWindow
         });
     }
 
+    // Opens a shown picture full size (Esc closes it).
+    private void Picture_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ChatMessage { Picture: { } picture } message }) return;
+        var viewer = new Window
+        {
+            Title = message.Text, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Width = Math.Min(SystemParameters.WorkArea.Width * 0.8, 1100), Height = Math.Min(SystemParameters.WorkArea.Height * 0.85, 1100),
+            Content = new System.Windows.Controls.Image { Source = picture, Stretch = System.Windows.Media.Stretch.Uniform, Margin = new Thickness(8) }
+        };
+        viewer.SetResourceReference(BackgroundProperty, "SurfaceBrush");
+        AutomationProperties.SetAutomationId(viewer, "LivePictureViewer");
+        viewer.KeyDown += (_, key) => { if (key.Key == Key.Escape) viewer.Close(); };
+        viewer.Show();
+    }
+
+    // Raised off the dispatcher when Martlet shows a picture: it joins the history as Martlet's, with its title.
+    private void PictureShown(ShownPicture picture) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        var image = PictureView.Decode(picture.Image);
+        if (image is null)
+        {
+            AddNote($"Couldn't show “{picture.Title}”.");
+            return;
+        }
+        Messages.Add(new ChatMessage(ChatRole.Martlet, picture.Title + (picture.Fixture ? " (FIXTURE - NOT AI)" : ""), $"Martlet · {DateTime.Now:t}")
+        {
+            Picture = image
+        });
+        LastShownPicture = picture.Key;
+    });
+
+    /// <summary>The creation key of the last picture shown here (MCP: LivePicture).</summary>
+    internal string? LastShownPicture { get; private set; }
+
     // Raised off the dispatcher once background remembering finishes for an exchange.
     private void MemoryCaptured(MemoryCaptureReport report) => Dispatcher.BeginInvoke(() =>
     {
@@ -2589,6 +2630,7 @@ public partial class LiveConversationWindow : ThemedWindow
         warmup = null;
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
+        controller.PictureShown -= PictureShown;
         controller.VoicesNamed -= VoicesNamed;
         controller.ChattinessDecided -= ChattinessDecided;
         homeQuestion?.TrySetResult(false);
