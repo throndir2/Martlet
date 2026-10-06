@@ -74,15 +74,20 @@ internal static class DefaultSetup
         return FromPlacement(plan, gpus, windowsGpu, threads, language);
     }
 
-    /// <summary>What this PC can set up: jobs that need an NVIDIA card (a voice engine, Whisper, Audio2Face) only when
-    /// nvidia-smi answers, as Martlet checks the driver through it, and Whisper only on a driver for CUDA 13.</summary>
-    internal static FootprintCatalog Catalog(IReadOnlyList<GpuNow> gpus)
+    /// <summary>What the first-run setup can set up by itself: the default voice engine (the others need a voice recording
+    /// or a licence choice first, in Companion › Voice) or a Windows voice, Parakeet or Whisper on the graphics card for
+    /// listening, and on this PC jobs that need an NVIDIA card only when nvidia-smi answers (Martlet checks the driver through
+    /// it), with Whisper only on a driver for CUDA 13. <paramref name="gpus"/> null: another computer's jobs, no driver check.</summary>
+    internal static FootprintCatalog Catalog(IReadOnlyList<GpuNow>? gpus)
     {
-        var card = gpus.MaxBy(g => g.TotalGb);
+        var card = gpus?.MaxBy(g => g.TotalGb);
         var oldDriver = card?.DriverMajor is < ListeningAdvisor.MinimumDriver;
-        if (card is not null && !oldDriver) return FootprintCatalog.Default;
+        var defaultVoice = FootprintCatalog.Default.For(PlanComponent.Voice)
+            .FirstOrDefault(o => o.HostRoleKind == SpeechEngines.Default.HostRoleKind)?.Id;
         return new(FootprintCatalog.Default.Options.Where(o =>
-            !(o.IsLocal && o.Gpu == GpuRequirement.Nvidia && (card is null || o.Component == PlanComponent.Listening))));
+            !(o.IsLocal && o.Component == PlanComponent.Voice && o.UsesGpu && o.Id != defaultVoice) &&
+            !(o.IsLocal && o.Component == PlanComponent.Listening && o.HostRoleKind is not null && !o.UsesGpu) &&
+            !(gpus is not null && o.IsLocal && o.Gpu == GpuRequirement.Nvidia && (card is null || oldDriver && o.Component == PlanComponent.Listening))));
     }
 
     /// <summary>The setup steps for what <paramref name="plan"/> places on this PC. Whisper on the card shares the voice
@@ -118,8 +123,8 @@ internal static class DefaultSetup
         {
             Machines = machines, Preference = preference, ConfiguredProviders = configuredProviders ?? [], Wanted = Conversation
         };
-        // Alone, this PC plans only what it can set up; in a network the hosts' NVIDIA jobs stay in the catalog.
-        var catalog = network is null ? Catalog(gpus) : FootprintCatalog.Default;
+        // Alone, this PC plans only what it can set up; in a network the hosts' NVIDIA jobs aren't checked against this PC's driver.
+        var catalog = Catalog(network is null ? gpus : null);
         var plan = PlacementEngine.Plan(request, catalog);
         var joining = network is null ? []
             : PlacementEngine.SuggestForJoiningMachine(request with { Machines = [.. machines.Where(m => m.Id != specs.Id)] }, specs, catalog);
