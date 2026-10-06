@@ -314,15 +314,18 @@ public sealed class SetupDispatcherTests(ITestOutputHelper output)
             var providers = Control<ComboBox>(window, "ProviderChoice");
             Assert.True(providers.IsEnabled);
             var names = providers.Items.Cast<object>().Select(item => item.ToString()!).ToArray();
-            Assert.Equal(4, names.Length);
+            Assert.Equal(5, names.Length);
             foreach (var (name, baseUrl, model) in new[]
             {
                 ("OpenRouter", ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "meta-llama/llama-3.3-70b-instruct:free"),
                 ("NVIDIA Build", ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId),
+                ("Google Gemini", ChatCompletionsEndpointCatalog.GeminiBaseUrl, ChatCompletionsEndpointCatalog.GeminiDefaultModelId),
                 ("Custom", "http://127.0.0.1:1234/v1", "local-model")
             })
             {
                 providers.SelectedItem = providers.Items.Cast<object>().Single(item => item.ToString()!.StartsWith(name, StringComparison.Ordinal));
+                if (name == "Google Gemini")
+                    Assert.Contains(ChatCompletionsEndpointCatalog.GeminiKeyUrl, Control<TextBlock>(window, "ProviderHint").Text);
                 var url = Control<TextBox>(window, "BaseUrl");
                 Assert.True(url.IsEnabled);
                 if (name == "Custom") url.Text = baseUrl;

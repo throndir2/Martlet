@@ -45,8 +45,8 @@ Each job row opens one **job editor** with two questions, in this order:
    name, with readiness). This is the same choice each job row's *Done by*
    menu on the Devices page makes today; both surfaces edit one source of truth.
 2. **Which engine?** Depends on the place:
-   - *Cloud API*: provider presets (OpenAI, OpenRouter, NVIDIA Build, Custom
-     OpenAI-compatible) with the recommended model prefilled, the key status
+   - *Cloud API*: provider presets (OpenAI, OpenRouter, NVIDIA Build, Google
+     Gemini, Custom OpenAI-compatible) with the recommended model prefilled, the key status
      for that provider, and the data/cost disclosure + consent.
    - *This PC* or *a host*: the engines that place can run (installed roles),
      with a recommended model list and an install/download action where needed.
@@ -69,7 +69,8 @@ removing detached keys.
 - Custom endpoints have no default (Martlet cannot know what the server serves).
 
 Current defaults: OpenAI Thinking `gpt-4.1-mini-2025-04-14`, OpenRouter
-`google/gemma-4-26b-a4b-it`, NVIDIA Build `google/diffusiongemma-26b-a4b-it`
+`google/gemma-4-26b-a4b-it`, NVIDIA Build `google/diffusiongemma-26b-a4b-it`,
+Google Gemini `gemini-3.5-flash-lite` (free tier; hears once the owner allows it)
 (every Thinking default also sees images and calls tools; NVIDIA retired
 `meta/llama-3.3-70b-instruct` on 2026-08-26, a retired model answers HTTP 410 and
 Martlet reports `ModelRetired`), local Ollama

@@ -271,6 +271,8 @@ public partial class SetupWindow : ThemedWindow
                 ? $"Recommended: {provider.DefaultModelId}. You can enter any OpenRouter model ID. Store your OpenRouter key on Credentials." + reasoning
                 : provider.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl
                     ? $"Recommended: {provider.DefaultModelId}. You can enter any NVIDIA Build model ID. Store your NVIDIA key on Credentials." + reasoning
+                    : ChatCompletionsEndpointCatalog.Named(provider.BaseUrl)?.Guidance is { } guidance
+                        ? guidance + " Store the key on Credentials." + reasoning
                     : provider.Chat
                         ? "Enter the server's base URL and model ID. Use HTTPS unless the server runs on this PC. Store a key only if your server needs one." + reasoning
                         : $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}. Pick another compatible model if you prefer.";

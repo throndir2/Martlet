@@ -408,11 +408,11 @@ public static class PlatformCatalog
         new("character-overlay", Feature, "Character over other windows and games",
         [
             Works(Win, You, "a transparent always-on-top window"),
-            Works(Mac, You, "a transparent always-on-top window; staying on every Space and over full-screen games, clicking through " +
-                "and not taking focus come with DX03"),
+            Works(Mac, You, "an always-on-top window; floating over full-screen games and every Space, clicking through and not taking " +
+                "focus through the Mac integration (DX03, not yet tried on a Mac)"),
             Planned(Ios, You, "IO08", "inside Martlet and beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental)"),
             Planned(Android, You, "AN09", "needs 'Display over other apps'; touches reach the game only through a mostly transparent overlay"),
-            Works(Linux, You, "a transparent always-on-top window (X11 or XWayland); clicking through and not taking focus come with DX02")
+            Works(Linux, You, "an always-on-top window (X11 or XWayland); clicking through and not taking focus through the Linux integration (DX02, not yet tried on a real desktop)")
         ]),
         new("screen-watch", Feature, "Watch my screen (game commentary)",
         [
