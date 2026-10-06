@@ -2772,7 +2772,18 @@ and `DeviceReachSection` expanders. Each `Node-<id>` also returns the device's
 card as text: its name, subtitle, status and what it runs (for example
 `IMOUTO, desktop-imouto · imouto-host. Connected. Runs: Martlet companion, Martlet host, Listening`
 or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking, Lip-sync`),
-so one snapshot shows the whole map. `SelectedDevice` and `SelectedDeviceHealth`
+so one snapshot shows the whole map. The map fits up to six devices on each
+side of This PC; the rest fold into a `Node-more:computers` (or
+`Node-more:services`) card, *44 more computers* with how many need attention,
+whose click opens the list. `DevicesViewMap` and `DevicesViewList` switch
+between the map and the list (passive); the list shows by itself once the map
+can't fit every device. The list shows every device as a `Node-<id>` card (This
+PC, then those needing attention, then by name) with `DeviceFilter-all`,
+`-attention`, `-hosts`, `-computers` and `-cloud` pills (passive; each returns
+its count) and a `DeviceSearch` box (`ui_set_text`, `--allow-ui-effects`).
+`DevicesSummary` returns *53 devices, 2 need attention. Select one to see
+details.* and `DeviceListStatus` *Showing 12 of 53 devices.* (or *No device
+matches "gpu".*). Martlet remembers up to 64 paired hosts. `SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for

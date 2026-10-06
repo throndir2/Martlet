@@ -976,7 +976,11 @@ public partial class MainWindow
 
     /// <summary>The map takes the top of the page, a little under half its height (taller when a side has many devices);
     /// the selected device's details follow.</summary>
-    private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e) => SizeMap();
+    private void DevicesPage_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SizeMap();
+        SizeDeviceList();
+    }
 
     private int mapRows = 1;
 
@@ -990,8 +994,26 @@ public partial class MainWindow
         RenderDeviceSettings(nodes);
         RenderNetwork();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
+        mapNodes = nodes;
+        DevicesSummary.Text = DeviceOverview.Summary(nodes);
+        deviceListShown = deviceListChosen ?? !DeviceOverview.FitsMap(nodes);
+        settingDevicesView = true;
+        DevicesViewMap.IsChecked = !deviceListShown;
+        DevicesViewList.IsChecked = deviceListShown;
+        settingDevicesView = false;
+        MapHost.Visibility = deviceListShown ? Visibility.Collapsed : Visibility.Visible;
+        DeviceListHost.Visibility = deviceListShown ? Visibility.Visible : Visibility.Collapsed;
         MapCanvas.Children.Clear();
         mapElements.Clear();
+        DeviceList.Children.Clear();
+        deviceListCards.Clear();
+        if (deviceListShown)
+        {
+            RenderDeviceList();
+            SelectNode(selectedNode, animate: false);
+            return;
+        }
+        nodes = DeviceOverview.MapNodes(nodes, selectedNode);
         mapGlow = new Ellipse { Width = 210, Height = 210, Opacity = 0.55, IsHitTestVisible = false };
         mapGlow.SetResourceReference(Shape.FillProperty, "GlowBrush");
         MapCanvas.Children.Add(mapGlow);
@@ -1133,18 +1155,31 @@ public partial class MainWindow
         card.SetResourceReference(StyleProperty, "NodeCard");
         AutomationProperties.SetAutomationId(card, "Node-" + node.Id);
         AutomationProperties.SetName(card, node.Kind == NodeKind.Add ? $"{node.Title}: {node.Subtitle}"
+            : DeviceOverview.IsMore(node.Id) ? $"{node.Title}: {node.HealthText}. Opens the list of every device."
             : $"{node.Title}, {node.Subtitle}. {node.HealthText}. Runs: {string.Join(", ", node.Roles.Select(r => r.Name))}");
         var id = node.Id;
-        card.Click += (_, _) => SelectNode(id, animate: true);
+        card.Click += (_, _) =>
+        {
+            if (DeviceOverview.IsMore(id)) ShowDeviceList();
+            else SelectNode(id, animate: true);
+        };
         return (card, ring);
     }
 
     private void SelectNode(string id, bool animate)
     {
+        // A device the map folded into "N more" (selected from Home or a job's Show) takes a place on the map.
+        if (!deviceListShown && !remapping && mapNodes.Any(n => n.Id == id) && mapElements.All(m => m.Node.Id != id))
+        {
+            selectedNode = id;
+            remapping = true;
+            try { RenderMap(); }
+            finally { remapping = false; }
+            return;
+        }
         selectedNode = id;
-        foreach (var element in mapElements)
-            element.Card.Tag = element.Node.Id == id ? "Selected" : element.Node.Kind is NodeKind.Add or NodeKind.Missing ? "Ghost" : null;
-        if (mapElements.FirstOrDefault(m => m.Node.Id == id)?.Node is not { } node) return;
+        MarkSelectedDevice();
+        if (mapNodes.FirstOrDefault(n => n.Id == id) is not { } node) return;
         RenderDetail(node);
         if (!animate) return;
         Motion.Enter(DetailContent, dx: 0, dy: 12, milliseconds: 240);
