@@ -37,7 +37,7 @@ internal static class DiscordVoiceCheck
             var packets = Packets(said, 16_000);
             ushort sequence = 0;
             foreach (var packet in packets) conversation.Receive(SpeakerSsrc, sequence++, packet);
-            await WaitAsync(() => !conversation.Counts.Speaking && transport.Frames > 0 && conversation.Counts.Spoken == 1, cancellation);
+            await WaitAsync(() => conversation.Counts.Spoken == 1 && transport.SpeakingOffCount == 1, cancellation);
             var counts = conversation.Counts;
             var heard = speech.Heard.FirstOrDefault();
             var turn = replies.Turns.FirstOrDefault();
