@@ -12,6 +12,10 @@ internal static partial class LocalProcess
     [GeneratedRegex(@"\x1B\[[0-9;?]*[A-Za-z]|\x1B\][^\x07]*\x07")]
     private static partial Regex AnsiPattern();
 
+    // Cursor to column (ESC[nG) or up (ESC[nA) redraws the line, like "\r" (ollama's progress and spinners).
+    [GeneratedRegex(@"\x1B\[[0-9]*[GA]")]
+    private static partial Regex RedrawPattern();
+
     [GeneratedRegex(@"\A[\s\-\\|/]*\z|[█▒░■□▌▐]")]
     private static partial Regex NoisePattern();
 
@@ -20,10 +24,10 @@ internal static partial class LocalProcess
     internal static string? Clean(string? line)
     {
         if (line is null) return null;
-        var text = AnsiPattern().Replace(line, "");
-        var redraw = text.TrimEnd('\r').LastIndexOf('\r');
+        var text = AnsiPattern().Replace(RedrawPattern().Replace(line, "\r"), "");
+        var redraw = text.TrimEnd('\r', ' ').LastIndexOf('\r');
         if (redraw >= 0) text = text[(redraw + 1)..];
-        text = text.TrimEnd();
+        text = text.TrimEnd().TrimEnd('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏').TrimEnd();
         return text.Length == 0 || NoisePattern().IsMatch(text) ? null : text;
     }
 
