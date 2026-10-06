@@ -2083,15 +2083,28 @@ alongside the conversation), `checksFit` (a second model in Ollama on this PC,
 checked to fit beside Thinking's before each think) and `why` from the
 production `DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at
 that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
-`outputTokens` and `carriesTools`, true only with the Thinking model), `tools`
+`outputTokens` and `carriesTools`, true only with the Thinking model, and
+`pool`: every place it thinks on, the first place then each computer ticked
+*Think here too*, each with `computer` (its name), `where`, `place`,
+`hostRole`, `available`, `rank` (lower goes first), `checksFit` and `why`, then
+`usable`, `maxThinks` (how many run at once) and the pool's `available` and
+`why`), `tools`
 (`think_longer` and `cancel_thinking` exactly as the model gets them), the
 filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
-`resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
-`startedLastHour`; and the running think's `where`, `available`, `checksFit`,
-`why`, `parallel` and `attempts`),
+`resultCharacters`, `cut`, `problem`, `canceledBy`, `delivery` and `place`, the
+computer it runs on; `startedLastHour`; `thinks`, each running think's `id`,
+`where`, `computer`, `available`, `checksFit`, `why`, `rank`, `parallel` and
+`attempts` (`thinking` is the first of them); `places`, each Deep thinking place
+with `computer`, `where`, `available`, `rank` and `heldBy` (the job IDs holding
+it now); and `maxThinks`),
 never a task or result. Read-only.
+
+The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
+places think at once, and each paired computer's `DeepThinkingPool-<host>` box
+(*Think on diva too*, ticked or not) reads; ticking it saves
+`deep-thinking.json`, so it needs `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
 from a data directory's `shared-settings.json` (optional absolute
@@ -2157,7 +2170,16 @@ processor), and once the think's model has loaded
 whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
 each `stops` against `expected`). `hostFit`: a 160-message conversation
 fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
-kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
+kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
+`DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
+ripley do none of the conversation's jobs, imouto also speaks: `configured`
+with each `rank`), `maxThinks` 3 and the tool's *Up to 3 at once*; the
+production job list places think-1 on diva and think-2 on ripley, both working
+at once on their own fixture endpoints (standing in for the two computers,
+each through a runtime of its own: `thinkingAtOnce`, `overlapped`), think-3 on
+imouto (`placed`), refuses a fourth as `busy` naming each place (`refused`,
+with what the model is told), frees every place once they finish (`freedAfter`)
+and places the next on diva again (`nextPlacedOn`). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
 

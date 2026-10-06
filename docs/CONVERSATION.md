@@ -347,6 +347,30 @@ which machine is free to think depends on the computer you talk to):
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
 
+**Several computers at once.** Each paired computer on *Another of your
+computers* has *Think here too* (`DeepThinkingPool-<host>`): ticked, Deep
+thinking thinks there as well as where it is set to think, so several thinks
+run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
+`Pool` in `deep-thinking.json`, which a file saved before it existed simply
+lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
+on this PC* and a cloud provider change the first place and keep the ticked
+computers; unticking the first place's computer makes the next one first.
+`think_longer` may then run as many thinks at once as there are usable places
+(its description says *Up to N at once*, from the settings only, so the request
+start stays the same), and each new think goes to a free place: the one that
+shares least with the conversation first (its plan's `Rank`: 0 does none of the
+conversation's jobs, 1 shares a computer with the voice or listening, or is a
+cloud provider or this PC, 2 shares Thinking's computer or provider, 3 is a
+second model beside Thinking's on this PC's graphics card), then the order they
+were chosen. One place that can't think (a computer that does Thinking without
+its Deep thinking role) doesn't stop the others. A song's lyrics are written on
+the same places: a free one, else the least busy. When every place is busy a
+new think is refused and the model is told what holds each place (*think-1 on
+diva and think-2 on ripley are still running...*). Each think has its own
+runtime and authorization on its place, and its result reaches the speaking
+computer exactly as one think's does (see Delivery). The page's
+`DeepThinkingPoolStatus` says how many places think at once.
+
 **Always in parallel** (`DeepThinkingPlan`, shown on the page as
 `DeepThinkingParallel`). A think always runs alongside the conversation and is
 never paused, so it needs a model that can answer while Thinking answers you.
@@ -386,13 +410,16 @@ server*), which holds a second copy of the model in graphics memory.
 header shows a background tasks chip (a spinner and *1 running*, then *1 ready*
 once it finishes and *1 done* once Martlet brought it up); clicking it opens the
 task list over the conversation: one card per task with its kind, what it is
-about, its status and time, its result (*Show result*) and *Cancel* (`LiveTasks`,
-`LiveJobs`, `LiveJobState-<id>`); the desktop log notes each start, fit check and end
+about, the computer it runs on (*on diva*), its status and time, its result
+(*Show result*) and *Cancel* (`LiveTasks`, `LiveJobs`: *think-1 on diva running
+for 0:12*, `LiveJobState-<id>`); the desktop log notes each start with where it
+was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
 Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation or quitting Martlet do (there is no time limit). At most one
-think runs at a time (a second call is refused and Martlet is told to wait or
-cancel the first); there is no limit on how many start in an hour.
+think runs at a time on each place it thinks on (one place: one at a time; a
+call beyond that is refused and Martlet is told to wait or cancel one); there is
+no limit on how many start in an hour.
 **Delivery.** When a job finishes (or fails, or runs out of time) its result is
 added at the end of the conversation as a new message, never by rewriting
 anything before it:
@@ -440,6 +467,20 @@ how long one may take (up to 30 minutes; null: no time limit, as for a think),
    "a few words")`, which the task's card shows. `Start` returns `BackgroundJobStart`:
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
+   To run on another computer, pass a pool: `jobs.Start(kind, label, runAsync,
+   places)`, where each `BackgroundPlace(Id, Name, Rank)` is a computer or
+   provider (`Name` is the computer's name only; lower `Rank` goes first). The
+   job list picks the best free place atomically with the limits, holds it
+   until the job finishes (whatever its kind: places are shared by every kind
+   started on them) and refuses `busy` naming what holds each place when none
+   is free; `runAsync` reads `job.Place`. Deep thinking's places are
+   `ThinkLonger.Places(DeepThinkingPool.For(deepThinkingSettings, routes))`,
+   and `pool.Find(job.Place.Id)` gives that place's settings (a paired
+   computer's route or an endpoint) to build the request with, as
+   `ThinkLongerAsync` does. A step that needs a place for a while asks
+   `jobs.Places.TryAcquire(places, holder, share)` (with `share`, the least
+   busy place when none is free) and disposes the `BackgroundPlaceLease`. Set
+   the kind's `MaxActive` to the number of places (at most 8).
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
 4. Background work runs in parallel with the conversation, never in turns with
    it: run it where it doesn't hold up a reply (a song made by a host role on a
@@ -448,9 +489,9 @@ how long one may take (up to 30 minutes; null: no time limit, as for a think),
    think on a second model in Ollama on this PC does with `OllamaSideBySide`),
    refusing with `BackgroundJobOutcome.Failed` when it doesn't.
 
-The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
+The job list does the rest: limits, placement, cancellation, the time limit (`TimedOut`),
 the header chip and task list (`LiveTasks`, `LiveJobs`; give a new kind its title and icon in
-`LiveConversationWindow.KindTitle`/`KindGlyph`), `background-jobs.json` (kinds, states and times only),
+`LiveConversationWindow.KindTitle`/`KindGlyph`; each names its place), `background-jobs.json` (kinds, states, places and times only),
 and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
 completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
@@ -680,7 +721,7 @@ game/call audio. Capturing other people requires their permission.
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
 | LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
-| Background think (think_longer) | One at a time, no hourly limit; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; no time limit (the request gets the providers' one-day ceiling, a paired computer's route its 15 minutes); at most one declined tool round |
+| Background think (think_longer) | One at a time on each Deep thinking place (up to 8), no hourly limit; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; no time limit (the request gets the providers' one-day ceiling, a paired computer's route its 15 minutes); at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio files or ordinary content logs; finished exchanges (the user's own words and the reply, never audio, glances or what the PC plays) go to the [record of conversations](MEMORY.md#conversation-history) on this PC only while memory and *Keep a record of my conversations* are on |
 

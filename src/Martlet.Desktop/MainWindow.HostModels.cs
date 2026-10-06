@@ -22,12 +22,19 @@ internal static class HostModelFollow
             .Select(p => (p.Saved, p.Now!))
             .ToList();
 
-    /// <summary>Deep thinking following its host route's new model, or null when it thinks elsewhere or the model is the same.</summary>
-    internal static DeepThinkingSettings? Deep(DeepThinkingSettings deep, string hostId, IReadOnlyList<HostRoute> routes) =>
-        deep.Place == DeepThinkingPlace.Host && deep.HostId == hostId &&
-        routes.FirstOrDefault(r => r.RouteId == deep.HostRoute) is { } route && route.ModelId != deep.ModelId
-            ? deep with { ModelId = route.ModelId }
-            : null;
+    /// <summary>Deep thinking following its host route's new model on <paramref name="hostId"/> (the place it thinks on or one of
+    /// its other places), or null when it doesn't think there or the model is the same.</summary>
+    internal static DeepThinkingSettings? Deep(DeepThinkingSettings deep, string hostId, IReadOnlyList<HostRoute> routes)
+    {
+        DeepThinkingSettings Follow(DeepThinkingSettings place) =>
+            place.Place == DeepThinkingPlace.Host && place.HostId == hostId &&
+            routes.FirstOrDefault(r => r.RouteId == place.HostRoute) is { } route && route.ModelId != place.ModelId
+                ? place with { ModelId = route.ModelId }
+                : place;
+        var before = deep.Places;
+        var places = before.Select(Follow).ToArray();
+        return places.Zip(before).All(pair => ReferenceEquals(pair.First, pair.Second)) ? null : places[0].WithPool(places.Skip(1));
+    }
 
     /// <summary>The job a saved host route does (Speaking by the engine its route names), when it is one of the jobs.</summary>
     internal static HostJob? JobFor(SetupRoute saved) =>
@@ -93,11 +100,13 @@ public partial class MainWindow
                 if (!next.Save(store.DataDirectory)) continue;
             }
             catch (ContractException) { continue; }
+            var was = deep.Places.First(p => p.HostId == id).ModelId;
+            var now = next.Places.First(p => p.HostId == id).ModelId;
+            deep = next;
             conversation?.ReloadDeepThinking();
-            ErrorLog.Info($"Deep thinking: {id} now thinks with {next.ModelId} (was {deep.ModelId}).");
-            events.Add($"Deep thinking on {id} now thinks with {next.ModelId}.");
+            ErrorLog.Info($"Deep thinking: {id} now thinks with {now} (was {was}).");
+            events.Add($"Deep thinking on {id} now thinks with {now}.");
             if (openTab == CompanionTab.DeepThinking && !tabEdited) RenderTab();
-            return;
         }
     }
 
