@@ -18,7 +18,9 @@ internal sealed record SpeechPiece(string? Text, IReadOnlyList<SpeechCue>? Cues 
 // them; every other registered engine's tag is dropped. Neither silences its sentence the way other bracketed text does.
 // characterTags: the desktop character's tags ({blush}): dropped from the words like other engines' tags. Each kept engine
 // tag and each character tag is listed in its piece's Cues with where it fell, so the character acts in time with the voice;
-// a character tag after the last words of a reply arrives in a piece with no text.
+// a character tag after the last words of a reply arrives in a piece with no text. Another spelling of an engine or character
+// tag (VoiceTags.Spellings: [nod] or *nods* for {nod}, (sighs) for [sigh]) counts as that tag, written as the engine or the
+// list spells it.
 // controlTags: tags that tell Martlet something about the reply ([chattiness:quiet]): dropped from the words, never a cue.
 // breaks: the persona's stops (Martlet.Core.Settings.SpeechBreaks). A stop that is off never ends a piece until the piece is
 // LongPiece characters long; then any sentence end ends it, so a piece stays short enough for the voice to say at once. A piece
@@ -36,8 +38,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
     private SpeechPiece? held;
     private readonly StringBuilder sentence = new();
     private readonly IReadOnlyList<VoiceTag> keep = tags ?? [];
-    private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(tags ?? []).Concat(VoiceTags.CharacterTags(characterTags))
-        .Concat(VoiceTags.ControlTags(controlTags)).DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
+    private readonly VoiceTagSet known = VoiceTags.Recognized(tags, characterTags, controlTags);
     private readonly List<SpeechCue> cues = [];
     private readonly StringBuilder candidateTag = new();
     private bool droppedTag;
@@ -53,22 +54,21 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
             if (++characters > characterLimit)
                 throw new ConversationException(ConversationFailure.LimitExceeded);
             // A tag may arrive split across deltas: hold its prefix until it completes or stops matching.
-            if (!fenced && (candidateTag.Length > 0 || known.Any(tag => char.ToLowerInvariant(tag.Text[0]) == char.ToLowerInvariant(c))))
+            if (!fenced && (candidateTag.Length > 0 || known.CanStart(c)))
             {
                 candidateTag.Append(c);
                 var prefix = candidateTag.ToString();
-                if (known.FirstOrDefault(tag => string.Equals(tag.Text, prefix, StringComparison.OrdinalIgnoreCase)) is { } whole)
+                if (known.Find(prefix) is { } whole)
                 {
                     candidateTag.Clear();
                     foreach (var piece in AcceptTag(whole)) yield return piece;
                     continue;
                 }
-                if (known.Any(tag => tag.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                if (known.StartsAny(prefix))
                 {
                     // Only a control tag starts like this ("[cha..."): it adds no words and closes the reply, so a finished
                     // sentence waiting for more words goes to the voice now, not after the tag's last token.
-                    if ((held is not null || pendingBoundary) && known.Where(tag => tag.Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                        .All(tag => tag.Kind == VoiceTagKind.Control))
+                    if ((held is not null || pendingBoundary) && known.StartingWith(prefix).All(tag => tag.Kind == VoiceTagKind.Control))
                     {
                         if (pendingBoundary)
                             foreach (var piece in Flush()) yield return piece;
@@ -86,7 +86,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         }
     }
 
-    // A whole tag: the engine's own tags join the sentence as written; other engines' tags are dropped.
+    // A whole tag: the engine's own tags join the sentence as the engine spells them; other engines' tags are dropped.
     private IEnumerable<SpeechPiece> AcceptTag(VoiceTag tag)
     {
         if (pendingBoundary)
@@ -95,7 +95,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         atLineStart = false;
         markerRun = 0;
         openingRun = false;
-        if (keep.FirstOrDefault(k => string.Equals(k.Text, tag.Text, StringComparison.OrdinalIgnoreCase)) is { } kept)
+        if (keep.FirstOrDefault(k => string.Equals(k.Text, tag.Canonical, StringComparison.OrdinalIgnoreCase)) is { } kept)
         {
             if (sentence.Length > 0 && !char.IsWhiteSpace(sentence[^1])) sentence.Append(' ');
             cues.Add(new(kept.Text, sentence.Length));
@@ -103,7 +103,7 @@ internal sealed class SpeechSegmenter(int byteLimit, int characterLimit, string?
         }
         else
         {
-            if (tag.Kind == VoiceTagKind.Character) cues.Add(new(tag.Text, sentence.Length));
+            if (tag.Kind == VoiceTagKind.Character) cues.Add(new(tag.Canonical, sentence.Length));
             droppedTag = true;
             // A control tag closes the reply (the model is told to write it last): what came before it goes to the voice now,
             // instead of waiting for words that won't follow or for the tag's own tokens and the end of the stream.

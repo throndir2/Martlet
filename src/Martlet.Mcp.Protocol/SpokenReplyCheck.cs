@@ -43,10 +43,13 @@ internal static class SpokenReplyCheck
     /// <paramref name="breaks"/> are the persona's speech breaks the reply is spoken with, the defaults when null, as the desktop
     /// always passes them (<paramref name="persona"/> names the saved persona they came from, if any). With
     /// <paramref name="chattiness"/>, the reply is offered the chattiness tags as the desktop offers them while Martlet decides
-    /// how chatty it is; they must never be shown or spoken.</summary>
+    /// how chatty it is; they must never be shown or spoken. With <paramref name="characterTags"/> ({nod}, {blush}) the reply is
+    /// offered the character's tags as the desktop offers them while the character shows; whichever spelling the reply uses
+    /// ([nod], *nods*), they must never be shown or spoken, and each reaches the character's cue feed, timed within its
+    /// sentence.</summary>
     internal static async Task<object> RunAsync(string? voiceFailure, int? failAt, CancellationToken cancellation,
         int? reasoningMs = null, int? voiceDelayMs = null, string? reply = null, SpeechBreaks? breaks = null, string? persona = null,
-        string? thinkingSteps = null, bool refuseThinking = false, bool chattiness = false)
+        string? thinkingSteps = null, bool refuseThinking = false, bool chattiness = false, IReadOnlyList<string>? characterTags = null)
     {
         if (thinkingSteps is not (null or "off" or "on")) throw new ArgumentException("'thinkingSteps' must be off or on.");
         if (refuseThinking && thinkingSteps is null) throw new ArgumentException("'refuseThinking' needs thinkingSteps.");
@@ -60,6 +63,10 @@ internal static class SpokenReplyCheck
         if (voiceDelay < TimeSpan.Zero || voiceDelay > TimeSpan.FromSeconds(5)) throw new ArgumentException("'voiceDelayMs' must be 0 through 5000.");
         if (reply is not null && (string.IsNullOrWhiteSpace(reply) || reply.Length > 1024 || reply.Any(char.IsControl)))
             throw new ArgumentException("'reply' must be 1-1024 characters of one-line text.");
+        if (characterTags is { Count: > 0 } && (characterTags.Count > ConversationRequest.MaximumCharacterTags ||
+            characterTags.Any(tag => tag is not { Length: >= 3 and <= 64 } || tag[0] != '{' || tag[^1] != '}' || tag.Any(char.IsControl))))
+            throw new ArgumentException("'characterTags' must be up to 128 {tags} of 3-64 characters, such as \"{nod}\".");
+        if (characterTags is { Count: 0 }) characterTags = null;
         string[] chunks = reply is null ? Sentences : [.. System.Text.RegularExpressions.Regex.Matches(reply, @"\s*\S+").Select(m => m.Value)];
         var gap = reply is null ? SentenceGap : WordGap;
         breaks ??= SpeechBreaks.Default;
@@ -93,14 +100,19 @@ internal static class SpokenReplyCheck
                 new ConversationLimits { MaxSpeechSegments = 8, MaxSpeechTextBytes = 12_288, MaxReservedSpeechSamples = 1_920_000 },
                 speech, new ChatCompletionsTarget(baseUrl, Keyless: true), hostSpeech: textOnly ? null : target, speechBreaks: breaks,
                 generation: thinkingSteps is null ? null : new GenerationSettings { Reasoning = thinkingSteps == "on" },
-                controlTags: chattiness ? ChattinessTags.All : null);
+                controlTags: chattiness ? ChattinessTags.All : null, characterTags: characterTags);
             // What the speech bubble and subtitles are given: each line as its playback starts, or, once the voice failed, each
             // sentence it couldn't say, shown one after another for its reading time.
             var captions = new SpokenTextFeed();
             var shown = new List<(string Text, long AtMs, bool Spoken)>();
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var reading = ReadCaptionsAsync(captions, shown, clock, voice, stop.Token);
-            await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice, spokenText: captions);
+            // What the desktop character is told to do: each cue as its sentence starts playing, with how far into it the cue falls.
+            var cueFeed = new CharacterCueFeed();
+            var posted = new List<(string Tag, long AtMs, long DelayMs)>();
+            var acting = ReadCuesAsync(cueFeed, posted, clock, stop.Token);
+            await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice, spokenText: captions,
+                characterCues: cueFeed);
             // As the desktop counts a typed message: from sending it, through building the request, to the first audio.
             var timeline = new ReplyTimeline(TimeProvider.System, ReplyTimeline.YouSent);
             var startedAt = TimeProvider.System.GetTimestamp();
@@ -136,13 +148,27 @@ internal static class SpokenReplyCheck
                     latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8);
             var text = turn.Content.Text;
             var served = string.Concat(chunks);
-            // The chat and captions never show a control tag the reply was offered (VoiceTags.Strip without them leaves them be).
-            var expectedText = chattiness ? VoiceTags.Strip(served, controlTags: ChattinessTags.All) : served;
+            // The chat and captions never show a tag: the engines' own, any the reply was offered, or another spelling of one.
+            var expectedText = VoiceTags.Strip(served, characterTags, chattiness ? ChattinessTags.All : null);
             var full = text == expectedText;
             var controls = turn.Controls;
             string[] pieces = voice.Pieces;
             var tagsHidden = !chattiness || !ChattinessTags.All.Any(tag =>
                 text.Contains(tag, StringComparison.OrdinalIgnoreCase) || pieces.Any(piece => piece.Contains(tag, StringComparison.OrdinalIgnoreCase)));
+            // The character's tags, in any spelling the reply may use for them, are never shown or spoken, and every one the reply
+            // wrote (and every sound or tone the voice performed) reaches the character's cue feed.
+            var spellings = (characterTags ?? []).SelectMany(tag => VoiceTags.CharacterTags([tag]))
+                .SelectMany(tag => VoiceTags.Spellings(tag).Select(spelling => spelling.Text).Prepend(tag.Text)).ToArray();
+            var characterHidden = !spellings.Any(spelling =>
+                text.Contains(spelling, StringComparison.OrdinalIgnoreCase) || pieces.Any(piece => piece.Contains(spelling, StringComparison.OrdinalIgnoreCase)));
+            var acted = turn.Acted;
+            int Posted() { lock (posted) return posted.Count; }
+            var cueWait = System.Diagnostics.Stopwatch.StartNew();
+            while (Posted() < acted.Count && cueWait.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(50, cancellation);
+            (string Tag, long AtMs, long DelayMs)[] cues;
+            lock (posted) cues = [.. posted];
+            var everyCue = !(everyPiece || failure == "text-only") || cues.Length == acted.Count;
+            var characterOk = characterTags is null || characterHidden && everyCue;
             // Captions of unsaid sentences keep coming after the reply ends, one per reading time.
             bool Covered()
             {
@@ -171,7 +197,7 @@ internal static class SpokenReplyCheck
             return new
             {
                 ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk &&
-                    thinkingOk && tagsHidden,
+                    thinkingOk && tagsHidden && characterOk,
                 voiceFailure = failure,
                 failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
@@ -182,6 +208,18 @@ internal static class SpokenReplyCheck
                     switchesTo = ChattinessTags.Last(controls) is { } level ? ChattinessTags.Name(level) : null,
                     hidden = tagsHidden
                 } : null,
+                // What the reply's tags did, the note the talk window shows under it, and each cue as the character got it: when
+                // its sentence started playing (atMs) and how far into that sentence it falls (delayMs).
+                character = characterTags is null ? null : new
+                {
+                    ok = characterOk,
+                    offered = characterTags,
+                    hidden = characterHidden,
+                    acted = acted.Select(tag => new { tag = tag.Tag, kind = tag.Kind.ToString(), name = tag.Name, written = tag.Written }),
+                    note = ReplyTag.Note(acted),
+                    cues = cues.Select(cue => new { tag = cue.Tag, atMs = cue.AtMs, delayMs = cue.DelayMs }),
+                    everyCue
+                },
                 thinking = new
                 {
                     ok = thinkingOk,
@@ -268,6 +306,18 @@ internal static class SpokenReplyCheck
                 if (aloud) spoken++;
                 lock (shown) shown.Add((line.Text, clock.ElapsedMilliseconds, aloud));
             }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private static async Task ReadCuesAsync(CharacterCueFeed feed, List<(string, long, long)> posted,
+        System.Diagnostics.Stopwatch clock, CancellationToken cancellation)
+    {
+        try
+        {
+            await foreach (var line in feed.Lines.ReadAllAsync(cancellation))
+                lock (posted)
+                    foreach (var cue in line.Cues) posted.Add((cue.Tag, clock.ElapsedMilliseconds, (long)Math.Round(cue.Delay.TotalMilliseconds)));
         }
         catch (OperationCanceledException) { }
     }
