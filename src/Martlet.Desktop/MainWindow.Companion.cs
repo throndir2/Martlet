@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome, Discord }
+internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome, Discord, Messaging }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -117,6 +117,7 @@ public partial class MainWindow
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
         CompanionTab.Discord => CompanionGroup.WhatItDoes,
+        CompanionTab.Messaging => CompanionGroup.WhatItDoes,
         _ => CompanionGroup.WhatItDoes
     };
 
@@ -146,6 +147,7 @@ public partial class MainWindow
         CompanionTab.Tools => "Tools",
         CompanionTab.SmartHome => "Smart home",
         CompanionTab.Discord => "Discord",
+        CompanionTab.Messaging => "Messaging",
         _ => section.ToString()
     };
 
@@ -169,6 +171,7 @@ public partial class MainWindow
         CompanionTab.Tools => "\uE90F",
         CompanionTab.SmartHome => "\uEC26",
         CompanionTab.Discord => "\uE902",
+        CompanionTab.Messaging => "\uE724",
         _ => "\uE76E"
     };
 
@@ -192,6 +195,7 @@ public partial class MainWindow
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
         CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
         CompanionTab.Discord => "Put Martlet on Discord: set up its bot, connect it, invite it to servers and choose where it chats.",
+        CompanionTab.Messaging => "Talk to Martlet from Telegram on your phone, with the same memory and personality, while Martlet runs on this PC.",
         _ => ""
     };
 
@@ -359,6 +363,7 @@ public partial class MainWindow
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
             case CompanionTab.Discord: RenderDiscordTab(body); break;
+            case CompanionTab.Messaging: RenderMessagingTab(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
         }
     }

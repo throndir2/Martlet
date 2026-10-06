@@ -10,7 +10,7 @@
   },
   "applicationGraphs": {
     "Desktop": {
-      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5",       "Martlet.Mcp.Client", "Martlet.Home", "Martlet.Sherpa", "Martlet.EchoCancellation", "Martlet.Discord"],
+      "projects": ["Martlet.Desktop", "Martlet.Core", "Martlet.Diagnostics", "Martlet.Audio", "Martlet.Credentials.Windows", "Martlet.Conversation", "Martlet.Memory", "Martlet.Providers", "Martlet.Participation", "Martlet.Support", "Martlet.Avatars", "Martlet.Avatar.Hosting", "Martlet.Avatar.Audio2Face", "Martlet.F5",       "Martlet.Mcp.Client", "Martlet.Home", "Martlet.Sherpa", "Martlet.EchoCancellation", "Martlet.Discord", "Martlet.Messaging"],
             "packages": ["NAudio.Wasapi", "NAudio.Core", "System.Numerics.Tensors", "Google.Protobuf", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.Net.Common", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions", "SSH.NET", "SoundFlow", "SoundFlow.Extensions.WebRtc.Apm", "NVorbis", "Concentus", "org.k2fsa.sherpa.onnx.runtime.win-x64", "NetCord"],
       "frameworks": ["Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"]
     },
