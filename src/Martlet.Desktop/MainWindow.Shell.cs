@@ -215,6 +215,7 @@ public partial class MainWindow
         RenderBackground();
         UpdateStayAwake();
         if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
+        else if (previous != role) messaging.Start();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         QueueNetworkSync();
