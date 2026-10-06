@@ -135,6 +135,7 @@ public partial class MainWindow
     /// character. Their saved choices stay as they are, so they come back if this PC is your companion PC again.</summary>
     private async Task StopCompanionForHostAsync()
     {
+        messaging.Stop();
         var talking = openConversation is not null;
         openConversation?.End();
         var showing = avatar.IsShowing;
