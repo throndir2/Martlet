@@ -260,6 +260,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "LiveJobs", "LiveSong",
+        // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
+        // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
+        // needs --allow-ui-effects.
+        "WebResearchStatus", "WebResearchDisclosure",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",

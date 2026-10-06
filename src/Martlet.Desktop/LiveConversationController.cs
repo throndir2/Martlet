@@ -285,7 +285,7 @@ internal sealed class LiveConversationOperation
 }
 
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
-internal sealed class LiveConversationController : IAsyncDisposable
+internal sealed partial class LiveConversationController : IAsyncDisposable
 {
     private const int MaximumPendingCaptures = 4;
     private readonly object gate = new();
@@ -2003,7 +2003,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
-    /// prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
+    /// prompt), research while Web research is on too (with its prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on. Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
@@ -2017,6 +2017,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
             own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
             guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+        }
+        // research while Web research is on (Companion › Deep thinking, off by default) and Deep thinking can think.
+        if (OffersResearch(configured))
+        {
+            own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
+            guidance = Join(guidance, WebResearch.Instructions(configured.Prompts));
         }
         // sing_song, play_song and stop_singing while singing is set up (with the Singing prompt).
         if (singing is { Offered: true } && configured.SupportsTools)
@@ -2485,7 +2491,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // with its own authorization bound to exactly this request and the time left. A song's lyrics are written the same way, with
     // the song job's own authorization (<paramref name="song"/>).
     private (ConversationRequest, IConversationAuthorizationSource) PrepareThink(LiveConversationConfiguration configured,
-        DeepThinkingSettings deep, BoundedTextInput? sent, Func<string?> reply, string task, string? reason, TimeSpan left, bool song = false)
+        DeepThinkingSettings deep, BoundedTextInput? sent, Func<string?> reply, string task, string? reason, TimeSpan left, bool song = false,
+        Action<ICredentialAuthority>? keep = null)
     {
         var full = ThinkLonger.Input(sent, reply(), task, reason, configured.Prompts, sent?.Personality);
         var effort = configured.ThinkLonger.HowHard;
@@ -2496,7 +2503,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             var separate = target.Request(ThinkLonger.Fit(full, target.Bounds), effort, left);
             var own = new DeepThinkAuthorization(target, separate, configured.Profile,
                 configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), vault, clock, clock.GetUtcNow() + left + TimeSpan.FromSeconds(5));
-            if (song) Volatile.Write(ref songAuthorization, own);
+            if (keep is not null) keep(own);
+            else if (song) Volatile.Write(ref songAuthorization, own);
             else Volatile.Write(ref thinkAuthorization, own);
             return (separate, own);
         }
@@ -2510,7 +2518,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
             settings.LoadAsync, vault, CancellationToken.None, textLimits: request.TextLimits, lifetime: left + TimeSpan.FromSeconds(5));
         // A tool round (declined) and a retry without Thinking steps may each take one more request.
         authorization.BindInput(request.Input, request.Limits.MaxToolRounds + 1);
-        if (song) Volatile.Write(ref songAuthorization, authorization);
+        if (keep is not null) keep(authorization);
+        else if (song) Volatile.Write(ref songAuthorization, authorization);
         else Volatile.Write(ref thinkAuthorization, authorization);
         return (request, authorization);
     }
@@ -3466,6 +3475,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // Background work ends with Martlet.
         jobs.Dispose();
         DisposeThinkRuntimeAsync().Forget();
+        DisposeResearchRuntimeAsync().Forget();
         DisposeCaptureRuntimeAsync().Forget();
         singing?.DisposeAsync().AsTask().Forget();
         songHandler?.Dispose();

@@ -55,6 +55,16 @@ word times and mouth track came from and the engine. `perform_creation` options:
 like `1:05` (the same as `play_song`). Each conversation attaches the handler
 that sings it ([singing in conversation](CONVERSATION.md#singing-in-conversation)).
 
+**Reports** (`ResearchReports.Kind`, registered by the desktop at startup): web
+research reports ([web research](CONVERSATION.md#web-research)). One asset,
+`report` (text/plain: the report in Markdown with its numbered sources, at most
+128 KiB); the title, the one- or two-sentence summary and the report as text (at
+most 16 KiB) in the entry, and the number of sources in metadata. Martlet may
+clean old ones up. `perform_creation` takes no options: the desktop's handler
+writes the report as a plain web page (no scripts, links only to http and https)
+to `research-reports\<key>.html` in the data folder and opens it in the default
+browser.
+
 ### Audio
 
 Audio assets are FLAC (`Martlet.Core.Audio.FlacCodec`, built into Martlet: 16-bit
