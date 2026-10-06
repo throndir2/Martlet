@@ -137,13 +137,41 @@ appends Linux/macOS install text and their SHA-256 lines to the release notes.
 | ID | Deliverable | Owner area |
 | --- | --- | --- |
 | DX01 | `Martlet.Companion` Avalonia app: settings, typed and push-to-talk conversation with cloud and loopback Chat Completions, OpenAI listening/speaking, cross-platform audio, character window with the web bundles, catalog guardrails, platform-service interfaces, MCP reachability | `src/Martlet.Companion`, catalog companion rows |
-| DX02 | Linux integration: overlay (X11/XWayland, layer-shell), hotkey (X11 + portal), Secret Service, tray, autostart, screen capture (X11 + portal) | `src/Martlet.Platform.Linux` |
+| DX02 | Linux integration: overlay (X11/XWayland, layer-shell), hotkey (X11 + portal), Secret Service, tray, autostart, screen capture (X11 + portal). **Built** ([status](#dx02-status-linux-integration-2026-10-06)) | `src/Martlet.Platform.Linux` |
 | DX03 | macOS integration: floating panel behaviors, Carbon hotkey, Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection, loopback Ollama/LM Studio detection | `src/Martlet.Platform.MacOS` |
 | DX04 | Mac host: .NET gateway on macOS (launchd, macOS custody backend, native Ollama/whisper Metal relays, machine report), plus arm64 host images so Docker on a Mac works CPU-only. **Built** ([The Mac host](MACOS.md#the-mac-host-dx04)): `osx-arm64`/`osx-x64` publish and the arm64 host image build; runtime on a Mac NOT RUN (no Mac) | gateway, persistence, host setup, `deploy/` |
 | DX05 | Linux and macOS installers in the release build | `packaging/linux`, `packaging/macos`, `windows-release.yml` |
 
 DX01 lands its interfaces first; DX02, DX03 and DX05 build on them. DX04 is
 independent. Merges are serialized.
+
+## DX02 status: Linux integration (2026-10-06)
+
+Built in `src/Martlet.Platform.Linux` (plain `net10.0`: libX11/libXext,
+libpipewire-0.3 and D-Bus through Tmds.DBus.Protocol, loaded only on Linux) and
+returned by `LinuxPlatform.Create()`. It reads the desktop once
+(`LinuxEnvironment`: X11 or Wayland, desktop, which portals the session bus
+offers, Secret Service, tray host) and every service reports in plain words what
+works, what is degraded and why (`Martlet.Companion --status`). Avalonia 12 has
+no native Wayland backend, so the companion's windows are X11 windows
+everywhere: on Wayland they run through XWayland.
+
+| Service | How | Checked |
+| --- | --- | --- |
+| Platform probe (`LinuxPlatformProbe`, `LinuxDesktopProbe`) | The portable probe plus AMD and Intel GPUs from `/sys/class/drm` (amdgpu VRAM), the NVIDIA driver from `/proc/driver/nvidia/version`, nouveau reported as "no CUDA", ROCm (`/dev/kfd`), the desktop from `XDG_CURRENT_DESKTOP` (GNOME, KDE, Xfce, Cinnamon, sway, Hyprland, wlroots...) and the session type | Unit tests; Ubuntu 24.04 container (X11 and sway) |
+| Character overlay (`X11Overlay`) | On the window's XID: `_NET_WM_STATE_ABOVE`, `STICKY` and `_NET_WM_DESKTOP` all workspaces, `SKIP_TASKBAR`/`SKIP_PAGER`, WM_HINTS no input focus and `_NET_WM_USER_TIME` 0, an XShape **input** region so clicks pass through everywhere except the character's rectangles; reports a depth-24 window or a missing compositor (transparency shows black). On Wayland it says the character runs through XWayland, may be covered by full-screen native Wayland games, and that layer-shell (KDE, wlroots) is offered but unused | Xvfb + Openbox: states, all-desktops, no-focus hint and input region verified with `xprop` and `XShapeGetRectangles`; XWayland under headless sway: input region applied |
+| Push-to-talk (`LinuxHotkey`) | Wayland with the `GlobalShortcuts` portal (KDE Plasma, GNOME 48+, Hyprland): CreateSession + BindShortcuts (the desktop's dialog confirms the key), Activated = down, Deactivated = up. Otherwise X11 `XGrabKey` on the root window (also with Caps/Num Lock), detectable auto-repeat, one press per hold; "already taken" when another app holds the key. Under Wayland without the portal it falls back to XWayland and says it works only while an X11 window has focus | X11 grab with `xdotool`: tap and hold of F8, Ctrl+Alt+Space, Num Lock on, "already taken", unregister. **Portal NOT RUN** (no KDE or GNOME 48 session here) |
+| Watch my screen (`LinuxScreenCapture`) | Never starts by itself. X11: one `XGetImage` of the root window per look. Wayland: the `ScreenCast` portal (one monitor, cursor embedded, `persist_mode` 0 so the choice is never remembered); each look opens the portal's PipeWire remote and takes one frame (32-bit RGB in shared memory, no DMA-BUF), then the session ends when watching stops or the user stops sharing. Without PipeWire: the `Screenshot` portal, its file deleted at once. Looks are scaled and JPEG-encoded in memory (SkiaSharp) | X11 look 1280x720 JPEG; null before consent and after release. PipeWire frame grab against a GStreamer `pipewiresink` (BGRx and RGBA). ScreenCast portal CreateSession and SelectSources answered by xdg-desktop-portal-wlr; **Start + frame through a real compositor NOT RUN** (the container's portal backend needs a GPU render node). Screenshot portal NOT RUN |
+| Keys (`SecretServiceStore`) | `org.freedesktop.secrets` over D-Bus (GNOME Keyring, KWallet 5.97+, KeePassXC): items "Martlet: name" with attributes `application=io.github.throndir2.Martlet` and `name`, default collection (created if missing), unlock and create prompts; without a Secret Service keys stay in memory only and the status says so | Set, replace, get, delete against gnome-keyring; `secret-tool lookup` finds the item |
+| Start at login (`XdgAutostart`) | `~/.config/autostart/martlet.desktop` (`$XDG_CONFIG_HOME`), `Exec` from `$APPIMAGE`, the apphost or `dotnet <dll>`, quoted per the Desktop Entry spec; off deletes the file | On/off in the container; `desktop-file-validate` clean |
+| Tray | Avalonia's TrayIcon (StatusNotifierItem). `LinuxEnvironment.TrayStatus` reports whether a StatusNotifierItem host exists (GNOME needs the AppIndicator extension) | Status logic unit tested; showing it in `--status` waits for a small contract addition |
+
+Portal dialogs name Martlet by the app id `io.github.throndir2.Martlet`
+(registered through `org.freedesktop.host.portal.Registry` where the portal has
+it; DX05 installs the matching `.desktop` file). Still to check on real Linux
+desktops (NOT RUN here): the overlay with Avalonia's ARGB window on GNOME Wayland,
+KDE Plasma Wayland and an X11 desktop over a game; GlobalShortcuts on KDE Plasma 6
+and GNOME 48; ScreenCast on GNOME and KDE.
 
 ## DX03 status: macOS integration (2026-10-06)
 

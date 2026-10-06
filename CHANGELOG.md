@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet for Linux (coming with the Linux download) can show the character on top of your other windows with clicks passing through everywhere but the character, talk while you hold a push-to-talk key, keep your keys in the desktop's keyring (GNOME Keyring or KWallet), watch your screen after you start watching (on Wayland your desktop asks which screen to share each time), and start when you log in. It tells you plainly when your desktop limits one of these. Not yet tried on a real GNOME or KDE desktop. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - Releases now include Linux (AppImage and .deb, x64 and arm64) and macOS (Apple silicon and Intel .dmg) downloads of the new desktop companion; the Mac app also carries the Mac host. ([#484](https://github.com/throndir2/Martlet/pull/484))
 - A Mac can be a Martlet host: its `macos-setup` command runs Martlet's host in the background while you're logged in and lends your other computers the Mac's own Ollama and whisper.cpp, on its graphics chip on Apple silicon. Jobs that need an NVIDIA GPU are never offered there. Not yet tried on a real Mac. ([#482](https://github.com/throndir2/Martlet/pull/482))
 - The Docker host image now also builds for Apple-silicon Macs and other ARM64 computers (CPU only). ([#482](https://github.com/throndir2/Martlet/pull/482))
