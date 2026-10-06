@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet for Linux (coming with the Linux download) can show the character on top of your other windows with clicks passing through everywhere but the character, talk while you hold a push-to-talk key, keep your keys in the desktop's keyring (GNOME Keyring or KWallet), watch your screen after you start watching (on Wayland your desktop asks which screen to share each time), and start when you log in. It tells you plainly when your desktop limits one of these. Not yet tried on a real GNOME or KDE desktop. ([#488](https://github.com/throndir2/Martlet/pull/488))
 - Google Gemini is a new Thinking provider, with the free Gemini 3.5 Flash-Lite filled in and steps for getting a free key. It can hear your voice once you allow it, and it makes a good "If Thinking fails" backup for NVIDIA Build. ([#486](https://github.com/throndir2/Martlet/pull/486))
 - A new [Resource footprints](docs/RESOURCE_FOOTPRINTS.md) page lists how much graphics memory, memory, processor and disk each Thinking model, voice engine, listening model, lip-sync, singing and pictures option takes, and which numbers were measured. Setup recommendations use these numbers. ([#485](https://github.com/throndir2/Martlet/pull/485))
 - Releases now include Linux (AppImage and .deb, x64 and arm64) and macOS (Apple silicon and Intel .dmg) downloads of the new desktop companion; the Mac app also carries the Mac host. ([#484](https://github.com/throndir2/Martlet/pull/484))
