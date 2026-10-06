@@ -373,7 +373,10 @@ public partial class MainWindow
         var job = HostJob.For(role)!;
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role);
         var thisPc = ThisPcHost();
-        var current = route is null || RunsHereWithoutHost(route) ? JobPlace.ThisPc
+        // A computer that hasn't chosen yet shows what your Martlet network does for this job, not Martlet's default.
+        var networkHost = clusterEnabled ? clusterPlan.For(job.Job)?.HostId : null;
+        var current = route is null ? networkHost is not null && networkHost != thisPc?.HostId ? JobPlace.Computer : JobPlace.ThisPc
+            : RunsHereWithoutHost(route) ? JobPlace.ThisPc
             : SelfHostSetup.IsGateway(route.RouteType)
                 ? route.Gateway?.HostId == thisPc?.HostId && role != SetupRole.Llm ? JobPlace.ThisPc : JobPlace.Computer
                 : JobPlace.Cloud;
@@ -453,7 +456,9 @@ public partial class MainWindow
             : route.RouteType == SetupRouteType.LocalWhisper ? PlaceName(route)
             : $"{PlaceName(route)}: {HostInputDialog.OptionText(route.ModelId)}";
         var status = route is null
-            ? section == CompanionTab.Voice
+            ? clusterEnabled && clusterPlan.For(job.Job)?.HostId is not null
+                ? "Not set up on this PC yet."
+                : section == CompanionTab.Voice
                 ? "Not chosen yet. Pick a voice engine below."
                 : "Not chosen yet. This PC is recommended below."
             : routeName +
@@ -464,6 +469,13 @@ public partial class MainWindow
         var nowText = new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(nowText, "SetupJobNow-" + section);
         now.Children.Add(nowText);
+        if (NetworkJobNote(job.Job) is { } network)
+        {
+            var line = new TextBlock { Text = network, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+            line.SetResourceReference(StyleProperty, "Muted");
+            AutomationProperties.SetAutomationId(line, "SetupJobNetwork-" + section);
+            now.Children.Add(line);
+        }
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Needs attention: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
