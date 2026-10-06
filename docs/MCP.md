@@ -3282,15 +3282,24 @@ context size from Companion › Replies; absent when none, and unchanged when a
 settings change is picked up; beside it,
 `LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
 forgets them so the next reply starts fresh, adds the note *Context refreshed.*
-to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
-works in the background or a finished job waits to be brought up: *Working in
-the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
-it.*, *think-1 checking it fits beside Thinking* (a second model in Ollama on
-this PC, before it starts), *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
-*... when you talk next.*; never what a job is about), each job's chip
-`LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
-so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
-only stops that job, and the next thing you say tells Martlet), the song panel
+to `LiveHistory` and hides `LiveContext`), `LiveTasks` (the header's background
+tasks chip, shown once Martlet starts a task in the conversation: its name reads
+*Background tasks: 2 running*, *1 running · 1 ready*, *1 ready* or *3 done*; a
+passive click that only opens and closes the task list `LiveTasksPanel` over the
+conversation, which `LiveTasksClose`, Esc or a click in the conversation also
+close), and in that list `LiveJobs` (*Martlet keeps working on these while you
+talk. Stop (Esc) doesn't end them.*, *Finished work comes up as soon as Martlet
+is free.* or *... when you talk next.*; never what a task is about), each task's
+card `LiveTask-<id>` with `LiveJob-<id>` (what the task is about, so snapshots
+don't return it), `LiveJobState-<id>` (*Checking it fits beside Thinking.*,
+*Done after 1:02. Martlet brought it up.*, *You stopped it.*, *Couldn't finish:
+it failed on this PC.*), `LiveJobResultToggle-<id>` (*Show result*, a passive
+click that shows `LiveJobResult-<id>`, which isn't a readable value) and
+`LiveJobCancel-<id>` (a passive click: it only stops that task, and the next
+thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
+Martlet starts makes opening the talk window start one *FIXTURE - NOT AI* task
+(`fixture-1`) that works until canceled, so these can be checked without a
+model. Then the song panel
 `LiveSongPanel` (shown while Martlet sings or has a song to offer; it has no Play
 button, since only Martlet performs songs): `LiveSong`
 (*Singing 3fa2c19b0d71 · 0:22 of 1:00 · verse line 4 of 12.*, *Starting
