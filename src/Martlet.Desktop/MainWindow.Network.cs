@@ -209,8 +209,6 @@ public partial class MainWindow
                     QueueApiKeySync();
                 }
                 RenderNetwork();
-                // Whether this PC's own host service serves another computer, and so whether this PC stays awake, follows each sync.
-                UpdateStayAwake();
                 if (HostDashboardNetworkSignature() != shownBefore) RenderHost();
                 if (DevicesPage.IsVisible && NetworkDevicesSignature() != networkDevicesShown) RenderMap();
                 if (networkQueued)

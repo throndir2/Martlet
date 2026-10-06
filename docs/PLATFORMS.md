@@ -175,7 +175,6 @@ now. The macOS, iOS and Android apps must implement them the same way.
 | Android host using Gemini Nano when its Hosting screen leaves the front | The phone stops advertising that model (Android allows Gemini Nano only in the front). Thinking shows as not working, with no silent switch to another model (AN04) |
 | Android host stopped by the phone's battery saver | It stops answering like any host. The phone's **Keep Martlet running** checklist explains how to exempt it (AN03) |
 | Mac host asleep, or its user logged out | It stops answering. Martlet on the Mac keeps the Mac awake while it hosts and keeps hosting after the window closes, but not after logout (MA02) |
-| Windows PC running its own host service, left idle | Martlet there keeps it awake (a Windows power request) while that host service answers and serves another computer, as on a Mac; the screen can still turn off. Settings › Startup and closing says so. Only while Martlet runs there (keep it in the notification area); put to sleep or shut down by hand, it stops answering like any host |
 | Mac with Docker Desktop, or Ubuntu installed | It is a Linux host: CPU-only roles, GPU roles shown disabled with the reason |
 | Sync off and no check yet | Devices shows "not checked since Martlet started". Home stays quiet until something is known to be wrong |
 
