@@ -138,6 +138,16 @@ internal static class Motion
         });
     }
 
+    /// <summary>A steady spin, forever, for a busy indicator; <paramref name="on"/> false stops it. Static when motion is off.</summary>
+    internal static void Spin(UIElement element, bool on, double seconds = 1)
+    {
+        var rotate = Rotate(element);
+        if (!on || !Enabled) { rotate.BeginAnimation(RotateTransform.AngleProperty, null); rotate.Angle = 0; return; }
+        if (rotate.HasAnimatedProperties) return;
+        rotate.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, TimeSpan.FromSeconds(seconds)) { RepeatBehavior = RepeatBehavior.Forever });
+    }
+
     /// <summary>An expanding, fading ring, forever. The element should be a ring drawn behind a node.</summary>
     internal static void PulseRing(UIElement element, double delay = 0, double to = 1.9)
     {

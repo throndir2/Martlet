@@ -2399,6 +2399,98 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task BackgroundTasksShowAsAChipThatOpensTheTaskList() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        // Finished work waits for the next message, so nothing here brings it up on its own (no reply is asked for).
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { ThinkLonger = new() { Delivery = ThinkDelivery.NextMessage } } });
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var chip = Control<Button>(window, "TasksChip");
+            Assert.Equal(Visibility.Collapsed, chip.Visibility);
+
+            var think = new BackgroundJobKind(ThinkLonger.KindName, 2, 10, TimeSpan.FromMinutes(5), Doing: "Thinking about");
+            var song = new BackgroundJobKind("song", 1, 10, TimeSpan.FromMinutes(5), Offer: true, Doing: "Making a song");
+            var finish = new TaskCompletionSource<BackgroundJobOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var first = fixture.Controller.Jobs.Start(think, "the trip plan", (job, token) =>
+            {
+                job.Report(BackgroundJobState.Running, "comparing the routes");
+                return finish.Task.WaitAsync(token);
+            }).Job!;
+            var second = fixture.Controller.Jobs.Start(song, "a birthday song", async (_, token) =>
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                return BackgroundJobOutcome.Done("x");
+            }).Job!;
+            await Until(() => Control<TextBlock>(window, "TasksText").Text == "2 running");
+            Assert.Equal(Visibility.Visible, chip.Visibility);
+            Assert.Equal("Background tasks: 2 running", AutomationProperties.GetName(chip));
+            Assert.Equal(Visibility.Collapsed, Control<Grid>(window, "TasksPanel").Visibility);
+
+            // The chip opens the list: one card per task with what it is about, its status and Cancel.
+            Click(window, "TasksChip");
+            Assert.Equal(Visibility.Visible, Control<Grid>(window, "TasksPanel").Visibility);
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + first.Id)?.Text == "Comparing the routes.");
+            Assert.Equal("the trip plan", Find<TextBlock>(window, "LiveJob-" + first.Id)!.Text);
+            Assert.Equal("Martlet keeps working on these while you talk. Stop (Esc) doesn't end them.",
+                Control<TextBlock>(window, "JobsText").Text);
+
+            // Cancel stops just that task; the list says so and the chip counts what still runs.
+            Find<Button>(window, "LiveJobCancel-" + second.Id)!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + second.Id)?.Text == "You stopped it.");
+            await Until(() => Control<TextBlock>(window, "TasksText").Text == "1 running");
+            Assert.Equal(Visibility.Collapsed, Find<Button>(window, "LiveJobCancel-" + second.Id)!.Visibility);
+
+            // Esc closes the list first, and stops nothing.
+            Escape(window, "InputText");
+            Assert.Equal(Visibility.Collapsed, Control<Grid>(window, "TasksPanel").Visibility);
+            Assert.False(first.Finished);
+            Click(window, "TasksChip");
+
+            // A finished task waits to come up; its result shows on request.
+            finish.SetResult(BackgroundJobOutcome.Done("Take the coast road."));
+            await Until(() => Control<TextBlock>(window, "TasksText").Text == "1 ready");
+            Assert.Equal("Done after 0:00. Martlet brings it up when you talk next.", Find<TextBlock>(window, "LiveJobState-" + first.Id)!.Text);
+            Assert.Equal("Finished work comes up when you talk next.", Control<TextBlock>(window, "JobsText").Text);
+            Assert.Equal(0, fixture.Llm.Calls);
+            var toggle = Find<Button>(window, "LiveJobResultToggle-" + first.Id)!;
+            Assert.Equal(Visibility.Visible, toggle.Visibility);
+            toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(Visibility.Visible, Find<TextBox>(window, "LiveJobResult-" + first.Id)!.Visibility);
+            Assert.Equal("Take the coast road.", Find<TextBox>(window, "LiveJobResult-" + first.Id)!.Text);
+            Click(window, "TasksCloseButton");
+            Assert.Equal(Visibility.Collapsed, Control<Grid>(window, "TasksPanel").Visibility);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public void TheTaskChipCountsRunningReadyAndDoneTasks()
+    {
+        Assert.Equal("2 running", LiveConversationWindow.TasksChipLine(2, 0, 3));
+        Assert.Equal("1 running · 1 ready", LiveConversationWindow.TasksChipLine(1, 1, 1));
+        Assert.Equal("1 ready", LiveConversationWindow.TasksChipLine(0, 1, 2));
+        Assert.Equal("3 done", LiveConversationWindow.TasksChipLine(0, 0, 3));
+    }
+
+    // The element with this automation ID in the window's visual tree, or null.
+    private static T? Find<T>(Window window, string automationId) where T : DependencyObject
+    {
+        window.UpdateLayout();
+        T? Walk(DependencyObject node)
+        {
+            if (node is T match && AutomationProperties.GetAutomationId(match) == automationId) return match;
+            for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
+                if (Walk(System.Windows.Media.VisualTreeHelper.GetChild(node, i)) is { } found) return found;
+            return null;
+        }
+        return Walk(window);
+    }
+
     private static void Escape(Window window, string target)
     {
         var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Escape)
