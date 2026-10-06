@@ -2005,7 +2005,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
     /// prompt), then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
-    /// docs/CREATIONS.md). Null when there are none.</summary>
+    /// docs/CREATIONS.md), then manage_memories while memory is on. Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
@@ -2036,7 +2036,42 @@ internal sealed class LiveConversationController : IAsyncDisposable
             own.Add((definitions[0], (call, token) => ValueTask.FromResult(ListCreations(call))));
             own.Add((definitions[1], PerformCreationAsync));
         }
+        // manage_memories while memory is on: last, so the tools before it start every request the same as before it existed.
+        if (configured.SupportsTools && memory is not null && configured.Memory is { Enabled: true } remembered)
+            own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(operation, remembered.ConfigurationRevision, call, token)));
         return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
+    /// in the talk window like background remembering's.</summary>
+    private async ValueTask<ConversationToolResult> ManageMemoriesAsync(LiveConversationOperation operation, Guid revision, TextToolCall call,
+        CancellationToken token)
+    {
+        var roster = voices?.Roster;
+        MemoryToolOutcome outcome;
+        try
+        {
+            outcome = await RetryStoreAsync(() => MemoryTools.RunAsync(memory!, revision, call.ArgumentsJson, roster,
+                operation.Heard?.Speaker?.Voice, token), token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (!token.IsCancellationRequested && error is DesktopMemoryException or MemoryException or
+            ContractException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            var why = error switch
+            {
+                DesktopMemoryException app => app.Message,
+                MemoryException { Failure: MemoryFailure.Conflict or MemoryFailure.NotFound } => "The fact changed meanwhile; call find again.",
+                _ => "Memory can't be changed right now."
+            };
+            outcome = new(new(why + " Tell the user briefly.", true), "failed", []);
+        }
+        tools?.Record("Martlet", MemoryTools.Name, outcome.Outcome, "", outcome.Result.IsError);
+        if (outcome.Changes.Count > 0)
+        {
+            ErrorLog.Info($"Memory: manage_memories {outcome.Outcome}.");
+            MemoryCaptured?.Invoke(new(outcome.Changes.Select(change => change with { Person = MemoryPeople.Label(change.VoiceId, roster) }).ToArray()));
+        }
+        return outcome.Result;
     }
 
     /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has).</summary>

@@ -96,10 +96,6 @@ public sealed class MemoryWindowTests
             allowDelete = true;
             Click(window, "MemoryDeleteFact");
             await Until(() => !runner.IsRunning && list.Items.Count == 0);
-
-            Click(window, "MemoryPurgeExpired");
-            await Until(() => !runner.IsRunning && Text(window, "FactStatus").Contains(
-                "Deleted 0 expired facts", StringComparison.Ordinal));
         }
         finally
         {
@@ -150,7 +146,7 @@ public sealed class MemoryWindowTests
             Control<RadioButton>(window, "CustomChoice").IsChecked = true;
             Control<TextBox>(window, "CustomDirectory").Text = scope.OtherMemory;
 
-            Assert.False(Control<Button>(window, "RefreshFactsButton").IsEnabled);
+            Assert.False(Control<Button>(window, "SaveFactButton").IsEnabled);
             Assert.Empty(Control<ListBox>(window, "FactsList").Items);
             Assert.Equal("", Control<TextBox>(window, "ExportPreviewText").Text);
             Assert.False(Directory.Exists(scope.OtherMemory));
@@ -159,7 +155,7 @@ public sealed class MemoryWindowTests
             using (MemoryStore.Open(preview,
                 preview.Authorize(MemoryConsentDecision.Allow)))
             {
-                Click(window, "MemoryRefreshFacts");
+                Click(window, "MemorySaveFact");
                 Assert.Contains("aren't saved yet", Text(window, "FactStatus"));
             }
             Assert.Single((await memory.InspectAsync(

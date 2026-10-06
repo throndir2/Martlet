@@ -65,6 +65,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // never writes anything that wasn't already changed. The Character window's sections only expand.
         "OpenCompanion", "OpenAvatar", "OpenLorebooks", "OpenMemory", "CompanionClose", "AvatarClose", "LorebookClose", "MemoryClose",
         "AvatarAdvanced", "RemoteHostSection",
+        // Memory: New only clears the fact editor (nothing is saved), and its Where memory is stored and Export to a file sections
+        // only expand. Typing a search (MemorySearch) is ui_set_text; Add, Save changes and every Delete button change facts (Delete
+        // asks first), so they need --allow-ui-effects.
+        "MemoryNewFact", "MemoryStorageSection", "MemoryExportSection",
         // Companion › Memory's Open conversation history opens the record's window, Close closes it, and Search and Show all
         // only filter what it lists (from memory; nothing is written). Its two choices save conversation-history.json, typing a
         // search is ui_set_text, and Delete asks first; those need --allow-ui-effects.
