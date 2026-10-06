@@ -55,7 +55,7 @@ so an app can check its key.
 | `read` (See status and logs) | `GET /martlet/v1/status`, `GET /martlet/v1/machine` (hardware), `GET /martlet/v1/cluster` (who does what), `GET /martlet/v1/logs?after=N[&limit=L]`, `GET /martlet/v1/commands`, `GET /martlet/v1/commands/{id}` |
 | `voice` (Use thinking, listening, speaking and lip-sync) | `POST /martlet/v1/inference/ollama-chat`, `/f5-synthesis`, `/transcription`, `/audio2face`, and `POST /martlet/v1/inference/cancel` for its own requests |
 | `perception` (Use screen understanding) | `POST /martlet/v1/inference/perception/ocr`, `/perception/vlm` and cancel, on hosts that run them |
-| `manage` (Update hosts and change their roles) | `POST /martlet/v1/commands` (`martlet.update`, `host.status`, `host.describe-role`, `host.add-role`, `host.remove-role`), `POST /martlet/v1/commands/{id}/cancel`, and reading commands |
+| `manage` (Update hosts and change their roles) | `POST /martlet/v1/commands` (`martlet.update`, `host.status`, `host.describe-role`, `host.add-role`, `host.remove-role`, `host.exposure`), `POST /martlet/v1/commands/{id}/cancel`, and reading commands |
 
 A key can **never** pair devices, read or change your Martlet network, read
 the voice list (it holds voiceprints), change who does what, upload logs, take

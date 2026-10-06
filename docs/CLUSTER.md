@@ -625,6 +625,7 @@ refused with `request.invalid`):
 | `host.describe-role` | `role` | `martlet-host describe <role>` (its terms, secrets and choices, for the sender's install dialog) |
 | `host.add-role` | `role`, `choice.<VAR>`; secrets `secret.<name>` | `martlet-host add <role>` with the answers on stdin |
 | `host.remove-role` | `role` | `martlet-host remove <role>` |
+| `host.exposure` | `outside` (up to four canonical `name:port` addresses, comma-separated; empty removes them), `pairing_codes_outside` and `treat_all_as_outside` (`yes` or `no`) | `martlet-host exposure` with exactly those options ([Outside access](NETWORK.md#reaching-your-network-from-outside-home)); its gateway restarts |
 
 Security:
 

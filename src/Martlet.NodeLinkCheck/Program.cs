@@ -350,6 +350,21 @@ async Task RunAsync()
         pass.Outcome?.Succeeded == true,
         "the agent received the secret once; no list, command or saved copy contained it");
 
+    // Outside access through the host's own Martlet: the gateway and the agent accept only the closed arguments, and the agent
+    // turns them into exactly the martlet-host exposure options (NodeCommandRules.ExposureOptions).
+    var exposure = await asker.SendCommandAsync(NodeCommandKinds.Exposure,
+        NodeCommandRules.ExposureArguments(["Home.Example.net:9443", "100.101.102.103:9443"], false, true));
+    var badAddress = await Raw.SendAsync(requesterPairing, requesterSecret, HttpMethod.Post, "/martlet/v1/commands",
+        """{"kind":"host.exposure","arguments":{"outside":"evil;reboot:1","pairing_codes_outside":"no","treat_all_as_outside":"yes"}}""");
+    var extraOption = await Raw.SendAsync(requesterPairing, requesterSecret, HttpMethod.Post, "/martlet/v1/commands",
+        """{"kind":"host.exposure","arguments":{"outside":"","pairing_codes_outside":"no","treat_all_as_outside":"yes","config":"/etc"}}""");
+    var badExposure = new[] { badAddress, extraOption }.All(r => r.Status == HttpStatusCode.BadRequest && r.Body.Contains("request.invalid"));
+    pass = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
+    var exposed = await asker.ReadCommandAsync(exposure.Id);
+    Step("exposure-command", exposed.State == NodeCommandState.Succeeded && badExposure &&
+        runner.LastExposure == "exposure --outside home.example.net:9443 --outside 100.101.102.103:9443 --allow-pairing-outside-home no --treat-all-as-outside yes",
+        $"{exposed.State}: the agent would run '{runner.LastExposure}'; an address with a shell character was refused: {badExposure}");
+
     var waiting = await asker.SendCommandAsync(NodeCommandKinds.Status, new Dictionary<string, string>());
     var withdrawn = await asker.CancelCommandAsync(waiting.Id);
     pass = await agent.RunOnceAsync(agentConnection, CancellationToken.None);
@@ -549,6 +564,8 @@ sealed class FixtureRunner : INodeCommandRunner
     private int active;
     internal List<string> SecretsSeen { get; } = [];
     internal string? LastChoice { get; private set; }
+    /// <summary>The martlet-host command the last host.exposure command would run (FIXTURE: runs nothing).</summary>
+    internal string? LastExposure { get; private set; }
     internal bool Canceled { get; private set; }
     internal bool UpdateMayInstall { get; set; }
     public IReadOnlyList<string> Kinds => NodeCommandKinds.All;
@@ -616,6 +633,10 @@ sealed class FixtureRunner : INodeCommandRunner
                 if (command.Arguments.GetValueOrDefault("role") is { } role && role.StartsWith("hold-", StringComparison.Ordinal))
                     await Hold(role).Task.WaitAsync(cancellationToken);
                 return new(true, "FIXTURE - installed nothing.", 0);
+            case NodeCommandKinds.Exposure:
+                LastExposure = "exposure " + string.Join(' ', NodeCommandRules.ExposureOptions(command.Arguments));
+                output.Report("FIXTURE: " + LastExposure);
+                return new(true, "FIXTURE - changed nothing.", 0);
             case NodeCommandKinds.DescribeRole when command.Arguments.GetValueOrDefault("role") == "slow-role":
                 output.Report("Waiting to be canceled...");
                 try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }

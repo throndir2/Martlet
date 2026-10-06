@@ -1,3 +1,4 @@
+using Martlet.Core.Nodes;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Network;
 
@@ -36,7 +37,7 @@ public partial class MainWindow
         foreach (var host in homeHosts)
         {
             // Hosts reachable from outside, and this PC's own host service (its Outside access choices show on the Devices map).
-            if (roster?.Host(host.HostId) is not { Removed: false, Addresses.Count: > 0 } && host.Method != HostSetupMethod.ThisPcDocker) continue;
+            if (roster?.Host(host.HostId) is not { Removed: false, Addresses.Count: > 0 } && host.Method is not (HostSetupMethod.ThisPcDocker or HostSetupMethod.Agent)) continue;
             var tried = networkSecurity.TryGetValue(host.HostId, out var known);
             if (tried && now - known.ReadAt < SecurityAuditInterval) continue;
             try
@@ -66,7 +67,7 @@ public partial class MainWindow
     private IReadOnlyDictionary<string, string> HostOutsideFacts()
     {
         var facts = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var host in homeHosts.Where(h => h.Method is HostSetupMethod.ThisPcDocker or HostSetupMethod.SshDocker or HostSetupMethod.SshNative))
+        foreach (var host in homeHosts.Where(h => h.Method is HostSetupMethod.ThisPcDocker or HostSetupMethod.SshDocker or HostSetupMethod.SshNative or HostSetupMethod.Agent))
         {
             var count = networkState.Roster?.Host(host.HostId)?.Addresses?.Count ??
                 networkViews.GetValueOrDefault(host.HostId)?.AdvertisedAddresses?.Count ?? 0;
@@ -87,7 +88,8 @@ public partial class MainWindow
     {
         if (store is null || closing) return;
         var local = host.Method == HostSetupMethod.ThisPcDocker;
-        var docker = host.Method is HostSetupMethod.ThisPcDocker or HostSetupMethod.SshDocker;
+        // A host run by Martlet on that computer is its Docker Desktop host service.
+        var docker = host.Method is HostSetupMethod.ThisPcDocker or HostSetupMethod.SshDocker or HostSetupMethod.Agent;
         HostSecurityAudit? audit = null;
         try
         {
@@ -125,12 +127,8 @@ public partial class MainWindow
             ActionText.Text = $"Type up to {NetworkRoster.MaximumAddresses} addresses as name:port, IPv4:port or [IPv6]:port, for example home.example.net:9443.";
             return;
         }
-        var options = new List<string>();
-        if (normalized.Length == 0) options.Add("--clear-outside");
-        foreach (var address in normalized) options.AddRange(["--outside", address!]);
-        options.AddRange(["--allow-pairing-outside-home", values["allowCodes"] == "yes" ? "yes" : "no",
-            "--treat-all-as-outside", values["treatAll"] == "yes" ? "yes" : "no"]);
-        var done = await RunHostActionAsync(host, HostAction.Exposure(options));
+        var arguments = NodeCommandRules.ExposureArguments(normalized.OfType<string>(), values["allowCodes"] == "yes", values["treatAll"] == "yes");
+        var done = await RunHostActionAsync(host, HostAction.Exposure(arguments));
         if (done is null) return;
         networkSecurity.Remove(host.HostId);
         ErrorLog.Info($"Martlet network: {host.HostId} outside access set: {normalized.Length} outside address(es), typed pairing codes from " +

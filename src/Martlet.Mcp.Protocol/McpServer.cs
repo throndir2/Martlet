@@ -347,6 +347,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
             "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { }),
+        Tool("outside_path_check", "Reach a host from outside home on real sockets: builds this checkout's Linux gateway in the .NET SDK " +
+            "image and runs it (owner-init, owner-exposure, owner-pair, serve) in disposable aspnet containers on a Docker network " +
+            "numbered from TEST-NET-3, its port published on 127.0.0.1, so every connection reaches it from 203.0.113.1 (an outside " +
+            "source). The host's home address answers nothing; the desktop's real pairing client, connection, network sync and " +
+            "HostRoutes must fall back to the outside address. Checks typed codes refused and a device card allowed from outside, " +
+            "the roster signing the advertised address, home-fail then outside-succeed, the guard locking out a stranger and the audit " +
+            "naming the outside source. Never pulls; removes its containers, volumes and network (keeps a NuGet cache volume).", new { }),
         Tool("exposure_selftest", "Rehearse a host reachable from outside home end to end with the production code: one real gateway " +
             "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
             "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
@@ -1208,6 +1215,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
                 "exposure_selftest" => await NodeLinkCheckAsync(cancellation, "exposure"),
+                "outside_path_check" => await OutsidePathCheck.RunAsync(cancellation),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
