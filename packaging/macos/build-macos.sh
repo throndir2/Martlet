@@ -73,6 +73,14 @@ for arch in "${arches[@]}"; do
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   cp -a "$work/publish/." "$app/Contents/MacOS/"
   chmod +x "$app/Contents/MacOS/$exe"
+  # codesign takes dotted folders under Contents/MacOS (Live2D's Hiyori.2048) for nested bundles,
+  # so the publish's folders live in Resources and MacOS links to them.
+  for dir in "$app/Contents/MacOS"/*/; do
+    [ -d "$dir" ] || continue
+    name=$(basename "$dir")
+    mv "$app/Contents/MacOS/$name" "$app/Contents/Resources/$name"
+    ln -s "../Resources/$name" "$app/Contents/MacOS/$name"
+  done
   host="$app/Contents/Resources/host"
   if [ -n "$host_project" ]; then
     # The Mac host ships inside the app; users run "<host>/Martlet.Gateway.Host.Linux macos-setup" once.
