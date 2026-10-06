@@ -1,7 +1,8 @@
 # Linux and macOS desktop companion: research, decision and plan
 
-**Plan, 2026-10-06. Built slices report their status below; every
-Linux-desktop and Mac result is NOT RUN until a slice reports it.** The owner asked for:
+**Plan, 2026-10-06. Built slices report their status below (DX01: see
+[Status](#status)); every Linux-desktop and Mac result is NOT RUN until a slice
+reports it.** The owner asked for:
 
 1. A **Mac as the companion PC** (talk to it, character on its screen), and
    whether a Mac can be a **host**.
@@ -37,6 +38,53 @@ client and `Audio` (which also targets plain `net10.0`). So:
   `Martlet.Platform.MacOS`: global push-to-talk hotkey (down/up), character
   overlay window behaviors, screen capture to one JPEG per look, credential
   store, autostart, tray/menu bar, audio devices.
+
+## Status
+
+**DX01 (`src/Martlet.Companion`): delivered.** What works, and how it was checked:
+
+- **App:** Avalonia 12 (`net10.0`), published self-contained for `linux-x64`,
+  `linux-arm64`, `osx-arm64` and `osx-x64` (`dotnet publish
+  src/Martlet.Companion -c Release -r <rid> --self-contained`). Settings live in
+  `$XDG_CONFIG_HOME/Martlet` (Linux) or `~/Library/Application Support/Martlet`
+  (macOS); `MARTLET_COMPANION_DATA` overrides it.
+- **Conversation:** typed and push-to-talk (hold the button, the key while the
+  window is in front, or the global key once DX02/DX03 provide it: F8 on Linux,
+  Control+Alt+T on a Mac, where F8 is a media key). Thinking through OpenAI or any
+  Chat Completions server, with one-click presets for Ollama (11434), LM Studio
+  (1234) and Docker Model Runner (12434) on this computer; OpenAI listening and
+  speaking. Cloud routes need the "send to the cloud provider" consent and a key;
+  servers on this computer need neither.
+- **Audio:** SoundFlow over miniaudio (MIT): PipeWire/PulseAudio/ALSA on Linux,
+  CoreAudio on macOS. Devices open only while recording or speaking.
+- **Character:** the Windows renderer's VRM/Live2D web bundle in Avalonia's
+  `NativeWebView` (WebKitGTK, WKWebView), served from 127.0.0.1 under a random
+  path, with loudness lip-sync. The bundled Live2D sample (Hiyori) shows when no
+  model is chosen. Builds include the bundle when `npm ci` has been run in
+  `src/Martlet.Avatar.Vrm`.
+- **Guardrails:** engine lists come from the platform catalog for the detected
+  platform (`CompanionGuardrails`); Windows speech/voices never show on Linux or
+  macOS, local Audio2Face/F5 never on a Mac, MLX/Apple Intelligence never on Intel
+  Macs or Linux; local models on an Intel Mac (or Linux without NVIDIA) carry the
+  CPU-only warning. Settings carried from another device (Settings > Import, or a
+  copied `settings.json`) keep what this computer can run; the rest is refused with
+  the catalog's reason and this computer's choice is kept.
+- **Platform services:** contracts in `src/Martlet.Companion.Platform`; defaults
+  until DX02/DX03 land (no global key, no click-through, no screen capture, keys
+  kept in memory only until the app quits).
+- **Headless status:** `Martlet.Companion --status [--as linux-x64|linux-nvidia|linux-arm64|macos-arm64|macos-x64] [--import settings.json]`,
+  also the MCP tool `companion_status`; `--character-check` opens only the
+  character and exits 0 once it shows and lip-sync was sent.
+
+Checked: unit tests (`Martlet.Companion.Tests`, `PlatformCatalogTests`); the
+linux-x64 build on Ubuntu 24.04 (container, Xvfb, X11, WebKitGTK 4.1, Mesa
+software GL): `--status`, `--character-check` (Hiyori shown, lip-sync sent) and the
+full app with the character on screen. **NOT RUN:** a real Linux desktop session
+(Wayland/XWayland, a compositor for transparency, a tray host), microphone and
+speakers, live OpenAI or Ollama requests, and everything on a Mac.
+
+Not in DX01's first release: pairing with hosts through the gateway client,
+whisper.cpp on this computer, hands-free listening, memory and Voice ID.
 
 ## Compatibility research (accessed 2026-10-06)
 

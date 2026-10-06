@@ -1,8 +1,11 @@
 # Platforms: what each device can do
 
-> **2026-10-06:** a Linux desktop companion and a .NET Mac companion/host are
-> now planned; see [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md)
-> (slices DX01-DX05). The tables below are updated as those slices land.
+> **2026-10-06:** Martlet for Linux and macOS (`src/Martlet.Companion`, DX01)
+> works on Linux: typed and push-to-talk conversation with cloud or local
+> Chat Completions, OpenAI listening and speaking, and the VRM/Live2D character
+> on the Linux screen. The same app builds for macOS but has **not been run on
+> a Mac (NOT RUN)**. See [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md)
+> (slices DX01-DX05).
 
 **Status, 2026-10-01.** Only the **Windows companion** and **Linux / Windows
 Docker hosts** exist today. Everything marked *planned* comes from the
@@ -38,26 +41,26 @@ Android apps follow the same rules.
 
 Slice IDs: IO = [iOS plan](IOS.md#delivery-slices), MA = [macOS
 plan](MACOS.md#delivery-slices), AN = [Android plan](ANDROID.md#delivery-slices),
-PL = [below](#delivery-slices). Minimum systems: Windows 10/11 x64 (today),
+PL = [below](#delivery-slices), DX = [Linux and macOS desktop](DESKTOP_LINUX_MACOS.md#delivery-slices). Minimum systems: Windows 10/11 x64 (today),
 macOS 14, iOS/iPadOS 26, Android 8.0.
 
 | Job or feature | Windows | macOS | iPhone / iPad | Android | Linux |
 | --- | --- | --- | --- | --- | --- |
-| Thinking: OpenAI, OpenRouter, NVIDIA Build, any OpenAI-compatible server | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | Not planned: no Linux companion app; Linux computers are hosts |
-| Thinking on the device itself | **Works**: a local server (Ollama, LM Studio) through Chat Completions | Planned: Apple Intelligence (M1+, macOS 26+; screen images from 27) and Ollama on the Mac's GPU (MA04); MLX models (MA02). Intel: CPU-only 1-4B models | Planned (IO05): Apple Intelligence (iPhone 15 Pro or later, M-series iPad, iOS 26+; images from 27) | Planned (AN07): Gemini Nano on supported flagships, **only while Martlet is in front, never behind a game**; small LiteRT or llama.cpp models (old phones: 0.5-1B, slow) | - |
+| Thinking: OpenAI, OpenRouter, NVIDIA Build, any OpenAI-compatible server | **Works** | **Works** (DX01, NOT RUN on a Mac) | Planned (IO05) | Planned (AN07) | **Works** (DX01) |
+| Thinking on the device itself | **Works**: a local server (Ollama, LM Studio) through Chat Completions | **Works** (DX01, NOT RUN on a Mac): Ollama, LM Studio or Docker Model Runner on the Mac's GPU (Apple silicon) through Chat Completions; Intel: CPU-only 1-4B models, with a warning. Planned: Apple Intelligence (M1+, macOS 26+) and MLX models through a Swift helper; never on Intel Macs | Planned (IO05): Apple Intelligence (iPhone 15 Pro or later, M-series iPad, iOS 26+; images from 27) | Planned (AN07): Gemini Nano on supported flagships, **only while Martlet is in front, never behind a game**; small LiteRT or llama.cpp models (old phones: 0.5-1B, slow) | **Works** (DX01): Ollama, LM Studio or Docker Model Runner on NVIDIA, AMD or the CPU (a warning without NVIDIA) |
 | Thinking: Apple Private Cloud Compute | - | Not planned: needs Apple's entitlement and most likely the paid Developer Program, which Martlet doesn't use | Not planned: same | - | - |
-| Listening: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
-| Listening on the device | Planned (PL02): Windows speech and whisper.cpp can be saved but are not used yet | Planned (MA04): Apple speech (macOS 26; unverified on Intel), whisper.cpp | Planned (IO05): Apple speech (iOS 26+) | Planned (AN07): Android speech, on the phone from Android 12 (older phones may send audio to Google, with a warning); whisper.cpp tiny/base | - |
-| Speaking: OpenAI | **Works** | Planned (MA04) | Planned (IO05) | Planned (AN07) | - |
-| Speaking on the device | Planned (PL02): Windows voices | Planned (MA04): Apple voices, Personal Voice | Planned (IO05): Apple voices, Personal Voice | Planned (AN07): Android voices | - |
-| Your own cloned voice (F5) | **Works** through an NVIDIA host | Through an NVIDIA host (MA07); F5 on MLX on Apple silicon, 16 GB+ suggested (MA03) | Through a host (IO09) | Through a host (AN10) | - |
-| Lip-sync | **Works**: loudness; Audio2Face on this PC or a host (NVIDIA) | Planned (MA05): loudness; Audio2Face through an NVIDIA host | Planned (IO07): same | Planned (AN09): same | - |
-| Character over other windows and games | **Works**: transparent always-on-top window | Planned (MA05): floating panel over full-screen games and Spaces | Planned (IO07/IO08): in the app, beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental) | Planned (AN09): needs *Display over other apps*; taps reach the game only through a mostly transparent overlay | Built, not yet tried on a real desktop (DX02): always on top, click-through except the character, no focus, all workspaces on X11; on Wayland through XWayland (full-screen native Wayland games may cover it) |
-| Watch my screen | **Works** (borderless/windowed games) | Planned (MA06): Screen Recording permission, asked again from time to time | Planned (IO06): only while a screen broadcast you start is running | Planned (AN08): screen-capture permission each session | Built (DX02): X11 screen reads; on Wayland the ScreenCast portal + PipeWire, which asks every time watching starts (portal path not yet tried on GNOME or KDE) |
+| Listening: OpenAI | **Works** | **Works** (DX01, NOT RUN on a Mac): push-to-talk | Planned (IO05) | Planned (AN07) | **Works** (DX01): push-to-talk |
+| Listening on the device | Planned (PL02): Windows speech and whisper.cpp can be saved but are not used yet | Planned: whisper.cpp (DX01, later), Apple speech (macOS 26). **Never** Windows speech | Planned (IO05): Apple speech (iOS 26+) | Planned (AN07): Android speech, on the phone from Android 12 (older phones may send audio to Google, with a warning); whisper.cpp tiny/base | Planned: whisper.cpp (DX01, later). **Never** Windows speech |
+| Speaking: OpenAI | **Works** | **Works** (DX01, NOT RUN on a Mac) | Planned (IO05) | Planned (AN07) | **Works** (DX01) |
+| Speaking on the device | Planned (PL02): Windows voices | Planned (MA04): Apple voices, Personal Voice. **Never** Windows voices | Planned (IO05): Apple voices, Personal Voice | Planned (AN07): Android voices | **Never** Windows voices |
+| Your own cloned voice (F5) | **Works** through an NVIDIA host | Through an NVIDIA host once pairing lands; F5 on MLX on Apple silicon, 16 GB+ suggested (MA03). **Never** local F5 | Through a host (IO09) | Through a host (AN10) | Through a host once pairing lands, or this PC's own Docker host with NVIDIA |
+| Lip-sync | **Works**: loudness; Audio2Face on this PC or a host (NVIDIA) | **Works** (DX01, NOT RUN on a Mac): loudness. **Never** local Audio2Face | Planned (IO07): same | Planned (AN09): same | **Works** (DX01): loudness |
+| Character over other windows and games | **Works**: transparent always-on-top window | **Works** (DX01, NOT RUN on a Mac): VRM or Live2D in an always-on-top window; floating over full-screen games and every Space, click-through and no focus built in DX03 (NOT RUN) | Planned (IO07/IO08): in the app, beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental) | Planned (AN09): needs *Display over other apps*; taps reach the game only through a mostly transparent overlay | **Works** (DX01): VRM or Live2D in an always-on-top window, shown on an X11 screen; click-through except the character, no focus and all workspaces built in DX02, not yet tried on a real desktop; on Wayland through XWayland (full-screen native Wayland games may cover it) |
+| Watch my screen | **Works** (borderless/windowed games) | Built (DX03, NOT RUN): Screen Recording permission, asked again from time to time | Planned (IO06): only while a screen broadcast you start is running | Planned (AN08): screen-capture permission each session | Built (DX02): X11 screen reads; on Wayland the ScreenCast portal + PipeWire, which asks every time watching starts (portal path not yet tried on GNOME or KDE) |
 | Watch a camera or a phone's camera | **Works**: webcams, capture cards, phone-as-webcam apps (Phone Link, DroidCam, Camo, iVCam), HTTP snapshot/MJPEG/RTSP addresses ([details](SCREEN_COMMENTARY.md#cameras-phones-and-other-video-sources)) | - | The iPhone can serve its camera to Windows (IO06) | Martlet on the phone can serve its camera to Windows (AN11: password-protected plain HTTP, readable on your Wi-Fi, only while sharing); any IP-camera app works today | - |
-| Hands-free listening | **Works** | Planned (MA04), with a global push-to-talk hotkey | Planned (IO05): behind a game only while listening is on | Planned (AN07): behind a game with a notification showing; echo cancellation varies by phone | Push-to-talk key built (DX02): X11 key grab; on Wayland the GlobalShortcuts portal (KDE Plasma, GNOME 48+; not yet tried), otherwise only while an X11 window has focus |
-| Voice ID, local memory, personas | **Works** | Planned (MA07) | Planned (IO09) | Planned (AN10) | - |
-| Pair with hosts, who does what, failover | **Works** | Planned (MA07) | Planned (IO09) | Planned (AN10) | - |
+| Hands-free listening | **Works** | Planned (DX01, later): push-to-talk first, with a global key built in DX03 (Control+Alt+T; NOT RUN) | Planned (IO05): behind a game only while listening is on | Planned (AN07): behind a game with a notification showing; echo cancellation varies by phone | Planned (DX01, later): push-to-talk first. Push-to-talk key built (DX02): X11 key grab; on Wayland the GlobalShortcuts portal (KDE Plasma, GNOME 48+; not yet tried), otherwise only while an X11 window has focus |
+| Voice ID, local memory, personas | **Works** | Personas **work** (DX01); Voice ID and memory planned (MA07) | Planned (IO09) | Planned (AN10) | Personas **work** (DX01) |
+| Pair with hosts, who does what, failover | **Works** | Planned (DX01, later) | Planned (IO09) | Planned (AN10) | Planned (DX01, later) |
 
 ## Devices that do jobs (hosts)
 

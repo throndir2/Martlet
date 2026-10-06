@@ -173,7 +173,7 @@ public static class PlatformCatalog
     private const DevicePlatform Win = DevicePlatform.Windows, Linux = DevicePlatform.Linux, Mac = DevicePlatform.MacOs,
         Ios = DevicePlatform.Ios, Android = DevicePlatform.Android;
     private const PlatformSide You = PlatformSide.Companion, Host = PlatformSide.Host;
-    private const string NoLinuxApp = "there is no Linux companion app; Linux computers are hosts";
+    private const string Later = "not in the first Linux and macOS release";
     private const string NoCloudOnHosts = "cloud routes run on the device you talk to; hosts never hold cloud keys";
     private const string PccDecision = "needs Apple's entitlement and most likely the paid Apple Developer Program, which Martlet doesn't use";
 
@@ -199,10 +199,10 @@ public static class PlatformCatalog
 
     /// <summary>Cloud engines run at a provider, called by the device you talk to, so every companion app can use them and
     /// no host ever does.</summary>
-    private static PlatformSupport[] Cloud(string windowsNote = "") =>
+    private static PlatformSupport[] Cloud(string windowsNote = "", string desktopNote = "") =>
     [
-        Works(Win, You, windowsNote), Planned(Mac, You, "MA04"), Planned(Ios, You, "IO05"), Planned(Android, You, "AN07"),
-        NotPlanned(Linux, You, NoLinuxApp),
+        Works(Win, You, windowsNote), Works(Mac, You, desktopNote), Works(Linux, You, desktopNote),
+        Planned(Ios, You, "IO05"), Planned(Android, You, "AN07"),
         .. new[] { Win, Linux, Mac, Ios, Android }.Select(p => NotPlanned(p, Host, NoCloudOnHosts))
     ];
 
@@ -223,7 +223,8 @@ public static class PlatformCatalog
         // ---- thinking ----
         new("openai-llm", ClusterJobs.Thinking, "OpenAI", Cloud()),
         new("chat-completions", ClusterJobs.Thinking, "OpenRouter, NVIDIA Build or another OpenAI-compatible server",
-            Cloud("also a local server such as Ollama or LM Studio on this PC")),
+            Cloud("also a local server such as Ollama or LM Studio on this PC",
+                "also Ollama, LM Studio or Docker Model Runner on this computer: the GPU on Apple silicon or with NVIDIA/AMD on Linux, the CPU only on an Intel Mac")),
         new("ollama", ClusterJobs.Thinking, "Ollama",
         [
             Works(Linux, Host, "an NVIDIA GPU makes replies fast; small models also run on the CPU"),
@@ -265,7 +266,8 @@ public static class PlatformCatalog
         new("mlx-llm", ClusterJobs.Thinking, "Open models on a Mac's GPU (MLX), including vision models",
         [
             Planned(Mac, Host, "MA02", "", AppleSilicon), Planned(Mac, You, "MA02", "", AppleSilicon),
-            Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon")
+            Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon"),
+            Impossible(Linux, You, "MLX runs only on Apple silicon")
         ]),
 
         // ---- listening ----
@@ -281,15 +283,15 @@ public static class PlatformCatalog
         new("local-whisper", ClusterJobs.Listening, "whisper.cpp on this device",
         [
             Planned(Win, You, "PL02", "it can be saved in Setup, but conversations don't use it yet"),
-            Planned(Mac, You, "MA04", "the Mac's GPU on Apple silicon; base/small models on Intel"),
+            Planned(Mac, You, "DX01", Later + "; the Mac's GPU on Apple silicon, base/small models on Intel"),
             Planned(Android, You, "AN07", "tiny/base models on old phones"),
-            NotPlanned(Linux, You, NoLinuxApp)
+            Planned(Linux, You, "DX01", Later)
         ]),
         new("windows-speech", ClusterJobs.Listening, "Windows speech recognition",
         [
             Planned(Win, You, "PL02", "it can be saved in Setup, but conversations don't use it yet"),
             Impossible(Mac, You, "Windows speech runs only on Windows"), Impossible(Ios, You, "Windows speech runs only on Windows"),
-            Impossible(Android, You, "Windows speech runs only on Windows")
+            Impossible(Android, You, "Windows speech runs only on Windows"), Impossible(Linux, You, "Windows speech runs only on Windows")
         ]),
         new("apple-speech", ClusterJobs.Listening, "Apple speech recognition (on-device)",
         [
@@ -318,6 +320,7 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
             Impossible(Mac, Host, "the F5 worker needs NVIDIA CUDA; an Apple-silicon Mac serves the same route with F5 on MLX"),
+            Impossible(Mac, You, "the F5 worker needs NVIDIA CUDA; Macs have none. Use a paired NVIDIA host for F5"),
             Impossible(Ios, Host, "F5 needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "F5 needs an NVIDIA GPU; phones and tablets have none")
         ]),
@@ -360,13 +363,14 @@ public static class PlatformCatalog
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
             Planned(Mac, You, "MA03", "16 GB+ suggested", AppleSilicon),
-            Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon")
+            Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon"),
+            Impossible(Linux, You, "MLX runs only on Apple silicon")
         ]),
         new("windows-voices", ClusterJobs.Speaking, "Windows voices",
         [
             Planned(Win, You, "PL02", "they can be saved in Setup, but conversations don't use them yet"),
             Impossible(Mac, You, "Windows voices exist only on Windows"), Impossible(Ios, You, "Windows voices exist only on Windows"),
-            Impossible(Android, You, "Windows voices exist only on Windows")
+            Impossible(Android, You, "Windows voices exist only on Windows"), Impossible(Linux, You, "Windows voices exist only on Windows")
         ]),
         new("apple-voices", ClusterJobs.Speaking, "Apple voices",
         [
@@ -392,29 +396,31 @@ public static class PlatformCatalog
         new("audio2face", ClusterJobs.LipSync, "Audio2Face",
         [
             Works(Linux, Host, "", Nvidia4), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia4),
+            Impossible(Mac, You, "Audio2Face needs an NVIDIA GPU; Macs have none. Use a paired NVIDIA host for Audio2Face"),
             .. NvidiaOnly("Audio2Face")
         ]),
         new("loudness-lipsync", ClusterJobs.LipSync, "Mouth follows the voice's loudness",
         [
-            Works(Win, You), Planned(Mac, You, "MA05"), Planned(Ios, You, "IO07"), Planned(Android, You, "AN09")
+            Works(Win, You), Works(Mac, You), Works(Linux, You), Planned(Ios, You, "IO07"), Planned(Android, You, "AN09")
         ]),
 
         // ---- features of the device you talk to, and of hosts ----
         new("character-overlay", Feature, "Character over other windows and games",
         [
             Works(Win, You, "a transparent always-on-top window"),
-            Planned(Mac, You, "MA05", "a floating panel over full-screen games and Spaces"),
+            Works(Mac, You, "an always-on-top window; floating over full-screen games and every Space, clicking through and not taking " +
+                "focus through the Mac integration (DX03, not yet tried on a Mac)"),
             Planned(Ios, You, "IO08", "inside Martlet and beside a game on iPad; over a full-screen game only through Picture-in-Picture (experimental)"),
             Planned(Android, You, "AN09", "needs 'Display over other apps'; touches reach the game only through a mostly transparent overlay"),
-            NotPlanned(Linux, You, NoLinuxApp)
+            Works(Linux, You, "an always-on-top window (X11 or XWayland); clicking through and not taking focus through the Linux integration (DX02, not yet tried on a real desktop)")
         ]),
         new("screen-watch", Feature, "Watch my screen (game commentary)",
         [
             Works(Win, You, "borderless or windowed games; protected video reads back black"),
-            Planned(Mac, You, "MA06", "needs the Screen & System Audio Recording permission, which macOS asks again from time to time"),
+            Planned(Mac, You, "DX03", "needs the Screen & System Audio Recording permission, which macOS asks again from time to time"),
             Planned(Ios, You, "IO06", "only while a screen broadcast you start yourself is running"),
             Planned(Android, You, "AN08", "asks for screen-capture permission each session"),
-            NotPlanned(Linux, You, NoLinuxApp)
+            Planned(Linux, You, "DX02", "X11 directly; Wayland asks through the system's screen-sharing dialog")
         ]),
         new("camera-watch", Feature, "Watch a camera or a phone's camera",
         [
@@ -424,10 +430,10 @@ public static class PlatformCatalog
         ]),
         new("hands-free", Feature, "Hands-free listening",
         [
-            Works(Win, You), Planned(Mac, You, "MA04"),
+            Works(Win, You), Planned(Mac, You, "DX01", Later + "; push-to-talk first, headphones advised"),
             Planned(Ios, You, "IO05", "keeps listening behind a game only while listening is on"),
             Planned(Android, You, "AN07", "keeps listening behind a game with a notification showing; echo cancellation varies by phone"),
-            NotPlanned(Linux, You, NoLinuxApp)
+            Planned(Linux, You, "DX01", Later + "; push-to-talk first, headphones advised")
         ]),
         new("voice-id", Feature, "Voice ID (only respond to my voice)",
         [
@@ -439,8 +445,8 @@ public static class PlatformCatalog
         ]),
         new("host-pairing", Feature, "Pair with hosts, who does what and failover",
         [
-            Works(Win, You), Planned(Mac, You, "MA07"), Planned(Ios, You, "IO09"), Planned(Android, You, "AN10"),
-            NotPlanned(Linux, You, NoLinuxApp)
+            Works(Win, You), Planned(Mac, You, "DX01", Later), Planned(Ios, You, "IO09"), Planned(Android, You, "AN10"),
+            Planned(Linux, You, "DX01", Later)
         ]),
         new("satellite", Feature, "Microphone and speaker for another computer's companion",
         [
@@ -499,8 +505,8 @@ public static class PlatformCatalog
         {
             PlatformAvailability.Impossible => new(PlatformVerdict.No, $"{engine.Name} can't run on {where}: {support.Note}."),
             PlatformAvailability.NotPlanned => new(PlatformVerdict.No, $"{engine.Name} isn't offered on {where}: {support.Note}."),
-            PlatformAvailability.Planned => new(PlatformVerdict.NotYet,
-                $"{engine.Name} on {where} is planned ({SliceText(support.Slice)}), not built yet."),
+            PlatformAvailability.Planned => support.Requires?.Check(device, engine.Name) is { Verdict: PlatformVerdict.No } unmet ? unmet
+                : new(PlatformVerdict.NotYet, $"{engine.Name} on {where} is planned ({SliceText(support.Slice)}), not built yet."),
             _ => support.Requires?.Check(device, engine.Name) ?? new(PlatformVerdict.Yes, support.Note)
         };
     }
@@ -558,5 +564,6 @@ public static class PlatformCatalog
         : slice.StartsWith("IO", StringComparison.Ordinal) ? $"{slice} in the iOS plan"
         : slice.StartsWith("MA", StringComparison.Ordinal) ? $"{slice} in the macOS plan"
         : slice.StartsWith("AN", StringComparison.Ordinal) ? $"{slice} in the Android plan"
+        : slice.StartsWith("DX", StringComparison.Ordinal) ? $"{slice} in the Linux and macOS desktop plan"
         : slice;
 }

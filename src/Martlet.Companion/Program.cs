@@ -7,12 +7,8 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        if (args.Contains("--status"))
-        {
-            var platform = PlatformSelector.Create();
-            Console.WriteLine(CompanionStatus.Json(platform, platform.Probe.Probe()));
-            return 0;
-        }
+        if (args.Contains("--status")) return CompanionStatus.Run(args, Console.Out);
+
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

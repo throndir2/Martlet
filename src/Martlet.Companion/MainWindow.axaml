@@ -1,11 +1,75 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Martlet.Companion.MainWindow"
-        Title="Martlet" Width="560" Height="420">
-  <ScrollViewer Padding="16">
-    <StackPanel Spacing="8">
-      <TextBlock Text="Martlet" FontSize="24" FontWeight="SemiBold" />
-      <TextBlock Name="StatusText" AutomationProperties.AutomationId="CompanionStatus" FontFamily="monospace" TextWrapping="Wrap" />
-    </StackPanel>
-  </ScrollViewer>
+        Title="Martlet" AutomationProperties.AutomationId="MartletMainWindow" Width="720" Height="640" MinWidth="480" MinHeight="420">
+  <TabControl Name="Tabs" AutomationProperties.AutomationId="MainTabs" Padding="12">
+    <TabItem Header="Talk" AutomationProperties.AutomationId="TalkTab">
+      <Grid RowDefinitions="*,Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBox Name="Transcript" AutomationProperties.AutomationId="Transcript" IsReadOnly="True" TextWrapping="Wrap"
+                 AcceptsReturn="True" VerticalContentAlignment="Top" />
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <TextBox Name="Message" AutomationProperties.AutomationId="MessageBox" PlaceholderText="Type to talk, Enter to send" />
+          <Button Grid.Column="1" Name="SendButton" AutomationProperties.AutomationId="SendButton" Content="Send" />
+        </Grid>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+          <Button Name="TalkButton" AutomationProperties.AutomationId="TalkButton" Content="Hold to talk" />
+          <Button Name="StopButton" AutomationProperties.AutomationId="StopButton" Content="Stop speaking" />
+          <ToggleButton Name="CharacterToggle" AutomationProperties.AutomationId="CharacterToggle" Content="Show character" />
+          <Button Name="ClearButton" AutomationProperties.AutomationId="ClearButton" Content="New conversation" />
+        </StackPanel>
+        <TextBlock Grid.Row="3" Name="StatusLine" AutomationProperties.AutomationId="StatusLine" TextWrapping="Wrap" Opacity="0.8" />
+        <TextBlock Grid.Row="4" Name="CharacterState" AutomationProperties.AutomationId="CharacterState" TextWrapping="Wrap" Opacity="0.6" />
+      </Grid>
+    </TabItem>
+    <TabItem Header="Settings" AutomationProperties.AutomationId="SettingsTab">
+      <ScrollViewer>
+        <StackPanel Spacing="6" Margin="0,0,12,0">
+          <TextBlock Text="Character" FontWeight="SemiBold" />
+          <TextBox Name="CharacterName" AutomationProperties.AutomationId="CharacterName" PlaceholderText="Name" />
+          <TextBox Name="Persona" AutomationProperties.AutomationId="Persona" AcceptsReturn="True" TextWrapping="Wrap" Height="90" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBox Name="CharacterModelPath" AutomationProperties.AutomationId="CharacterModel" PlaceholderText="VRM (.vrm) or Live2D (.model3.json); empty for the bundled character" />
+            <Button Grid.Column="1" Name="BrowseCharacter" AutomationProperties.AutomationId="BrowseCharacter" Content="Choose…" />
+          </Grid>
+
+          <TextBlock Text="Thinking" FontWeight="SemiBold" Margin="0,8,0,0" />
+          <ComboBox Name="Thinking" AutomationProperties.AutomationId="ThinkingEngine" HorizontalAlignment="Stretch" />
+          <ComboBox Name="OpenAiModel" AutomationProperties.AutomationId="OpenAiModel" HorizontalAlignment="Stretch" />
+          <TextBox Name="ChatBaseUrl" AutomationProperties.AutomationId="ChatBaseUrl" PlaceholderText="https://host/v1 or http://127.0.0.1:11434/v1" />
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Name="PresetOllama" AutomationProperties.AutomationId="PresetOllama" Content="Ollama on this computer" />
+            <Button Name="PresetLmStudio" AutomationProperties.AutomationId="PresetLmStudio" Content="LM Studio" />
+            <Button Name="PresetDockerModelRunner" AutomationProperties.AutomationId="PresetDockerModelRunner" Content="Docker Model Runner" />
+          </StackPanel>
+          <TextBox Name="ChatModel" AutomationProperties.AutomationId="ChatModel" PlaceholderText="Model, for example llama3.2" />
+          <TextBox Name="ChatKey" AutomationProperties.AutomationId="ChatKey" PasswordChar="•" PlaceholderText="API key for this server (leave empty for one on this computer)" />
+          <TextBlock Name="ThinkingWarnings" AutomationProperties.AutomationId="ThinkingWarnings" TextWrapping="Wrap" Foreground="DarkOrange" />
+
+          <TextBlock Text="Listening and speaking" FontWeight="SemiBold" Margin="0,8,0,0" />
+          <ComboBox Name="Listening" AutomationProperties.AutomationId="ListeningEngine" HorizontalAlignment="Stretch" />
+          <ComboBox Name="Speaking" AutomationProperties.AutomationId="SpeakingEngine" HorizontalAlignment="Stretch" />
+          <ComboBox Name="Voice" AutomationProperties.AutomationId="Voice" HorizontalAlignment="Stretch" />
+          <TextBox Name="PushToTalkKey" AutomationProperties.AutomationId="PushToTalkKey" PlaceholderText="Push-to-talk key, for example F8" />
+
+          <TextBlock Text="Keys and consent" FontWeight="SemiBold" Margin="0,8,0,0" />
+          <TextBox Name="OpenAiKey" AutomationProperties.AutomationId="OpenAiKey" PasswordChar="•" PlaceholderText="OpenAI API key" />
+          <TextBlock Name="KeyNote" AutomationProperties.AutomationId="KeyNote" TextWrapping="Wrap" Opacity="0.8" />
+          <CheckBox Name="CloudConsent" AutomationProperties.AutomationId="CloudConsent"
+                    Content="Send what I type and say to the cloud provider I chose (it may charge me)" />
+
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+            <Button Name="SaveButton" AutomationProperties.AutomationId="SaveSettings" Content="Save" />
+            <Button Name="ImportButton" AutomationProperties.AutomationId="ImportSettings" Content="Import settings from another device…" />
+          </StackPanel>
+          <TextBlock Name="Refusals" AutomationProperties.AutomationId="Refusals" TextWrapping="Wrap" Foreground="IndianRed" />
+          <TextBlock Name="NotOffered" AutomationProperties.AutomationId="NotOffered" TextWrapping="Wrap" Opacity="0.7" />
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+    <TabItem Header="This computer" AutomationProperties.AutomationId="ComputerTab">
+      <ScrollViewer>
+        <SelectableTextBlock Name="StatusText" AutomationProperties.AutomationId="CompanionStatus" FontFamily="monospace" TextWrapping="Wrap" />
+      </ScrollViewer>
+    </TabItem>
+  </TabControl>
 </Window>

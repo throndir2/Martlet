@@ -4438,6 +4438,32 @@ can fail in an unattended/headless session; use Doctor's headless tools there.
 An automation click is not proof of actual microphone, speaker or provider
 readiness.
 
+## Martlet for Linux and macOS
+
+`companion_status` runs this checkout's `src/Martlet.Companion` build with
+`--status` (building `Martlet.Mcp` builds it) and returns what it detected about
+the computer (OS, architecture, Apple silicon vs Intel, NVIDIA, Wayland/X11), which
+platform services work, the character renderer in the build, the defaults, and the
+platform-catalog guardrails: every engine per job with `offered`, the catalog's
+verdict and reason, plus local-model warnings. `platform` (`linux-x64`,
+`linux-nvidia`, `linux-arm64`, `macos-arm64`, `macos-x64`) computes all of it for
+that platform from any computer (`simulated: true`). `settingsFile` checks a
+settings.json from another device against it and returns `import.refusals` (each
+with the catalog's reason) and the engines kept. No audio, network or window.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"companion_status","arguments":{"platform":"macos-x64","settingsFile":"C:\\temp\\windows-settings.json"}}]'
+```
+
+On a Windows dev run the companion's window also answers `ui_connect` (process
+`Martlet.Companion`, main window `MartletMainWindow`): the tabs `TalkTab`,
+`SettingsTab` and `ComputerTab` are safe clicks, and `StatusLine`,
+`CharacterState`, `CompanionStatus`, `Refusals`, `NotOffered`,
+`ThinkingWarnings`, `KeyNote` and the engine choices are readable. On Linux or a
+Mac, where this server doesn't run, use `Martlet.Companion --status` and
+`Martlet.Companion --character-check` (opens only the character, prints each
+renderer state as a JSON line, exits 0 once it shows and lip-sync was sent).
+
 ## Verifying changes with Martlet MCP
 
 Every new feature or behavior change is verified on the dev machine through
