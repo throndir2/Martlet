@@ -74,4 +74,72 @@ public sealed class DefaultSetupTests
         Assert.Null(Plan(8).Voice);
         Assert.Equal(SpeechEngines.Default, Plan(8, thinkingGb: 0).Voice);
     }
+
+    private static WelcomePlan Recommend(double? totalGb, WelcomePreference preference, double ramGb = 32, int threads = 16)
+    {
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        IReadOnlyList<GpuNow> gpus = totalGb is { } total ? [new("NVIDIA GeForce RTX", total, 1, "581.42")] : [];
+        var windows = totalGb is { } gb ? new GpuInfo("NVIDIA GeForce RTX", gb) : null;
+        var machine = new MachineInfo("PC", "Windows 11", "CPU", threads, ramGb, windows is null ? [] : [windows], null, false, false);
+        return DefaultSetup.Recommend(DefaultSetup.Specs(machine, gpus), gpus, windows, English, preference);
+    }
+
+    private static WelcomePart Part(WelcomePlan plan, WelcomeJob job) => plan.Parts.Single(p => p.Job == job);
+
+    [Fact]
+    public void TheWizardReadsTheCardsVendorAndMemory()
+    {
+        var specs = Recommend(12, WelcomePreference.LocalOnly).Specs;
+        Assert.Equal("NVIDIA", specs.GpuVendor);
+        Assert.Equal(12, specs.VramGb);
+        Assert.Equal(32, specs.RamGb);
+        Assert.Equal(16, specs.Threads);
+        Assert.Null(Recommend(null, WelcomePreference.LocalOnly).Specs.GpuName);
+    }
+
+    [Fact]
+    public void KeepingEverythingLocalNeverGoesOnline()
+    {
+        foreach (var gb in new double?[] { null, 6, 8, 12, 24 })
+        {
+            var plan = Recommend(gb, WelcomePreference.LocalOnly);
+            Assert.False(plan.ThinkingOnline);
+            Assert.All(plan.Parts, p => Assert.Equal(WelcomePlace.ThisPc, p.Place));
+        }
+    }
+
+    [Fact]
+    public void FreeOnlineMovesThinkingOffACrowdedPc()
+    {
+        // No graphics card: Thinking would run on the processor.
+        var none = Recommend(null, WelcomePreference.FreeOnline);
+        Assert.True(none.ThinkingOnline);
+        Assert.Equal(0, Part(none, WelcomeJob.Thinking).VramGb);
+        // 8 GB: Thinking fits but leaves no room for Chatterbox; online, the card takes the voice.
+        var eight = Recommend(8, WelcomePreference.FreeOnline);
+        Assert.True(eight.ThinkingOnline);
+        Assert.Equal(SpeechEngines.Default.Name, Part(eight, WelcomeJob.Voice).What);
+        // 24 GB holds both, so Thinking stays here.
+        Assert.False(Recommend(24, WelcomePreference.FreeOnline).ThinkingOnline);
+    }
+
+    [Fact]
+    public void LipSyncFollowsLoudnessWithoutRoomForAudio2Face()
+    {
+        Assert.Equal("Voice loudness", Part(Recommend(null, WelcomePreference.LocalOnly), WelcomeJob.LipSync).What);
+        Assert.Equal("Voice loudness", Part(Recommend(8, WelcomePreference.LocalOnly), WelcomeJob.LipSync).What);
+        Assert.Equal("Audio2Face", Part(Recommend(24, WelcomePreference.LocalOnly), WelcomeJob.LipSync).What);
+    }
+
+    [Fact]
+    public void EachPartShowsItsShareOfThisPc()
+    {
+        var plan = Recommend(12, WelcomePreference.LocalOnly);
+        var (vram, _, _) = plan.Share(Part(plan, WelcomeJob.Voice));
+        Assert.Equal(33, vram);
+        Assert.Contains("% graphics memory", plan.Describe(Part(plan, WelcomeJob.Thinking)));
+        var total = plan.Total();
+        Assert.InRange(total.Vram, 1, 100);
+        Assert.Equal(0, WelcomePlan.Percent(4, null));
+    }
 }

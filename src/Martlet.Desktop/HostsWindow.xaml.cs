@@ -29,8 +29,13 @@ public partial class HostsWindow : ThemedWindow
     private readonly HashSet<string> acting = new(StringComparer.Ordinal);
     private int step;
 
-    internal HostsWindow(AvatarProfileStore profiles, ISetupService settings, int startStep = 0, PairedHost? manage = null)
+    /// <summary>A Martlet the welcome wizard already found and the owner chose to join: asked as soon as the window opens.</summary>
+    private NearbyMartlet? connectFirst;
+
+    internal HostsWindow(AvatarProfileStore profiles, ISetupService settings, int startStep = 0, PairedHost? manage = null,
+        NearbyMartlet? connect = null)
     {
+        connectFirst = connect;
         InitializeComponent();
         BuildRoleCards();
         pairings = new(Path.GetDirectoryName(profiles.FilePath)!, profiles, settings);
@@ -45,7 +50,18 @@ public partial class HostsWindow : ThemedWindow
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        if (step == 0) FindNearbyAsync().Forget();
+        if (connectFirst is { } chosen)
+        {
+            // The welcome wizard's Join: the same check-number request as Connect here, for the computer the owner picked there.
+            connectFirst = null;
+            searched = true;
+            nearbyFound = [chosen];
+            ShowNearby();
+            var known = KnownHostIds();
+            var hosts = chosen.Hosts.Where(h => !known.Contains(h)).ToArray();
+            if (hosts.Length > 0) ConnectNearbyAsync(chosen, hosts).Forget();
+        }
+        else if (step == 0) FindNearbyAsync().Forget();
         await ActionAsync("load", async () =>
         {
             var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
