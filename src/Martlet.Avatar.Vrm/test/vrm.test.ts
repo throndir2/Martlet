@@ -298,3 +298,27 @@ test("bone gaze partial overrides scale saturated mapped eye rotation, not input
   assert.ok(angles[2]! < 1e-6);
   runtime.dispose();
 });
+
+test("Martlet's gestures play on the humanoid bones and return to idle", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
+  assert.deepEqual(runtime.gestures, ["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce"]);
+  assert.equal(runtime.playGesture("smile"), false);
+  const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D } } }).model;
+  const bone = (name: string) => vrm.humanoid.getNormalizedBoneNode(name);
+  runtime.update(0.016);
+  const hips = bone("hips").position.y;
+  assert.equal(runtime.playGesture("wave"), true);
+  for (let i = 0; i < 20; i++) runtime.update(0.05);
+  assert.ok(bone("rightUpperArm").rotation.z < 0, "the right arm is raised");
+  assert.ok(bone("rightLowerArm").rotation.z < -0.9, "the forearm points up");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(bone("rightUpperArm").rotation.z > 1, "the arm is back down");
+  assert.equal(runtime.playGesture("bounce"), true);
+  for (let i = 0; i < 4; i++) runtime.update(0.05);
+  assert.ok(bone("hips").position.y > hips, "the hips rise");
+  for (let i = 0; i < 30; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("hips").position.y - hips) < 1e-9, "the hips settle back");
+  assert.equal(runtime.playGesture("bow"), true);
+  for (let i = 0; i < 20; i++) runtime.update(0.05);
+  assert.ok(bone("spine").rotation.x > 0.3, "the spine bends forward");
+});
