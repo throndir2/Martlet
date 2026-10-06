@@ -242,7 +242,7 @@ public sealed class HostRolesTests
         };
         NetworkNode Host(string id, string? deepThinkingHost) =>
             NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, Hosts: hosts,
-                DeepThinkingHost: deepThinkingHost)).Single(n => n.Id == "host:" + id);
+                DeepThinkingHosts: deepThinkingHost is null ? null : [deepThinkingHost])).Single(n => n.Id == "host:" + id);
 
         var a = Host("gpu-a", null);
         Assert.Contains(a.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Ready (qwen3-8b). Choose it in Companion > Deep thinking to use it.");

@@ -576,7 +576,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 BackgroundJobState.Failed => " · couldn't finish",
                 _ => ""
             };
-            chip.Text.Text = $"{job.Kind.Doing}: {job.Label} · {BackgroundJobs.Clockface(job.Elapsed)}{state}";
+            chip.Text.Text = $"{job.Kind.Doing}: {job.Label}{(job.Place is { } place ? " · on " + place.Name : "")} · " +
+                $"{BackgroundJobs.Clockface(job.Elapsed)}{state}";
             chip.Cancel.Visibility = job.Finished ? Visibility.Collapsed : Visibility.Visible;
             AutomationProperties.SetName(chip.Cancel, $"Cancel {job.Id}");
         }
@@ -589,15 +590,19 @@ public partial class LiveConversationWindow : ThemedWindow
     internal static string JobsLine(IReadOnlyList<BackgroundJob> jobs, ThinkDelivery when)
     {
         if (jobs.Count == 0) return "";
-        var parts = jobs.Select(job => job.State switch
+        var parts = jobs.Select(job =>
         {
-            BackgroundJobState.Running => $"{job.Id} running for {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.Waiting => job.Progress is { } note ? $"{job.Id} {note}" : $"{job.Id} waiting to start",
-            BackgroundJobState.Paused => $"{job.Id} paused ({BackgroundJobs.Clockface(job.Elapsed)})",
-            BackgroundJobState.Succeeded => $"{job.Id} done after {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.TimedOut => $"{job.Id} ran out of time",
-            BackgroundJobState.Canceled => $"{job.Id} stopped",
-            _ => $"{job.Id} couldn't finish"
+            var named = job.Place is { } place ? $"{job.Id} on {place.Name}" : job.Id;
+            return job.State switch
+            {
+                BackgroundJobState.Running => $"{named} running for {BackgroundJobs.Clockface(job.Elapsed)}",
+                BackgroundJobState.Waiting => job.Progress is { } note ? $"{named} {note}" : $"{named} waiting to start",
+                BackgroundJobState.Paused => $"{named} paused ({BackgroundJobs.Clockface(job.Elapsed)})",
+                BackgroundJobState.Succeeded => $"{job.Id} done after {BackgroundJobs.Clockface(job.Elapsed)}",
+                BackgroundJobState.TimedOut => $"{job.Id} ran out of time",
+                BackgroundJobState.Canceled => $"{job.Id} stopped",
+                _ => $"{job.Id} couldn't finish"
+            };
         });
         var finished = jobs.Any(job => job.Finished && !job.Quiet);
         return "Working in the background: " + string.Join("; ", parts) + "." + (finished

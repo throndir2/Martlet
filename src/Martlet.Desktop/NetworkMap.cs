@@ -72,7 +72,7 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
-    IReadOnlyList<MartletComputer>? Computers = null, string? DeepThinkingHost = null);
+    IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -459,7 +459,7 @@ internal static class NetworkMap
                         (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
                 // Deep thinking is this PC's own choice (Companion > Deep thinking), not a job handed out here.
                 else if (role.Kind == HostRoles.DeepThinking && model is not null)
-                    target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHost == paired.HostId
+                    target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
                         : $"Ready ({model}). Choose it in Companion > Deep thinking to use it.", DeviceComponent.Standby(role.Kind)));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
@@ -550,7 +550,7 @@ internal static class NetworkMap
             if (companion && !speaks && Can(HostRoles.Speaking))
                 target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Use this PC's host service for speaking" : "Use this computer for speaking",
                     check?.Offers?.ContainsKey(HostRoles.Speaking) == true, id, Ready(HostRoles.Speaking)));
-            if (companion && inputs.DeepThinkingHost != id && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
+            if (companion && inputs.DeepThinkingHosts?.Contains(id) != true && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
                 target.Commands.Add(new(NodeAction.Companion, "Choose it for Deep thinking", Argument: nameof(CompanionTab.DeepThinking),
                     Component: Ready(HostRoles.DeepThinking)));
             foreach (var role in HostRoles.All)
