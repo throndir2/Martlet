@@ -170,7 +170,7 @@ internal static class ResearchCheck
             job = job is null ? null : new
             {
                 id = job.Id, kind = job.Kind.Name, state = job.State.ToString(), offer = job.Kind.Offer, doing = job.Kind.Doing,
-                timeLimit = BackgroundJobs.Duration(job.Kind.TimeLimit), perHour = job.Kind.MaxPerHour, elapsedMs = (long)job.Elapsed.TotalMilliseconds,
+                timeLimit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none", perHour = job.Kind.MaxPerHour, elapsedMs = (long)job.Elapsed.TotalMilliseconds,
                 problem = job.Problem
             },
             run = run is null ? null : new { searches = run.Searches, pagesRead = run.Pages, unreadable = run.Failures, bytes = run.Bytes, modelSteps = run.Steps },
@@ -202,7 +202,7 @@ internal static class ResearchCheck
         waited.Restart();
         while (jobs.Active.Count > 0 && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
         using var hourly = new BackgroundJobs();
-        var refusals = Enumerable.Range(0, WebResearch.Kind.MaxPerHour + 1)
+        var refusals = Enumerable.Range(0, (WebResearch.Kind.MaxPerHour ?? 0) + 1)
             .Select(_ => hourly.Start(WebResearch.Kind, "x", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("x"))))
             .Select(start => { Thread.Sleep(30); return start.Refusal; }).ToArray();
         // Placed on Deep thinking's places (ThinkLonger.Places): a think holding the only place keeps research from starting

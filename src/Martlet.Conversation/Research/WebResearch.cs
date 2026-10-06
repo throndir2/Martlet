@@ -39,7 +39,9 @@ public static class WebResearch
     public const int MaxTaskBytes = 13_000;
 
     /// <summary>One at a time, 4 an hour, 12 minutes each; offered when done (the report is shown on a yes).</summary>
-    public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeSpan.FromMinutes(12), Offer: true, Doing: "Researching");
+    public static TimeSpan TimeLimit { get; } = TimeSpan.FromMinutes(12);
+
+    public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeLimit, Offer: true, Doing: "Researching");
 
     public const string ParametersJson =
         """{"type":"object","properties":{"topic":{"type":"string","description":"What to look up, as you'd type it into a web search."},"what_to_find":{"type":"string","description":"Exactly what the user wants to find out."}},"required":["topic","what_to_find"],"additionalProperties":false}""";
@@ -81,7 +83,7 @@ public static class WebResearch
     }
 
     public static string Started(BackgroundJob job, bool toldUser) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(job.Kind.TimeLimit) }) + "\n" +
+        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(TimeLimit) }) + "\n" +
         (toldUser
             ? "You're looking it up in the background now. You already told the user, so add nothing more, or at most a few words."
             : "You're looking it up in the background now. Tell the user now, in one short sentence in character, that you'll look " +

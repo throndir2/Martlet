@@ -54,7 +54,7 @@ internal sealed partial class LiveConversationController
         tools?.Record(server, WebResearch.Name, "started " + started.Id, label, false);
         var chosen = pool.Find(started.Place!.Id)!;
         ErrorLog.Info($"Web research: started {started.Id}, thinking on {(chosen.Settings.Separate ? chosen.Settings.Describe() : thinkingModel)} " +
-            $"(placed on {chosen.Computer}; {BackgroundJobs.Duration(WebResearch.Kind.TimeLimit)} limit, " +
+            $"(placed on {chosen.Computer}; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit, " +
             $"{jobs.StartedWithinHour(WebResearch.KindName)} of {WebResearch.Kind.MaxPerHour} this hour)" +
             (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return new(WebResearch.Started(started, toldUser));

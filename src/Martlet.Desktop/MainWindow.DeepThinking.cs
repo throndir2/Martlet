@@ -267,7 +267,7 @@ public partial class MainWindow
                 : thinking.StartsWith("On. ", StringComparison.Ordinal) ? thinking[4..] : thinking;
             return ("On, but Martlet can't look things up yet: " + char.ToLowerInvariant(why[0]) + why[1..], true);
         }
-        return ($"On. When you ask, Martlet looks it up (up to {BackgroundJobs.Duration(WebResearch.Kind.TimeLimit)}, at most " +
+        return ($"On. When you ask, Martlet looks it up (up to {BackgroundJobs.Duration(WebResearch.TimeLimit)}, at most " +
             $"{WebResearch.Kind.MaxPerHour} an hour), then offers the report.", false);
     }
 
