@@ -5,7 +5,8 @@ what can an API or another machine do, and how should I split the work?"
 VRAM/RAM figures are rough upstream model-size estimates for planning, **not
 Martlet measurements**; no GPU/driver/model tuple is qualified yet
 ([Ubuntu host matrix](INSTALLATION_SUPPORT.md#proposed-matrix)). Leave 10-15%
-VRAM headroom and measure your own machine.
+VRAM headroom and measure your own machine. Per-model numbers, with which are
+measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS.md).
 
 **In the app:** the welcome tour's **Recommend a setup for me**, or **Not sure
 what you need? Get a recommendation** on Home, opens the setup advisor. It asks for
