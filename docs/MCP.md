@@ -2237,6 +2237,39 @@ with `computer`, `where`, `available`, `rank` and `heldBy` (the job IDs holding
 it now); and `maxThinks`),
 never a task or result. Read-only.
 
+`discord_reply_status` shows Martlet's Discord reply engine (optional absolute
+`dataDirectory`): `file` (*none*, *loaded* or *unreadable*) and `engine`, the
+desktop's `discord-replies.json`, written when the desktop wires the engine at
+start and after every Discord turn: `wired`, `startedAt`, `updatedAt`,
+`replies`, `passes` ([pass] or nothing to add), `skipped` and `lastSkip`
+(*chance*, *cooldown*, *hourly_limit*, *not_twice_in_a_row*, *place_busy*,
+*local.busy*, *local.preempted*), `failures`, `lastError` and `lastErrorAt`
+(codes such as *thinking.not_set_up* or a provider failure), `places` (places
+with history), `running`, `lastReplyAt`, `lastPassAt`, `lastLatencyMs`,
+`lastFirstWordsMs`, `lastInputTokens`, `lastCachedTokens`, `waitingForLocal`,
+`preemptedByLocal`, `route` (`routeType`, `model`, `onYourNetwork`),
+`localStrategy` and `lanes`; and `discord`, discord.json's chat setup
+(`configured`, `enabled`, `ownerSet`, `serverChat`, `directChat`, `voiceChat`,
+`channelRules`, `people`). Never what was said, names, IDs or the token.
+Read-only.
+
+`discord_reply_check` rehearses the engine's production Discord side
+(`DiscordReplier`: per-place history, the ambient gate, multi-party prompt
+shaping, [pass] and Discord's limits) through the production Chat Completions
+adapter against a fixture endpoint on 127.0.0.1 (canned replies, NOT AI).
+`fixture.steps` are seven made-up turns, each with `expected`, `outcome`
+(*reply*, *pass* or *skip:reason*), `replyCharacters`, `reply` and `sent` (each
+message's `role`, `characters` and start; `tools` false): ambient chatter
+skipped by chance, an addressed turn answered, ambient right after it skipped
+by the cooldown, ambient naming Martlet passed with [pass], an over-long answer
+kept within 2000 characters, a voice-call answer without markdown or emoji and
+the owner's DM; `ok` when every outcome matches. The desktop sends the same
+shaped turns inside the live conversation's own request (persona, style, lore,
+memory, reply length; `DiscordReplyEngine`), which `DiscordReplyEngineTests`
+check. With `live: true` it also asks Ollama on this PC (the saved local Thinking
+model, or `model`) two made-up turns with the saved persona: `live.turns`
+(`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
+
 The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
 places think at once, and each paired computer's `DeepThinkingPool-<host>` box
 (*Think on diva too*, ticked or not) reads; ticking it saves
@@ -4166,7 +4199,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

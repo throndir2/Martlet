@@ -264,7 +264,7 @@ public sealed class DiscordVoiceConversation : IAsyncDisposable
         var addressed = DiscordVoiceRules.Addressed(text, now.Names, now.Humans);
         if (!DiscordChatRules.Considers(now.Mode, addressed)) return;
         if (replies() is not { } engine) { Fail("The Discord reply engine isn't ready."); return; }
-        var reply = await engine.ReplyAsync(new(place, speaker, text, DiscordTurnSource.Voice, addressed, before), token)
+        var reply = await engine.ReplyAsync(new(place, speaker, text, DiscordTurnSource.Voice, addressed, before, now.Mode), token)
             .ConfigureAwait(false);
         if (reply is null || string.IsNullOrWhiteSpace(reply.Text)) return;
         lock (gate)

@@ -265,7 +265,7 @@ public sealed class DiscordTextChat
                 timeout.CancelAfter(options.ReplyTimeout);
                 using var typing = command is null ? transport.Typing(message.Place) : null;
                 var turn = new DiscordTurn(message.Place, message.Speaker, message.Text, DiscordTurnSource.Text, addressed,
-                    Recent.Before(message.Place, lineId));
+                    Recent.Before(message.Place, lineId), mode);
                 try { reply = await replies.ReplyAsync(turn, timeout.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested)
                 {
