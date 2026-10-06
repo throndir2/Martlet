@@ -314,6 +314,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool MicrophoneUsable => controller.Configuration is { } selected && selected.Unavailable(Voice, true) is null;
     private bool Available => ready && !locked && loading is null && controller.Configuration is not null;
 
+    /// <summary>The conversation loaded and still can't talk (Thinking isn't set up, or its settings couldn't be read).</summary>
+    internal bool CantTalk => begun && !loadPending && loading is null && (!ready || controller.Configuration is null);
+
     private bool Recording => owned is { OwnershipReleased: false, HandsFree: false } live && live.Authorization.Microphone &&
         live.Turn is null && live.Transcription is null && !live.Status.Finished;
 
@@ -494,20 +497,37 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>You are talking, or something you said or typed is about to be answered.</summary>
     private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0;
 
+    /// <summary>How long since you last talked with Martlet here (spoke, typed or a turn finished), or null before anything.</summary>
+    internal TimeSpan? SinceActivity => UserBusy ? TimeSpan.Zero : activityAt == 0 ? null : clock.GetElapsedTime(activityAt);
+
+    /// <summary>A due reminder for this conversation: it starts (hidden) when it hasn't yet, and Martlet brings the reminder up on
+    /// its own as soon as it is free, or with what you say next.</summary>
+    internal BackgroundJob? Remind(string label, string text)
+    {
+        if (closed) return null;
+        if (!begun) StartInBackground();
+        var job = controller.Remind(label, text);
+        if (job is not null) ErrorLog.Info($"Reminders: {job.Id} is due; Martlet brings it up as soon as it's free.");
+        RenderActions();
+        return job;
+    }
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused, and the conversation has been quiet for
     /// <see cref="ReportQuiet"/>.</summary>
     private bool TryReport()
     {
-        if (closed || !Available || Paused || reportHeld || controller.Configuration?.ThinkLonger.When != ThinkDelivery.WhenFree ||
-            !controller.Jobs.HasNews || UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
+        // A due reminder is brought up as soon as Martlet is free even when Thinking longer shares results when you talk next.
+        var whenFree = controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree;
+        if (closed || !Available || Paused || reportHeld || !(whenFree ? controller.Jobs.HasNews : controller.Jobs.HasNotice) ||
+            UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
             commentary is { OwnershipReleased: false } || controller.Singing?.Playing == true ||
             activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
             return false;
         try
         {
-            if (controller.StartReport(Voice) is not { } report) return false;
+            if (controller.StartReport(Voice, noticesOnly: !whenFree) is not { } report) return false;
             owned = report;
             yielded = null;
             notice = null;
@@ -526,7 +546,7 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     // The note above Martlet's report: which job finished and how.
-    private static string JobNote(BackgroundJob job) => job.State switch
+    private static string JobNote(BackgroundJob job) => job.Kind.Notice ? $"{job.Kind.Doing}: “{job.Label}”." : job.State switch
     {
         BackgroundJobState.Succeeded => $"Finished: {job.Kind.Doing.ToLowerInvariant()} “{job.Label}” ({BackgroundJobs.Clockface(job.Elapsed)}).",
         BackgroundJobState.TimedOut => $"Ran out of time {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”.",
