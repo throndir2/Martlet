@@ -315,6 +315,19 @@ which machine is free to think depends on the computer you talk to):
   there, with its current model selected. The old model keeps thinking until the
   new one is downloaded and loaded; then this PC (and each of your computers, on
   its next check) thinks with the new one.
+  The same dialog asks how many thinks it runs at once (*Thinks at once*, 1 to
+  4: its Ollama's `OLLAMA_NUM_PARALLEL`), so one graphics card counts as several
+  places for background work. Ollama loads the model once and reserves one
+  think's context per slot when it loads, so only the choice costs memory, never
+  a running think: Martlet recommends the most that fit on that computer's card
+  beside its other roles (Thinking's model with its context, the voice, lip-sync,
+  listening) for each model (`DeepThinkingSlots`, shown under the choice as
+  `HostInputFit-OLLAMA_NUM_PARALLEL-OLLAMA_MODEL`), so the Thinking and voice
+  models are never pushed off the card. The role advertises its slots as its
+  route's `maximum_concurrency`, the gateway admits that many thinks at once
+  (one more gets `job.busy`), and a host check reads them
+  (`HostCheck.DeepThinkingSlots`; the host's line says "Deep thinking (2 thinks at
+  once)").
   The conversation's newest
   exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
   tools), and the computer loads 32,768 tokens of context for it. A computer's

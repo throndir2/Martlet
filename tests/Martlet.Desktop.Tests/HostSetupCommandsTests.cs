@@ -486,4 +486,62 @@ public sealed class HostSetupCommandsTests
         Assert.Equal(new WindowsFirewall.State(true, "Public", 7, false, true), WindowsFirewall.Parse("True|Public|7|False|True\r\n"));
         Assert.Equal(new WindowsFirewall.State(false, null, null, false), WindowsFirewall.Parse("unexpected"));
     }
+
+    // "martlet-host describe deep-thinking" for a host that runs it with gemma4:12b, one think at a time.
+    private static readonly string[] DeepThinkingDescribe =
+    [
+        "role.title=Deep thinking", "role.requires=docker", "role.terms=Ollama (MIT).", "role.installed=yes",
+        "role.choice=OLLAMA_MODEL|Deep thinking model|" + string.Join(' ', DeepThinkingFit.Models) + "|gemma4:e2b",
+        "role.suggested=OLLAMA_MODEL",
+        "role.choice=OLLAMA_NUM_PARALLEL|Thinks at once|1 2 3 4|1",
+        "role.accelerator=gpu cpu", "role.accelerator_current=gpu",
+        "role.choice_current=OLLAMA_MODEL|gemma4:12b", "role.choice_current=OLLAMA_NUM_PARALLEL|1"
+    ];
+
+    [Fact]
+    public void Deep_thinking_settings_recommend_the_thinks_at_once_that_fit_beside_the_hosts_other_roles_for_each_model()
+    {
+        var hardware = new Martlet.Core.Installation.HostHardware("gpu-a", "https://192.168.1.30:9443", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, "docker", "Ubuntu 24.04", null, "Ryzen 9", 32, 64, "docker", "yes",
+            [new Martlet.Core.Installation.HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24_564, "590.1")]);
+        var offers = new Dictionary<string, string> { [HostRoles.Ollama] = "gemma4-e4b", [HostRoles.DeepThinking] = "gemma4-12b" };
+        var recommended = DeepThinkingFit.Recommend(hardware, offers);
+        // Thinking's gemma4:e4b (with its context) takes about 8.4 GB of the 24 GB card: gemma4:12b fits one think, gemma4:e2b two.
+        Assert.Equal("1", recommended["choice.OLLAMA_NUM_PARALLEL"].Value);
+        Assert.Contains("beside Thinking's gemma4:e4b", recommended["choice.OLLAMA_NUM_PARALLEL"].Why);
+        Assert.Equal("2", recommended["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
+        Assert.Equal("1", recommended["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:26b"].Value);
+        // Alone on the card, a small model gets more; without an NVIDIA card one at a time.
+        Assert.Equal("4", DeepThinkingFit.Recommend(hardware, new Dictionary<string, string>())["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
+        Assert.Equal("1", DeepThinkingFit.Recommend(hardware with { Gpus = [] }, offers)["choice.OLLAMA_NUM_PARALLEL@OLLAMA_MODEL=gemma4:e2b"].Value);
+
+        RunSta(() =>
+        {
+            var dialog = HostInputDialog.RoleDialog("gpu-a", "deep-thinking", HostRemote.ParseRole(DeepThinkingDescribe), recommended);
+            var model = Find<ComboBox>(dialog, "HostInput-choice.OLLAMA_MODEL");
+            var slots = Find<ComboBox>(dialog, "HostInput-choice.OLLAMA_NUM_PARALLEL");
+            var fit = Find<TextBlock>(dialog, "HostInputFit-OLLAMA_NUM_PARALLEL-OLLAMA_MODEL");
+            Assert.Equal("1", slots.SelectedItem);
+            Assert.StartsWith("With gemma4:12b: 1 recommended", fit.Text);
+            model.SelectedItem = "gemma4:e2b";
+            Assert.StartsWith("With gemma4:e2b: 2 recommended", fit.Text);
+            slots.SelectedItem = "2";
+            Assert.Equal("2", HostInputDialog.Cleaned(dialog.Answers())!["choice.OLLAMA_NUM_PARALLEL"]);
+            dialog.Close();
+        });
+    }
+
+    [Fact]
+    public void A_host_check_reports_how_many_thinks_its_deep_thinking_role_runs_at_once()
+    {
+        static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, int slots) => new(id, "/p", "c", "1.0", "d", "w", "1.0", "m",
+            "ollama", new string('a', 64), new string('b', 64), 1, 1, 1, 1, 2, 1, TimeSpan.FromMinutes(15), "request_abort", slots);
+        var offers = new Dictionary<string, string> { [HostRoles.Ollama] = "gemma4-e4b", [HostRoles.DeepThinking] = "qwen3-8b" };
+        var routes = new[] { Route(Martlet.Avatar.Audio2Face.Remote.HostRoute.OllamaChatRouteId, 1),
+            Route(Martlet.Avatar.Audio2Face.Remote.HostRoute.DeepThinkingRouteId, 3) };
+        Assert.Equal(3, new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots);
+        Assert.Null(new HostCheck(true, "", offers, Routes: routes[..1]).DeepThinkingSlots);
+        Assert.Contains("Deep thinking (3 thinks at once)", HostControl.Describe(offers, routes));
+        Assert.DoesNotContain("at once", HostControl.Describe(offers, [routes[0], Route(routes[1].RouteId, 1)]));
+    }
 }

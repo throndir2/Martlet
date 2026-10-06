@@ -339,7 +339,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
-            "with Thinking steps on), and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
+            "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
+            "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
@@ -354,6 +355,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the computer it was added on, whether this PC's copy is complete and whether this PC shows it (avatar.json); copies " +
             "still waiting in character-models-incoming; and what this PC shows (built-in, a shared copy, a copy no longer listed or " +
             "a model file outside the list). Never returns character names or file paths. Read-only; contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("character_profiles", "Read the character profiles (Companion > Profiles) from a data directory: each profile's key (first " +
+            "8 hex digits of its ID, as in CharacterProfileState-<key>), whether its personality is saved, what its look is (keep, " +
+            "builtin, a listed character whose copy is ready or still copying here, or missing) and its voice (keep, listed or " +
+            "missing); the profile switched to last; and which profile matches what Martlet uses now (the active persona, the look " +
+            "in avatar.json and the voice the speaking route keeps or the shared list chose). Never returns names. Read-only; " +
+            "contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1043,6 +1053,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
+                "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
@@ -1843,6 +1854,64 @@ internal sealed class McpServer(DesktopAutomation desktop)
         periods = breaks.Periods, questionMarks = breaks.QuestionMarks,
         exclamationMarks = breaks.ExclamationMarks, shortEndingWords = breaks.ShortEndingWords, isDefault = breaks.IsDefault
     };
+    /// <summary>The character profiles saved in a data directory (Companion › Profiles), by key, with whether each part
+    /// resolves here and which one matches what Martlet uses now. Names are the owner's and are never returned.</summary>
+    private static object CharacterProfiles(JsonElement arguments)
+    {
+        var directory = DataDirectory(arguments);
+        var settingsPath = Path.Combine(directory, "settings.json");
+        var settings = File.Exists(settingsPath) ? Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(settingsPath)) : null;
+        var companion = settings?.Companion;
+        string? shownPath = null;
+        try
+        {
+            using var avatar = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "avatar.json")));
+            shownPath = avatar.RootElement.TryGetProperty("model_path", out var value) ? value.GetString() : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+        var library = Martlet.Avatar.Hosting.SharedCharacterModels.Load(directory) ?? Martlet.Core.Characters.CharacterModelLibrary.Empty;
+        var modelNow = shownPath is null || Martlet.Avatar.Hosting.BundledLive2D.IsBuiltIn(shownPath)
+            ? Martlet.Core.Settings.CharacterProfile.BuiltInModel
+            : Martlet.Avatar.Hosting.SharedCharacterModels.ForPath(directory, library, shownPath)?.Id;
+        Martlet.Core.Voices.SpeakingVoiceLibrary voices;
+        try { voices = Martlet.Core.Voices.SpeakingVoiceLibrary.Parse(File.ReadAllBytes(Path.Combine(directory, "speaking-voices.json"))); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            voices = Martlet.Core.Voices.SpeakingVoiceLibrary.Empty.Seed(Martlet.F5.F5SharedVoices.Starters);
+        }
+        var voiceNow = settings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Tts) is
+            { RouteType: Martlet.Core.Settings.SetupRouteType.GatewayF5, Reference: { } reference }
+            ? reference.ReferenceRevision : voices.ChosenVoice?.Id;
+        var current = companion?.CurrentCharacter(modelNow, voiceNow);
+        var profiles = companion?.CharacterList ?? [];
+        return new
+        {
+            state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
+            count = profiles.Count,
+            lastUsed = profiles.FirstOrDefault(c => c.Id == companion!.ActiveCharacterId)?.Key,
+            current = current?.Key,
+            look = modelNow is null ? "model-file-outside-list" : modelNow == Martlet.Core.Settings.CharacterProfile.BuiltInModel ? "builtin"
+                : "shared:" + Martlet.Avatar.Hosting.SharedCharacterModels.Key(modelNow),
+            voiceChosen = voiceNow is not null,
+            profiles = profiles.Select(p => new
+            {
+                key = p.Key,
+                personaSaved = companion!.Personas.Any(persona => persona.Id == p.PersonaId),
+                personaActive = p.PersonaId == companion.ActivePersonaId,
+                look = p.ModelId switch
+                {
+                    null => "keep",
+                    Martlet.Core.Settings.CharacterProfile.BuiltInModel => "builtin",
+                    var id => library.Live.FirstOrDefault(m => m.Id == id) is { } model
+                        ? Martlet.Avatar.Hosting.SharedCharacterModels.IsComplete(directory, model) ? "ready" : "copying"
+                        : "missing"
+                },
+                voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
+                inUse = p.Id == current?.Id
+            }).ToArray()
+        };
+    }
+
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's
     /// SharedCharacterModels): keys, renderers, sizes and whether each copy is complete here. Names and paths are the owner's
     /// and are never returned.</summary>
