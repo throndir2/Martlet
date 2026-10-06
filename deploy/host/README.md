@@ -24,6 +24,7 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
 | **Desktop: another computer over SSH, native** | Any x86_64 Linux with systemd, SSH and sudo (Ubuntu, Debian, Fedora, openSUSE, Arch, ...; no version check) | Martlet hosts > *over SSH, native* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
 | **On the host, Docker** | any Docker host | `docker run ... martlet-host <command>` (below) | containers |
 | **On the host, native** | Any x86_64 Linux with systemd | `./deploy/host/martlet-host <command>` (below) | systemd user service |
+| **On a Mac, native** | macOS 14+, Apple silicon or Intel; Ollama and/or whisper.cpp installed | the Mac host's `macos-setup` ([Mac](#mac)) | launchd agent `io.github.throndir2.martlet.host` |
 
 For SSH hosts the desktop does everything itself (see [Driving Linux hosts from
 Windows](#driving-linux-hosts-from-windows-over-ssh)): you enter `user@computer`
@@ -328,6 +329,31 @@ system package manager (`apt-get`, `dnf`/`yum`, `zypper` or `pacman`; Docker
 falls back to Docker's install script where the distribution has no Compose v2
 package). sudo-rs (Ubuntu 25.10's default `sudo`) works too. On a minimal system without ICU (`libicu`), the build and the gateway
 run in .NET's invariant globalization mode.
+
+### Mac
+
+A Mac is not a native Linux host (`martlet-host` stops on macOS and says so).
+Use the **Mac host** instead: Martlet's gateway as a launchd agent, relaying to
+Ollama and whisper.cpp running natively on the Mac's GPU (Metal) on Apple
+silicon, or on the CPU on Intel. With Ollama installed
+([ollama.com](https://ollama.com/download)) and, for listening,
+`brew install whisper-cpp`:
+
+```sh
+"/Applications/Martlet.app/Contents/Resources/host/Martlet.Gateway.Host.Linux" macos-setup
+"/Applications/Martlet.app/Contents/Resources/host/Martlet.Gateway.Host.Linux" macos-pair
+```
+
+It offers only what is installed and never F5 (PyTorch), Audio2Face or the
+other NVIDIA roles. Details, files and limits:
+[macOS: the Mac host](../../docs/MACOS.md#the-mac-host-dx04). Not yet run on a
+Mac.
+
+The **Docker method** also works on Docker Desktop for Mac, CPU only (Docker
+gives containers no Mac GPU): the host image builds for Apple silicon (arm64)
+as well as x86_64. Ollama's image is multi-architecture; the pinned whisper.cpp
+image is x86_64 only, so Docker runs it emulated and slowly there, and the
+native Mac host is the better listening host. Not yet run on a Mac.
 
 ### Computers without internet
 

@@ -57,7 +57,7 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
 
     internal LinuxFileSystem()
     {
-        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture is not (Architecture.X64 or Architecture.Arm64))
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
         if (GetGlibcVersion() == IntPtr.Zero)
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
@@ -71,13 +71,24 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
 
     public int OpenRoot()
     {
-        var result = NativeOpen("/", Directory | NoFollow | CloseOnExec);
+        var result = NativeOpen("/", NativeFlags(Directory | NoFollow | CloseOnExec));
         return Check(result);
+    }
+
+    /// <summary>The flags above are x86_64's; arm64 Linux numbers O_DIRECTORY and O_NOFOLLOW differently (0x4000 and
+    /// 0x8000, where x86_64's 0x4000 is O_DIRECT and 0x20000 is O_LARGEFILE).</summary>
+    internal static int NativeFlags(int flags, bool arm64 = false)
+    {
+        if (!arm64 && RuntimeInformation.ProcessArchitecture != Architecture.Arm64) return flags;
+        var native = flags & ~(Directory | NoFollow);
+        if ((flags & Directory) != 0) native |= 0x4000;
+        if ((flags & NoFollow) != 0) native |= 0x8000;
+        return native;
     }
 
     public int OpenAt(int directory, string name, int flags, uint mode, ulong resolve)
     {
-        var how = new OpenHow { Flags = (ulong)flags, Mode = mode, Resolve = resolve };
+        var how = new OpenHow { Flags = (ulong)NativeFlags(flags), Mode = mode, Resolve = resolve };
         long result;
         do { result = OpenAt2(437, directory, name, ref how, 24); }
         while (result < 0 && Marshal.GetLastPInvokeError() == 4);

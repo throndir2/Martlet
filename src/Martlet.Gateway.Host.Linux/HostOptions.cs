@@ -5,8 +5,9 @@ namespace Martlet.Gateway.Host.Linux;
 internal sealed record HostOptions(string Command, string ConfigPath)
 {
     internal const string Help = """
-        Martlet Linux gateway candidate (native x86_64/glibc/ext4; default No)
+        Martlet Linux and macOS gateway (native x86_64/arm64 Linux on ext4, or macOS 14+ on APFS; default No)
         No arguments, help, --help, -h: passive help; no file/key/listener access.
+        Mac host: macos-setup, macos-pair, macos-status, macos-machine, macos-uninstall (macos-setup help for details).
         Commands: validate, status, init, admin, rebind, serve, health, owner-init, owner-approve, owner-pair, owner-network-reset,
                   owner-exposure
         Syntax: <command> --config <absolute-private-directory>/host.json

@@ -686,6 +686,20 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
 
+`mac_host_check` (no arguments) checks the Mac host ([macOS](MACOS.md#host)) as
+far as a Windows PC can. In the `mcr.microsoft.com/dotnet/sdk:10.0.401` image
+(never pulled; NuGet packages cached in `martlet-outside-check-nuget`) it
+publishes this checkout's `Martlet.Gateway.Host.Linux` self-contained for
+`osx-arm64` and `osx-x64` (the files the Mac app bundles), runs
+`macos-setup help` and checks `macos-status` refuses with exit 4
+(`macos.unsupported`) off a Mac. In-process it checks the platform catalog for a
+Mac host's machine report: Ollama and whisper allowed, F5 and Audio2Face refused
+for want of an NVIDIA GPU, roles not managed from the desktop. It returns
+`{passed, exitCode, steps, notRun}`; steps `catalog-mac-host`,
+`publish-osx-arm64`, `publish-osx-x64`, `macos-setup-help`,
+`macos-commands-refused-off-a-mac`. Running on a Mac (launchd, APFS custody,
+Metal, native Ollama and whisper.cpp) is always reported in `notRun`.
+
 `outside_path_check` (no arguments) checks reaching a host from outside home on
 real sockets ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)). It
 builds this checkout's `Martlet.Gateway.Host.Linux` in the

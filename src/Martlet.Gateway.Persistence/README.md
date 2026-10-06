@@ -13,6 +13,16 @@ integration is added. See [Gateway inference composition](../Martlet.Gateway/REA
 for mandatory per-action permissions, retained retirement ownership and protocol-2
 client migration.
 
+**macOS:** the same `LinuxServicePermissions` backend runs on macOS through
+`MacFileSystem` (selected by `PosixFileSystem.Create()`), with the same
+contract on local read-write APFS: single-name `openat` below held directories
+with `O_NOFOLLOW_ANY` and a same-volume check, `fstat` identities, ACLs that
+grant access refused (deny-only entries allowed), `flock`, `F_FULLFSYNC`,
+`renameatx_np(RENAME_EXCL)` and `kern.bootsessionuuid` as the boot identity.
+arm64 Linux is admitted too (its `O_DIRECTORY`/`O_NOFOLLOW` values differ and
+are translated). Neither has run natively here: macOS NOT RUN; arm64 Linux
+reached `openat2` under QEMU emulation, which QEMU doesn't implement.
+
 ## Pairing is not connectivity
 
 Device pairing is explicitly **non-expiring**. Ordinary process restarts, OS

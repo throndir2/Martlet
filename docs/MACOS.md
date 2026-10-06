@@ -8,6 +8,11 @@
 > companion's macOS integration (overlay, hot key, Keychain, screen looks,
 > login item, menu bar, probe) is built in DX03, not yet run on a Mac: see
 > [DX03 status](DESKTOP_LINUX_MACOS.md#dx03-status-macos-integration-2026-10-06).
+>
+> **Mac host built (DX04, 2026-10-06):** the .NET gateway runs on macOS 14+ as a
+> launchd agent and relays to native Ollama and whisper.cpp on Metal; see
+> [The Mac host (DX04)](#the-mac-host-dx04). It has **not been run on a Mac**:
+> every Mac runtime result is NOT RUN.
 
 **Plan, 2026-09-30. No macOS code, build or Mac test exists yet; everything
 below is design and dated platform research, and every Mac result is NOT
@@ -136,13 +141,64 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 
 | Option | For | Against |
 | --- | --- | --- |
-| **(b) The Swift host from IO03, inside the Mac app as a login agent (chosen)** | One Apple host for iPhone, iPad and Mac; direct Apple engines and MLX; Keychain; no .NET runtime; the Mac is the easiest place to build and debug it (no weekly re-signing, runs in the background) | Needs IO01-IO02 first; Swift re-implements the Ollama relay and embeds whisper.cpp, checked against the IO01 vectors; managed on the Mac, not over SSH from Windows |
-| (a) The existing .NET gateway (`Martlet.Gateway.Host.Linux`) for osx-arm64/osx-x64 under launchd | Protocol authority with its Ollama, whisper, F5 and Audio2Face relays; could be driven over SSH like Linux hosts (macOS allows SSH-started tools on the LAN, TN3179) | Its state custody backend (`Martlet.Gateway.Persistence`) is Linux-only (`openat2`, `statx`, `renameat2`, glibc and ext4 checks) and needs a macOS backend; `martlet-host` needs a launchd method; every Apple engine would still need a Swift helper process; .NET 10 needs macOS 14+ ([Microsoft](https://learn.microsoft.com/dotnet/core/install/macos)); a second Apple-side host to keep in sync with the iPhone's |
-| (c) The `martlet-host` Docker method on Docker Desktop for Mac | No new Mac code; same commands | Containers get no Metal GPU (CPU only, inside a VM with fixed memory); the host image downloads x86_64 Docker CLI/Compose, so Apple silicon needs a multi-architecture fix; F5 and Audio2Face impossible; Docker Desktop supports only the current and two previous macOS releases (15 and later once it supports 27) |
+| **(a) The existing .NET gateway (`Martlet.Gateway.Host.Linux`) for osx-arm64/osx-x64 under launchd (chosen 2026-10-06, built in DX04)** | Protocol authority with its Ollama and whisper relays, pairing, cluster sync and failover unchanged; one gateway for Linux and Mac hosts | Needed a macOS state-custody backend (done: `MacFileSystem`); every Apple engine would still need a Swift helper process; .NET 10 needs macOS 14+ ([Microsoft](https://learn.microsoft.com/dotnet/core/install/macos)) |
+| (b) The Swift host from IO03, inside the Mac app as a login agent (superseded for Macs) | One Apple host for iPhone, iPad and Mac; direct Apple engines and MLX | Needs IO01-IO02 first; re-implements the Ollama relay and whisper.cpp in Swift; stays the iPhone/iPad plan |
+| (c) The `martlet-host` Docker method on Docker Desktop for Mac | No new Mac code; same commands | Containers get no Metal GPU (CPU only, inside a VM with fixed memory); F5 and Audio2Face impossible; Docker Desktop supports only the current and two previous macOS releases. The host image now builds for arm64 (DX04) |
 
-(c) stays as a fallback for Intel Macs that already run Docker (MA10). If the
-Swift stack slips and a Mac host is wanted sooner, (a) is the fallback, at
-the cost of the macOS custody backend; it would be retired when (b) lands.
+(c) stays as a CPU-only fallback (MA10). Apple-only engines (Apple speech,
+Apple voices, Apple Intelligence, MLX) can later be served by the same gateway
+through a small Swift helper.
+
+### The Mac host (DX04)
+
+The Mac app bundles the self-contained gateway (`osx-arm64` or `osx-x64`,
+executable `Martlet.Gateway.Host.Linux`). One command sets the Mac up as a host
+for your other computers:
+
+```sh
+"/Applications/Martlet.app/Contents/Resources/host/Martlet.Gateway.Host.Linux" macos-setup
+```
+
+- **What it offers:** only what is installed. **Thinking** relays to
+  [Ollama](https://ollama.com/download) on `127.0.0.1:11434` (Metal on Apple
+  silicon, CPU on Intel). Without `--ollama-model` it uses an installed model
+  (the suggestion when installed, else the largest that fits); with it, Ollama
+  downloads that model. The suggestion follows the GPU working set
+  (`gemma4:e2b` below 7 GB, `gemma4:e4b`, `gemma4:12b` from 11 GB, `gemma4:26b`
+  from 22 GB; Intel Macs get the smallest). **Listening** runs whisper.cpp's
+  server from Homebrew (`brew install whisper-cpp`; Metal on Apple silicon) as a
+  second launchd agent on `127.0.0.1:8178`, with the same SHA-256-pinned models
+  as Linux hosts (`large-v3-turbo` when the GPU working set is 10 GB+, else
+  `small`; `base` on Intel Macs under 8 GB). F5 (PyTorch), Audio2Face, XTTS,
+  Chatterbox, GPT-SoVITS, Dia, singing and pictures are refused with the
+  platform catalog's reason (they need an NVIDIA GPU), even if listed in
+  `host.json`.
+- **Files:** `~/Library/Application Support/Martlet/Host` (0700): `gateway/`
+  holds `host.json`, `machine.json` and the rest; `private/state` the identity
+  and pairings; `models/` whisper models; `logs/`. Agents:
+  `~/Library/LaunchAgents/io.github.throndir2.martlet.host.plist` and
+  `io.github.throndir2.martlet.whisper.plist` (start at login, restart on
+  failure, interactive scheduling). While serving, the gateway keeps the Mac
+  from idle sleep (the display may still sleep).
+- **Custody:** the same contract as Linux hosts on APFS: every open is one
+  name below a held directory with `O_NOFOLLOW_ANY`, files on the directory's
+  own volume, ACLs that grant access refused (macOS's deny-only entries such
+  as "everyone deny delete" are allowed), local read-write APFS only,
+  `F_FULLFSYNC`, `renameatx_np(RENAME_EXCL)` and `kern.bootsessionuuid`.
+- **Machine report:** `platform: macos`, `method: native`, `architecture`,
+  `os_version`, `chip`, `unified_memory`, `gpu_working_set_gb` (Metal's
+  `recommendedMaxWorkingSetSize`) and one GPU with vendor `apple`, so the
+  desktop's guardrails refuse NVIDIA-only jobs for it.
+- **Other commands:** `macos-pair` (stops the agent, shows a one-use code to
+  type in Martlet, starts it again), `macos-status` (JSON), `macos-machine`,
+  `macos-uninstall` (keeps identity, pairings and models).
+- **Not built yet:** rebinding to a new address (run setup with the old
+  address, or remove the state and pair again), the interactive console,
+  driving setup from the desktop over SSH, Apple-only engines.
+- **NOT RUN:** nothing above has run on a Mac (no Mac was available). The
+  `osx-arm64` and `osx-x64` publishes, the unit tests of the custody,
+  machine-report, model-suggestion, launchd and role-refusal code, and the
+  Linux custody tests are run on Windows and Linux.
 
 ### Proposed layout
 
@@ -354,8 +410,11 @@ who published it. Martlet's release notes and in-app text say exactly this.
   install only on your OK or when idle. The EdDSA signature proves an update
   came from Martlet's release workflow, which is stronger than the Windows
   digest check.
-- **The host ships inside the app.** No separate Mac host download; the .NET
-  gateway is not shipped for macOS.
+- **The host ships inside the app.** No separate Mac host download: the
+  self-contained .NET gateway (`dotnet publish src/Martlet.Gateway.Host.Linux
+  -c Release -r osx-arm64|osx-x64 --self-contained true -p:UseAppHost=true`)
+  goes in `Martlet.app/Contents/Resources/host/`, ad-hoc signed with the app
+  ([The Mac host](#the-mac-host-dx04)).
 
 ## Delivery slices
 
@@ -373,7 +432,7 @@ is manual on a real Mac and stays NOT RUN until done.
 | MA07 | **Devices, who does what, memory, Voice ID.** Pair the Mac companion with Linux, Windows, Mac and iPhone hosts; use their Ollama, whisper, F5 and Audio2Face routes; cluster sync as a desktop node with failover; memory and GE2E Voice ID ports | MA04, IO09 | The Mac companion uses a Linux host's roles; a who-does-what change on Windows reaches the Mac within a check | L / M |
 | MA08 | **App updates.** Sparkle 2, per-architecture EdDSA-signed appcasts as release assets, Windows-equivalent choices, off by default | MA01; ships with the first MA04 release | An installed version updates to the next release after the user turns checks on; with the self-made identity, microphone and screen permissions survive the update | S / M |
 | MA09 | **Satellite.** The Mac lends its microphone and speakers to a Windows (or Mac) companion through the IO10 routes | MA02, IO10 | Talk to the Windows companion from another room through a Mac | M / M |
-| MA10 | **Docker and Linux routes for old Macs.** Multi-architecture `martlet-host` image (Docker CLI and Compose per architecture) so the Docker method runs on Docker Desktop for Mac, CPU only; host guide section for Intel Macs reinstalled with Ubuntu (t2linux for T2 models) | - | `setup`, `pair` and `add stt` run on Docker Desktop on an Apple silicon and an Intel Mac; an Ubuntu-on-Mac host pairs over SSH from Windows | S / L |
+| MA10 | **Docker and Linux routes for old Macs.** Multi-architecture `martlet-host` image (Docker CLI and Compose per architecture) so the Docker method runs on Docker Desktop for Mac, CPU only (image done in DX04); host guide section for Intel Macs reinstalled with Ubuntu (t2linux for T2 models) | - | `setup`, `pair` and `add stt` run on Docker Desktop on an Apple silicon and an Intel Mac; an Ubuntu-on-Mac host pairs over SSH from Windows | S / L |
 
 MA02 and MA03 deliver the iOS plan's IO11 (Mac host).
 
@@ -388,8 +447,8 @@ verify>`. Nothing in this table has run on a Mac.
 | Thinking: OpenAI | openai-llm | yes | yes | no: cloud routes run on the companion | no: cloud routes run on the companion | 14 | API key | planned MA04 |
 | Speaking: OpenAI voices | openai-tts | yes | yes | no: cloud routes run on the companion | no: cloud routes run on the companion | 14 | API key | planned MA04 |
 | Thinking: any Chat Completions endpoint (OpenRouter, NVIDIA Build, loopback Ollama/LM Studio) | chat-completions | yes | yes | no: cloud routes run on the companion | no: cloud routes run on the companion | 14 | Endpoint and key; LAN endpoints need HTTPS | planned MA04 |
-| Thinking: Ollama | ollama | yes: this Mac's Ollama on Metal, or a paired host | limited: this Mac's Ollama is CPU-only (1-4B models, slow); paired hosts fine | yes: native Ollama on Metal, model suggested by unified memory | limited: CPU only, 1-4B models, slow | 14 | Ollama app installed by the user; memory per model | planned MA02 (host), MA04 (companion) |
-| Listening: whisper.cpp | whisper | yes: on this Mac with Metal | yes: on this Mac, CPU, `base`/`small` | yes: Metal, up to `large-v3-turbo` | limited: CPU only, `base`/`small` | 14 | Microphone permission (companion) | planned MA02 (host), MA04 (companion) |
+| Thinking: Ollama | ollama | yes: this Mac's Ollama on Metal, or a paired host | limited: this Mac's Ollama is CPU-only (1-4B models, slow); paired hosts fine | yes: native Ollama on Metal, model suggested by unified memory | limited: CPU only, 1-4B models, slow | 14 | Ollama app installed by the user; memory per model | host: built (DX04), NOT RUN on a Mac; companion: planned MA04 |
+| Listening: whisper.cpp | whisper | yes: on this Mac with Metal | yes: on this Mac, CPU, `base`/`small` | yes: Metal, up to `large-v3-turbo` | limited: CPU only, `base`/`small` | 14 | Microphone permission (companion); `brew install whisper-cpp` (host) | host: built (DX04), NOT RUN on a Mac; companion: planned MA04 |
 | Speaking: F5 voice cloning (PyTorch worker) | f5 | yes: via a paired NVIDIA host | yes: via a paired NVIDIA host | no: the worker needs NVIDIA CUDA (use f5-mlx) | no: needs NVIDIA CUDA | 14 | Paired NVIDIA host (6 GB+) | planned MA07 (companion); host: not planned: NVIDIA only |
 | Speaking: F5 voice cloning on MLX | f5-mlx | yes: on this Mac or a paired Apple silicon Mac | limited: only through a paired Apple silicon Mac | yes: serves the existing F5 route | no: MLX needs Apple silicon | 14 | Apple silicon, 16 GB+ suggested; voice-rights confirmation | planned MA03 |
 | Lip-sync: Audio2Face | audio2face | yes: via a paired NVIDIA host | yes: via a paired NVIDIA host | no: NVIDIA only | no: NVIDIA only (Mac GPUs have no CUDA; Docker on Mac has no GPU) | 14 | Paired NVIDIA host (4 GB+) | planned MA05 (companion); host: not planned: NVIDIA only |
@@ -407,7 +466,7 @@ verify>`. Nothing in this table has run on a Mac.
 | Push-to-talk hotkey | ptt-hotkey | yes: global hotkey, no Accessibility permission | yes: global hotkey, no Accessibility permission | no: companion feature | no: companion feature | 14 | Combination with Command or Control (a bare F-key also works, with fn on Mac keyboards); a mouse-button key would need Input Monitoring | built in DX03 (`MacPushToTalkHotkey`), NOT RUN on a Mac |
 | Hands-free listening | hands-free | yes: energy VAD with echo cancellation | yes: energy VAD with echo cancellation | no: companion feature | no: companion feature | 14 | Microphone permission | planned MA04 |
 | Microphone/speaker satellite | satellite | no: a Mac companion using a satellite is not planned (IO10 targets the Windows companion) | no: same as Apple silicon companion | yes: lends its microphone and speakers to another companion | yes: lends its microphone and speakers to another companion | 14 | Microphone permission; user logged in | planned MA09 |
-| Host through Docker Desktop for Mac | docker-host | no: host-only method | no: host-only method | limited: CPU only inside a Linux VM; host image needs the arm64 fix | unknown: expected to work like Docker Desktop on Windows, CPU only; never run | 15 (Docker supports the current and two previous macOS) | Docker Desktop, 4 GB+ RAM | planned MA10 |
+| Host through Docker Desktop for Mac | docker-host | no: host-only method | no: host-only method | limited: CPU only inside a Linux VM; the host image builds for arm64 (DX04); the pinned whisper.cpp image is x86_64 only, so Docker emulates it (slow; use the native Mac host for listening) | unknown: expected to work like Docker Desktop on Windows, CPU only; never run | 15 (Docker supports the current and two previous macOS) | Docker Desktop, 4 GB+ RAM | arm64 image built (DX04); NOT RUN on a Mac |
 | Old Intel Mac reinstalled with Ubuntu | linux-host | no: no longer runs macOS | no: no longer runs macOS | no: the native Linux method is x86_64 only | yes: becomes a normal Linux host (CPU roles) | none (replaces macOS) | Ubuntu 24.04 x86_64; T2 Macs (2018-2020) need the t2linux kernel | works today (Linux host route; never run on Mac hardware) |
 
 ## Decisions (2026-10-01)
@@ -437,8 +496,8 @@ that costs money. Decided:
 
 ## Not planned
 
-Audio2Face on any Mac; the PyTorch F5 worker on Mac GPUs; the .NET gateway on
-macOS (fallback only); SSH/Docker role management for the Swift host; Linux on
+Audio2Face on any Mac; the PyTorch F5 worker on Mac GPUs; SSH/Docker role
+management for the Swift host; Linux on
 Apple silicon (Asahi) hosts; macOS older than 14; Private Cloud Compute in
 free builds; Voice Studio training on Macs; capturing game or system audio;
 kernel or audio drivers; automatic or always-on screen capture; asking users
