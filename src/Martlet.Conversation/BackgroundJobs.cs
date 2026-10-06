@@ -62,7 +62,7 @@ public sealed class BackgroundJob
     internal readonly CancellationTokenSource Cancellation = new();
     internal string? cancelReason;
     internal Action? Changed;
-    private readonly BackgroundPlaceLease? lease;
+    private BackgroundPlaceLease? lease;
 
     internal BackgroundJob(BackgroundJobKind kind, string id, string label, TimeProvider clock, BackgroundPlaceLease? lease = null)
     {
@@ -76,8 +76,24 @@ public sealed class BackgroundJob
     }
 
     /// <summary>Where it runs, when it was started on a pool of places (the computer's name in <see cref="BackgroundPlace.Name"/>);
-    /// the place is held until the job finishes.</summary>
-    public BackgroundPlace? Place => lease?.Place;
+    /// the place is held until the job finishes. Null while it waits in line for one (<see cref="Queued"/>).</summary>
+    public BackgroundPlace? Place => Volatile.Read(ref lease)?.Place;
+
+    /// <summary>The places it waits for while every one is busy (it starts on the first that frees up), else null.</summary>
+    internal IReadOnlyList<BackgroundPlace>? Queued { get; init; }
+
+    // The place it waited for, taken; false when the job already finished (the place goes straight back).
+    internal bool Seat(BackgroundPlaceLease taken)
+    {
+        lock (gate)
+            if (finishedAt == 0)
+            {
+                Volatile.Write(ref lease, taken);
+                return true;
+            }
+        taken.Dispose();
+        return false;
+    }
 
     /// <summary>The job's ID in the conversation and the talk window, such as think-1.</summary>
     public string Id { get; }
@@ -146,7 +162,7 @@ public sealed class BackgroundJob
                 : by is CanceledByClosing ? BackgroundDeliveryState.Dropped : BackgroundDeliveryState.Pending;
         }
         // Its place is free for the next job.
-        lease?.Dispose();
+        Volatile.Read(ref lease)?.Dispose();
     }
 
     internal bool MoveDelivery(BackgroundDeliveryState from, BackgroundDeliveryState to)
@@ -167,8 +183,10 @@ public sealed class BackgroundJob
 }
 
 /// <summary>Why a job didn't start: <c>busy</c> (as many of its kind as allowed are running), <c>hourly_limit</c>, <c>closed</c>
-/// (Martlet is closing) or <c>off</c> (its feature is turned off), with what to tell the model.</summary>
-public sealed record BackgroundJobStart(BackgroundJob? Job, string? Refusal = null, string? Message = null, BackgroundJob? Running = null)
+/// (Martlet is closing) or <c>off</c> (its feature is turned off), with what to tell the model. A job that started in line for a
+/// place has <paramref name="Queued"/>: what holds the places it waits for, in words.</summary>
+public sealed record BackgroundJobStart(BackgroundJob? Job, string? Refusal = null, string? Message = null, BackgroundJob? Running = null,
+    string? Queued = null)
 {
     public bool Started => Job is not null;
 }
@@ -280,10 +298,13 @@ public sealed class BackgroundJobs : IDisposable
 
     /// <summary>Starts one job of <paramref name="kind"/> on a free place of <paramref name="pool"/> (null: anywhere, as
     /// above): the best free one (<see cref="BackgroundPlaces.TryAcquire"/>), held until the job finishes, so jobs of every
-    /// kind started on the same places run one per place. <paramref name="run"/> reads where from <see cref="BackgroundJob.Place"/>.
-    /// Refused as <c>busy</c> (the message names what holds each place) when every place is taken.</summary>
+    /// kind started on the same places share them by their slots. <paramref name="run"/> reads where from <see cref="BackgroundJob.Place"/>.
+    /// When every place is taken it is refused as <c>busy</c> (the message names what holds each place), or with
+    /// <paramref name="wait"/> it starts <see cref="BackgroundJobState.Waiting"/> in line (<see cref="BackgroundJobStart.Queued"/>)
+    /// and runs on the first place that frees up; its time limit starts once it has a place, and it gives up when none frees
+    /// up within that time.</summary>
     public BackgroundJobStart Start(BackgroundJobKind kind, string label, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run,
-        IReadOnlyList<BackgroundPlace>? pool)
+        IReadOnlyList<BackgroundPlace>? pool, bool wait = false)
     {
         ArgumentNullException.ThrowIfNull(kind);
         ArgumentNullException.ThrowIfNull(run);
@@ -308,22 +329,59 @@ public sealed class BackgroundJobs : IDisposable
             var number = numbers.GetValueOrDefault(kind.Name) + 1;
             var id = $"{kind.Name}-{number}";
             BackgroundPlaceLease? lease = null;
-            if (pool is not null && (lease = Places.Acquire(pool, id, share: false)) is null)
+            if (pool is not null && (lease = Places.Acquire(pool, id, share: false)) is null && !wait)
                 return new(null, "busy", $"Every place it can run on is busy: {Places.Busy(pool)}.",
                     running.FirstOrDefault() ?? jobs.FirstOrDefault(job => !job.Finished));
             numbers[kind.Name] = number;
-            job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify };
+            job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify, Queued = pool is not null && lease is null ? pool : null };
             jobs.Add(job);
             starts.Add((kind.Name, clock.GetUtcNow()));
             Trim();
         }
         _ = Task.Run(() => RunAsync(job, run));
         Notify();
-        return new(job);
+        return new(job, Queued: job.Queued is not null ? Places.Busy(job.Queued) : null);
+    }
+
+    // A job started in line waits for a place of its pool (its time limit hasn't started yet); false when it was canceled or no
+    // place freed up within the kind's time limit (the job is then finished).
+    private async Task<bool> SeatAsync(BackgroundJob job)
+    {
+        if (job.Queued is not { } pool || job.Place is not null) return true;
+        // A kind with a time limit waits at most that long; one without waits until a place frees up or it is canceled.
+        using var patience = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, patience.Token);
+        void Line()
+        {
+            var position = Places.Position(job.Id);
+            if (position > 0) job.Report(BackgroundJobState.Waiting, position == 1 ? "waiting for a free computer (next in line)"
+                : $"waiting for a free computer ({position} in line)");
+        }
+        Places.Changed += Line;
+        try
+        {
+            var seated = Places.AcquireAsync(pool, job.Id, waiting.Token);
+            Line();
+            return job.Seat(await seated.ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            if (job.Cancellation.IsCancellationRequested) job.Finish(BackgroundJobState.Canceled, null, Volatile.Read(ref job.cancelReason));
+            else job.Finish(BackgroundJobState.TimedOut, BackgroundJobOutcome.Failed(
+                $"no computer came free within {Duration(job.Kind.TimeLimit ?? TimeSpan.Zero)}"), null);
+            return false;
+        }
+        finally { Places.Changed -= Line; }
     }
 
     private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
     {
+        if (!await SeatAsync(job).ConfigureAwait(false))
+        {
+            Notify();
+            return;
+        }
+        if (job.Queued is not null) job.Report(BackgroundJobState.Running);
         using var limit = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, limit.Token);
         try

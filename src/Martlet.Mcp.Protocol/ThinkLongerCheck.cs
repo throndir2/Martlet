@@ -92,13 +92,13 @@ internal static class ThinkLongerCheck
                     {
                         computer = spot.Computer, where = spot.Settings.Separate ? spot.Settings.Describe() : route?.ModelId,
                         place = spot.Settings.Place.ToString(), hostRole = spot.Settings.OnHostRole, available = spot.Plan.Available,
-                        rank = spot.Plan.Rank, checksFit = spot.Plan.ChecksFit, why = spot.Plan.Why
+                        rank = spot.Plan.Rank, slots = spot.Settings.ThinksAtOnce, checksFit = spot.Plan.ChecksFit, why = spot.Plan.Why
                     }),
-                    usable = places.Count, maxThinks = ThinkLonger.Kind(settings, places.Count).MaxActive,
+                    usable = places.Count, maxThinks = ThinkLonger.Slots(places),
                     available = pool.Plan.Available, why = pool.Plan.Why
                 }
             },
-            tools = ThinkLonger.Definitions(settings, places.Count).Concat(settings.Researches ? [WebResearch.Definition] : []).Select(tool => new
+            tools = ThinkLonger.Definitions(settings, ThinkLonger.Slots(places)).Concat(settings.Researches ? [WebResearch.Definition] : []).Select(tool => new
             {
                 name = tool.Name, description = tool.Description, parameters = JsonNode.Parse(tool.ParametersJson)
             }).ToArray(),
@@ -153,14 +153,15 @@ internal static class ThinkLongerCheck
         var host = HostFit();
         var pool = await PoolAsync(reasoning, cancellation);
         var moment = await MomentAsync(fixture, cancellation);
+        var broker = await BrokerAsync(cancellation);
         return new
         {
-            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok && moment.Ok,
+            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok && moment.Ok && broker.Ok,
             endpoint = fixture.BaseUrl,
             note = "Fixture endpoints on 127.0.0.1 with canned replies (NOT AI) and a fixture Ollama model list; the scheduler, runner, " +
                 "tool texts, request layout, Deep thinking plan, side-by-side fit, moment plan, runtime and adapter are Martlet's own.",
             flow = flow.Report, limits = limits.Report, plans = plans.Report, parallel = parallel.Report,
-            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report, moment = moment.Report
+            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report, moment = moment.Report, broker = broker.Report
         };
     }
 
@@ -259,6 +260,70 @@ internal static class ThinkLongerCheck
                 carries, jobsTaken = delivery?.Jobs.Count, newsAfter = jobs.HasNews, delivery = new { song = songJob?.Delivery.ToString(), report = reportJob?.Delivery.ToString() },
                 momentInstruction = moment, sameStartAsAPlainReply = stableStart, sharedStartCharacters = stableStart ? through : 0
             }
+        });
+    }
+
+    // ---------- the background broker: which computer a think goes to, and the line ----------
+
+    // The owner's example with the production broker and scheduler (fixture runners, no network): a companion PC and three hosts,
+    // one general, one kept for image generation and one that sings. Thinks go to the general computer first, then the others;
+    // a fourth waits in line; a song holds the singing computer; the first computer to free up takes the next in line.
+    private static async Task<(bool Ok, object Report)> BrokerAsync(CancellationToken cancellation)
+    {
+        using var jobs = new BackgroundJobs();
+        var general = new BackgroundPlace("host:general", "general");
+        var images = new BackgroundPlace("host:images", "images") { Duties = ["image generation"] };
+        var singer = new BackgroundPlace("host:singer", "singer") { Duties = ["singing"] };
+        IReadOnlyList<BackgroundPlace> pool = [singer, images, general];
+        var kind = ThinkLonger.Kind(new ThinkLongerSettings(), ThinkLonger.Slots(pool));
+        var gates = new Dictionary<string, TaskCompletionSource>();
+        Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> Run(string name)
+        {
+            var gate = gates[name] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return async (job, token) =>
+            {
+                await gate.Task.WaitAsync(token);
+                return BackgroundJobOutcome.Done($"{name} on {job.Place?.Name}");
+            };
+        }
+        async Task Until(Func<bool> done)
+        {
+            var waited = Stopwatch.StartNew();
+            while (!done() && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(20, cancellation);
+        }
+        var timer = Stopwatch.StartNew();
+        var starts = new[] { "a", "b", "c", "d" }.Select(name => jobs.Start(kind, name, Run(name), pool, wait: true)).ToArray();
+        var decidedMs = timer.Elapsed.TotalMilliseconds;
+        var placed = starts.Select(s => s.Job?.Place?.Name).ToArray();
+        var queued = starts[3].Queued;
+        // A song starts on the singing computer (its think carries on), then that think finishes: the song still holds the
+        // singing computer, so the one in line keeps waiting.
+        var song = jobs.Places.Hold(singer, "song-1");
+        gates["b"].SetResult();
+        await Until(() => starts[1].Job!.Finished);
+        await Task.Delay(100, cancellation);
+        var waitingDuringSong = starts[3].Job!.Place is null;
+        // The general computer frees up: the one in line goes there.
+        gates["a"].SetResult();
+        await Until(() => starts[3].Job!.Place is not null);
+        var nextOn = starts[3].Job!.Place?.Name;
+        song.Dispose();
+        foreach (var gate in gates.Values) gate.TrySetResult();
+        await Until(() => starts.All(s => s.Job!.Finished));
+        var ok = placed is ["general", "singer", "images", null] && queued == "think-1 on general, think-2 on singer and think-3 on images" &&
+            waitingDuringSong && nextOn == "general" && starts.All(s => s.Job!.State == BackgroundJobState.Succeeded) &&
+            jobs.Places.Leases.Count == 0 && jobs.Places.Line.Count == 0 && decidedMs < 50;
+        return (ok, new
+        {
+            ok,
+            places = pool.Select(p => new { p.Name, p.Rank, p.Slots, p.Duties, p.Standing }),
+            maxActive = kind.MaxActive,
+            placed,
+            queuedBehind = queued,
+            waitedWhileTheSongHeldTheSinger = waitingDuringSong,
+            nextInLineRanOn = nextOn,
+            decidedMs = Math.Round(decidedMs, 2),
+            note = "Deterministic: no model is asked; every choice is the production BackgroundPlaces order."
         });
     }
 
@@ -405,7 +470,7 @@ internal static class ThinkLongerCheck
         var deep = Role("diva").WithPool([Role("imouto"), Role("ripley")]);
         var pool = DeepThinkingPool.For(deep, routes);
         var places = ThinkLonger.Places(pool);
-        var kind = ThinkLonger.Kind(settings, places.Count);
+        var kind = ThinkLonger.Kind(settings, ThinkLonger.Slots(places));
         var fixtures = new Dictionary<string, Fixture>(StringComparer.Ordinal);
         foreach (var place in places) fixtures[place.Id] = new Fixture(reasoning);
         var runtimes = new List<ConversationRuntime>();
@@ -413,7 +478,7 @@ internal static class ThinkLongerCheck
         {
             using var jobs = new BackgroundJobs();
             var conversationInput = new BoundedTextInput(Asked, Persona, [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey!")],
-                tools: ThinkLonger.Definitions(settings, places.Count));
+                tools: ThinkLonger.Definitions(settings, ThinkLonger.Slots(places)));
             BackgroundJobStart Start() => jobs.Start(kind, ThinkLonger.Label(TaskText), (job, token) =>
             {
                 var fixture = fixtures[job.Place!.Id];
@@ -451,7 +516,7 @@ internal static class ThinkLongerCheck
             var spans = started.Select(job => fixtures[job.Place!.Id].Served("think").FirstOrDefault()).ToArray();
             var overlapped = started.Length >= 2 && started[1].StartedUtc < started[0].FinishedUtc && started[0].StartedUtc < started[1].FinishedUtc;
             var expected = new[] { "diva", "ripley", "imouto" };
-            var ok = pool.Usable.Count == 3 && places.Count == 3 && kind.MaxActive == 3 &&
+            var ok = pool.Usable.Count == 3 && places.Count == 3 && ThinkLonger.Slots(places) == 3 && kind.MaxActive == 6 &&
                 started.Length == 3 && started.Select(job => job.Place!.Name).SequenceEqual(expected) &&
                 together && overlapped && started.All(job => job.State == BackgroundJobState.Succeeded && job.Result == Lyrics) &&
                 fourth.Refusal == "busy" && expected.All(name => fourth.Message?.Contains("on " + name, StringComparison.Ordinal) == true) &&
@@ -463,8 +528,8 @@ internal static class ThinkLongerCheck
                 {
                     computer = spot.Computer, where = spot.Settings.Describe(), available = spot.Plan.Available, rank = spot.Plan.Rank, why = spot.Plan.Why
                 }),
-                maxThinks = kind.MaxActive, plan = pool.Plan.Why,
-                tool = ThinkLonger.Description(settings, places.Count),
+                maxThinks = ThinkLonger.Slots(places), plan = pool.Plan.Why,
+                tool = ThinkLonger.Description(settings, ThinkLonger.Slots(places)),
                 placed = started.Select(job => new
                 {
                     id = job.Id, place = job.Place!.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds

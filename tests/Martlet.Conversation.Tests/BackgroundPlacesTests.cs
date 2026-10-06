@@ -28,16 +28,16 @@ public sealed class BackgroundPlacesTests
     {
         using var jobs = new BackgroundJobs();
         var release = new TaskCompletionSource();
-        Assert.Equal(3, Think.MaxActive);
+        Assert.Equal(6, Think.MaxActive);
         var started = Enumerable.Range(0, 3).Select(_ => jobs.Start(Think, "a task", Until(release.Task), Pool)).ToArray();
         Assert.All(started, start => Assert.True(start.Started));
         Assert.Equal(["diva", "ripley", "imouto"], started.Select(start => start.Job!.Place!.Name));
         Assert.Equal(3, jobs.Places.Leases.Count);
 
+        // Without waiting in line, a full pool is refused, naming what holds each place.
         var busy = jobs.Start(Think, "one more", Until(release.Task), Pool);
         Assert.Equal("busy", busy.Refusal);
-        Assert.Equal("think-1 on diva, think-2 on ripley and think-3 on imouto are still running, and only 3 thinks run at once (one on each place).",
-            busy.Message);
+        Assert.Equal("Every place it can run on is busy: think-1 on diva, think-2 on ripley and think-3 on imouto.", busy.Message);
         Assert.Contains("still thinking about something else", ThinkLonger.Refused(busy), StringComparison.Ordinal);
 
         // Finishing frees its place for the next job.
@@ -84,9 +84,11 @@ public sealed class BackgroundPlacesTests
     public void The_tool_says_how_many_think_at_once_from_the_settings()
     {
         var settings = new ThinkLongerSettings();
-        Assert.Contains("One at a time.", ThinkLonger.Description(settings), StringComparison.Ordinal);
-        Assert.Contains("Up to 3 at once.", ThinkLonger.Description(settings, 3), StringComparison.Ordinal);
+        Assert.Contains("One at a time, more wait their turn.", ThinkLonger.Description(settings), StringComparison.Ordinal);
+        Assert.Contains("Up to 3 at once, more wait their turn.", ThinkLonger.Description(settings, 3), StringComparison.Ordinal);
+        // As many may wait in line as run at once, at most 8 in all.
         Assert.Equal(ThinkLonger.MaxPlaces, ThinkLonger.Kind(settings, 50).MaxActive);
-        Assert.Equal(1, ThinkLonger.Kind(settings, 0).MaxActive);
+        Assert.Equal(6, ThinkLonger.Kind(settings, 3).MaxActive);
+        Assert.Equal(2, ThinkLonger.Kind(settings, 0).MaxActive);
     }
 }

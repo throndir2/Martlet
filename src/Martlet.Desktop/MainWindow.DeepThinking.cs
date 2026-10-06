@@ -410,6 +410,27 @@ public partial class MainWindow
         await UseDeepHostAsync(host);
     }
 
+    /// <summary>A host check saw how many thinks <paramref name="hostId"/>'s Deep thinking role runs at once (<paramref name="slots"/>;
+    /// null without the role): each place on that role takes it as its slot count, so the broker places that many thinks there.</summary>
+    private void NoteDeepThinkingSlots(string hostId, int? slots)
+    {
+        if (store is null || slots is null) return;
+        var saved = DeepThinkingSettings.Load(store.DataDirectory);
+        int? want = slots > 1 ? Math.Min(slots.Value, DeepThinkingSettings.MaxPlaces) : null;
+        DeepThinkingSettings Seen(DeepThinkingSettings place) =>
+            place.OnHostRole && place.HostId == hostId && place.Slots != want ? place with { Slots = want } : place;
+        var places = saved.Places.Select(Seen).ToArray();
+        if (places.SequenceEqual(saved.Places)) return;
+        var next = places[0].WithPool(places.Skip(1));
+        if (!next.Save(store.DataDirectory))
+        {
+            ErrorLog.Warn("Couldn't note how many thinks a computer runs at once: the data folder can't be written.");
+            return;
+        }
+        ErrorLog.Info($"Deep thinking: {hostId}'s Deep thinking role runs {slots} think{(slots == 1 ? "" : "s")} at once.");
+        conversation?.ReloadDeepThinking();
+    }
+
     /// <summary>Thinks on <paramref name="host"/>: in place of where it thinks now, or with <paramref name="alsoHere"/> as one more
     /// place, so several thinks run at once (where it thinks now becomes this computer when it can't think there).</summary>
     private async Task UseDeepHostAsync(PairedHost host, bool alsoHere = false)
@@ -441,6 +462,8 @@ public partial class MainWindow
                 Place = DeepThinkingPlace.Host, ModelId = route.ModelId, HostId = host.HostId, HostOrigin = host.Pairing.Origin,
                 HostSpkiFingerprint = host.Pairing.SpkiFingerprint, HostDeviceId = host.Pairing.DeviceId,
                 HostCredentialId = HostPairingCredential.ToGuid(host.Pairing.CredentialId), HostRouteId = own ? route.RouteId : null,
+                // How many thinks its Deep thinking role runs at once on its graphics card (one for an older host or its Ollama).
+                Slots = own && route.MaximumConcurrency > 1 ? Math.Min(route.MaximumConcurrency, DeepThinkingSettings.MaxPlaces) : null,
                 ChosenAt = DateTimeOffset.Now
             };
             if (alsoHere)

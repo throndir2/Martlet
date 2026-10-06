@@ -2233,8 +2233,11 @@ exactly as the model gets them), the filled `prompt` and `researchPrompt`, and
 computer it runs on; `startedLastHour`; `thinks`, each running think's `id`,
 `where`, `computer`, `available`, `checksFit`, `why`, `rank`, `parallel` and
 `attempts` (`thinking` is the first of them); `places`, each Deep thinking place
-with `computer`, `where`, `available`, `rank` and `heldBy` (the job IDs holding
-it now); and `maxThinks`),
+with `computer`, `where`, `available`, `rank`, `slots` and `heldBy` (the job IDs holding
+it now); `maxThinks` (slots in all); each job's `inLine` (its place in the line for a
+free computer, 0 when it isn't waiting), the broker's `line` (who waits, first
+in line first) and `keptFor` (the other work each computer is kept free for,
+such as `singing`)),
 never a task or result. Read-only.
 
 `discord_reply_status` shows Martlet's Discord reply engine (optional absolute
@@ -2361,7 +2364,15 @@ results in its notes (the song marked to offer), after which both jobs are
 delivered (`newsAfter` false), and whose instructions start exactly like a
 plain reply's up to the end of the One moment instruction
 (`sameStartAsAPlainReply`, `sharedStartCharacters`; `momentInstruction` is the
-text). Each part has an `ok`; on
+text). `broker`: the production
+background broker (`BackgroundPlaces`) and scheduler place four thinks on a
+companion PC's three hosts, one general, one kept for image generation and one
+that sings (`places` with `Rank`, `Slots`, `Duties` and `Standing`): the
+general one first, then the others, and the fourth waits in line (`placed`,
+`queuedBehind`); a song holding the singing computer keeps the one in line
+waiting when that computer's think ends (`waitedWhileTheSongHeldTheSinger`),
+and it runs on the general one once that frees up (`nextInLineRanOn`);
+`decidedMs` is how long the four placements took (no model is asked). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
 

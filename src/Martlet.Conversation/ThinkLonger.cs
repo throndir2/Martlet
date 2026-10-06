@@ -38,40 +38,50 @@ public static class ThinkLonger
     public const string CancelParametersJson =
         """{"type":"object","properties":{"id":{"type":"string","description":"Such as think-1; leave out for the running one."}},"additionalProperties":false}""";
 
-    /// <summary>The think job kind: one at a time on each of the <paramref name="places"/> Deep thinking can use (at most
-    /// <see cref="MaxPlaces"/>), with no hourly limit and no time limit (it runs until it is done or canceled).</summary>
-    public static BackgroundJobKind Kind(ThinkLongerSettings settings, int places = 1) =>
-        new(KindName, Math.Clamp(places, 1, MaxPlaces), null, null, Doing: "Thinking about");
+    /// <summary>The think job kind: as many at once as the places Deep thinking can use have slots (<paramref name="slots"/>),
+    /// and as many again waiting in line for the next free one (at most <see cref="MaxPlaces"/> in all), with no hourly limit
+    /// and no time limit (it runs until it is done or canceled).</summary>
+    public static BackgroundJobKind Kind(ThinkLongerSettings settings, int slots = 1) =>
+        new(KindName, Math.Clamp(Math.Max(1, slots) * 2, 2, MaxPlaces), null, null, Doing: "Thinking about");
 
     /// <summary>How long a think's request may take: the provider contracts' ceiling, so in practice it runs until it is done
     /// or canceled.</summary>
     public static TimeSpan RequestTime => TextGenerationLimits.HardMaxRequestTime;
 
-    /// <summary>The most thinks that run at once, one on each place Deep thinking can use.</summary>
+    /// <summary>The most thinks that run or wait at once.</summary>
     public const int MaxPlaces = DeepThinkingSettings.MaxPlaces;
 
     /// <summary>The places a think (or another kind's work that thinks, such as a song's lyrics) can run on: each usable place
-    /// of <paramref name="pool"/>, with its computer's name and how much it shares with the conversation.</summary>
-    public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool)
+    /// of <paramref name="pool"/>, with its computer's name, how much it shares with the conversation, how many thinks it runs
+    /// at once and the other work its computer is kept free for (<paramref name="duties"/>, by computer name: singing, image
+    /// generation), so the broker places a think on a general computer first.</summary>
+    public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool, IReadOnlyDictionary<string, IReadOnlyList<string>>? duties = null)
     {
         ArgumentNullException.ThrowIfNull(pool);
         return [.. pool.Usable.Take(MaxPlaces).Select(spot => new BackgroundPlace(spot.Key,
-            spot.Computer.Length <= 80 ? spot.Computer : spot.Computer[..80], Math.Clamp(spot.Plan.Rank, 0, BackgroundPlace.MaxRank)))];
+            spot.Computer.Length <= 80 ? spot.Computer : spot.Computer[..80], Math.Clamp(spot.Plan.Rank, 0, BackgroundPlace.MaxRank))
+        {
+            Slots = Math.Clamp(spot.Settings.ThinksAtOnce, 1, BackgroundPlace.MaxSlots),
+            Duties = duties?.GetValueOrDefault(spot.Computer) is { Count: > 0 } kept ? [.. kept.Take(8)] : []
+        })];
     }
 
-    public static string Description(ThinkLongerSettings settings, int places = 1) =>
+    /// <summary>How many thinks <paramref name="places"/> run at once in all.</summary>
+    public static int Slots(IReadOnlyList<BackgroundPlace> places) => places.Sum(place => place.Slots);
+
+    public static string Description(ThinkLongerSettings settings, int slots = 1) =>
         "Think a task through in the background, step by step, while you keep talking. Use rarely: only for real multi-step " +
         "reasoning or long creative work (song lyrics, a story, a plan, tricky math or code), never for chat or quick answers. " +
         "Tell the user first that you'll think it over. Returns at once; " +
-        $"the result comes back later in a note. {(places > 1 ? $"Up to {Math.Min(places, MaxPlaces)} at once" : "One at a time")}.";
+        $"the result comes back later in a note. {(slots > 1 ? $"Up to {Math.Min(slots, MaxPlaces)} at once" : "One at a time")}, more wait their turn.";
 
     public const string CancelDescription = "Stop the background think (think_longer) that is running.";
 
     /// <summary>The tools a reply gets while Thinking longer is on, always the same two in the same order, so the start of every
-    /// request stays the same for prompt caches (<paramref name="places"/> is how many places Deep thinking can use, from the
-    /// settings only, never from what is busy).</summary>
-    public static IReadOnlyList<TextToolDefinition> Definitions(ThinkLongerSettings settings, int places = 1) =>
-        [new(Name, Description(settings, places), ParametersJson), new(CancelName, CancelDescription, CancelParametersJson)];
+    /// request stays the same for prompt caches (<paramref name="slots"/> is how many thinks Deep thinking's places run at once,
+    /// from the settings only, never from what is busy).</summary>
+    public static IReadOnlyList<TextToolDefinition> Definitions(ThinkLongerSettings settings, int slots = 1) =>
+        [new(Name, Description(settings, slots), ParametersJson), new(CancelName, CancelDescription, CancelParametersJson)];
 
     /// <summary>The prompt added to a reply's instructions while think_longer is offered.</summary>
     public static string? Instructions(ThinkLongerSettings settings, PromptSettings? prompts) =>
@@ -115,9 +125,11 @@ public static class ThinkLonger
         return line.Length <= 60 ? line : line[..57].TrimEnd() + "…";
     }
 
-    /// <summary>What the model is told when the think started: its id, and to tell the user now unless it already did.</summary>
-    public static string Started(BackgroundJob job, bool toldUser) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
+    /// <summary>What the model is told when the think started (or, with <paramref name="queued"/>, waits in line behind that
+    /// work for the next free computer): its id, and to tell the user now unless it already did.</summary>
+    public static string Started(BackgroundJob job, bool toldUser, string? queued = null) =>
+        JsonSerializer.Serialize(new { status = queued is null ? "started" : "queued", id = job.Id, time_limit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
+        (queued is null ? "" : $"Every computer that thinks is busy ({queued}), so it starts as soon as one is free. ") +
         (toldUser
             ? "You're thinking about it in the background now. You already told the user, so add nothing more, or at most a few words."
             : "You're thinking about it in the background now. Tell the user now, in one short sentence in character, that you'll " +

@@ -1,3 +1,4 @@
+using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 
 namespace Martlet.Core.Tests;
@@ -28,6 +29,29 @@ public sealed class DeepThinkingPlanTests
         Place = DeepThinkingPlace.Host, ModelId = "gemma4:27b", HostId = hostId, HostOrigin = $"https://{hostId}.local:9443",
         HostSpkiFingerprint = "sha256:" + new string('0', 64), HostDeviceId = "device", HostCredentialId = Guid.NewGuid()
     };
+
+    [Fact]
+    public void Each_place_runs_as_many_thinks_at_once_as_its_slots()
+    {
+        Assert.Equal(1, Host("diva").ThinksAtOnce);
+        Assert.Equal(1, LocalOllama("gemma4:12b").ThinksAtOnce);
+        Assert.Equal(DeepThinkingSettings.CloudThinksAtOnce,
+            new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = OpenRouter, ModelId = "x-ai/grok-4.3" }.ThinksAtOnce);
+        Assert.Equal(DeepThinkingSettings.CloudThinksAtOnce, new DeepThinkingSettings().ThinksAtOnce);
+        var twin = Host("twin") with { HostRouteId = SelfHostSetup.DeepThinkingRouteId, Slots = 3 };
+        twin.Validate();
+        Assert.Equal(3, twin.ThinksAtOnce);
+        Assert.Throws<ContractException>(() => (twin with { Slots = 0 }).Validate());
+        Assert.Throws<ContractException>(() => (twin with { Slots = DeepThinkingSettings.MaxPlaces + 1 }).Validate());
+        var directory = Path.Combine(Path.GetTempPath(), "martlet-deep-slots-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.True(Host("diva").WithPool([twin]).Save(directory));
+            var loaded = DeepThinkingSettings.Load(directory);
+            Assert.Equal([1, 3], loaded.Places.Select(p => p.ThinksAtOnce));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
 
     [Fact]
     public void Thinkings_own_model_on_this_PC_or_a_paired_computer_cant_think_alongside_itself()
