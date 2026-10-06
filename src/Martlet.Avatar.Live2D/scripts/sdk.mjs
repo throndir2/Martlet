@@ -16,8 +16,17 @@ const exists = file => access(file).then(() => true, () => false);
 
 function extract(zip, destination) {
   // Windows ships bsdtar (zip-capable) in System32; Git's GNU tar earlier on PATH cannot read zip files.
-  const tar = process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
-  execFileSync(tar, ["-xf", zip, "-C", destination], { stdio: "inherit" });
+  if (process.platform === "win32") {
+    execFileSync(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"), ["-xf", zip, "-C", destination], { stdio: "inherit" });
+    return;
+  }
+  // macOS tar is bsdtar; Linux's GNU tar can't read zip files, so fall back to unzip or Python's zipfile there.
+  const tools = [["tar", ["-xf", zip, "-C", destination]], ["unzip", ["-q", "-o", zip, "-d", destination]],
+    ["python3", ["-m", "zipfile", "-e", zip, destination]]];
+  for (const [index, [tool, args]] of tools.entries()) {
+    try { execFileSync(tool, args, { stdio: index === tools.length - 1 ? "inherit" : "ignore" }); return; }
+    catch (error) { if (index === tools.length - 1) throw error; }
+  }
 }
 
 /** Returns the extracted SDK root, or null when unavailable and not required. */

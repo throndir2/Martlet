@@ -152,6 +152,8 @@ public partial class MainWindow : ThemedWindow
         };
         characterTimer.Start();
         DataPathText.Text = "Settings are stored on this PC.";
+        var processor = Martlet.Core.Platforms.MachineArchitecture.Current;
+        ThisPcArchitectureText.Text = "This PC: " + processor.Describe() + (processor.WindowsOnArmNote is { } arm ? " " + arm : "");
         StatusText.Text = "Loading local status...";
         AudioStatusText.Text = AudioSetupDiagnostics.Describe(null);
         if (store is not null)

@@ -17,12 +17,33 @@ internal sealed record MachineInfo(string Name, string Windows, string? Processo
 {
     internal static MachineInfo Unknown { get; } = new(Environment.MachineName, "Windows", null, Environment.ProcessorCount, null, [], null, false, false);
 
+    /// <summary>This PC's processor type and whether Martlet runs emulated on it (the x64 build on Windows on Arm).</summary>
+    internal Martlet.Core.Platforms.MachineArchitecture ProcessorType { get; init; } = Martlet.Core.Platforms.MachineArchitecture.Current;
+
+    /// <summary>On Windows on Arm, why this PC can't run the platform catalog's <paramref name="engineId"/> (NVIDIA engines
+    /// such as Audio2Face, F5 or pictures), from the catalog; null on other PCs or when it can.</summary>
+    internal string? ArmRefusal(string? engineId) =>
+        ProcessorType.WindowsOnArm && engineId is not null &&
+        Martlet.Core.Platforms.PlatformCatalog.Check(engineId, Martlet.Core.Platforms.PlatformSide.Host, Device) is { Allowed: false } no
+            ? no.Reason : null;
+
+    /// <summary>This PC as the platform catalog sees it.</summary>
+    internal Martlet.Core.Platforms.PlatformDevice Device => Martlet.Core.Platforms.PlatformDevice.ThisPc(ProcessorType,
+        Environment.OSVersion.Version, MemoryGb,
+        [.. Gpus.Select(g => new Martlet.Core.Platforms.PlatformGpu(g.Name, g.IsNvidia ? "nvidia" : "other", g.MemoryGb))]);
+
     internal GpuInfo? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryGb ?? 0).FirstOrDefault();
 
     /// <summary>Plain-language hints about what this PC's graphics card can take on.</summary>
     internal IEnumerable<string> Capabilities()
     {
         var gpu = BestGpu;
+        if (ProcessorType.WindowsOnArm)
+        {
+            yield return ProcessorType.Emulated ? "Windows on Arm: Martlet runs under Windows' x64 emulation" : "Windows on Arm: Martlet runs natively";
+            yield return "Best paired with a cloud conversation model; NVIDIA GPU roles need another computer";
+            yield break;
+        }
         if (gpu is { IsNvidia: true, MemoryGb: >= 4 })
             yield return "Can run lip-sync as a Martlet host";
         if (gpu is { IsNvidia: true, MemoryGb: >= 8 })
@@ -85,6 +106,13 @@ internal sealed record MachineInfo(string Name, string Windows, string? Processo
     {
         var status = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         return GlobalMemoryStatusEx(ref status) ? Math.Round(status.TotalPhysical / (1024d * 1024 * 1024)) : null;
+    }
+
+    /// <summary>How much of this PC's memory is in use right now, in GB (one system call), or null.</summary>
+    internal static double? MemoryInUseGb()
+    {
+        var status = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
+        return GlobalMemoryStatusEx(ref status) ? Math.Round((status.TotalPhysical - status.AvailablePhysical) / (1024d * 1024 * 1024), 1) : null;
     }
 
     private static readonly string[] VirtualAdapters =

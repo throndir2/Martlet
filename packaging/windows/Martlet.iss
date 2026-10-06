@@ -40,9 +40,11 @@ DisableReadyPage=yes
 UsePreviousAppDir=no
 UsePreviousGroup=no
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64os
-ArchitecturesInstallIn64BitMode=x64os
-SetupArchitecture=x64
+; x64compatible: x64 Windows, and Windows 11 on Arm, which runs the x64 build under its x64 emulation. Setup itself is
+; 32-bit so that Windows 10 on Arm (x86 emulation only) can open it and get the clear refusal in [Messages].
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+SetupArchitecture=x86
 MinVersion=10.0.19041
 Uninstallable=yes
 #ifdef PublicRelease
@@ -76,6 +78,9 @@ TouchTime=00:00
 
 [Files]
 #include PayloadFiles
+
+[Messages]
+OnlyOnTheseArchitectures=Martlet needs an x64 PC with Windows 10 version 2004 or newer, or a Windows 11 on Arm PC (Snapdragon X and similar), which runs Martlet under its x64 emulation.%n%nWindows 10 on Arm can't run x64 apps, so Martlet can't be installed on this PC. Update it to Windows 11 to install Martlet.
 
 ; Setup asks no feature questions. Prerequisites are never bundled or installed here: Martlet's setup advisor offers
 ; what the chosen plan needs, and Prerequisites in its Settings or Start > Martlet prerequisites checks and

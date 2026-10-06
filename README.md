@@ -219,10 +219,21 @@ Prefer something else, like a cloud provider or another of your computers?
 Change any of it in **Companion**, or click **Get a setup recommendation**.
 
 > [!NOTE]
-> Martlet runs on Windows 10 (version 2004 or later) and Windows 11, 64-bit. A
+> Martlet runs on Windows 10 (version 2004 or later) and Windows 11, 64-bit,
+> and on Windows 11 on Arm PCs such as Snapdragon X laptops (under Windows' x64
+> emulation; Windows 10 on Arm isn't supported). A
 > graphics card is optional: with a cloud provider any PC will do (cloud
 > providers may charge for use). The installer isn't code-signed, so Windows may
 > ask you to confirm before it runs.
+
+**Linux and Mac (early desktop companion):** each release also has
+`Martlet-<version>-linux-x64.AppImage` / `martlet_<version>_amd64.deb` (and
+`arm64` versions) and `Martlet-<version>-macos-arm64.dmg` (Apple silicon) /
+`-macos-x64.dmg` (Intel, macOS 14 or later). On Ubuntu or Debian run
+`sudo apt install ./martlet_<version>_amd64.deb`; the AppImage needs WebKitGTK
+4.1 and libsecret. The Mac app isn't notarized: the first time, choose **Done**,
+then **System Settings > Privacy & Security > Open Anyway**. See
+[Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-part-of-the-release-build).
 
 ## 🔒 Private by design
 

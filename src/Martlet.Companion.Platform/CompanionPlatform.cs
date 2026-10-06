@@ -13,6 +13,9 @@ public sealed record CompanionPlatform
     public IAutostart Autostart { get; init; } = new NoAutostart();
     /// <summary>Null: the app uses Avalonia's TrayIcon (StatusNotifierItem on Linux, NSStatusItem on macOS).</summary>
     public ITrayStatus? Tray { get; init; }
+    /// <summary>When <see cref="Tray"/> is null: whether the system can show Avalonia's tray icon (Linux needs a
+    /// StatusNotifierItem host: KDE, or GNOME with the AppIndicator extension). Null means assume yes.</summary>
+    public FeatureStatus? TrayHost { get; init; }
 
     public static CompanionPlatform Defaults() => new();
 }

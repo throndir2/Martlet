@@ -244,8 +244,11 @@ public partial class MainWindow
     private void UseHost_Click(object sender, RoutedEventArgs e) { SetRole(DeviceRole.Host); Navigate(NavHome); }
     private void ReplayTour_Click(object sender, RoutedEventArgs e) => ShowTour(TourWelcome);
 
-    // A host has no "how to start" step. The tour installs nothing: each setup installs what it needs.
-    private StackPanel[] TourPanels => Role == DeviceRole.Host ? [TourWelcome, TourRole] : [TourWelcome, TourRole, TourStart];
+    // The welcome wizard (MainWindow.Welcome.cs). A host stops after the network step. The key step shows only when Thinking
+    // goes online. The wizard installs nothing until its suggestions are accepted and confirmed.
+    private StackPanel[] TourPanels => Role == DeviceRole.Host && deviceRole is not null ? [TourWelcome, TourNetwork]
+        : welcomeNeedsKey ? [TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourKey]
+        : [TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan];
 
     private void ShowTour(StackPanel panel)
     {
@@ -256,7 +259,7 @@ public partial class MainWindow
         var panels = TourPanels;
         var step = Math.Max(0, Array.IndexOf(panels, panel));
         tourStep = step;
-        foreach (var candidate in new[] { TourWelcome, TourRole, TourStart })
+        foreach (var candidate in new[] { TourWelcome, TourNetwork, TourSpecs, TourPreference, TourPlan, TourKey })
             candidate.Visibility = ReferenceEquals(candidate, panel) ? Visibility.Visible : Visibility.Collapsed;
         TourBackButton.Visibility = step > 0 ? Visibility.Visible : Visibility.Hidden;
         TourDots.Children.Clear();
@@ -278,15 +281,8 @@ public partial class MainWindow
         Tour.Opacity = 1;
     });
 
-    private void TourBegin_Click(object sender, RoutedEventArgs e) => ShowTour(TourRole);
+    private void TourBegin_Click(object sender, RoutedEventArgs e) => ShowTour(TourNetwork);
     private void TourBack_Click(object sender, RoutedEventArgs e) => ShowTour(TourPanels[Math.Max(0, tourStep - 1)]);
-
-    private void TourCompanion_Click(object sender, RoutedEventArgs e)
-    {
-        SetRole(DeviceRole.Companion);
-        ShowTour(TourStart);
-        ShowTourDefaultsAsync().Forget();
-    }
 
     private void TourHost_Click(object sender, RoutedEventArgs e)
     {
@@ -296,7 +292,6 @@ public partial class MainWindow
     }
 
     private void TourAdvisor_Click(object sender, RoutedEventArgs e) { HideTour(); Advisor_Click(sender, e); }
-    private void TourDefaults_Click(object sender, RoutedEventArgs e) { HideTour(); SetUpDefaultsAsync().Forget(); }
     private void TourSetup_Click(object sender, RoutedEventArgs e) { HideTour(); OpenCompanion(CompanionTab.Thinking); }
 
 
@@ -675,7 +670,9 @@ public partial class MainWindow
 
     private HomeStep RolesStep(LocalHostServiceState? state)
     {
-        var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}." : "No NVIDIA graphics card found.";
+        var nvidia = machine.BestGpu is { IsNvidia: true } gpu ? $"This PC has {gpu.Describe()}."
+            : machine.ProcessorType.WindowsOnArm ? "This is a Windows on Arm PC, where NVIDIA graphics cards don't work, so GPU roles need another computer."
+            : "No NVIDIA graphics card found.";
         // Roles are read from the running host service; until it runs there is nothing to add them to.
         if (state?.Roles is not { } installed)
             return new("roles", "Add roles", "Add tasks this host can handle once the host service runs. " + nvidia, false, true, []);
@@ -994,6 +991,7 @@ public partial class MainWindow
         networkDevicesShown = NetworkDevicesSignature();
         var nodes = NetworkMap.Build(Inputs());
         RenderDeviceSettings(nodes);
+        RenderNetworkCapacity(nodes);
         RenderNetwork();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         mapNodes = nodes;
@@ -1555,10 +1553,10 @@ public partial class MainWindow
         }
     }
 
-    private void OpenHosts(int step, PairedHost? manage = null)
+    private void OpenHosts(int step, PairedHost? manage = null, NearbyMartlet? connect = null)
     {
         if (store is null || setupService is null || closing) return;
-        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, step, manage) { Owner = this }.ShowDialog();
+        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, step, manage, connect) { Owner = this }.ShowDialog();
         RefreshHomeAsync().Forget();
     }
 

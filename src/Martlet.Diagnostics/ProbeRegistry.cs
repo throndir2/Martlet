@@ -1,4 +1,6 @@
+using System.Runtime.InteropServices;
 using Martlet.Core.Contracts;
+using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 
 namespace Martlet.Diagnostics;
@@ -82,6 +84,8 @@ public sealed class ProbeRegistry
             _ => Task.FromResult(new ProbeObservation("application.available", EvidenceProvenance.Live))),
         new("runtime.version", Stage.Application, true, [ProbeEffect.LocalReadOnly],
             _ => Task.FromResult(new ProbeObservation(Environment.Version.Major == 10 ? "runtime.available" : "runtime.unsupported", EvidenceProvenance.Live))),
+        new("platform.architecture", Stage.Application, true, [ProbeEffect.LocalReadOnly],
+            _ => Task.FromResult(new ProbeObservation(ArchitectureFinding(MachineArchitecture.Current), EvidenceProvenance.Live))),
         new("audio.input", Stage.Application, true, [ProbeEffect.Device, ProbeEffect.Permissioned],
             unavailableFindingId: "audio.input_unavailable"),
         new("pipeline.vad", Stage.Application, true, [ProbeEffect.LocalReadOnly], unavailableFindingId: "pipeline.unavailable"),
@@ -91,4 +95,13 @@ public sealed class ProbeRegistry
         new("pipeline.tts", Stage.Synthesis, true, [ProbeEffect.Permissioned, ProbeEffect.ProviderCost], unavailableFindingId: "pipeline.unavailable"),
         new("host.connection", Stage.Provider, false, [ProbeEffect.Network, ProbeEffect.Permissioned], unavailableFindingId: "host.unavailable")
     ]);
+
+    /// <summary>The platform.architecture finding for this PC's processor and Martlet's process.</summary>
+    public static string ArchitectureFinding(MachineArchitecture architecture) => (architecture.Machine, architecture.Process) switch
+    {
+        (Architecture.X64, Architecture.X64) => "platform.x64",
+        (Architecture.Arm64, Architecture.Arm64) => "platform.arm64_native",
+        (Architecture.Arm64, _) => "platform.arm64_emulated",
+        _ => "platform.unsupported"
+    };
 }

@@ -304,6 +304,15 @@ reads; without it, Doctor uses the current user's Martlet directory. No
 headless MCP tool creates a profile, opens a device, plays a tone, sends a
 request or handles credentials.
 
+`doctor_run` with `platform.architecture` reports this PC's processor type:
+`platform.x64`, or on Windows on Arm `platform.arm64_emulated` (the x64 build
+under Windows' x64 emulation; the real processor is read with
+`IsWow64Process2`) or `platform.arm64_native`. The same line is the desktop's
+`ThisPcArchitecture` status field in Settings › Tools ("This PC: x64
+processor; Martlet runs natively.", or the Windows on Arm wording and what it
+means for NVIDIA jobs), and the Devices map's This PC shows it as *Processor
+type*.
+
 `voices_status` reads [voice recognition and Parakeet](VOICES.md) state from a data
 directory (optional absolute `dataDirectory`, default the current user's): the
 recognition choice (`on (default)` until it is turned off; a shared setting) and
@@ -2897,20 +2906,38 @@ diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `OpenSetup`). On Settings, click `DiagnosticsSection` to
-expand the pipeline and status fields. On a fresh data directory, `TourSkip`
-dismisses the welcome tour, and `TourBegin` and `TourBack` step through it
-(Welcome › role › how to start; the tour installs nothing). Its role cards
-(`TourCompanion`, `TourHost`) save the device role, so they need
-`--allow-ui-effects`; `TourCompanion` leads to `TourDefaults`/`TourAdvisor`/`TourSetup`, and
-`TourHost` closes the tour on the host dashboard. `TourDefaultsPlan` (a
-readable value) says what *Set it all up for me* would choose on this PC, from a
-live read of its graphics card: "On NVIDIA GeForce RTX 4070 (12 GB): gemma4:e2b
-· Chatterbox Turbo · Whisper small · your default microphone" (a Windows voice
-and Parakeet on the processor when the card has no room); clicking
-`TourDefaults` (or `HealthFix-thinking-setup-defaults` on Home, or
-`HealthFix-listening-setup-defaults` / `HealthFix-voice-setup-defaults` for one
-job) asks one confirmation (`DefaultSetupQuestion`, readable) and then installs
-and downloads, so it needs `--allow-ui-effects`. Companion's side list items (`CompanionTab-<Page>`,
+expand the pipeline and status fields. On a fresh data directory, the welcome wizard shows
+([WELCOME_WIZARD.md](WELCOME_WIZARD.md)): `TourSkip` dismisses it, and `TourBegin`
+and `TourBack` step through it. Step 1's `WizardNewNetwork` and
+`WizardJoinNetwork` save the device role, so they need `--allow-ui-effects`;
+`WizardJoinNetwork` also looks for Martlet on the local network, and
+`WizardScanAgain` (passive) looks again: `WizardScanStatus` says what answered
+and each `WizardFound-<n>` reads *name (address): Martlet version, with hosts*.
+`WizardConnect-<n>` (*Join*, `--allow-ui-effects`) opens *Add a computer*
+already asking that computer (`NearbyNumber` shows the check number), and
+`WizardJoinManual` (passive) opens *Add a computer* for an address and code.
+`TourHost` makes this a host PC and closes the wizard on the host dashboard.
+Step 2 reads `WizardSpecRow-Gpu`, `-Vram` (with the memory in use when
+nvidia-smi answers), `-Ram`, `-Cpu` and `WizardSpecs` (the whole line, for
+example *NVIDIA GeForce RTX 2070 SUPER (Nvidia, 8 GB graphics memory) · 32 GB
+memory · 24 processor threads*); `WizardSpecsNext` is passive. Step 3's
+`WizardPreferLocal` and `WizardPreferOnline` (passive) choose the preference
+and show the placement engine's suggestion: `WizardPlanSummary` (the preference
+and whether Thinking goes online), `WizardPlanItem-Thinking`, `-Voice`,
+`-Listening` and `-LipSync` (what, where, *Uses 64% graphics memory, 5% memory,
+6% processor* and why, or why it's left out), `WizardJoinSuggestion-<n>` after
+joining a network, and `WizardPlanTotals`. `WizardAccept` (*Use these
+suggestions*) needs `--allow-ui-effects`: when Thinking goes to NVIDIA Build and
+none is set up it shows the key step (`WizardKeyIntro`, `WizardKeySteps`,
+`WizardKeyStatus`, readable; never the key), otherwise it closes the wizard on
+Home and asks `DefaultSetupQuestion`. `WizardKeyOpen` opens the browser and
+`WizardKeySave` saves a key (both `--allow-ui-effects`; never type a real key);
+`WizardKeySkip` goes on to `DefaultSetupQuestion` without one.
+`DefaultSetupQuestion` (readable) lists what *Set it all up for me* sets up on
+this PC, lip-sync and the downloads; `ConfirmationYes` installs and downloads,
+so it needs `--allow-ui-effects` (as do `HealthFix-thinking-setup-defaults` on
+Home and `HealthFix-listening-setup-defaults` / `HealthFix-voice-setup-defaults`
+for one job). `ConfirmationNo` changes nothing. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
 navigation too. People shows `PeopleStatus` (on, off, or that the installation
 lacks the voice recognition files), `PeopleSyncStatus` and
@@ -2960,7 +2987,28 @@ PC, then those needing attention, then by name) with `DeviceFilter-all`,
 its count) and a `DeviceSearch` box (`ui_set_text`, `--allow-ui-effects`).
 `DevicesSummary` returns *53 devices, 2 need attention. Select one to see
 details.* and `DeviceListStatus` *Showing 12 of 53 devices.* (or *No device
-matches "gpu".*). Martlet remembers up to 64 paired hosts. `SelectedDevice` and `SelectedDeviceHealth`
+matches "gpu".*). Martlet remembers up to 64 paired hosts.
+
+The selected computer's **Resources** section (`DeviceResources`, for This PC
+and paired hosts) shows how much of the device each job takes, from the
+placement engine's measure of today's setup (`PlacementEngine.Measure` over the
+footprint catalog). `DeviceSpecs` returns its hardware (*NVIDIA GeForce RTX
+5090 (32 GB) · 64 GB memory · 32 processor threads*), one
+`DeviceResource-<vram|ram|cpu|disk>` per resource it reported (*Graphics
+memory: 14 of 32 GB planned (44%), 15 GB free for Martlet.*; This PC's memory
+adds *In use now: 9.5 GB (59%).*, read live; hosts report no live use yet), one
+`DeviceShare-<option>` per job (*Deep thinking (Gemma 4 12B): 25% graphics
+memory, 3% memory, 6% processor.*), `DeviceHeadroom` (*Left free: ...*) and
+`DeviceAlsoFits-<n>` from `PlacementEngine.Afford` (*Room for another Deep
+thinking model (Gemma 4 12B) here.*). The **What your computers can run** card
+(`CapacityCard`) returns `CapacityCoverage` (*On your computers: Thinking
+(gpu-box). Online: Voice (OpenAI voice). Not set up: Singing, Pictures.*),
+`CapacityTotals` (*Totals across 2 computers: 32 GB graphics memory, 80 GB
+memory, ...*) and `CapacityFits` (*Your computers could also run 2 more Thinking
+models (Gemma 4 E4B) and another Deep thinking model (Gemma 4 12B).*). All are
+read-only.
+
+`SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
@@ -4405,6 +4453,32 @@ this flag to an untrusted MCP client. UI Automation needs an unlocked interactiv
 can fail in an unattended/headless session; use Doctor's headless tools there.
 An automation click is not proof of actual microphone, speaker or provider
 readiness.
+
+## Martlet for Linux and macOS
+
+`companion_status` runs this checkout's `src/Martlet.Companion` build with
+`--status` (building `Martlet.Mcp` builds it) and returns what it detected about
+the computer (OS, architecture, Apple silicon vs Intel, NVIDIA, Wayland/X11), which
+platform services work, the character renderer in the build, the defaults, and the
+platform-catalog guardrails: every engine per job with `offered`, the catalog's
+verdict and reason, plus local-model warnings. `platform` (`linux-x64`,
+`linux-nvidia`, `linux-arm64`, `macos-arm64`, `macos-x64`) computes all of it for
+that platform from any computer (`simulated: true`). `settingsFile` checks a
+settings.json from another device against it and returns `import.refusals` (each
+with the catalog's reason) and the engines kept. No audio, network or window.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"companion_status","arguments":{"platform":"macos-x64","settingsFile":"C:\\temp\\windows-settings.json"}}]'
+```
+
+On a Windows dev run the companion's window also answers `ui_connect` (process
+`Martlet.Companion`, main window `MartletMainWindow`): the tabs `TalkTab`,
+`SettingsTab` and `ComputerTab` are safe clicks, and `StatusLine`,
+`CharacterState`, `CompanionStatus`, `Refusals`, `NotOffered`,
+`ThinkingWarnings`, `KeyNote` and the engine choices are readable. On Linux or a
+Mac, where this server doesn't run, use `Martlet.Companion --status` and
+`Martlet.Companion --character-check` (opens only the character, prints each
+renderer state as a JSON line, exits 0 once it shows and lip-sync was sent).
 
 ## Verifying changes with Martlet MCP
 

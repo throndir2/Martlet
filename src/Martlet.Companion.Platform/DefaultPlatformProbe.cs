@@ -53,7 +53,13 @@ public sealed class DefaultPlatformProbe : IPlatformProbe
                 Gpus = info.Architecture == Architecture.Arm64 ? [new PlatformGpu("Apple GPU", "apple", null)] : [],
                 DisplayServer = DisplayServer.Quartz
             },
-            DevicePlatform.Windows => info with { Gpus = NvidiaGpus(), DisplayServer = DisplayServer.Windows },
+            DevicePlatform.Windows => info with
+            {
+                // The x64 build on Windows on Arm runs emulated; IsWow64Process2 names the real ARM64 processor.
+                Architecture = MachineArchitecture.Current.Machine,
+                Gpus = NvidiaGpus(),
+                DisplayServer = DisplayServer.Windows
+            },
             _ => info
         };
     }

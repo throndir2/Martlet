@@ -1,10 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Linux integration for Martlet.Companion (DX02 in docs/DESKTOP_LINUX_MACOS.md): overlay, hotkey, Secret Service,
-       tray, autostart, screen capture. Portable net10.0; native calls are made only when running on Linux. -->
+  <!-- Linux integration for Martlet.Companion (DX02 in docs/DESKTOP_LINUX_MACOS.md): overlay (X11/XWayland), push-to-talk
+       (GlobalShortcuts portal, X11 grab), Secret Service, autostart, screen capture (X11, ScreenCast portal + PipeWire) and
+       platform probe. Portable net10.0; native calls are made only when running on Linux. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Platform.Linux.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
+    <PackageReference Include="Tmds.DBus.Protocol" />
     <ProjectReference Include="..\Martlet.Companion.Platform\Martlet.Companion.Platform.csproj" />
   </ItemGroup>
 </Project>

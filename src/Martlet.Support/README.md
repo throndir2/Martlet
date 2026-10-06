@@ -90,7 +90,7 @@ is accepted by the snapshot API.
 
 The known probe IDs are the existing local registry IDs plus `fixture.session`:
 `settings.load`, `provider.connection`, `audio.playback`, `application.version`,
-`runtime.version`, `audio.input`, `pipeline.vad`, `pipeline.stt`, `pipeline.policy`,
+`runtime.version`, `platform.architecture`, `audio.input`, `pipeline.vad`, `pipeline.stt`, `pipeline.policy`,
 `pipeline.llm`, `pipeline.tts`, `host.connection`. Adding a new caller/probe
 requires a deliberate allowlist update; new diagnostic findings/remedies still
 belong to the shared Diagnostics catalog, not a second support catalog.
