@@ -85,8 +85,9 @@ public partial class MainWindow
             Note("Martlet's replies can make the character show its emotes and play its motions, and nod or shake its head. Link one " +
                 "to a voice cue and it plays whenever the voice makes that sound or tone (Chatterbox Turbo's [laugh], Dia's (laughs)); " +
                 "the others are offered to the Thinking model as tags such as {blush}. Tags are always English (a-z), so every " +
-                "Thinking model can write them; names stay as the model's creator wrote them, in any language. Changes save as you " +
-                "type, for this model.",
+                "Thinking model can write them; names stay as the model's creator wrote them, in any language. A tag written " +
+                "another way still plays ([blush] or *blushes* for {blush}), and the talk window notes under each reply what it " +
+                "set off. Changes save as you type, for this model.",
                 new Thickness(0, 0, 0, 8))
         };
         var catalog = characterActions.Current;

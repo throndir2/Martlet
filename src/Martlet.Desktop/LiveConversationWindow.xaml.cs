@@ -1318,6 +1318,10 @@ public partial class LiveConversationWindow : ThemedWindow
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
                 passed: done.Passed, restarted: continued) is { } latency)
             ErrorLog.Info(latency);
+        // What the reply's tags did (character emotes and the voice's sounds and tones), with any other spelling Martlet took for
+        // a tag ([nod] for {nod}); tag names only, never the words.
+        var acted = done.Turn?.Acted ?? [];
+        if (!notWords && acted.Count > 0) ErrorLog.Info($"Reply acted: {ReplyTag.Describe(acted)}.");
         if (ReferenceEquals(shown, done) && reply is not null)
         {
             // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it; one to
@@ -1330,6 +1334,8 @@ public partial class LiveConversationWindow : ThemedWindow
             }
             else
             {
+                // How the reply was acted out: its tone, the voice's sounds and the character's emotes.
+                if (ReplyTag.Note(acted) is { } how) reply.AddNote(how);
                 var refusal = done.Turn?.Content.Refusal?.Trim();
                 if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet declined: " + refusal);
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");

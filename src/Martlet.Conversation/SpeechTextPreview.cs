@@ -4,15 +4,16 @@ namespace Martlet.Conversation;
 
 /// <summary>What a reply becomes for a voice engine, without speaking it: the pieces the real segmenter hands that engine
 /// (its own tags kept, other tags, the character's tags and control tags dropped, markup suppressed, broken where a spoken
-/// reply with these speech breaks breaks), the cues the character acts on in each piece, the text the chat and captions show
-/// and the control tags found, in order. Used by Martlet MCP's voice_tags, character_gaze and chattiness_status tools to
-/// observe tag handling and a persona's speech breaks headlessly. With <paramref name="silentWord"/> a sentence that is only
-/// that word (a screen glance's [pass]) is never spoken, as in a glance.</summary>
+/// reply with these speech breaks breaks), the cues the character acts on in each piece, the text the chat and captions show,
+/// the control tags found, in order, and what the reply's tags did (<see cref="ReplyTag"/>) with the note the talk window
+/// shows under it. Used by Martlet MCP's voice_tags, character_gaze and chattiness_status tools to observe tag handling and a
+/// persona's speech breaks headlessly. With <paramref name="silentWord"/> a sentence that is only that word (a screen glance's
+/// [pass]) is never spoken, as in a glance.</summary>
 public static class SpeechTextPreview
 {
     public sealed record Cue(int Piece, string Tag, int Offset);
     public sealed record Result(IReadOnlyList<string> Spoken, int SuppressedPieces, string Shown, IReadOnlyList<Cue> Cues,
-        IReadOnlyList<string> Controls);
+        IReadOnlyList<string> Controls, IReadOnlyList<ReplyTag> Acted, string? Note);
 
     public static Result For(string reply, SpeechEngine? engine, IReadOnlyList<string>? characterTags = null,
         SpeechBreaks? breaks = null, string? silentWord = null, IReadOnlyList<string>? controlTags = null)
@@ -30,8 +31,12 @@ public static class SpeechTextPreview
             foreach (var cue in piece.Cues ?? []) cues.Add(new(piece.Text is null ? -1 : spoken.Count - 1, cue.Tag, cue.Offset));
         }
         var controls = new List<string>();
-        var stripper = new VoiceTagStripper(characterTags, controlTags: controlTags, droppedControl: controls.Add);
+        var acted = new List<ReplyTag>();
+        var voiceTags = engine?.Tags ?? [];
+        var stripper = new VoiceTagStripper(characterTags, controlTags: controlTags, droppedControl: controls.Add, voiceTags: voiceTags,
+            removed: tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); });
         var shown = stripper.Push(reply) + stripper.Finish();
-        return new(spoken, pieces.Count(p => p.Text is null && p.Cues is null or { Count: 0 }), shown, cues, controls);
+        return new(spoken, pieces.Count(p => p.Text is null && p.Cues is null or { Count: 0 }), shown, cues, controls, acted,
+            ReplyTag.Note(acted));
     }
 }

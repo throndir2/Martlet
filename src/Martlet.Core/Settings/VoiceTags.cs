@@ -1,12 +1,95 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Martlet.Core.Settings;
 
 /// <summary>Finds, keeps and strips voice-engine tags (<see cref="SpeechEngine.Tags"/>) in reply text. Matching ignores case
 /// and writes the engine's own spelling. The chat, captions and voices without a tag catalog get every registered engine's
-/// tags stripped, so OpenAI, Windows, F5 or XTTS never read "[laugh]" aloud.</summary>
+/// tags stripped, so OpenAI, Windows, F5 or XTTS never read "[laugh]" aloud. Models often write a tag they were given in
+/// other brackets or as a stage direction ([nod] or *nods* for {nod}, (sighs) for [sigh]); those spellings
+/// (<see cref="Spellings"/>) count as the tag itself.</summary>
 public static class VoiceTags
 {
+    private static readonly (char Open, char Close)[] Brackets = [('[', ']'), ('(', ')'), ('{', '}'), ('<', '>')];
+    private static readonly (char Open, char Close)[] ActionBrackets = [.. Brackets, ('*', '*')];
+
+    /// <summary>Other ways models write <paramref name="tag"/> that count as it, so a reply that mixes up the brackets still
+    /// acts and never shows or speaks the tag: its words in any of [ ], ( ), { } and &lt; &gt; ([nod], (nod) or &lt;nod&gt; for
+    /// {nod}; {laugh} or (laugh) for [laugh]); a sound's or tone's engine-independent cue the same way ([laugh] for Dia's
+    /// (laughs)); words joined by spaces, underscores or hyphens alike ([shake head] for {shake_head}); and, for sounds and the
+    /// character's tags, the action a stage direction would write ([nods], *nods*, (sighs), *clears throat*). Tones of voice
+    /// get only the other brackets and control tags none. The tag's own spelling isn't listed.</summary>
+    public static IReadOnlyList<VoiceTag> Spellings(VoiceTag tag)
+    {
+        ArgumentNullException.ThrowIfNull(tag);
+        var text = tag.Text;
+        if (tag.Kind == VoiceTagKind.Control || text.Length < 3 || !Brackets.Contains((text[0], text[^1]))) return [];
+        var words = new List<string> { text[1..^1].Trim() };
+        if (tag.Kind != VoiceTagKind.Character && tag.Cue.All(c => char.IsAsciiLetter(c) || c is ' ' or '_' or '-')) words.Add(tag.Cue);
+        var acts = tag.Kind != VoiceTagKind.Emotion;
+        var spellings = new List<VoiceTag>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { text };
+        foreach (var word in words.Where(word => word.Length > 0))
+            foreach (var joined in Joinings(word))
+            {
+                Add(joined, acts && FirstWord(joined).EndsWith("s", StringComparison.OrdinalIgnoreCase));
+                if (acts && Action(joined) is { } action) Add(action, true);
+            }
+        return spellings;
+
+        void Add(string form, bool action)
+        {
+            foreach (var (open, close) in action ? ActionBrackets : Brackets)
+                if (seen.Add($"{open}{form}{close}"))
+                    spellings.Add(tag with { Text = $"{open}{form}{close}", CueName = tag.Cue, AliasOf = tag.Canonical });
+        }
+    }
+
+    // A tag's words joined by spaces, underscores and hyphens ("shake_head": "shake head", "shake_head", "shake-head").
+    private static IEnumerable<string> Joinings(string words)
+    {
+        var parts = words.Split([' ', '_', '-'], StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length < 2 ? [words] : new[] { " ", "_", "-" }.Select(separator => string.Join(separator, parts));
+    }
+
+    private static string FirstWord(string words) => words.IndexOfAny([' ', '_', '-']) is var cut and >= 0 ? words[..cut] : words;
+
+    // The words as a stage direction writes the action: the first word in the third person ("nod": "nods", "blush": "blushes",
+    // "clear throat": "clears throat"), or null when it already ends in s, -ing or -ed, or isn't an English word.
+    private static string? Action(string words)
+    {
+        var first = FirstWord(words);
+        var lower = first.ToLowerInvariant();
+        if (first.Length < 2 || !first.All(char.IsAsciiLetter) || lower.EndsWith('s') || lower.EndsWith("ing", StringComparison.Ordinal) ||
+            lower.EndsWith("ed", StringComparison.Ordinal))
+            return null;
+        var verb = lower.EndsWith("sh", StringComparison.Ordinal) || lower.EndsWith("ch", StringComparison.Ordinal) || lower[^1] is 'x' or 'z' or 'o'
+            ? first + "es"
+            : lower[^1] == 'y' && lower[^2] is not ('a' or 'e' or 'i' or 'o' or 'u') ? first[..^1] + "ies"
+            : first + "s";
+        return verb + words[first.Length..];
+    }
+
+    private static readonly ConditionalWeakTable<object, VoiceTagSet.Group> Exact = new(), Spelled = new();
+
+    /// <summary>The tags a reply may write, for finding them as it streams: <paramref name="voiceTags"/> (the speaking engine's,
+    /// which it keeps), <paramref name="characterTags"/> ({blush}) and <paramref name="controlTags"/>
+    /// ([chattiness:quiet]), then every other spelling of the engine's and the character's tags (<see cref="Spellings"/>), then
+    /// every registered engine's tags and their other spellings. When two share a spelling the first wins: the speaking voice's
+    /// sounds before the character's emotes, and either before another engine's tag.</summary>
+    public static VoiceTagSet Recognized(IReadOnlyList<VoiceTag>? voiceTags = null, IEnumerable<string>? characterTags = null,
+        IEnumerable<string>? controlTags = null)
+    {
+        var kept = voiceTags ?? [];
+        var character = CharacterTags(characterTags);
+        var engines = SpeechEngines.All;
+        return new([
+            Exact.GetValue(kept, _ => new(kept)), new(character), new(ControlTags(controlTags)),
+            Spelled.GetValue(kept, _ => new(kept.SelectMany(Spellings))), new(character.SelectMany(Spellings)),
+            Exact.GetValue(engines, _ => new(Known)), Spelled.GetValue(engines, _ => new(Known.SelectMany(Spellings)))
+        ]);
+    }
+
     /// <summary>The tag of <paramref name="tags"/> starting at <paramref name="index"/> in <paramref name="text"/>, or null.</summary>
     public static VoiceTag? At(string text, int index, IReadOnlyList<VoiceTag> tags)
     {
@@ -99,12 +182,14 @@ public static class VoiceTags
 /// the chat, keeping spacing natural. Tags may be split across deltas, so a possible tag's start is held until it completes or
 /// stops matching, and spaces wait for the next word (a space before a removed tag's punctuation is dropped). Each character
 /// tag removed is passed to <paramref name="droppedTag"/> and each control tag to <paramref name="droppedControl"/>, as
-/// written in the list given.</summary>
+/// written in the list given, whichever spelling the reply used (<see cref="VoiceTags.Spellings"/>). <paramref name="voiceTags"/>
+/// are the speaking engine's tags, so a spelling two tags share means the same as it does to the speech segmenter; every tag
+/// removed is passed to <paramref name="removed"/> as matched.</summary>
 public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, Action<string>? droppedTag = null,
-    IEnumerable<string>? controlTags = null, Action<string>? droppedControl = null)
+    IEnumerable<string>? controlTags = null, Action<string>? droppedControl = null, IReadOnlyList<VoiceTag>? voiceTags = null,
+    Action<VoiceTag>? removed = null)
 {
-    private readonly VoiceTag[] known = [.. VoiceTags.Known.Concat(VoiceTags.CharacterTags(characterTags))
-        .Concat(VoiceTags.ControlTags(controlTags)).DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase)];
+    private readonly VoiceTagSet known = VoiceTags.Recognized(voiceTags, characterTags, controlTags);
     private readonly StringBuilder held = new();
     private readonly StringBuilder spaces = new();
     private bool dropped, emitted;
@@ -115,19 +200,20 @@ public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, 
         var output = new StringBuilder(delta.Length);
         foreach (var c in delta)
         {
-            if (held.Length > 0 || known.Any(tag => char.ToLowerInvariant(tag.Text[0]) == char.ToLowerInvariant(c)))
+            if (held.Length > 0 || known.CanStart(c))
             {
                 held.Append(c);
                 var text = held.ToString();
-                if (known.FirstOrDefault(tag => string.Equals(tag.Text, text, StringComparison.OrdinalIgnoreCase)) is { } whole)
+                if (known.Find(text) is { } whole)
                 {
                     held.Clear();
                     dropped = true;
-                    if (whole.Kind == VoiceTagKind.Character) droppedTag?.Invoke(whole.Text);
+                    if (whole.Kind == VoiceTagKind.Character) droppedTag?.Invoke(whole.Canonical);
                     else if (whole.Kind == VoiceTagKind.Control) droppedControl?.Invoke(whole.Text);
+                    removed?.Invoke(whole);
                     continue;
                 }
-                if (known.Any(tag => tag.Text.StartsWith(text, StringComparison.OrdinalIgnoreCase))) continue;
+                if (known.StartsAny(text)) continue;
                 held.Clear();
                 foreach (var replayed in text) Emit(replayed, output);
                 continue;
@@ -165,5 +251,83 @@ public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, 
         dropped = false;
         emitted = c != '\n';
         output.Append(c);
+    }
+}
+
+/// <summary>The tags a reply may write (<see cref="VoiceTags.Recognized"/>), for finding them as it streams: groups in the
+/// order they win when two share a spelling, each sorted so a spelling, or the start of one, is found without going through
+/// every tag. Matching ignores case.</summary>
+public sealed class VoiceTagSet
+{
+    private readonly Group[] groups;
+
+    internal VoiceTagSet(Group[] groups) => this.groups = groups;
+
+    /// <summary>Whether a tag can start with <paramref name="c"/>.</summary>
+    public bool CanStart(char c)
+    {
+        var lower = char.ToLowerInvariant(c);
+        foreach (var group in groups)
+            if (group.Starts.Contains(lower)) return true;
+        return false;
+    }
+
+    /// <summary>The tag spelled <paramref name="text"/>, from the first group that has it, or null.</summary>
+    public VoiceTag? Find(string text)
+    {
+        foreach (var group in groups)
+            if (group.Find(text) is { } tag) return tag;
+        return null;
+    }
+
+    /// <summary>Every tag whose spelling starts with <paramref name="prefix"/> (a spelling two groups share, once from each).</summary>
+    public IEnumerable<VoiceTag> StartingWith(string prefix) => groups.SelectMany(group => group.StartingWith(prefix));
+
+    /// <summary>Whether any tag's spelling starts with <paramref name="prefix"/>.</summary>
+    public bool StartsAny(string prefix)
+    {
+        foreach (var group in groups)
+            if (group.StartingWith(prefix).Any()) return true;
+        return false;
+    }
+
+    internal sealed class Group
+    {
+        private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+        private readonly VoiceTag[] sorted;
+
+        internal Group(IEnumerable<VoiceTag> tags)
+        {
+            sorted = [.. tags.DistinctBy(tag => tag.Text, Comparer)];
+            Array.Sort(sorted, (a, b) => Comparer.Compare(a.Text, b.Text));
+            Starts = [.. sorted.Select(tag => char.ToLowerInvariant(tag.Text[0]))];
+        }
+
+        internal HashSet<char> Starts { get; }
+
+        internal VoiceTag? Find(string text)
+        {
+            var at = Lower(text);
+            return at < sorted.Length && Comparer.Equals(sorted[at].Text, text) ? sorted[at] : null;
+        }
+
+        internal IEnumerable<VoiceTag> StartingWith(string prefix)
+        {
+            for (var at = Lower(prefix); at < sorted.Length && sorted[at].Text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase); at++)
+                yield return sorted[at];
+        }
+
+        // The first tag that doesn't sort before key: where key, and every spelling starting with it, would be.
+        private int Lower(string key)
+        {
+            int low = 0, high = sorted.Length;
+            while (low < high)
+            {
+                var middle = (low + high) >>> 1;
+                if (Comparer.Compare(sorted[middle].Text, key) < 0) low = middle + 1;
+                else high = middle;
+            }
+            return low;
+        }
     }
 }

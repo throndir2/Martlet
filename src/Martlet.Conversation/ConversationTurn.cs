@@ -27,6 +27,8 @@ public sealed class ConversationTurn
     private readonly VoiceTagStripper shown;
     // The control tags the reply wrote, in order (ConversationRequest.ControlTags); guarded by Sync like the text.
     private readonly List<string> controls = [];
+    // The character tags the reply wrote and the sounds and tones its voice performed, in order; guarded by Sync like the text.
+    private readonly List<ReplyTag> acted = [];
     private readonly Channel<SpeechPiece> segments = Channel.CreateBounded<SpeechPiece>(new BoundedChannelOptions(2)
     {
         FullMode = BoundedChannelFullMode.Wait, SingleWriter = true, SingleReader = false, AllowSynchronousContinuations = false
@@ -88,6 +90,10 @@ public sealed class ConversationTurn
     /// <summary>The control tags (<see cref="ConversationRequest.ControlTags"/>) the reply wrote so far, in order, as the request
     /// spelled them; never shown or spoken.</summary>
     public IReadOnlyList<string> Controls { get { lock (Sync) return [.. controls]; } }
+    /// <summary>What the reply's tags did so far, in order: each character tag it wrote (<c>{nod}</c>, also when it wrote
+    /// <c>[nod]</c> or <c>*nods*</c>) and each sound or tone its voice performed (<c>[laugh]</c>); never shown or spoken as
+    /// words.</summary>
+    public IReadOnlyList<ReplyTag> Acted { get { lock (Sync) return [.. acted]; } }
 
     internal ConversationTurn(ConversationRuntime owner, ConversationRequest request,
         IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech)
@@ -95,10 +101,13 @@ public sealed class ConversationTurn
         Owner = owner;
         this.request = request;
         this.authorization = authorization;
+        // The speaking voice's own tags: a spelling it shares with another tag means what it means to the speech segmenter.
+        IReadOnlyList<VoiceTag> voiceTags = request.Speech is null ? [] : SpeechEngines.TagsForModel(request.HostSpeech?.ModelId);
         // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive.
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
             ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null,
-            request.ControlTags, controls.Add);
+            request.ControlTags, controls.Add, voiceTags,
+            tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); });
         captioner = request.Speech is null && owner.SpokenText is not null
             ? new SpeechSegmenter(BoundedSpeechInput.HardMaxUtf8Bytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
                 characterTags: request.CharacterTags, controlTags: request.ControlTags)

@@ -1153,6 +1153,20 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   tag arrives split across stream deltas. Any other registered engine's tag is
   dropped without silencing its sentence, so OpenAI, Windows voices, F5 and
   XTTS never read "[laugh]" aloud.
+- **Other spellings.** Models sometimes write a tag they were given in other
+  brackets or as a stage direction. Those spellings count as the tag itself
+  (`VoiceTags.Spellings`): its words in any of `[ ]`, `( )`, `{ }` and
+  `< >`; a sound's or tone's cue the same way (`[laugh]` for Dia's
+  `(laughs)`); words joined by spaces, underscores or hyphens alike; and, for
+  sounds and character tags, the action a stage direction writes (`[nods]`,
+  `*nods*`, `(sighs)`, `*clears throat*`). So `[nod]` for `{nod}` plays the
+  nod and `*laughs*` is spoken as Chatterbox's `[laugh]` (or Dia's `(laughs)`),
+  instead of the tag showing in the chat and silencing the rest of its line.
+  Tones of voice take only other brackets, never `*...*`, and emphasis such as
+  `*so*` is left alone. When two tags share a spelling, the speaking voice's
+  own tag wins, then the character's, then another engine's: `[happy]` is
+  Chatterbox's tone while Chatterbox speaks and the character's `{happy}` emote
+  otherwise.
 - **Chat and captions.** The chat, the saved conversation and the speech
   bubble/captions never show tags: they are stripped as the reply streams, and
   captions strip the spoken piece's tags.
@@ -1164,9 +1178,17 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   segmenter and the chat drop like another engine's tags. Both reach the
   character through the runtime's `CharacterCueFeed`, timed within the sentence
   as it starts playing (or at once for a reply that isn't spoken).
+- **Under the reply.** The talk window notes how a reply was acted out under
+  its bubble (`ReplyTag.Note`): *Tone: happy. Sound: laugh. Emotes: nod,
+  blush.*, each part only when the reply wrote one: the tones and sounds its
+  voice performed and the character tags it wrote. The desktop log has
+  *Reply acted: {nod} (written [nod]), [laugh].* (tag names and spellings only,
+  never the words).
 
 `voice_tags` in [Martlet MCP](MCP.md) shows all of these for any engine (with
-`characterTags`, the character cues too).
+`characterTags`, the character cues too, plus `acted` and `note`), and
+`spoken_reply_check` with `characterTags` runs them through the production
+runtime.
 
 ## Hands-free voice activity and Voice ID
 

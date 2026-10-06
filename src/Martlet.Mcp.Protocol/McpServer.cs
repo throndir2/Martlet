@@ -217,7 +217,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "persona by name, else the one Martlet uses, else the defaults;             \"breaks\" overrides periods, questionMarks, " +
                         "exclamationMarks and shortEndingWords; commas, semicolons and dashes never break), the text the chat and captions show and, with characterTags (the character's " +
             "tags such as \"{blush}\"), the character cues found in each spoken piece (piece index, -1 for cues after the last " +
-            "words; tag; character offset). Synthesizes and contacts nothing.", new
+                        "words; tag; character offset). Other spellings of a tag count as it ([nod] or *nods* for {nod}, (sighs) for [sigh]): " +
+                        "acted lists what the reply's tags did (each tag as the character or engine spells it, its kind, name and the other " +
+                        "spelling written) and note the line the talk window shows under the reply (\"Tone: happy. Sound: laugh. Emotes: " +
+                        "nod.\"). Synthesizes and contacts nothing.", new
         {
             text = new { type = "string" }, engine = new { type = "string" }, dataDirectory = new { type = "string" },
             characterTags = new { type = "array", items = new { type = "string" } }, persona = new { type = "string" },
@@ -645,7 +648,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "that always thinks does, and ok needs the reply asked once more without it (thinking.sentControl [true, false], " +
             "reasoningRejected). With chattiness, the reply is offered the chattiness tags as it is while Companion > Vision > How " +
             "often it comments is Martlet decides (such as \"[chattiness:quiet]\"): chattiness returns the tags the reply wrote and " +
-            "the level they switch to, and ok also needs them out of reply.text and voice.pieces. Loopback only; reads no credentials.", new
+            "the level they switch to, and ok also needs them out of reply.text and voice.pieces. With characterTags (such as " +
+            "[\"{nod}\", \"{blush}\"]) the reply is offered the desktop character's tags as while the character shows: character " +
+            "returns what the reply's tags did (acted: each tag, its kind, name and the other spelling the reply used, such as " +
+            "[nod] or *nods* for {nod}), the note the talk window shows under the reply (\"Tone: happy. Emotes: nod.\") and each cue " +
+            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence), and ok also needs every " +
+            "spelling of the tags out of reply.text and voice.pieces and, with voiceFailure none, slow or text-only, a cue for " +
+            "every tag acted. Loopback only; reads no credentials.", new
         {
             voiceFailure = new { type = "string", @enum = SpokenReplyCheck.Failures },
             failAt = new { type = "integer", minimum = 1, maximum = 4 },
@@ -655,7 +664,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             breaks = BreaksSchema(),
             thinkingSteps = new { type = "string", @enum = new[] { "off", "on" } },
             refuseThinking = new { type = "boolean" },
-            chattiness = new { type = "boolean" }
+            chattiness = new { type = "boolean" },
+            characterTags = new { type = "array", items = new { type = "string" } }
         }),
         Tool("smart_home_status", "Read Companion > Smart home's saved connection from a data directory: the Home Assistant address, " +
             "name and version, whether a token is saved (never the token), the control, locks and flexible-request settings, and whether " +
@@ -1021,7 +1031,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
                     SpeechBreaksFrom(arguments, SavedSettings(arguments), out var speaker), speaker?.Name,
                     OptionalString(arguments, "thinkingSteps"), OptionalBool(arguments, "refuseThinking") ?? false,
-                    OptionalBool(arguments, "chattiness") ?? false),
+                    OptionalBool(arguments, "chattiness") ?? false, OptionalStrings(arguments, "characterTags")),
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
@@ -1693,10 +1703,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
         var settings = SavedSettings(arguments);
         var prompts = settings?.Prompts;
-        var characterTags = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("characterTags", out var listed) &&
-            listed.ValueKind == JsonValueKind.Array
-            ? listed.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!).Take(128).ToArray()
-            : null;
+        var characterTags = OptionalStrings(arguments, "characterTags");
         var breaks = SpeechBreaksFrom(arguments, settings, out var persona);
         var preview = Martlet.Conversation.SpeechTextPreview.For(text, engine, characterTags, breaks);
         return new
@@ -1709,9 +1716,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             prompt = Martlet.Core.Settings.VoiceTags.Instructions(engine, prompts),
             persona = persona?.Name, breaks = Breaks(breaks),
             spoken = preview.Spoken, suppressedPieces = preview.SuppressedPieces, shown = preview.Shown,
-            characterCues = preview.Cues.Select(c => new { piece = c.Piece, tag = c.Tag, offset = c.Offset }).ToArray()
+            characterCues = preview.Cues.Select(c => new { piece = c.Piece, tag = c.Tag, offset = c.Offset }).ToArray(),
+            acted = preview.Acted.Select(tag => new { tag = tag.Tag, kind = tag.Kind.ToString(), name = tag.Name, written = tag.Written }).ToArray(),
+            note = preview.Note
         };
     }
+
+    /// <summary>An optional array of strings (at most 128), or null when it isn't given.</summary>
+    private static string[]? OptionalStrings(JsonElement arguments, string name) =>
+        arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out var listed) && listed.ValueKind == JsonValueKind.Array
+            ? listed.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.String).Select(t => t.GetString()!).Take(128).ToArray()
+            : null;
 
     /// <summary>A data directory's settings.json, or null without a dataDirectory or before anything was saved there.</summary>
     private static Martlet.Core.Settings.AppSettings? SavedSettings(JsonElement arguments) =>

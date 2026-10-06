@@ -424,7 +424,17 @@ tags](AVATARS.md#emotes-and-motions), such as `["{blush}"]`), those are stripped
 too and `characterCues` lists the cues the character acts on: each one's
 `piece` (index in `spoken`, or -1 for a tag after the last words), `tag` (a
 character tag or the engine's own voice tag) and character `offset` in the
-piece. It synthesizes and contacts nothing.
+piece. [Other spellings](CONVERSATION.md#voice-tags) of a tag count as it
+(`[nod]` or `*nods*` for `{nod}`, `(sighs)` for `[sigh]`): `acted` lists what the
+reply's tags did, in order (`tag` as the character or engine spells it, `kind`
+`Character`, `Sound` or `Emotion`, `name`, and `written`, the other spelling
+used, or null), and `note` is the line the talk window shows under the reply,
+such as *Tone: happy. Sound: laugh. Emotes: nod, blush.* (null without tags).
+For example `{"name":"voice_tags","arguments":{"text":"Oh, look at all that
+activity! [nod] What are you working on right now?","characterTags":["{nod}"]}}`
+returns both sentences in `spoken` (before, the `[` silenced the second and the
+chat showed `[nod]`), the `{nod}` cue at the start of the second, `written`
+`[nod]` and `note` *Emote: nod.* It synthesizes and contacts nothing.
 
 `cluster_status` reads [shared who does what](CLUSTER.md) from a data directory
 (optional absolute `dataDirectory`, default the current user's): `sync` is
@@ -1687,6 +1697,25 @@ compares with the served text without its tags. For example
 returned `switchesTo` *quiet*, the two sentences as the only pieces, and the
 same `firstWordsMs` (about 2 ms) and `firstAudioMs` (340-470 ms) as the reply
 without its tag: a tag at the end never holds back the first words.
+
+With `characterTags` (such as `["{nod}","{blush}"]`) the reply is offered the
+desktop character's tags as while the character shows
+(`ConversationRequest.CharacterTags`), and the runtime gets a
+`CharacterCueFeed`. `character` returns `offered`, `acted` (what the reply's
+tags did, from `ConversationTurn.Acted`, as `voice_tags` lists it: `tag`,
+`kind`, `name`, `written`), `note` (the line the talk window shows under the
+reply), `cues` (each cue the character got: `tag`, `atMs` when its sentence
+started playing and `delayMs` into that sentence) and `hidden`; `ok` also needs
+every [spelling](CONVERSATION.md#voice-tags) of the tags out of `reply.text`
+and `voice.pieces` and, with `voiceFailure` `none`, `slow` or `text-only`, a
+cue for every tag acted (`everyCue`). For example
+`{"voiceFailure":"none","characterTags":["{nod}","{shake_head}","{blush}"],"reply":"Oh, look at all that activity! [nod] What are you working on right now? I bet it's cool *blushes* tell me everything."}`
+spoke all three sentences, with `{nod}` (written `[nod]`) at the start of the
+second and `{blush}` (written `*blushes*`) 1071 ms into the third, and `note`
+*Emotes: nod, blush.* In the desktop the same note shows under the reply in
+the talk window (chat text isn't returned by `ui_snapshot`), and `logs_tail`
+`contains` `Reply acted` reads *Reply acted: {nod} (written [nod]).* next to
+*Character gesture 'nod' played for {nod}.*
 
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's

@@ -67,11 +67,15 @@ public enum VoiceTagKind { Sound, Emotion, Character, Control }
 /// <summary>One tag an engine understands, written exactly as the engine expects it (Chatterbox <c>[laugh]</c>, Dia
 /// <c>(laughs)</c>), with one line telling the Thinking model when to use it. <see cref="Cue"/> is what it means across
 /// engines (<c>laugh</c> for both of those), so a character emote or motion linked to a cue follows every engine's
-/// spelling of it.</summary>
-public sealed record VoiceTag(string Text, VoiceTagKind Kind, string Usage, string? CueName = null)
+/// spelling of it. <see cref="AliasOf"/> is set on another spelling of a tag that Martlet accepts too (<see cref="VoiceTags.Spellings"/>,
+/// such as <c>[nod]</c> or <c>*nods*</c> for <c>{nod}</c>): the tag it stands for.</summary>
+public sealed record VoiceTag(string Text, VoiceTagKind Kind, string Usage, string? CueName = null, string? AliasOf = null)
 {
     /// <summary>The engine-independent name of the sound or tone: <see cref="CueName"/>, or the tag without its brackets.</summary>
     public string Cue => CueName ?? Text.Trim('[', ']', '(', ')', ' ').ToLowerInvariant();
+
+    /// <summary>The tag as the engine, character or request spells it: <see cref="AliasOf"/>, or <see cref="Text"/>.</summary>
+    public string Canonical => AliasOf ?? Text;
 }
 
 public static class SpeechEngines
