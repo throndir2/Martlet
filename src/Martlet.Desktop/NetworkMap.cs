@@ -718,6 +718,7 @@ internal static class NetworkMap
         thisPc.Facts.Add(new("Computer", machine.Name));
         thisPc.Facts.Add(new("Windows", machine.Windows));
         if (machine.Processor is { } cpu) thisPc.Facts.Add(new("Processor", $"{cpu} ({machine.Threads} threads)"));
+        thisPc.Facts.Add(new("Processor type", machine.ProcessorType.Describe()));
         if (machine.MemoryGb is { } ram) thisPc.Facts.Add(new("Memory", $"{ram:0} GB"));
         if (machine.Gpus.Count == 0) thisPc.Facts.Add(new("Graphics", "No dedicated GPU found"));
         foreach (var gpu in machine.Gpus) thisPc.Facts.Add(new("Graphics", gpu.Describe()));

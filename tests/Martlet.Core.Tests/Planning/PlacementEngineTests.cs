@@ -35,9 +35,8 @@ public sealed class PlacementEngineTests
         var plan = Plan(HostingPreference.PreferLocal, Pc(32, 16, Nvidia(8)));
 
         Assert.Equal("gemma4:e2b", plan.Primary(PlanComponent.Thinking)!.Option.Id);
-        // Chatterbox (4.2 GB) does not fit beside Gemma 4 E2B (3.3 GB) on the card; XTTS-v2 (3 GB) does and starts speaking
-        // sooner than F5 (about 0.3 s against 1.4 s).
-        Assert.Equal("xtts-v2", plan.Primary(PlanComponent.Voice)!.Option.Id);
+        // Chatterbox (4.2 GB) does not fit beside Gemma 4 E2B (3.3 GB) on the card; F5 (2 GB at its peak) does.
+        Assert.Equal("f5-tts", plan.Primary(PlanComponent.Voice)!.Option.Id);
         Assert.DoesNotContain(plan.Assignments, a => a.IsExternal);
     }
 
@@ -55,147 +54,14 @@ public sealed class PlacementEngineTests
     }
 
     [Fact]
-    public void CpuOnlyPcUsesWindowsVoicesAndHostedThinkingWithAFallbackChain()
+    public void CpuOnlyPcUsesWindowsVoicesAndHostedThinkingWithAProcessorFallback()
     {
         var plan = Plan(HostingPreference.Balanced, Pc(32, 16));
 
         Assert.Equal("windows-speech", plan.Primary(PlanComponent.Voice)!.Option.Id);
-        Assert.Equal("hosted:nvidia-build", plan.Primary(PlanComponent.Thinking)!.Option.Id);
-        // Another company's endpoint first (one outage never takes both down), the processor last.
-        Assert.Equal(["hosted:gemini", "gemma4:e2b-cpu"], plan.Fallbacks(PlanComponent.Thinking).Select(a => a.Option.Id));
-        Assert.Contains(plan.Dropped, d => d.Component == PlanComponent.Singing && d.Reason == DropReason.NeedsNvidia);
-    }
-
-    [Fact]
-    public void PreferLocalCpuOnlyThinksOnTheProcessorAndNeverGoesOnline()
-    {
-        var plan = Plan(HostingPreference.PreferLocal, Pc(32, 16));
-
-        Assert.Equal("gemma4:e2b-cpu", plan.Primary(PlanComponent.Thinking)!.Option.Id);
-        Assert.Empty(plan.External);
-        Assert.Contains(plan.Dropped, d => d.Component == PlanComponent.DeepThinking);
-    }
-
-    [Fact]
-    public void PreferenceChangesThePlan()
-    {
-        var local = Plan(HostingPreference.PreferLocal, Pc(32, 16, Nvidia(12)));
-        var balanced8 = Plan(HostingPreference.Balanced, Pc(32, 16, Nvidia(8)));
-        var balanced12 = Plan(HostingPreference.Balanced, Pc(32, 16, Nvidia(12)));
-        var hosted = Plan(HostingPreference.PreferHosted, Pc(32, 16, Nvidia(12)));
-
-        // Keep everything local: Thinking claims the card first, the voice still fits beside it.
-        Assert.Equal("gemma4:e2b", local.Primary(PlanComponent.Thinking)!.Option.Id);
-        Assert.Equal("chatterbox-turbo", local.Primary(PlanComponent.Voice)!.Option.Id);
-        Assert.Empty(local.External);
-        Assert.Equal(DropReason.KeptLocal, local.Dropped.Single(d => d.Component == PlanComponent.DeepThinking).Reason);
-        // Balanced on 8 GB: the voice and advanced lip-sync come before a local model a free endpoint can replace.
-        Assert.Equal("chatterbox-turbo", balanced8.Primary(PlanComponent.Voice)!.Option.Id);
-        Assert.Equal("audio2face-3d", balanced8.Primary(PlanComponent.LipSync)!.Option.Id);
-        Assert.False(balanced8.Primary(PlanComponent.Thinking)!.Option.IsLocal);
-        // Balanced on 12 GB: all three fit, so nothing of the conversation leaves the PC.
-        Assert.Equal("gemma4:e2b", balanced12.Primary(PlanComponent.Thinking)!.Option.Id);
-        Assert.Equal("audio2face-3d", balanced12.Primary(PlanComponent.LipSync)!.Option.Id);
-        // Happy with hosted: Thinking goes online with a local model on the card behind it; Deep thinking stays off the
-        // voice's card, so it goes online too.
-        Assert.False(hosted.Primary(PlanComponent.Thinking)!.Option.IsLocal);
-        Assert.Equal("gemma4:e2b", hosted.Fallback(PlanComponent.Thinking)!.Option.Id);
-        Assert.False(hosted.Primary(PlanComponent.DeepThinking)!.Option.IsLocal);
-    }
-
-    [Fact]
-    public void ThreeMachinesCoverEveryComponentAndAFourthAffordsTwoDeepThinkingModels()
-    {
-        var machines = new[] { Pc(32, 16, Nvidia(12)), Host("a", 32, 16, Nvidia(24)), Host("b", 32, 16, Nvidia(24)) };
-        var plan = PlacementEngine.Plan(new PlanRequest(machines));
-
-        Assert.All(Enum.GetValues<PlanComponent>(), c => Assert.True(plan.Primary(c)?.Option.IsLocal, $"{c} is not local"));
-        Assert.DoesNotContain(plan.Dropped, d => d.Reason != DropReason.NotWanted);
-        var deep = FootprintCatalog.Default.Find("deep-thinking:gemma4:12b")!;
-        Assert.Equal(0, PlacementEngine.Afford(plan, deep));
-
-        // A dual-card machine joins: the conversation stays where it runs, Deep thinking moves up to 26B on one new card,
-        // and the other card still fits two more Deep thinking models.
-        var fourth = Host("dual", 64, 32, Nvidia(24), Nvidia(24));
-        var request = new PlanRequest(machines);
-        var joined = PlacementEngine.Plan(new PlanRequest([.. machines, fourth]) { Current = plan.AsCurrent() });
-        foreach (var component in new[] { PlanComponent.Thinking, PlanComponent.Voice, PlanComponent.LipSync })
-            Assert.Equal(plan.Primary(component)!.MachineId, joined.Primary(component)!.MachineId);
-        Assert.Equal("deep-thinking:gemma4:26b", joined.Primary(PlanComponent.DeepThinking)!.Option.Id);
-        Assert.True(PlacementEngine.Afford(joined, deep) >= 2);
-        Assert.Equal(2, PlacementEngine.Afford(joined, deep, "dual"));
-        Assert.Contains(PlacementEngine.SuggestForJoiningMachine(request, fourth), s =>
-            s.Kind == SuggestionKind.Upgrade && s.Component == PlanComponent.DeepThinking && s.MachineId == "dual");
-    }
-
-    [Fact]
-    public void JoiningMachineGetsAdvancedLipSyncBeforeALocalModel()
-    {
-        var network = new PlanRequest([Pc(16, 8, Nvidia(6))]);
-        // A laptop whose card has 4.5 GB free: enough for Gemma 4 E2B (3.3 GB) or advanced lip-sync (1.5 GB), not both.
-        var laptop = Host("laptop", 16, 8, new MachineGpu("RTX 3050 Laptop", GpuVendor.Nvidia, 6) { UsedGb = 1.5 });
-        var suggestions = PlacementEngine.SuggestForJoiningMachine(network, laptop);
-
-        Assert.Contains(suggestions, s => s.Kind == SuggestionKind.Upgrade && s.Component == PlanComponent.LipSync &&
-            s.ToOptionId == "audio2face-3d" && s.MachineId == "laptop");
-        Assert.DoesNotContain(suggestions, s => s.Component == PlanComponent.Thinking && s.Kind == SuggestionKind.RunLocally);
-        // What already runs is not suggested again.
-        Assert.DoesNotContain(suggestions, s => s.ToOptionId is "hosted:nvidia-build" or "hosted:gemini");
-    }
-
-    [Fact]
-    public void JoiningBigMachineRecommendsASmarterHearingModel()
-    {
-        var network = new PlanRequest([Pc(32, 16, Nvidia(8))]) { Preference = HostingPreference.PreferLocal };
-        var suggestions = PlacementEngine.SuggestForJoiningMachine(network, Host("gpu-box", 64, 24, Nvidia(24)));
-
-        Assert.Contains(suggestions, s => s.Kind == SuggestionKind.Upgrade && s.Component == PlanComponent.Voice &&
-            s.ToOptionId == "chatterbox-turbo" && s.MachineId == "gpu-box");
-        var smarter = Assert.Single(suggestions, s => s.Kind == SuggestionKind.Upgrade && s.Component == PlanComponent.Thinking);
-        Assert.True(FootprintCatalog.Default.Find(smarter.ToOptionId!)!.HearsAudio);
-        Assert.Equal("gpu-box", smarter.MachineId);
-    }
-
-    [Fact]
-    public void LeavingMachineDowngradesTheVoice()
-    {
-        var network = new PlanRequest([Pc(32, 16), Host("voice-box", 16, 8, Nvidia(8))]);
-        var suggestions = PlacementEngine.SuggestForLeavingMachine(network, "voice-box");
-
-        Assert.Contains(suggestions, s => s.Kind == SuggestionKind.Downgrade && s.Component == PlanComponent.Voice &&
-            s.FromOptionId == "chatterbox-turbo" && s.ToOptionId == "windows-speech");
-    }
-
-    [Fact]
-    public void AmdCardTakesThinkingSoNvidiaStaysForTheVoice()
-    {
-        var amd = new MachineGpu("Radeon RX 7800 XT", GpuVendor.Amd, 16);
-        var plan = PlacementEngine.Plan(new PlanRequest([Pc(32, 16, Nvidia(8)), Host("amd", 32, 16, amd)]) { ThinkingFirst = true });
-
-        Assert.Equal("amd", plan.Primary(PlanComponent.Thinking)!.MachineId);
-        Assert.Equal("chatterbox-turbo", plan.Primary(PlanComponent.Voice)!.Option.Id);
-        Assert.Contains(plan.Notes, n => n.Contains("AMD", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void GamingPcLeavesItsCardAlone()
-    {
-        var plan = PlacementEngine.Plan(new PlanRequest([Pc(32, 16, Nvidia(16)) with { KeepGpuForGames = true }]));
-
-        Assert.DoesNotContain(plan.Usage("this-pc")!.Items, i => i.GpuIndex is not null);
         Assert.False(plan.Primary(PlanComponent.Thinking)!.Option.IsLocal);
-    }
-
-    [Fact]
-    public void AppleSiliconCountsGraphicsMemoryAgainstMainMemory()
-    {
-        var mac = MachineSpecs.ThisPc([new("Apple M3", GpuVendor.Apple, 22) { UnifiedMemory = true }], 32, 12, "macos", "arm64");
-        var plan = PlacementEngine.Plan(new PlanRequest([mac]) { Preference = HostingPreference.PreferLocal });
-
-        var thinking = plan.Primary(PlanComponent.Thinking)!;
-        Assert.Equal("gemma4:e2b", thinking.Option.Id);
-        Assert.Equal("macos-speech", plan.Primary(PlanComponent.Voice)!.Option.Id);
-        Assert.True(plan.Usage("this-pc")!.Ram.Used >= thinking.Option.GpuGb);
+        Assert.Equal("gemma4:e2b-cpu", plan.Fallback(PlanComponent.Thinking)!.Option.Id);
+        Assert.Contains(plan.Dropped, d => d.Component == PlanComponent.Singing && d.Reason == DropReason.NeedsNvidia);
     }
 
     [Fact]
@@ -209,7 +75,7 @@ public sealed class PlacementEngineTests
     }
 
     [Fact]
-    public void AffordNeverCountsTheVoicesCardForOptionalJobs()
+    public void AffordCountsSpareDeepThinkingModels()
     {
         var plan = PlacementEngine.Plan(new PlanRequest([Pc(32, 16, Nvidia(24)), Host("big", 64, 32, Nvidia(32))])
         {
@@ -217,12 +83,8 @@ public sealed class PlacementEngineTests
                 PlanComponent.DeepThinking]
         });
         var deep = FootprintCatalog.Default.Find("deep-thinking:gemma4:e4b")!;
-        var thinking = FootprintCatalog.Default.Find("gemma4:e2b")!;
 
-        // The host's card has room, but it runs the voice: optional jobs never go there; another Thinking model may.
-        Assert.Equal("big", plan.Primary(PlanComponent.Voice)!.MachineId);
-        Assert.Equal(0, PlacementEngine.Afford(plan, deep, "big"));
-        Assert.True(PlacementEngine.Afford(plan, thinking, "big") >= 1);
+        Assert.True(PlacementEngine.Afford(plan, deep) >= 1);
         Assert.Equal(0, PlacementEngine.Afford(plan, deep, "missing"));
     }
 

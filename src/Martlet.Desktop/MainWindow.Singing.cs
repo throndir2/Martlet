@@ -248,6 +248,7 @@ public partial class MainWindow
     private string? ThisPcCannotSing()
     {
         if (ReferenceEquals(machine, MachineInfo.Unknown)) return null;
+        if (machine.ArmRefusal("singing") is { } arm) return arm;
         var nvidia = machine.Gpus.Where(g => g.IsNvidia).OrderByDescending(g => g.MemoryGb ?? 0).FirstOrDefault();
         if (nvidia is null)
             return $"Needs an NVIDIA graphics card; this PC has {(machine.Gpus.Count == 0 ? "none" : string.Join(", ", machine.Gpus.Select(g => g.Describe())))}.";

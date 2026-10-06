@@ -306,11 +306,17 @@ internal channel. The distinct unsigned public channel uses AppId
 `%LocalAppData%\Programs\Martlet`. No registration is created by merely
 compiling either installer.
 
-Only native x64 Windows, build 19041 (Windows 10 2004) or later, is allowed by
-authoring. That floor matches the avatar renderer's Windows SDK target so any
-current Windows 10 or 11 installs; Windows 11 25H2 remains the main test target.
-It is **not** an assurance about future Windows versions or a passed OS support
-matrix. ARM64 emulation is excluded.
+Authoring allows `x64compatible` Windows, build 19041 (Windows 10 2004) or
+later: x64 Windows 10 and 11, and Windows 11 on Arm (Snapdragon X and similar),
+which runs the x64 payload under its x64 emulation. Setup itself is 32-bit x86
+(`SetupArchitecture=x86`, checked by `Assert-X86Pe`) so that Windows 10 on Arm,
+which can't run x64 apps, opens it and gets a plain refusal
+(`[Messages] OnlyOnTheseArchitectures`) instead of Windows' "This app can't run
+on your PC". The floor matches the avatar renderer's Windows SDK target;
+Windows 11 25H2 x64 remains the main test target. It is **not** an assurance
+about future Windows versions or a passed OS support matrix; installing and
+running on a Windows on Arm PC has not been run yet. There is no native ARM64
+payload yet ([PL06](../../docs/PLATFORMS.md#delivery-slices)).
 `PrivilegesRequired=lowest` has no elevation override. Command-line `/DIR`
 overrides and previous installer locations cannot redirect the installation.
 

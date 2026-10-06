@@ -172,6 +172,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StatusLine", "CharacterState", "CompanionStatus", "Refusals", "NotOffered", "ThinkingWarnings", "KeyNote", "ThinkingEngine", "ListeningEngine",
         "SpeakingEngine",
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
+        // Settings › Tools: this PC's processor type and whether Martlet runs under x64 emulation (Windows on Arm), with what
+        // that means. Fixed wording.
+        "ThisPcArchitecture",
         // Companion › Discord › Friends and calls: how many friends and waiting requests, the call now and the last call's
         // outcome; the bot's Discord status ("Discord status: Online, "Hanging out"."); when its picture last changed and why
         // it didn't; and what the last action on the card did. Counts, names and fixed wording; never a token.

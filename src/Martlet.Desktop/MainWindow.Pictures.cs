@@ -224,6 +224,7 @@ public partial class MainWindow
     private string? ThisPcCannotDraw()
     {
         if (ReferenceEquals(machine, MachineInfo.Unknown)) return null;
+        if (machine.ArmRefusal("pictures") is { } arm) return arm + " Use another computer, your own ComfyUI or a cloud provider.";
         var nvidia = machine.Gpus.Where(g => g.IsNvidia).OrderByDescending(g => g.MemoryGb ?? 0).FirstOrDefault();
         if (nvidia is null)
             return $"Needs an NVIDIA graphics card; this PC has {(machine.Gpus.Count == 0 ? "none" : string.Join(", ", machine.Gpus.Select(g => g.Describe())))}. " +

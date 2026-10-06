@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet installs and runs on Windows 11 on Arm PCs such as Snapdragon X laptops, through Windows' x64 emulation. Settings, Devices and Doctor show when Martlet is running emulated. Jobs that need an NVIDIA graphics card, which Windows on Arm can't use, are refused with that reason. The installer explains that Windows 10 on Arm isn't supported. Not yet tried on a real Arm PC. ([#493](https://github.com/throndir2/Martlet/pull/493))
 - Martlet runs on a Linux desktop and on a Mac: talk by typing or by holding a key, with OpenAI or a model on the same computer (Ollama, LM Studio or Docker Model Runner), hear the replies, and see your VRM or Live2D character on your screen with its mouth moving as it speaks. It only offers what that computer can run, and settings brought from another computer that it can't run are refused with the reason. Not yet tried on a real Mac. ([#490](https://github.com/throndir2/Martlet/pull/490))
 - Devices shows how much of each computer's graphics memory, memory, processor and disk every part of Martlet takes, what is left, and what else would fit there; a new card sums up what your computers cover and could still run, such as room for 2 more Deep thinking models. ([#487](https://github.com/throndir2/Martlet/pull/487))
 - A new welcome wizard: start a new Martlet network or join yours (it finds your other computers), see what this PC has, choose whether free online services are OK, and get a suggested setup that shows how much of the graphics card, memory and processor each part uses. It walks you through a free NVIDIA key when Thinking goes online and sets lip-sync to follow the voice when the PC can't run Audio2Face. ([#489](https://github.com/throndir2/Martlet/pull/489))
@@ -22,7 +23,6 @@ Each release's section here is also its notes on GitHub.
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Changed
-- The setup advisor now reads every computer's graphics card and ranks what matters most: a natural local voice gets the graphics card first, then advanced lip-sync, then a local Thinking model, with a free online model (NVIDIA Build, with Google Gemini or a local model as backup) filling in when there's no room. Keeping everything local puts Thinking first instead. It also suggests smarter models that fit and what a new computer could take over. ([#492](https://github.com/throndir2/Martlet/pull/492))
 - When this PC joins your Martlet network, the welcome wizard's suggestions take into account what your other computers already run. ([#491](https://github.com/throndir2/Martlet/pull/491))
 - People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
