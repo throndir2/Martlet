@@ -313,6 +313,30 @@ provider limiting requests or the memory folder being unusable); the same
 problem on later exchanges is only logged (`Remembering failed (<code>)`) until
 remembering works again.
 
+### Asking Martlet to change its memory
+
+Remembering after a reply only sees the ten related facts and can't give a fact
+to someone else, so while memory is on, replies on a route that does function
+calling are also offered Martlet's own `manage_memories` tool (always last among
+Martlet's own tools, with the same text, so the start of every request stays the
+same). The model uses it when the user asks what it remembers or asks it to
+remember, correct, reassign or forget something:
+
+- `find` (`query` words and/or `person`) lists up to 20 facts with short ids,
+  whose each is and when it changed, best matches first.
+- `remember` (`fact`, optional `person`) saves a fact with `conversation`
+  provenance, as the speaker's unless `person` says otherwise; a near-duplicate
+  of the same person's fact is not saved twice.
+- `update` (one id, a new `fact` and/or `person`) corrects a fact or gives it to
+  someone else, keeping its retention.
+- `forget` (up to 50 ids) deletes those facts in one commit.
+
+`person` is a name or alias of a voice Martlet knows, its tag (`V3`), `me` (the
+one speaking, else your own voice) or `everyone` (about no one in particular).
+An unknown name or id is refused with what the model can use instead; nothing is
+guessed. Changes show in the conversation like remembering's (*Forgot: …*) and
+in the Tools page's log (`Martlet > manage_memories: forgot 2`, never a fact).
+
 ## Whose memories
 
 Several people can talk to Martlet through one microphone, and
@@ -340,12 +364,18 @@ everyone's (about no one in particular), as every fact was before voices.
   someone's personal facts while another person talks). It is sent only with a
   block that has such a fact, in that message's notes, so it never changes the
   start of a request.
-- **Memory window.** *Belongs to* chooses whose a fact is when you add or update
+- **Memory window.** Facts are listed newest first, each with whose it is, where
+  it came from and when it changed. *Search* finds facts by their words or whose
+  they are, and *Show* lists all facts, everyone's, one voice's or those of
+  forgotten voices. Select one fact to change it on the right (*Save changes*),
+  or several (Ctrl or Shift) to delete them together. *Delete all shown* deletes
+  every fact listed now (one person's facts, or what the search found), and
+  *Delete everything* forgets all facts; each asks first. Storage and export
+  are folded away below.
+  *Belongs to* chooses whose a fact is when you add or update
   it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
   *This is my voice* on People) unless *Show* lists one voice's facts; then it is
-  that voice's. *Show* lists all facts, everyone's, one voice's, or those of
-  forgotten voices. The list starts each fact with whose it is, and the details
-  say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
+  that voice's. The details say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
   many belong to how many people and how many to forgotten voices, never a
   name or a fact.
 - **People.** *What Martlet remembers about them* on each voice opens Memory

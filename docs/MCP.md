@@ -1485,8 +1485,13 @@ response styles at zero, or *Choose your model file: an existing .vrm or
 character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 `MemoryFactStatus` reads how many facts it remembers, how many belong to how
 many people Martlet knows by voice and how many to forgotten voices, how many
-its *Show* choice (`MemoryPersonFilter`) lists (*Showing N.*) and what the last
-action did, never a fact or a name. Their
+its *Show* choice (`MemoryPersonFilter`) and search (`MemorySearch`, set with
+`ui_set_text`; it only filters the list) list (*Showing N.*) and what the last
+action did, never a fact or a name. `MemoryNewFact` (clears the fact editor) and
+the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
+clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
+(every fact listed now: one person's or what the search found) and
+`MemoryDeleteAll` ask first and need `--allow-ui-effects`. Their
 fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
 the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and

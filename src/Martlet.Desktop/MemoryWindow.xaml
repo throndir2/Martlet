@@ -3,110 +3,160 @@
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Memory" Width="900" Height="850" MinWidth="560" MinHeight="480"
+        Title="Martlet - Memory" Width="980" Height="860" MinWidth="640" MinHeight="520"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
         AutomationProperties.Name="Memory settings">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="20">
-            <TextBlock Text="Memory" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
-            <TextBlock Margin="0,8" TextWrapping="Wrap"
-                       Text="Martlet can remember lasting facts from your conversations and use them later. Everything is stored on this PC, and you can edit or delete it anytime." />
-            <WrapPanel>
-                <Button x:Name="ReloadButton" Content="_Reload" Click="Reload_Click"
-                        Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryReload" />
-                <Button x:Name="RetryCleanupButton" Content="Retry _cleanup" Click="RetryCleanup_Click"
-                        Padding="10,6" Margin="0,4,8,4" AutomationProperties.AutomationId="MemoryRetryCleanup" />
-                <Button Content="_Close" Click="Close_Click" Padding="10,6" Margin="0,4,8,4"
+    <DockPanel>
+        <!-- Always in view: Refresh, Retry cleanup (only while cleanup is pending) and Close. Choices save as they change. -->
+        <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderBrush}" Padding="20,10">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="_Close" Click="Close_Click" Padding="16,7" Style="{DynamicResource PrimaryButton}"
                         AutomationProperties.AutomationId="MemoryClose" />
-            </WrapPanel>
-
-            <TextBlock Text="Storage" FontSize="18" FontWeight="SemiBold" Margin="0,14,0,4" />
-            <RadioButton x:Name="AppLocalChoice" GroupName="Storage" Content="Use Martlet folder"
-                         Checked="Configuration_Changed" AutomationProperties.AutomationId="MemoryAppLocal" />
-            <RadioButton x:Name="CustomChoice" GroupName="Storage" Content="Use custom folder"
-                         Checked="Configuration_Changed" Margin="0,4" AutomationProperties.AutomationId="MemoryCustom" />
-            <Label Target="{Binding ElementName=CustomDirectory}" Content="Custom _folder" />
-            <DockPanel>
-                <Button DockPanel.Dock="Right" x:Name="BrowseDirectoryButton" Content="_Browse" Click="BrowseDirectory_Click"
-                        Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseDirectory" />
-                <TextBox x:Name="CustomDirectory" TextChanged="ConfigurationText_Changed" LostKeyboardFocus="CustomDirectory_LostFocus"
-                         KeyDown="CustomDirectory_KeyDown" AutomationProperties.AutomationId="MemoryCustomDirectory" />
+                <Button DockPanel.Dock="Right" x:Name="ReloadButton" Content="_Refresh" Click="Reload_Click"
+                        Padding="12,7" Margin="0,0,8,0" AutomationProperties.AutomationId="MemoryReload" />
+                <Button DockPanel.Dock="Right" x:Name="RetryCleanupButton" Content="Retry clean_up" Click="RetryCleanup_Click"
+                        Padding="12,7" Margin="0,0,8,0" Visibility="Collapsed" AutomationProperties.AutomationId="MemoryRetryCleanup" />
+                <TextBlock x:Name="ConfigurationStatus" Style="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0"
+                           AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.Name="Memory configuration status" />
             </DockPanel>
-            <TextBlock x:Name="ResolvedDirectoryText" Margin="0,5" TextWrapping="Wrap"
-                       AutomationProperties.Name="Memory folder" />
-            <CheckBox x:Name="EnableChoice" Content="Remember facts from conversations"
-                      Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,8,0,4"
-                      AutomationProperties.AutomationId="MemoryEnable" />
-            <!-- No Save button: these choices save as soon as they change (a typed folder when you leave the field or press Enter). -->
-            <TextBox x:Name="ConfigurationStatus" IsReadOnly="True" TextWrapping="Wrap" Margin="0,6,0,0"
-                     AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite"
-                     AutomationProperties.Name="Memory configuration status" />
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20">
+                <TextBlock Text="Memory" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,10"
+                           Text="Lasting facts Martlet remembers about you and the people it knows by voice. They stay on your computers, and you can search, change or delete them here, or just ask Martlet to." />
+                <CheckBox x:Name="EnableChoice" Content="Remember facts from conversations"
+                          Checked="Configuration_Changed" Unchecked="Configuration_Changed" Margin="0,0,0,12"
+                          AutomationProperties.AutomationId="MemoryEnable" />
 
-            <TextBlock Text="Remembered facts" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock Text="Write a fact and add it, or select one to update or delete it. Each fact can belong to someone Martlet knows by voice (People): conversations save what someone says as theirs." TextWrapping="Wrap" />
-            <WrapPanel>
-                <Button x:Name="RefreshFactsButton" Content="_Refresh facts" Click="RefreshFacts_Click"
-                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryRefreshFacts" />
-                <Button x:Name="PurgeExpiredButton" Content="_Delete expired facts" Click="PurgeExpired_Click"
-                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryPurgeExpired" />
-            </WrapPanel>
-            <Label Target="{Binding ElementName=FactContent}" Content="_Fact" />
-            <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="90"
-                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
-            <Label Target="{Binding ElementName=PersonChoice}" Content="Belongs _to" />
-            <ComboBox x:Name="PersonChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryPerson"
-                      AutomationProperties.Name="Whose fact it is" />
-            <Label Target="{Binding ElementName=RetentionChoice}" Content="_Retention" />
-            <ComboBox x:Name="RetentionChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryRetention" />
-            <WrapPanel>
-                <Button x:Name="SaveFactButton" Content="_Add fact" Click="SaveFact_Click"
-                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemorySaveFact" />
-                <Button x:Name="EditFactButton" Content="_Update selected fact" Click="EditFact_Click"
-                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryEditFact" />
-                <Button x:Name="DeleteFactButton" Content="_Delete selected fact" Click="DeleteFact_Click"
-                        Padding="10,6" Margin="0,6,8,6" AutomationProperties.AutomationId="MemoryDeleteFact" />
-            </WrapPanel>
-            <Label Target="{Binding ElementName=PersonFilter}" Content="_Show" />
-            <ComboBox x:Name="PersonFilter" MinHeight="30" SelectionChanged="PersonFilter_SelectionChanged"
-                      AutomationProperties.AutomationId="MemoryPersonFilter" AutomationProperties.Name="Whose facts to show" />
-            <Label Target="{Binding ElementName=FactsList}" Content="Remembered _facts" />
-            <ListBox x:Name="FactsList" Height="150" SelectionChanged="FactsList_SelectionChanged"
-                     AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Saved local facts" />
-            <Label Target="{Binding ElementName=FactDetails}" Content="Selected fact _details" />
-            <TextBox x:Name="FactDetails" IsReadOnly="True" TextWrapping="Wrap" Height="100"
-                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactDetails" />
-            <!-- No accessible name: a text block's name is its text, which screen readers announce and MCP reads (counts only). -->
-            <TextBlock x:Name="FactStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.AutomationId="MemoryFactStatus" />
+                <Border Style="{DynamicResource CardStyle}" Padding="18">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*" MinWidth="300" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="2*" MinWidth="240" />
+                        </Grid.ColumnDefinitions>
 
-            <TextBlock Text="Export memory" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,4" />
-            <TextBlock TextWrapping="Wrap"
-                       Text="Preview the JSON before creating a local export. Martlet won't upload it or overwrite files." />
-            <Button x:Name="CreateExportPreviewButton" Content="_Preview export" Click="CreateExportPreview_Click"
-                    Padding="10,6" Margin="0,6,0,6" HorizontalAlignment="Left"
-                    AutomationProperties.AutomationId="MemoryCreateExportPreview" />
-            <TextBlock x:Name="ExportSummary" TextWrapping="Wrap" AutomationProperties.Name="Export summary" />
-            <TextBox x:Name="ExportPreviewText" IsReadOnly="True" TextWrapping="NoWrap" Height="180"
-                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.AutomationId="MemoryExportPreview" AutomationProperties.Name="Memory export preview" />
-            <Label Target="{Binding ElementName=ExportDestination}" Content="Save export _as" />
-            <DockPanel>
-                <Button DockPanel.Dock="Right" x:Name="BrowseExportButton" Content="B_rowse" Click="BrowseExport_Click"
-                        Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseExport" />
-                <TextBox x:Name="ExportDestination" TextChanged="ExportDestination_Changed"
-                         AutomationProperties.AutomationId="MemoryExportDestination" />
-            </DockPanel>
-            <CheckBox x:Name="AcceptExport" Margin="0,8,0,4"
-                      Content="Create this local export"
-                      Checked="ExportConsent_Changed" Unchecked="ExportConsent_Changed"
-                      AutomationProperties.AutomationId="MemoryAcceptExport" />
-            <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
-                       Text="Martlet writes the reviewed JSON to your selected file and doesn't upload it." />
-            <Button x:Name="ExportButton" Content="_Create export" Click="Export_Click"
-                    Padding="10,7" Margin="0,6,0,6" HorizontalAlignment="Left"
-                    AutomationProperties.AutomationId="MemoryExport" />
-            <TextBlock x:Name="ExportStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
-                       AutomationProperties.Name="Memory export status" />
-        </StackPanel>
-    </ScrollViewer>
+                        <!-- Find and pick facts. -->
+                        <StackPanel Grid.Column="0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" MinWidth="170" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <Label Target="{Binding ElementName=SearchBox}" Content="_Search" Padding="0,0,0,3" />
+                                    <TextBox x:Name="SearchBox" Height="35" Padding="8,0" VerticalContentAlignment="Center" TextWrapping="NoWrap" TextChanged="Search_Changed"
+                                             AutomationProperties.AutomationId="MemorySearch" AutomationProperties.Name="Search remembered facts"
+                                             ToolTip="Words in a fact or the name of whose it is" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <Label Target="{Binding ElementName=PersonFilter}" Content="Sho_w" Padding="0,0,0,3" />
+                                    <ComboBox x:Name="PersonFilter" MinHeight="30" SelectionChanged="PersonFilter_SelectionChanged"
+                                              AutomationProperties.AutomationId="MemoryPersonFilter" AutomationProperties.Name="Whose facts to show" />
+                                </StackPanel>
+                            </Grid>
+                            <ListBox x:Name="FactsList" Height="340" Margin="0,8,0,6" SelectionMode="Extended"
+                                     SelectionChanged="FactsList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     AutomationProperties.AutomationId="MemoryFacts" AutomationProperties.Name="Remembered facts">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,3">
+                                            <TextBlock Text="{Binding Fact.Content}" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Caption}" Style="{DynamicResource Muted}" FontSize="12" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <!-- No accessible name: a text block's name is its text, which screen readers announce and MCP reads (counts only). -->
+                            <TextBlock x:Name="FactStatus" Style="{DynamicResource Muted}" AutomationProperties.LiveSetting="Polite"
+                                       AutomationProperties.AutomationId="MemoryFactStatus" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button x:Name="DeleteFactButton" Content="_Delete selected" Click="DeleteFact_Click"
+                                        Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemoryDeleteFact" />
+                                <Button x:Name="DeleteShownButton" Content="Delete all _shown" Click="DeleteShown_Click"
+                                        Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemoryDeleteShown" />
+                                <Button x:Name="DeleteAllButton" Content="Delete _everything" Click="DeleteAll_Click"
+                                        Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemoryDeleteAll" />
+                            </WrapPanel>
+                        </StackPanel>
+
+                        <!-- Write a new fact, or change the one selected. -->
+                        <StackPanel Grid.Column="2">
+                            <TextBlock x:Name="EditorHeading" Text="New fact" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <Label Target="{Binding ElementName=FactContent}" Content="_Fact" Padding="0,0,0,3" />
+                            <TextBox x:Name="FactContent" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4096" Height="110"
+                                     VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="MemoryFactContent" />
+                            <Label Target="{Binding ElementName=PersonChoice}" Content="Belongs _to" Padding="0,8,0,3" />
+                            <ComboBox x:Name="PersonChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryPerson"
+                                      AutomationProperties.Name="Whose fact it is" />
+                            <Label Target="{Binding ElementName=RetentionChoice}" Content="_Keep it" Padding="0,8,0,3" />
+                            <ComboBox x:Name="RetentionChoice" MinHeight="30" AutomationProperties.AutomationId="MemoryRetention" />
+                            <WrapPanel Margin="0,10,0,0">
+                                <Button x:Name="EditFactButton" Content="Save _changes" Click="EditFact_Click" Style="{DynamicResource PrimaryButton}"
+                                        Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemoryEditFact" />
+                                <Button x:Name="SaveFactButton" Content="_Add fact" Click="SaveFact_Click"
+                                        Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemorySaveFact" />
+                                <Button x:Name="NewFactButton" Content="_New" Click="NewFact_Click"
+                                        Padding="10,6" Margin="0,0,8,6" AutomationProperties.AutomationId="MemoryNewFact" />
+                            </WrapPanel>
+                            <TextBlock x:Name="FactDetails" Style="{DynamicResource Muted}" FontSize="12" Margin="0,6,0,0"
+                                       AutomationProperties.AutomationId="MemoryFactDetails" AutomationProperties.Name="Selected fact details" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Expander Header="Where memory is stored" Margin="0,0,0,10" AutomationProperties.AutomationId="MemoryStorageSection">
+                    <StackPanel Margin="4,8,0,0">
+                        <RadioButton x:Name="AppLocalChoice" GroupName="Storage" Content="Use Martlet folder"
+                                     Checked="Configuration_Changed" AutomationProperties.AutomationId="MemoryAppLocal" />
+                        <RadioButton x:Name="CustomChoice" GroupName="Storage" Content="Use custom folder"
+                                     Checked="Configuration_Changed" Margin="0,4" AutomationProperties.AutomationId="MemoryCustom" />
+                        <Label Target="{Binding ElementName=CustomDirectory}" Content="Custom _folder" />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" x:Name="BrowseDirectoryButton" Content="_Browse" Click="BrowseDirectory_Click"
+                                    Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseDirectory" />
+                            <TextBox x:Name="CustomDirectory" TextChanged="ConfigurationText_Changed" LostKeyboardFocus="CustomDirectory_LostFocus"
+                                     KeyDown="CustomDirectory_KeyDown" AutomationProperties.AutomationId="MemoryCustomDirectory" />
+                        </DockPanel>
+                        <!-- No Save button: these choices save as soon as they change (a typed folder when you leave the field or press Enter). -->
+                        <TextBlock x:Name="ResolvedDirectoryText" Style="{DynamicResource Muted}" Margin="0,5"
+                                   AutomationProperties.Name="Memory folder" />
+                    </StackPanel>
+                </Expander>
+
+                <Expander Header="Export to a file" AutomationProperties.AutomationId="MemoryExportSection">
+                    <StackPanel Margin="4,8,0,0">
+                        <TextBlock Style="{DynamicResource Muted}"
+                                   Text="Preview the JSON before creating a local export. Martlet won't upload it or overwrite files." />
+                        <Button x:Name="CreateExportPreviewButton" Content="_Preview export" Click="CreateExportPreview_Click"
+                                Padding="10,6" Margin="0,6,0,6" HorizontalAlignment="Left"
+                                AutomationProperties.AutomationId="MemoryCreateExportPreview" />
+                        <TextBlock x:Name="ExportSummary" AutomationProperties.Name="Export summary" />
+                        <TextBox x:Name="ExportPreviewText" IsReadOnly="True" TextWrapping="NoWrap" Height="180"
+                                 HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                 AutomationProperties.AutomationId="MemoryExportPreview" AutomationProperties.Name="Memory export preview" />
+                        <Label Target="{Binding ElementName=ExportDestination}" Content="Save export _as" />
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" x:Name="BrowseExportButton" Content="B_rowse" Click="BrowseExport_Click"
+                                    Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="MemoryBrowseExport" />
+                            <TextBox x:Name="ExportDestination" TextChanged="ExportDestination_Changed"
+                                     AutomationProperties.AutomationId="MemoryExportDestination" />
+                        </DockPanel>
+                        <CheckBox x:Name="AcceptExport" Margin="0,8,0,4"
+                                  Content="Create this local export"
+                                  Checked="ExportConsent_Changed" Unchecked="ExportConsent_Changed"
+                                  AutomationProperties.AutomationId="MemoryAcceptExport" />
+                        <Button x:Name="ExportButton" Content="Create e_xport" Click="Export_Click"
+                                Padding="10,7" Margin="0,6,0,6" HorizontalAlignment="Left"
+                                AutomationProperties.AutomationId="MemoryExport" />
+                        <TextBlock x:Name="ExportStatus" AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.Name="Memory export status" />
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </local:ThemedWindow>

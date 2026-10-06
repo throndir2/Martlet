@@ -29,6 +29,10 @@ public partial class MemoryWindow : ThemedWindow
     /// <summary>One fact in the list, with whose it is (null for everyone's).</summary>
     internal sealed record FactItem(MemoryFact Fact, string? Person)
     {
+        /// <summary>The line under the fact: whose it is, where it came from and when it last changed.</summary>
+        public string Caption => $"{Person ?? EveryoneLabel} · {MemoryPromptContext.Source(Fact.LastModifiedBy.SourceKind)} · " +
+            When(Fact.UpdatedAtUtc) + (Fact.Retention.Kind == MemoryRetentionKind.ExpiresAt ? " · " + RetentionText(Fact.Retention) : "");
+
         public override string ToString() => Person is null ? Fact.Content : $"{Person} · {Fact.Content}";
     }
 
@@ -59,6 +63,8 @@ public partial class MemoryWindow : ThemedWindow
     private readonly AutoSave autoSave;
     private bool closed;
     private bool rendering;
+    /// <summary>The fact (and its revision) the editor holds, or null for a new fact.</summary>
+    private (Guid Id, long Revision)? editing;
 
     /// <param name="voices">The voices Martlet knows (People), whose facts the window can show and choose.</param>
     /// <param name="person">A voice ID whose facts to show first (People's "What Martlet remembers").</param>
@@ -81,6 +87,7 @@ public partial class MemoryWindow : ThemedWindow
         autoSave = new AutoSave(SaveConfigurationAsync);
         InitializeComponent();
         RetentionChoice.ItemsSource = NewRetentionOptions;
+        RetentionChoice.SelectedIndex = 0;
         RenderPeople();
         RenderActions();
     }
@@ -130,9 +137,7 @@ public partial class MemoryWindow : ThemedWindow
         DisposeExportPreview();
         FactsList.ItemsSource = null;
         facts = [];
-        FactContent.Clear();
-        FactDetails.Clear();
-        RetentionChoice.SelectedIndex = -1;
+        ResetEditor();
         RenderPeople();
         ConfigurationStatus.Text = memory is null
             ? "Updating older memory settings..."
@@ -206,8 +211,6 @@ public partial class MemoryWindow : ThemedWindow
         return true;
     }
 
-    private async void RefreshFacts_Click(object sender, RoutedEventArgs e) => await RefreshFactsAsync();
-
     private async Task RefreshFactsAsync()
     {
         if (!RequireCurrentEnabledConfiguration(FactStatus))
@@ -269,6 +272,7 @@ public partial class MemoryWindow : ThemedWindow
     private void RenderFacts()
     {
         var filter = PersonFilter.SelectedItem as PersonOption;
+        var words = (SearchBox?.Text ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var shown = facts.Where(fact => filter?.Kind switch
             {
                 PersonKind.Everyone => fact.VoiceId is null,
@@ -276,9 +280,38 @@ public partial class MemoryWindow : ThemedWindow
                 PersonKind.Forgotten => fact.VoiceId is { } id && roster.Resolve(id) is null,
                 _ => true
             })
-            .OrderByDescending(fact => fact.UpdatedAtUtc).Select(fact => new FactItem(fact, PersonName(fact.VoiceId))).ToArray();
+            .Select(fact => new FactItem(fact, PersonName(fact.VoiceId)))
+            .Where(item => words.All(word => item.Fact.Content.Contains(word, StringComparison.CurrentCultureIgnoreCase) ||
+                (item.Person ?? EveryoneLabel).Contains(word, StringComparison.CurrentCultureIgnoreCase)))
+            .OrderByDescending(item => item.Fact.UpdatedAtUtc).ToArray();
+        // Keep what was selected (an edited fact stays selected with its new revision).
+        var keep = FactsList.SelectedItems.Cast<FactItem>().Select(item => item.Fact.Id).ToHashSet();
+        rendering = true;
         FactsList.ItemsSource = shown;
-        FactStatus.Text = Summary(shown.Length, filter?.Kind is null or PersonKind.All);
+        foreach (var item in shown.Where(item => keep.Contains(item.Fact.Id)))
+            FactsList.SelectedItems.Add(item);
+        rendering = false;
+        var all = filter?.Kind is null or PersonKind.All && words.Length == 0;
+        FactStatus.Text = Summary(shown.Length, all);
+        DeleteShownButton.Visibility = all ? Visibility.Collapsed : Visibility.Visible;
+        DeleteShownButton.Content = (words.Length > 0 ? shown.Length == 1 ? "Delete the 1 found" : $"Delete all {shown.Length} found"
+            : filter?.Kind switch
+            {
+                PersonKind.Voice => $"Delete all of {ShortName(filter.VoiceId!)}'s facts ({shown.Length})",
+                PersonKind.Everyone => $"Delete all facts not tied to a voice ({shown.Length})",
+                _ => $"Delete forgotten voices' facts ({shown.Length})"
+            }).Replace("_", "__", StringComparison.Ordinal);
+        ShowSelection();
+    }
+
+    private string ShortName(string voiceId) =>
+        roster.Resolve(voiceId) is { } voice ? voice.Named ? voice.DisplayName : $"Voice {voice.Number}" : "a forgotten voice";
+
+    private void Search_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (rendering || closed) return;
+        RenderFacts();
+        RenderActions();
     }
 
     /// <summary>How many facts and whose (counts only, never a name or a fact).</summary>
@@ -318,6 +351,11 @@ public partial class MemoryWindow : ThemedWindow
         var retention = SelectedRetention(existing: null);
         var content = FactContent.Text;
         var voice = SelectedVoice();
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            FactStatus.Text = "Write the fact first.";
+            return;
+        }
         if (retention is null)
         {
             FactStatus.Text = "Choose how long to keep it first.";
@@ -330,8 +368,8 @@ public partial class MemoryWindow : ThemedWindow
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
-        FactContent.Clear();
-        RetentionChoice.SelectedIndex = -1;
+        FactsList.UnselectAll();
+        ResetEditor();
         await RefreshFactsAsync();
         FactStatus.Text = "Fact added. " + FactStatus.Text;
     }
@@ -340,7 +378,7 @@ public partial class MemoryWindow : ThemedWindow
     {
         if (!RequireCurrentEnabledConfiguration(FactStatus))
             return;
-        if (FactsList.SelectedItem is not FactItem { Fact: var fact })
+        if (SingleSelected() is not { } fact)
             return;
         MemoryMutationReceipt? receipt = null;
         var retention = SelectedRetention(fact);
@@ -354,7 +392,7 @@ public partial class MemoryWindow : ThemedWindow
         await RunAsync(async token =>
             receipt = await service.EditFactAsync(
                 configurationRevision, fact, content, retention, voice, token).ConfigureAwait(false),
-            "Couldn't edit the fact. Reload and try again.");
+            "Couldn't edit the fact. Refresh and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
@@ -364,39 +402,87 @@ public partial class MemoryWindow : ThemedWindow
 
     private async void DeleteFact_Click(object sender, RoutedEventArgs e)
     {
-        if (!RequireCurrentEnabledConfiguration(FactStatus))
-            return;
-        if (FactsList.SelectedItem is not FactItem { Fact: var fact } ||
-            !confirm(this,
-                $"Delete this remembered fact?\n\n\"{PreviewFact(fact.Content)}\"",
-                "Delete remembered fact"))
-            return;
-        MemoryDeleteReceipt? receipt = null;
-        await RunAsync(async token =>
-            receipt = await service.DeleteFactAsync(configurationRevision, fact, token).ConfigureAwait(false),
-            "Couldn't delete the fact. Reload and try again.");
-        if (closed || receipt is null)
-            return;
-        DisposeExportPreview();
-        await RefreshFactsAsync();
-        FactStatus.Text = "Fact deleted. " + FactStatus.Text;
+        var selected = SelectedFacts();
+        if (selected.Count == 1)
+        {
+            if (!RequireCurrentEnabledConfiguration(FactStatus))
+                return;
+            var fact = selected[0];
+            if (!confirm(this, $"Delete this remembered fact?\n\n\"{PreviewFact(fact.Content)}\"", "Delete remembered fact"))
+                return;
+            MemoryDeleteReceipt? receipt = null;
+            await RunAsync(async token =>
+                receipt = await service.DeleteFactAsync(configurationRevision, fact, token).ConfigureAwait(false),
+                "Couldn't delete the fact. Refresh and try again.");
+            if (closed || receipt is null)
+                return;
+            DisposeExportPreview();
+            await RefreshFactsAsync();
+            FactStatus.Text = "Fact deleted. " + FactStatus.Text;
+        }
+        else if (selected.Count > 1)
+            await DeleteManyAsync(selected, $"Delete the {selected.Count} selected facts?", "Delete remembered facts");
     }
 
-    private async void PurgeExpired_Click(object sender, RoutedEventArgs e)
+    /// <summary>Deletes every fact listed now: one person's (Show), what the search found, or both.</summary>
+    private async void DeleteShown_Click(object sender, RoutedEventArgs e)
     {
-        if (!RequireCurrentEnabledConfiguration(FactStatus))
+        var shown = ((IEnumerable<FactItem>?)FactsList.ItemsSource ?? []).Select(item => item.Fact).ToArray();
+        if (shown.Length == 0) return;
+        var what = string.IsNullOrWhiteSpace(SearchBox.Text) && PersonFilter.SelectedItem is PersonOption { Kind: PersonKind.Voice, VoiceId: { } voice }
+            ? $"all {shown.Length} of {ShortName(voice)}'s facts" : shown.Length == 1 ? "the 1 fact shown" : $"all {shown.Length} facts shown";
+        await DeleteManyAsync(shown, $"Delete {what}? This can't be undone.", "Delete remembered facts");
+    }
+
+    /// <summary>Forgets everything Martlet remembers (on every computer the memory sync reaches).</summary>
+    private async void DeleteAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (facts.Count == 0) return;
+        await DeleteManyAsync(facts.ToArray(),
+            $"Delete everything Martlet remembers ({(facts.Count == 1 ? "1 fact" : $"{facts.Count} facts")}), about everyone? This can't be undone.",
+            "Delete all memories");
+    }
+
+    private async Task DeleteManyAsync(IReadOnlyCollection<MemoryFact> doomed, string question, string title)
+    {
+        if (!RequireCurrentEnabledConfiguration(FactStatus) || !confirm(this, question, title))
             return;
         MemoryExpiryReceipt? receipt = null;
         await RunAsync(async token =>
-            receipt = await service.PurgeExpiredAsync(configurationRevision, token).ConfigureAwait(false),
-            "Couldn't delete expired facts. Reload and try again.");
+            receipt = await service.DeleteFactsAsync(configurationRevision, doomed, token).ConfigureAwait(false),
+            "Couldn't delete the facts. Refresh and try again.");
         if (closed || receipt is null)
             return;
         DisposeExportPreview();
+        FactsList.UnselectAll();
         await RefreshFactsAsync();
-        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 expired fact. " : $"Deleted {receipt.DeletedFacts} expired facts. ") + FactStatus.Text;
+        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 fact. " : $"Deleted {receipt.DeletedFacts} facts. ") + FactStatus.Text;
     }
 
+    private void NewFact_Click(object sender, RoutedEventArgs e)
+    {
+        FactsList.UnselectAll();
+        ResetEditor();
+        RenderActions();
+        FactContent.Focus();
+    }
+
+    private IReadOnlyList<MemoryFact> SelectedFacts() => FactsList.SelectedItems.Cast<FactItem>().Select(item => item.Fact).ToArray();
+
+    private MemoryFact? SingleSelected() => FactsList.SelectedItems.Count == 1 && FactsList.SelectedItem is FactItem { Fact: var fact } ? fact : null;
+
+    /// <summary>The editor for a new fact: empty, for the voice shown (else yours), kept until deleted.</summary>
+    private void ResetEditor()
+    {
+        editing = null;
+        if (FactContent is null) return;
+        FactContent.Clear();
+        FactDetails.Text = "";
+        EditorHeading.Text = "New fact";
+        RetentionChoice.ItemsSource = NewRetentionOptions;
+        RetentionChoice.SelectedIndex = 0;
+        ResetPersonChoice(null);
+    }
     private async void CreateExportPreview_Click(object sender, RoutedEventArgs e)
     {
         if (!RequireCurrentEnabledConfiguration(ExportStatus))
@@ -452,17 +538,41 @@ public partial class MemoryWindow : ThemedWindow
 
     private void FactsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (FactsList.SelectedItem is not FactItem { Fact: var fact })
+        if (rendering || closed) return;
+        ShowSelection();
+    }
+
+    /// <summary>The editor follows the selection: one fact to change, several to delete, none for a new fact (what was typed for
+    /// a new fact stays).</summary>
+    private void ShowSelection()
+    {
+        var selected = SelectedFacts();
+        if (selected.Count == 0)
         {
-            FactDetails.Clear();
+            if (editing is not null) ResetEditor();
             RenderActions();
             return;
         }
-        FactContent.Text = fact.Content;
-        ResetPersonChoice(fact);
-        RetentionChoice.ItemsSource = NewRetentionOptions.Append(
-            new RetentionOption("Keep current retention", null, KeepCurrent: true));
-        RetentionChoice.SelectedIndex = NewRetentionOptions.Length;
+        if (selected.Count > 1)
+        {
+            editing = null;
+            FactContent.Clear();
+            EditorHeading.Text = $"{selected.Count} facts selected";
+            FactDetails.Text = "Delete them together, or select just one to change it.";
+            RenderActions();
+            return;
+        }
+        var fact = selected[0];
+        EditorHeading.Text = "Selected fact";
+        if (editing != (fact.Id, fact.Revision))
+        {
+            editing = (fact.Id, fact.Revision);
+            FactContent.Text = fact.Content;
+            ResetPersonChoice(fact);
+            RetentionChoice.ItemsSource = NewRetentionOptions.Append(
+                new RetentionOption("Keep current retention", null, KeepCurrent: true));
+            RetentionChoice.SelectedIndex = NewRetentionOptions.Length;
+        }
         FactDetails.Text =
             $"Belongs to: {PersonName(fact.VoiceId) ?? "everyone (not tied to a voice)"}\n" +
             $"Created: {When(fact.CreatedAtUtc)} ({MemoryPromptContext.Source(fact.CreatedFrom.SourceKind)})\n" +
@@ -622,17 +732,24 @@ public partial class MemoryWindow : ThemedWindow
             return;
         var busy = operations.IsRunning;
         RetryCleanupButton.IsEnabled = service.HasPendingCleanup;
+        RetryCleanupButton.Visibility = service.HasPendingCleanup ? Visibility.Visible : Visibility.Collapsed;
         if (service.HasPendingCleanup)
             ConfigurationStatus.Text = "Memory cleanup is pending. Check folder access, then retry cleanup.";
         var enabled = ConfigurationMatchesPersisted() &&
             loadedSettings?.Memory is { Enabled: true } memory &&
             memory.ConfigurationRevision == configurationRevision;
         ReloadButton.IsEnabled = !busy;
-        RefreshFactsButton.IsEnabled = PurgeExpiredButton.IsEnabled =
-            CreateExportPreviewButton.IsEnabled = enabled && !busy;
+        CreateExportPreviewButton.IsEnabled = enabled && !busy;
+        var selected = FactsList.SelectedItems.Count;
         SaveFactButton.IsEnabled = enabled && !busy;
-        EditFactButton.IsEnabled = DeleteFactButton.IsEnabled =
-            enabled && !busy && FactsList.SelectedItem is FactItem;
+        SaveFactButton.Content = selected == 1 ? "_Add as new fact" : "_Add fact";
+        EditFactButton.Visibility = selected == 1 ? Visibility.Visible : Visibility.Collapsed;
+        EditFactButton.IsEnabled = enabled && !busy && selected == 1;
+        NewFactButton.Visibility = selected > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DeleteFactButton.IsEnabled = enabled && !busy && selected > 0;
+        DeleteFactButton.Content = selected > 1 ? $"_Delete {selected} selected" : "_Delete selected";
+        DeleteShownButton.IsEnabled = enabled && !busy && FactsList.Items.Count > 0;
+        DeleteAllButton.IsEnabled = enabled && !busy && facts.Count > 0;
         BrowseExportButton.IsEnabled = !busy;
         ExportButton.IsEnabled = enabled && !busy && exportPreview is not null &&
             AcceptExport.IsChecked == true && !string.IsNullOrWhiteSpace(ExportDestination.Text);
@@ -682,10 +799,7 @@ public partial class MemoryWindow : ThemedWindow
             return;
         FactsList.ItemsSource = null;
         facts = [];
-        FactContent.Clear();
-        FactDetails.Clear();
-        RetentionChoice.ItemsSource = NewRetentionOptions;
-        RetentionChoice.SelectedIndex = -1;
+        ResetEditor();
         DisposeExportPreview();
         FactStatus.Text = "Memory settings changed. Facts show again once they are saved.";
     }

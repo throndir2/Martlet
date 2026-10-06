@@ -309,6 +309,46 @@ public sealed class MemoryStore : IDisposable
         }
     }
 
+    /// <summary>Deletes several facts in one commit (the owner's "delete these" and "delete everything"). Facts already gone are
+    /// skipped; a fact changed since it was read fails the whole request with <see cref="MemoryFailure.Conflict"/>.</summary>
+    public async Task<MemoryExpiryReceipt> DeleteManyAsync(IReadOnlyCollection<DeleteFactRequest> requests,
+        CancellationToken cancellationToken = default)
+    {
+        using var operation = BeginOperation();
+        MemoryGuard.Require(requests is not null && requests.All(request => request is not null && request.Id != Guid.Empty &&
+            request.ExpectedRevision > 0 && request.ConsentId != Guid.Empty));
+        await writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            await PurgeExpiredUnderWriteGateAsync(CurrentUtc(), cancellationToken);
+            var now = CurrentUtc();
+            StoreState current;
+            lock (gate)
+            {
+                EnsureWritable();
+                current = state;
+            }
+            var facts = new Dictionary<Guid, MemoryFact>(current.Facts);
+            var deleted = 0;
+            foreach (var request in requests!)
+            {
+                if (!facts.TryGetValue(request.Id, out var existing))
+                    continue;
+                MemoryGuard.Require(existing.Revision == request.ExpectedRevision, MemoryFailure.Conflict);
+                facts.Remove(request.Id);
+                deleted++;
+            }
+            if (deleted == 0)
+                return new(0, current.Revision);
+            var committed = await CommitFactsAsync(current, facts.Values.ToArray(), now, cancellationToken);
+            return new(deleted, committed.Revision);
+        }
+        finally
+        {
+            writeGate.Release();
+        }
+    }
+
     public async Task<MemoryExpiryReceipt> PurgeExpiredAsync(CancellationToken cancellationToken = default)
     {
         using var operation = BeginOperation();

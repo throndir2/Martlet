@@ -315,6 +315,134 @@ public sealed class MemoryPeopleTests
         }
     });
 
+    [Fact]
+    public Task MemoryWindowSearchesAndDeletesOnePersonsFactsOrEverything() => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var (roster, sam, other, merged) = Roster();
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        using var memory = new DesktopMemoryService(store);
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true, MemoryStoragePolicy.AppLocalData, null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        await memory.SaveFactAsync(revision, "Sam's dog is called Biscuit.", MemoryRetention.UntilDeleted(), sam.Id);
+        await memory.SaveFactAsync(revision, "Sam plays the piano.", MemoryRetention.UntilDeleted(), merged);
+        await memory.SaveFactAsync(revision, "Plays the cello.", MemoryRetention.UntilDeleted(), other.Id);
+        await memory.SaveFactAsync(revision, "The house has a red door.", MemoryRetention.UntilDeleted());
+        var runner = new SetupOperationRunner();
+        var questions = new List<string>();
+        var window = new MemoryWindow(memory, runner, voices: () => roster,
+            confirm: (_, text, title) => { questions.Add(title + ": " + text); return true; }) { ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var list = Control<ListBox>(window, "FactsList");
+            await Until(() => !runner.IsRunning && list.Items.Count == 4);
+            var deleteShown = Control<Button>(window, "DeleteShownButton");
+            Assert.Equal(Visibility.Collapsed, deleteShown.Visibility);
+
+            // Search finds a fact by its words or by whose it is.
+            var search = Control<TextBox>(window, "SearchBox");
+            search.Text = "piano";
+            Assert.Equal("Sam plays the piano.", Assert.Single(list.Items.Cast<MemoryWindow.FactItem>()).Fact.Content);
+            search.Text = "SAM";
+            Assert.Equal(2, list.Items.Count);
+            Assert.Equal(Visibility.Visible, deleteShown.Visibility);
+            Assert.Equal("Delete all 2 found", deleteShown.Content);
+            search.Text = "";
+            Assert.Equal(4, list.Items.Count);
+
+            // Selecting several shows them together; deleting them asks once and deletes both.
+            list.SelectedItems.Add(list.Items.Cast<MemoryWindow.FactItem>().Single(i => i.Fact.Content == "Plays the cello."));
+            list.SelectedItems.Add(list.Items.Cast<MemoryWindow.FactItem>().Single(i => i.Fact.VoiceId is null));
+            Assert.Equal("2 facts selected", Text(window, "EditorHeading"));
+            Assert.Equal(Visibility.Collapsed, Control<Button>(window, "EditFactButton").Visibility);
+            Click(window, "MemoryDeleteFact");
+            await Until(() => !runner.IsRunning && list.Items.Count == 2);
+            Assert.StartsWith("Delete remembered facts: Delete the 2 selected facts?", questions[^1]);
+
+            // Show Sam: their facts (a merged voice's too), and one button deletes them all.
+            var filter = Control<ComboBox>(window, "PersonFilter");
+            filter.SelectedItem = filter.Items.Cast<object>().Single(o => o.ToString() == "Sam (you)");
+            Assert.Equal(2, list.Items.Count);
+            Assert.Equal("Delete all of Sam's facts (2)", deleteShown.Content);
+            Click(window, "MemoryDeleteShown");
+            await Until(() => !runner.IsRunning && list.Items.Count == 0);
+            Assert.Contains("all 2 of Sam's facts", questions[^1]);
+            Assert.StartsWith("Deleted 2 facts. 0 facts remembered", Text(window, "FactStatus"));
+
+            // Delete everything forgets every fact, whoever's it is.
+            await memory.SaveFactAsync(revision, "Likes jazz.", MemoryRetention.UntilDeleted(), other.Id);
+            await memory.SaveFactAsync(revision, "The car is blue.", MemoryRetention.UntilDeleted());
+            filter.SelectedIndex = 0;
+            Click(window, "MemoryReload");
+            await Until(() => !runner.IsRunning && list.Items.Count == 2);
+            Click(window, "MemoryDeleteAll");
+            await Until(() => !runner.IsRunning && list.Items.Count == 0);
+            Assert.StartsWith("Delete all memories: Delete everything Martlet remembers (2 facts)", questions[^1]);
+            Assert.Empty((await memory.InspectAsync(revision)).Facts);
+        }
+        finally
+        {
+            window.Close();
+            await Until(() => !runner.IsRunning);
+        }
+    });
+
+    [Fact]
+    public async Task ManageMemoriesFindsRemembersMovesAndForgetsFacts()
+    {
+        using var scope = new Scope();
+        var (roster, sam, other, merged) = Roster();
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        using var memory = new DesktopMemoryService(store);
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true, MemoryStoragePolicy.AppLocalData, null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        await memory.SaveFactAsync(revision, "Has a dog called Biscuit.", MemoryRetention.UntilDeleted(), merged);
+        await memory.SaveFactAsync(revision, "Plays the cello.", MemoryRetention.UntilDeleted(), sam.Id);
+        Task<MemoryToolOutcome> Run(string json, KnownVoice? speaker = null) =>
+            MemoryTools.RunAsync(memory, revision, json, roster, speaker, CancellationToken.None);
+        static JsonElement[] Found(MemoryToolOutcome outcome) =>
+            JsonDocument.Parse(outcome.Result.Output.Split('\n')[0]).RootElement.GetProperty("facts").EnumerateArray().ToArray();
+
+        // find by words, and by person (a merged voice's facts are Sam's).
+        var dog = Assert.Single(Found(await Run("""{"action":"find","query":"dog"}""")));
+        Assert.Equal("Sam", dog.GetProperty("person").GetString());
+        Assert.Equal(2, Found(await Run("""{"action":"find","person":"sam"}""")).Length);
+        Assert.Empty(Found(await Run("""{"action":"find","person":"everyone"}""")));
+
+        // remember: "me" is the one speaking; a tag names another voice; a repeat isn't saved twice.
+        var remembered = await Run("""{"action":"remember","fact":"Likes jazz.","person":"me"}""", other);
+        Assert.False(remembered.Result.IsError);
+        Assert.Equal(other.Id, Assert.Single(remembered.Changes).VoiceId);
+        Assert.Contains("Already remembered", (await Run($$"""{"action":"remember","fact":"Likes jazz","person":"{{other.Tag}}"}""")).Result.Output);
+        var unknown = await Run("""{"action":"remember","fact":"Works at the bakery.","person":"Alex"}""");
+        Assert.True(unknown.Result.IsError);
+        Assert.Contains("Sam (V", unknown.Result.Output);
+
+        // update: give the cello fact to the other voice and correct its words.
+        var cello = Found(await Run("""{"action":"find","query":"cello"}"""))[0].GetProperty("id").GetString()!;
+        var moved = await Run($$"""{"action":"update","ids":["{{cello}}"],"fact":"Plays the cello on Sundays.","person":"{{other.Tag}}"}""");
+        Assert.False(moved.Result.IsError, moved.Result.Output);
+        var facts = (await memory.InspectAsync(revision)).Facts;
+        var updated = facts.Single(f => f.Content == "Plays the cello on Sundays.");
+        Assert.Equal(other.Id, updated.VoiceId);
+        Assert.Equal(MemorySourceKind.Conversation, updated.LastModifiedBy.SourceKind);
+
+        // forget: several ids at once; an unknown id is refused without deleting anything.
+        Assert.True((await Run("""{"action":"forget","ids":["ffffffff"]}""")).Result.IsError);
+        Assert.Equal(3, (await memory.InspectAsync(revision)).Facts.Count);
+        var ids = Found(await Run($$"""{"action":"find","person":"{{other.Tag}}"}""")).Select(f => f.GetProperty("id").GetString()).ToArray();
+        Assert.Equal(2, ids.Length);
+        var forgot = await Run(JsonSerializer.Serialize(new { action = "forget", ids }));
+        Assert.Equal("Forgot 2 facts.", forgot.Result.Output);
+        Assert.Equal("Has a dog called Biscuit.", Assert.Single((await memory.InspectAsync(revision)).Facts).Content);
+        Assert.True((await Run("""{"action":"explode"}""")).Result.IsError);
+    }
+
     private static T Control<T>(Window window, string name) where T : FrameworkElement => Assert.IsType<T>(window.FindName(name));
 
     private static void Click(Window window, string id) =>

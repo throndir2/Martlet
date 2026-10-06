@@ -102,7 +102,9 @@ public sealed class ConversationHistoryDesktopTests
         var offered = fixture.Start("Hi again.");
         await fixture.Finish(offered);
         var after = ToolNames(fixture.Llm.Body);
-        Assert.Equal([.. before, PastConversations.ToolName], after);
+        // manage_memories (memory is on) stays last.
+        Assert.Equal(MemoryTools.Name, before[^1]);
+        Assert.Equal([.. before[..^1], PastConversations.ToolName, MemoryTools.Name], after);
         var instructions = Instructions(fixture.Llm.Body);
 
         var next = fixture.Start("And once more.");

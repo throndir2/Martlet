@@ -149,6 +149,34 @@ internal sealed class DesktopMemoryService : IDisposable
             }, operationToken), token);
     }
 
+    /// <summary>Deletes all of <paramref name="facts"/> in one commit; facts already gone are skipped.</summary>
+    internal Task<MemoryExpiryReceipt> DeleteFactsAsync(
+        Guid expectedConfigurationRevision,
+        IReadOnlyCollection<MemoryFact> facts,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        Invalidate();
+        return WithStoreAsync(expectedConfigurationRevision, (store, operationToken) =>
+            store.DeleteManyAsync(facts.Select(fact => new DeleteFactRequest
+            {
+                Id = fact.Id,
+                ExpectedRevision = fact.Revision,
+                ConsentId = Guid.NewGuid()
+            }).ToArray(), operationToken), token);
+    }
+
+    /// <summary>Runs <paramref name="action"/> with the store (the reply model's manage_memories tool). Pass
+    /// <paramref name="changes"/> when it may change facts, so a turn's recall in flight reads them again.</summary>
+    internal Task<T> UseStoreAsync<T>(Guid expectedConfigurationRevision, bool changes,
+        Func<MemoryStore, CancellationToken, Task<T>> action, CancellationToken token = default)
+    {
+        if (changes) Invalidate();
+        return WithStoreAsync(expectedConfigurationRevision, action, token);
+    }
+
+    internal DateTimeOffset UtcNow => CurrentUtc();
+
     internal Task<MemoryExpiryReceipt> PurgeExpiredAsync(
         Guid expectedConfigurationRevision,
         CancellationToken token = default)
