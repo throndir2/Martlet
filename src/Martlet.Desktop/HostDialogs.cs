@@ -57,6 +57,7 @@ internal sealed class HostInputDialog : ThemedWindow
         var root = new StackPanel { Margin = new Thickness(24) };
         var headingText = new TextBlock { Text = heading, TextWrapping = TextWrapping.Wrap };
         headingText.SetResourceReference(StyleProperty, "SectionHeading");
+        AutomationProperties.SetAutomationId(headingText, "HostInputHeading");
         root.Children.Add(headingText);
         root.Children.Add(new ScrollViewer
         {
@@ -217,7 +218,9 @@ internal sealed class HostInputDialog : ThemedWindow
     /// <summary>Asks for a role's secrets and choices (declared by the host's role.conf) and shows its terms; the Install
     /// click is the owner's confirmation. Returns martlet-host answers (secret.name=..., choice.VAR=...), or null.
     /// <paramref name="recommended"/> preselects answers Martlet worked out for this machine (for example GPU or CPU from
-    /// what already runs on its graphics card), each with its reason.</summary>
+    /// what already runs on its graphics card), each with its reason. For a role the host already runs, the same dialog
+    /// changes its settings: it shows and preselects what the role runs with now, and Apply sends them all, so only what
+    /// the owner changed changes.</summary>
     internal static Dictionary<string, string>? ForRole(Window owner, string host, string role, HostRoleInputs inputs,
         IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false) =>
         Cleaned(RoleDialog(host, role, inputs, recommended, local, agent).Ask(owner));
@@ -236,18 +239,26 @@ internal sealed class HostInputDialog : ThemedWindow
     internal static HostInputDialog RoleDialog(string host, string role, HostRoleInputs inputs,
         IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false)
     {
-        var message = $"{inputs.Title}\n\nNeeds: {inputs.Requires}." +
+        var change = inputs.Installed;
+        // A host whose martlet-host predates reporting what a role runs with (role.choice_current) applies the choices shown.
+        var keeps = inputs.Current.Count > 0 || inputs.AcceleratorCurrent is not null || inputs.Choices.Count == 0 && !inputs.GpuOrCpu;
+        var message = $"{inputs.Title}\n\n" +
+            (!change ? $"Needs: {inputs.Requires}."
+                : keeps ? $"It already runs on {host}. Change what you like below; what you leave stays as it is."
+                : $"It already runs on {host}. Apply sets it up again with the choices below; update {host} to see what it runs with now.") +
             (inputs.Terms.Length > 0 ? $"\n\n{inputs.Terms}" : "") +
             (inputs.Stops.Count > 0
                 ? $"\n\nOnly one voice engine runs on a computer, so installing it stops {HostRoles.Names(inputs.Stops)} on {host} first " +
                   "and frees the graphics card's memory it used. Downloads are kept, so adding one again is quick."
                 : "") +
             (local
-                ? "\n\nMartlet installs it on this PC's host. Secrets stay on this PC."
+                ? $"\n\nMartlet {(change ? "applies the change" : "installs it")} on this PC's host. Secrets stay on this PC."
                 : agent
-                ? $"\n\nMartlet on {host} installs it. Secrets go over its paired connection, are held only in memory until Martlet there takes them, and are saved there."
-                : "\n\nMartlet installs it on the host. Secrets are sent over SSH and saved there.");
-        var dialog = new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
+                ? $"\n\nMartlet on {host} {(change ? "applies the change" : "installs it")}. Secrets go over its paired connection, are held only in memory until Martlet there takes them, and are saved there."
+                : $"\n\nMartlet {(change ? "applies the change" : "installs it")} on the host. Secrets are sent over SSH and saved there.");
+        var dialog = change
+            ? new HostInputDialog($"Change {role}", $"Change {role} on {host}", message, "_Apply")
+            : new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
         // A recommendation for a variant's own choice ("choice.VAR@WHEN=VALUE") wins over one for the choice in general.
         (string Value, string Why)? Pick(IEnumerable<string> options, params string[] keys) =>
             keys.Select(key => recommended?.GetValueOrDefault(key)).FirstOrDefault(pick => pick is { Value: { } value } && options.Contains(value));
@@ -257,12 +268,15 @@ internal sealed class HostInputDialog : ThemedWindow
         }
         void AddRoleChoice(HostRoleChoice choice)
         {
-            string[] options = choice.Suggested ? [Automatic, .. choice.Options] : [.. choice.Options];
+            // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now.
+            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && choice.Options.Contains(current) ? current : null;
+            var automatic = choice.Suggested && now is null;
+            string[] options = automatic ? [Automatic, .. choice.Options] : [.. choice.Options];
             var pick = Pick(options, choice.Key, "choice." + choice.Variable);
-            dialog.AddChoice(choice.Key,
-                pick is { } chosen ? $"{choice.Label} (recommended: {OptionText(chosen.Value)}, {chosen.Why})"
-                    : choice.Suggested ? choice.Label + " (automatic recommended by the host)" : choice.Label,
-                options.Select(option => (option, OptionText(option))).ToArray(), pick?.Value ?? (choice.Suggested ? Automatic : choice.Default));
+            var label = pick is { } chosen ? $"{choice.Label} (recommended: {OptionText(chosen.Value)}, {chosen.Why})"
+                : automatic ? choice.Label + " (automatic recommended by the host)" : choice.Label;
+            dialog.AddChoice(choice.Key, now is null ? label : $"{label} (now: {OptionText(now)})",
+                options.Select(option => (option, OptionText(option))).ToArray(), now ?? pick?.Value ?? (automatic ? Automatic : choice.Default));
             When(choice.Key, choice.When);
         }
         // The choices that pick a variant (the stt or Audio2Face engine) come first, then what that variant asks.
@@ -273,11 +287,14 @@ internal sealed class HostInputDialog : ThemedWindow
         foreach (var choice in first) AddRoleChoice(choice);
         if (inputs.GpuOrCpu)
         {
-            string[] options = [Automatic, "gpu", "cpu"];
-            dialog.AddChoice("choice.accelerator", Pick(options, "choice.accelerator") is { } pick
-                    ? $"Run on (recommended: {pick.Value}, {pick.Why})"
-                    : "Run on (automatic chooses the GPU when available)",
-                options, Pick(options, "choice.accelerator")?.Value ?? Automatic);
+            // Installed: what it runs on now, chosen (no Automatic, which would keep it anyway).
+            var now = inputs.AcceleratorCurrent;
+            string[] options = now is null ? [Automatic, "gpu", "cpu"] : ["gpu", "cpu"];
+            var pick = Pick(options, "choice.accelerator");
+            dialog.AddChoice("choice.accelerator",
+                (now is null ? "Run on" : $"Run on (now: {now})") + (pick is { } chosen ? $" (recommended: {chosen.Value}, {chosen.Why})"
+                    : now is null ? " (automatic chooses the GPU when available)" : ""),
+                options, now ?? pick?.Value ?? Automatic);
             When("choice.accelerator", inputs.GpuWhen);
         }
         if (inputs.Gpus.Count > 1)
@@ -306,23 +323,27 @@ internal sealed class HostInputDialog : ThemedWindow
     internal static string OptionText(string option) => Martlet.Sherpa.ParakeetModels.Find(option)?.ToString() ?? option;
 
     /// <summary>On a host with several NVIDIA cards, which one the role runs on (<c>choice.gpu</c>): automatic, one card, or
-    /// every card together.</summary>
+    /// every card together. An installed role starts on the card it runs on now (or every card), so changing something else
+    /// never moves it.</summary>
     private static void AddGpuChoice(HostInputDialog dialog, HostRoleInputs inputs, IReadOnlyDictionary<string, (string Value, string Why)>? recommended)
     {
+        string Name(string id) => inputs.Gpus.FirstOrDefault(g => g.Id == id)?.Name ?? (id == "all" ? "every card" : id);
         (string Value, string Text)[] cards =
         [
             (Automatic, inputs.GpuCurrent is { } current
-                ? "Automatic (keeps " + (inputs.Gpus.FirstOrDefault(g => g.Id == current)?.Name ?? "every card") + ")"
+                ? "Automatic (keeps " + Name(current) + ")"
                 : "Automatic (a card no other role uses, with the most free memory)"),
             .. inputs.Gpus.Select((g, i) => (g.Id, $"Card {i + 1}: {g.Describe()}")),
             ("all", "All cards (one model spread over every card)")
         ];
+        var now = inputs.Installed && inputs.GpuCurrent is { } runs && cards.Any(c => c.Value == runs) ? runs : null;
         var pick = recommended?.GetValueOrDefault("choice.gpu") is { Value: { } value } chosen && cards.Any(c => c.Value == value)
             ? chosen : ((string Value, string Why)?)null;
-        dialog.AddChoice("choice.gpu", pick is { } p
-                ? $"Graphics card (recommended: {inputs.Gpus.FirstOrDefault(g => g.Id == p.Value)?.Name ?? p.Value}, {p.Why})"
-                : "Graphics card (when it runs on the GPU)",
-            cards, pick?.Value ?? Automatic);
+        dialog.AddChoice("choice.gpu",
+            (now is null ? "Graphics card" : $"Graphics card (now: {Name(now)})") + (pick is { } p
+                ? $" (recommended: {Name(p.Value)}, {p.Why})"
+                : now is null ? " (when it runs on the GPU)" : ""),
+            cards, now ?? pick?.Value ?? Automatic);
     }
 
     /// <summary>For an install whose other answers Martlet already made (one-click setups): on a host with several NVIDIA

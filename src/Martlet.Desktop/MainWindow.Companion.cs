@@ -942,14 +942,15 @@ public partial class MainWindow
         ComputersCard(job.Job, job.Engine, job.HostRoleKind, NetworkMap.JobHost(homeSettings, job.Role),
             $"In use: {job.Engine} {(route?.ModelId is { } model ? HostInputDialog.OptionText(model) : null)}.",
             null,
-            key => AssignJobAsync(job, key), job.Disclosure, exclude);
+            key => AssignJobAsync(job, key), job.Disclosure, exclude, change: "Change model");
 
     /// <summary>Every paired host (except <paramref name="exclude"/>) that can run the job, with what it runs and <i>Use it</i>,
     /// plus <i>Add a computer</i>, <i>Check hosts</i> and the Devices map; hosts whose platform or hardware can't run it are
     /// named underneath with why. <paramref name="again"/> labels the owner's button when using it again does something
-    /// (choosing another voice); otherwise the owner shows <i>In use</i>.</summary>
+    /// (choosing another voice); otherwise the owner shows <i>In use</i>. A host that runs the role also has
+    /// <paramref name="change"/>, which opens the role's settings there (its model, GPU or CPU...), showing what it runs now.</summary>
     private Border ComputersCard(string job, string engine, string roleKind, string? owner, string ownerDetail, string? again,
-        Func<string, Task> assign, string disclosure, PairedHost? exclude)
+        Func<string, Task> assign, string disclosure, PairedHost? exclude, string change = "Change settings")
     {
         var stack = new List<UIElement> { Heading("Your computers") };
         var paired = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != exclude?.HostId).ToArray();
@@ -984,9 +985,18 @@ public partial class MainWindow
             var use = PageButton(owner == host.HostId ? again ?? "In use" : "Use it",
                 () => assign("host:" + host.HostId).Forget(), primary: owner != host.HostId && cannot is null, id: $"SetupUseHost-{job}-{host.HostId}");
             use.IsEnabled = cannot is null && !(owner == host.HostId && again is null);
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            if (model is not null && check?.Reachable == true && ChangesRolesOn(host))
+            {
+                var settings = PageButton(change, () => LaunchOnHost(host, HostAction.Change(roleKind)), id: $"SetupChangeHost-{job}-{host.HostId}");
+                AutomationProperties.SetName(settings, $"{change}: {engine} on {host.HostId} (now {model})");
+                settings.Margin = new Thickness(0, 0, 8, 0);
+                buttons.Children.Add(settings);
+            }
+            buttons.Children.Add(use);
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-            DockPanel.SetDock(use, Dock.Right);
-            row.Children.Add(use);
+            DockPanel.SetDock(buttons, Dock.Right);
+            row.Children.Add(buttons);
             row.Children.Add(text);
             stack.Add(row);
         }
@@ -1514,7 +1524,28 @@ public partial class MainWindow
         var shown = await captions.PreviewAsync("Hi! While I talk, what I say shows up here.");
         if (closing) return;
         ShowSpeechDisplay(shown is null ? "Couldn't show the preview. Show the character and try again."
-            : $"Preview shown {BubbleWhere(shown)}.");
+            : $"Preview shown {BubbleWhere(shown)}" +
+              $"{BubbleTheme(shown, SelectedTheme.Name(), key => TryFindResource(key) as System.Windows.Media.Brush, SystemParameters.HighContrast)}.");
+    }
+
+    /// <summary>Whether the shown bubble is drawn in the palette Martlet's windows use now (<paramref name="brush"/> by resource
+    /// key): its fill, outline, text and halo are the palette's Surface, Accent, Text and Glow (no halo in high contrast).
+    /// Empty when the overlay didn't say which colors it used.</summary>
+    internal static string BubbleTheme(RendererBubble bubble, string palette, Func<string, System.Windows.Media.Brush?> brush, bool highContrast)
+    {
+        if (bubble.Colors is not { } drawn) return "";
+        var differing = new List<string>();
+        void Check(string part, string? actual, string? role)
+        {
+            var expected = role is null ? null
+                : brush(role + "Brush") is System.Windows.Media.SolidColorBrush solid ? $"#{solid.Color.R:X2}{solid.Color.G:X2}{solid.Color.B:X2}" : "";
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) differing.Add($"{part} {actual ?? "none"}");
+        }
+        Check("fill", drawn.Fill, "Surface");
+        Check("outline", drawn.Outline, "Accent");
+        Check("text", drawn.Text, "Text");
+        Check("halo", drawn.Halo, highContrast ? null : "Glow");
+        return differing.Count == 0 ? $", in the {palette} colors" : $", but not in the {palette} colors ({string.Join(", ", differing)})";
     }
 
     internal static string BubbleWhere(RendererBubble bubble) => bubble.Placement switch

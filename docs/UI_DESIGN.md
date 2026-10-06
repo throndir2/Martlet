@@ -203,11 +203,13 @@ to bottom: the **map**, the **selected device** with what it does, and
     now* with the reason. Each job row has *Change in Companion* (lip-sync's
     opens *Lip-sync*; speaking's model and voice change there, because they
     need consent), shows the job's problem in amber when it isn't working, and
-    adds *Remove ... from it* when a host runs it. *Character* (show or hide,
+    adds *Change ... settings* (the host role's model, GPU or CPU and graphics
+    card, in the role's dialog starting from what it runs now) and *Remove ...
+    from it* when a host runs it. *Character* (show or hide,
     settings), *Microphone and speakers* (*Choose and test*) and this PC's
     *Martlet host service* (check, update, status, pair again, forget) have
     their own rows; a role installed on a host but doing no job yet shows as
-    *standing by* with *Hand ... to this computer* and *Remove*.
+    *standing by* with *Hand ... to this computer*, *Change ... settings* and *Remove*.
   - **Give it more to do**: hand the device a job it doesn't do yet (*Hand
     thinking to this computer*...), *Run host services on this PC* or *Take
     lip-sync back to this PC*. *Install or remove roles* (collapsed) holds a
@@ -564,6 +566,11 @@ buttons, selection, links, icons, headings; also used as text), `OnAccent`,
 behind the mascot), plus the mascot itself, whose badge takes the accent's hue
 in a character palette (Martlet's pink otherwise). Everything refers to them as
 `DynamicResource`, so a palette swaps at once.
+The character's speech bubble is drawn wholly in them too, like a piece of
+Martlet's window floating beside the character: a `Surface` card with an
+`Accent` outline, `Text` in Martlet's typeface (Segoe UI) and a soft `Glow` halo
+(no halo in high contrast), in Martlet's own palettes and the character ones
+alike.
 Windows' high contrast always wins.
 
 Settings › Appearance offers *Pink light*, *Rose dark* and two palettes made by

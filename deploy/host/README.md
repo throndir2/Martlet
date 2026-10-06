@@ -49,8 +49,8 @@ pair --device-id <id> --name <name>
 console             the gateway console: list paired desktops and revoke one
 network-reset       leave this host's Martlet network (pairings stay); the next desktop that pairs adds it to its own network
 roles               what this host can run
-describe <role>     a role's terms, secrets (stored or missing, never values), choices, GPU/CPU option and route-less feature, machine-readable
-add <role>          install a role, e.g. add ollama, add deep-thinking, add stt, add f5, add xtts, add gpt-sovits, add dia, add singing, add audio2face or add home-assistant (same flow for every role)
+describe <role>     a role's terms, secrets (stored or missing, never values), choices, GPU/CPU option and route-less feature, and what an installed one runs with now, machine-readable
+add <role>          install a role, e.g. add ollama, add deep-thinking, add stt, add f5, add xtts, add gpt-sovits, add dia, add singing, add audio2face or add home-assistant (same flow for every role); for an installed role it changes what is answered (its model...) and keeps the rest
 remove <role>       stop a role and unpublish it (keeps its data)
 machine             report this machine's hardware to paired desktops (also done by setup, pair, add and remove)
 update              update the gateway to this engine's Martlet version (identity, pairings, roles and data stay)
@@ -431,11 +431,13 @@ rest from Windows. **Add this computer** in Martlet hosts:
    A computer that can't reach the internet gets what setup needs from this PC
    ([Computers without internet](#computers-without-internet)).
 
-Afterwards the map's per-host actions (add or remove a role, show status) run the
+Afterwards the map's per-host actions (add a role, change its settings, remove it, show status) run the
 same way. Adding a role first runs `describe <role>` there and shows its
 requirements, terms, secrets and choices in Martlet; the **Install** click is the
 confirmation, and the secrets (for example the NGC API key of the Audio2Face NIM engine) go to the host over
-stdin and are stored there in the host's private config (0600).
+stdin and are stored there in the host's private config (0600). Changing a role's settings (*Change ... settings* on its
+row, *Change model* in Companion > Deep thinking and on Thinking's and Listening's computers) shows the same dialog, titled
+*Change*, with what the role runs with now selected; **Apply** sends every choice, so only what you changed changes.
 
 Trust model:
 
@@ -468,9 +470,9 @@ Trust model:
 | Step | `role.conf` key | What happens |
 | --- | --- | --- |
 | Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `docker-engine` (Linux Docker Engine, not Docker Desktop, for LAN host-network roles), `nvidia-toolkit` (native method) |
-| GPU or CPU | `gpu=optional\|<overlay>.yaml`, `gpu=required\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers. `optional` asks `gpu` or `cpu` (default: GPU when present; Martlet sends `choice.accelerator` or lets the host decide); `required` always uses the GPU. `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it. Inside a `[VAR=value]` section only that variant has it (the `stt` role's whisper engine; Parakeet runs on the CPU), and `describe` adds `role.gpu_when` |
-| Graphics card | (any role with a `gpu` entry) | Only on a host with two or more NVIDIA cards: `choice.gpu` is a card's UUID (`describe` lists them as `role.gpu=<uuid>\|<name>\|<MiB>\|<other roles on it>`, plus `role.gpu_current` once installed) or `all`. A chosen card is written to `.env` as `MARTLET_GPU` and the overlay sets `CUDA_VISIBLE_DEVICES` to its UUID in the role's services, so each role (thinking, deep thinking, listening, the voice, singing) can have a card of its own. Without a choice it keeps the card it runs on, else takes a card no other role uses, preferring the most memory free now. `choice_by_vram` then counts that card's memory (every card's for `all`). One-card hosts are unchanged |
-| Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...`, `profile_from=VAR` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU); `profile_from` makes that choice the role's Compose profile (`COMPOSE_PROFILES`), so one role can offer variants such as the stt or Audio2Face engine (`profile_legacy` names the variant installs from before the role had variants run). The choices that pick a variant (outside any section and not suggested by GPU memory) are asked first, before GPU or CPU; then that variant's own choices. Changing the variant on a re-add prepares the chosen one (its image built, its prepare steps run) while the previous one keeps running, and stops the previous one only then (its volumes are kept). Every other variant is stopped before the chosen one starts, so a switch that stopped part-way and is run again still stops the previous one; each service of a role with variants belongs to one variant (profile) |
+| GPU or CPU | `gpu=optional\|<overlay>.yaml`, `gpu=required\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers. `optional` asks `gpu` or `cpu` (default: GPU when present, or where an installed role runs now while that is still possible; Martlet sends `choice.accelerator` or lets the host decide); `required` always uses the GPU. `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it. `describe` reports an installed role's as `role.accelerator_current`. Inside a `[VAR=value]` section only that variant has it (the `stt` role's whisper engine; Parakeet runs on the CPU), and `describe` adds `role.gpu_when` |
+| Graphics card | (any role with a `gpu` entry) | Only on a host with two or more NVIDIA cards: `choice.gpu` is a card's UUID (`describe` lists them as `role.gpu=<uuid>\|<name>\|<MiB>\|<other roles on it>`, plus `role.gpu_current` once installed) or `all`. A chosen card is written to `.env` as `MARTLET_GPU` and the overlay sets `CUDA_VISIBLE_DEVICES` to its UUID in the role's services, so each role (thinking, deep thinking, listening, the voice, singing) can have a card of its own. Without a choice it keeps the card it runs on (or every card, when it runs on all of them), else takes a card no other role uses, preferring the most memory free now. `choice_by_vram` then counts that card's memory (every card's for `all`). One-card hosts are unchanged |
+| Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...`, `profile_from=VAR` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU); `profile_from` makes that choice the role's Compose profile (`COMPOSE_PROFILES`), so one role can offer variants such as the stt or Audio2Face engine (`profile_legacy` names the variant installs from before the role had variants run). The choices that pick a variant (outside any section and not suggested by GPU memory) are asked first, before GPU or CPU; then that variant's own choices. For an installed role the default is what it runs with now (`describe` lists it as `role.choice_current=VAR\|value`; a variant's own choice only while that variant runs), so a re-add changes only the choices answered. Changing the variant on a re-add prepares the chosen one (its image built, its prepare steps run) while the previous one keeps running, and stops the previous one only then (its volumes are kept). Every other variant is stopped before the chosen one starts, so a switch that stopped part-way and is run again still stops the previous one; each service of a role with variants belongs to one variant (profile) |
 | Variants | `[VAR=value]` ... `[end]` | Entries between these lines (terms, secrets, registry, assets, loopback rewrites, the GPU option, choices and their suggestions, prepare steps) apply only when choice `VAR` is `value`; `describe` lists them as `role.terms_when`, `role.secret_when`, `role.choice_when`, `role.suggested_when` and `role.gpu_when`, so Martlet shows them only for that choice. Two variants may each have their own choice of the same `VAR`, such as the stt role's `STT_MODEL` (whisper's or Parakeet's models) |
 | Terms | `terms` | Shown (every one that applies to the choices made); continue only on `yes` (or shown in Martlet, whose Install click confirms) |
 | Secrets | `secret=name\|prompt` | Asked once (or sent by Martlet on stdin), stored in the host config `secrets/<name>` (0600), passed to Compose as environment secret `<NAME>` |
@@ -489,6 +491,9 @@ Trust model:
 
 Adding a role that is already installed is a reconfiguration, not a reinstall:
 
+- Only what is answered changes: an unanswered choice, and whether it runs on the
+  GPU or the CPU, stay as the role runs now (a fresh install takes the defaults and
+  suggestions). Martlet's *Change ... settings* shows them and sends them all.
 - Images, downloads and data volumes are kept (also by `remove` and by an
   `exclusive` replacement), so adding a role again, or switching back to one,
   downloads nothing new. Compose recreates a container only when its
@@ -510,7 +515,9 @@ Adding a role that is already installed is a reconfiguration, not a reinstall:
   server is replaced. Only the voice engines (`exclusive=voice`) stop the old one
   before the new one starts, because both models would not fit in the graphics
   card's memory; the new engine's image is built first, so that gap is only its
-  start and warm-up.
+  start and warm-up. Paired desktops then follow the new model on their next
+  check: a job or Deep thinking that stays on this host keeps using it (a route
+  names its model, and the gateway answers only for the one it serves).
 
 ## Adding a new role
 
@@ -548,7 +555,8 @@ what* shows which computer handles each job:
   your computers), not a shared job: a host that runs `deep-thinking` thinks things
   over there in the background with its own model, beside the host's `ollama` when it
   has one, so it can do both Thinking and Deep thinking. A host without the role is
-  offered the install, and Martlet switches Deep thinking to it once it is ready. A
+  offered the install (which asks for its model), and Martlet switches Deep thinking to
+  it once it is ready; *Change model* there switches the model later. A
   host that only runs `ollama` and doesn't do Thinking can think with that model too.
 - **Listening** (speech-to-text) moves the same way between the Setup choice (OpenAI,
   Windows speech or whisper.cpp on this PC) and any paired host that runs `stt` (with

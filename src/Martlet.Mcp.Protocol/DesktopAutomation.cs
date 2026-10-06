@@ -329,7 +329,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary", "HostRunsNow",
         // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
         // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
-        "ConfirmationCopy", "HostInputCopy", "ProblemHeading",
+        // A host role's dialog heading says whether it adds the role or changes one the host runs ("Change deep-thinking on
+        // diva"; role and host names only).
+        "ConfirmationCopy", "HostInputCopy", "ProblemHeading", "HostInputHeading",
         // Exiting: the closing panel's step ("Stopping your tool servers...") and, once closing is slow, what Exit now
         // interrupts; the questions an exit asks first (what Martlet is still busy with: work kinds, run window titles,
         // a host ID or an update version, never paths, keys or conversation text) and before Exit now (the step).
@@ -406,8 +408,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AdvisorChoice-",
         // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.")
         // and, for one without the Deep thinking role, its Add button's name ("DeepThinkingAddRole-diva" reads "Add Deep thinking
-        // on diva"; clicking it installs the role, so it needs --allow-ui-effects).
-        "DeepThinkingHost-", "DeepThinkingAddRole-",
+        // on diva"; clicking it installs the role, so it needs --allow-ui-effects); for one with it, its Change model button's
+        // name ("DeepThinkingChangeModel-diva" reads "Change the Deep thinking model on diva (now gemma4:e4b)"; clicking it
+        // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
+        // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
+        // conversation model on diva (now gemma4-e4b)").
+        "DeepThinkingHost-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "SetupChangeHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",

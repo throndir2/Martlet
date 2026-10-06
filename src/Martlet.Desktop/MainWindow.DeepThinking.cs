@@ -270,6 +270,15 @@ public partial class MainWindow
                 add.Margin = new Thickness(0, 0, 8, 0);
                 buttons.Children.Add(add);
             }
+            // Its Deep thinking role's model (and GPU or CPU, graphics card): the role's settings, showing what it runs now.
+            if (own is not null && check?.Reachable == true && ChangesRolesOn(host))
+            {
+                var change = PageButton("Change model", () => LaunchOnHost(host, HostAction.Change(HostRoles.DeepThinking)),
+                    id: "DeepThinkingChangeModel-" + host.HostId);
+                AutomationProperties.SetName(change, $"Change the Deep thinking model on {host.HostId} (now {own})");
+                change.Margin = new Thickness(0, 0, 8, 0);
+                buttons.Children.Add(change);
+            }
             var use = PageButton(inUse ? "In use" : "Use it", () => UseDeepHostAsync(host).Forget(), primary: !inUse && usable,
                 id: "DeepThinkingUseHost-" + host.HostId);
             use.IsEnabled = !inUse;
@@ -285,7 +294,9 @@ public partial class MainWindow
         stack.Add(Note("The conversation so far (what fits in its 16 KiB) and the task go to that computer through its paired, pinned " +
             "connection. While it thinks there, Thinking, the voice and listening keep working here at full speed. The Deep thinking " +
             "role is an Ollama of its own, so it thinks even on the computer that does Thinking (they share its graphics card); " +
-            "without it, a computer that also does Thinking for the conversation can't think alongside it. A computer's model can " +
+            "without it, a computer that also does Thinking for the conversation can't think alongside it. Adding the role asks which " +
+            "model it runs; Change model switches it later: the current model keeps thinking until the new one is downloaded and " +
+            "loaded, then Martlet thinks with the new one. A computer's model can " +
             "only think as long as its Martlet allows: update it to this version for thinks over a minute.", new Thickness(0, 8, 0, 0)));
         return Card([.. stack]);
     }

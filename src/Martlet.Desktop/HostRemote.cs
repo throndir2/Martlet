@@ -31,6 +31,11 @@ internal sealed record HostRoleInputs(string Title, string Requires, string Term
     public IReadOnlyList<HostCard> Gpus { get; init; } = [];
     /// <summary>The card the installed role runs on now (a UUID, or "all"), or null.</summary>
     public string? GpuCurrent { get; init; }
+    /// <summary>What the installed role runs with now (role.choice_current), by choice variable; empty when it isn't installed
+    /// or the host's martlet-host predates reporting it.</summary>
+    public IReadOnlyDictionary<string, string> Current { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    /// <summary>Whether the installed role runs on the GPU or the CPU now (role.accelerator_current), or null.</summary>
+    public string? AcceleratorCurrent { get; init; }
 }
 
 /// <summary>One NVIDIA card on a host with several: its UUID, name, memory and the other roles pinned to it.</summary>
@@ -293,6 +298,8 @@ internal sealed partial class HostRemote(HostShell shell)
         IReadOnlyList<string> stops = [];
         var gpus = new List<HostCard>();
         string? gpuCurrent = null;
+        string? acceleratorCurrent = null;
+        var current = new Dictionary<string, string>(StringComparer.Ordinal);
         static (string Variable, string Value)? Condition(string text) =>
             text.Split('=') is [var variable, var value] && variable.Length > 0 && value.Length > 0 ? (variable, value) : null;
         foreach (var line in lines)
@@ -314,6 +321,10 @@ internal sealed partial class HostRemote(HostShell shell)
                     gpus.Add(new(id, name, memory, users.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
                     break;
                 case "role.gpu_current": gpuCurrent = value; break;
+                case "role.accelerator_current" when value is "gpu" or "cpu": acceleratorCurrent = value; break;
+                case "role.choice_current" when value.Split('|') is [var variable, var chosen] && variable.Length > 0 && chosen.Length > 0:
+                    current[variable] = chosen;
+                    break;
                 case "role.secret" when value.Split('|') is [var name, .. var middle, var state] && middle.Length > 0:
                     secrets.Add(new(name, string.Join('|', middle), state == "stored"));
                     break;
@@ -344,7 +355,8 @@ internal sealed partial class HostRemote(HostShell shell)
                 Suggested = c.When is { } when ? suggestedWhen.Contains((when.Variable, when.Value, c.Variable)) : suggested.Contains(c.Variable)
             }).ToList(), gpuOrCpu)
         {
-            SecretWhen = secretWhen, TermsWhen = termsWhen, Stops = stops, Gpus = gpus, GpuCurrent = gpuCurrent, GpuWhen = gpuWhen
+            SecretWhen = secretWhen, TermsWhen = termsWhen, Stops = stops, Gpus = gpus, GpuCurrent = gpuCurrent, GpuWhen = gpuWhen,
+            Current = current, AcceleratorCurrent = acceleratorCurrent
         };
     }
 }

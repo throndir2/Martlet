@@ -16,7 +16,9 @@ namespace Martlet.Mcp;
 /// synthesized voice and faint noise, on a simulated clock with device timestamps. Scene: 0-4 s only Martlet speaks, 4.5-6 s
 /// only the user, 6-8 s both at once (barge-in), then quiet. It reports how much quieter Martlet's echo got, whether the
 /// user's voice was kept, what Martlet's own voice-activity detector heard in each part, and what the barge-in gate
-/// (TalkOverDetector with the capture's echo timeline) made of each part: Martlet's echo and a short sound never talk over it.</summary>
+/// (TalkOverDetector with the capture's echo timeline) made of each part: Martlet's echo and a short sound never talk over it.
+/// listensWhileSpeaking says whether always listening goes on while Martlet speaks with the saved choices: barge-in, or echo
+/// reduction that works (EchoReducer.Works with the rehearsal's own timeline).</summary>
 internal static class EchoCheck
 {
     private const int Rate = 48_000;
@@ -37,7 +39,13 @@ internal static class EchoCheck
         try { WebRtcEchoCanceller.Create().Dispose(); }
         catch (Exception error) when (error is not OperationCanceledException) { problem = error.GetType().Name + ": " + error.Message; }
         if (problem is not null)
-            return new { ok = false, reduceEcho, reduceEchoSource = source, bargeIn, bargeInSource, wordCheck, wordCheckSource, canceller = (string?)null, cancellerProblem = problem };
+            return new
+            {
+                ok = false, reduceEcho, reduceEchoSource = source, bargeIn, bargeInSource, wordCheck, wordCheckSource, canceller = (string?)null,
+                cancellerProblem = problem,
+                // Without a canceller only barge-in keeps the microphone listening while Martlet speaks.
+                listensWhileSpeaking = bargeIn
+            };
 
         var scene = Scene.Create(delay);
         var watch = Stopwatch.StartNew();
@@ -46,10 +54,12 @@ internal static class EchoCheck
         var timeline = new EchoTimeline(TimeSpan.FromSeconds(Seconds + 1));
         byte[] with, without;
         EchoReductionReport report;
+        bool works;
         try
         {
             with = await RecordAsync(reducer.For(null, timeline), cancellation);
             report = reducer.Report;
+            works = reducer.Works(timeline);
         }
         finally { reducer.Dispose(); }
         without = await RecordAsync(new FixtureMicrophones(scene, new SimulatedClock()), cancellation);
@@ -75,7 +85,7 @@ internal static class EchoCheck
         var bothOver = TalkOver(with, timeline, 6.0, 8.0);
         var talkOverOk = !martletOver.TalkedOver && !shortOver.TalkedOver && bothOver.TalkedOver &&
             bothOver.AfterMs >= TalkOverDetector.Required.TotalMilliseconds;
-        var ok = report.State == EchoReductionState.Active && echoOnly.ReducedDb >= 20 && nearEnd.ReducedDb <= 3 &&
+        var ok = report.State == EchoReductionState.Active && works && echoOnly.ReducedDb >= 20 && nearEnd.ReducedDb <= 3 &&
             echoHeardWith == 0 && echoHeardWithout > 0 && userHeardWith > 0 && bargeInHeardWith > 0 && talkOverOk;
         return new
         {
@@ -87,6 +97,9 @@ internal static class EchoCheck
             wordCheck,
             wordCheckSource,
             canceller = "WebRTC AEC3",
+            // Always listening goes on while Martlet speaks when it can tell Martlet's voice from yours: barge-in, or echo
+            // reduction that works (as it did in this rehearsal); otherwise it pauses while Martlet speaks.
+            listensWhileSpeaking = bargeIn || reduceEcho && works,
             rehearsal = new
             {
                 scene = "fixture devices on a simulated clock (no microphone, nothing played)",
@@ -94,6 +107,7 @@ internal static class EchoCheck
                 seconds = Seconds,
                 elapsedMs = elapsed,
                 state = report.State.ToString(),
+                reducing = timeline.Reducing,
                 frames = report.Frames,
                 speakerFrames = report.SpeakerFrames,
                 deviceReducedDb = report.ReducedDb,

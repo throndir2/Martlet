@@ -30,7 +30,7 @@ internal static class HostAgentRun
             throw new InvalidOperationException($"Set {name} up and pair it from Martlet on that computer (Use as a Martlet host).");
         var title = action.Verb switch
         {
-            HostVerb.Add => $"Add {role} on {name}",
+            HostVerb.Add => $"{action.AddVerb} {role} on {name}",
             HostVerb.Remove => $"Remove {role} from {name}",
             HostVerb.Update => $"Update {name}",
             _ => $"{name}: status"
@@ -73,6 +73,7 @@ internal static class HostAgentRun
             };
             run.Status(action.Verb switch
             {
+                HostVerb.Add when action.Changing => $"Changing {role} on {name}. A new model can take a while to download; this PC follows it when it's ready.",
                 HostVerb.Add => $"Installing {role} on {name}. Large downloads can take a while; this PC picks the role up when it runs.",
                 HostVerb.Remove => $"Removing {role} from {name}...",
                 HostVerb.Update => $"Updating {name} to Martlet {version}...",

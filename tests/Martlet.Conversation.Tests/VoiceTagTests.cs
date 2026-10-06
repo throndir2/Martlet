@@ -185,4 +185,137 @@ public sealed class VoiceTagTests
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => With(["{blush}"]).Validate());
         Assert.Throws<Martlet.Core.Contracts.ContractException>(() => With([.. Enumerable.Range(0, 17).Select(i => $"[tag{i}]")]).Validate());
     }
+
+    private static readonly string[] Character = ["{nod}", "{shake_head}", "{blush}", "{happy}"];
+
+    private static (string Spoken, string Cues) SegmentWithCues(string input, IReadOnlyList<VoiceTag>? tags, int split)
+    {
+        var segmenter = new SpeechSegmenter(1536, 16_384, tags: tags, characterTags: Character);
+        var pieces = segmenter.Push(input[..split]).Concat(segmenter.Push(input[split..])).Concat(segmenter.Finish()).ToArray();
+        return (string.Join('|', pieces.Where(x => x.Text is not null).Select(x => x.Text)),
+            string.Join(' ', pieces.SelectMany(piece => piece.Cues ?? []).Select(cue => cue.Tag)));
+    }
+
+    [Theory]
+    [InlineData("Oh, look at all that activity! [nod] What are you working on right now?",
+        "Oh, look at all that activity!|What are you working on right now?", "{nod}")]
+    [InlineData("Sure *nods* let's go.", "Sure let's go.", "{nod}")]
+    [InlineData("(Nods) Okay.", "Okay.", "{nod}")]
+    [InlineData("Stop it <blush> you.", "Stop it you.", "{blush}")]
+    [InlineData("No [shakes head] never.", "No never.", "{shake_head}")]
+    [InlineData("No *shakes_head* never.", "No never.", "{shake_head}")]
+    [InlineData("Aww *blushes* thanks.", "Aww thanks.", "{blush}")]
+    [InlineData("Right {nod} sure.", "Right sure.", "{nod}")]
+    public void Other_spellings_of_a_character_tag_act_and_never_silence_their_line_on_every_split(string input, string spoken, string cues)
+    {
+        for (int split = 0; split <= input.Length; split++)
+            Assert.Equal((spoken, cues), SegmentWithCues(input, Chatterbox, split));
+    }
+
+    [Theory]
+    [InlineData("Ha *laughs* okay.", "Ha [laugh] okay.")]
+    [InlineData("(sighs) Fine.", "[sigh] Fine.")]
+    [InlineData("Ahem (clears throat) listen.", "Ahem [clear throat] listen.")]
+    [InlineData("{whispering} It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("Hm [chuckles] sure.", "Hm [chuckle] sure.")]
+    public void Other_spellings_of_the_voices_own_tags_are_spoken_as_the_engine_spells_them(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+            Assert.Equal(expected, Segment(input, Chatterbox, split));
+    }
+
+    [Theory]
+    [InlineData("That's funny [laugh] yes.", "That's funny (laughs) yes.")]
+    [InlineData("Ha *laughs* okay.", "Ha (laughs) okay.")]
+    [InlineData("[sigh] Fine.", "(sighs) Fine.")]
+    public void Another_engines_spelling_of_a_sound_the_voice_makes_is_spoken_its_way(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+            Assert.Equal(expected, Segment(input, SpeechEngines.Dia.Tags, split));
+    }
+
+    [Theory]
+    [InlineData("*laughs* That's great.", "That's great.")]
+    [InlineData("Oh (sighs) fine.", "Oh fine.")]
+    public void A_voice_without_tags_drops_stage_directions_of_known_sounds_instead_of_the_line(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+            Assert.Equal(expected, Segment(input, SpeechEngines.F5.Tags, split));
+    }
+
+    [Fact]
+    public void A_spelling_the_voice_and_the_character_share_is_the_voices_tone_and_otherwise_the_emote()
+    {
+        Assert.Equal(("[happy] Yay.", "[happy]"), SegmentWithCues("[happy] Yay.", Chatterbox, 0));
+        Assert.Equal(("Yay.", "{happy}"), SegmentWithCues("[happy] Yay.", SpeechEngines.F5.Tags, 0));
+        Assert.Equal(("Yay.", "{happy}"), SegmentWithCues("{happy} Yay.", Chatterbox, 0));
+    }
+
+    [Theory]
+    [InlineData("I'm *so* happy.")]
+    [InlineData("I'm *happy* to help.")]
+    [InlineData("A [nodding] dog (blushing) here.")]
+    [InlineData("Keep [brackets] and (parens).")]
+    public void Emphasis_and_words_that_arent_a_tags_spelling_are_left_alone(string input)
+    {
+        Assert.Equal(input, VoiceTags.Strip(input, Character));
+        var stripper = new VoiceTagStripper(Character, voiceTags: Chatterbox, removed: tag => Assert.Fail(tag.Text));
+        Assert.Equal(input, stripper.Push(input) + stripper.Finish());
+    }
+
+    [Theory]
+    [InlineData("Oh, look at that! [nod] What are you doing?", "Oh, look at that! What are you doing?", "{nod}")]
+    [InlineData("Aww *blushes* thanks.", "Aww thanks.", "{blush}")]
+    [InlineData("No (shakes head).", "No.", "{shake_head}")]
+    public void The_chat_never_shows_another_spelling_and_reports_the_character_tag_as_listed(string input, string shown, string tag)
+    {
+        for (int split = 0; split <= input.Length; split++)
+        {
+            var dropped = new List<string>();
+            var stripper = new VoiceTagStripper(Character, dropped.Add);
+            Assert.Equal(shown, stripper.Push(input[..split]) + stripper.Push(input[split..]) + stripper.Finish());
+            Assert.Equal([tag], dropped);
+        }
+    }
+
+    [Fact]
+    public void Spellings_cover_other_brackets_the_cue_joined_words_and_actions_but_tones_get_no_actions()
+    {
+        var shake = VoiceTags.Spellings(new VoiceTag("{shake_head}", VoiceTagKind.Character, "")).Select(t => t.Text).ToArray();
+        Assert.Contains("[shake head]", shake);
+        Assert.Contains("(shake-head)", shake);
+        Assert.Contains("*shakes head*", shake);
+        Assert.Contains("[shakes_head]", shake);
+        Assert.DoesNotContain("{shake_head}", shake);
+        Assert.DoesNotContain("*shake head*", shake);
+        Assert.All(VoiceTags.Spellings(new VoiceTag("{blush}", VoiceTagKind.Character, "")), t =>
+        {
+            Assert.Equal("{blush}", t.Canonical);
+            Assert.Equal("{blush}", t.AliasOf);
+        });
+        var laugh = VoiceTags.Spellings(Chatterbox.Single(t => t.Text == "[laugh]")).Select(t => t.Text).ToArray();
+        Assert.Contains("(laughs)", laugh);
+        Assert.Contains("*laughs*", laugh);
+        Assert.Contains("{laugh}", laugh);
+        var dia = VoiceTags.Spellings(SpeechEngines.Dia.Tags.Single(t => t.Text == "(laughs)"));
+        Assert.Contains(dia, t => t.Text == "[laugh]" && t.Canonical == "(laughs)" && t.Cue == "laugh");
+        var happy = VoiceTags.Spellings(Chatterbox.Single(t => t.Text == "[happy]")).Select(t => t.Text).ToArray();
+        Assert.Equal(["(happy)", "<happy>", "{happy}"], happy.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(happy, t => t.StartsWith('*'));
+        Assert.Empty(VoiceTags.Spellings(new VoiceTag("[chattiness:quiet]", VoiceTagKind.Control, "")));
+    }
+
+    [Fact]
+    public void Acted_lists_the_character_tags_and_what_the_voice_performed_and_the_note_says_it()
+    {
+        var preview = SpeechTextPreview.For("[happy] Oh, look! *nods* Ha (laughs) and [cough] {blush}.", SpeechEngines.Chatterbox, Character);
+        Assert.Equal(["[happy]", "{nod}", "[laugh]", "[cough]", "{blush}"], preview.Acted.Select(t => t.Tag));
+        Assert.Equal([null, "*nods*", "(laughs)", null, null], preview.Acted.Select(t => t.Written));
+        Assert.Equal("Tone: happy. Sounds: laugh, cough. Emotes: nod, blush.", preview.Note);
+        Assert.Equal("[happy], {nod} (written *nods*), [laugh] (written (laughs)), [cough], {blush}", ReplyTag.Describe(preview.Acted));
+        // A voice that reads words only performs no sounds or tones; the character still acts.
+        var plain = SpeechTextPreview.For("Ha [laugh] {shake_head} no.", null, Character);
+        Assert.Equal("Emote: shake head.", plain.Note);
+        Assert.Null(SpeechTextPreview.For("Just words.", SpeechEngines.Chatterbox, Character).Note);
+    }
 }

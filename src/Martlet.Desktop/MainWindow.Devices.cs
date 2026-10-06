@@ -68,7 +68,7 @@ public partial class MainWindow
 
         var loose = node.Commands.Where(c => Placed(c) is null && !(c.Action == NodeAction.CheckHost && node.Kind != NodeKind.ThisPc)).ToList();
         var give = loose.Where(c => GiveActions.Contains(c.Action)).ToList();
-        var roles = loose.Where(c => c.Action is NodeAction.InstallRole or NodeAction.RemoveRole).ToList();
+        var roles = loose.Where(c => c.Action is NodeAction.InstallRole or NodeAction.ChangeRole or NodeAction.RemoveRole).ToList();
         AddCommandSection("Give it more to do", node.Kind == NodeKind.ThisPc ? "Run more of Martlet on this PC." : "Assign a job or add a role.",
             give, roles);
         AddCommandSection("Manage", null, loose.Where(c => !GiveActions.Contains(c.Action) && !roles.Contains(c)).ToList());

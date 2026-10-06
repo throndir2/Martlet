@@ -368,7 +368,7 @@ internal static class HostActions
             HostVerb.Setup => $"Set up {ssh}",
             HostVerb.Pair => $"Pair with {ssh}",
             _ => $"Work on {ssh}"
-        } : $"{(add ? "Add" : "Remove")} {role} on {ssh}";
+        } : $"{(add ? action.AddVerb : "Remove")} {role} on {ssh}";
         return HostRunWindow.RunAsync(owner, title, async run =>
         {
             var remote = new HostRemote(new HostShell(dataDirectory, run.Prompts));
@@ -394,7 +394,7 @@ internal static class HostActions
                          "Remove role"))
                 throw new OperationCanceledException();
             run.Status(role is null ? $"Working on {ssh}..." :
-                add ? $"{role} is installing on {ssh}. This can take a while..."
+                add ? (action.Changing ? $"Changing {role} on {ssh}. A new model can take a while to download..." : $"{role} is installing on {ssh}. This can take a while...")
                     : $"Removing {role} from {ssh}...");
             var output = new EngineOutput(run.Output);
             var result = await remote.RunAsync(target, engine, action == HostAction.Setup, sudo, input, hostKey, output, run.Token,
@@ -415,7 +415,7 @@ internal static class HostActions
         var (engine, role, add) = Parse(action);
         var title = action.Verb switch
         {
-            HostVerb.Add => $"Add {role} to this PC",
+            HostVerb.Add => $"{action.AddVerb} {role} {(action.Changing ? "on" : "to")} this PC",
             HostVerb.Remove => $"Remove {role} from this PC",
             HostVerb.Setup => ThisPcSetupTitle,
             HostVerb.Update => "Update this PC's host",
@@ -446,6 +446,7 @@ internal static class HostActions
             }
             run.Status(action.Verb switch
             {
+                HostVerb.Add when action.Changing => $"Changing {role} on this PC. A new model can take a while to download...",
                 HostVerb.Add => $"{role} is installing on this PC. This can take a while...",
                 HostVerb.Remove => $"Removing {role} from this PC...",
                 HostVerb.Setup => "Setting up this PC as a host...",

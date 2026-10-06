@@ -738,7 +738,8 @@ public partial class LiveConversationWindow : ThemedWindow
     // How often one set of things you said may be restarted because you kept talking (a TV in the background must not loop it).
     private const int MaximumRestarts = 3;
 
-    // Keeps one listener running while always listening is on; it holds off by itself while Martlet speaks. With Hear what this PC
+    // Keeps one listener running while always listening is on; it listens on while Martlet speaks when it can tell Martlet's voice
+    // from yours, and otherwise holds off by itself until Martlet is done. With Hear what this PC
     // plays on, a second one hears the PC beside it.
     private void KeepListening()
     {
@@ -821,7 +822,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // The words of what went straight to Thinking, as speech-to-text beside the reply finishes them: they replace the bubble's
     // placeholder (marked when the word check wouldn't count them; Thinking already heard it), and count as what you said lately
-    // so your own voice played back by the PC is left out.
+    // so your own voice played back by the PC is left out. When speech-to-text couldn't transcribe it, the bubble goes: there is
+    // nothing to show (Thinking already heard the recording, and its reply stays).
     private void FollowWords()
     {
         if (awaitingWords.Count == 0) return;
@@ -836,7 +838,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 saidLately.Add((text, now));
                 LeaveOutYourVoice();
             }
-            else bubble.Text = "(your voice; speech-to-text couldn't transcribe it)";
+            else Messages.Remove(bubble);
         }
     }
 
@@ -1316,6 +1318,10 @@ public partial class LiveConversationWindow : ThemedWindow
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
                 passed: done.Passed, restarted: continued) is { } latency)
             ErrorLog.Info(latency);
+        // What the reply's tags did (character emotes and the voice's sounds and tones), with any other spelling Martlet took for
+        // a tag ([nod] for {nod}); tag names only, never the words.
+        var acted = done.Turn?.Acted ?? [];
+        if (!notWords && acted.Count > 0) ErrorLog.Info($"Reply acted: {ReplyTag.Describe(acted)}.");
         if (ReferenceEquals(shown, done) && reply is not null)
         {
             // A reply restarted because you kept talking is replaced by the next one, unless you already heard some of it; one to
@@ -1328,6 +1334,8 @@ public partial class LiveConversationWindow : ThemedWindow
             }
             else
             {
+                // How the reply was acted out: its tone, the voice's sounds and the character's emotes.
+                if (ReplyTag.Note(acted) is { } how) reply.AddNote(how);
                 var refusal = done.Turn?.Content.Refusal?.Trim();
                 if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet declined: " + refusal);
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
@@ -1844,8 +1852,9 @@ public partial class LiveConversationWindow : ThemedWindow
             : started && listenProblem is not null ? $"{listenProblem} Martlet will listen when it can. Click to stop listening."
             : started && !listening ? $"{ListeningProblem()} Martlet will listen when it can. Click to stop listening."
             : listening ? (listener is { Held: true }
-                ? "Not listening while Martlet speaks. Click to stop listening."
+                ? "Not listening while Martlet speaks, so it doesn't hear itself. Click to stop listening."
                 : preferences.BargeIn ? "Martlet listens for you, even while it speaks: talk over it to stop it. Click to stop listening."
+                : preferences.ReduceEcho ? "Martlet listens for you, even while it speaks, and answers when you pause. Click to stop listening."
                 : "Martlet listens for you and answers when you pause. Click to stop listening.")
             : micUsable ? "Click to have Martlet listen and answer when you pause. You can keep using the rest of Martlet."
             : ListeningProblem();
@@ -2012,7 +2021,8 @@ public partial class LiveConversationWindow : ThemedWindow
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…"
-                : tool == ThinkLonger.Name ? "Starting to think it over in the background…" : $"Using {tool}…";
+                : tool == ThinkLonger.Name ? "Starting to think it over in the background…"
+                : tool == SongTools.SingName ? "Starting a song in the background…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
