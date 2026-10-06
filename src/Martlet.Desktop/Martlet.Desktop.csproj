@@ -32,6 +32,8 @@
     <!-- MCP client: tools from MCP servers on this PC for user-started replies (McpToolService). -->
     <ProjectReference Include="..\Martlet.Mcp.Client\Martlet.Mcp.Client.csproj" />
     <ProjectReference Include="..\Martlet.Home\Martlet.Home.csproj" />
+    <!-- Martlet in messaging apps (Companion › Messaging): Telegram's Bot API. -->
+    <ProjectReference Include="..\Martlet.Messaging\Martlet.Messaging.csproj" />
     <!-- Martlet's Discord bot (NetCord), hosted in this process: DiscordService. -->
     <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
     <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />

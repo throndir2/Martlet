@@ -220,4 +220,51 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
         name is { Length: > 0 and <= 128 } && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
     private static string McpSecretTarget(string scope, string name) => $"Martlet/v3/mcp/{scope}/{name}";
+
+    // A messaging app's bot token (Companion › Messaging), one per saved connection. Kept base64url-encoded like MCP secrets,
+    // because bot tokens contain characters (':') a credential lease doesn't take.
+    public CredentialError WriteMessagingToken(string app, Guid credentialId, string value)
+    {
+        if (!MessagingApp(app) || credentialId == Guid.Empty || value.Length == 0 ||
+            System.Text.Encoding.UTF8.GetByteCount(value) > MaxMcpSecretBytes)
+            return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        var encoded = System.Buffers.Text.Base64Url.EncodeToChars(bytes);
+        try { return Map(native.Write(MessagingTarget(app, credentialId), encoded)); }
+        finally
+        {
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes);
+            Array.Clear(encoded);
+        }
+    }
+
+    public CredentialError ReadMessagingToken(string app, Guid credentialId, out string? value)
+    {
+        value = null;
+        if (!MessagingApp(app) || credentialId == Guid.Empty) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var result = Map(native.Read(MessagingTarget(app, credentialId), out var secret));
+        using (secret)
+        {
+            if (result != CredentialError.None) return result;
+            if (secret is null) return CredentialError.Unavailable;
+            string? decoded = null;
+            secret.Use(chars =>
+            {
+                try { decoded = System.Text.Encoding.UTF8.GetString(System.Buffers.Text.Base64Url.DecodeFromChars(chars)); }
+                catch (FormatException) { decoded = null; }
+            });
+            value = decoded;
+            return decoded is null ? CredentialError.Unavailable : CredentialError.None;
+        }
+    }
+
+    public CredentialError DeleteMessagingToken(string app, Guid credentialId) =>
+        !MessagingApp(app) || credentialId == Guid.Empty ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(MessagingTarget(app, credentialId))) : CredentialError.UnsupportedPlatform;
+
+    private static bool MessagingApp(string app) => app is { Length: > 0 and <= 32 } && app.All(char.IsAsciiLetterLower);
+
+    private static string MessagingTarget(string app, Guid credentialId) => $"Martlet/v3/messaging/{app}/{credentialId:N}";
 }
