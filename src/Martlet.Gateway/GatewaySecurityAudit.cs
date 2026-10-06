@@ -22,6 +22,8 @@ internal sealed partial class GatewayHttpApplication
             GeneratedAt = clock.GetUtcNow(),
             InternetReachable = Guard.InternetReachable,
             OutsideAddresses = Network.OwnAddresses,
+            OutsideAccessBlockedReason = Guard.OutsideAccessBlockedReason,
+            OutsideAccessPaused = Guard.OutsideAccessPaused,
             AllowPairingOutsideHome = exposure.AllowPairingOutsideHome,
             TreatAllAsOutside = exposure.TreatAllAsOutside,
             Successes = totals.Successes,
@@ -39,6 +41,10 @@ internal sealed partial class GatewayHttpApplication
         public required DateTimeOffset GeneratedAt { get; init; }
         public required bool InternetReachable { get; init; }
         public required IReadOnlyList<string> OutsideAddresses { get; init; }
+        /// <summary>Why outside access can't be served: sign-in has no usable method (null: it has).</summary>
+        public string? OutsideAccessBlockedReason { get; init; }
+        /// <summary>Outside addresses (or typed codes outside) while sign-in has no usable method: outside requests are refused.</summary>
+        public required bool OutsideAccessPaused { get; init; }
         public required bool AllowPairingOutsideHome { get; init; }
         public required bool TreatAllAsOutside { get; init; }
         public required long Successes { get; init; }

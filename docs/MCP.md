@@ -702,12 +702,18 @@ address and gets `pair.outside_home`, the code stays open until `cancel`);
 `card-pairs-from-outside` (`owner-pair --device-id` and the desktop's real
 pairing); `serve-healthy`; `roster-signs-outside-address` (two network syncs
 found the network and sign in the address the host advertises);
+`exposure-needs-signin-first` (before sign-in `owner-exposure --outside` exits 5
+with `outside.needs_signin`; `owner-signin-owner` then sets an owner account
+with an authenticator from the code the check computes);
 `home-fails-outside-succeeds` (with no outside address the home address times
 out; with the roster's, the paired connection reaches the host outside, and the
 next connection goes straight there); `guard-locks-out-outside-source` (five
 `401 auth.missing`, then `429 auth.throttled` with `Retry-After`);
 `audit-names-outside-source` (`internet_reachable` from the roster, failures
-from `203.0.113.1 (outside)`, the host log's lockout line); and
+from `203.0.113.1 (outside)`, the host log's lockout line);
+`outside-paused-without-signin` (`signin.json` removed from the running host: the
+paired desktop and a stranger get `outside.paused`, sign-in's settings still
+answer the owner with `signin.not_set_up`); and
 `probe-tells-home-and-outside-apart`. It never pulls (without Docker or the images
 it returns `exitCode` 2 and `notRun`) and removes its containers, volumes and
 network. Not covered: a real router, overlay or internet path.
@@ -735,7 +741,10 @@ outside home, and a stranger's pinned HTTPS client. It runs
 used from outside is refused (`pair.outside_home`, also as the desktop's code
 pairing sees it) and stays open; a one-use card opened for one named device
 pairs from outside without the opt-in; once the owner allows typed codes from
-outside the same code pairs; five failed requests lock the
+outside without sign-in, outside access pauses (the code and the desktop's audit
+read get `outside.paused`, `OutsideAccessBlockedReason` is `signin.not_set_up`),
+the desktop sets up an owner account over the sign-in settings route (still
+reachable) and the pause ends; then the same code pairs; five failed requests lock the
 address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
@@ -2924,9 +2933,15 @@ paired host Martlet manages (this PC's host service, one over SSH, or one whose
 own Martlet runs its commands), `SelectedDeviceOutside`
 (in *Details*) returns its outside access in counts and choices only (*2 outside
 addresses; pairing codes from outside home refused; every connection treated as
-outside home.*), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+outside home.*, with *Outside access paused: sign-in is off; sign-in needed first
+(signin.not_set_up)* while it is), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
 (`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
-default for Docker hosts; `HostInputCancel` closes it, `HostInputOk` runs
+default for Docker hosts; while sign-in isn't usable on the host its note
+`OutsideAccessBlockedReason` returns why, starting *Outside access paused: sign-in
+is off.* when the host has outside addresses, ending with the reason code, the
+outsideAccessBlockedReason `signin.not_set_up` or `signin.no_allowed_identity`,
+and `OutsideAccessSetUpSignIn` opens the host's sign-in settings (a passive click);
+`HostInputCancel` closes it, `HostInputOk` runs
 `martlet-host exposure` and restarts the host's gateway, so it needs
 `--allow-ui-effects`). For a
 paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release

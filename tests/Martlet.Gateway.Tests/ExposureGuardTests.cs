@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Martlet.Core.Access;
 using Martlet.Gateway;
 using Microsoft.AspNetCore.Http;
 
@@ -182,6 +183,90 @@ public sealed class ExposureGuardTests
         Assert.Equal("home.example.net:9443", auditDocument.RootElement.GetProperty("outside_addresses")[0].GetString());
     }
 
+    private sealed class SignInStorage : IGatewaySignInStorage
+    {
+        internal byte[]? Bytes;
+        public byte[]? Load() => Bytes;
+        public void Save(byte[] bytes) => Bytes = bytes;
+    }
+
+    /// <summary>signin.json with an owner account and its authenticator, as Settings › Sign-in from outside sets it up.</summary>
+    private static SignInStorage OwnerSignIn(DateTimeOffset now)
+    {
+        var secret = Totp.NewSecret();
+        var document = new GatewaySignInDocument();
+        GatewaySignInSettings.Apply(document, new GatewaySignInChange
+        {
+            Action = "owner", User = "owner", Password = "a long owner passphrase", TotpSecret = secret, Code = Totp.Code(secret, now)
+        }, now);
+        return new() { Bytes = document.Write() };
+    }
+
+    [Fact]
+    public void Sign_in_is_usable_with_an_owner_account_or_a_provider_with_an_allowed_identity()
+    {
+        var now = new DateTimeOffset(2026, 10, 6, 8, 0, 0, TimeSpan.Zero);
+        Assert.Equal("signin.not_set_up", GatewayOutsideAccess.SignInBlockedReason((GatewaySignInDocument?)null));
+        Assert.Equal("signin.not_set_up", GatewayOutsideAccess.SignInBlockedReason(new GatewaySignInDocument()));
+        Assert.Null(GatewayOutsideAccess.SignInBlockedReason(GatewaySignInDocument.Parse(OwnerSignIn(now).Bytes!)));
+        var provider = new GatewaySignInDocument
+        {
+            Providers = [new GatewaySignInProviderConfig { Id = "discord", Kind = "discord", Name = "Discord", ClientId = "id", ClientSecret = "secret" }]
+        };
+        Assert.Equal("signin.no_allowed_identity", GatewayOutsideAccess.SignInBlockedReason(provider));
+        provider.Allowed.Add(new GatewayAllowedSignIn { Provider = "discord", Subject = "1234" });
+        Assert.Null(GatewayOutsideAccess.SignInBlockedReason(provider));
+        // Only what makes the host more reachable from outside needs sign-in.
+        Assert.True(GatewayOutsideAccess.Expands([], false, ["a.example:1"], false));
+        Assert.True(GatewayOutsideAccess.Expands([], false, [], true));
+        Assert.False(GatewayOutsideAccess.Expands(["a.example:1", "b.example:1"], true, ["a.example:1"], false));
+        Assert.False(GatewayOutsideAccess.Expands(["a.example:1"], true, ["a.example:1"], true));
+    }
+
+    [Fact]
+    public async Task A_public_endpoint_without_sign_in_pauses_outside_requests_until_sign_in_is_back()
+    {
+        await using var host = await GatewayTestHost.StartAsync();
+        var credential = await host.PairAsync(GatewayRole.Voice, "desktop-a");
+        using var signer = new GatewayRequestSigner(host.Identity, credential, host.Clock);
+        async Task<(HttpStatusCode Status, string? Code)> LiveAsync()
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, host.Origin.CanonicalOrigin + "/health/live");
+            using var response = await host.Client.SendAsync(request);
+            return (response.StatusCode, response.IsSuccessStatusCode ? null : await GatewayTestHost.FailureCode(response));
+        }
+
+        // Treating every connection as outside is only about classifying requests: no sign-in needed, nothing paused.
+        host.Server.Exposure = new() { TreatAllAsOutside = true };
+        Assert.Equal(HttpStatusCode.OK, (await LiveAsync()).Status);
+        Assert.False(host.Server.Guard.OutsideAccessPaused);
+
+        // Outside addresses saved while sign-in worked, then sign-in removed: outside requests are refused, the addresses stay.
+        var signIn = new SignInStorage();
+        host.Server.AttachSignInStorage(signIn);
+        host.Server.Exposure = new() { TreatAllAsOutside = true, OutsideAddresses = ["home.example.net:9443"], OutsideAddressesSetAt = host.Clock.GetUtcNow() };
+        var paused = await LiveAsync();
+        Assert.Equal((HttpStatusCode.Forbidden, "outside.paused"), paused);
+        Assert.True(host.Server.Guard.OutsideAccessPaused);
+        Assert.Equal("signin.not_set_up", host.Server.Guard.OutsideAccessBlockedReason);
+        Assert.Equal(["home.example.net:9443"], host.Server.Exposure.OutsideAddresses);
+        Assert.Contains(host.Server.Guard.Recent(), e => e is { Outcome: "refused", Code: "outside.paused", SourceKind: "outside" });
+        // The paired owner can still reach sign-in's settings to fix it.
+        using (var settings = await host.Client.SendAsync(host.SignedGet("/martlet/v1/signin/settings", GatewayRole.Voice, signer)))
+            Assert.NotEqual("outside.paused", settings.IsSuccessStatusCode ? null : await GatewayTestHost.FailureCode(settings));
+        using (var audit = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer)))
+            Assert.Equal("outside.paused", await GatewayTestHost.FailureCode(audit));
+
+        // Sign-in set up again: outside access serves again (sign-in is read at most every five seconds).
+        signIn.Bytes = OwnerSignIn(host.Clock.GetUtcNow()).Bytes;
+        host.Clock.Advance(TimeSpan.FromSeconds(6));
+        Assert.Equal(HttpStatusCode.OK, (await LiveAsync()).Status);
+        using var served = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer));
+        using var document = JsonDocument.Parse(await served.Content.ReadAsStringAsync());
+        Assert.False(document.RootElement.GetProperty("outside_access_paused").GetBoolean());
+        Assert.False(document.RootElement.TryGetProperty("outside_access_blocked_reason", out _));
+    }
+
     private sealed class RosterStorage(byte[] bytes) : IGatewayNetworkStorage
     {
         private byte[]? saved = bytes;
@@ -193,6 +278,7 @@ public sealed class ExposureGuardTests
     public async Task Gateway_refuses_outside_pairing_locks_out_guessing_and_serves_the_audit_to_paired_desktops()
     {
         await using var host = await GatewayTestHost.StartAsync();
+        host.Server.AttachSignInStorage(OwnerSignIn(host.Clock.GetUtcNow()));
         var credential = await host.PairAsync(GatewayRole.Voice, "desktop-a");
         using var signer = new GatewayRequestSigner(host.Identity, credential, host.Clock);
         // The test connects over loopback; the host is told every connection comes from outside (like a hidden proxy).

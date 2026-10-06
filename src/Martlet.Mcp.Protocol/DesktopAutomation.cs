@@ -90,6 +90,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
         "ProblemClose",
+        // Outside access's "Set up sign-in first" only opens the sign-in window for that host; it changes nothing by itself.
+        "OutsideAccessSetUpSignIn",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
         // Character profiles: Home's Manage profiles, the Character and Personality pages' Open profiles and the Profiles page's
@@ -232,6 +234,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A managed host's outside access ("2 outside addresses; pairing codes from outside home refused; every connection
         // treated as outside home."): counts and choices only, never the addresses.
         "SelectedDeviceOutside",
+        // The Outside access dialog's note when the host needs sign-in first ("Outside access paused: sign-in is off. ... (signin.not_set_up)"):
+        // the reason code is the outsideAccessBlockedReason. Its "Set up sign-in first" button (OutsideAccessSetUpSignIn) only opens
+        // the sign-in window, which changes nothing until its own buttons are used.
+        "OutsideAccessBlockedReason",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.

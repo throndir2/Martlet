@@ -10,7 +10,15 @@ public sealed record HostAuthEvent(DateTimeOffset At, string RouteClass, string 
 
 /// <summary>A host's exposure choices, its guard's totals and its most recent authentication decisions.</summary>
 public sealed record HostSecurityAudit(string HostId, bool InternetReachable, bool AllowPairingOutsideHome, bool TreatAllAsOutside,
-    long Successes, long Failures, long Throttled, int LockedOut, IReadOnlyList<HostAuthEvent> Events);
+    long Successes, long Failures, long Throttled, int LockedOut, IReadOnlyList<HostAuthEvent> Events)
+{
+    /// <summary>Why the host can't serve outside access: sign-in has no usable method there ("signin.not_set_up",
+    /// "signin.no_allowed_identity"), or null when it has. Hosts older than this rule report null.</summary>
+    public string? OutsideAccessBlockedReason { get; init; }
+    /// <summary>The host has outside addresses (or allows typed codes outside) while sign-in has no usable method, so it
+    /// refuses requests from outside home.</summary>
+    public bool OutsideAccessPaused { get; init; }
+}
 
 public sealed partial class Audio2FaceHostConnection
 {
@@ -39,7 +47,12 @@ public sealed partial class Audio2FaceHostConnection
             return new(pairing.HostId, root.GetProperty("internet_reachable").GetBoolean(),
                 root.GetProperty("allow_pairing_outside_home").GetBoolean(), root.GetProperty("treat_all_as_outside").GetBoolean(),
                 root.GetProperty("successes").GetInt64(), root.GetProperty("failures").GetInt64(), root.GetProperty("throttled").GetInt64(),
-                root.GetProperty("locked_out").GetInt32(), events);
+                root.GetProperty("locked_out").GetInt32(), events)
+            {
+                OutsideAccessBlockedReason = root.TryGetProperty("outside_access_blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String
+                    ? blocked.GetString() : null,
+                OutsideAccessPaused = root.TryGetProperty("outside_access_paused", out var paused) && paused.ValueKind == JsonValueKind.True
+            };
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {

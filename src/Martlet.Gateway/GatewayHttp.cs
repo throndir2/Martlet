@@ -52,6 +52,7 @@ internal sealed partial class GatewayHttpApplication
         // A host whose roster entry lists outside addresses is reachable from outside: the guard's limits apply to every source.
         Network.Changed = roster => Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
         InitializeSignIn(credentials);
+        Guard.SignInBlocked = () => GatewayOutsideAccess.SignInBlockedReason(SignIn);
     }
 
     /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>
@@ -68,7 +69,7 @@ internal sealed partial class GatewayHttpApplication
             GatewayRules.Require(rawTarget is not null && rawTarget.Length <= 256, "request.invalid");
             routeClass = GatewayRequestGuard.RouteClass(rawTarget!);
             context.Items[GatewayGuard.ContextItem] = Guard;
-            Guard.Admit(context, routeClass);
+            Guard.Admit(context, routeClass, rawTarget);
             if (context.Request.Method == HttpMethods.Get && rawTarget == "/health/live")
             {
                 EnsureEmptyRequest(context.Request);
