@@ -648,6 +648,11 @@ internal sealed class LiveConversationConfiguration
 
     internal static string ListeningInstructions => Listening(null)!;
 
+    /// <summary>One moment (Companion › Prompts): every reply and glance is told, the same way each time, that one message may bring
+    /// the user's words, what this PC played, a picture and finished background work together, to answer in one reply.</summary>
+    internal static string? Moment(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.Moment, ("silent", SilentReply));
+
     /// <summary>What starts each line of a message that was heard from what the PC plays (Hear what this PC plays), so the
     /// Thinking model, the history and memory tell it apart from the user's own words.</summary>
     internal const string PcAudioMarker = "[PC audio]";

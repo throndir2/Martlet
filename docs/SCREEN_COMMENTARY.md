@@ -61,7 +61,15 @@ your setup can't.
    in the last 30 minutes) or read out private details. A new message, call or
    reminder is worth a heads-up, naming only who or which app it is from (*Sam
    just messaged you*), never the message itself. `[pass]` is never
-   spoken; a remark is spoken with the selected voice like any reply.
+   spoken; a remark is spoken with the selected voice like any reply. When
+   lines this PC played or finished background work are waiting as a look comes
+   due, the look isn't a separate glance: it is
+   [one moment](CONVERSATION.md#one-moment-everything-in-one-reply), one reply
+   that takes the picture, the PC's lines and the finished work together (with
+   the reply prompts and Companion › Prompts › *One moment*), and it counts as a
+   look for the pacer. Likewise a reply to you, to what the PC played or with
+   finished work takes the look that is due along instead of looking right
+   after. The talk window's `LiveTurnInputs` line says what each reply took.
 6. You come first: typing or push-to-talk stops a remark in progress. With
    always listening on, an idle listen (nobody speaking) briefly yields to a
    look and re-arms right after. Remarks appear in the talk window's history.
@@ -181,7 +189,9 @@ pacer:
   full-screen app is in front.
 
 The model is asked for a quick heads-up only when it is a message, call or
-reminder you would want to know about. Such a look still waits for you to
+reminder you would want to know about. When lines this PC played or finished
+work wait, that look is part of one reply that takes them too, with *Something
+wants your attention, with a reply* in its notes. Such a look still waits for you to
 finish talking (up to a minute), keeps to the hourly budget, isn't taken when
 you seem away and happens at most every 20 seconds; Martlet's own windows,
 windows already in front, private windows and a window that flashed in the

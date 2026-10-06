@@ -149,15 +149,114 @@ internal static class ThinkLongerCheck
         var sideBySide = await SideBySideAsync(cancellation);
         var host = HostFit();
         var pool = await PoolAsync(reasoning, cancellation);
+        var moment = await MomentAsync(fixture, cancellation);
         return new
         {
-            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok,
+            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok && moment.Ok,
             endpoint = fixture.BaseUrl,
             note = "Fixture endpoints on 127.0.0.1 with canned replies (NOT AI) and a fixture Ollama model list; the scheduler, runner, " +
-                "tool texts, request layout, Deep thinking plan, side-by-side fit, runtime and adapter are Martlet's own.",
+                "tool texts, request layout, Deep thinking plan, side-by-side fit, moment plan, runtime and adapter are Martlet's own.",
             flow = flow.Report, limits = limits.Report, plans = plans.Report, parallel = parallel.Report,
-            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report
+            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report, moment = moment.Report
         };
+    }
+
+    // ---------- one moment: whatever starts a reply takes everything else that waits ----------
+
+    // The owner's example: while they play, a song and a report finish and the PC plays the game's sounds; a look comes due. The
+    // production plan (MomentTurn) makes it one reply that takes the PC's lines, the picture and both finished jobs (the song
+    // marked to offer), sent to the fixture with the One moment instruction at the same place as a plain reply's, so the start of
+    // every request stays the same. Then what each trigger takes when something else waits.
+    private static async Task<(bool Ok, object Report)> MomentAsync(Fixture fixture, CancellationToken cancellation)
+    {
+        using var jobs = new BackgroundJobs();
+        var song = new BackgroundJobKind("song", 1, 3, TimeSpan.FromMinutes(15), Offer: true, Doing: "Making a song");
+        var think = new BackgroundJobKind(ThinkLonger.KindName, 1, 10, TimeSpan.FromMinutes(5), Doing: "Thinking about");
+        var songJob = jobs.Start(song, "victory song", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("song-1: Monster Slayer (0:48)."))).Job;
+        var reportJob = jobs.Start(think, "dragon lore report", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("Dragons hoard gold; three facts."))).Job;
+        var waited = Stopwatch.StartNew();
+        while ((songJob?.Finished != true || reportJob?.Finished != true) && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
+        var cases = new (string Name, MomentTrigger Trigger, bool Pc, bool Jobs, bool Look, MomentRoute Route, bool TakesPc, bool TakesJobs, bool TakesLook)[]
+        {
+            ("A look comes due while the PC played and work finished", MomentTrigger.Look, true, true, true, MomentRoute.Reply, true, true, true),
+            ("A look comes due while only work finished", MomentTrigger.Look, false, true, true, MomentRoute.Report, false, true, true),
+            ("A look and nothing else", MomentTrigger.Look, false, false, true, MomentRoute.Glance, false, false, true),
+            ("Finished work comes up while the PC played", MomentTrigger.Report, true, true, false, MomentRoute.Reply, true, true, false),
+            ("Finished work comes up while a look is due", MomentTrigger.Report, false, true, true, MomentRoute.Report, false, true, true),
+            ("The PC's pace came up while work finished", MomentTrigger.PcAudio, true, true, false, MomentRoute.Reply, true, true, false),
+            ("The PC's pace came up while you held the work (Esc)", MomentTrigger.PcAudio, true, false, false, MomentRoute.Reply, true, false, false),
+            ("You talk while all of it waits", MomentTrigger.User, true, false, true, MomentRoute.Reply, true, true, true)
+        };
+        var planned = cases.Select(c => (c, Plan: MomentTurn.Plan(c.Trigger, c.Pc, c.Jobs, c.Look))).ToArray();
+        var plansOk = planned.All(p => p.Plan.Route == p.c.Route && p.Plan.PcAudio == p.c.TakesPc && p.Plan.Jobs == p.c.TakesJobs &&
+            p.Plan.Look == p.c.TakesLook);
+
+        // The plain reply and the combined one, as the desktop asks: the persona, then the One moment instruction first among the
+        // reply's own; the combined message carries the PC's marked lines and the finished work in its notes.
+        var moment = PromptSettings.Fill(null, PromptCatalog.Moment, ("silent", StayQuiet.Marker))!;
+        var pcPrompt = PromptSettings.Fill(null, PromptCatalog.PcAudio, ("marker", "[PC audio]"), ("silent", StayQuiet.Marker))!;
+        var permissions = new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl));
+        await using var replies = ConversationRuntime.Create(new NoCredentials());
+        async Task<(ConversationSnapshot Done, string? Body)> AskAsync(BoundedTextInput input)
+        {
+            var before = fixture.Bodies("chat").Count;
+            var turn = replies.Start(new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, Model), ReplyLimits,
+                new ConversationLimits { TurnTimeout = TimeSpan.FromSeconds(60) }, chat: new ChatCompletionsTarget(fixture.BaseUrl, true),
+                generation: new GenerationSettings { Reasoning = false }), permissions, cancellation);
+            var done = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(30), cancellation);
+            await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+            return (done, fixture.Bodies("chat").Skip(before).FirstOrDefault());
+        }
+        TextHistoryMessage[] history = [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey, good luck with the boss!")];
+        var plain = await AskAsync(new BoundedTextInput("How am I doing?", string.Join("\n\n", Persona, moment), history));
+        var plan = planned[0].Plan;
+        var delivery = plan.Jobs ? jobs.Take(onItsOwn: true) : null;
+        string[] played = ["[PC audio] The monster roars and falls.", "[PC audio] Quest complete!"];
+        var notes = delivery is null ? null : BackgroundJobs.ReportNotes(null, delivery.Jobs);
+        var combined = await AskAsync(new BoundedTextInput(string.Join("\n", played), string.Join("\n\n", Persona, moment, pcPrompt), history,
+            notes: notes));
+        if (combined.Done.State == ConversationState.Completed) delivery?.Complete();
+        else delivery?.Return();
+        string System(string? body) => body is null ? "" : (string?)Messages(body).FirstOrDefault(m => (string?)m["role"] == "system")?["content"] ?? "";
+        string User(string? body) => body is null ? "" : string.Join("\n", Messages(body).Where(m => (string?)m["role"] == "user").TakeLast(1)
+            .Select(m => m["content"] is JsonValue value && value.TryGetValue<string>(out var text) ? text : m["content"]?.ToJsonString() ?? ""));
+        var plainSystem = System(plain.Body);
+        var combinedSystem = System(combined.Body);
+        var through = plainSystem.IndexOf(moment, StringComparison.Ordinal) + moment.Length;
+        var stableStart = through > moment.Length && combinedSystem.Length >= through && combinedSystem[..through] == plainSystem[..through];
+        var message = User(combined.Body);
+        var carries = new
+        {
+            pcLines = played.All(line => message.Contains(line, StringComparison.Ordinal)),
+            song = message.Contains("Monster Slayer", StringComparison.Ordinal),
+            songOffered = message.Contains("offer it and ask", StringComparison.Ordinal),
+            report = message.Contains("Dragons hoard gold", StringComparison.Ordinal)
+        };
+        // The fixture request carries no image, so what it took is told without the picture the desktop would add.
+        var took = MomentTurn.Describe(false, played.Length, false, null, delivery?.Jobs.Count ?? 0);
+        var requestOk = plain.Done.State == ConversationState.Completed && combined.Done.State == ConversationState.Completed && stableStart &&
+            carries.pcLines && carries.song && carries.songOffered && carries.report && delivery?.Jobs.Count == 2 && !jobs.HasNews &&
+            songJob?.Delivery == BackgroundDeliveryState.Delivered && reportJob?.Delivery == BackgroundDeliveryState.Delivered;
+        var ok = plansOk && requestOk;
+        return (ok, new
+        {
+            ok,
+            plans = new
+            {
+                ok = plansOk,
+                cases = planned.Select(p => new
+                {
+                    name = p.c.Name, trigger = p.c.Trigger.ToString(), route = p.Plan.Route.ToString(), takesPcAudio = p.Plan.PcAudio,
+                    takesFinishedWork = p.Plan.Jobs, takesTheLook = p.Plan.Look, combined = p.Plan.Combined
+                })
+            },
+            combinedTurn = new
+            {
+                ok = requestOk, took, state = combined.Done.State.ToString(),
+                carries, jobsTaken = delivery?.Jobs.Count, newsAfter = jobs.HasNews, delivery = new { song = songJob?.Delivery.ToString(), report = reportJob?.Delivery.ToString() },
+                momentInstruction = moment, sameStartAsAPlainReply = stableStart, sharedStartCharacters = stableStart ? through : 0
+            }
+        });
     }
 
     // ---------- Deep thinking: whether a think can run where it is set to think ----------
