@@ -685,11 +685,22 @@ require_docker() {
   DOCKER=(sudo -E docker)
 }
 
+# Minimal Ubuntu images (cloud and server "minimized" installs) ship without curl, which downloads use.
+require_curl() {
+  command -v curl >/dev/null 2>&1 && return
+  ask "curl is not installed. Install it with Ubuntu's packages (sudo apt-get install curl ca-certificates)?" ||
+    fail "curl is required to download ${1:-what this step needs}."
+  sudo apt-get update && sudo apt-get install -y curl ca-certificates
+  command -v curl >/dev/null 2>&1 || fail "curl did not install."
+}
+
 require_nvidia_toolkit() {
   [[ "${MODE}" == docker ]] && return
   command -v nvidia-ctk >/dev/null 2>&1 && return
   ask "Install the NVIDIA Container Toolkit from NVIDIA's apt repository and configure Docker for GPUs?" ||
     fail "The NVIDIA Container Toolkit is required for GPU containers."
+  require_curl "the NVIDIA Container Toolkit"
+  command -v gpg >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y gnupg; }
   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
     sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
   curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
@@ -812,6 +823,7 @@ require_dotnet() {
   fi
   ask "Install the .NET SDK ${DOTNET_SDK} into ~/.dotnet with Microsoft's dotnet-install script (no sudo)?" ||
     fail "The .NET SDK is required to build the Martlet gateway."
+  require_curl "the .NET SDK"
   curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/martlet-dotnet-install.sh
   bash /tmp/martlet-dotnet-install.sh --version "${DOTNET_SDK}" --install-dir "${HOME}/.dotnet"
 }
@@ -2105,6 +2117,7 @@ cmd_add() {
     for key in "${!chosen[@]}"; do url="${url//\{${key}\}/${chosen[${key}]}}"; target="${target//\{${key}\}/${chosen[${key}]}}"; done
     [[ "${url}" == https://* && "${target}" == configs/* && "${target}" != *..* ]] || fail "Unsafe asset entry in role.conf."
     mkdir -p "${project}/files/$(dirname "${target#configs/}")"
+    require_curl "role assets"
     curl -fsSL "${url}" -o "${project}/files/${target#configs/}"
   done 3< <(conf_values "${conf}" asset)
   while IFS= read -r line <&3; do
