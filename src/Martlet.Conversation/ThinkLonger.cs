@@ -38,15 +38,20 @@ public static class ThinkLonger
     public const string CancelParametersJson =
         """{"type":"object","properties":{"id":{"type":"string","description":"Such as think-1; leave out for the running one."}},"additionalProperties":false}""";
 
-    /// <summary>The think job kind for <paramref name="settings"/>: one at a time, the hourly limit and time limit chosen.</summary>
+    /// <summary>The think job kind: one at a time, with no hourly limit and no time limit (it runs until it is done or
+    /// canceled).</summary>
     public static BackgroundJobKind Kind(ThinkLongerSettings settings) =>
-        new(KindName, 1, settings.Hourly, settings.TimeLimit, Doing: "Thinking about");
+        new(KindName, 1, null, null, Doing: "Thinking about");
+
+    /// <summary>How long a think's request may take: the provider contracts' ceiling, so in practice it runs until it is done
+    /// or canceled.</summary>
+    public static TimeSpan RequestTime => TextGenerationLimits.HardMaxRequestTime;
 
     public static string Description(ThinkLongerSettings settings) =>
         "Think a task through in the background, step by step, while you keep talking. Use rarely: only for real multi-step " +
         "reasoning or long creative work (song lyrics, a story, a plan, tricky math or code), never for chat or quick answers. " +
-        $"Tell the user first that you'll think it over (up to {BackgroundJobs.Duration(settings.TimeLimit)}). Returns at once; " +
-        $"the result comes back later in a note. One at a time, {settings.Hourly} an hour.";
+        "Tell the user first that you'll think it over. Returns at once; " +
+        "the result comes back later in a note. One at a time.";
 
     public const string CancelDescription = "Stop the background think (think_longer) that is running.";
 
@@ -57,7 +62,7 @@ public static class ThinkLonger
 
     /// <summary>The prompt added to a reply's instructions while think_longer is offered.</summary>
     public static string? Instructions(ThinkLongerSettings settings, PromptSettings? prompts) =>
-        PromptSettings.Fill(prompts, PromptCatalog.ThinkLonger, ("minutes", ((int)settings.TimeLimit.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        PromptSettings.Fill(prompts, PromptCatalog.ThinkLonger);
 
     /// <summary>The task and reason a call passed, or what was wrong with it, in words for the model.</summary>
     public static (string? Task, string? Reason, string? Problem) Parse(string argumentsJson)
@@ -99,7 +104,7 @@ public static class ThinkLonger
 
     /// <summary>What the model is told when the think started: its id, and to tell the user now unless it already did.</summary>
     public static string Started(BackgroundJob job, bool toldUser) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(job.Kind.TimeLimit) }) + "\n" +
+        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
         (toldUser
             ? "You're thinking about it in the background now. You already told the user, so add nothing more, or at most a few words."
             : "You're thinking about it in the background now. Tell the user now, in one short sentence in character, that you'll " +
@@ -111,7 +116,6 @@ public static class ThinkLonger
     {
         "busy" => $"Not started: {start.Message} Tell the user you're still thinking about the other one; try again after it's done, " +
                   "or stop it with cancel_thinking if they'd rather you think about this instead.",
-        "hourly_limit" => $"Not started: {start.Message} Answer as well as you can right away instead, without thinking in the background.",
         _ => $"Not started: {start.Message ?? "it isn't available right now."} Answer as well as you can right away instead."
     };
 
@@ -275,13 +279,14 @@ public sealed class BackgroundThink
     /// <summary>How many requests it sent (one, once it started).</summary>
     public int Attempts { get; private set; }
 
-    /// <summary>Works <paramref name="job"/> out until <paramref name="token"/> is canceled (the job list's cancel or time limit),
-    /// with the time the job has left (anything done before it, such as checking a model fits, counts).</summary>
+    /// <summary>Works <paramref name="job"/> out until <paramref name="token"/> is canceled (the job list's cancel, or the time
+    /// limit of a kind that has one), with the time the job has left (anything done before it, such as checking a model fits,
+    /// counts); without a time limit the request gets <see cref="ThinkLonger.RequestTime"/>.</summary>
     public async Task<BackgroundJobOutcome> RunAsync(BackgroundJob job, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(job);
         token.ThrowIfCancellationRequested();
-        var left = job.Kind.TimeLimit - job.Elapsed;
+        var left = job.Kind.TimeLimit is { } limit ? limit - job.Elapsed : ThinkLonger.RequestTime;
         // Too little time left to be worth asking: the job's time limit ends it.
         if (left < ThinkLonger.MinimumAttempt) await Task.Delay(Timeout.InfiniteTimeSpan, Clock, token).ConfigureAwait(false);
         job.Report(BackgroundJobState.Running, Doing);

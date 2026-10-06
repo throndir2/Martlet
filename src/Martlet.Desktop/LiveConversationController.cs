@@ -2196,8 +2196,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
         tools?.Record(server, ThinkLonger.Name, "started " + started.Id, ThinkLonger.Label(task!), false);
         ErrorLog.Info($"Background thinking: started {started.Id} on {where} (thinking steps on, {settings.HowHard} effort, " +
-            $"{BackgroundJobs.Duration(settings.TimeLimit)} limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} of {settings.Hourly} " +
-            $"this hour; in parallel with the conversation: {plan.Why})" +
+            $"no time limit, {jobs.StartedWithinHour(ThinkLonger.KindName)} this hour (no hourly limit); " +
+            $"in parallel with the conversation: {plan.Why})" +
             (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser)));
     }
@@ -2284,7 +2284,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 }
             };
         }
-        var writing = configured.ThinkLonger.TimeLimit;
+        // Writing the lyrics may take the song's whole time limit (a think has none of its own).
+        var writing = SongTools.Kind.TimeLimit!.Value;
         var author = new CreationAuthor
         {
             Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName, Voice = setup.VoiceId,
@@ -2617,7 +2618,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         {
             id = job.Id, kind = job.Kind.Name, state = job.State.ToString(), progress = job.Progress,
             startedAt = job.StartedUtc, finishedAt = job.FinishedUtc, elapsedSeconds = Math.Round(job.Elapsed.TotalSeconds, 1),
-            timeLimitSeconds = job.Kind.TimeLimit.TotalSeconds, offer = job.Kind.Offer,
+            timeLimitSeconds = job.Kind.TimeLimit?.TotalSeconds, offer = job.Kind.Offer,
             resultCharacters = job.Result?.Length, cut = job.Cut, problem = job.Problem, canceledBy = job.CanceledBy,
             delivery = job.Delivery.ToString()
         };

@@ -134,7 +134,8 @@ public partial class MainWindow
 
     // ---------- Thinking longer (saved with the reply settings) ----------
 
-    /// <summary>How hard Martlet thinks something over, for how long, how often and when it shares the result. Whether it may
+    /// <summary>How hard Martlet thinks something over and when it shares the result (a think has no time or hourly limit).
+    /// Whether it may
     /// at all is Where it thinks › Off. It saves a moment after each change, with the reply settings.</summary>
     private Border ThinkLongerCard(ThinkLongerSettings? saved, SetupRoute? route, DeepThinkingPlan plan)
     {
@@ -149,12 +150,6 @@ public partial class MainWindow
             return box;
         }
         var effort = Choice("ThinkLongerEffort", "How hard it thinks", ["Medium (default)", "High"], Array.IndexOf(ThinkEfforts, current.HowHard));
-        var minutes = ThinkLongerSettings.MinuteChoices;
-        var time = Choice("ThinkLongerTime", "Time limit", minutes.Select(m =>
-            $"{m} minutes{(m == ThinkLongerSettings.DefaultMinutes ? " (default)" : "")}"), minutes.ToList().IndexOf((int)current.TimeLimit.TotalMinutes));
-        var hourly = ThinkLongerSettings.PerHourChoices;
-        var perHour = Choice("ThinkLongerPerHour", "At most this many an hour", hourly.Select(n =>
-            $"{n} an hour{(n == ThinkLongerSettings.DefaultPerHour ? " (default)" : "")}"), hourly.ToList().IndexOf(current.Hourly));
         var when = Choice("ThinkLongerDelivery", "When Martlet shares the result",
             ["As soon as Martlet is free (default)", "When I talk next"], Array.IndexOf(ThinkDeliveries, current.When));
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
@@ -165,15 +160,13 @@ public partial class MainWindow
             var (text, problem) = ThinkLongerStatus(settings ?? new(), route, plan);
             status.Text = text;
             status.SetResourceReference(TextBlock.ForegroundProperty, problem ? "WarningBrush" : "MutedBrush");
-            foreach (var control in new Control[] { effort, time, perHour, when }) control.IsEnabled = settings?.On ?? true;
+            foreach (var control in new Control[] { effort, when }) control.IsEnabled = settings?.On ?? true;
         }
         Show(saved);
         ThinkLongerSettings Read(ThinkLongerSettings? loaded) => new()
         {
             Enabled = loaded?.Enabled,
             Effort = ThinkEfforts[Math.Max(0, effort.SelectedIndex)],
-            Minutes = minutes[Math.Max(0, time.SelectedIndex)],
-            PerHour = hourly[Math.Max(0, perHour.SelectedIndex)],
             Delivery = ThinkDeliveries[Math.Max(0, when.SelectedIndex)]
         };
         // There is no Save button: a change saves a moment later, into the newest saved reply settings (whether it is on stays
@@ -189,8 +182,8 @@ public partial class MainWindow
             {
                 Show(generation?.ThinkLonger);
                 var now = next ?? new();
-                ErrorLog.Info($"Thinking longer: {now.HowHard} effort, {BackgroundJobs.Duration(now.TimeLimit)} limit, {now.Hourly} an " +
-                    $"hour, shares {(now.When == ThinkDelivery.WhenFree ? "as soon as Martlet is free." : "when you talk next.")}");
+                ErrorLog.Info($"Thinking longer: {now.HowHard} effort, no time or hourly limit, " +
+                    $"shares {(now.When == ThinkDelivery.WhenFree ? "as soon as Martlet is free." : "when you talk next.")}");
             }, "Thinking longer saved. Reload an open conversation to use it.");
         });
         tabAutoSave = autoSave;
@@ -200,10 +193,10 @@ public partial class MainWindow
                 "song lyrics, a story or a plan, or tricky math or code, Martlet can say it'll think it over and work on it in the " +
                 "background while you keep talking, then bring it up when it's done.", new Thickness(0, 0, 0, 8)),
             status,
-            TerminalRow("How hard", effort), TerminalRow("Time limit", time), TerminalRow("How often", perHour),
-            TerminalRow("Share it", when),
-            Note("It thinks with Thinking steps on, whatever replies use; one think runs at a time. Stop (Esc) doesn't end it: its " +
-                "Cancel in the talk window, closing the conversation or the time limit do. A paid provider may charge for its thinking.",
+            TerminalRow("How hard", effort), TerminalRow("Share it", when),
+            Note("It thinks with Thinking steps on, whatever replies use; one think runs at a time, with no time limit and no " +
+                "limit on how many. Stop (Esc) doesn't end it: its Cancel in the talk window or closing the conversation do. A paid " +
+                "provider may charge for its thinking.",
                 new Thickness(0, 8, 0, 0)));
     }
 
@@ -221,7 +214,7 @@ public partial class MainWindow
         if (!plan.Available)
             return ($"On, but Deep thinking has nowhere to think in parallel, so Martlet doesn't offer to think things over. {plan.Why}", true);
         return ($"On. When a task needs it, Martlet says it'll think it over and works on it in the background ({settings.HowHard} " +
-            $"effort, up to {BackgroundJobs.Duration(settings.TimeLimit)}, at most {settings.Hourly} an hour) while you keep talking, " +
+            "effort, no time limit, no limit on how many) while you keep talking, " +
             (settings.When == ThinkDelivery.WhenFree ? "then brings it up as soon as it's free." : "then brings it up when you talk next."), false);
     }
 

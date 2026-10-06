@@ -1953,7 +1953,7 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 `think_longer_status` shows Companion › **Deep thinking** as replies use it
 (optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
-*Off*; `effort` *Medium* or *High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12;
+*Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
 `delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
@@ -1995,7 +1995,10 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
+the conversation ending (dropped), all on a fixture kind with limits; and
+`deepThinkingUnlimited`: Deep thinking's own kind has no time or hourly limit
+(`timeLimit`/`hourlyLimit` *none*, 20 thinks `startedInARow`, one still running
+past the fixture's time limit, `requestTimeHours` 24). `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
@@ -3337,11 +3340,12 @@ runs on this PC and can't think something over while it answers you. ...*,
 does none of the conversation's jobs, so a think runs there alongside the
 conversation.*), `ThinkLongerStatus`
 (*On. When a task needs it, Martlet says it'll think it over and works on it in
-the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
+the background (Medium effort, no time limit, no limit on how many) while you keep
 talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
 from working: no Thinking, a paired host's model, a model that turned tools
-down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
-`ThinkLongerTime`, `ThinkLongerPerHour` and `ThinkLongerDelivery` (returned;
+down, nowhere to think in parallel) and the choices `ThinkLongerEffort` and
+`ThinkLongerDelivery` (returned; a think has no time limit or hourly limit, so
+there is no choice for either;
 `ui_select` on them saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
 `DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and

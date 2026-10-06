@@ -12,19 +12,20 @@ public enum BackgroundJobState { Waiting, Running, Paused, Succeeded, Failed, Ti
 
 /// <summary>A kind of background work Martlet starts during a conversation and brings up when it is done (think_longer's
 /// "think"; later "song"): its <paramref name="Name"/> (lowercase, the job IDs' prefix: think-1, song-1), how many may run at
-/// once, how many may start in any hour, how long one may take, whether its result is something to <paramref name="Offer"/>
+/// once, how many may start in any hour (null: no hourly limit), how long one may take (null: no time limit; it runs until it is
+/// done or canceled), whether its result is something to <paramref name="Offer"/>
 /// (a song to play: Martlet asks first and a later tool acts on the user's yes) rather than simply share, and what the talk
 /// window calls a running one (<paramref name="Doing"/>: "Thinking about", then its label).</summary>
-public sealed record BackgroundJobKind(string Name, int MaxActive, int MaxPerHour, TimeSpan TimeLimit, bool Offer = false,
+public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHour, TimeSpan? TimeLimit, bool Offer = false,
     string Doing = "Working on")
 {
     public void Validate()
     {
         ContractRules.Require(Name is { Length: > 0 and <= 16 } && Name.All(c => c is >= 'a' and <= 'z'),
             "A background job kind is 1-16 lowercase letters.");
-        ContractRules.Require(MaxActive is >= 1 and <= 8 && MaxPerHour is >= 1 and <= 60 &&
-            TimeLimit >= TimeSpan.FromSeconds(1) && TimeLimit <= TimeSpan.FromMinutes(30),
-            "A background job kind allows 1-8 at once, 1-60 an hour and at most 30 minutes each.");
+        ContractRules.Require(MaxActive is >= 1 and <= 8 && MaxPerHour is null or (>= 1 and <= 60) &&
+            (TimeLimit is null || TimeLimit >= TimeSpan.FromSeconds(1) && TimeLimit <= TimeSpan.FromMinutes(30)),
+            "A background job kind allows 1-8 at once, 1-60 an hour (or no hourly limit) and at most 30 minutes each (or no time limit).");
         ContractRules.Require(Doing is { Length: > 0 and <= 40 }, "What a running job is called must be 1-40 characters.");
     }
 }
@@ -265,8 +266,8 @@ public sealed class BackgroundJobs : IDisposable
                     ? $"{running[0].Id} is still running and only one {kind.Name} runs at a time." : $"{running.Length} are still running.",
                     running[0]);
             Prune();
-            if (starts.Count(start => start.Kind == kind.Name) >= kind.MaxPerHour)
-                return new(null, "hourly_limit", $"{kind.MaxPerHour} already started in the last hour, the most allowed.");
+            if (kind.MaxPerHour is { } perHour && starts.Count(start => start.Kind == kind.Name) >= perHour)
+                return new(null, "hourly_limit", $"{perHour} already started in the last hour, the most allowed.");
             var number = numbers[kind.Name] = numbers.GetValueOrDefault(kind.Name) + 1;
             job = new(kind, $"{kind.Name}-{number}", label.Trim(), clock) { Changed = Notify };
             jobs.Add(job);
@@ -280,7 +281,7 @@ public sealed class BackgroundJobs : IDisposable
 
     private async Task RunAsync(BackgroundJob job, Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> run)
     {
-        using var limit = new CancellationTokenSource(job.Kind.TimeLimit, clock);
+        using var limit = job.Kind.TimeLimit is { } time ? new CancellationTokenSource(time, clock) : new CancellationTokenSource();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, limit.Token);
         try
         {
@@ -293,7 +294,7 @@ public sealed class BackgroundJobs : IDisposable
         {
             if (job.Cancellation.IsCancellationRequested) job.Finish(BackgroundJobState.Canceled, null, Volatile.Read(ref job.cancelReason));
             else job.Finish(BackgroundJobState.TimedOut, BackgroundJobOutcome.Failed(
-                $"it ran into the {Duration(job.Kind.TimeLimit)} time limit"), null);
+                $"it ran into the {Duration(job.Kind.TimeLimit!.Value)} time limit"), null);
         }
         catch (Exception)
         {

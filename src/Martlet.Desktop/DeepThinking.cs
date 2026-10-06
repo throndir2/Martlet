@@ -20,6 +20,8 @@ internal sealed class DeepThinkTarget
 {
     /// <summary>The context a paired computer's Ollama loads for a think: its gateway's largest, so long hidden thinking fits.</summary>
     internal const int HostContextTokens = GenerationSettings.MaximumHostContextTokens;
+    /// <summary>The longest one request may run on a paired computer's gateway (its route's bound).</summary>
+    internal static TimeSpan HostRequestTime { get; } = TimeSpan.FromSeconds(SelfHostSetup.MaximumGatewayRouteDurationSeconds);
 
     private DeepThinkTarget(DeepThinkingSettings settings, TextModelSelection model, ChatCompletionsTarget? chat, HostTextTarget? host,
         TextGenerationLimits input, ThinkBounds bounds)
@@ -71,9 +73,11 @@ internal sealed class DeepThinkTarget
     }
 
     /// <summary>The think's request: Thinking steps On at <paramref name="effort"/> (a paired computer's Ollama gets its own
-    /// <c>think</c> and its largest context), its own output budget and the <paramref name="time"/> left.</summary>
+    /// <c>think</c> and its largest context), its own output budget and the <paramref name="time"/> left (a paired computer's
+    /// gateway takes one request for at most its route's longest job, so a think there gets at most that).</summary>
     internal ConversationRequest Request(BoundedTextInput input, ThinkEffort effort, TimeSpan time)
     {
+        if (Host is not null && time > HostRequestTime) time = HostRequestTime;
         var generation = Host is not null
             ? new GenerationSettings { Reasoning = true, ContextTokens = HostContextTokens }
             : new GenerationSettings
