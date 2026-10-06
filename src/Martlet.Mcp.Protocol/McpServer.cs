@@ -243,6 +243,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
             "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
             "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
+        Tool("signin_selftest", "Rehearse joining from outside home by signing in, end to end with the production code: a real " +
+            "gateway on 127.0.0.1 (pinned TLS, in-memory signin.json and network.json), a member desktop at home that sets up the " +
+            "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
+            "only has the invite: it pins the host (reached by name, so only the pin is trusted), is refused with a wrong password, " +
+            "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
+            "with no check number; a non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
+            "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
             "it runs or reaches over SSH; this PC's own host service set up from the host dashboard is found from Docker by the " +
@@ -1017,6 +1024,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
+            "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),

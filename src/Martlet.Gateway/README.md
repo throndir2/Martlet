@@ -358,6 +358,41 @@ they are made, so held time still accepts them.
 The standalone volatile constructor has no persistence guarantee.
 Clock sampling occurs inside the store lock, not before admission.
 
+### Sign-in enrollment
+
+`GatewaySignInService` (`GatewaySignIn.cs`, routes in `GatewaySignInHttp.cs`)
+lets a computer away from home pair by signing in
+([NETWORK](../../docs/NETWORK.md#joining-from-outside-home-by-signing-in)).
+`GET /martlet/v1/signin` lists the ways to sign in (`id`, `kind`, `name`;
+nothing secret). `POST /martlet/v1/signin/begin` (`provider`, and for a browser
+provider a PKCE S256 `code_challenge` and a loopback `redirect_uri`
+`http://127.0.0.1:<port>/`) returns a one-use attempt (`attempt_id`, `state`,
+`nonce`, `expires_at` ten minutes on, and a browser provider's `authorize_url`).
+`POST /martlet/v1/signin/complete` (`attempt_id`, `device_id`, `display_name`,
+`proof`; for the owner account `{user, password, code}` where `code` is a
+current TOTP code or a recovery code) answers `201` like pairing
+(`credential_id`, `credential_secret`, `roles` `["voice"]`, `lifetime`
+`paired`) plus `signed_in` (`provider`, `subject`, `label`), after revoking any
+older credential of that device ID. Failures: `signin.unavailable` (404),
+`signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
+`signin.provider` (502); each sign-in outcome is recorded with the request
+guard under route class `signin` and the claimed or verified account as
+subject, and `TryAdmit` adds the per-account lockout. The member-only
+`GET`/`POST /martlet/v1/signin/settings` (signed; `signin.denied` for a
+non-member while the host is bound) read and change the owner account
+(`owner`: `user`, `password` of 12+ characters, `totp_secret` Base32, `code`
+proving the app took it; returns `recovery_codes` once), `recovery-codes`,
+`remove-owner`, `allow`/`disallow` (`provider`, `subject`, `label`),
+`provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
+`issuer`, `client_id`, `client_secret`, `scopes`; an omitted secret keeps the
+saved one) and `remove-provider`; the answer never contains a secret
+(`has_client_secret` only). Storage is `IGatewaySignInStorage`
+(`GatewayServer.AttachSignInStorage`, `DurableGatewayHost.AttachSignIn`); with
+none attached nobody can sign in. Enrollments whose identity is no longer
+allowed are dropped and their device credentials revoked whenever the settings
+are read. A join request from an enrolled device carries `sign_in` in the
+network document.
+
 ## Signed request and replay contract
 
 Every authenticated request uses:
