@@ -63,7 +63,7 @@ public sealed record PlatformDevice
         Platform == DevicePlatform.Ios && Features is null;
 
     /// <summary>A paired host from its last machine report. Hosts that predate platform reporting run the Linux host
-    /// engine (Ubuntu, or Docker containers on Windows or a Mac), so they count as Linux.</summary>
+    /// engine (native Linux, or Docker containers on Windows or a Mac), so they count as Linux.</summary>
     public static PlatformDevice FromHost(string hostId, HostHardware? report) => report is null
         ? new() { Platform = DevicePlatform.Linux, Name = hostId }
         : new()
@@ -451,7 +451,7 @@ public static class PlatformCatalog
         ]),
         new("host-service", Feature, "Host jobs for your other computers",
         [
-            Works(Linux, Host, "Docker or native Ubuntu; runs in the background"),
+            Works(Linux, Host, "Docker or native Linux (systemd); runs in the background"),
             Works(Win, Host, "through Docker Desktop and WSL 2"),
             Planned(Mac, Host, "MA02", "a login agent; keeps hosting after you quit the window"),
             Planned(Ios, Host, "IO03", "only while Martlet is open on the screen; it stops when the app goes to the background"),

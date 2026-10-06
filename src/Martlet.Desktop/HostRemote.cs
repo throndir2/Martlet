@@ -8,7 +8,7 @@ namespace Martlet.Desktop;
 
 /// <summary>What Martlet found on a Linux computer before changing anything there.</summary>
 internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, string? OperatingSystem, string? Architecture,
-    string? Address, string? Hostname)
+    string? Address, string? Hostname, bool Systemd)
 {
     internal bool SudoNeedsPassword => Sudo == "password";
 }
@@ -76,6 +76,7 @@ internal sealed partial class HostRemote(HostShell shell)
         "printf 'probe.sudo=%s\\n' \"$(command -v sudo >/dev/null 2>&1 || { echo none; exit 0; }; sudo -n true 2>/dev/null && echo nopassword || echo password)\"; " +
         "printf 'probe.os=%s\\n' \"$( (. /etc/os-release 2>/dev/null && printf '%s' \"$PRETTY_NAME\") || uname -s)\"; " +
         "printf 'probe.arch=%s\\n' \"$(uname -m)\"; " +
+        "printf 'probe.systemd=%s\\n' \"$([ -d /run/systemd/system ] && echo yes || echo no)\"; " +
         "printf 'probe.address=%s\\n' \"$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \\([0-9.]*\\).*/\\1/p')\"; " +
         "printf 'probe.hostname=%s\\n' \"$(hostname -s 2>/dev/null || hostname)\"";
 
@@ -92,31 +93,33 @@ internal sealed partial class HostRemote(HostShell shell)
         string? Value(string key) => values.TryGetValue(key, out var value) && value.Length > 0 ? value : null;
         var address = Value("address");
         return (new HostProbe(Value("docker") == "yes", Value("docker_access") == "yes", Value("sudo") ?? "none", Value("os"),
-            Value("arch"), HostSetupCommands.IsPrivate(address) ? address : null, Value("hostname")), result.HostKey);
+            Value("arch"), HostSetupCommands.IsPrivate(address) ? address : null, Value("hostname"), Value("systemd") == "yes"), result.HostKey);
     }
 
     /// <summary>Whether a martlet-host run needs sudo: Docker hosts only when this account cannot use Docker directly;
-    /// native Ubuntu may install packages or enable lingering.</summary>
+    /// a native host may install packages or enable lingering.</summary>
     internal static bool NeedsSudo(HostSetupMethod method, HostProbe probe) =>
         method == HostSetupMethod.SshNative ? probe.Sudo != "none" : !probe.DockerAccess && probe.Sudo != "none";
 
     /// <summary>How Martlet sets up a Linux computer: in Docker when it has Docker this account can use (directly or with
-    /// sudo), otherwise natively on Ubuntu. Anything else gets the Docker method, whose <see cref="Blocker"/> says what's missing.</summary>
+    /// sudo), otherwise natively on any Linux with systemd (any distribution or release). Anything else gets the Docker
+    /// method, whose <see cref="Blocker"/> says what's missing.</summary>
     internal static HostSetupMethod Choose(HostProbe probe) =>
         probe.Docker && (probe.DockerAccess || probe.Sudo != "none") ? HostSetupMethod.SshDocker
-        : probe.OperatingSystem?.Contains("Ubuntu", StringComparison.OrdinalIgnoreCase) == true ? HostSetupMethod.SshNative
+        : probe.Systemd ? HostSetupMethod.SshNative
         : HostSetupMethod.SshDocker;
 
     /// <summary>Plain-language reason a computer cannot be set up with this method yet, or null.</summary>
     internal static string? Blocker(HostSetupMethod method, HostProbe probe, string target) => method switch
     {
         HostSetupMethod.SshDocker when !probe.Docker =>
-            $"Docker is not installed on {target}, and it runs {probe.OperatingSystem ?? "an unknown system"} rather than Ubuntu " +
-            "(which Martlet sets up without Docker). Install Docker Engine there, then try again.",
+            $"Docker is not installed on {target}, and it runs {probe.OperatingSystem ?? "an unknown system"}             without systemd " +
+                        "(which Martlet needs to set it up without Docker). Install Docker Engine there, then try again.",
         HostSetupMethod.SshDocker when !probe.DockerAccess && probe.Sudo == "none" =>
             $"The account on {target} can't use Docker. Use an account with Docker access or sudo.",
-        HostSetupMethod.SshNative when probe.OperatingSystem?.Contains("Ubuntu", StringComparison.OrdinalIgnoreCase) != true =>
-            $"{target} runs {probe.OperatingSystem ?? "an unknown system"}. Choose the Docker method instead.",
+        HostSetupMethod.SshNative when !probe.Systemd =>
+            $"{target} runs {probe.OperatingSystem ?? "an unknown system"} without systemd, which Martlet needs to run the host " +
+            "without Docker. Choose the Docker method instead.",
         _ when probe.Architecture is { } arch && arch != "x86_64" =>
             $"{target} is not a 64-bit Intel or AMD computer.",
         _ => null
@@ -135,7 +138,7 @@ internal sealed partial class HostRemote(HostShell shell)
             if (pair.Value.Contains('\n') || pair.Value.Contains('\r')) throw new InvalidOperationException("Answers must be a single line.");
             return $"{pair.Key}={pair.Value}\n";
         })) + "end\n";
-        output.Report($"$ martlet-host {engine}  (on {ssh}, {(target.Method == HostSetupMethod.SshDocker ? "Docker" : "native Ubuntu")}" +
+        output.Report($"$ martlet-host {engine}  (on {ssh}, {(target.Method == HostSetupMethod.SshDocker ? "Docker" : "native")}" +
             $"{(supplied ? ", files from this PC" : "")})");
         return await shell.RunAsync(ssh, new()
         {
@@ -157,7 +160,7 @@ internal sealed partial class HostRemote(HostShell shell)
     }
 
     /// <summary>Before a command that downloads (setup, update, add a role): when the computer has no internet access,
-    /// sends a native Ubuntu host what setup and update need from this PC (<see cref="HostSupplier"/>, cached under
+    /// sends a native host what setup and update need from this PC (<see cref="HostSupplier"/>, cached under
     /// <paramref name="dataDirectory"/>) and returns true, so the engine runs with those files. What Martlet can't send
     /// yet (Docker hosts, roles) stops with a plain explanation instead of failing halfway.</summary>
     internal async Task<bool> SupplyIfOfflineAsync(HostSetupTarget target, HostVerb verb, string dataDirectory, string? pinnedHostKey,
@@ -191,8 +194,8 @@ internal sealed partial class HostRemote(HostShell shell)
             $"{target} can't reach the internet. Martlet sends a computer without internet access what its gateway needs, " +
             "but not yet the Docker images and models a role needs. Connect it to the internet to add this role.",
         (HostSetupMethod.SshDocker, _) =>
-            $"{target} can't reach the internet. Martlet sends what a computer without internet access needs only to an Ubuntu " +
-            "host it runs without Docker. Connect it to the internet, or set it up on Ubuntu without Docker.",
+            $"{target} can't reach the internet. Martlet sends what a computer without internet access needs             only to a Linux " +
+                        "host it runs without Docker. Connect it to the internet, or set it up without Docker.",
         _ => null
     };
 

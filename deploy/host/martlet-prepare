@@ -22,7 +22,8 @@
 # Output: "==> item: ..." progress lines, one "MARTLET-ITEM <item> <ok|changed|skipped|failed> <message>" line per
 # item, and a final machine-readable line "MARTLET-RESULT {json}" (ok, reboot_required, reboot_reasons, items).
 # With --status, the status JSON line follows, so the caller sees the new state without signing in again.
-# Supports Ubuntu 22.04 and 24.04 on x86_64; anything else is refused.
+# Supports Ubuntu (any release) and Ubuntu-based distributions on x86_64; anything else is refused (Martlet's host setup
+# itself, martlet-host, runs on any x86_64 Linux with systemd).
 set -uo pipefail
 export LC_ALL=C
 
@@ -79,18 +80,16 @@ jarr() { local out="" x; for x in "$@"; do out+="${out:+,}$(jstr "${x}")"; done;
 
 # ------------------------------------------------------------------ what this computer is
 detect_os() {
-  OS_ID=""; OS_VERSION=""; OS_NAME="Linux"; OS_CODENAME=""
+  OS_ID=""; OS_VERSION=""; OS_NAME="Linux"; OS_CODENAME=""; OS_LIKE=""
   if [[ -r /etc/os-release ]]; then
     local lines=()
-    mapfile -t lines < <(. /etc/os-release; printf '%s\n' "${ID:-}" "${VERSION_ID:-}" "${PRETTY_NAME:-Linux}" "${VERSION_CODENAME:-}")
-    OS_ID="${lines[0]:-}"; OS_VERSION="${lines[1]:-}"; OS_NAME="${lines[2]:-Linux}"; OS_CODENAME="${lines[3]:-}"
+    mapfile -t lines < <(. /etc/os-release; printf '%s\n' "${ID:-}" "${VERSION_ID:-}" "${PRETTY_NAME:-Linux}" "${VERSION_CODENAME:-}" "${ID_LIKE:-}")
+    OS_ID="${lines[0]:-}"; OS_VERSION="${lines[1]:-}"; OS_NAME="${lines[2]:-Linux}"; OS_CODENAME="${lines[3]:-}"; OS_LIKE="${lines[4]:-}"
   fi
   ARCH="$(uname -m)"; KERNEL="$(uname -r)"; HOST_NAME="$(uname -n)"
   SUPPORTED=0; REASON=""
-  if [[ "${OS_ID}" != ubuntu ]]; then
-    REASON="This computer runs ${OS_NAME}. Martlet prepares Ubuntu 22.04 or 24.04 only; set it up by hand or reinstall with Ubuntu."
-  elif [[ "${OS_VERSION}" != 22.04 && "${OS_VERSION}" != 24.04 ]]; then
-    REASON="This computer runs ${OS_NAME}. Martlet prepares Ubuntu 22.04 and 24.04 LTS only."
+  if [[ "${OS_ID}" != ubuntu && " ${OS_LIKE} " != *" ubuntu "* ]]; then
+    REASON="This computer runs ${OS_NAME}. Martlet prepares Ubuntu-based systems only; prepare it by hand (Martlet's host setup itself works on any Linux with systemd)."
   elif [[ "${ARCH}" != x86_64 ]]; then
     REASON="This computer is ${ARCH}. Martlet prepares x86_64 (64-bit Intel/AMD) computers only."
   else
@@ -698,6 +697,8 @@ tool_cuda() {
   local repo="ubuntu${OS_VERSION//./}"
   if ! installed cuda-keyring; then
     local deb; deb="$(mktemp --suffix=.deb)"
+    # NVIDIA publishes repositories for some Ubuntu releases only (LTS ones); otherwise use the newest LTS one.
+    [[ "${OS_ID}" == ubuntu ]] && curl -fsIo /dev/null "https://developer.download.nvidia.com/compute/cuda/repos/${repo}/x86_64/cuda-keyring_1.1-1_all.deb" || repo=ubuntu2404
     step "adding NVIDIA's CUDA package repository (${repo})"
     curl -fsSL -o "${deb}" "https://developer.download.nvidia.com/compute/cuda/repos/${repo}/x86_64/cuda-keyring_1.1-1_all.deb" &&
       as_root dpkg -i "${deb}" || { rm -f "${deb}"; return 1; }

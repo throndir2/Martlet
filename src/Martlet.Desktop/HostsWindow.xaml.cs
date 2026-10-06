@@ -372,7 +372,7 @@ public partial class HostsWindow : ThemedWindow
         catch (InvalidOperationException error) { StatusText.Text = error.Message; }
     }
 
-    /// <summary>Add a Linux computer: connect (password once, host key pinned), choose Docker or native Ubuntu from what it
+    /// <summary>Add a Linux computer: connect (password once, host key pinned), choose Docker or native from what it
     /// has (keeping how an existing host there runs), run setup unattended, pair automatically and read its machine report.</summary>
     private async Task<string> AddLinuxAsync(HostRunWindow run, HostShellTarget ssh, string? pinnedHostKey, HostSetupMethod? existing)
     {
@@ -382,7 +382,7 @@ public partial class HostsWindow : ThemedWindow
         var method = existing ?? HostRemote.Choose(probe);
         run.Output.Report($"{ssh}: connected ({probe.OperatingSystem ?? "unknown system"}). Docker " +
             (probe.Docker ? probe.DockerAccess ? "is ready" : "needs sudo for this account" : "is not installed") +
-            $", so Martlet sets it up {(method == HostSetupMethod.SshDocker ? "in Docker" : "natively on Ubuntu")}.");
+            $", so Martlet sets it up {(method == HostSetupMethod.SshDocker ? "in Docker" : "natively")}.");
         if (HostRemote.Blocker(method, probe, ssh.ToString()) is { } blocker) throw new InvalidOperationException(blocker);
         var address = AddressText.Text.Trim();
         if (!HostSetupCommands.IsPrivate(address))
