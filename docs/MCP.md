@@ -407,7 +407,9 @@ Windows) and optional `dataDirectory` whose saved prompt edits are used. It
 returns the engine, `supportsTags`, its `tags`, the same split into `sounds`
 (non-word sounds such as `[laugh]`) and `tones` (tones of voice such as
 `[whispering]`), `cues` (each tag's
-engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
+engine-independent cue, such as `laugh` for `[laugh]`), `synonyms` (each tag's
+other words that also count as it, such as `whisper`, `whispers` and `hushed`
+for `[whispering]`), `prompt` (the *Voice
 sounds and tones* instructions the Thinking model gets, the sounds and the tones
 each under a line saying where they go, or null), `spoken` (the
 pieces the real speech segmenter hands that engine for a spoken reply, its own
@@ -651,6 +653,46 @@ different computer with another key at the home address is skipped for the
 outside address. Not covered: a real internet source, a router port forward or
 an overlay.
 
+`signin_selftest` (no arguments) rehearses [joining from outside home by
+signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
+production code: one real gateway (`lab-signin-host`, Kestrel, pinned TLS, a
+throwaway certificate, in-memory `signin.json` and `network.json`) on
+`127.0.0.1`, a home PC, a laptop and another PC simulated with the desktop's
+sign-in client (`HostSignIn.cs`) and network sync engine. It runs
+`src\Martlet.NodeLinkCheck` (mode `signin`, `SignInRehearsal.cs`) and returns
+`{exitCode, report}` like `network_selftest`. Its steps: the home PC pairs by
+code and founds the network; it sets up the owner account (a wrong
+authenticator code is refused, the right one gives ten recovery codes, the
+password is kept only as a verifier); a computer outside the network can't
+change sign-in (`signin.denied`); the laptop pins the host from an invite whose
+outside address is `localhost:<port>` (the certificate names `127.0.0.1`, so
+only the pin is trusted) and a forged pin reaches nothing; a wrong password and
+the reused setup code are refused (`signin.invalid`); the laptop signs in with a
+recovery code, is paired under the host's home origin and its signed requests
+work; it asks to join and the home PC lets it in on the host's attestation
+(`NetworkSyncEngine.ApproveSignedIn`) with no check number, while a PC paired by
+code still waits for one; removing the owner account revokes the laptop
+(`auth.revoked`); the host's security audit holds the sign-in successes and
+failures and no secret. Not covered: the desktop windows, Windows Credential
+Manager, a host reached over the internet and browser sign-in providers.
+
+Sign-in from outside in the desktop: Add a computer's **Join with an invite**
+(`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
+`SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
+`SignInPassword`, `SignInCode`, `SignInSubmit`, status `SignInJoinStatus`, the
+checked host `SignInHost`, `SignInJoinClose`); a paired host's **Sign-in from
+outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
+`SignInSettingsStatus`, owner state `SignInOwnerState`, `SignInOwnerUser`,
+`SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
+`SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
+`SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
+`SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
+`SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
+`SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
+`SignInSettingsClose`). Opening and closing both windows are safe clicks; the
+status lines and lists are safe values. Everything else contacts a host or
+changes it and needs `--allow-ui-effects`.
+
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
 (`lab-api-1`, `lab-api-2`: Kestrel, pinned TLS, a throwaway certificate) on
@@ -696,10 +738,15 @@ bound fits the saved settings; a think on the
 Deep thinking route is held mid-answer while a reply streams on Thinking's
 route, and the reply finishes first (parallel, never queued); each request
 reached its own Ollama (the think with `"think":true`, its own model and a
-32,768-token context, the reply without Thinking steps); and the chat client
+32,768-token context, the reply without Thinking steps); two thinks run at once
+on the Deep thinking role's two slots (`OllamaRelayWorker.DeepThinking` with
+`slots: 2`, advertised as the route's `maximum_concurrency` and read as
+`HostRoute.MaximumConcurrency`) while a reply streams, a third is turned away
+with `job.busy` and each finishes once released; and the chat client
 refuses a route whose ID and path don't match. Nothing leaves loopback and
 nothing is written to disk or Windows Credential Manager; it does not cover
-`martlet-host` installing the role, a real Ollama or model, a GPU or a real LAN.
+`martlet-host` installing the role, a real Ollama or model (the slots' graphics
+memory), a GPU or a real LAN.
 
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
@@ -781,6 +828,19 @@ shows it); `copies` (folders in `character-models`), `incoming` (copies still
 arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
 `model-file-outside-list`). Character names and file paths are never returned.
+Read-only; it contacts nothing.
+
+`character_profiles` reads the character profiles (Companion › Profiles) from a
+data directory (optional absolute `dataDirectory`, default the current user's):
+`state` (`no-settings`, `none` or `loaded`), `count`, `lastUsed` (the key of the
+profile switched to last), `current` (the key of the profile that matches what
+Martlet uses now: the active persona, the look in `avatar.json` and the voice the
+speaking route keeps or the shared voice list chose; null when none does),
+`look` (what this PC shows: `builtin`, `shared:<key>` or
+`model-file-outside-list`), `voiceChosen`, and per profile its `key` (the first 8
+hex digits of its ID, as in `CharacterProfileState-<key>`), `personaSaved`,
+`personaActive`, `look` (`keep`, `builtin`, `ready`, `copying` or `missing`),
+`voice` (`keep`, `listed` or `missing`) and `inUse`. Names are never returned.
 Read-only; it contacts nothing.
 
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
@@ -2945,6 +3005,32 @@ file") joins the shared list as soon as it is saved (once it names an existing m
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
 
+**Character profiles** (`CompanionTab-Profiles`, first under *Who it is*) switch
+the look, the voice and the personality together. `CharacterProfilesNow` is the
+Now card (it names the character, so it isn't a safe value);
+`CharacterProfilesStatus` reads how many profiles there are and whether one is
+in use ("2 profiles. One of them is in use." or "None matches what Martlet uses
+now."). Each row's `CharacterProfileState-<key>` (the first 8 hex digits of the
+profile's ID) reads "In use.", "Ready." or why a part can't switch here ("Its
+look is still copying to this PC. Using it switches the rest.", "Its voice is no
+longer in your voices."), never a name. Its controls are
+`CharacterProfileUse-<key>` (disabled while in use), `CharacterProfileEdit-<key>`
+(passive: opens the form) and `CharacterProfileRemove-<key>` (asks with
+`ConfirmationYes`/`ConfirmationNo`). `CharacterProfileNew` (passive) opens the
+form filled in with what Martlet uses now: `CharacterProfileName`,
+`CharacterProfilePersona`, `CharacterProfileLook` ("Keep the current look", the
+built-in character or one of your characters), `CharacterProfileVoice` ("Keep
+the current voice" or one of your voices), `CharacterProfileSave` and
+`CharacterProfileCancel` (passive); `CharacterProfileEditorProblem` returns why
+it couldn't save. `ProfilesOpenCharacter`, `ProfilesOpenVoice`,
+`ProfilesOpenPersonality`, the Character and Personality pages' `OpenProfiles`
+and Home's `HomeManageCharacters` only open pages. Home's `HomeCharacterProfile`
+combo box lists every profile ("A mix of your own" when none matches) and
+switches on selection; the notification-area menu's `TrayCharacterProfiles`
+submenu has `TrayCharacterProfile-<key>` items, the one in use ticked. Use,
+Save, Remove and switching from Home or the menu need `--allow-ui-effects`.
+`character_profiles` reads them headlessly.
+
 The **Creations** page (`NavCreations`, between Companion and Diagnostics; its
 content is `CreationsPage`) lists [what Martlet made](CREATIONS.md), newest first.
 `CreationsNote` reads the fixed "Ask Martlet to sing or show any of these.",
@@ -3725,7 +3811,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -375,6 +375,7 @@ public partial class MainWindow
         EvaluateCoverage();
         RenderHealth(force: true);
         RenderHost();
+        RenderHomeCharacters();
         if (openTab is not null && !tabEdited) RenderTab();
     }
 
@@ -1353,6 +1354,9 @@ public partial class MainWindow
             var recommended = answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? ListeningAdvisor.HostAnswers(HardwareStore?.Find(host.HostId), System.Globalization.CultureInfo.CurrentUICulture,
                     local ? (await ListeningAdviceAsync()).Answers() : null)
+                // Deep thinking's thinks at once: what fits on its graphics card beside the host's other roles, for each model.
+                : answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.DeepThinking
+                ? DeepThinkingFit.Recommend(HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers)
                 : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
                 host.Pairing, confirmed);

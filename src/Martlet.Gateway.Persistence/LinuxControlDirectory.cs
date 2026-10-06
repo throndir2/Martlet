@@ -51,6 +51,10 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const string Exposure = "exposure.json", ExposureStaging = "exposure.staging";
     internal const int MaximumExposureBytes = 4_096;
     internal const int MaximumNetworkBytes = 65_536;
+    /// <summary>Sign-in settings: the owner account (password verifier, authenticator secret, recovery-code verifiers),
+    /// provider client secrets and the allowed identities (not part of the approved configuration).</summary>
+    internal const string SignIn = "signin.json", SignInStaging = "signin.staging";
+    internal const int MaximumSignInBytes = 65_536;
     /// <summary>The network's API keys (names, scopes and SHA-256 verifiers; never a usable secret).</summary>
     internal const string ApiKeys = "api-keys.json", ApiKeysStaging = "api-keys.staging";
     internal const int MaximumApiKeysBytes = 65_536;
@@ -119,7 +123,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
@@ -324,6 +328,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>exposure.json: the owner's outside addresses and choices for reaching this host from outside home.</summary>
     internal void WriteExposure(byte[] bytes) => ReplaceRecovering(Exposure, ExposureStaging, bytes, MaximumExposureBytes);
+
+    /// <summary>Atomically replaces signin.json (0600, service owner).</summary>
+    internal void WriteSignIn(byte[] bytes) => ReplaceRecovering(SignIn, SignInStaging, bytes, MaximumSignInBytes);
 
     /// <summary>Atomically replaces api-keys.json (0600, service owner).</summary>
     internal void WriteApiKeys(byte[] bytes) => ReplaceRecovering(ApiKeys, ApiKeysStaging, bytes, MaximumApiKeysBytes);

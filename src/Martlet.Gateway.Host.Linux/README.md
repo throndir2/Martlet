@@ -9,11 +9,12 @@ are reused. The Windows `Martlet.Gateway.Host` CLI is unchanged.
 **No workers are registered** unless `host.json` lists host **roles**. Every
 role is declared the same way and maps to one gateway relay worker for a service
 on this host's own numeric HTTP loopback (`ollama`, `deep-thinking`, `stt`, `f5`, `xtts`, `gpt-sovits`, `chatterbox`, `dia`, `singing` and `audio2face` exist today;
-`deep-thinking` is a second Ollama of its own, relayed on Deep thinking's route):
+`deep-thinking` is a second Ollama of its own, relayed on Deep thinking's route; its optional `slots`, 1 to 4, is how many
+thinks its Ollama runs at once, which the gateway admits and advertises as the route's `maximum_concurrency`):
 
 ```json
 "roles": [ { "kind": "ollama", "endpoint": "http://127.0.0.1:11434/", "model": "llama3.2:3b" },
-           { "kind": "deep-thinking", "endpoint": "http://127.0.0.1:11435/", "model": "qwen3:8b" },
+           { "kind": "deep-thinking", "endpoint": "http://127.0.0.1:11435/", "model": "qwen3:8b", "slots": 2 },
            { "kind": "stt", "endpoint": "http://127.0.0.1:8178/", "model": "small" },
            { "kind": "f5", "endpoint": "http://127.0.0.1:50080/", "model": "f5tts-v1-base" },
            { "kind": "audio2face", "endpoint": "http://127.0.0.1:52000/", "model": "claire" } ]
@@ -233,6 +234,21 @@ renew it; `serve` still requires the exact config. Each console `pair` invitatio
 also prints one `martlet-pair-v1.<base64url JSON>` code carrying the origin, host
 ID, pin, pairing ID and token for pasting into the desktop; `owner-pair` without
 a device shows a short typed code instead (`martlet-host pair`).
+
+Sign-in from outside home ([NETWORK](../../docs/NETWORK.md#joining-from-outside-home-by-signing-in))
+keeps its settings in `signin.json` beside `host.json` (0600, service owner;
+not part of the approved configuration). The owner commands edit it on the host
+and `serve` reads it again on each sign-in, so no restart is needed:
+`owner-signin-status` (owner account, providers, allowed identities and
+computers that signed in; never a secret), `owner-signin-owner --user <name>`
+(password on the first stdin line, prints an authenticator secret and
+`otpauth://` link, takes a current code on the next line, prints ten recovery
+codes once), `owner-signin-allow --provider <id> --subject <subject> [--label
+<text>]`, `owner-signin-disallow --provider <id> --subject <subject>` (the
+service revokes the computers that identity signed in) and `owner-invite
+[--address <name:port>]... [--label <text>]`, which prints a
+`martlet-invite-v1.` line with this host's ID, approved pin, home origin, the
+outside addresses and the network ID (needs the service approval for the pin).
 
 ## Binding changes, certificates and recovery
 

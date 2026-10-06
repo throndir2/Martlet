@@ -171,6 +171,22 @@ public partial class MainWindow
                     "approved here, so it needs no second Allow. It pairs with your other hosts automatically.");
                 messages.Clear();
             }
+            // A computer that paired by signing in (the owner account or an identity the owner allowed on that host) was
+            // approved by that sign-in: it joins without a check number.
+            if (state.Roster is not null && pending.Any(j => j.SignIn is not null))
+            {
+                var signedIn = pending.Where(j => j.SignIn is not null && state.Roster.Host(j.HostId) is { Removed: false }).ToArray();
+                if (signedIn.Length > 0)
+                {
+                    pending = pending.Except(signedIn).ToArray();
+                    networkJoins = networkJoins.Where(j => signedIn.All(s => s.DeviceId != j.DeviceId)).ToArray();
+                    var who = string.Join(" and ", signedIn.Select(j => $"{j.DisplayName} (signed in as {j.SignIn!.Label ?? j.SignIn.Subject})"));
+                    ChangeNetwork((engine, current) => engine.ApproveSignedIn(current, signedIn).State,
+                        $"{who} joined your Martlet network by itself: it signed in to {signedIn[0].HostId} with a sign-in you allowed, so it " +
+                        "needs no check number. It pairs with your other hosts automatically.");
+                    messages.Clear();
+                }
+            }
             foreach (var stale in networkPreapproved.Where(p => p.Value <= DateTimeOffset.Now).Select(p => p.Key).ToArray())
                 networkPreapproved.Remove(stale);
             if (state.Roster is not null && pending.FirstOrDefault(j => networkPreapproved.ContainsKey(j.DeviceId)) is { } allowed)
