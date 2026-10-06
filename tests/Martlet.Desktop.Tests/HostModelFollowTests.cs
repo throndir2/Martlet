@@ -80,4 +80,23 @@ public sealed class HostModelFollowTests
         var onOllama = deep with { HostRouteId = null, ModelId = "qwen2.5:7b" };
         Assert.Equal("llama3.1:8b", HostModelFollow.Deep(onOllama, "diva", [Route(HostRoute.OllamaChatRouteId, "llama3.1:8b")])?.ModelId);
     }
+
+    [Fact]
+    public void Deep_thinking_follows_a_new_model_on_any_computer_it_thinks_on()
+    {
+        DeepThinkingSettings Role(string host, string model) => new()
+        {
+            Place = DeepThinkingPlace.Host, ModelId = model, HostId = host, HostOrigin = $"https://{host}.local:9443",
+            HostSpkiFingerprint = "sha256:" + new string('a', 64), HostDeviceId = "desktop-test", HostCredentialId = Pairing,
+            HostRouteId = SelfHostSetup.DeepThinkingRouteId
+        };
+        var deep = Role("diva", "gemma4:e4b").WithPool([Role("ripley", "qwen3-8b")]);
+        var next = HostModelFollow.Deep(deep, "ripley", [Route(HostRoute.DeepThinkingRouteId, "qwen3-14b")]);
+        Assert.NotNull(next);
+        next.Validate();
+        Assert.Equal("gemma4:e4b", next.ModelId);
+        Assert.Equal("qwen3-14b", Assert.Single(next.Pool!).ModelId);
+        Assert.Null(HostModelFollow.Deep(next, "ripley", [Route(HostRoute.DeepThinkingRouteId, "qwen3-14b")]));
+        Assert.Null(HostModelFollow.Deep(deep, "imouto", [Route(HostRoute.DeepThinkingRouteId, "qwen3-14b")]));
+    }
 }

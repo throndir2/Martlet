@@ -38,22 +38,37 @@ public static class ThinkLonger
     public const string CancelParametersJson =
         """{"type":"object","properties":{"id":{"type":"string","description":"Such as think-1; leave out for the running one."}},"additionalProperties":false}""";
 
-    /// <summary>The think job kind for <paramref name="settings"/>: one at a time, the hourly limit and time limit chosen.</summary>
-    public static BackgroundJobKind Kind(ThinkLongerSettings settings) =>
-        new(KindName, 1, settings.Hourly, settings.TimeLimit, Doing: "Thinking about");
+    /// <summary>The think job kind for <paramref name="settings"/>: one at a time on each of the <paramref name="places"/> Deep
+    /// thinking can use (at most <see cref="MaxPlaces"/>), the hourly limit and time limit chosen.</summary>
+    public static BackgroundJobKind Kind(ThinkLongerSettings settings, int places = 1) =>
+        new(KindName, Math.Clamp(places, 1, MaxPlaces), settings.Hourly, settings.TimeLimit, Doing: "Thinking about");
 
-    public static string Description(ThinkLongerSettings settings) =>
+    /// <summary>The most thinks that run at once, one on each place Deep thinking can use.</summary>
+    public const int MaxPlaces = DeepThinkingSettings.MaxPlaces;
+
+    /// <summary>The places a think (or another kind's work that thinks, such as a song's lyrics) can run on: each usable place
+    /// of <paramref name="pool"/>, with its computer's name and how much it shares with the conversation.</summary>
+    public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        return [.. pool.Usable.Take(MaxPlaces).Select(spot => new BackgroundPlace(spot.Key,
+            spot.Computer.Length <= 80 ? spot.Computer : spot.Computer[..80], Math.Clamp(spot.Plan.Rank, 0, BackgroundPlace.MaxRank)))];
+    }
+
+    public static string Description(ThinkLongerSettings settings, int places = 1) =>
         "Think a task through in the background, step by step, while you keep talking. Use rarely: only for real multi-step " +
         "reasoning or long creative work (song lyrics, a story, a plan, tricky math or code), never for chat or quick answers. " +
         $"Tell the user first that you'll think it over (up to {BackgroundJobs.Duration(settings.TimeLimit)}). Returns at once; " +
-        $"the result comes back later in a note. One at a time, {settings.Hourly} an hour.";
+        $"the result comes back later in a note. {(places > 1 ? $"Up to {Math.Min(places, MaxPlaces)} at once" : "One at a time")}, " +
+        $"{settings.Hourly} an hour.";
 
     public const string CancelDescription = "Stop the background think (think_longer) that is running.";
 
     /// <summary>The tools a reply gets while Thinking longer is on, always the same two in the same order, so the start of every
-    /// request stays the same for prompt caches.</summary>
-    public static IReadOnlyList<TextToolDefinition> Definitions(ThinkLongerSettings settings) =>
-        [new(Name, Description(settings), ParametersJson), new(CancelName, CancelDescription, CancelParametersJson)];
+    /// request stays the same for prompt caches (<paramref name="places"/> is how many places Deep thinking can use, from the
+    /// settings only, never from what is busy).</summary>
+    public static IReadOnlyList<TextToolDefinition> Definitions(ThinkLongerSettings settings, int places = 1) =>
+        [new(Name, Description(settings, places), ParametersJson), new(CancelName, CancelDescription, CancelParametersJson)];
 
     /// <summary>The prompt added to a reply's instructions while think_longer is offered.</summary>
     public static string? Instructions(ThinkLongerSettings settings, PromptSettings? prompts) =>
@@ -109,7 +124,7 @@ public static class ThinkLonger
     /// <summary>What the model is told when no think could start.</summary>
     public static string Refused(BackgroundJobStart start) => start.Refusal switch
     {
-        "busy" => $"Not started: {start.Message} Tell the user you're still thinking about the other one; try again after it's done, " +
+        "busy" => $"Not started: {start.Message} Tell the user you're still thinking about something else; try again after it's done, " +
                   "or stop it with cancel_thinking if they'd rather you think about this instead.",
         "hourly_limit" => $"Not started: {start.Message} Answer as well as you can right away instead, without thinking in the background.",
         _ => $"Not started: {start.Message ?? "it isn't available right now."} Answer as well as you can right away instead."

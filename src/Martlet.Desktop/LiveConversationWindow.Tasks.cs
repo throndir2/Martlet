@@ -98,7 +98,7 @@ public partial class LiveConversationWindow
                 JobCards.Children.Remove(card.Card);
                 JobCards.Children.Insert(Math.Min(index, JobCards.Children.Count), card.Card);
             }
-            card.Meta.Text = $"{KindTitle(job.Kind)} · {job.Id} · {BackgroundJobs.Clockface(job.Elapsed)}";
+            card.Meta.Text = $"{KindTitle(job.Kind)} · {job.Id}{(job.Place is { } place ? " · on " + place.Name : "")} · {BackgroundJobs.Clockface(job.Elapsed)}";
             card.State.Text = JobStatus(job, when);
             card.Glyph.SetResourceReference(TextBlock.ForegroundProperty,
                 job.State is BackgroundJobState.Failed or BackgroundJobState.TimedOut or BackgroundJobState.Canceled ? "MutedBrush" : "AccentBrush");
@@ -191,6 +191,9 @@ public partial class LiveConversationWindow
         if (ready && jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet).All(job => job.Kind.Notice)) when = ThinkDelivery.WhenFree;
         var parts = new List<string>();
         if (running) parts.Add("Martlet keeps working on these while you talk. Stop (Esc) doesn't end them.");
+        // Which computers the running ones are on (names only), such as "think-1 on diva, think-2 on ripley".
+        var placed = jobs.Where(job => !job.Finished && job.Place is not null).Select(job => $"{job.Id} on {job.Place!.Name}").ToArray();
+        if (placed.Length > 0) parts.Add($"Running {string.Join(", ", placed)}.");
         if (ready) parts.Add(when == ThinkDelivery.WhenFree ? "Finished work comes up as soon as Martlet is free." : "Finished work comes up when you talk next.");
         if (parts.Count == 0) parts.Add("What Martlet worked on in the background during this conversation.");
         return string.Join(" ", parts);
@@ -199,6 +202,12 @@ public partial class LiveConversationWindow
     /// <summary>A task's status line (MCP reads it as LiveJobState-&lt;id&gt;): what it is doing now, or how it ended and whether
     /// Martlet has brought it up. Never what it is about or what it found.</summary>
     internal static string JobStatus(BackgroundJob job, ThinkDelivery when)
+    {
+        var status = Status(job, when);
+        return job.Place is { } place && !job.Finished ? $"{status} On {place.Name}." : status;
+    }
+
+    private static string Status(BackgroundJob job, ThinkDelivery when)
     {
         var took = BackgroundJobs.Clockface(job.Elapsed);
         if (job.Kind.Notice)
