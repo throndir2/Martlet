@@ -88,6 +88,10 @@ public sealed class GatewayServer
     /// <summary>This host's network state: "unbound", "bound" or "removed", and the ID of its network (null when unbound).</summary>
     public (string State, string? NetworkId) NetworkState => (application.Network.State, application.Network.Roster?.NetworkId);
 
+    /// <summary>Keeps this host's sign-in settings (owner account, providers, allowed identities; served without secrets at
+    /// /martlet/v1/signin) in <paramref name="storage"/>. Without it nobody can sign in here.</summary>
+    public void AttachSignInStorage(IGatewaySignInStorage storage) => application.SignIn.Attach(storage);
+
     /// <summary>Keeps the commands paired computers send this host (served at /martlet/v1/commands) in
     /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
     /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>

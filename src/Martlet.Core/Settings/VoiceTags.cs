@@ -17,8 +17,11 @@ public static class VoiceTags
     /// acts and never shows or speaks the tag: its words in any of [ ], ( ), { } and &lt; &gt; ([nod], (nod) or &lt;nod&gt; for
     /// {nod}; {laugh} or (laugh) for [laugh]); a sound's or tone's engine-independent cue the same way ([laugh] for Dia's
     /// (laughs)); words joined by spaces, underscores or hyphens alike ([shake head] for {shake_head}); and, for sounds and the
-    /// character's tags, the action a stage direction would write ([nods], *nods*, (sighs), *clears throat*). Tones of voice
-    /// get only the other brackets and control tags none. The tag's own spelling isn't listed.</summary>
+    /// character's tags, the action a stage direction would write ([nods], *nods*, (sighs), *clears throat*). A sound's or
+    /// tone's other words for its cue (<see cref="Synonyms"/>: [whisper], (whispers), *whispers*, {hushed} for [whispering])
+    /// count the same way, in any bracket, and as *...* when they read as a stage direction (-s or -ing). Tones of voice
+    /// otherwise get only the other brackets (and *...* for an -ing tone such as *whispering*); control tags get none. The
+    /// tag's own spelling isn't listed.</summary>
     public static IReadOnlyList<VoiceTag> Spellings(VoiceTag tag)
     {
         ArgumentNullException.ThrowIfNull(tag);
@@ -32,9 +35,13 @@ public static class VoiceTags
         foreach (var word in words.Where(word => word.Length > 0))
             foreach (var joined in Joinings(word))
             {
-                Add(joined, acts && FirstWord(joined).EndsWith("s", StringComparison.OrdinalIgnoreCase));
+                Add(joined, acts ? FirstWord(joined).EndsWith("s", StringComparison.OrdinalIgnoreCase)
+                    : FirstWord(joined).EndsWith("ing", StringComparison.OrdinalIgnoreCase));
                 if (acts && Action(joined) is { } action) Add(action, true);
             }
+        if (tag.Kind is VoiceTagKind.Sound or VoiceTagKind.Emotion && Synonyms.TryGetValue(tag.Cue, out var others))
+            foreach (var joined in others.SelectMany(Joinings))
+                Add(joined, StageVerb(FirstWord(joined)));
         return spellings;
 
         void Add(string form, bool action)
@@ -53,6 +60,37 @@ public static class VoiceTags
     }
 
     private static string FirstWord(string words) => words.IndexOfAny([' ', '_', '-']) is var cut and >= 0 ? words[..cut] : words;
+
+    // Whether a word reads as a stage direction's verb ("whispers", "sobbing"), so *word* is the action, not emphasis.
+    private static bool StageVerb(string word) =>
+        word.EndsWith("ing", StringComparison.OrdinalIgnoreCase) ||
+        word.EndsWith('s') && !word.EndsWith("ss", StringComparison.OrdinalIgnoreCase) && !word.EndsWith("ous", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Other words models write for a sound's or tone's cue (<see cref="VoiceTag.Cue"/>) instead of the tag they were
+    /// given: other forms of the word ([whisper], [whispered], (sighing)) and close synonyms ({hushed}, [sobbing]). Each counts
+    /// as the engine's own tag for that cue (<see cref="Spellings"/>), so a reply that writes [whisper] is spoken as Chatterbox's
+    /// [whispering] rather than silencing its line. No word belongs to two cues.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> Synonyms = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["laugh"] = ["laughing", "laughter", "laughs out loud"],
+        ["chuckle"] = ["chuckling", "chuckles", "giggle", "giggles", "giggling"],
+        ["sigh"] = ["sighing", "sighs heavily"],
+        ["gasp"] = ["gasping"],
+        ["cough"] = ["coughing", "coughs"],
+        ["clear throat"] = ["clearing throat", "clears her throat", "clears his throat", "ahem"],
+        ["groan"] = ["groaning"],
+        ["sniff"] = ["sniffing", "sniffle", "sniffles", "sniffling"],
+        ["shush"] = ["shushing", "shh", "shhh"],
+        ["happy"] = ["happily", "cheerful", "cheerfully"],
+        ["sarcastic"] = ["sarcastically", "sarcasm"],
+        ["surprised"] = ["surprise", "surprisedly"],
+        ["angry"] = ["angrily", "anger"],
+        ["fear"] = ["fearful", "fearfully", "scared", "afraid", "frightened"],
+        ["crying"] = ["cry", "cries", "sob", "sobs", "sobbing", "tearful", "tearfully", "teary"],
+        ["whispering"] = ["whisper", "whispers", "whispered", "whispery", "whisper voice", "whispers softly", "in a whisper", "hushed",
+            "hushed voice", "quietly", "softly", "lowers voice", "lowering voice"],
+        ["dramatic"] = ["dramatically", "theatrical", "theatrically"]
+    };
 
     // The words as a stage direction writes the action: the first word in the third person ("nod": "nods", "blush": "blushes",
     // "clear throat": "clears throat"), or null when it already ends in s, -ing or -ed, or isn't an English word.

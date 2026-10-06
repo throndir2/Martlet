@@ -1574,7 +1574,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (!operation.Report && operation.Delivery is null)
             {
                 if (own is not null || straight) operation.Delivery = jobs.Take(onItsOwn: false);
-                else if (operation.BringUp) operation.Delivery = jobs.Take(onItsOwn: true);
+                // A due reminder comes up as soon as Martlet is free even when other finished work waits for the user's next message.
+                else if (operation.BringUp)
+                    operation.Delivery = jobs.Take(onItsOwn: true, noticesOnly: configured.ThinkLonger.When != ThinkDelivery.WhenFree);
             }
             var builtIns = BuiltIns(operation, configured, conversation);
             // A message carrying finished work gets the tools a report gets, so a later tool can act on the user's yes.
@@ -2077,7 +2079,38 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // manage_memories while memory is on: last, so the tools before it start every request the same as before it existed.
         if (configured.SupportsTools && memory is not null && configured.Memory is { Enabled: true } remembered)
             own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(operation, remembered.ConfigurationRevision, call, token)));
+        // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
+        if (configured.SupportsTools && RemindersTool is { } remind)
+            own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
         return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>Runs one reminders call (set, list, cancel) on this PC's reminders, which travel with the shared settings; set by
+    /// the main window. Null where reminders can't be kept (no data folder).</summary>
+    internal Func<string, CancellationToken, Task<Reminders.ToolOutcome>>? RemindersTool { get; set; }
+
+    private async ValueTask<ConversationToolResult> RemindAsync(Func<string, CancellationToken, Task<Reminders.ToolOutcome>> remind,
+        TextToolCall call, CancellationToken token)
+    {
+        Reminders.ToolOutcome outcome;
+        try { outcome = await remind(call.ArgumentsJson, token).ConfigureAwait(false); }
+        catch (Exception error) when (!token.IsCancellationRequested && error is IOException or UnauthorizedAccessException or
+            ContractException or InvalidOperationException or TaskCanceledException)
+        {
+            outcome = new(new("Reminders can't be changed right now. Tell the user briefly.", true), "failed", null);
+        }
+        tools?.Record("Martlet", Reminders.ToolName, outcome.Outcome, "", outcome.Result.IsError);
+        if (outcome.Own is not null) ErrorLog.Info($"Reminders: {Reminders.ToolName} {outcome.Outcome}.");
+        return outcome.Result;
+    }
+
+    /// <summary>Brings a due reminder into this conversation: a finished notice job that Martlet brings up on its own as soon as
+    /// it is free, or with what the user says next. Null when the conversation is closing.</summary>
+    internal BackgroundJob? Remind(string label, string text)
+    {
+        var start = jobs.Start(Reminders.Kind, label.Length > 80 ? label[..80] + "…" : label,
+            (_, _) => Task.FromResult(BackgroundJobOutcome.Done(text)));
+        return start.Job;
     }
 
     /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
@@ -2578,9 +2611,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// window decides when: never while the user talks, a turn is pending or Martlet is replying). Its message is Martlet's
     /// note with the results (Companion › Prompts › Background work finished), which stays in the conversation; tools stay
     /// available, so a later tool can act on the user's yes. Null when nothing waits.</summary>
-    internal LiveConversationOperation? StartReport(bool voice, SeenScreen? seen = null, AttentionSignal? attention = null, bool look = false)
+    internal LiveConversationOperation? StartReport(bool voice, bool noticesOnly = false, SeenScreen? seen = null,
+        AttentionSignal? attention = null, bool look = false)
     {
-        var delivery = jobs.Take(onItsOwn: true);
+        var delivery = jobs.Take(onItsOwn: true, noticesOnly);
         if (delivery is null) return null;
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LiveConversationOperation operation;

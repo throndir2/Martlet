@@ -314,6 +314,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool MicrophoneUsable => controller.Configuration is { } selected && selected.Unavailable(Voice, true) is null;
     private bool Available => ready && !locked && loading is null && controller.Configuration is not null;
 
+    /// <summary>The conversation loaded and still can't talk (Thinking isn't set up, or its settings couldn't be read).</summary>
+    internal bool CantTalk => begun && !loadPending && loading is null && (!ready || controller.Configuration is null);
+
     private bool Recording => owned is { OwnershipReleased: false, HandsFree: false } live && live.Authorization.Microphone &&
         live.Turn is null && live.Transcription is null && !live.Status.Finished;
 
@@ -497,6 +500,21 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>You are talking, or something you said or typed is about to be answered.</summary>
     private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0;
 
+    /// <summary>How long since you last talked with Martlet here (spoke, typed or a turn finished), or null before anything.</summary>
+    internal TimeSpan? SinceActivity => UserBusy ? TimeSpan.Zero : activityAt == 0 ? null : clock.GetElapsedTime(activityAt);
+
+    /// <summary>A due reminder for this conversation: it starts (hidden) when it hasn't yet, and Martlet brings the reminder up on
+    /// its own as soon as it is free, or with what you say next.</summary>
+    internal BackgroundJob? Remind(string label, string text)
+    {
+        if (closed) return null;
+        if (!begun) StartInBackground();
+        var job = controller.Remind(label, text);
+        if (job is not null) ErrorLog.Info($"Reminders: {job.Id} is due; Martlet brings it up as soon as it's free.");
+        RenderActions();
+        return job;
+    }
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused or singing, and the conversation has been quiet
@@ -512,11 +530,14 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- one moment: whatever starts a reply takes everything else that waits ----------
 
-    /// <summary>Finished background work Martlet may bring up on its own right now: Thinking longer shares results as soon as
-    /// Martlet is free, something finished that the user didn't stop (Esc holds it for the next message), Martlet isn't paused
-    /// and no song is playing.</summary>
-    private bool JobsWaiting => !reportHeld && !Paused && controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree &&
-        controller.Jobs.HasNews && controller.Singing?.Playing != true;
+    /// <summary>Finished background work Martlet may bring up on its own right now: something finished that the user didn't stop
+    /// (Esc holds it for the next message), Thinking longer shares results as soon as Martlet is free or a reminder is due (it
+    /// comes up when free either way), Martlet isn't paused and no song is playing.</summary>
+    private bool JobsWaiting => !reportHeld && !Paused && controller.Singing?.Playing != true &&
+        (WhenFree ? controller.Jobs.HasNews : controller.Jobs.HasNotice);
+
+    /// <summary>Thinking longer shares results as soon as Martlet is free (otherwise only due reminders come up on their own).</summary>
+    private bool WhenFree => controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree;
 
     /// <summary>The pacer wants a look (or one at what wants your attention) and its picture is there; while Martlet sings, a
     /// look waits until the song is over.</summary>
@@ -588,7 +609,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 answering = playing;
                 answeredAt = clock.GetTimestamp();
             }
-            else if (controller.StartReport(Voice, seen, about, plan.Look) is { } report)
+            else if (controller.StartReport(Voice, noticesOnly: !WhenFree, seen, about, plan.Look) is { } report)
             {
                 started = report;
                 if (report.Delivery is { } carried)
@@ -616,7 +637,7 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     // The note above Martlet's report: which job finished and how.
-    private static string JobNote(BackgroundJob job) => job.State switch
+    private static string JobNote(BackgroundJob job) => job.Kind.Notice ? $"{job.Kind.Doing}: “{job.Label}”." : job.State switch
     {
         BackgroundJobState.Succeeded => $"Finished: {job.Kind.Doing.ToLowerInvariant()} “{job.Label}” ({BackgroundJobs.Clockface(job.Elapsed)}).",
         BackgroundJobState.TimedOut => $"Ran out of time {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”.",

@@ -33,6 +33,10 @@ public static class HostRoutes
 
     private static readonly ConcurrentDictionary<string, Entry> Entries = new(StringComparer.Ordinal);
 
+    /// <summary>Raised (on the connecting thread) when a host is reached over another route than before (home or outside, or
+    /// another outside address), or when nothing answered; for the desktop log and status.</summary>
+    public static event Action<HostRouteStatus>? RouteChanged;
+
     /// <summary>For tests and rehearsals: the clock route decisions are stamped with.</summary>
     internal static TimeProvider Clock { get; set; } = TimeProvider.System;
 
@@ -68,6 +72,56 @@ public static class HostRoutes
 
     /// <summary>Forgets every route (tests).</summary>
     internal static void Reset() => Entries.Clear();
+
+    /// <summary>
+    /// Checks one address of a host without a credential: dials <paramref name="address"/> ("name:port"; null for the home
+    /// address), checks the TLS key against <paramref name="spki"/> as a paired connection does, and asks for
+    /// <c>GET /health/live</c>. Returns whether it answered, how long it took and, when not, why ("refused", "no answer in
+    /// time", "name not found", "another key", "unexpected answer").
+    /// </summary>
+    public static async Task<(bool Reachable, long Milliseconds, string? Problem)> ProbeAsync(string origin, string spki, string? address,
+        TimeSpan timeout, CancellationToken token = default)
+    {
+        var home = new Uri(origin);
+        var endpoint = address is null ? new DnsEndPoint(home.Host.Trim('[', ']'), home.Port) : Parse(NetworkRoster.NormalizeAddress(address) ??
+            throw new ArgumentException("Invalid outside address.", nameof(address)));
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cancel.CancelAfter(timeout);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var wrongKey = false;
+        try
+        {
+            await using var stream = await DialAsync(endpoint, cancel.Token).ConfigureAwait(false);
+            await using var tls = new System.Net.Security.SslStream(stream, false, (_, certificate, chain, errors) =>
+            {
+                var ok = Audio2FaceHostClient.ValidateCertificate(certificate, chain, errors, spki, TimeProvider.System);
+                wrongKey = !ok;
+                return ok;
+            });
+            await tls.AuthenticateAsClientAsync(new System.Net.Security.SslClientAuthenticationOptions
+            {
+                TargetHost = home.Host.Trim('[', ']'),
+                EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13,
+                CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck
+            }, cancel.Token).ConfigureAwait(false);
+            var request = System.Text.Encoding.ASCII.GetBytes($"GET /health/live HTTP/1.1\r\nHost: {home.Authority}\r\nConnection: close\r\n\r\n");
+            await tls.WriteAsync(request, cancel.Token).ConfigureAwait(false);
+            var buffer = new byte[512];
+            var read = await tls.ReadAsync(buffer, cancel.Token).ConfigureAwait(false);
+            var answer = System.Text.Encoding.ASCII.GetString(buffer, 0, read);
+            // The pinned key answered over HTTP: reachable. Anything but 200 (for example 429 while the address is throttled) is noted.
+            if (!answer.StartsWith("HTTP/1.1 ", StringComparison.Ordinal)) return (false, clock.ElapsedMilliseconds, "unexpected answer");
+            return answer.StartsWith("HTTP/1.1 200", StringComparison.Ordinal)
+                ? (true, clock.ElapsedMilliseconds, null)
+                : (true, clock.ElapsedMilliseconds, "answered " + new string(answer[9..].TakeWhile(ch => ch is not ('\r' or '\n')).Take(40).ToArray()));
+        }
+        catch (Exception error) when (error is SocketException or OperationCanceledException or IOException or
+            System.Security.Authentication.AuthenticationException)
+        {
+            if (token.IsCancellationRequested) throw;
+            return (false, clock.ElapsedMilliseconds, wrongKey ? "another key" : Describe(error));
+        }
+    }
 
     /// <summary>The TLS check refused the key a connection to <paramref name="origin"/> presented: if that was the home
     /// address, it is skipped for a while (another network's computer has the same address here).</summary>
@@ -251,22 +305,34 @@ public static class HostRoutes
 
         internal void Connected(string route, string address, DateTimeOffset now)
         {
+            bool changed;
             lock (this)
             {
+                changed = Route != route || Address != address;
                 Route = route;
                 Address = address;
                 LastDialed = route;
                 At = now;
             }
+            if (changed) Raise(Status());
         }
 
         internal void Failed(DateTimeOffset now, string error)
         {
+            bool changed;
             lock (this)
             {
+                changed = Route != "none" || Error != error;
                 Route = "none";
                 Fail(now, error);
             }
+            if (changed) Raise(Status());
+        }
+
+        private static void Raise(HostRouteStatus status)
+        {
+            try { RouteChanged?.Invoke(status); }
+            catch (Exception) { } // a listener's failure never breaks a connection
         }
 
         internal void Fail(DateTimeOffset now, string error)

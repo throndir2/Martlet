@@ -67,6 +67,8 @@ public static class PromptCatalog
     public const string BackgroundThink = "background_think";
     public const string BackgroundDone = "background_done";
     public const string BackgroundDoneNotes = "background_done_notes";
+    public const string ReminderDue = "reminder_due";
+    public const string ReminderDueNotes = "reminder_due_notes";
     public const string Singing = "singing";
     public const string WhileSinging = "while_singing";
     public const string SongLyrics = "song_lyrics";
@@ -116,6 +118,15 @@ public static class PromptCatalog
         "Background work you started has finished:\n{results}\nAnswer what the user just said first; then, when it fits, bring this " +
         "up in the same reply, in character, without mentioning notes, background jobs or tools. If a result needs the user's " +
         "go-ahead, offer it and ask first.";
+
+    public const string DefaultReminderDueInstructions =
+        "(Martlet's note, not said by the user: a reminder they asked you for is due now.)\n{reminders}\n\n" +
+        "Remind them now, on your own, in character, briefly and naturally, as a friend would, without mentioning notes or tools. " +
+        "If you were just talking about something else, you may tie it in lightly.";
+
+    public const string DefaultReminderDueNotesInstructions =
+        "A reminder the user asked you for is due now:\n{reminders}\nAnswer what the user just said first; then, in the same reply, " +
+        "remind them naturally and in character (\"...oh, and by the way, ...\"), without mentioning notes or tools.";
 
     public const string DefaultSingingInstructions =
         "You can sing: sing_song makes a song in your own voice in the background (a few minutes). When the user asks you to sing " +
@@ -309,6 +320,15 @@ public static class PromptCatalog
             "Goes in the notes of your next message instead, when finished background work hasn't been brought up yet (or " +
             "Thinking longer shares results when you talk next). {results} lists each finished job.",
             DefaultBackgroundDoneNotesInstructions, ["results"]),
+        new(ReminderDue, ConversationGroup, "Reminder due",
+            "The message of the reply Martlet starts on its own as soon as it is free, once a reminder you asked for is due (the " +
+            "reminders tool). It stays in the conversation like a message. {reminders} lists each due reminder: what to remind " +
+            "you of, when you asked for it and how late it is.",
+            DefaultReminderDueInstructions, ["reminders"]),
+        new(ReminderDueNotes, ConversationGroup, "Reminder due, with your message",
+            "Goes in the notes of your next message instead, when you talk before Martlet brought a due reminder up, so it fits it " +
+            "into its answer. {reminders} lists each due reminder.",
+            DefaultReminderDueNotesInstructions, ["reminders"]),
         new(Singing, ConversationGroup, "Singing",
             "Added to every reply offered sing_song, play_song and stop_singing (while singing is set up in Companion › Voice › " +
             "Singing and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from " +
@@ -538,7 +558,7 @@ public static class PromptCatalog
     public static bool Retired(string id) => id is "character_theme";
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
-    public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or
+    public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
         SongLyrics;
 
     public static string Default(string id) =>
