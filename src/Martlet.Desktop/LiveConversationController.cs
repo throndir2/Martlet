@@ -2981,7 +2981,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             places = pool?.Spots.Select(spot => new
             {
                 computer = spot.Computer, where = spot.Settings.Separate ? spot.Settings.Describe() : "the Thinking model",
-                available = spot.Plan.Available, rank = spot.Plan.Rank,
+                available = spot.Plan.Available, rank = spot.Plan.Rank, slots = spot.Settings.ThinksAtOnce,
                 heldBy = jobs.Places.Leases.Where(lease => lease.Place.Id == spot.Key).Select(lease => lease.Holder)
             }),
             maxThinks = pool is null ? 0 : ThinkLonger.Slots(ThinkLonger.Places(pool)),
