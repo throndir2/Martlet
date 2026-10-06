@@ -2025,6 +2025,31 @@ problem: none.*; no message text, names or IDs). The live bot logs each
 answered, passed, dropped or failed turn as *Discord text: Answered (Mentions,
 addressed), 1 message(s)*.
 
+`discord_voice_check` rehearses [Discord](DISCORD.md) voice without Discord. It
+loads `libdave.dll` (Discord's DAVE end-to-end voice encryption, which NetCord
+calls) beside `Martlet.Mcp` and in `martletDirectory` (the script passes this
+checkout's Desktop build, where it ships) and runs an offline DAVE session
+(`natives` and `shipped`: `LibDaveLoaded`, `DaveProtocolVersion`, `DaveSession`,
+`KeyPackageBytes` of the MLS key package, `FrameCrypto` for the frame encryptor
+and decryptor, `OpusManaged` for the managed Opus codec, `Ok`). Then one
+utterance a Windows voice says (rendered to memory, never played) goes through
+the production path (`DiscordVoiceConversation`) with a fake transport: 48 kHz
+stereo Opus packets as a Discord client sends them, per-speaker ordering,
+decoding, 16 kHz downsampling and endpointing, FIXTURE speech-to-text and a
+FIXTURE reply engine (NOT AI), and the reply spoken by a Windows voice into
+memory and encoded back to Opus. `utterance` has `saidMs`, `heardMs`,
+`heardLevel` and the `turn` (`Addressed`, `source` `Voice`, owner); `reply` has
+the frames sent, `spokenMs`, their decoded `level` and the Speaking flag turned
+on and off; `bargeIn.stopped` says a second person talking over a long reply
+stopped it (`framesBeforeStop` of `longReplyFrames`). `ok` is all of these. No
+Discord connection, network, microphone, speaker, provider or credential.
+
+The desktop's Companion › Discord `DiscordVoiceStatus` line (in `SafeValues`)
+reads like *Voice: in General (My server) · 2 speakers heard, 3 utterances
+transcribed, 2 replies spoken · DAVE on · libdave loaded (DAVE v1) · Last
+problem: ...* (counts only, never what was said). The live bot logs *Discord
+voice: joined a channel (2 people there).*
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from
@@ -4065,7 +4090,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
 - Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
