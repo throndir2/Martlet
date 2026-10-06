@@ -152,7 +152,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
             throw Error(GatewayPersistenceFailure.InvalidState);
         if (storageBackend == GatewayStorageBackend.WindowsCurrentUserDpapi && !OperatingSystem.IsWindows() ||
             storageBackend == GatewayStorageBackend.LinuxServicePermissions &&
-                !OperatingSystem.IsLinux() && linuxFileSystem is null)
+                !PosixFileSystem.Supported && linuxFileSystem is null)
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(workers);
@@ -238,7 +238,7 @@ public sealed class DurableGatewayHost : IAsyncDisposable
                 : WindowsAuthorityStore.Open(directory, now, fault).Store;
         if (backend != GatewayStorageBackend.LinuxServicePermissions)
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
-        var fileSystem = linuxFileSystem ?? new LinuxFileSystem();
+        var fileSystem = linuxFileSystem ?? PosixFileSystem.Create();
         var boot = fileSystem.BootIdentity();
         var owned = LinuxOwnedDirectory.Open(directory, mode == HostOpenMode.Create, fileSystem);
         var envelope = new LinuxPermissionEnvelope();

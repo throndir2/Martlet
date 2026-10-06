@@ -57,7 +57,7 @@ internal sealed class LinuxFileSystem : ILinuxFileSystem
 
     internal LinuxFileSystem()
     {
-        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture is not (Architecture.X64 or Architecture.Arm64))
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
         if (GetGlibcVersion() == IntPtr.Zero)
             throw Error(GatewayPersistenceFailure.UnsupportedPlatform);
