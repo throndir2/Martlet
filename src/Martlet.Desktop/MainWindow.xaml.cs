@@ -79,6 +79,8 @@ public partial class MainWindow : ThemedWindow
         lorebooks = store is null ? null : new LorebookStore(store.DataDirectory);
         smartHome = new(store?.DataDirectory, vault);
         discord = new(store?.DataDirectory, vault);
+        // A Discord message naming the companion (a persona's name) is meant for Martlet.
+        discord.CompanionNames = () => Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name)).Names;
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);

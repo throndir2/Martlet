@@ -48,6 +48,8 @@ internal sealed class LinuxControlDirectory : IDisposable
     internal const int MaximumLogsBytes = 2_097_152;
     /// <summary>The Martlet network roster this host accepted (not part of the approved configuration).</summary>
     internal const string Network = "network.json", NetworkStaging = "network.staging";
+    internal const string Exposure = "exposure.json", ExposureStaging = "exposure.staging";
+    internal const int MaximumExposureBytes = 4_096;
     internal const int MaximumNetworkBytes = 65_536;
     /// <summary>The network's API keys (names, scopes and SHA-256 verifiers; never a usable secret).</summary>
     internal const string ApiKeys = "api-keys.json", ApiKeysStaging = "api-keys.staging";
@@ -117,7 +119,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);
@@ -319,6 +321,9 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     /// <summary>Atomically replaces network.json (0600, service owner).</summary>
     internal void WriteNetwork(byte[] bytes) => ReplaceRecovering(Network, NetworkStaging, bytes, MaximumNetworkBytes);
+
+    /// <summary>exposure.json: the owner's outside addresses and choices for reaching this host from outside home.</summary>
+    internal void WriteExposure(byte[] bytes) => ReplaceRecovering(Exposure, ExposureStaging, bytes, MaximumExposureBytes);
 
     /// <summary>Atomically replaces api-keys.json (0600, service owner).</summary>
     internal void WriteApiKeys(byte[] bytes) => ReplaceRecovering(ApiKeys, ApiKeysStaging, bytes, MaximumApiKeysBytes);

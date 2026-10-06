@@ -43,6 +43,12 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
 
     internal NetworkRoster? Roster { get { lock (gate) return roster; } }
 
+    /// <summary>Called (inside the store's lock) whenever the accepted roster is loaded or changes.</summary>
+    internal Action<NetworkRoster?>? Changed { get; set; }
+
+    /// <summary>The outside addresses this host's own roster entry lists (none when unbound or removed).</summary>
+    internal IReadOnlyList<string> OwnAddresses { get { lock (gate) return roster?.Host(identity.HostId) is { Removed: false } self ? self.Addresses ?? [] : []; } }
+
     private bool BoundLocked => roster?.Host(identity.HostId) is { Removed: false };
 
     internal string State { get { lock (gate) return StateLocked; } }
@@ -66,6 +72,7 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
         {
             storage = value;
             roster ??= saved;
+            Changed?.Invoke(roster);
         }
     }
 
@@ -140,6 +147,7 @@ internal sealed class GatewayNetworkStore(GatewayHostIdentity identity, GatewayC
         foreach (var join in joins.Values.Where(j => next.Trusts(j.DeviceId, j.Key)).ToArray()) joins.Remove(join.DeviceId);
         var changed = roster is null || roster.Digest() != next.Digest();
         roster = next;
+        if (changed) Changed?.Invoke(next);
         if (changed && storage is not null)
         {
             try { storage.Save(next.Write()); }
@@ -325,6 +333,8 @@ internal sealed partial class GatewayHttpApplication
             ProtocolVersion = GatewayProtocolVersion.Current,
             HostId = identity.HostId,
             MartletVersion = MartletVersion,
+            AdvertisedAddresses = Guard.Exposure.OutsideAddressesSetAt is null ? null : Guard.Exposure.OutsideAddresses ?? [],
+            AdvertisedAt = Guard.Exposure.OutsideAddressesSetAt,
             State = state,
             Roster = roster is null ? null : JsonSerializer.Deserialize<JsonElement>(roster.Write()),
             Joins = joins.Select(j => new JoinRequestDocument
@@ -377,6 +387,10 @@ internal sealed partial class GatewayHttpApplication
         /// <summary>The Martlet release this host runs, announced to every computer that syncs the network with it, so an
         /// update made anywhere reaches them all on their next sync. Desktops older than this field ignore it.</summary>
         public string? MartletVersion { get; init; }
+        /// <summary>Outside addresses the owner set on this host itself, and when; member desktops sign them into the
+        /// host's roster entry when they are newer than it. Absent when never set there.</summary>
+        public IReadOnlyList<string>? AdvertisedAddresses { get; init; }
+        public DateTimeOffset? AdvertisedAt { get; init; }
         public required string State { get; init; }
         public JsonElement? Roster { get; init; }
         public required JoinRequestDocument[] Joins { get; init; }
