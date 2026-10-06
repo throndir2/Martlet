@@ -93,7 +93,8 @@ public sealed record PlacementPlan(
 
     public MachineUsage? Usage(string machineId) => Machines.FirstOrDefault(m => m.MachineId == machineId);
 
-    /// <summary>Today's setup in the shape <see cref="PlanRequest.Current"/> takes.</summary>
+    /// <summary>Today's setup in the shape <see cref="PlanRequest.Current"/> takes: each component's primary, then its
+    /// fallbacks in order.</summary>
     public IReadOnlyList<CurrentAssignment> AsCurrent() =>
-        Assignments.Where(a => a.Role == AssignmentRole.Primary).Select(a => new CurrentAssignment(a.Component, a.Option.Id, a.MachineId)).ToArray();
+        Assignments.OrderBy(a => a.Role).Select(a => new CurrentAssignment(a.Component, a.Option.Id, a.MachineId)).ToArray();
 }

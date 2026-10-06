@@ -139,6 +139,8 @@ public sealed class PlacementEngineTests
         Assert.Contains(suggestions, s => s.Kind == SuggestionKind.Upgrade && s.Component == PlanComponent.LipSync &&
             s.ToOptionId == "audio2face-3d" && s.MachineId == "laptop");
         Assert.DoesNotContain(suggestions, s => s.Component == PlanComponent.Thinking && s.Kind == SuggestionKind.RunLocally);
+        // What already runs is not suggested again.
+        Assert.DoesNotContain(suggestions, s => s.ToOptionId is "hosted:nvidia-build" or "hosted:gemini");
     }
 
     [Fact]

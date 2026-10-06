@@ -118,9 +118,11 @@ public static class PlacementEngine
                     info.Component, next.MachineId, now.OptionId, to.Id,
                     $"Use {to.DisplayName} on {Where(next.MachineId)} instead of {nowOption.DisplayName}. {next.Why}"));
         }
-        foreach (var fallback in proposed.Assignments.Where(a => a.Role == AssignmentRole.Fallback))
+        foreach (var fallback in proposed.Assignments.Where(a => a.Role == AssignmentRole.Fallback &&
+                     !current.Any(c => c.Component == a.Component && c.OptionId == a.Option.Id)))
             suggestions.Add(new(SuggestionKind.AddFallback, fallback.Component, fallback.MachineId, null, fallback.Option.Id, fallback.Why));
-        suggestions.AddRange(proposed.Suggestions.Where(s => s.Kind == SuggestionKind.SignUp));
+        suggestions.AddRange(proposed.Suggestions.Where(s => s.Kind == SuggestionKind.SignUp &&
+            !current.Any(c => c.OptionId == s.ToOptionId)));
         return suggestions;
     }
 
@@ -680,7 +682,7 @@ public static class PlacementEngine
                             ? $", but its first word comes later (about {Seconds(ms)} instead of {Seconds(now)})." : ".")));
                 else if (fits is null)
                 {
-                    var next = better[0];
+                    var next = better.OrderByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).First();
                     suggestions.Add(new(SuggestionKind.Upgrade, assignment.Component, null, option.Id, next.Id,
                         $"{next.DisplayName} would be better than {option.DisplayName}; it needs " +
                         (next.UsesGpu
