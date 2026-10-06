@@ -50,12 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.49.0
+## 🆕 What's new in 0.50.0
 
-- ✨ **Set it all up for me**: one click sets up thinking, listening and a voice that fit your PC.
-- 🎙️ **Listening and voice out of the box**: your default microphone and a voice that suits your graphics card, or the processor when it's full.
-- 🧠 **A model that hears you**: Martlet starts with the smallest local model that also hears your voice.
-- 📖 **A fresh README**: screenshots, a feature tour and release notes for every version.
+- 🐧 **Martlet on Linux and Mac**: a new desktop companion with the character on screen, push-to-talk and spoken replies, with Linux and macOS downloads.
+- 💻 **More computers can help**: Windows on Arm PCs run Martlet, and Macs, Raspberry Pis and other ARM64 machines can host thinking and listening.
+- 🧭 **A new welcome wizard**: start or join your Martlet network and get a setup suggestion that shows what each part uses.
+- 📊 **See what fits**: Devices shows each computer's graphics memory, memory, processor and disk use, and what else would fit.
+- ✨ **Google Gemini for Thinking**: a free Gemini model that can hear you, and a good backup for NVIDIA Build.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
