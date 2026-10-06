@@ -2039,7 +2039,23 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // manage_memories while memory is on: last, so the tools before it start every request the same as before it existed.
         if (configured.SupportsTools && memory is not null && configured.Memory is { Enabled: true } remembered)
             own.Add((MemoryTools.Definition, (call, token) => ManageMemoriesAsync(operation, remembered.ConfigurationRevision, call, token)));
+        // call_on_discord while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the connection).
+        if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
+            own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
         return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>Rings a Discord friend for call_on_discord; null while Discord isn't wired.</summary>
+    internal IDiscordCaller? DiscordCaller { get; set; }
+
+    private async ValueTask<ConversationToolResult> CallOnDiscordAsync(IDiscordCaller caller, TextToolCall call, CancellationToken token)
+    {
+        if (DiscordCallTool.Person(call.ArgumentsJson) is not { Length: > 0 } person)
+            return new("Say which friend to call (person).", true);
+        var result = await caller.CallAsync(person, token).ConfigureAwait(false);
+        tools?.Record("Martlet", DiscordCallTool.Name, "called", "", false);
+        ErrorLog.Info("Discord: call_on_discord ran.");
+        return new(result);
     }
 
     /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted

@@ -96,5 +96,9 @@ internal sealed partial class DiscordService : IAsyncDisposable
         if (problem is not null) ErrorLog.Warn($"Discord bot did not start: {problem}");
     }
 
-    public async ValueTask DisposeAsync() => await Bot.DisposeAsync().ConfigureAwait(false);
+    public async ValueTask DisposeAsync()
+    {
+        DisposeCompanion();
+        await Bot.DisposeAsync().ConfigureAwait(false);
+    }
 }
