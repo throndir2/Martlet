@@ -7,6 +7,7 @@ namespace Martlet.Discord;
 public enum DiscordPermission : ulong
 {
     None = 0,
+    CreateInstantInvite = 1UL << 0,
     ManageChannels = 1UL << 4,
     AddReactions = 1UL << 6,
     ViewChannel = 1UL << 10,
@@ -33,8 +34,8 @@ public static class DiscordInvite
         DiscordPermission.AttachFiles | DiscordPermission.SendMessagesInThreads | DiscordPermission.Connect |
         DiscordPermission.Speak | DiscordPermission.UseVoiceActivity;
 
-    /// <summary>Martlet's own home server also lets it make private call channels and bring people into them.</summary>
-    public const DiscordPermission HomeServerPermissions = ServerPermissions | DiscordPermission.ManageChannels |
+    /// <summary>Martlet's own home server also lets it make private call channels, invite people to them and bring them in.</summary>
+    public const DiscordPermission HomeServerPermissions = ServerPermissions | DiscordPermission.ManageChannels | DiscordPermission.CreateInstantInvite |
         DiscordPermission.MoveMembers;
 
     public static string ApplicationPage(ulong applicationId) =>

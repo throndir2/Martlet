@@ -953,12 +953,26 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "camera")
                 {
                     UseCamera(RendererProtocol.Data<RendererCamera>(message));
                     await ReplyAsync("ok", new { camera = camera is not null });
+                    continue;
+                }
+                if (message.Kind == "snapshot")
+                {
+                    RendererPicture picture;
+                    // A picture that can't be taken never stops the character; the reply is then empty.
+                    try { picture = await SnapshotAsync(RendererProtocol.Data<RendererSnapshot>(message)); }
+                    catch (Exception error) when (error is IOException or NotSupportedException or ArgumentException or InvalidDataException or
+                        FileFormatException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+                    {
+                        ErrorLog.Warn($"Couldn't take a picture of the character: {error.Message}");
+                        picture = new("", 0, 0);
+                    }
+                    await ReplyAsync("picture", picture);
                     continue;
                 }
                 if (message.Kind == "gaze")
@@ -1046,6 +1060,65 @@ internal sealed class RendererWindow : Window
         failure.ThrowIfFailed();
         if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
         return result;
+    }
+
+    /// <summary>A picture of the character as it shows now: WebView2's capture of the page, cropped to the character's opaque
+    /// pixels (a head-and-shoulders square for a portrait), scaled down and encoded as a PNG small enough for one message.</summary>
+    private async Task<RendererPicture> SnapshotAsync(RendererSnapshot request)
+    {
+        failure.ThrowIfFailed();
+        var edge = Math.Clamp(request.Edge, RendererSnapshot.MinimumEdge, RendererSnapshot.MaximumEdge);
+        using var captured = new MemoryStream();
+        await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, captured);
+        captured.Position = 0;
+        var frame = System.Windows.Media.Imaging.BitmapFrame.Create(captured, System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
+            System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+        var source = new System.Windows.Media.Imaging.FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
+        int width = source.PixelWidth, height = source.PixelHeight;
+        var pixels = new byte[width * height * 4];
+        source.CopyPixels(pixels, width * 4, 0);
+        var (left, top, right, bottom) = (width, height, -1, -1);
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+                if (pixels[(y * width + x) * 4 + 3] > 24)
+                {
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                    if (y < top) top = y;
+                    if (y > bottom) bottom = y;
+                }
+        if (right < 0) (left, top, right, bottom) = (0, 0, width - 1, height - 1);
+        int boxWidth = right - left + 1, boxHeight = bottom - top + 1;
+        Int32Rect crop;
+        if (request.Portrait)
+        {
+            // A square as wide as the character's shoulders, from just above the head.
+            var side = Math.Min(Math.Max(1, Math.Min(boxWidth, boxHeight)), Math.Min(width, height));
+            var x0 = Math.Clamp(left + boxWidth / 2 - side / 2, 0, width - side);
+            var y0 = Math.Clamp(top - side / 20, 0, height - side);
+            crop = new(x0, y0, side, side);
+        }
+        else
+        {
+            var pad = Math.Max(boxWidth, boxHeight) / 20;
+            var x0 = Math.Max(0, left - pad);
+            var y0 = Math.Max(0, top - pad);
+            crop = new(x0, y0, Math.Min(width, right + pad + 1) - x0, Math.Min(height, bottom + pad + 1) - y0);
+        }
+        var cropped = new System.Windows.Media.Imaging.CroppedBitmap(source, crop);
+        foreach (var size in new[] { edge, Math.Min(edge, 384), Math.Min(edge, 256), Math.Min(edge, 160) }.Distinct())
+        {
+            var scale = Math.Min(1, (double)size / Math.Max(crop.Width, crop.Height));
+            var scaled = new System.Windows.Media.Imaging.TransformedBitmap(cropped, new ScaleTransform(scale, scale));
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(scaled));
+            using var png = new MemoryStream();
+            encoder.Save(png);
+            // Base64 grows by a third; the reply must stay well inside one renderer message.
+            if (png.Length * 4 / 3 < RendererProtocol.MaximumMessageBytes - 4096)
+                return new(Convert.ToBase64String(png.GetBuffer(), 0, (int)png.Length), scaled.PixelWidth, scaled.PixelHeight);
+        }
+        throw new InvalidDataException("The character's picture is too large.");
     }
 
     private void FailRenderer()

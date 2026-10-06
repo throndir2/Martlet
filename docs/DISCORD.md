@@ -89,6 +89,42 @@ the decisions so tests and MCP (`discord_text_check`) run them with a fake trans
 - Status: Companion › Discord's `DiscordTextStatus` line (counts of seen, considered, answered, passed, dropped and failed
   messages, the last reply's place kind and last problem) and *Discord text: ...* lines in the desktop log.
 
+## Companion presence
+
+`DiscordCompanion` (`src\Martlet.Discord`, rules in `DiscordCompanion.cs`) holds the decisions; `DiscordService.Companion.cs`
+wires it to the bot (`NetCordCompanionTransport`) and `MainWindow.Discord.Companion.cs` to the character, the conversation and
+Companion › Discord's **Friends and calls** card. Its state is `discord-companion.json` beside `discord.json` (waiting requests,
+recent declines, call channels it made, when the picture last changed; no secrets). MCP's `discord_companion_check` rehearses
+it all against an in-memory Discord.
+
+- **Friends:** bots can't have friends, so the People list is Martlet's friends list. Anyone can **`/friend ask`**; the request
+  waits (at most 50) on the card until the owner approves (they get a welcome DM and join People, allowed to call) or declines
+  (they can ask again after 7 days). The owner can also add someone by user ID. **`/friend remove`** takes the person off the
+  list and drops any waiting request, so Martlet neither DMs nor calls them; the owner's Remove does the same. A friend whose
+  name is exactly one named voice in Companion › People shows "Martlet also knows them by voice" (a display link only).
+- **Calling:** from the card's Call button, the owner's **`/call person:<name>`** or by asking Martlet in the local
+  conversation ("call Ana": the `call_on_discord` tool, offered while Discord is set up with a home server and someone who
+  takes calls, so the tool list doesn't change while the bot reconnects). Martlet makes (or reuses) the voice channel
+  "*Character* & *Name*" in the **home server** with permission overwrites: @everyone denied View Channel and Connect; the
+  friend and the owner allowed View Channel, Connect, Speak and Voice Activity; the bot also Manage Channels, Move Members and
+  Create Invite. It DMs the friend a jump link (*Hiyori is calling you — join here: ...*), with a one-use, one-day invite when
+  they aren't in the server, and joins the channel through Discord voice (`DiscordService.JoinVoiceAsync`; when it can't, such
+  as without libdave, the owner is told and the friend still has the link). When everyone else leaves, Martlet leaves too
+  (`VoiceEmptied`) and the channel is removed as soon as Martlet has left it (`VoiceLeft`); otherwise it is removed 2 minutes
+  after everyone leaves, or after 10 minutes
+  when nobody came (checked every minute and at each connection). A friend with "Martlet may call them" off is never called.
+- **Presence:** the bot's status follows Martlet every 15 s, sent only when it changes and at most every 20 s: on a call
+  (Online, *On a call with Ana*), paused (Idle, *Taking a break*), talking (Do Not Disturb, *Talking with you*), the PC idle for
+  10 minutes (Idle, *Away for a bit*), watching (*Watching along*), listening (*Listening*), else *Hanging out*.
+- **Picture instead of a webcam:** bots can't send camera video or Go Live, so the bot's **avatar** follows the character: a
+  head-and-shoulders snapshot from the character's renderer (the renderer protocol's `snapshot` command: WebView2's capture,
+  cropped to the character's opaque pixels, at most 512 px) or, while it is hidden, a VRM model's own thumbnail. It changes only
+  when the character changed, at most every 30 minutes (Update now: 10 minutes), because Discord allows few avatar changes.
+  Banners: the same change sets the bot's profile banner to the whole character when it is on screen (Discord crops it). **`/selfie`** posts a picture of the whole character
+  as it looks now (anyone in a server; friends in DMs and group DMs).
+- **Live camera video is impossible for a bot.** A Discord **Activity** (an Embedded App iframe in a call showing the live
+  character) is the possible later step; it needs a public HTTPS address serving the renderer.
+
 ## Martlet in your own calls
 
 The bot above is Martlet's own Discord account. **Martlet in your own calls** is the other way in: you are in a DM call, a

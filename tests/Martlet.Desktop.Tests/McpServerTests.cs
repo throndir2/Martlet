@@ -50,6 +50,34 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task DiscordCompanionCheckRehearsesFriendsAndPrivateCallsWithoutAToken()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Discord." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var message = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 1, method = "tools/call",
+                @params = new { name = "discord_companion_check", arguments = new { dataDirectory = directory, requestFrom = "42", requestName = "Bo" } }
+            });
+            var result = ToolResult((await SendAsync(message))[0]);
+            Assert.Equal("Requested", result.GetProperty("filed").GetProperty("outcome").GetString());
+            Assert.Equal(1, result.GetProperty("current").GetProperty("requestsWaiting").GetInt32());
+            var call = result.GetProperty("rehearsal").GetProperty("call");
+            Assert.True(call.GetProperty("rang").GetBoolean());
+            Assert.True(call.GetProperty("deletedAfterEnd").GetBoolean());
+            var everyone = call.GetProperty("overwrites").EnumerateArray().Single(o => o.GetProperty("who").GetString() == "@everyone");
+            Assert.Contains("ViewChannel", everyone.GetProperty("denied").GetString());
+            Assert.Single(Martlet.Discord.DiscordCompanionState.Load(directory).Requests);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task MemoryStatusCountsWhoseFactsAreWithoutTheirTextNamesOrIds()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Memory." + Guid.NewGuid().ToString("N"));

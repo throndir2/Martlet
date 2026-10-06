@@ -55,6 +55,29 @@ internal sealed partial class AvatarController : IAsyncDisposable
     }
     private void Publish(string value) => Volatile.Write(ref status, value);
 
+    // ---------- pictures of the character ----------
+
+    /// <summary>A PNG of the showing character (a head-and-shoulders square for a <paramref name="portrait"/>), or null while it is
+    /// hidden or the picture couldn't be taken. Used for the Discord bot's picture and <c>/selfie</c>.</summary>
+    internal async Task<byte[]?> SnapshotAsync(bool portrait, CancellationToken token)
+    {
+        if (renderer is not { HasExited: false } current || profile is null) return null;
+        try
+        {
+            var reply = await current.SendAsync("snapshot", new RendererSnapshot(portrait), token, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            if (reply.Kind != "picture") return null;
+            var picture = RendererProtocol.Data<RendererPicture>(reply);
+            return picture.Png.Length == 0 ? null : Convert.FromBase64String(picture.Png);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException or
+            ObjectDisposedException or OperationCanceledException or FormatException or System.Text.Json.JsonException)
+        {
+            if (error is OperationCanceledException && token.IsCancellationRequested) throw;
+            ErrorLog.Warn($"Couldn't take a picture of the character: {error.Message}");
+            return null;
+        }
+    }
+
     // ---------- where the character looks ----------
 
     /// <summary>Where the character looks: the mouse, or what Martlet decides while it watches the screen.</summary>
