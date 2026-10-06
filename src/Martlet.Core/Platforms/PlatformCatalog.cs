@@ -129,7 +129,8 @@ public sealed record PlatformRequirement
     internal PlatformCheck Check(PlatformDevice device, string engine)
     {
         var unknown = new List<string>();
-        if (X64 && device.Arm64 == true)
+        // Windows on Arm gets the NVIDIA check's own "Windows on Arm" reason below, which says more.
+        if (X64 && device.Arm64 == true && !device.WindowsOnArm)
             return No($"{engine}'s container is built only for 64-bit Intel or AMD (x86_64) computers; {device.Name} has an ARM64 processor.");
         if (NvidiaGb is { } need)
         {
