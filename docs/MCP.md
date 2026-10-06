@@ -2498,18 +2498,22 @@ Devices' `AddComputer` (and Settings' `OpenHosts`, and on a new PC Home's
 wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
 `completed: false` while that dialog stays open). Pairing needs no saved
 settings: on a fresh data directory the wizard opens with `HostStatus` *No
-Martlet host paired.* and `PairHost` goes straight to the host. Its rail steps
-(`HostsStepWhere`, `HostsStepInstall`, `HostsStepPair`, `HostsStepRoles`),
-`HostsBack`, `HostsNext`, `HostsClose`, the method cards (`HostMethodThisPc`,
-`HostMethodSshDocker`, `HostMethodSshNative`, `HostMethodOnHost`; choosing one
-moves on to Install), `HostsEnterCode` (straight to Pair for a host that already
-shows a code) and the `HostCommandSection`, `PairCommandSection` and
-`DeviceIdSection` expanders only change what the wizard shows, so they are
-passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
+Martlet host paired.* and `PairHost` goes straight to the host. It has two
+steps. Its rail steps (`HostsStepConnect`, `HostsStepRoles`), `HostsBack`,
+`HostsNext`, `HostsClose`, `HostsEnterCode` (*Enter a pairing code*: shows the
+address and code fields, which also open by themselves when nobody answers on
+the network) and the `HostAddressSection` and `DeviceIdSection` expanders only
+change what the wizard shows, so they are passive clicks. `SetupThisPc` (*Set
+up this PC*) and `SetupHost` (*Set up over SSH*, with `SshTarget`; Martlet
+picks Docker or native Ubuntu from what the computer has) set up and pair a
+new host and need `--allow-ui-effects`; a successful connection of any kind
+moves to Roles. Snapshots return `HostStatus` (the wizard's status line: what
 pairing did, or why it was refused, such as *That code doesn't match...* or *No
-Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
-(*Enter the code shown on the host* when Martlet can't reach the host, *Or enter a
-code from the host* next to `PairConsole` otherwise). `PairAddress` and
+Martlet host answered at ...*), `DockerState` (whether Docker Desktop is
+running, installed or missing), `PairCodeHelp`, `PairedHost` (the host the
+Roles step acts on; `HostChoice` picks another when several are paired) and
+`RolesSummaryText` (how its roles run, or *Connect a computer first...*).
+`AddRole-<role>`/`RemoveRole-<role>` act on that host. `PairAddress` and
 `PairingCode` take the host's address and short code (`ui_set_text`, so
 `--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
 device secret in Windows Credential Manager, so verification stops at refused
@@ -2531,7 +2535,7 @@ number, `Step-join-<device ID>-0` is **Allow** and `Step-join-<device ID>-1`
 **Turn down** (both change the network, so they need `--allow-ui-effects`).
 
 *Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
-is the first card of the wizard's *Where it runs* step. Opening the wizard on
+is the first card of the wizard's *Connect* step. Opening the wizard on
 that step (so `AddComputer`) and `NearbyFind` (*Find again*) send Martlet's
 discovery query to port 9444 on loopback and the local network's broadcast
 addresses and list who answers; they pair nothing and change nothing, so they
