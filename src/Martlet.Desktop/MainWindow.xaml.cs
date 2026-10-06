@@ -123,6 +123,7 @@ public partial class MainWindow : ThemedWindow
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.VoiceVolume = Talk.VoiceVolume;
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
+            discord.UseReplies(setupService, vault, conversation, memory, lorebooks);
         }
         WireCharacterActions();
         WireCharacterThemes();
