@@ -363,7 +363,7 @@ Clock sampling occurs inside the store lock, not before admission.
 `GatewaySignInService` (`GatewaySignIn.cs`, routes in `GatewaySignInHttp.cs`)
 lets a computer away from home pair by signing in
 ([NETWORK](../../docs/NETWORK.md#joining-from-outside-home-by-signing-in)).
-`GET /martlet/v1/signin` lists the ways to sign in (`id`, `kind`, `name`;
+`GET /martlet/v1/signin` lists the ways to sign in (`id`, `kind`, `name`, `redirect_port` when fixed;
 nothing secret). `POST /martlet/v1/signin/begin` (`provider`, and for a browser
 provider a PKCE S256 `code_challenge` and a loopback `redirect_uri`
 `http://127.0.0.1:<port>/`) returns a one-use attempt (`attempt_id`, `state`,
