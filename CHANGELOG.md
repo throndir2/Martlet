@@ -1,0 +1,667 @@
+# Changelog
+
+What changed in each Martlet release, newest first. Download any version from
+[Releases](https://github.com/throndir2/Martlet/releases).
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Each release's section here is also its notes on GitHub.
+
+## [Unreleased]
+
+### Changed
+- A brand-new README with screenshots, a feature tour and a Buy Me a Coffee link. ([#472](https://github.com/throndir2/Martlet/pull/472), [#473](https://github.com/throndir2/Martlet/pull/473))
+- Every release now lists what changed in its notes. ([#474](https://github.com/throndir2/Martlet/pull/474))
+## [0.48.0] - 2026-10-06
+
+### Added
+- Martlet can now answer WhatsApp through the Cloud API with guided setup. ([#463](https://github.com/throndir2/Martlet/pull/463))
+- Discord camera view supports picture backgrounds, free character framing, and Martlet-changed backgrounds. ([#461](https://github.com/throndir2/Martlet/pull/461), [#466](https://github.com/throndir2/Martlet/pull/466), [#462](https://github.com/throndir2/Martlet/pull/462))
+
+### Changed
+- Shared work now respects busy computers, job order, exclusions, and dedicated hosts. ([#469](https://github.com/throndir2/Martlet/pull/469))
+- Devices scales to more computers with a folding map and searchable list. ([#464](https://github.com/throndir2/Martlet/pull/464))
+- Conversation history syncs edits and deletes across PC, Telegram, Discord, and WhatsApp. ([#467](https://github.com/throndir2/Martlet/pull/467))
+- Outside access requires sign-in, pauses when sign-in disappears, and supports agent-managed hosts. ([#470](https://github.com/throndir2/Martlet/pull/470), [#465](https://github.com/throndir2/Martlet/pull/465))
+- Sign-in cleans up signed-out computers while keeping outside addresses with pairings. ([#468](https://github.com/throndir2/Martlet/pull/468))
+- Native Linux host setup supports sudo-rs and more systemd distributions and releases. ([#459](https://github.com/throndir2/Martlet/pull/459))
+
+### Fixed
+- Martlet starts more reliably when built on DrivePool volumes. ([#460](https://github.com/throndir2/Martlet/pull/460))
+
+## [0.47.0] - 2026-10-06
+
+### Fixed
+- Host setup checks bare-metal prerequisites first and installs curl when needed. ([#457](https://github.com/throndir2/Martlet/pull/457), [#456](https://github.com/throndir2/Martlet/pull/456))
+
+## [0.46.0] - 2026-10-06
+
+### Added
+- Martlet can talk with you from Telegram. ([#433](https://github.com/throndir2/Martlet/pull/433))
+- Discord companion mode adds calls, voice, presence, friends, private calls, and camera presence. ([#447](https://github.com/throndir2/Martlet/pull/447), [#452](https://github.com/throndir2/Martlet/pull/452), [#450](https://github.com/throndir2/Martlet/pull/450))
+- Discord setup now includes guided connection, invites, chat modes, owner controls, and a restored reply engine. ([#435](https://github.com/throndir2/Martlet/pull/435), [#444](https://github.com/throndir2/Martlet/pull/444), [#454](https://github.com/throndir2/Martlet/pull/454))
+- Martlet can generate pictures through ComfyUI, a Pictures host role, OpenRouter, or NVIDIA Build. ([#445](https://github.com/throndir2/Martlet/pull/445))
+- Web research can run as a background job and save report creations. ([#446](https://github.com/throndir2/Martlet/pull/446))
+- Martlet can say scheduled reminders from the companion PC you used most recently. ([#428](https://github.com/throndir2/Martlet/pull/428))
+- You can sign in from outside home and join by account, TOTP, invite, or attested join. ([#448](https://github.com/throndir2/Martlet/pull/448), [#430](https://github.com/throndir2/Martlet/pull/430))
+- Martlet can sign in with Discord or Steam. ([#451](https://github.com/throndir2/Martlet/pull/451))
+
+### Changed
+- Deep thinking has no time or hourly limit and queues work to a free computer. ([#443](https://github.com/throndir2/Martlet/pull/443), [#453](https://github.com/throndir2/Martlet/pull/453))
+- Background work can run in parallel across several computers. ([#440](https://github.com/throndir2/Martlet/pull/440))
+- Every reply now gathers waiting PC audio, pictures, and finished work before answering. ([#442](https://github.com/throndir2/Martlet/pull/442))
+- Conversation history keeps what Martlet sees. ([#439](https://github.com/throndir2/Martlet/pull/439))
+- Outside host access shows reachable paths and security-audit information. ([#449](https://github.com/throndir2/Martlet/pull/449), [#438](https://github.com/throndir2/Martlet/pull/438))
+- Character gestures are shared per rig, and voice-tag synonyms map to engine tags. ([#441](https://github.com/throndir2/Martlet/pull/441), [#437](https://github.com/throndir2/Martlet/pull/437))
+
+## [0.45.0] - 2026-10-06
+
+### Added
+- Character profiles switch Martlet's look, voice, and personality together. ([#431](https://github.com/throndir2/Martlet/pull/431))
+- Discord text chat supports channels, threads, DMs, /martlet, and /chatmode. ([#421](https://github.com/throndir2/Martlet/pull/421), [#426](https://github.com/throndir2/Martlet/pull/426))
+- Outside host addresses are signed in the roster and used when home cannot answer. ([#429](https://github.com/throndir2/Martlet/pull/429))
+- The talk window shows background tasks as a header chip with a task list. ([#427](https://github.com/throndir2/Martlet/pull/427))
+- Any computer can make another companion PC a host PC. ([#419](https://github.com/throndir2/Martlet/pull/419))
+
+### Changed
+- Add a computer is streamlined into Connect and Roles steps. ([#420](https://github.com/throndir2/Martlet/pull/420))
+- The network's job owner is honored on every computer, and host PCs stay awake while Martlet runs. ([#425](https://github.com/throndir2/Martlet/pull/425), [#418](https://github.com/throndir2/Martlet/pull/418))
+- Several Deep thinking jobs can run at once on one host graphics card. ([#434](https://github.com/throndir2/Martlet/pull/434))
+- Gateway protection adds lockouts, budgets, and a security audit. ([#422](https://github.com/throndir2/Martlet/pull/422))
+- Behind-the-scenes improvements to releases, pinned packages, and research documentation. ([#436](https://github.com/throndir2/Martlet/pull/436), [#432](https://github.com/throndir2/Martlet/pull/432), [#424](https://github.com/throndir2/Martlet/pull/424))
+
+## [0.44.0] - 2026-10-06
+
+### Changed
+- The Memory page is simpler, and Martlet can manage its memories. ([#415](https://github.com/throndir2/Martlet/pull/415))
+- Each companion PC remembers the character's position and monitor. ([#414](https://github.com/throndir2/Martlet/pull/414))
+
+### Fixed
+- In-network Thinking uses local timing and explains time-limit failures plainly. ([#416](https://github.com/throndir2/Martlet/pull/416))
+
+## [0.43.0] - 2026-10-05
+
+### Changed
+- Thinking can move to a host route that allows long thinks. ([#412](https://github.com/throndir2/Martlet/pull/412))
+- The character's position can be unlocked from its right-click menu. ([#411](https://github.com/throndir2/Martlet/pull/411))
+
+## [0.42.0] - 2026-10-05
+
+### Added
+- Parakeet can be offered for listening on another computer. ([#408](https://github.com/throndir2/Martlet/pull/408))
+- Host roles can be configured from the companion PC, including the Deep thinking model. ([#407](https://github.com/throndir2/Martlet/pull/407))
+
+### Changed
+- Always listening stays on while Martlet speaks. ([#405](https://github.com/throndir2/Martlet/pull/405))
+- The talk window is quieter: status details move to tooltips, and failed transcriptions stay hidden. ([#401](https://github.com/throndir2/Martlet/pull/401), [#403](https://github.com/throndir2/Martlet/pull/403))
+- The speech bubble is drawn wholly in Martlet's palette. ([#402](https://github.com/throndir2/Martlet/pull/402))
+
+### Fixed
+- Martlet actually starts a song when it agrees to sing. ([#404](https://github.com/throndir2/Martlet/pull/404))
+- Mis-bracketed emote and voice tags are accepted and noted under replies. ([#406](https://github.com/throndir2/Martlet/pull/406))
+- Role downloads recover from container DNS outages, with cleaner setup output. ([#409](https://github.com/throndir2/Martlet/pull/409))
+
+## [0.41.0] - 2026-10-05
+
+### Added
+- Martlet's speech and singing have a voice volume control. ([#395](https://github.com/throndir2/Martlet/pull/395))
+
+### Changed
+- A Windows host PC stays awake while its host service serves other computers. ([#397](https://github.com/throndir2/Martlet/pull/397))
+- The Deep thinking host mirrors Thinking's suggested models. ([#399](https://github.com/throndir2/Martlet/pull/399))
+- Vision remarks less about static screens and suggests Gemma 4 for Deep thinking hosts. ([#396](https://github.com/throndir2/Martlet/pull/396))
+
+### Removed
+- Removed Thinking-generated character palettes. ([#398](https://github.com/throndir2/Martlet/pull/398))
+
+## [0.40.0] - 2026-10-05
+
+### Added
+- You can choose the graphics card for each host role on multi-GPU machines. ([#393](https://github.com/throndir2/Martlet/pull/393))
+- Background tasks get their own page, and hidden run windows no longer cancel work. ([#391](https://github.com/throndir2/Martlet/pull/391))
+
+### Changed
+- Host setups can run side by side instead of one at a time. ([#392](https://github.com/throndir2/Martlet/pull/392))
+
+## [0.39.0] - 2026-10-04
+
+### Added
+- A new PC can pair hosts and follow your Martlet network before Setup. ([#383](https://github.com/throndir2/Martlet/pull/383))
+
+### Changed
+- Vision is on by default and looks at the whole screen. ([#386](https://github.com/throndir2/Martlet/pull/386))
+- Pairing codes no longer expire, and the pairing panel has Copy code. ([#385](https://github.com/throndir2/Martlet/pull/385))
+- Setup steps can run side by side. ([#388](https://github.com/throndir2/Martlet/pull/388))
+- This PC's host service updates in the background after app updates and restarts sooner. ([#387](https://github.com/throndir2/Martlet/pull/387))
+- Add a computer controls now behave like the buttons they look like. ([#382](https://github.com/throndir2/Martlet/pull/382))
+- Behind-the-scenes release maintenance. ([#390](https://github.com/throndir2/Martlet/pull/390), [#384](https://github.com/throndir2/Martlet/pull/384))
+
+### Fixed
+- Role image downloads resume after stalls or dropped connections. ([#389](https://github.com/throndir2/Martlet/pull/389))
+
+## [0.38.1] - 2026-10-04
+
+### Changed
+- Chatterbox voice tags are grouped into non-word sounds and tones in the prompt. ([#379](https://github.com/throndir2/Martlet/pull/379))
+
+### Fixed
+- Docker Desktop setup can set up WSL when Docker says it is missing. ([#380](https://github.com/throndir2/Martlet/pull/380))
+
+## [0.38.0] - 2026-10-04
+
+### Changed
+- Behind-the-scenes release maintenance. ([#378](https://github.com/throndir2/Martlet/pull/378))
+
+### Fixed
+- Chatterbox recovers from broken GPU contexts, keeps the model warm, and warns about shared GPUs. ([#377](https://github.com/throndir2/Martlet/pull/377))
+- Docker Desktop setup recovers when virtualization is not detected on a fresh PC. ([#376](https://github.com/throndir2/Martlet/pull/376))
+
+## [0.37.0] - 2026-10-04
+
+### Added
+- Singing installs and runs through the normal role flow, with SoulX by default and VevoSing optional. ([#374](https://github.com/throndir2/Martlet/pull/374))
+
+### Changed
+- Behind-the-scenes release maintenance. ([#375](https://github.com/throndir2/Martlet/pull/375))
+
+## [0.36.0] - 2026-10-04
+
+### Added
+- The Deep thinking host role is available wherever roles are added. ([#372](https://github.com/throndir2/Martlet/pull/372))
+
+### Changed
+- Behind-the-scenes release maintenance. ([#373](https://github.com/throndir2/Martlet/pull/373))
+
+## [0.35.0] - 2026-10-04
+
+### Added
+- Hosts without internet can receive native setup files from this PC over SSH. ([#369](https://github.com/throndir2/Martlet/pull/369))
+
+### Changed
+- Behind-the-scenes release maintenance. ([#371](https://github.com/throndir2/Martlet/pull/371))
+
+## [0.34.0] - 2026-10-04
+
+### Added
+- Martlet can sing in conversation, play and stop songs, lip-sync them, and save creations. ([#358](https://github.com/throndir2/Martlet/pull/358), [#359](https://github.com/throndir2/Martlet/pull/359), [#360](https://github.com/throndir2/Martlet/pull/360), [#364](https://github.com/throndir2/Martlet/pull/364), [#355](https://github.com/throndir2/Martlet/pull/355))
+- Martlet can mute or unmute from the character menu and tune chattiness about vision and PC audio. ([#350](https://github.com/throndir2/Martlet/pull/350), [#354](https://github.com/throndir2/Martlet/pull/354))
+- Martlet can decide where the character looks. ([#349](https://github.com/throndir2/Martlet/pull/349))
+- Every computer can share logs, with Save logs to share. ([#366](https://github.com/throndir2/Martlet/pull/366))
+
+### Changed
+- Martlet hears your voice by default while keeping it on this PC and can send it straight to hearing models. ([#368](https://github.com/throndir2/Martlet/pull/368), [#361](https://github.com/throndir2/Martlet/pull/361))
+- Speech pauses only at sentence ends, not commas. ([#348](https://github.com/throndir2/Martlet/pull/348))
+- Installed roles are reused and jobs keep answering while switching. ([#347](https://github.com/throndir2/Martlet/pull/347))
+- Watching controls are separate from listening controls. ([#356](https://github.com/throndir2/Martlet/pull/356))
+- Local listening offers three Parakeet models, with the fastest English model as default. ([#353](https://github.com/throndir2/Martlet/pull/353))
+- Model suggestions favor qwen3.5:4b and show which local models can hear. ([#367](https://github.com/throndir2/Martlet/pull/367))
+- Voice defaults now favor lower latency, with clearer Dia, F5, and Chatterbox comparisons. ([#363](https://github.com/throndir2/Martlet/pull/363), [#365](https://github.com/throndir2/Martlet/pull/365))
+- Deep thinking is optional and always parallel. ([#352](https://github.com/throndir2/Martlet/pull/352))
+- Behind-the-scenes improvements to validation and release maintenance. ([#362](https://github.com/throndir2/Martlet/pull/362), [#370](https://github.com/throndir2/Martlet/pull/370))
+
+### Fixed
+- Providers can be switched without removing set-aside keys first. ([#351](https://github.com/throndir2/Martlet/pull/351))
+
+## [0.33.0] - 2026-10-04
+
+### Added
+- Martlet records conversations and can bring them back when mentioned. ([#346](https://github.com/throndir2/Martlet/pull/346))
+- Memories belong to the recognized speaker, and voices can merge or rename from conversation. ([#344](https://github.com/throndir2/Martlet/pull/344), [#345](https://github.com/throndir2/Martlet/pull/345))
+
+### Changed
+- Slow remote voices keep talking instead of cutting replies short. ([#342](https://github.com/throndir2/Martlet/pull/342))
+- Voice timing accounts for how long speech actually went on. ([#341](https://github.com/throndir2/Martlet/pull/341))
+- Behind-the-scenes improvements to voice latency measurement and release maintenance. ([#340](https://github.com/throndir2/Martlet/pull/340), [#343](https://github.com/throndir2/Martlet/pull/343))
+
+## [0.32.0] - 2026-10-03
+
+### Added
+- Deep thinking has its own parallel place, and Martlet can think longer in the background. ([#338](https://github.com/throndir2/Martlet/pull/338), [#335](https://github.com/throndir2/Martlet/pull/335))
+- Martlet detects Thinking models that can hear or see and shares what it finds. ([#337](https://github.com/throndir2/Martlet/pull/337))
+- Martlet can use an opt-in terminal while you talk. ([#329](https://github.com/throndir2/Martlet/pull/329))
+
+### Changed
+- App-wide settings and memories are shared across computers. ([#330](https://github.com/throndir2/Martlet/pull/330))
+- Martlet colors itself after the character. ([#334](https://github.com/throndir2/Martlet/pull/334))
+- Calmer barge-in listens for words, not just sounds. ([#333](https://github.com/throndir2/Martlet/pull/333))
+- Behind-the-scenes improvements to validation, benchmarks, and release maintenance. ([#336](https://github.com/throndir2/Martlet/pull/336), [#331](https://github.com/throndir2/Martlet/pull/331), [#339](https://github.com/throndir2/Martlet/pull/339))
+
+### Fixed
+- The tray menu opens at the click point when Martlet's DPI differs from the monitor. ([#328](https://github.com/throndir2/Martlet/pull/328))
+
+## [0.31.0] - 2026-10-03
+
+### Changed
+- Automatic updates install as soon as they are downloaded. ([#326](https://github.com/throndir2/Martlet/pull/326))
+- Behind-the-scenes release maintenance. ([#327](https://github.com/throndir2/Martlet/pull/327))
+
+## [0.30.0] - 2026-10-03
+
+### Changed
+- Thinking steps are off by default. ([#323](https://github.com/throndir2/Martlet/pull/323))
+- Behind-the-scenes release maintenance. ([#325](https://github.com/throndir2/Martlet/pull/325))
+
+### Fixed
+- Menus use Martlet's palette without a white strip in Rose dark. ([#324](https://github.com/throndir2/Martlet/pull/324))
+
+## [0.29.0] - 2026-10-03
+
+### Added
+- Character emotes and motions can be discovered, named, and triggered from replies or voice cues. ([#312](https://github.com/throndir2/Martlet/pull/312))
+- Each persona can choose where its voice pauses between spoken pieces. ([#318](https://github.com/throndir2/Martlet/pull/318))
+- Thinking steps can turn a reasoning model's hidden thinking off or on. ([#319](https://github.com/throndir2/Martlet/pull/319))
+
+### Changed
+- Chatterbox Turbo streams speech as it is made and has better latency logging. ([#321](https://github.com/throndir2/Martlet/pull/321), [#314](https://github.com/throndir2/Martlet/pull/314))
+- Barge-in is opt-in and off by default. ([#313](https://github.com/throndir2/Martlet/pull/313))
+- Thinking requests reuse caches and stop resending unchanged context. ([#315](https://github.com/throndir2/Martlet/pull/315))
+- Behind-the-scenes release maintenance. ([#322](https://github.com/throndir2/Martlet/pull/322))
+
+### Fixed
+- The character's position can be locked, then unlocked only in Martlet's window. ([#316](https://github.com/throndir2/Martlet/pull/316))
+- Host voice keeps working through routine clock steps. ([#317](https://github.com/throndir2/Martlet/pull/317))
+- If a model refuses Thinking steps, Martlet asks again with the model's default. ([#320](https://github.com/throndir2/Martlet/pull/320))
+
+## [0.28.0] - 2026-10-03
+
+### Added
+- Voice recognition is built into Martlet and on by default. ([#307](https://github.com/throndir2/Martlet/pull/307))
+- Companion > Prompts shows estimated tokens. ([#304](https://github.com/throndir2/Martlet/pull/304))
+
+### Changed
+- Automatic and remotely requested updates install silently. ([#310](https://github.com/throndir2/Martlet/pull/310))
+- Speech bubbles size to their whole text, and the character overlay has more side room. ([#305](https://github.com/throndir2/Martlet/pull/305), [#303](https://github.com/throndir2/Martlet/pull/303))
+- Martlet hears only the output you hear through a virtual cable and leaves out speaker echo in the mic. ([#308](https://github.com/throndir2/Martlet/pull/308), [#300](https://github.com/throndir2/Martlet/pull/300))
+- PC audio and self-voice playback no longer cause repeated replies or interruptions. ([#302](https://github.com/throndir2/Martlet/pull/302), [#306](https://github.com/throndir2/Martlet/pull/306))
+- Behind-the-scenes release maintenance. ([#311](https://github.com/throndir2/Martlet/pull/311))
+
+### Fixed
+- Host voice audio stays within stream limits. ([#301](https://github.com/throndir2/Martlet/pull/301))
+- If Martlet cannot close, it explains what is happening and offers to exit anyway. ([#309](https://github.com/throndir2/Martlet/pull/309))
+
+## [0.27.0] - 2026-10-03
+
+### Changed
+- The Devices map names each computer by what it is, showing both device and host service. ([#298](https://github.com/throndir2/Martlet/pull/298))
+- Behind-the-scenes release maintenance. ([#299](https://github.com/throndir2/Martlet/pull/299))
+
+## [0.26.0] - 2026-10-03
+
+### Added
+- Martlet can hear what this PC plays. ([#294](https://github.com/throndir2/Martlet/pull/294))
+
+### Changed
+- Chatterbox Turbo supports GeForce RTX 50 series GPUs. ([#296](https://github.com/throndir2/Martlet/pull/296))
+- Windows stay on screen, and popups are resizable. ([#295](https://github.com/throndir2/Martlet/pull/295))
+- Copy buttons appear above read-only text boxes. ([#291](https://github.com/throndir2/Martlet/pull/291))
+- Behind-the-scenes release maintenance. ([#297](https://github.com/throndir2/Martlet/pull/297))
+
+### Fixed
+- Speech bubbles show unsaid words, and host voice failures are logged. ([#293](https://github.com/throndir2/Martlet/pull/293))
+- Voice failures no longer cut replies short. ([#292](https://github.com/throndir2/Martlet/pull/292))
+
+## [0.25.0] - 2026-10-02
+
+### Changed
+- The Devices map shows every Martlet computer and can auto-allow paired PCs. ([#289](https://github.com/throndir2/Martlet/pull/289))
+- Behind-the-scenes release maintenance. ([#290](https://github.com/throndir2/Martlet/pull/290))
+
+## [0.24.0] - 2026-10-02
+
+### Added
+- Vision sees your whole screen, notices notifications, and can accompany messages. ([#285](https://github.com/throndir2/Martlet/pull/285))
+
+### Changed
+- Conversation context size is configurable, and Martlet detects model limits. ([#286](https://github.com/throndir2/Martlet/pull/286))
+- Add a voice accepts Ogg Vorbis and Opus recordings. ([#287](https://github.com/throndir2/Martlet/pull/287))
+- Behind-the-scenes release maintenance. ([#288](https://github.com/throndir2/Martlet/pull/288))
+
+## [0.23.0] - 2026-10-02
+
+### Added
+- Downloaded Live2D models are supported, including VTube Studio folders, Unicode names, and 8K textures. ([#279](https://github.com/throndir2/Martlet/pull/279))
+- Add a voice can use several recordings, accept most audio/video files, and fill transcripts with speech-to-text. ([#276](https://github.com/throndir2/Martlet/pull/276), [#281](https://github.com/throndir2/Martlet/pull/281), [#282](https://github.com/throndir2/Martlet/pull/282))
+- Character models and settings can sync across Martlet computers. ([#272](https://github.com/throndir2/Martlet/pull/272), [#278](https://github.com/throndir2/Martlet/pull/278))
+- Diagnostics shows This PC's host service logs, and copy buttons appear in outputs, dialogs, and errors. ([#268](https://github.com/throndir2/Martlet/pull/268), [#269](https://github.com/throndir2/Martlet/pull/269))
+
+### Changed
+- Companion > Voice is one voice engine list, and settings save automatically. ([#275](https://github.com/throndir2/Martlet/pull/275), [#274](https://github.com/throndir2/Martlet/pull/274))
+- Hosts announce their Martlet release, follow updates, and expose Update available as a button. ([#271](https://github.com/throndir2/Martlet/pull/271), [#270](https://github.com/throndir2/Martlet/pull/270))
+- The notification-area right-click menu stays open. ([#280](https://github.com/throndir2/Martlet/pull/280))
+- Behind-the-scenes release maintenance. ([#283](https://github.com/throndir2/Martlet/pull/283))
+
+### Fixed
+- Setup and host updates avoid stranded runs and collisions. ([#267](https://github.com/throndir2/Martlet/pull/267), [#273](https://github.com/throndir2/Martlet/pull/273), [#277](https://github.com/throndir2/Martlet/pull/277))
+- The character renderer works in release builds. ([#284](https://github.com/throndir2/Martlet/pull/284))
+
+## [0.22.0] - 2026-10-02
+
+### Added
+- Voices are unified and shared with every Martlet node. ([#266](https://github.com/throndir2/Martlet/pull/266))
+- The character right-click menu adds Hide, Talk, Open, Settings, and Keep on top. ([#259](https://github.com/throndir2/Martlet/pull/259))
+
+### Changed
+- Speaker echo reduction in the microphone is on by default. ([#265](https://github.com/throndir2/Martlet/pull/265))
+- Host dashboard steps tick automatically when already working and show which computers use each host. ([#261](https://github.com/throndir2/Martlet/pull/261), [#262](https://github.com/throndir2/Martlet/pull/262))
+- A Martlet host can avoid talking, listening, or showing the character. ([#258](https://github.com/throndir2/Martlet/pull/258))
+
+### Fixed
+- Host changes and updates wait or retry instead of colliding. ([#264](https://github.com/throndir2/Martlet/pull/264))
+- Paired-host Ollama gets a context it accepts and room for hidden thinking. ([#257](https://github.com/throndir2/Martlet/pull/257))
+
+## [0.21.0] - 2026-10-02
+
+### Added
+- Dia, Chatterbox Turbo, GPT-SoVITS, and XTTS-v2 are available as self-hosted voice engines. ([#255](https://github.com/throndir2/Martlet/pull/255), [#254](https://github.com/throndir2/Martlet/pull/254), [#253](https://github.com/throndir2/Martlet/pull/253), [#251](https://github.com/throndir2/Martlet/pull/251))
+- Thinking models that hear can receive the user's recording. ([#249](https://github.com/throndir2/Martlet/pull/249))
+
+### Changed
+- Voice latency improves with overlapped synthesis, eager first clauses, and barge-in on by default. ([#250](https://github.com/throndir2/Martlet/pull/250))
+- App update settings show the current version. ([#252](https://github.com/throndir2/Martlet/pull/252))
+
+### Fixed
+- F5 host avoids failed replies while the worker is busy or stopped. ([#248](https://github.com/throndir2/Martlet/pull/248))
+- OpenRouter replies are no longer cut off by hidden reasoning or strict streams. ([#247](https://github.com/throndir2/Martlet/pull/247))
+
+## [0.20.0] - 2026-10-02
+
+### Added
+- The talk window has a Refresh context button. ([#245](https://github.com/throndir2/Martlet/pull/245))
+- Every internal LLM prompt is editable in Companion > Prompts. ([#244](https://github.com/throndir2/Martlet/pull/244))
+- A prettier speech bubble follows the character and has position settings. ([#238](https://github.com/throndir2/Martlet/pull/238))
+
+### Changed
+- Conversation context is kept when settings change. ([#242](https://github.com/throndir2/Martlet/pull/242))
+- Local model suggestions leave graphics memory for games and explain Ollama overfill. ([#243](https://github.com/throndir2/Martlet/pull/243))
+- Vision backs off on rate limits, and Thinking can use a fallback provider. ([#239](https://github.com/throndir2/Martlet/pull/239))
+
+### Fixed
+- Ollama models recover when a Gemma 4 draft model fails to load. ([#241](https://github.com/throndir2/Martlet/pull/241))
+- Memory update notes are fewer and clearer. ([#240](https://github.com/throndir2/Martlet/pull/240))
+
+## [0.19.0] - 2026-10-02
+
+### Added
+- Martlet can listen from Home without the talk window, with an indicator and start-with-listening option. ([#236](https://github.com/throndir2/Martlet/pull/236))
+
+### Changed
+- Annie, a cute anime girl voice, is now the default F5 voice. ([#235](https://github.com/throndir2/Martlet/pull/235))
+
+## [0.18.1] - 2026-10-02
+
+### Fixed
+- Host dashboard step buttons wrap under their detail. ([#233](https://github.com/throndir2/Martlet/pull/233))
+
+## [0.18.0] - 2026-10-02
+
+### Added
+- Audio2Face can run as a local open-source GPU engine without an NGC key. ([#231](https://github.com/throndir2/Martlet/pull/231))
+- Home Assistant can be installed, set up, shared, and managed from Martlet. ([#230](https://github.com/throndir2/Martlet/pull/230))
+- Cute, high-pitched anime-style F5 voices are available by default. ([#229](https://github.com/throndir2/Martlet/pull/229))
+- Other apps and scripts can call your hosts with API keys. ([#228](https://github.com/throndir2/Martlet/pull/228))
+- Martlet can close to the notification area, show a tray menu, and start with Windows. ([#227](https://github.com/throndir2/Martlet/pull/227))
+- The Martlet network can pair a host once for all computers and discover nearby computers without codes. ([#223](https://github.com/throndir2/Martlet/pull/223), [#221](https://github.com/throndir2/Martlet/pull/221))
+
+### Changed
+- The talk window has a Start listening button and no longer blocks Martlet. ([#225](https://github.com/throndir2/Martlet/pull/225))
+- Lip-sync loudness is handled as a This PC method. ([#226](https://github.com/throndir2/Martlet/pull/226))
+
+### Fixed
+- Stale audio-device callbacks no longer crash Martlet, and native crashes are captured. ([#224](https://github.com/throndir2/Martlet/pull/224))
+- Docker Desktop setup continues after installing WSL. ([#222](https://github.com/throndir2/Martlet/pull/222))
+
+## [0.17.0] - 2026-10-01
+
+### Added
+- The MCP directory lets you browse, search, and install MCP servers. ([#218](https://github.com/throndir2/Martlet/pull/218), [#219](https://github.com/throndir2/Martlet/pull/219))
+- Secure commands let Martlet computers update and manage hosts without SSH. ([#220](https://github.com/throndir2/Martlet/pull/220))
+
+### Changed
+- UI text is cleaner across the app. ([#217](https://github.com/throndir2/Martlet/pull/217))
+
+## [0.16.2] - 2026-10-01
+
+### Added
+- A new computer can be paired with a short typed code. ([#216](https://github.com/throndir2/Martlet/pull/216))
+- Diagnostics now has its own page and an optional log host. ([#213](https://github.com/throndir2/Martlet/pull/213))
+
+### Changed
+- Behind-the-scenes research for Home Assistant installation and management. ([#212](https://github.com/throndir2/Martlet/pull/212))
+
+### Fixed
+- A stuck character no longer blocks hiding, updating, or exiting. ([#214](https://github.com/throndir2/Martlet/pull/214))
+
+## [0.16.1] - 2026-10-01
+
+### Changed
+- The default F5 voice is feminine, moving off the retired male sample. ([#211](https://github.com/throndir2/Martlet/pull/211))
+- Speech bubbles are on by default, with settings on Companion > Character. ([#209](https://github.com/throndir2/Martlet/pull/209))
+- Replies default to one or two sentences. ([#205](https://github.com/throndir2/Martlet/pull/205))
+- Listening pauses only from its own button. ([#207](https://github.com/throndir2/Martlet/pull/207))
+
+### Fixed
+- Voice and host failures say which job failed. ([#210](https://github.com/throndir2/Martlet/pull/210))
+- The talk box hint lines up with where typing starts. ([#208](https://github.com/throndir2/Martlet/pull/208))
+- Host roles reconnect after their network holder is replaced. ([#206](https://github.com/throndir2/Martlet/pull/206))
+
+## [0.16.0] - 2026-10-01
+
+### Added
+- Home health tiles show what needs attention. ([#203](https://github.com/throndir2/Martlet/pull/203))
+- Vision shows when it is watching and keeps watching when Martlet's window is in front. ([#201](https://github.com/throndir2/Martlet/pull/201))
+- Paired computers are listed when setting up another of your computers. ([#197](https://github.com/throndir2/Martlet/pull/197))
+
+### Changed
+- Always listening stays active and lets the model decide when to speak. ([#202](https://github.com/throndir2/Martlet/pull/202))
+- Ollama on this PC can load its model, answer without a reply budget, and be tested during setup. ([#200](https://github.com/throndir2/Martlet/pull/200), [#198](https://github.com/throndir2/Martlet/pull/198))
+- Host job assignments sync on all computers by default. ([#193](https://github.com/throndir2/Martlet/pull/193))
+- Martlet keeps replies short by asking instead of cutting them off. ([#199](https://github.com/throndir2/Martlet/pull/199))
+
+### Fixed
+- Docker and F5 setup show progress and continue after virtualization restarts. ([#195](https://github.com/throndir2/Martlet/pull/195), [#194](https://github.com/throndir2/Martlet/pull/194))
+
+## [0.15.0] - 2026-10-01
+
+### Added
+- Ten redistributable F5 voices are bundled, replacing the retired sample voice. ([#190](https://github.com/throndir2/Martlet/pull/190))
+
+### Changed
+- F5 setup drops a redundant confirmation, and the welcome tour no longer asks to get this PC ready. ([#189](https://github.com/throndir2/Martlet/pull/189), [#188](https://github.com/throndir2/Martlet/pull/188))
+
+### Fixed
+- Lip-sync no longer marks the default Audio2Face service in use when nothing answers. ([#191](https://github.com/throndir2/Martlet/pull/191))
+
+## [0.14.1] - 2026-10-01
+
+### Changed
+- Martlet can install on Windows 10 2004+ and current Windows 11. ([#187](https://github.com/throndir2/Martlet/pull/187))
+
+## [0.14.0] - 2026-10-01
+
+### Changed
+- Vision-capable Thinking models are preferred by default. ([#185](https://github.com/throndir2/Martlet/pull/185))
+- The Devices page puts the map on top and lets jobs be configured per device. ([#184](https://github.com/throndir2/Martlet/pull/184))
+
+## [0.13.1] - 2026-10-01
+
+### Fixed
+- Provider failures explain retired models and include local diagnostics and log tails. ([#182](https://github.com/throndir2/Martlet/pull/182))
+
+## [0.13.0] - 2026-10-01
+
+### Added
+- F5 voices can be added and switched freely. ([#177](https://github.com/throndir2/Martlet/pull/177))
+- Martlet can recognize people by voice, share the voice list, and use Parakeet listening. ([#178](https://github.com/throndir2/Martlet/pull/178))
+
+### Changed
+- Listening uses the default mic without a test and says when Audio2Face is not running. ([#181](https://github.com/throndir2/Martlet/pull/181))
+- Behind-the-scenes validation policy updates. ([#176](https://github.com/throndir2/Martlet/pull/176))
+
+### Fixed
+- The character's head stays in view when zooming. ([#180](https://github.com/throndir2/Martlet/pull/180))
+
+## [0.12.0] - 2026-10-01
+
+### Added
+- Martlet can call tools from MCP servers on this PC, with per-call approval. ([#170](https://github.com/throndir2/Martlet/pull/170), [#172](https://github.com/throndir2/Martlet/pull/172))
+- Smart home requests can use Home Assistant MCP tools with confirmations for sensitive actions. ([#174](https://github.com/throndir2/Martlet/pull/174), [#165](https://github.com/throndir2/Martlet/pull/165), [#167](https://github.com/throndir2/Martlet/pull/167))
+- SillyTavern-style lorebooks and SillyTavern/Chub character-card imports are supported. ([#169](https://github.com/throndir2/Martlet/pull/169), [#163](https://github.com/throndir2/Martlet/pull/163))
+- Reply generation settings are configurable. ([#166](https://github.com/throndir2/Martlet/pull/166))
+
+### Changed
+- The talk window is just the conversation; settings moved to grouped Companion pages. ([#168](https://github.com/throndir2/Martlet/pull/168), [#164](https://github.com/throndir2/Martlet/pull/164))
+- Audio devices are listed automatically, and default devices are assumed to work. ([#162](https://github.com/throndir2/Martlet/pull/162))
+- The Martlet mascot replaces the in-app hearts. ([#161](https://github.com/throndir2/Martlet/pull/161))
+- Behind-the-scenes improvements to desktop publishing. ([#175](https://github.com/throndir2/Martlet/pull/175), [#173](https://github.com/throndir2/Martlet/pull/173))
+
+### Fixed
+- Pairing no longer grabs lip-sync, and Martlet shows when Audio2Face is not installed. ([#160](https://github.com/throndir2/Martlet/pull/160))
+
+## [0.11.0] - 2026-10-01
+
+### Added
+- Memory is on by default and remembers what is talked about. ([#158](https://github.com/throndir2/Martlet/pull/158))
+
+### Changed
+- Microphone and speaker setup is simpler, with clearer mic setup status. ([#157](https://github.com/throndir2/Martlet/pull/157))
+- Whisper can use the GPU or CPU, and setup avoids console windows. ([#156](https://github.com/throndir2/Martlet/pull/156))
+- Lip-sync setup now works like voice setup. ([#155](https://github.com/throndir2/Martlet/pull/155))
+
+## [0.10.2] - 2026-10-01
+
+### Changed
+- The Voice tab puts Now first, with one-click F5 Docker or Windows voice and contextual cards. ([#154](https://github.com/throndir2/Martlet/pull/154))
+- Home shows status, and Companion is the one place to change things. ([#152](https://github.com/throndir2/Martlet/pull/152))
+- Behind-the-scenes policy updates. ([#151](https://github.com/throndir2/Martlet/pull/151))
+
+### Fixed
+- Abandoned host sessions no longer hold gateway state, and host run logs are available. ([#153](https://github.com/throndir2/Martlet/pull/153))
+
+## [0.10.1] - 2026-10-01
+
+### Fixed
+- The gateway stays stopped while setup renews its approval. ([#149](https://github.com/throndir2/Martlet/pull/149))
+
+## [0.10.0] - 2026-10-01
+
+### Added
+- F5 starts with a bundled sample voice and voice playback. ([#145](https://github.com/throndir2/Martlet/pull/145))
+- This PC's host can be set up in one click without typed confirmations. ([#141](https://github.com/throndir2/Martlet/pull/141), [#142](https://github.com/throndir2/Martlet/pull/142))
+
+### Changed
+- Cloud provider setup shows saved API key state. ([#140](https://github.com/throndir2/Martlet/pull/140))
+- Setup and user flows are simpler, with less required input and more automatic setup. ([#146](https://github.com/throndir2/Martlet/pull/146), [#144](https://github.com/throndir2/Martlet/pull/144))
+
+### Fixed
+- Hiding the avatar no longer crashes Martlet. ([#143](https://github.com/throndir2/Martlet/pull/143))
+- Buttons no longer shift the layout when hovered. ([#139](https://github.com/throndir2/Martlet/pull/139))
+
+### Removed
+- The offline fixture demo was removed from the app. ([#147](https://github.com/throndir2/Martlet/pull/147))
+
+## [0.9.0] - 2026-10-01
+
+### Added
+- Martlet keeps a local crash/error log and handles global exceptions. ([#137](https://github.com/throndir2/Martlet/pull/137))
+
+### Changed
+- Setup now has dedicated pages for thinking, voice, listening, and character. ([#138](https://github.com/throndir2/Martlet/pull/138))
+
+## [0.8.2] - 2026-10-01
+
+### Changed
+- Automatic update checks remain selected by default. ([#136](https://github.com/throndir2/Martlet/pull/136))
+
+## [0.8.1] - 2026-10-01
+
+### Changed
+- Updates check by default and prompt you to update now. ([#135](https://github.com/throndir2/Martlet/pull/135))
+- The character overlay can zoom deeper and reset. ([#133](https://github.com/throndir2/Martlet/pull/133))
+- Subtitles state full-screen game support like the character overlay. ([#132](https://github.com/throndir2/Martlet/pull/132))
+
+## [0.7.0] - 2026-09-30
+
+### Added
+- Martlet can watch cameras, phones, and other video sources. ([#128](https://github.com/throndir2/Martlet/pull/128), [#129](https://github.com/throndir2/Martlet/pull/129))
+- Optional speech bubbles and active-screen subtitles are available. ([#123](https://github.com/throndir2/Martlet/pull/123))
+- Per-job Setup now includes prefilled provider defaults. ([#124](https://github.com/throndir2/Martlet/pull/124))
+
+### Changed
+- Character overlay controls moved into the main window, with reset position and anti-aliased rendering. ([#122](https://github.com/throndir2/Martlet/pull/122), [#120](https://github.com/throndir2/Martlet/pull/120))
+- The Home character step uses more generic wording. ([#121](https://github.com/throndir2/Martlet/pull/121))
+- Platform support now shows when a job stops working. ([#126](https://github.com/throndir2/Martlet/pull/126))
+- Behind-the-scenes planning for Android, macOS, smart home, and free platform choices. ([#125](https://github.com/throndir2/Martlet/pull/125), [#127](https://github.com/throndir2/Martlet/pull/127), [#119](https://github.com/throndir2/Martlet/pull/119), [#130](https://github.com/throndir2/Martlet/pull/130))
+
+## [0.6.0] - 2026-09-30
+
+### Added
+- Vision-aware commentary can watch your screen and know when to stay quiet. ([#114](https://github.com/throndir2/Martlet/pull/114))
+- Martlet can see full-screen games through DXGI Desktop Duplication. ([#116](https://github.com/throndir2/Martlet/pull/116))
+- Host work is shared across computers and desktops, with per-job failover. ([#115](https://github.com/throndir2/Martlet/pull/115))
+
+### Changed
+- Behind-the-scenes planning for iOS and iPadOS support. ([#117](https://github.com/throndir2/Martlet/pull/117))
+
+## [0.5.0] - 2026-09-29
+
+### Changed
+- The installer is quicker, with setup questions moved to the first-run wizard. ([#112](https://github.com/throndir2/Martlet/pull/112))
+
+## [0.4.0] - 2026-09-29
+
+### Added
+- Linux nodes can run Thinking with Ollama and share generic host roles. ([#106](https://github.com/throndir2/Martlet/pull/106))
+- Linux hosts can listen with Whisper and speak with F5 voice. ([#109](https://github.com/throndir2/Martlet/pull/109), [#110](https://github.com/throndir2/Martlet/pull/110))
+- Windows can drive Linux Martlet hosts over the in-app SSH runner. ([#107](https://github.com/throndir2/Martlet/pull/107))
+
+### Changed
+- Linux GPU computers can be prepared from the Devices map. ([#105](https://github.com/throndir2/Martlet/pull/105))
+
+### Fixed
+- SSH restarts and wakes wait on the target's own port. ([#108](https://github.com/throndir2/Martlet/pull/108))
+
+## [0.3.0] - 2026-09-29
+
+### Added
+- Martlet can update itself from GitHub Releases and update hosts from the main PC. ([#103](https://github.com/throndir2/Martlet/pull/103))
+- Hands-free voice activity and local Voice ID are available. ([#102](https://github.com/throndir2/Martlet/pull/102))
+- The Devices map can hand node roles between paired hosts. ([#101](https://github.com/throndir2/Martlet/pull/101))
+
+### Changed
+- The installer includes recommended setup, and the setup planner detects GPU and host hardware. ([#99](https://github.com/throndir2/Martlet/pull/99), [#100](https://github.com/throndir2/Martlet/pull/100))
+
+## [0.2.0] - 2026-09-29
+
+### Added
+- The installer and prerequisites tool can install required components. ([#96](https://github.com/throndir2/Martlet/pull/96))
+- A setup advisor wizard gives goal-based recommendations. ([#95](https://github.com/throndir2/Martlet/pull/95))
+- Hosts can be set up from the desktop by Docker, SSH, or native install. ([#89](https://github.com/throndir2/Martlet/pull/89), [#88](https://github.com/throndir2/Martlet/pull/88))
+- Audio2Face can run on a separate host or be auto-detected locally with loudness fallback. ([#87](https://github.com/throndir2/Martlet/pull/87), [#86](https://github.com/throndir2/Martlet/pull/86))
+- Hiyori ships as the default animated Live2D character. ([#85](https://github.com/throndir2/Martlet/pull/85))
+- OpenRouter, NVIDIA Build, and OpenAI-compatible LLM endpoints are supported. ([#94](https://github.com/throndir2/Martlet/pull/94))
+
+### Changed
+- The desktop UI has a staged design with a Devices map and host dashboard. ([#97](https://github.com/throndir2/Martlet/pull/97))
+- Setup layouts recommend fastest-response and unlimited-budget choices, including cloud LLM offload. ([#93](https://github.com/throndir2/Martlet/pull/93), [#92](https://github.com/throndir2/Martlet/pull/92))
+- Behind-the-scenes documentation for releases and recommended setups. ([#84](https://github.com/throndir2/Martlet/pull/84), [#90](https://github.com/throndir2/Martlet/pull/90))
+
+### Fixed
+- Martlet can open the host port in Windows Firewall when this PC becomes a host. ([#91](https://github.com/throndir2/Martlet/pull/91))
+
+## [0.1.0] - 2026-09-26
+
+### Added
+- First public release of Martlet.
+- Voice conversation includes microphone capture, transcription, streaming replies, playback, voice activity, and Windows offline speech. ([#11](https://github.com/throndir2/Martlet/pull/11), [#7](https://github.com/throndir2/Martlet/pull/7), [#10](https://github.com/throndir2/Martlet/pull/10), [#9](https://github.com/throndir2/Martlet/pull/9), [#6](https://github.com/throndir2/Martlet/pull/6), [#14](https://github.com/throndir2/Martlet/pull/14), [#15](https://github.com/throndir2/Martlet/pull/15), [#18](https://github.com/throndir2/Martlet/pull/18), [#30](https://github.com/throndir2/Martlet/pull/30), [#73](https://github.com/throndir2/Martlet/pull/73), [#74](https://github.com/throndir2/Martlet/pull/74), [#75](https://github.com/throndir2/Martlet/pull/75), [#77](https://github.com/throndir2/Martlet/pull/77), [#8](https://github.com/throndir2/Martlet/pull/8), [#62](https://github.com/throndir2/Martlet/pull/62), [#52](https://github.com/throndir2/Martlet/pull/52), [#42](https://github.com/throndir2/Martlet/pull/42), [#38](https://github.com/throndir2/Martlet/pull/38))
+- Animated Live2D/VRM overlays, themes, a bird icon, personas, runtime styles, Stop, and Escape-to-discard are included. ([#71](https://github.com/throndir2/Martlet/pull/71), [#63](https://github.com/throndir2/Martlet/pull/63), [#60](https://github.com/throndir2/Martlet/pull/60), [#61](https://github.com/throndir2/Martlet/pull/61), [#78](https://github.com/throndir2/Martlet/pull/78), [#59](https://github.com/throndir2/Martlet/pull/59))
+- Local and cloud model foundations include Ollama, OpenRouter, NVIDIA Build, and configurable inference routes. ([#76](https://github.com/throndir2/Martlet/pull/76), [#29](https://github.com/throndir2/Martlet/pull/29), [#55](https://github.com/throndir2/Martlet/pull/55))
+- Multi-computer host foundations include Linux gateways, durable pairings, host roles, local control, and artifact acquisition. ([#70](https://github.com/throndir2/Martlet/pull/70), [#69](https://github.com/throndir2/Martlet/pull/69), [#58](https://github.com/throndir2/Martlet/pull/58), [#68](https://github.com/throndir2/Martlet/pull/68), [#57](https://github.com/throndir2/Martlet/pull/57), [#56](https://github.com/throndir2/Martlet/pull/56), [#54](https://github.com/throndir2/Martlet/pull/54), [#53](https://github.com/throndir2/Martlet/pull/53), [#51](https://github.com/throndir2/Martlet/pull/51), [#50](https://github.com/throndir2/Martlet/pull/50), [#49](https://github.com/throndir2/Martlet/pull/49), [#47](https://github.com/throndir2/Martlet/pull/47), [#46](https://github.com/throndir2/Martlet/pull/46), [#45](https://github.com/throndir2/Martlet/pull/45), [#41](https://github.com/throndir2/Martlet/pull/41), [#36](https://github.com/throndir2/Martlet/pull/36), [#35](https://github.com/throndir2/Martlet/pull/35), [#34](https://github.com/throndir2/Martlet/pull/34), [#33](https://github.com/throndir2/Martlet/pull/33), [#28](https://github.com/throndir2/Martlet/pull/28), [#40](https://github.com/throndir2/Martlet/pull/40), [#43](https://github.com/throndir2/Martlet/pull/43), [#44](https://github.com/throndir2/Martlet/pull/44))
+- Memory, diagnostics, support export, Doctor status, and local MCP desktop automation are available. ([#48](https://github.com/throndir2/Martlet/pull/48), [#39](https://github.com/throndir2/Martlet/pull/39), [#19](https://github.com/throndir2/Martlet/pull/19), [#17](https://github.com/throndir2/Martlet/pull/17), [#4](https://github.com/throndir2/Martlet/pull/4), [#65](https://github.com/throndir2/Martlet/pull/65))
+- Setup, rollback, package verification, provenance, SBOM, and configuration restore foundations are included. ([#12](https://github.com/throndir2/Martlet/pull/12), [#20](https://github.com/throndir2/Martlet/pull/20), [#26](https://github.com/throndir2/Martlet/pull/26), [#27](https://github.com/throndir2/Martlet/pull/27), [#23](https://github.com/throndir2/Martlet/pull/23), [#24](https://github.com/throndir2/Martlet/pull/24), [#25](https://github.com/throndir2/Martlet/pull/25), [#31](https://github.com/throndir2/Martlet/pull/31))
+- Martlet includes a participation policy for deciding when to speak. ([#16](https://github.com/throndir2/Martlet/pull/16))
+- Release delivery includes opt-in update checks and normal unsigned versioned releases. ([#79](https://github.com/throndir2/Martlet/pull/79), [#82](https://github.com/throndir2/Martlet/pull/82), [#83](https://github.com/throndir2/Martlet/pull/83), [#81](https://github.com/throndir2/Martlet/pull/81))
+
+### Changed
+- Behind-the-scenes improvements to tests, packaging, validation policy, planning, docs, and repository foundations. ([#80](https://github.com/throndir2/Martlet/pull/80), [#72](https://github.com/throndir2/Martlet/pull/72), [#67](https://github.com/throndir2/Martlet/pull/67), [#64](https://github.com/throndir2/Martlet/pull/64), [#22](https://github.com/throndir2/Martlet/pull/22), [#13](https://github.com/throndir2/Martlet/pull/13), [#5](https://github.com/throndir2/Martlet/pull/5), [#3](https://github.com/throndir2/Martlet/pull/3), [#2](https://github.com/throndir2/Martlet/pull/2), [#1](https://github.com/throndir2/Martlet/pull/1), [#32](https://github.com/throndir2/Martlet/pull/32))
+
+### Fixed
+- MCP desktop automation stays attached during unrelated window churn. ([#66](https://github.com/throndir2/Martlet/pull/66))

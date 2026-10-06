@@ -37,7 +37,17 @@ boundaries still apply. Never trigger
 remote validation; check workflow triggers before publication and merge, and
 confirm the merged result on `origin/main`. Releases are pre-authorized:
 agents may build and publish them through a minimal build/release workflow
-without asking. Deliver actual production paths
+without asking.
+
+**Changelog:** every PR with a change users can notice adds a plain-language
+line with its PR link under `## [Unreleased]` in `CHANGELOG.md`. A release PR
+bumps `<Version>`, turns `Unreleased` into `## [<version>] - <date>`, refreshes
+the README's *What's new in <version>* highlights and checks
+`.\scripts\Get-ReleaseNotes.ps1 -Version <version>`; the release workflow
+publishes that section as the release notes. Full steps:
+[Changelog and release notes](../AGENTS.md#changelog-and-release-notes).
+
+Deliver actual production paths
 early, replace obsolete designs when warranted and minimize narration.
 Parallelize independent work with isolated ownership. Safety, consent and
 honest reporting remain mandatory.

@@ -50,6 +50,16 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
+## 🆕 What's new in 0.48.0
+
+- 💬 **WhatsApp**: chat with Martlet from WhatsApp, with guided setup.
+- 📹 **Discord camera**: picture backgrounds and free character framing in Discord calls.
+- 🖥️ **Devices**: a folding map and a searchable list for lots of computers.
+- 🗂️ **Conversation history**: edits and deletes follow you across your PC, Telegram, Discord and WhatsApp.
+- ⚖️ **Sharing work**: busy computers, job order and dedicated hosts are respected.
+
+[Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
+
 ## 💬 Things you can say
 
 > 🎮 **"Ugh, this boss again. Any ideas?"**
@@ -144,7 +154,7 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 - **Tools**: browse the MCP Registry and install tool servers with a click.
 - A built-in **Terminal** (off until you turn it on) that asks before every command.
 - **Home Assistant** for lights, climate and more.
-- Chat with her on **Discord** (she can even join voice channels) and **Telegram**.
+- Chat with her on **Discord** (she can even join voice channels), **Telegram** and **WhatsApp**.
 
 </td>
 <td valign="top">

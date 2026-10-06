@@ -22,7 +22,9 @@ Docker on your PC or a Linux box over key-based SSH. See
 ## Make a change
 
 1. Branch from freshly fetched `origin/main`; keep one focused change per branch.
-2. Write or update tests in the matching `tests\` project.
+2. Write or update tests in the matching `tests\` project. If users will notice
+   the change, add a line under `## [Unreleased]` in `CHANGELOG.md`
+   ([how](AGENTS.md#changelog-and-release-notes)).
 3. Validate ([Validating changes](docs/VALIDATION.md)):
    - `.\scripts\Test-Martlet.ps1 -Project <Project>.Tests -Filter '<your tests>'`
      runs only your targeted tests: the ones you added or changed and the suite
