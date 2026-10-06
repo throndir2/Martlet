@@ -23,13 +23,12 @@ Unsigned does not mean prototype. It means the release is not code-signed by a p
 
 ## First launch
 
-The installer asks no setup questions and installs no optional prerequisites. The welcome tour asks what this PC is for:
+The installer asks no setup questions and installs no optional prerequisites. The welcome wizard asks:
 
-- **Talk with my companion here** for the PC you sit at.
-- **Lend this PC to Martlet** for a host PC.
-- **Set it all up for me** (recommended) to set up thinking, listening and a voice that fit this PC, after one confirmation.
-- **Recommend a setup for me** for a guided plan.
-- **I know what I want** to choose destinations yourself.
+- Whether to **start a new Martlet network** or **join yours** (it finds your other computers on this network), or make this a host PC.
+- Whether to **keep everything on your computers** or use **free online services** too.
+
+Then it shows what fits this PC, with each part's share of the graphics card, memory and processor, and **Use these suggestions** sets it up after one confirmation. **Ask me three questions instead** and **I'll choose myself** are there too.
 
 ![Welcome tour](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/welcome.png)
 

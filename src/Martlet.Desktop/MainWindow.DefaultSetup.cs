@@ -4,7 +4,7 @@ using Martlet.Sherpa;
 
 namespace Martlet.Desktop;
 
-/// <summary>Set it all up for me (the welcome tour, Home's first step and the Listening and Voice notices): on a PC that isn't
+/// <summary>Set it all up for me (the welcome wizard's Use these suggestions, Home's first step and the Listening and Voice notices): on a PC that isn't
 /// in a Martlet network, one confirmation sets up Thinking, Listening and Voice the way <see cref="DefaultSetup"/> plans them for
 /// this PC's hardware. The quick parts come first (Ollama with the smallest model that hears, Parakeet and a Windows voice), so
 /// Martlet talks within minutes; a voice engine and Whisper on the graphics card follow when they fit, and switch over when ready.</summary>
@@ -31,13 +31,16 @@ public partial class MainWindow
         catch (OperationCanceledException) { gpus = []; }
         var current = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         double? thinkingGb = thinking ? null : IsLocalOllama(current) ? ListeningAdvisor.OllamaModelGb(current!.ModelId) : 0;
-        return DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb);
+        return DefaultSetup.Plan(gpus, machine.BestGpu, machine.Threads, CultureInfo.CurrentUICulture, thinkingGb, machine.MemoryGb);
     }
 
-    /// <summary>Sets up the chosen jobs that aren't set up yet, as planned for this PC, after one confirmation.</summary>
-    private async Task SetUpDefaultsAsync(bool thinking = true, bool listening = true, bool voice = true)
+    /// <summary>Sets up the chosen jobs that aren't set up yet, as planned for this PC (or as <paramref name="planned"/>, the
+    /// welcome wizard's accepted plan), after one confirmation that also names <paramref name="extra"/>. Returns whether the owner
+    /// went ahead (true when nothing was left to set up).</summary>
+    private async Task<bool> SetUpDefaultsAsync(bool thinking = true, bool listening = true, bool voice = true, string? extra = null,
+        DefaultSetupPlan? planned = null)
     {
-        if (store is null || setupService is null || closing || settingUpDefaults) return;
+        if (store is null || setupService is null || closing || settingUpDefaults) return false;
         var routes = homeSettings?.Setup?.Routes ?? [];
         thinking &= routes.All(r => r.Role != SetupRole.Llm);
         listening &= routes.All(r => r.Role != SetupRole.Stt);
@@ -45,14 +48,14 @@ public partial class MainWindow
         if (!thinking && !listening && !voice)
         {
             ActionText.Text = "Thinking, listening and voice are already set up. Change them in Companion.";
-            return;
+            return true;
         }
         settingUpDefaults = true;
         try
         {
             ActionText.Text = "Checking what fits this PC...";
-            var plan = await DefaultPlanAsync(thinking);
-            if (closing) return;
+            var plan = planned ?? await DefaultPlanAsync(thinking);
+            if (closing) return false;
             var parakeetModel = ParakeetModels.Find(plan.ParakeetModel);
             var downloads = new List<string>();
             if (thinking)
@@ -63,15 +66,17 @@ public partial class MainWindow
                 downloads.Add((machine.DockerInstalled ? "" : "Docker Desktop (it shows its own terms) and ") + $"{gpuVoice.Name} (a large download)");
             if (listening && plan.ListenOnGpu) downloads.Add($"Whisper {plan.Listening.GpuModel}");
             if (!ConfirmationDialog.Confirm(this,
-                    $"Set up Martlet for this PC ({plan.Gpu})?\n\n{plan.Describe(thinking, listening, voice)}\n\n" +
+                    $"Set up Martlet for this PC ({plan.Gpu})?\n\n{plan.Describe(thinking, listening, voice)}{(extra is null ? "" : "\n" + extra)}\n\n" +
                     (downloads.Count > 0 ? $"Martlet downloads {string.Join(", ", downloads)}. " : "") +
-                    "Everything runs on this PC: what you say and Martlet's replies aren't sent online. The microphone only listens " +
+                    (thinking || homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm) is not { RouteType: SetupRouteType.ChatCompletions or SetupRouteType.OpenAi }
+                        ? "Everything runs on this PC: what you say and Martlet's replies aren't sent online. "
+                        : "Listening and the voice run on this PC; Thinking uses the online service you chose. ") + "The microphone only listens " +
                     "after you press Start listening." +
                     (voice && plan.Voice is { } terms ? "\n\n" + EngineTerms(terms) : "") + " The models' own licenses apply.",
                     "Set it all up for me", "Set it up", "Not now", questionId: "DefaultSetupQuestion"))
             {
                 ActionText.Text = "Nothing changed. Set up each job in Companion whenever you like.";
-                return;
+                return false;
             }
             ErrorLog.Info($"Setting up this PC's defaults ({plan.Gpu}): {plan.Describe(thinking, listening, voice).Replace('\n', ' ')}");
 
@@ -91,14 +96,15 @@ public partial class MainWindow
             if (listening && plan.ListenOnGpu && !closing && speaking?.RouteType == SetupRouteType.GatewayF5 && ThisPcHost() is not null)
                 await UseListeningHereAsync(gpu: true, confirmed: true);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { return false; }
         finally
         {
             settingUpDefaults = false;
         }
-        if (closing) return;
+        if (closing) return false;
         await RefreshHomeAsync();
         ActionText.Text = DefaultSetupOutcome();
+        return true;
     }
 
     /// <summary>Thinking with <paramref name="model"/> in Ollama on this PC, installing Ollama (with the model) first when needed.</summary>
@@ -123,15 +129,4 @@ public partial class MainWindow
             (ready ? ". Press Start listening or Start talking, and Show character." : ". Set up Thinking in Companion to start talking.");
     }
 
-    /// <summary>The tour's plan line: what Set it all up for me would choose on this PC.</summary>
-    private async Task ShowTourDefaultsAsync()
-    {
-        TourDefaults.Visibility = InMartletNetwork() ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
-        TourDefaultsPlan.Text = "Checking what fits this PC...";
-        var plan = await DefaultPlanAsync(thinking: homeSettings?.Setup?.Routes.Any(r => r.Role == SetupRole.Llm) != true);
-        if (closing) return;
-        TourDefaultsPlan.Text = $"On {plan.Gpu}: {plan.Thinking.Id} · " +
-            (plan.Voice is { } engine ? engine.Name : "Windows voice") + " · " +
-            (plan.ListenOnGpu ? $"Whisper {plan.Listening.GpuModel}" : "Parakeet") + " · your default microphone";
-    }
 }
