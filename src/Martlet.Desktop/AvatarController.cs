@@ -269,6 +269,26 @@ internal sealed partial class AvatarController : IAsyncDisposable
     internal bool PlacementLocked => LockedPlacement is not null;
 
     private int voiceMuted;
+    private string? camera;
+
+    /// <summary>The camera view's background (#RRGGBB) while the character shows in its own 16:9 window for OBS (Martlet in
+    /// your Discord calls), or null for the usual overlay.</summary>
+    internal string? Camera => Volatile.Read(ref camera);
+
+    /// <summary>Opens the camera view (the character on a solid <paramref name="background"/> in an ordinary 16:9 window) or
+    /// closes it (null). Returns whether the showing character now shows it; hidden, it shows that way when it shows next.</summary>
+    internal async Task<bool> SetCameraAsync(string? background, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            Volatile.Write(ref camera, background);
+            if (renderer is not { HasExited: false } current || profile is null) return false;
+            await current.SendAsync("camera", new RendererCamera(background is not null, background ?? "#00B140"), token);
+            return background is not null;
+        }
+        finally { changes.Release(); }
+    }
 
     /// <summary>Martlet's voice is muted (Speak Martlet's replies aloud is off): a newly shown character's menu offers Unmute
     /// voice instead of Mute voice. Set it before showing; <see cref="SetVoiceMutedAsync"/> also tells a showing character.</summary>
@@ -718,6 +738,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             next.Requested += action => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) Requested?.Invoke(action); };
             renderer = next;
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
+            // A camera view that was open stays open when the character shows again.
+            if (Camera is { } color) await next.SendAsync("camera", new RendererCamera(true, color), attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

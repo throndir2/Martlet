@@ -56,6 +56,8 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
 
     private readonly object gate = new();
     private readonly Dictionary<string, GatewaySignInAttempt> attempts = new(StringComparer.Ordinal);
+    private readonly List<(string DeviceId, GatewaySignInIdentity Identity, DateTimeOffset At)> refused = [];
+    internal const int MaximumRefused = 8;
     private GatewaySignInDocument document = new();
     private IGatewaySignInStorage? storage;
 
@@ -112,15 +114,15 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
     }
 
     /// <summary>The ways to sign in here, for anyone (nothing secret).</summary>
-    internal IReadOnlyList<(string Id, string Kind, string Name)> Available()
+    internal IReadOnlyList<(string Id, string Kind, string Name, int? RedirectPort)> Available()
     {
         lock (gate)
         {
             if (storage is null) return [];
             var current = document = LoadLocked();
-            var list = new List<(string, string, string)>();
-            if (current.Owner is not null) list.Add((OwnerProvider, OwnerProvider, "Owner account"));
-            list.AddRange(current.Providers.Where(p => Providers(p) is not null).Select(p => (p.Id, p.Kind, p.Name)));
+            var list = new List<(string, string, string, int?)>();
+            if (current.Owner is not null) list.Add((OwnerProvider, OwnerProvider, "Owner account", null));
+            list.AddRange(current.Providers.Where(p => Providers(p) is not null).Select(p => (p.Id, p.Kind, p.Name, p.RedirectPort)));
             return list;
         }
     }
@@ -140,8 +142,8 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
                 var config = current.Providers.FirstOrDefault(p => p.Id == provider);
                 external = config is null ? null : Providers(config);
                 GatewayRules.Require(external is not null, "signin.unavailable");
-                GatewayRules.Require(Base64Url.TryDecode(codeChallenge, 32, out _) && IsLoopbackRedirect(redirectUri),
-                    "request.invalid");
+                GatewayRules.Require(Base64Url.TryDecode(codeChallenge, 32, out _) && IsLoopbackRedirect(redirectUri) &&
+                    (config!.RedirectPort is not { } port || new Uri(redirectUri!).Port == port), "request.invalid");
             }
             var now = clock.GetUtcNow();
             foreach (var stale in attempts.Values.Where(a => a.ExpiresAt <= now).ToArray()) attempts.Remove(stale.Id);
@@ -185,6 +187,9 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             else if (!current.Allowed.Any(a => a.Provider == who.Provider && a.Subject == who.Subject))
             {
                 log(LogLevels.Warn, $"Sign-in by {Display(who)} for {deviceId} refused: that identity is not on this host's allow list.");
+                refused.RemoveAll(r => r.Identity.Provider == who.Provider && r.Identity.Subject == who.Subject);
+                refused.Insert(0, (deviceId, who, clock.GetUtcNow()));
+                if (refused.Count > MaximumRefused) refused.RemoveAt(refused.Count - 1);
                 throw new GatewayProtocolException("signin.not_allowed");
             }
             credentials.RevokeDevice(deviceId, cancellationToken);
@@ -253,6 +258,13 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
                 : current.Allowed.Any(a => a.Provider == enrolled.Provider && a.Subject == enrolled.Subject);
             return allowed ? (new(enrolled.Provider, enrolled.Subject, enrolled.Label), enrolled.EnrolledAt) : null;
         }
+    }
+
+    /// <summary>Identities that signed in but weren't allowed, newest first (in memory, at most <see cref="MaximumRefused"/>), so
+    /// the owner can allow the one that was theirs without looking up a provider's subject.</summary>
+    internal IReadOnlyList<(string DeviceId, GatewaySignInIdentity Identity, DateTimeOffset At)> Refused()
+    {
+        lock (gate) return refused.Where(r => !document.Allows(r.Identity.Provider, r.Identity.Subject)).ToArray();
     }
 
     internal GatewaySignInDocument Snapshot()
@@ -395,9 +407,13 @@ internal sealed record GatewaySignInProviderConfig
     public string? ClientId { get; init; }
     public string? ClientSecret { get; init; }
     public string? Scopes { get; init; }
+    /// <summary>The loopback port the computer must listen on, for providers that only take redirect URIs registered
+    /// exactly (Discord): http://127.0.0.1:&lt;port&gt;/. Null lets the computer pick a free port (RFC 8252).</summary>
+    public int? RedirectPort { get; init; }
 
     internal void Validate()
     {
+        GatewayRules.Require(RedirectPort is null or (>= 1024 and <= 65535), "request.invalid");
         GatewayRules.Require(Id is { Length: > 0 and <= 32 } && Id != GatewaySignInService.OwnerProvider &&
             Id.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'), "request.invalid");
         GatewayRules.Require(Kind is "oidc" or "discord" or "steam", "request.invalid");

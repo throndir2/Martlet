@@ -109,7 +109,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
         // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
         // Save, recovery codes, Remove, Allow and Make invite change or reveal things, so they need --allow-ui-effects.
-        "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose"
+        "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose",
+        // Companion › Discord › Martlet in your Discord calls › Check this PC only reads: it lists the playback devices' names,
+        // looks for Discord's process and sets up a process loopback and closes it unstarted (nothing is recorded or played).
+        // The mode's checkboxes, choices and Open camera view change things, so they need --allow-ui-effects.
+        "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -158,7 +162,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
         // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
-        "SignInEnrolledList",
+        "SignInEnrolledList", "SignInRefusedList",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
@@ -284,6 +288,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
         "TalkHearPcStatus", "LivePcAudio",
+        // Companion › Discord › Martlet in your Discord calls: the mode's line (on or off, whether Martlet hears the Discord
+        // app alone or everything but itself, who-is-talking source and the output its voice goes to), the who-is-talking line
+        // (its source and how many people were named, never who), the output line (the device's name), the camera view's line
+        // (open or closed, its background), Check this PC's result, and the What to hear, Voice output and camera background
+        // choices (choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects). Never the owner's
+        // Discord name or anything heard or seen.
+        "DiscordCallStatus", "DiscordCallAttribution", "DiscordCallOutputStatus", "DiscordCallCameraStatus", "DiscordCallDoctor",
+        "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground",
+        // What the talk window's newest reply, report or look took together (One moment: your words, lines this PC played, the
+        // picture and what wanted your attention, finished background work), counts only, never what was said, seen or found.
+        "LiveTurnInputs",
         // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
         // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
         // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and

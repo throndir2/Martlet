@@ -13,7 +13,7 @@ namespace Martlet.NodeLinkCheck;
 /// <summary>
 /// Rehearses joining from outside home by signing in, end to end with the production code: a real gateway (Kestrel, pinned
 /// TLS) on 127.0.0.1 with in-memory network.json and signin.json, a member desktop at home and a laptop "away" that only has
-/// the owner's invite. The home PC founds the network, sets up the owner account with a real authenticator secret (codes
+/// the owner's invite, and a tablet that signs in at an OpenID Connect issuer in this process through a simulated browser. The home PC founds the network, sets up the owner account with a real authenticator secret (codes
 /// computed like an authenticator app) and makes an invite whose outside address is "localhost" (so the certificate's name
 /// doesn't match and only the pin is trusted). The laptop pins the host from the invite, is refused with a wrong password,
 /// a reused code and a forged pin, signs in with the right ones, asks to join and is let into the network by the home PC on
@@ -135,6 +135,60 @@ internal static class SignInRehearsal
             var approved = home.ApproveSignedIn(seen.Joins);
             return (join is { SignIn: null } && approved.Count == 0, $"OTHER-PC join attested: {join?.SignIn is not null}; let in: {approved.Count}");
         });
+        using var issuer = new LabIssuer();
+        host.Server.UseSignInProviderHandler(issuer);
+        using var keyTablet = NetworkKey.Create("lab-tablet");
+        var tablet = new LabDesktop(keyTablet, "TABLET");
+        await Run("The home PC adds an OpenID Connect provider (client secret kept on the host, never read back)", async () =>
+        {
+            var settings = await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "provider", ["provider_config"] = new JsonObject
+                {
+                    ["id"] = "authentik", ["kind"] = "oidc", ["name"] = "Authentik", ["issuer"] = LabIssuer.Issuer,
+                    ["client_id"] = LabIssuer.ClientId, ["client_secret"] = LabIssuer.ClientSecret
+                }
+            }, token);
+            var provider = settings.Providers.Single();
+            var listed = (await HostSignInClient.ReadProvidersAsync(invite, token)).Providers;
+            return (provider.HasClientSecret && listed.Any(p => p.Id == "authentik" && p.InBrowser),
+                $"provider {provider.Id} ({provider.Kind}), secret kept: {provider.HasClientSecret}; offered: {string.Join(", ", listed.Select(p => p.Id))}");
+        });
+        await Run("A tablet signs in in the (simulated) browser: refused until the home PC allows the identity it saw, then paired " +
+            "and let into the network on the attestation", async () =>
+        {
+            var refused = await FailureAsync(() => HostSignInClient.SignInInBrowserAsync(invite, origin!, "authentik", keyTablet.DeviceId, "TABLET",
+                issuer.Browse, TimeSpan.FromSeconds(30), token));
+            var waiting = (await home.ReadAsync(host.HostId, token)).Refused.FirstOrDefault();
+            if (waiting is null) return (false, $"first try: {refused}; nothing waiting to be allowed");
+            await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "allow", ["provider"] = waiting.Provider, ["subject"] = waiting.Subject, ["label"] = waiting.Label
+            }, token);
+            var (pairing, secret, who) = await HostSignInClient.SignInInBrowserAsync(invite, origin!, "authentik", keyTablet.DeviceId, "TABLET",
+                issuer.Browse, TimeSpan.FromSeconds(30), token);
+            tablet.Keep(pairing, secret);
+            await tablet.SyncAsync(token);
+            var approved = home.ApproveSignedIn((await home.SyncAsync(token)).Joins);
+            await home.SyncAsync(token);
+            await tablet.SyncAsync(token);
+            var member = tablet.State.Roster?.Trusts(keyTablet.DeviceId, keyTablet.PublicKey) == true;
+            return (refused == "signin.not_allowed" && who.Label == "me@example.net" && approved.Count == 1 && member && issuer.SecretSeen,
+                $"first try: {refused}; allowed {waiting.Label} ({waiting.Provider}:{waiting.Subject}); signed in as {who}; client secret used by the host: " +
+                $"{issuer.SecretSeen}; let in: {approved.Count}; member: {member}");
+        });
+        await Run("A Steam account allowed at home by its SteamID64 signs in (OpenID 2.0 assertion confirmed with Steam by the host)", async () =>
+        {
+            await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "provider", ["provider_config"] = new JsonObject { ["id"] = "steam", ["kind"] = "steam", ["name"] = "Steam" }
+            }, token);
+            await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "allow", ["provider"] = "steam", ["subject"] = LabIssuer.SteamId }, token);
+            using var keyGaming = NetworkKey.Create("lab-gaming-pc");
+            var (_, _, who) = await HostSignInClient.SignInInBrowserAsync(invite, origin!, "steam", keyGaming.DeviceId, "GAMING-PC",
+                issuer.Browse, TimeSpan.FromSeconds(30), token);
+            return (who.Subject == LabIssuer.SteamId && issuer.SteamChecks == 1, $"signed in as {who}; assertions confirmed with Steam: {issuer.SteamChecks}");
+        });
         await Run("Removing the owner account takes the laptop's access away", async () =>
         {
             var settings = await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-owner" }, token);
@@ -157,8 +211,9 @@ internal static class SignInRehearsal
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
             scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS, in-memory signin.json and network.json), simulated desktops using " +
-                "the desktop's sign-in client and network sync engine, authenticator codes computed from the secret. Not covered: the " +
-                "desktop windows, Windows Credential Manager, a host reached over the internet, browser sign-in providers.",
+                "the desktop's sign-in client and network sync engine, authenticator codes computed from the secret, an OpenID Connect issuer in this process and a simulated " +
+                "browser that follows the redirect to the desktop's real loopback listener. Not covered: the desktop windows, Windows " +
+                "Credential Manager, a host reached over the internet, a real browser and a real issuer (Authentik, Google, ...).",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -170,6 +225,108 @@ internal static class SignInRehearsal
     }
 
     private sealed record Step(string Name, bool Ok, string Detail);
+
+/// <summary>An OpenID Connect issuer in this process (discovery, an RSA key set, a token endpoint that signs ID tokens) and a
+    /// simulated browser: <see cref="Browse"/> "signs in" at the authorize URL and follows the redirect to the computer's real
+    /// loopback listener.</summary>
+    private sealed class LabIssuer : HttpMessageHandler
+    {
+        internal const string Issuer = "https://idp.lab.invalid";
+        internal const string ClientId = "martlet-lab";
+        internal const string ClientSecret = "lab-client-secret";
+        private readonly RSA key = RSA.Create(2048);
+        private readonly Dictionary<string, string> nonces = new(StringComparer.Ordinal);
+        internal const string SteamId = "76561198000000042";
+        internal bool SecretSeen;
+        internal int SteamChecks;
+
+        internal void Browse(string url)
+        {
+            var uri = new Uri(url);
+            var query = uri.Query.TrimStart('?').Split('&').Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]));
+            if (uri.Host == "steamcommunity.com")
+            {
+                // Steam's positive assertion, sent back to return_to (which carries the attempt's state).
+                var claimed = "https://steamcommunity.com/openid/id/" + SteamId;
+                var assertion = new Dictionary<string, string>
+                {
+                    ["openid.ns"] = "http://specs.openid.net/auth/2.0", ["openid.mode"] = "id_res",
+                    ["openid.op_endpoint"] = "https://steamcommunity.com/openid/login", ["openid.claimed_id"] = claimed,
+                    ["openid.identity"] = claimed, ["openid.return_to"] = query["openid.return_to"],
+                    ["openid.response_nonce"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + "lab",
+                    ["openid.assoc_handle"] = "1234567890", ["openid.signed"] = "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+                    ["openid.sig"] = "bGFi"
+                };
+                var target = query["openid.return_to"] + "&" + string.Join("&", assertion.Select(p => p.Key + "=" + Uri.EscapeDataString(p.Value)));
+                _ = Task.Run(async () =>
+                {
+                    using var steamBrowser = new HttpClient();
+                    using var _ = await steamBrowser.GetAsync(target);
+                });
+                return;
+            }
+            var code = Base64Url(RandomNumberGenerator.GetBytes(16));
+            lock (nonces) nonces[code] = query["nonce"];
+            var back = query["redirect_uri"] + "?code=" + code + "&state=" + Uri.EscapeDataString(query["state"]);
+            _ = Task.Run(async () =>
+            {
+                using var browser = new HttpClient();
+                using var _ = await browser.GetAsync(back);
+            });
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            object? body = null;
+            if (path == "/.well-known/openid-configuration")
+                body = new { issuer = Issuer, authorization_endpoint = Issuer + "/authorize", token_endpoint = Issuer + "/token", jwks_uri = Issuer + "/jwks" };
+            else if (path == "/jwks")
+            {
+                var p = key.ExportParameters(false);
+                body = new { keys = new[] { new { kty = "RSA", kid = "lab", n = Base64Url(p.Modulus!), e = Base64Url(p.Exponent!) } } };
+            }
+            else if (request.RequestUri.Host == "steamcommunity.com" && request.Method == HttpMethod.Post)
+            {
+                var form = await request.Content!.ReadAsStringAsync(cancellationToken);
+                Interlocked.Increment(ref SteamChecks);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("ns:http://specs.openid.net/auth/2.0\nis_valid:" + (form.Contains("openid.mode=check_authentication") ? "true" : "false") + "\n")
+                };
+            }
+            else if (path == "/token")
+            {
+                var form = (await request.Content!.ReadAsStringAsync(cancellationToken)).Split('&').Select(p => p.Split('=', 2))
+                    .ToDictionary(p => Uri.UnescapeDataString(p[0]), p => Uri.UnescapeDataString(p[1]));
+                SecretSeen |= request.Headers.Authorization?.Parameter is { } basic &&
+                    System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(basic)) == ClientId + ":" + ClientSecret;
+                string? nonce;
+                lock (nonces) nonces.Remove(form["code"], out nonce);
+                if (nonce is null) return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var header = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { alg = "RS256", kid = "lab" }));
+                var claims = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    iss = Issuer, aud = ClientId, sub = "lab-user-42", email = "me@example.net", email_verified = true, iat = now, exp = now + 300, nonce
+                }));
+                var signature = key.SignData(System.Text.Encoding.ASCII.GetBytes(header + "." + claims), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                body = new { access_token = "lab", token_type = "Bearer", id_token = header + "." + claims + "." + Base64Url(signature) };
+            }
+            return body is null ? new HttpResponseMessage(HttpStatusCode.NotFound) : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json")
+            };
+        }
+
+        private static string Base64Url(byte[] bytes) => System.Buffers.Text.Base64Url.EncodeToString(bytes);
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) key.Dispose();
+            base.Dispose(disposing);
+        }
+    }
 
     private sealed class LabDesktop(NetworkKey key, string name)
     {
@@ -211,6 +368,12 @@ internal static class SignInRehearsal
         {
             using var connection = new Audio2FaceHostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
             return await connection.ChangeSignInSettingsAsync(change, token);
+        }
+
+        internal async Task<HostSignInSettings> ReadAsync(string hostId, CancellationToken token)
+        {
+            using var connection = new Audio2FaceHostConnection(pairings[hostId].Pairing, pairings[hostId].Secret);
+            return await connection.ReadSignInSettingsAsync(token);
         }
 
         internal async Task<bool> CanUseAsync(string hostId, CancellationToken token) => await FailureCodeAsync(hostId, token) is null;
