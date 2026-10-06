@@ -7,8 +7,8 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>Transcribes utterances with a paired host's whisper (its stt role) through its pinned gateway, reading the
-/// pairing secret from Windows Credential Manager for each request (as <see cref="HostTextClient"/> does).</summary>
+/// <summary>Transcribes utterances with a paired host's speech-to-text (its stt role: whisper or Parakeet) through its pinned
+/// gateway, reading the pairing secret from Windows Credential Manager for each request (as <see cref="HostTextClient"/> does).</summary>
 internal sealed class HostTranscriptionClient : IHostTranscriptionClient
 {
     public async Task<string> TranscribeAsync(HostTextTarget target, string modelId, ReadOnlyMemory<byte> pcm16kMono,

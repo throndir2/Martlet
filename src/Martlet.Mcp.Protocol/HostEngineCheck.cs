@@ -13,9 +13,10 @@ namespace Martlet.Mcp;
 /// once with exit 75 and MARTLET-BUSY, an attended run waits and gives up after MARTLET_LOCK_WAIT, adds of different roles
 /// run side by side while the same role or exclusive group waits, setup and update wait for every change and hold back
 /// later ones, a waiting run continues when the holder dies (SIGKILL), so does a run without a terminal or --yes that was
-/// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it, and an add whose
-/// image build fails says to run it again. The desktop's own reader (<see cref="HostEngineBusy"/>) then reads the engine's
-/// real busy line.</summary>
+/// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it, an add whose
+/// image build fails says to run it again, and a role's variants (like the stt role's whisper and Parakeet engines) keep their
+/// own choices, GPU option and prepare step and switch only once the chosen one is prepared. The desktop's own reader
+/// (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
 {
     internal const string Image = "ubuntu:24.04";
@@ -78,7 +79,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 26;
+        const int expected = 31;
         if (steps.Count < expected)
         {
             passed = false;
@@ -371,5 +372,60 @@ internal static class HostEngineCheck
         [[ $rc == 1 ]] && has /tmp/buildfail.out "Stopped: Building or starting fixture-build failed" &&
           has /tmp/buildfail.out "run 'martlet-host add fixture-build' again" && has "$log" "stopped: Building or starting fixture-build failed" && ok=1 || ok=0
         step build-failure-says-run-again "$ok" "add whose compose up fails (exit 17): exit $rc, $(grep -m1 -oE 'Stopped: Building or starting [^.]*' /tmp/buildfail.out || tail -n1 /tmp/buildfail.out)"
+
+        # Role variants (like the stt role's whisper and Parakeet engines): a variant's own choices, GPU option and prepare step
+        # apply only when it is chosen, describe lists them with their condition, and switching keeps the previous variant
+        # running until the chosen one is prepared. A fake docker records each compose call with its profile and stops at up -d.
+        mkdir -p /tmp/variant "${E%/*}/roles/fixture-variant"
+        printf '%s\n' 'title=Fixture variant (FIXTURE, installs nothing)' requires=docker port=50997 \
+          'choice=FX_ENGINE|Engine|alpha beta|alpha' model_from=FX_MODEL profile_from=FX_ENGINE profile_legacy=alpha \
+          '[FX_ENGINE=alpha]' 'gpu=optional|compose.gpu.yaml' 'choice=FX_MODEL|Alpha model|a1 a2|a1' 'choice_by_vram=FX_MODEL|0@a1 4000@a2' \
+          prepare=alpha '[end]' '[FX_ENGINE=beta]' 'choice=FX_MODEL|Beta model|b1 b2|b1' prepare=beta '[end]' > "${E%/*}/roles/fixture-variant/role.conf"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-variant/compose.yaml"
+        printf 'services: {}\n' > "${E%/*}/roles/fixture-variant/compose.gpu.yaml"
+        cat > /tmp/variant/docker <<'FAKE'
+        #!/bin/bash
+        [[ "$1" == run ]] && { cat > /dev/null; exit 0; }
+        [[ "$1" == compose && "$2" != version ]] || exit 0
+        a="$*"; echo "${COMPOSE_PROFILES:-}|${a#*compose.yaml }" >> /tmp/variant/calls
+        [[ " $* " == *" up -d "* ]] && exit 17
+        exit 0
+        FAKE
+        chmod 755 /tmp/variant/docker
+        V() { : > /tmp/variant/calls; printf '%s\n' "$@" end | PATH="/tmp/variant:$PATH" timeout 30 "$E" --yes add fixture-variant >/tmp/variant/out 2>&1; }
+        venv() { grep -E '^(FX_|COMPOSE_PROFILES|MARTLET_ACCELERATOR)' /tmp/d/roles/fixture-variant/.env | tr '\n' ' '; }
+        calls() { tr '\n' ';' < /tmp/variant/calls; }
+
+        PATH="/tmp/variant:$PATH" timeout 15 "$E" describe fixture-variant </dev/null >/tmp/variant/describe 2>&1
+        has /tmp/variant/describe 'role.choice=FX_ENGINE|Engine|alpha beta|alpha' &&
+          has /tmp/variant/describe 'role.choice_when=FX_ENGINE=alpha|FX_MODEL|Alpha model|a1 a2|a1' &&
+          has /tmp/variant/describe 'role.choice_when=FX_ENGINE=beta|FX_MODEL|Beta model|b1 b2|b1' &&
+          has /tmp/variant/describe 'role.suggested_when=FX_ENGINE=alpha|FX_MODEL' && has /tmp/variant/describe 'role.gpu_when=FX_ENGINE=alpha' &&
+          has /tmp/variant/describe 'role.accelerator=gpu cpu' && ! grep -q '^role.choice=FX_MODEL' /tmp/variant/describe && ok=1 || ok=0
+        step variant-describe "$ok" "describe lists $(grep -c '_when=' /tmp/variant/describe) variant entries: $(grep -oE '^role\.[a-z_]+_when=[^|]*' /tmp/variant/describe | sort -u | tr '\n' ' ')"
+
+        V choice.FX_ENGINE=beta choice.accelerator=gpu choice.FX_MODEL=b2
+        env="$(venv)"; overlay=none; [[ -e /tmp/d/roles/fixture-variant/compose.gpu.yaml ]] && overlay=added
+        [[ "$env" == "FX_ENGINE=beta FX_MODEL=b2 COMPOSE_PROFILES=beta " && $overlay == none ]] &&
+          [[ "$(calls)" == "beta|run --rm --no-deps -T -e MARTLET_PREPARE=1 beta;beta|up -d;" ]] && ok=1 || ok=0
+        step variant-own-choices "$ok" "add with engine beta (and an ignored gpu answer): $env; GPU overlay $overlay; $(calls)"
+
+        sed -i '/^COMPOSE_PROFILES=/d; s/^FX_ENGINE=beta/FX_ENGINE=alpha/' /tmp/d/roles/fixture-variant/.env
+        V choice.FX_ENGINE=beta
+        [[ "$(calls)" == "beta|run --rm --no-deps -T -e MARTLET_PREPARE=1 beta;beta|up --no-start;alpha|down;beta|up -d;" ]] &&
+          has /tmp/variant/out "while alpha still runs" && ok=1 || ok=0
+        step variant-switch-after-prepare "$ok" "an install from before the role had variants (profile_legacy alpha) moved to beta: $(calls)"
+
+        # Run again after that switch stopped at up -d (as a failed build or download would): .env names beta already, yet the
+        # other variant is still stopped before beta starts, so a leftover alpha never keeps the role's port.
+        V choice.FX_ENGINE=beta
+        [[ "$(calls)" == "beta|run --rm --no-deps -T -e MARTLET_PREPARE=1 beta;alpha|down;beta|up -d;" ]] && ok=1 || ok=0
+        step variant-retry-stops-the-other "$ok" "the same switch run again: $(calls)"
+
+        V choice.FX_ENGINE=alpha choice.FX_MODEL=b1; refused=0; has /tmp/variant/out "Choose one of: a1 a2" && refused=1
+        V choice.FX_ENGINE=alpha
+        [[ $refused == 1 && "$(venv)" == "FX_ENGINE=alpha MARTLET_ACCELERATOR=cpu FX_MODEL=a1 COMPOSE_PROFILES=alpha " ]] &&
+          [[ "$(calls)" == "alpha|run --rm --no-deps -T -e MARTLET_PREPARE=1 alpha;alpha|up --no-start;beta|down;alpha|up -d;" ]] && ok=1 || ok=0
+        step variant-gpu-and-suggestion "$ok" "a beta model for alpha refused: $refused; alpha automatic on this GPU-less host: $(venv); $(calls)"
         """;
 }

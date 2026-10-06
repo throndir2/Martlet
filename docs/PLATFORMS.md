@@ -64,6 +64,7 @@ macOS 14, iOS/iPadOS 26, Android 8.0.
 | Thinking: MLX models (including vision) | Impossible | Impossible | Planned (MA02; Apple silicon) | - | - |
 | Thinking: Gemini Nano, LiteRT or llama.cpp | - | - | - | - | Planned (AN04): LiteRT and llama.cpp in the background; Gemini Nano **only while the Hosting screen is in front** |
 | Listening: whisper | **Works** (CPU is fine; NVIDIA faster) | **Works** | Planned (MA02): Metal on Apple silicon; base/small on Intel | Not planned: Apple speech instead | Planned (AN04): tiny/base on old phones |
+| Listening: Parakeet | **Works** (CPU; English or 25 European languages) | **Works** | - | - | - |
 | Listening: Apple speech | Impossible | Impossible | Planned (MA02; macOS 26, unverified on Intel) | Planned (IO03, iOS 26+) | Impossible |
 | Listening: Android speech | - | - | - | - | Planned (AN04; Android 13+, unverified that it can take the desktop's audio) |
 | Speaking: F5 voice cloning | **Works**: NVIDIA GPU with **6 GB+** | **Works**: NVIDIA 6 GB+ | F5 on MLX serves the same route (MA03; Apple silicon) | Impossible | Impossible |

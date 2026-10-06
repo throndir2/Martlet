@@ -89,6 +89,16 @@ if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceTex
     Console.WriteLine(JsonSerializer.Serialize(voiceReport));
     return voiceOk ? 0 : 1;
 }
+// With "listening-engine <endpoint> <model|-> <clips directory>" it transcribes the folder's 16 kHz PCM16 clips with a live
+// speech-to-text service on loopback (the stt role's whisper.cpp or Parakeet) through the role's real relay and gateway
+// (ListeningEngineCheck) and prints its report.
+if (args is ["listening-engine", var listeningEndpoint, var listeningModel, var listeningClips])
+{
+    var (listeningOk, listeningReport) = await Martlet.NodeLinkCheck.ListeningEngineCheck.RunAsync(listeningEndpoint,
+        listeningModel == "-" ? null : listeningModel, listeningClips, CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(listeningReport));
+    return listeningOk ? 0 : 1;
+}
 // With "singing-check <endpoint|fixture|paired:<data directory>> <seconds> <quality> <voice match> [save directory|-]
 // [voice WAV|-] [transcript|-] [bpm|-] [key|-] [voice ID|-] [host ID|-]" it makes one song with a singing service through the
 // singing role's real relay and gateway (SingingCheck; paired: through a paired host's own gateway, as the desktop does),

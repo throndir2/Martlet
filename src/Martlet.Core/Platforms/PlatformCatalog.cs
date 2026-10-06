@@ -270,9 +270,9 @@ public static class PlatformCatalog
 
         // ---- listening ----
         new("openai-stt", ClusterJobs.Listening, "OpenAI transcription", Cloud()),
-        new("whisper", ClusterJobs.Listening, "whisper",
+        new("whisper", ClusterJobs.Listening, "Speech recognition (whisper or Parakeet)",
         [
-            Works(Linux, Host, "runs well on the CPU; an NVIDIA GPU makes it faster"),
+            Works(Linux, Host, "whisper or Parakeet run well on the CPU; an NVIDIA GPU makes whisper faster"),
             Works(Win, Host, "through Docker Desktop (This PC's host service)"),
             Planned(Mac, Host, "MA02", "whisper.cpp on the Mac's GPU on Apple silicon; base/small models on an Intel Mac's CPU"),
             NotPlanned(Ios, Host, "iPhones and iPads use Apple speech recognition instead"),

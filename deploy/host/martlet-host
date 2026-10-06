@@ -38,12 +38,13 @@
 #           (this launcher starts the engine as the unprivileged martlet user inside the gateway's network)
 #
 # Every role goes through the same steps, driven only by roles/<role>/role.conf and compose.yaml:
-# requirements (including docker-engine for Linux-only host networking) -> GPU or CPU -> choices -> terms -> secrets ->
-# registry login -> pinned assets -> prepare steps (prepare=<service>, while the running service keeps serving) -> stop the
-# roles it replaces (exclusive=<group>) -> compose service (loopback behind the gateway, or network=host for route-less LAN
-# features) -> readiness -> post-start steps -> gateway route or machine feature -> retire the replaced model
-# (retire=<service>|<command>). role.conf entries between
-# "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the Audio2Face engine).
+# requirements (including docker-engine for Linux-only host networking) -> the choices that pick a variant -> GPU or CPU ->
+# the other choices -> terms -> secrets -> registry login -> pinned assets -> prepare steps (prepare=<service>, while the
+# running service keeps serving) -> stop the previous variant or the roles it replaces (exclusive=<group>) -> compose
+# service (loopback behind the gateway, or network=host for route-less LAN features) -> readiness -> post-start steps ->
+# gateway route or machine feature -> retire the replaced model (retire=<service>|<command>). role.conf entries between
+# "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the stt or Audio2Face engine,
+# with their own GPU option, choices, terms, secrets, assets and prepare steps).
 # Adding a role that is already installed reuses what is there: images, downloads and data volumes are kept, unchanged
 # containers keep running, and the gateway keeps running unless what it serves changed (gateway_current).
 # Each system change is confirmed first (typed "yes", or --yes when Martlet desktop already asked the owner).
@@ -185,7 +186,7 @@ prepares_host() {
   [[ -n "${role}" && -f "${conf}" ]] || return 1
   command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 || return 0
   command -v nvidia-ctk >/dev/null 2>&1 && return 1
-  gpu="$(conf_value "${conf}" gpu)"
+  gpu="$(conf_any_value "${conf}" gpu)"
   [[ "${gpu}" == required\|* || " $(conf_value "${conf}" requires) " == *" nvidia-toolkit "* ]] && return 0
   [[ "${gpu}" == optional\|* ]] && command -v nvidia-smi >/dev/null 2>&1
 }
@@ -462,8 +463,51 @@ conf_value() {
   done < <(conf_lines "${file}")
   return 0
 }
+# The first value of KEY in any section, whatever was chosen (for example the GPU overlay of a role whose GPU option
+# belongs to one variant, such as the stt role's whisper engine).
+conf_any_value() {
+  local file="$1" key="$2" condition line
+  while IFS=$'\t' read -r condition line; do
+    if [[ "${line%%=*}" == "${key}" ]]; then printf '%s' "${line#*=}"; return 0; fi
+  done < <(conf_lines "${file}")
+  return 0
+}
+
+# Asks role choice $1 ("VAR|label|options|default"; $2, when set, is the suggested default) for cmd_add unless Martlet
+# answered it, and records the answer in cmd_add's chosen and env_lines and in ROLE_CHOSEN.
+ask_choice() {
+  local var label options default value
+  IFS='|' read -r var label options default <<< "$1"
+  [[ -n "${2:-}" ]] && default="$2"
+  value="${INPUT[choice.${var}]:-}"
+  if [[ -z "${value}" ]]; then
+    if unattended; then value="${default}"
+    else read -r -p "${label} [${options// //}] (default ${default}): " value; fi
+  fi
+  value="${value:-${default}}"
+  [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
+  note "${label}: ${value}"
+  chosen["${var}"]="${value}"
+  ROLE_CHOSEN["${var}"]="${value}"
+  env_lines+=("${var}=${value}")
+}
 
 installed_file() { printf '%s' "${CONF}/roles/$1.role"; }
+
+# The variants (Compose profiles) of the role whose role.conf is $1, one per line: the options of its profile_from choice
+# (the stt role's whisper and parakeet). Each of the role's services belongs to one of them.
+role_variants() {
+  local conf="$1" from condition line var label options default
+  from="$(conf_value "${conf}" profile_from)"
+  [[ -n "${from}" ]] || return 0
+  while IFS=$'\t' read -r condition line; do
+    [[ "${condition}" == "*" && "${line%%=*}" == choice ]] || continue
+    IFS='|' read -r var label options default <<< "${line#*=}"
+    # shellcheck disable=SC2086
+    if [[ "${var}" == "${from}" ]]; then printf '%s\n' ${options}; fi
+  done < <(conf_lines "${conf}")
+  return 0
+}
 
 # Installed roles (other than $1) in the same role.conf exclusive=<group> as $1, one per line: the voice engines, which
 # each keep a model in the graphics card's memory, so a host runs one at a time and adding one stops the others.
@@ -493,8 +537,8 @@ cmd_roles() {
 }
 
 # Machine-readable role inputs for Martlet desktop (never prints secret values, only whether one is stored).
-# Entries in a [VAR=value] section are listed with that condition (role.secret_when, role.terms_when) so Martlet asks
-# for them, and shows their terms, only when that choice is made.
+# Entries in a [VAR=value] section are listed with that condition (role.secret_when, role.terms_when, role.choice_when,
+# role.suggested_when, role.gpu_when) so Martlet asks for them, and shows their terms, only when that choice is made.
 cmd_describe() {
   local role="${1:-}"; [[ -n "${role}" ]] || fail "Usage: martlet-host describe <role>"
   local dir conf line name state requires network feature condition
@@ -522,6 +566,14 @@ cmd_describe() {
         [[ "${condition}" == "*" ]] || printf 'role.secret_when=%s|%s\n' "${name}" "${condition}" ;;
       terms)
         [[ "${condition}" == "*" ]] || printf 'role.terms_when=%s|%s\n' "${condition}" "${line#*=}" ;;
+      # A variant's own choices (its model list), suggestions and GPU or CPU option.
+      choice)
+        [[ "${condition}" == "*" ]] || printf 'role.choice_when=%s|%s\n' "${condition}" "${line#*=}" ;;
+      choice_by_vram)
+        line="${line#*=}"
+        [[ "${condition}" == "*" ]] || printf 'role.suggested_when=%s|%s\n' "${condition}" "${line%%|*}" ;;
+      gpu)
+        [[ "${condition}" == "*" ]] || printf 'role.gpu_when=%s\n' "${condition}" ;;
     esac
   done < <(conf_lines "${conf}")
   while IFS= read -r line; do
@@ -531,10 +583,10 @@ cmd_describe() {
   while IFS= read -r line; do
     [[ -n "${line}" ]] && printf 'role.suggested=%s\n' "${line%%|*}"
   done < <(conf_values "${conf}" choice_by_vram)
-  [[ "$(conf_value "${conf}" gpu)" == optional\|* ]] && printf 'role.accelerator=gpu cpu\n'
+  [[ "$(conf_any_value "${conf}" gpu)" == optional\|* ]] && printf 'role.accelerator=gpu cpu\n'
   # On a host with several NVIDIA cards, which card it runs on: role.gpu=<uuid>|<name>|<MiB>|<other roles pinned to it>,
   # and the card it runs on now (role.gpu_current, "all" when it uses every card).
-  if [[ -n "$(conf_value "${conf}" gpu)" ]]; then
+  if [[ -n "$(conf_any_value "${conf}" gpu)" ]]; then
     detect_nvidia
     if (( ${#NVIDIA_IDS[@]} > 1 )); then
       local i current
@@ -1613,9 +1665,11 @@ role_compose() {
     name="${line#*=}"; name="${name%%|*}"
     if [[ -s "${CONF}/secrets/${name}" ]]; then secret_env+=("${name^^}=$(cat "${CONF}/secrets/${name}")"); fi
   done 3< <(conf_lines "$(role_dir "${role}")/role.conf")
-  # The variant this role was added with (Compose reads it only from the environment). Installs from before the role had
-  # variants ran the one role.conf names in profile_legacy (Audio2Face: nim).
-  local profiles; profiles="$(conf_value "${project}/.env" COMPOSE_PROFILES)"
+  # The variant this role was added with (Compose reads it only from the environment), or ROLE_PROFILES when given (the
+  # previous variant, stopped when another is chosen). Installs from before the role had variants ran the one role.conf
+  # names in profile_legacy (Audio2Face: nim; stt: whisper).
+  local profiles="${ROLE_PROFILES:-}"
+  [[ -n "${profiles}" ]] || profiles="$(conf_value "${project}/.env" COMPOSE_PROFILES)"
   [[ -n "${profiles}" ]] || profiles="$(conf_value "$(role_dir "${role}")/role.conf" profile_legacy)"
   secret_env+=("COMPOSE_PROFILES=${profiles}")
   # Present only when the role was added to run on the NVIDIA GPU (role.conf gpu=optional|<overlay>).
@@ -1681,7 +1735,7 @@ refresh_installed_role_files() {
     if [[ ! -f "${project}/compose.yaml" ]] || ! cmp -s "${dir}/compose.yaml" "${project}/compose.yaml"; then
       cp "${dir}/compose.yaml" "${project}/compose.yaml"; changed=1
     fi
-    gpu_entry="$(conf_value "${dir}/role.conf" gpu)"; overlay="${gpu_entry#*|}"
+    gpu_entry="$(conf_any_value "${dir}/role.conf" gpu)"; overlay="${gpu_entry#*|}"
     if [[ -f "${project}/compose.gpu.yaml" && -f "${dir}/${overlay}" ]]; then
       install_gpu_overlay "${dir}/${overlay}" "${project}/.compose.gpu.yaml.new" "$(role_gpu "${role}")"
       if cmp -s "${project}/.compose.gpu.yaml.new" "${project}/compose.gpu.yaml"; then rm -f "${project}/.compose.gpu.yaml.new"
@@ -1778,10 +1832,26 @@ cmd_add() {
   env_lines+=("MARTLET_TZ=$(host_timezone)")
   # Martlet sources a role may build its image from (compose build contexts under ${MARTLET_SOURCE}/workers).
   env_lines+=("MARTLET_SOURCE=${SOURCE}")
-  local line name prompt var label options default value
+  local line name prompt var label options default value condition
+
+  # Choices that pick a variant come first: those outside any [VAR=value] section and not suggested by GPU memory (the
+  # stt engine, the Audio2Face engine). Then the variant's own entries apply: its GPU or CPU option, its choices and their
+  # suggestions, terms, secrets, assets and prepare steps.
+  declare -A chosen=()
+  local by_vram=" " first=()
+  while IFS=$'\t' read -r condition line; do
+    [[ "${line%%=*}" == choice_by_vram ]] || continue
+    line="${line#*=}"; by_vram+="${line%%|*} "
+  done < <(conf_lines "${conf}")
+  while IFS=$'\t' read -r condition line; do
+    [[ "${condition}" == "*" && "${line%%=*}" == choice ]] || continue
+    line="${line#*=}"
+    [[ "${by_vram}" == *" ${line%%|*} "* ]] || first+=("${line}")
+  done < <(conf_lines "${conf}")
+  for line in "${first[@]}"; do ask_choice "${line}"; done
 
   # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one; gpu=required
-  # roles always add their overlay (they cannot run on the CPU).
+  # roles always add their overlay (they cannot run on the CPU). Inside a [VAR=value] section only that variant has it.
   local gpu_entry gpu_mode overlay="" accelerator="" vram=0 gpu_choice=""
   gpu_entry="$(conf_value "${conf}" gpu)"
   if [[ -n "${gpu_entry}" ]]; then
@@ -1858,25 +1928,12 @@ cmd_add() {
     if [[ -n "${pick}" ]]; then suggested_choice["${line%%|*}"]="${pick}"; fi
   done 3< <(conf_values "${conf}" choice_by_vram)
 
-  declare -A chosen=()
+  local suggestion
   while IFS= read -r line <&3; do
-    [[ -n "${line}" ]] || continue
-    IFS='|' read -r var label options default <<< "${line}"
-    if [[ -n "${suggested_choice[${var}]:-}" ]]; then
-      default="${suggested_choice[${var}]}"
-      if [[ "${accelerator}" == gpu ]]; then note "Suggested for ${vram} MiB of GPU memory: ${default}"; fi
-    fi
-    value="${INPUT[choice.${var}]:-}"
-    if [[ -z "${value}" ]]; then
-      if unattended; then value="${default}"
-      else read -r -p "${label} [${options// //}] (default ${default}): " value; fi
-    fi
-    value="${value:-${default}}"
-    [[ " ${options} " == *" ${value} "* ]] || fail "Choose one of: ${options}"
-    note "${label}: ${value}"
-    chosen["${var}"]="${value}"
-    ROLE_CHOSEN["${var}"]="${value}"
-    env_lines+=("${var}=${value}")
+    [[ -n "${line}" && -z "${chosen[${line%%|*}]+x}" ]] || continue
+    suggestion="${suggested_choice[${line%%|*}]:-}"
+    if [[ -n "${suggestion}" && "${accelerator}" == gpu ]]; then note "Suggested for ${vram} MiB of GPU memory: ${suggestion}"; fi
+    ask_choice "${line}" "${suggestion}"
   done 3< <(conf_values "${conf}" choice)
   # A role with variants runs the Compose profile its choice names (profile_from=VAR), for example one Audio2Face engine.
   local profiles="" profile_from
@@ -1948,11 +2005,15 @@ cmd_add() {
     grep -qF "${line#*|}" "${project}/files/${line%%|*}" || fail "Role asset check failed: ${line%%|*} lacks '${line#*|}'."
   done 3< <(conf_values "${conf}" expect | sed 's#^configs/##')
 
-  # Switching a role's variant (its Compose profile, such as the Audio2Face engine) stops the previous one first so they
-  # never compete for the role's port; its data volumes are kept.
-  if [[ -f "${project}/compose.yaml" && "$(conf_value "${project}/.env" COMPOSE_PROFILES 2>/dev/null)" != "${profiles}" ]]; then
-    note "Stopping the previous ${role} service before starting the chosen one..."
-    role_compose "${role}" down || true
+  # Switching a role's variant (its Compose profile, such as the stt or Audio2Face engine) stops the previous one, but only
+  # once the chosen one is prepared (its image built, its model downloaded), so the role keeps working until then; its data
+  # volumes are kept. Installs from before the role had variants ran role.conf's profile_legacy.
+  local previous_profiles="" switching=0 existed=0
+  if [[ -f "${project}/compose.yaml" ]]; then
+    existed=1
+    previous_profiles="$(conf_value "${project}/.env" COMPOSE_PROFILES 2>/dev/null)"
+    [[ -n "${previous_profiles}" ]] || previous_profiles="$(conf_value "${conf}" profile_legacy)"
+    if [[ "${previous_profiles}" != "${profiles}" ]]; then switching=1; fi
   fi
   cp "${dir}/compose.yaml" "${project}/compose.yaml"
   rm -f "${project}/compose.gpu.yaml"
@@ -1982,6 +2043,23 @@ cmd_add() {
   done 3< <(conf_values "${conf}" prepare)
 
   local start_failed="Building or starting ${role} failed (the output above shows why). Check the host's disk space and network, then run 'martlet-host add ${role}' again: the build steps it finished are reused."
+  if (( switching )); then
+    # Build (or pull) the chosen variant's image while the previous one still works.
+    say "Preparing ${role} (${profiles}) while ${previous_profiles:-the previous one} still runs"
+    role_compose "${role}" up --no-start || fail "${start_failed}"
+  fi
+  # Then every other variant stops, so none competes for the role's port: not only the one .env named, since an earlier
+  # attempt at this switch that stopped after rewriting .env (a failed download or build) left the previous one running.
+  if (( existed )) && [[ -n "${profiles}" ]]; then
+    local variant
+    while IFS= read -r variant <&3; do
+      [[ -n "${variant}" && "${variant}" != "${profiles}" ]] || continue
+      if [[ "${variant}" == "${previous_profiles}" ]]; then
+        note "Stopping the previous ${role} service (${variant}) before starting the chosen one..."
+      fi
+      ROLE_PROFILES="${variant}" role_compose "${role}" down || true
+    done 3< <({ role_variants "${conf}"; printf '%s\n' "${previous_profiles}"; } | awk '!seen[$0]++')
+  fi
   if [[ ${#stops[@]} -gt 0 ]]; then
     # Build (or pull) this role's image while the engine it replaces still works, then free the graphics card for it.
     say "Preparing ${role} while ${stops[*]} still runs"
@@ -2040,6 +2118,11 @@ cmd_remove() {
   ask "Stop ${role} and remove it from the gateway (its data volumes are kept)?" || exit 0
   require_docker
   role_compose "${role}" down || true
+  # Every variant, also one an interrupted switch left running.
+  local variant
+  while IFS= read -r variant <&3; do
+    if [[ -n "${variant}" ]]; then ROLE_PROFILES="${variant}" role_compose "${role}" down >/dev/null 2>&1 || true; fi
+  done 3< <(role_variants "$(role_dir "${role}")/role.conf")
   with_gateway unpublish_role "${role}" "${had_kind}"
   say "Role ${role} removed."
 }

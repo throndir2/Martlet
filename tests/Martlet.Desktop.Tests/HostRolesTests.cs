@@ -153,6 +153,45 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Listening_hosts_parakeet_engine_downloads_the_same_models_as_this_pc()
+    {
+        // workers/parakeet's catalog mirrors ParakeetModels file for file: the same pinned revision, sizes and SHA-256.
+        var repository = Directory.GetParent(RolesDirectory())!.Parent!.Parent!.FullName;
+        var service = File.ReadAllText(Path.Combine(repository, "workers", "parakeet", "host", "martlet_parakeet_host.py"));
+        foreach (var model in Martlet.Sherpa.ParakeetModels.All)
+        {
+            Assert.Contains($"\"{model.Id}\", \"{model.Name}\", \"{model.Languages}\",", service);
+            Assert.Contains($"\"{model.Repository}\", \"{model.Revision}\",", service);
+            Assert.Contains($"\"{model.NoticeFile}\",", service);
+            foreach (var download in model.Downloads)
+            {
+                var size = download.Bytes.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', '_');
+                Assert.Contains($"ModelFile(\"{download.Source.Segments[^1]}\", {size}, \"{download.Sha256}\")", service);
+            }
+        }
+        // The stt role offers every one of them, by the same IDs, when its engine is parakeet.
+        var conf = File.ReadAllLines(Path.Combine(RolesDirectory(), HostRoles.Stt, "role.conf"));
+        var parakeet = conf.SkipWhile(line => line != "[STT_ENGINE=parakeet]").TakeWhile(line => line != "[end]")
+            .Single(line => line.StartsWith("choice=STT_MODEL|", StringComparison.Ordinal)).Split('|');
+        Assert.Equal(Martlet.Sherpa.ParakeetModels.All.Select(m => m.Id), parakeet[2].Split(' '));
+        Assert.Equal(Martlet.Core.Settings.LocalSpeechSetup.Parakeet110mEnglishModelId, parakeet[3]);
+    }
+
+    [Fact]
+    public void Every_worker_a_role_builds_from_is_in_the_host_image()
+    {
+        // A role that builds its image from ${MARTLET_SOURCE}/workers/<name> needs that folder in the martlet-host image.
+        var repository = Directory.GetParent(RolesDirectory())!.Parent!.Parent!.FullName;
+        var image = File.ReadAllText(Path.Combine(repository, "deploy", "host", "Dockerfile"));
+        var built = Directory.GetFiles(RolesDirectory(), "compose*.yaml", SearchOption.AllDirectories)
+            .SelectMany(file => System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(file), @"\$\{MARTLET_SOURCE[^}]*\}/workers/([a-z0-9-]+)")
+                .Select(match => match.Groups[1].Value))
+            .Distinct().ToArray();
+        Assert.Contains("parakeet", built);
+        Assert.All(built, worker => Assert.Contains($"COPY workers/{worker} /opt/martlet/source/workers/{worker}", image));
+    }
+
+    [Fact]
     public void Deep_thinking_role_suggests_the_same_models_as_the_Thinking_role()
     {
         // Thinking (ollama) and Deep thinking mirror each other: same models, default and suggestions by GPU memory.

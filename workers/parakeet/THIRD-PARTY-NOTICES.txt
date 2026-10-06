@@ -1,0 +1,27 @@
+Third-party components used by the Martlet Parakeet worker image (installed at build time or downloaded by the
+service on its first start; none are redistributed in this repository).
+
+sherpa-onnx 1.13.8 and sherpa-onnx-core 1.13.8 (k2-fsa)
+  https://github.com/k2-fsa/sherpa-onnx
+  License: Apache-2.0. sherpa-onnx-core includes ONNX Runtime (Microsoft, MIT).
+
+NumPy 2.5.3
+  https://numpy.org
+  License: BSD-3-Clause
+
+NVIDIA Parakeet TDT-CTC 110M (its TDT transducer branch), exported to ONNX by the sherpa-onnx project
+  https://huggingface.co/nvidia/parakeet-tdt_ctc-110m
+  https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000 (revision e9bea5a06247dc3f55319ff23d34b0328f2f5ddf)
+  License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+NVIDIA Parakeet TDT 0.6B v2, converted to int8 ONNX by the sherpa-onnx project
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
+  https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 (revision 1ab9323565ddb038682214b292f588070a538ce2)
+  License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+NVIDIA Parakeet TDT 0.6B v3, converted to int8 ONNX by the sherpa-onnx project
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+  https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8 (revision 2bda32ec70b097a55adaa07d9a7173915b43cc78)
+  License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+The service writes each downloaded model's attribution (its NOTICE file) beside the models.

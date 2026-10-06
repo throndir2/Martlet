@@ -1336,9 +1336,12 @@ public partial class MainWindow
             using var updating = action.Verb == HostVerb.Update ? hostUpdates.Begin(UpdateKey(host)) : null;
             ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC" : host.HostId)}" +
                 (host.Method == HostSetupMethod.Agent ? " through Martlet there" : "") + ". The progress window shows details.";
-            // Adding a role on this PC preselects what suits it (for example whisper on the processor when the graphics card is full).
-            var recommended = answers is null && local && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
-                ? (await ListeningAdviceAsync()).Answers() : null;
+            // Adding listening preselects what suits the computer: on this PC whisper on the graphics card or the processor by
+            // what already runs there; elsewhere whisper or Parakeet by its hardware; and the Parakeet model for your language.
+            var recommended = answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
+                ? ListeningAdvisor.HostAnswers(HardwareStore?.Find(host.HostId), System.Globalization.CultureInfo.CurrentUICulture,
+                    local ? (await ListeningAdviceAsync()).Answers() : null)
+                : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
                 host.Pairing, confirmed);
             if (done is not null && action.Verb == HostVerb.Update) HostUpdateSettled(UpdateKey(host));
