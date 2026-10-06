@@ -124,8 +124,8 @@ public sealed record SharedSettings
         : string.CompareOrdinal(a.Content, b.Content) >= 0;
 
     // The newest settings (by revision) up to the limit, sorted by key, and only the secrets they use, sorted by SHA-256, so
-    // equal content always writes equal bytes. Settings come before computers' own entries (pc.<device>), which are never
-    // removed: a computer retired long ago drops out before any setting does.
+    // equal content always writes equal bytes. Settings come before the entries about one computer (pc.<device>,
+    // role.<device>), which are never removed: a computer retired long ago drops out before any setting does.
     private static SharedSettings Bounded(IEnumerable<SharedSetting> settings, IEnumerable<SharedSecret> secrets)
     {
         var kept = settings.OrderBy(s => IsDeviceKey(s.Key) ? 1 : 0).ThenByDescending(s => s.Revision)
@@ -146,8 +146,13 @@ public sealed record SharedSettings
     /// <summary>The prefix of the entry each computer keeps about itself ("pc.desktop-a").</summary>
     public const string DevicePrefix = "pc.";
 
-    /// <summary>Whether <paramref name="key"/> is a computer's own entry rather than a setting.</summary>
-    public static bool IsDeviceKey(string key) => key.StartsWith(DevicePrefix, StringComparison.Ordinal);
+    /// <summary>The prefix of the entry that says whether a computer is a companion or a host PC ("role.desktop-a"): that
+    /// computer records its own choice there, and any other computer may write it to make it switch.</summary>
+    public const string RolePrefix = "role.";
+
+    /// <summary>Whether <paramref name="key"/> is about one computer (its own entry, or its role) rather than a setting.</summary>
+    public static bool IsDeviceKey(string key) =>
+        key.StartsWith(DevicePrefix, StringComparison.Ordinal) || key.StartsWith(RolePrefix, StringComparison.Ordinal);
 
     public static bool IsKey(string? key) => key is { Length: > 0 and <= 64 } && char.IsAsciiLetterLower(key[0]) &&
         key.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.');

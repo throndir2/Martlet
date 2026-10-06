@@ -415,7 +415,13 @@ public partial class MainWindow
                 .OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).FirstOrDefault();
             // What that computer says it is (companion or host PC, and its host service), shared by it with the settings.
             var pc = settingsNode?.Document.Find(SharedPc.Key(id)) is { } entry ? SharedPc.Read(entry.Value) : null;
-            return new(id, name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through, pc?.DeviceRole, pc?.Host);
+            // An ask from one of your computers that it become a companion or a host PC, while it hasn't switched yet.
+            (DeviceRole? Role, string? By, DateTimeOffset? At) asked = default;
+            if (settingsNode?.Document.Find(SharedPc.RoleKey(id)) is { } ask && ask.UpdatedBy != id &&
+                SharedPc.ReadRole(ask.Value) is { } wanted && wanted != pc?.DeviceRole)
+                asked = (wanted, IsThisDevice(ask.UpdatedBy) ? "this PC" : ComputerName(ask.UpdatedBy), ask.UpdatedAt);
+            return new(id, name, standing, MemberActivity(id), seen is not null && Active(seen, now), check, through, pc?.DeviceRole, pc?.Host,
+                asked.Role, asked.By, asked.At);
         }
         if (roster is not null)
             foreach (var member in roster.ActiveDesktops.Where(d => !IsThisDevice(d.Id)))
@@ -435,7 +441,8 @@ public partial class MainWindow
         return string.Join(";", networkViews.OrderBy(v => v.Key, StringComparer.Ordinal).Select(v => v.Key + ":" +
             string.Join(",", (v.Value.Devices ?? []).Select(d => d.DeviceId + (Active(d, now) ? "+" : "-"))))) + "|" +
             string.Join(",", networkState.Roster?.ActiveDesktops.Select(d => d.Id + "=" +
-                (settingsNode?.Document.Find(SharedPc.Key(d.Id))?.Value ?? "")) ?? []) + "|" +
+                (settingsNode?.Document.Find(SharedPc.Key(d.Id))?.Value ?? "") + "/" +
+                (settingsNode?.Document.Find(SharedPc.RoleKey(d.Id)) is { } role ? role.Value + role.UpdatedBy : "")) ?? []) + "|" +
             string.Join(",", networkJoins.Select(j => j.DeviceId));
     }
 

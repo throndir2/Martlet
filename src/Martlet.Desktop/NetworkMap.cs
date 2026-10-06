@@ -13,7 +13,8 @@ internal enum NodeAction
 {
     Companion, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
     UseForLipSync, LipSyncThisPc, InstallRole, ChangeRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
-    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening, UseForSpeaking
+    PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening, UseForSpeaking,
+    MakeHostPc, MakeCompanionPc
 }
 
 /// <summary>Who handles lip-sync: a paired host, this PC's own Audio2Face service, or nobody (voice loudness).</summary>
@@ -83,9 +84,12 @@ internal enum ComputerStanding { Member, Asking, Outside }
 /// <summary>Another computer that runs Martlet: a member of your Martlet network, one asking to join it (with its check number
 /// and the host it asked through) or one that uses your hosts outside it. <paramref name="Activity"/> is where it was last
 /// active ("Active now on diva-host."), as your hosts report it; <paramref name="Role"/> and <paramref name="HostId"/> are what
-/// it says it is (companion or host PC) and the host service Martlet runs on it, null until it shares them.</summary>
+/// it says it is (companion or host PC) and the host service Martlet runs on it, null until it shares them.
+/// <paramref name="Asked"/> is what one of your computers (<paramref name="AskedBy"/>, at <paramref name="AskedAt"/>) asked it
+/// to become, while it hasn't switched yet.</summary>
 internal sealed record MartletComputer(string DeviceId, string Name, ComputerStanding Standing, string? Activity, bool Active,
-    string? CheckNumber = null, string? Through = null, DeviceRole? Role = null, string? HostId = null);
+    string? CheckNumber = null, string? Through = null, DeviceRole? Role = null, string? HostId = null,
+    DeviceRole? Asked = null, string? AskedBy = null, DateTimeOffset? AskedAt = null);
 
 /// <summary>Turns saved settings, the avatar pairing and local hardware into the Devices map: every computer and
 /// cloud service, what it runs and what can be configured there. Reads nothing itself.</summary>
@@ -126,6 +130,12 @@ internal static class NetworkMap
         internal NetworkNode Build() =>
             new(Id, Kind, Title, Subtitle, Glyph, Health, HealthText, Roles, Facts, Commands, Notes, PairedHostId, HealthCommand, SharedGpu);
     }
+
+    /// <summary>" Asked by DESK-A at 1:05 AM to become a host PC: ..." while another computer's ask waits, else "".</summary>
+    private static string Asked(MartletComputer computer) => computer.Asked is not { } asked ? ""
+        : $" Asked by {computer.AskedBy}{(computer.AskedAt is { } at ? $" at {at.ToLocalTime():g}" : "")} to become a " +
+          $"{(asked == DeviceRole.Host ? "host" : "companion")} PC: it switches the next time Martlet there syncs its settings (an older " +
+          "Martlet there needs updating first).";
 
     internal static LipSyncHandler LipSync(AvatarProfile? avatar) =>
         avatar?.LipSync == AvatarLipSync.Loudness ? LipSyncHandler.Loudness
@@ -630,7 +640,14 @@ internal static class NetworkMap
                     (hosting is not null ? $"; it runs a host service too ({hostId}). " : ". ")),
                 _ => ("Martlet", "Martlet app", hosting is not null ? $"Martlet on this computer runs its host service ({hostId}). " : "")
             };
-            node.Roles.Insert(0, new(chip, name, $"{computer.DeviceId}. {does}{standing}", DeviceComponent.Member));
+            node.Roles.Insert(0, new(chip, name, $"{computer.DeviceId}. {does}{standing}{Asked(computer)}", DeviceComponent.Member));
+            // Any of your computers can switch another between companion and host PC (it follows on its next settings sync);
+            // while an ask waits, the opposite command withdraws it.
+            if (computer.Standing != ComputerStanding.Asking && computer.Role is { } role)
+                node.Commands.Add((computer.Asked ?? role) == DeviceRole.Companion
+                    ? new(NodeAction.MakeHostPc, "Make it a host PC", Argument: computer.DeviceId, Component: DeviceComponent.Member)
+                    : new(NodeAction.MakeCompanionPc, role == DeviceRole.Companion ? "Keep it a companion PC" : "Make it a companion PC",
+                        Argument: computer.DeviceId, Component: DeviceComponent.Member));
             // The jobs every companion PC does itself (a Windows voice, Parakeet) show on each companion PC.
             if (computer.Standing != ComputerStanding.Asking && (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
                 node.Roles.AddRange(onEachPc);
