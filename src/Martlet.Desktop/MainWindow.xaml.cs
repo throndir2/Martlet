@@ -87,7 +87,7 @@ public partial class MainWindow : ThemedWindow
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
-        avatar.LockedPlacement = CharacterPlacementStore.Load(store?.DataDirectory);
+        avatar.Placement = CharacterPlacementStore.Load(store?.DataDirectory);
         avatar.VoiceMuted = !Talk.SpeakReplies;
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         avatar.Gaze.Decides = Talk.DecideGaze;
@@ -466,12 +466,14 @@ public partial class MainWindow : ThemedWindow
     private void UpdateCharacterButton()
     {
         CharacterButton.Content = avatar.IsShowing ? "Hide _character" : "Show _character";
-        ResetCharacterButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
-        ResetCharacterZoomButton.Visibility = ResetCharacterButton.Visibility;
+        // Reset stays reachable while the character is hidden (or lost off screen) once it has a saved place.
+        ResetCharacterButton.Visibility = avatar.IsShowing || avatar.Placement is not null ? Visibility.Visible : Visibility.Collapsed;
+        ResetCharacterZoomButton.Visibility = avatar.IsShowing ? Visibility.Visible : Visibility.Collapsed;
         var locked = avatar.PlacementLocked;
-        ResetCharacterButton.IsEnabled = !locked;
-        ResetCharacterButton.ToolTip = locked ? "The character's position is locked. Unlock it to move it back."
-            : "Move the character back to its default position";
+        ResetCharacterButton.IsEnabled = true;
+        ResetCharacterButton.ToolTip = avatar.IsShowing
+            ? "Move the character back to the lower-right of your main screen" + (locked ? " (it stays locked there)" : "")
+            : "Forget where the character was, so it shows at the lower-right of your main screen";
         // Unlocking also works while the character is hidden: it then shows at its default spot.
         LockCharacterButton.Visibility = avatar.IsShowing || locked ? Visibility.Visible : Visibility.Collapsed;
         LockCharacterButton.IsEnabled = !changingCharacterLock;
@@ -487,6 +489,11 @@ public partial class MainWindow : ThemedWindow
     private void CharacterRequested(string action)
     {
         if (closing) return;
+        if (action == "placed")
+        {
+            RememberCharacterPlacementAsync().Forget();
+            return;
+        }
         ErrorLog.Info($"The character's menu chose '{action}'.");
         switch (action)
         {
@@ -517,6 +524,29 @@ public partial class MainWindow : ThemedWindow
 
     private bool changingCharacterLock;
 
+    /// <summary>The character was moved or resized and has settled: saves where it is now (and on which monitor) on this PC,
+    /// so it shows there again after Hide/Show, a restart, a shutdown or an update.</summary>
+    private async Task RememberCharacterPlacementAsync()
+    {
+        try
+        {
+            if (await avatar.ReadPlacementAsync(lifetime.Token) is not { } place || closing) return;
+            if (CharacterPlacementStore.Save(store?.DataDirectory, place))
+                ErrorLog.Info($"Character position saved at {place.Left:0}, {place.Top:0} ({place.Width:0} × {place.Height:0})" +
+                    (place.Screen is { } screen ? $" on {CharacterScreen(screen)}." : "."));
+            UpdateCharacterButton();
+            if (characterPlacementNote is { } note) note.Text = CharacterPlacementText();
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        {
+            if (!closing) ErrorLog.Warn("The character's new position couldn't be read to save it.", error);
+        }
+    }
+
+    /// <summary>A monitor's device name as people read it: DISPLAY2 rather than \\.\DISPLAY2.</summary>
+    internal static string CharacterScreen(string device) => device.StartsWith(@"\\.\", StringComparison.Ordinal) ? device[4..] : device;
+
     /// <summary>Locks the showing character where it is (from here, Companion › Character or the character's own menu) or
     /// unlocks it (only from this window), and saves that on this PC so a locked character shows in the same place.</summary>
     private async Task SetCharacterLockAsync(bool locked)
@@ -529,8 +559,9 @@ public partial class MainWindow : ThemedWindow
             var place = await avatar.LockPlacementAsync(locked, lifetime.Token);
             var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
             if (closing) return;
-            ErrorLog.Info(place is { } at
-                ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})."
+            ErrorLog.Info(locked && place is { } at
+                ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})" +
+                    (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")
                 : "Character position unlocked.");
             ActionText.Text = (locked
                 ? "Character position locked. Unlock it here, in Companion › Character or on the character's right-click menu to move it."
@@ -551,14 +582,25 @@ public partial class MainWindow : ThemedWindow
         }
     }
 
-    /// <summary>Companion › Character's line on whether the character's position is locked, and where.</summary>
-    private string CharacterPlacementText() => (avatar.LockedPlacement, avatar.IsShowing) switch
+    /// <summary>Companion › Character's line on whether the character's position is locked, where it is remembered and on which
+    /// monitor.</summary>
+    private string CharacterPlacementText()
     {
-        ({ } at, true) => $"Position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it; zoom still works.",
-        ({ } at, false) => $"Position locked at {at.Left:0}, {at.Top:0}. The character shows there when it opens, until you unlock it.",
-        (null, true) => "Position unlocked. Drag the character where you want it, then lock it here or from its right-click menu.",
-        _ => "Position unlocked. The character shows at the lower-right; show it to place and lock it."
-    };
+        var saved = avatar.Placement;
+        var where = saved is { } spot ? $"{spot.Left:0}, {spot.Top:0}" + (spot.Screen is { } device ? $" on {CharacterScreen(device)}" : "") : "";
+        return (saved, avatar.IsShowing) switch
+        {
+            ({ Locked: true } at, true) => $"Position locked at {where} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it; zoom still works.",
+            ({ Locked: true }, false) => $"Position locked at {where}. The character shows there when it opens, until you unlock it.",
+            ({ }, true) => $"Position unlocked, remembered at {where} on this PC, even after a restart or update. Drag the character where you want it, then lock it here or from its right-click menu.",
+            ({ }, false) => $"Position unlocked. The character shows where you left it, at {where}. Reset position if it's lost: it then shows at the lower-right.",
+            (null, true) => "Position unlocked. Drag the character where you want it; Martlet remembers where on this PC, even after a restart or update. Lock it here or from its right-click menu.",
+            _ => "Position unlocked. The character shows at the lower-right; show it to place and lock it."
+        };
+    }
+
+    /// <summary>The Character page's line on where the character is remembered, refreshed when it is moved.</summary>
+    private TextBlock? characterPlacementNote;
 
     /// <summary>The Character page's line describing the overlay's current size, zoom and head framing.</summary>
     private TextBlock? characterViewText;
@@ -600,15 +642,28 @@ public partial class MainWindow : ThemedWindow
     {
         try
         {
-            await avatar.ResetPositionAsync(lifetime.Token);
-            ActionText.Text = "Character moved back to the lower-right.";
+            var showing = avatar.IsShowing;
+            var place = await avatar.ResetPositionAsync(lifetime.Token);
+            var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
+            if (closing) return;
+            ErrorLog.Info(place is { } at
+                ? $"Character position reset to {at.Left:0}, {at.Top:0}" + (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")
+                : "Character position reset; it shows at its default spot next time.");
+            ActionText.Text = (showing
+                ? "Character moved back to the lower-right of your main screen." + (place is { Locked: true } ? " It stays locked there." : "")
+                : "Character position reset. It shows at the lower-right of your main screen next time, unlocked.") +
+                (saved ? "" : " It couldn't be saved on this PC.");
         }
         catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            OperationCanceledException or ObjectDisposedException)
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
         {
             if (!closing) ActionText.Text = $"Couldn't reset character position: {error.Message}";
         }
-        finally { UpdateCharacterButton(); }
+        finally
+        {
+            UpdateCharacterButton();
+            if (!closing) RenderHome();
+        }
     }
     /// <summary>Shows the saved character, or the bundled default when none is configured.</summary>
     private async Task ShowSavedCharacterAsync(bool onlyIfAutoShow)
