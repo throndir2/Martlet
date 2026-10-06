@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-10-06
+
 ### Added
 - ARM64 computers such as a Raspberry Pi 5, an NVIDIA DGX Spark or a Windows on Arm or Apple-silicon PC running Docker Desktop can now be Martlet hosts for thinking (Ollama) and listening (whisper or Parakeet). Voice cloning, singing, pictures and Audio2Face need an x86_64 PC with an NVIDIA GPU, so Martlet shows them as unavailable on these hosts and says why. ([#498](https://github.com/throndir2/Martlet/pull/498))
 - Martlet installs and runs on Windows 11 on Arm PCs such as Snapdragon X laptops, through Windows' x64 emulation. Settings, Devices and Doctor show when Martlet is running emulated. Jobs that need an NVIDIA graphics card, which Windows on Arm can't use, are refused with that reason. The installer explains that Windows 10 on Arm isn't supported. Not yet tried on a real Arm PC. ([#493](https://github.com/throndir2/Martlet/pull/493))
