@@ -309,7 +309,12 @@ which machine is free to think depends on the computer you talk to):
   `martlet.gateway.deep-thinking-chat.v1`) through its pinned gateway with this
   PC's pairing, or, on a computer without that role, its Ollama (its Thinking
   role). The page offers *Add Deep thinking* for a computer that lacks the role
-  (`DeepThinkingAddRole-<host>`) and switches Deep thinking to it once it runs.
+  (`DeepThinkingAddRole-<host>`; its dialog asks which model it runs) and
+  switches Deep thinking to it once it runs, and *Change model*
+  (`DeepThinkingChangeModel-<host>`) for one that has it: the role's settings
+  there, with its current model selected. The old model keeps thinking until the
+  new one is downloaded and loaded; then this PC (and each of your computers, on
+  its next check) thinks with the new one.
   The conversation's newest
   exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
   tools), and the computer loads 32,768 tokens of context for it. A computer's

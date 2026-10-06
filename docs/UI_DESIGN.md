@@ -203,11 +203,13 @@ to bottom: the **map**, the **selected device** with what it does, and
     now* with the reason. Each job row has *Change in Companion* (lip-sync's
     opens *Lip-sync*; speaking's model and voice change there, because they
     need consent), shows the job's problem in amber when it isn't working, and
-    adds *Remove ... from it* when a host runs it. *Character* (show or hide,
+    adds *Change ... settings* (the host role's model, GPU or CPU and graphics
+    card, in the role's dialog starting from what it runs now) and *Remove ...
+    from it* when a host runs it. *Character* (show or hide,
     settings), *Microphone and speakers* (*Choose and test*) and this PC's
     *Martlet host service* (check, update, status, pair again, forget) have
     their own rows; a role installed on a host but doing no job yet shows as
-    *standing by* with *Hand ... to this computer* and *Remove*.
+    *standing by* with *Hand ... to this computer*, *Change ... settings* and *Remove*.
   - **Give it more to do**: hand the device a job it doesn't do yet (*Hand
     thinking to this computer*...), *Run host services on this PC* or *Take
     lip-sync back to this PC*. *Install or remove roles* (collapsed) holds a

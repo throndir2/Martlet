@@ -218,7 +218,15 @@ public partial class MainWindow
             // your hosts. Unreadable settings are left alone.
             if (!host && !setupOperations.IsRunning && homeSettingsState is SettingsLoadState.Loaded or SettingsLoadState.FirstRun &&
                 changes.TryTake() is { } turn)
-                using (turn) followed = await FollowClusterAsync(events);
+                using (turn)
+                {
+                    followed = await FollowClusterAsync(events);
+                    // A host that keeps a job but serves another model now (its role's settings changed, maybe on another
+                    // computer): every computer follows that model.
+                    var reachable = probes.Where(p => p.Reachable).Select(p => p.HostId).ToArray();
+                    FollowDeepThinkingModels(reachable, events);
+                    followed |= await FollowJobModelsAsync(reachable, events);
+                }
             await PushClusterAsync(probes);
         }
         catch (OperationCanceledException) { }

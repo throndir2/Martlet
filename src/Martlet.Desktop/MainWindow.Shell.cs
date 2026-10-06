@@ -1297,6 +1297,8 @@ public partial class MainWindow
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
         if (closing) return;
+        // A role whose settings changed there (from here or another computer) serves another model now: follow it.
+        FollowHostModelsAsync(results.Where(r => r.Check.Reachable == true).Select(r => r.Id).ToArray()).Forget();
         // The Singing card reads each checked computer's voice matches again (a role added or removed elsewhere).
         foreach (var (id, _) in results) singingServices.Remove(id);
         NoteSingingHost();
@@ -1476,6 +1478,7 @@ public partial class MainWindow
             case NodeAction.UseForSpeaking: AssignJobAsync(HostJob.Speaking, "host:" + argument).Forget(); break;
             case NodeAction.LipSyncThisPc: AssignLipSyncAsync("this-pc").Forget(); break;
             case NodeAction.InstallRole: RunHostRole(argument, add: true); break;
+            case NodeAction.ChangeRole: ChangeHostRole(argument); break;
             case NodeAction.RemoveRole: RunHostRole(argument, add: false); break;
             case NodeAction.HostStatus: if (FindHost(argument) is { } host) LaunchOnHost(host, HostAction.Status); break;
             case NodeAction.UpdateHost:

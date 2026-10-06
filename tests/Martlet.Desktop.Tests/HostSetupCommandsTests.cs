@@ -187,6 +187,75 @@ public sealed class HostSetupCommandsTests
         });
     }
 
+    // "martlet-host describe deep-thinking" for the role installed on diva: gemma4:26b on the CPU.
+    private static readonly string[] InstalledDeepThinking =
+    [
+        "role.title=Deep thinking", "role.requires=docker", "role.terms=Ollama (MIT).", "role.installed=yes",
+        "role.choice=OLLAMA_MODEL|Deep thinking model|gemma4:e2b gemma4:e4b gemma4:26b|gemma4:e2b", "role.suggested=OLLAMA_MODEL",
+        "role.accelerator=gpu cpu", "role.choice_current=OLLAMA_MODEL|gemma4:26b", "role.accelerator_current=cpu"
+    ];
+
+    [Fact]
+    public void An_installed_roles_dialog_changes_its_settings_starting_from_what_it_runs_with()
+    {
+        var role = HostRemote.ParseRole(InstalledDeepThinking);
+        Assert.Equal("gemma4:26b", role.Current["OLLAMA_MODEL"]);
+        Assert.Equal("cpu", role.AcceleratorCurrent);
+        var older = HostRemote.ParseRole(InstalledDeepThinking.Where(l => !l.Contains("_current=", StringComparison.Ordinal)));
+        Assert.Empty(older.Current);
+        Assert.Null(older.AcceleratorCurrent);
+        Assert.Empty(HostRemote.ParseRole(["role.choice_current=OLLAMA_MODEL", "role.accelerator_current=tpu"]).Current);
+
+        // Changing a role reuses martlet-host add: the same command, with a title of its own.
+        var change = HostAction.Change(HostRoles.DeepThinking);
+        Assert.Equal("add deep-thinking", HostSetupCommands.Engine(change));
+        Assert.Equal(("Change", "Add"), (change.AddVerb, HostRoles.Get(HostRoles.DeepThinking).Add.AddVerb));
+
+        RunSta(() =>
+        {
+            var dialog = HostInputDialog.RoleDialog("diva", HostRoles.DeepThinking, role);
+            Assert.Equal("Change deep-thinking on diva", Find<TextBlock>(dialog, "HostInputHeading").Text);
+            Assert.Equal("_Apply", Find<Button>(dialog, "HostInputOk").Content);
+            var model = Find<ComboBox>(dialog, "HostInput-choice.OLLAMA_MODEL");
+            var accelerator = Find<ComboBox>(dialog, "HostInput-choice.accelerator");
+            // What it runs with now is chosen; Automatic isn't offered (an unanswered choice keeps it anyway).
+            Assert.Equal("gemma4:26b", model.SelectedItem);
+            Assert.Equal("cpu", accelerator.SelectedItem);
+            Assert.DoesNotContain("automatic", (IEnumerable<string>)model.ItemsSource);
+            Assert.DoesNotContain("automatic", (IEnumerable<string>)accelerator.ItemsSource);
+            Assert.Equal(new Dictionary<string, string> { ["choice.accelerator"] = "cpu", ["choice.OLLAMA_MODEL"] = "gemma4:26b" },
+                HostInputDialog.Cleaned(dialog.Answers()));
+            model.SelectedItem = "gemma4:e4b";
+            accelerator.SelectedItem = "gpu";
+            Assert.Equal(new Dictionary<string, string> { ["choice.accelerator"] = "gpu", ["choice.OLLAMA_MODEL"] = "gemma4:e4b" },
+                HostInputDialog.Cleaned(dialog.Answers()));
+            dialog.Close();
+
+            // Not installed: the Add dialog, with the host's suggestion.
+            var add = HostInputDialog.RoleDialog("diva", HostRoles.DeepThinking, role with { Installed = false, Current = new Dictionary<string, string>(), AcceleratorCurrent = null });
+            Assert.Equal("Add deep-thinking on diva", Find<TextBlock>(add, "HostInputHeading").Text);
+            Assert.Equal("automatic", Find<ComboBox>(add, "HostInput-choice.OLLAMA_MODEL").SelectedItem);
+            Assert.Empty(HostInputDialog.Cleaned(add.Answers())!);
+            add.Close();
+
+            // An older host that doesn't say what it runs with: Apply sets it up with the choices shown, and the dialog says so.
+            var old = HostInputDialog.RoleDialog("diva", HostRoles.DeepThinking, older);
+            Assert.Equal("Change deep-thinking on diva", Find<TextBlock>(old, "HostInputHeading").Text);
+            Assert.Equal("automatic", Find<ComboBox>(old, "HostInput-choice.OLLAMA_MODEL").SelectedItem);
+            old.Close();
+
+            // On a host with several cards it stays on the card it runs on now (or every card), even against a recommendation.
+            var spread = HostRemote.ParseRole([.. TwoGpuDescribe.Select(l => l == "role.installed=no" ? "role.installed=yes" : l), "role.gpu_current=all"]);
+            var cards = HostInputDialog.RoleDialog("gpu-pc", "ollama", spread,
+                new Dictionary<string, (string, string)> { ["choice.gpu"] = ("GPU-3080bbbb-1111", "it has the most graphics memory free") });
+            Assert.Equal("all", HostInputDialog.Cleaned(cards.Answers())!["choice.gpu"]);
+            cards.Close();
+            var pinned = HostInputDialog.RoleDialog("gpu-pc", "ollama", spread with { GpuCurrent = "GPU-3090aaaa-0000" });
+            Assert.Equal("GPU-3090aaaa-0000", HostInputDialog.Cleaned(pinned.Answers())!["choice.gpu"]);
+            pinned.Close();
+        });
+    }
+
     [Fact]
     public void Listening_goes_on_the_card_with_the_most_memory_free()
     {

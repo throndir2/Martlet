@@ -2248,7 +2248,8 @@ active now.`; on this PC's own host service, `DeviceComponentDetail-host-service
 reads `Paired as diva-host. Used by IMOUTO (desktop-imouto), active now.` (or *No
 other computer uses it yet.*). Job owners are `ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`
 and `LipSyncOwner`, device commands `NodeAction-<action>`
-(`NodeAction-InstallRole-<role>` and `NodeAction-RemoveRole-<role>` for host
+(`NodeAction-InstallRole-<role>`, `NodeAction-ChangeRole-<role>` (*Change ... settings*, on the row of a role the host
+runs: its dialog shows what the role runs with now, so it needs `--allow-ui-effects`) and `NodeAction-RemoveRole-<role>` for host
 roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
@@ -3005,6 +3006,12 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
 required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+For a role the host already runs (*Change ... settings*, *Change model*), the
+same dialog's `HostInputHeading` reads *Change <role> on <host>* (otherwise *Add
+<role> on <host>*), `HostInputOk` reads *Apply*, and each
+`HostInput-choice.<VAR>` (and `HostInput-choice.accelerator`) starts on what the
+role runs with now, which `martlet-host describe` reports as
+`role.choice_current` and `role.accelerator_current`, without *Automatic*.
 On a host with two or more NVIDIA cards the dialog adds
 `HostInput-choice.gpu` (Automatic, each card by name and memory with the roles
 already on it, or All cards); one-click installs on such a host (listening,
@@ -3027,6 +3034,13 @@ could do. `HostChoices-<job>` says why none are listed (none paired, only this
 PC's own host service, or none can run it) and `HostChoicesUnable-<job>` names
 paired computers whose platform or hardware can't run it, with why.
 `SetupUseHost-<job>-<host ID>` hands the job over and needs `--allow-ui-effects`.
+A computer that runs the job's role also has `SetupChangeHost-<job>-<host ID>`
+(*Change model* on Thinking and Listening, *Change settings* on Lip-sync; its
+returned name says what it runs now, for example *Change model: conversation
+model on diva (now gemma4-e4b)*), which opens the role's settings there and
+needs `--allow-ui-effects`. Once a host serves a new model, this PC's job and
+Deep thinking follow it on the next check (`logs_tail` and the status line say
+*Thinking on diva now uses ...*).
 Voice lists its engines per computer instead (`SpeakingHost-<host ID>` and
 `VoiceEngineUse-<key>`, above).
 
@@ -3136,7 +3150,10 @@ each paired computer's
 thinking role there ...*) and, for a reachable computer without the role, its
 `DeepThinkingAddRole-<host ID>` button (returned: *Add Deep thinking on diva*;
 clicking it installs the role in a run window and then thinks there, so it
-needs `--allow-ui-effects`), or `DeepThinkingHosts` when none is
+needs `--allow-ui-effects`) or, for one with the role, its
+`DeepThinkingChangeModel-<host ID>` button (returned: *Change the Deep thinking
+model on diva (now gemma4:e4b)*; clicking it opens the role's settings there
+with that model selected, so it needs `--allow-ui-effects`), or `DeepThinkingHosts` when none is
 paired, `DeepThinkingLocalStatus` (what Ollama on this PC has downloaded),
 `DeepThinkingLocalFit` (whether the model in `DeepThinkingLocalModel` fits
 beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
