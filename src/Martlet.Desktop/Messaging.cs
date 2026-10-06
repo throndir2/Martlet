@@ -6,26 +6,69 @@ using Martlet.Messaging;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Messaging's Telegram choices on this PC. The bot token lives in Windows Credential Manager, never here.
-/// Only one program may read a bot's messages, so this stays on this PC (it is not synced to the other computers).</summary>
-internal sealed record TelegramPreferences
+/// <summary>One messaging app's choices on this PC: whether Martlet answers it, which Credential Manager entry keeps its
+/// secrets, the paired chats and whether replies are also said aloud.</summary>
+internal abstract record ChannelPreferences
 {
-    /// <summary>Martlet answers the bot's paired chats while it runs on this PC.</summary>
+    /// <summary>Martlet answers the app's paired chats while it runs on this PC.</summary>
     public bool Enabled { get; init; }
-    public string BotName { get; init; } = "";
-    public string BotUsername { get; init; } = "";
-    /// <summary>Which Windows Credential Manager entry holds this bot's token (Martlet/v3/messaging/telegram/&lt;id&gt;).</summary>
+    /// <summary>Which Windows Credential Manager entry holds the secrets (Martlet/v3/messaging/&lt;app&gt;/&lt;id&gt;).</summary>
     public Guid CredentialId { get; init; }
     /// <summary>The chats paired with a code: the only chats Martlet answers.</summary>
     public IReadOnlyList<MessagingChat> Chats { get; init; } = [];
     /// <summary>Also say replies to messages aloud on this PC (off: you are usually away from it).</summary>
     public bool SpeakReplies { get; init; }
+    /// <summary>Set up (a bot or a number is connected).</summary>
+    internal abstract bool Connected { get; }
+    /// <summary>How the owner's chats find it: @bot for Telegram, the number for WhatsApp.</summary>
+    internal abstract string Handle { get; }
+}
+
+/// <summary>Companion › Messaging's Telegram choices on this PC. The bot token lives in Windows Credential Manager, never here.
+/// Only one program may read a bot's messages, so this stays on this PC (it is not synced to the other computers).</summary>
+internal sealed record TelegramPreferences : ChannelPreferences
+{
+    public string BotName { get; init; } = "";
+    public string BotUsername { get; init; } = "";
+    internal override bool Connected => BotUsername.Length > 0;
+    internal override string Handle => "@" + BotUsername;
+}
+
+/// <summary>Companion › Messaging's WhatsApp choices on this PC: the WhatsApp Cloud API account (IDs only; the access token
+/// and app secret live in Windows Credential Manager), the local webhook port and an optional public address of the owner's
+/// own (empty: a Cloudflare quick tunnel). Meta delivers each number's messages to one webhook, so this stays on this PC.</summary>
+internal sealed record WhatsAppPreferences : ChannelPreferences
+{
+    public string Name { get; init; } = "";
+    /// <summary>The business phone number as WhatsApp shows it (+1 555-0100).</summary>
+    public string Number { get; init; } = "";
+    public string AppId { get; init; } = "";
+    public string BusinessAccountId { get; init; } = "";
+    public string PhoneNumberId { get; init; } = "";
+    /// <summary>The localhost port Martlet's webhook listens on (kept so an own public address can forward to it).</summary>
+    public int Port { get; init; }
+    /// <summary>The owner's own public HTTPS address forwarding to <see cref="Port"/>; empty uses a Cloudflare quick tunnel.</summary>
+    public string PublicAddress { get; init; } = "";
+    internal override bool Connected => PhoneNumberId.Length > 0;
+    internal override string Handle => Number;
+    /// <summary>The number's digits, as wa.me links take them.</summary>
+    internal string Digits => new([.. Number.Where(char.IsAsciiDigit)]);
 }
 
 internal sealed record MessagingPreferences
 {
     internal const string FileName = "messaging.json";
     public TelegramPreferences Telegram { get; init; } = new();
+    public WhatsAppPreferences WhatsApp { get; init; } = new();
+
+    internal ChannelPreferences this[MessagingApp app] => app == MessagingApp.WhatsApp ? WhatsApp : Telegram;
+
+    internal MessagingPreferences With(MessagingApp app, Func<ChannelPreferences, ChannelPreferences> change) => app == MessagingApp.WhatsApp
+        ? this with { WhatsApp = (WhatsAppPreferences)change(WhatsApp) }
+        : this with { Telegram = (TelegramPreferences)change(Telegram) };
+
+    private static IReadOnlyList<MessagingChat> Clean(IReadOnlyList<MessagingChat>? chats) =>
+        [.. (chats ?? []).Where(chat => chat is { Id.Length: > 0 }).Select(chat => chat with { Name = chat.Name ?? chat.Id })];
 
     internal static MessagingPreferences Load(string? directory)
     {
@@ -36,12 +79,16 @@ internal sealed record MessagingPreferences
             if (!File.Exists(path)) return new();
             var loaded = JsonSerializer.Deserialize<MessagingPreferences>(File.ReadAllText(path)) ?? new();
             var telegram = loaded.Telegram ?? new();
+            var whatsApp = loaded.WhatsApp ?? new();
             return new()
             {
-                Telegram = telegram with
+                Telegram = telegram with { BotName = telegram.BotName ?? "", BotUsername = telegram.BotUsername ?? "", Chats = Clean(telegram.Chats) },
+                WhatsApp = whatsApp with
                 {
-                    BotName = telegram.BotName ?? "", BotUsername = telegram.BotUsername ?? "",
-                    Chats = [.. (telegram.Chats ?? []).Where(chat => chat is { Id.Length: > 0 }).Select(chat => chat with { Name = chat.Name ?? chat.Id })]
+                    Name = whatsApp.Name ?? "", Number = whatsApp.Number ?? "", AppId = whatsApp.AppId ?? "",
+                    BusinessAccountId = whatsApp.BusinessAccountId ?? "", PhoneNumberId = whatsApp.PhoneNumberId ?? "",
+                    PublicAddress = whatsApp.PublicAddress ?? "", Port = whatsApp.Port is > 0 and < 65536 ? whatsApp.Port : 0,
+                    Chats = Clean(whatsApp.Chats)
                 }
             };
         }
@@ -71,47 +118,87 @@ internal sealed record MessagingPreferences
     }
 }
 
-/// <summary>Martlet in messaging apps: runs the Telegram bot (<see cref="MessagingBridge"/>) while it is turned on and its
-/// token is saved, keeps the paired chats in messaging.json and hands each message to <see cref="Answer"/> (the conversation).</summary>
+/// <summary>Martlet in messaging apps: runs each app's <see cref="MessagingBridge"/> (Telegram's bot, WhatsApp's business
+/// number) while it is turned on and its secrets are saved, keeps the paired chats in messaging.json and hands each message to
+/// <see cref="Answer"/> (the conversation).</summary>
 internal sealed class MessagingService : IDisposable
 {
     internal const string TelegramKey = "telegram";
+    internal const string WhatsAppKey = "whatsapp";
     private readonly string? directory;
     private readonly WindowsCredentialStore vault;
-    private readonly Func<string, IMessagingTransport> transports;
+    private readonly Func<string, IMessagingTransport> telegram;
+    private readonly Func<WhatsAppSecrets, WhatsAppPreferences, IMessagingTransport> whatsApp;
+    private readonly Func<WhatsAppSecrets, WhatsAppCloud> cloud;
     private readonly object gate = new();
-    private MessagingBridge? bridge;
-    private CancellationTokenSource? running;
+    private readonly Dictionary<MessagingApp, (MessagingBridge Bridge, CancellationTokenSource? Running)> channels = [];
     private MessagingPreferences preferences;
 
-    internal MessagingService(string? directory, WindowsCredentialStore? vault = null, Func<string, IMessagingTransport>? transports = null)
+    internal MessagingService(string? directory, WindowsCredentialStore? vault = null, Func<string, IMessagingTransport>? transports = null,
+        Func<WhatsAppSecrets, WhatsAppPreferences, IMessagingTransport>? whatsApp = null, Func<WhatsAppSecrets, WhatsAppCloud>? cloud = null)
     {
         this.directory = directory;
         this.vault = vault ?? new WindowsCredentialStore();
-        this.transports = transports ?? (token => new TelegramTransport(token, api: FixtureApi()));
+        telegram = transports ?? (token => new TelegramTransport(token, api: FixtureApi("MARTLET_TELEGRAM_API")));
+        this.cloud = cloud ?? (secrets => new WhatsAppCloud(secrets, api: FixtureApi("MARTLET_WHATSAPP_API")));
+        this.whatsApp = whatsApp ?? DefaultWhatsApp;
         preferences = MessagingPreferences.Load(directory);
     }
 
-    /// <summary>MARTLET_TELEGRAM_API: a local fake Telegram Bot API (http://127.0.0.1 only) for MCP verification; never a real
-    /// server.</summary>
-    private static Uri? FixtureApi() =>
-        Uri.TryCreate(Environment.GetEnvironmentVariable("MARTLET_TELEGRAM_API"), UriKind.Absolute, out var api) && api.IsLoopback ? api : null;
+    /// <summary>MARTLET_TELEGRAM_API / MARTLET_WHATSAPP_API: a local fake Bot or Graph API (http://127.0.0.1 only) for MCP
+    /// verification; never a real server.</summary>
+    private static Uri? FixtureApi(string variable) =>
+        Uri.TryCreate(Environment.GetEnvironmentVariable(variable), UriKind.Absolute, out var api) && api.IsLoopback ? api : null;
+
+    /// <summary>Where Martlet keeps cloudflared when it downloads it.</summary>
+    internal string? ToolsDirectory => directory is null ? null : Path.Combine(directory, "tools");
+
+    internal string? Cloudflared => CloudflareQuickTunnel.Find(ToolsDirectory);
+
+    private IMessagingTransport DefaultWhatsApp(WhatsAppSecrets secrets, WhatsAppPreferences saved)
+    {
+        IPublicAddress address;
+        if (saved.PublicAddress.Length > 0) address = new FixedPublicAddress(new Uri(saved.PublicAddress));
+        else address = new CloudflareQuickTunnel(Cloudflared ?? throw new ArgumentException("cloudflared isn't on this PC."));
+        return new WhatsAppTransport(secrets, new(saved.AppId, saved.BusinessAccountId, saved.PhoneNumberId, saved.Number, saved.Name),
+            saved.Port, address, api: FixtureApi("MARTLET_WHATSAPP_API"));
+    }
 
     /// <summary>Answers one message the way the conversation does; null while Martlet can't talk.</summary>
-    internal Func<InboundMessage, CancellationToken, Task<string>>? Answer { get; set; }
-    /// <summary>Raised (on any thread) when the preferences, the bot's status or the pairing code changed.</summary>
+    internal Func<MessagingApp, InboundMessage, CancellationToken, Task<string>>? Answer { get; set; }
+    /// <summary>Raised (on any thread) when the preferences, a bridge's status or a pairing code changed.</summary>
     internal event Action? Changed;
 
     internal MessagingPreferences Preferences { get { lock (gate) return preferences; } }
-    internal MessagingStatus Status { get { lock (gate) return bridge?.Status ?? new(MessagingState.Off); } }
-    internal PairingCode? Pairing { get { lock (gate) return bridge?.Pairing; } }
-    internal bool Running { get { lock (gate) return running is not null; } }
-    internal bool TokenSaved => ReadToken() is not null;
 
-    private string? ReadToken()
+    internal MessagingStatus Status(MessagingApp app)
     {
-        var id = Preferences.Telegram.CredentialId;
-        return id != Guid.Empty && vault.ReadMessagingToken(TelegramKey, id, out var token) == CredentialError.None ? token : null;
+        lock (gate) return channels.TryGetValue(app, out var channel) ? channel.Bridge.Status : new(MessagingState.Off);
+    }
+
+    internal PairingCode? Pairing(MessagingApp app)
+    {
+        lock (gate) return channels.TryGetValue(app, out var channel) ? channel.Bridge.Pairing : null;
+    }
+
+    internal bool Running(MessagingApp app)
+    {
+        lock (gate) return channels.TryGetValue(app, out var channel) && channel.Running is not null;
+    }
+
+    internal bool SecretsSaved(MessagingApp app) => ReadSecret(app) is not null;
+
+    /// <summary>The saved WhatsApp access token and app secret (to reconnect without pasting them again).</summary>
+    internal WhatsAppSecrets? SavedWhatsAppSecrets() => WhatsAppSecrets.Unpack(ReadSecret(MessagingApp.WhatsApp));
+
+    private static string Key(MessagingApp app) => app == MessagingApp.WhatsApp ? WhatsAppKey : TelegramKey;
+
+    internal static string Name(MessagingApp app) => app == MessagingApp.WhatsApp ? "WhatsApp" : "Telegram";
+
+    private string? ReadSecret(MessagingApp app)
+    {
+        var id = Preferences[app].CredentialId;
+        return id != Guid.Empty && vault.ReadMessagingToken(Key(app), id, out var secret) == CredentialError.None ? secret : null;
     }
 
     /// <summary>Checks a bot token with Telegram, saves it in Windows Credential Manager, turns the bot on and starts it.</summary>
@@ -121,125 +208,178 @@ internal sealed class MessagingService : IDisposable
         if (!TelegramTransport.IsToken(token))
             throw new ArgumentException("That doesn't look like a bot token. BotFather gives one like 123456789:AAH...");
         BotIdentity bot;
-        using (var probe = transports(token)) bot = await probe.ConnectAsync(cancellation).ConfigureAwait(false);
-        Stop();
-        var fresh = Guid.NewGuid();
-        var error = vault.WriteMessagingToken(TelegramKey, fresh, token);
-        if (error != CredentialError.None) throw new InvalidOperationException($"Couldn't save the token in Windows Credential Manager ({error}).");
-        var previous = Preferences.Telegram.CredentialId;
-        if (previous != Guid.Empty) vault.DeleteMessagingToken(TelegramKey, previous);
-        Update(saved => saved with
-        {
-            Telegram = saved.Telegram with { Enabled = true, BotName = bot.Name, BotUsername = bot.Username, CredentialId = fresh }
-        });
-        Start();
+        using (var probe = telegram(token)) bot = await probe.ConnectAsync(cancellation).ConfigureAwait(false);
+        Save(MessagingApp.Telegram, token, saved => ((TelegramPreferences)saved) with { BotName = bot.Name, BotUsername = bot.Username });
         return bot;
     }
 
-    /// <summary>Answer Telegram on this PC: on starts the bot (with a saved token), off stops it and keeps the token.</summary>
-    internal void SetEnabled(bool enabled)
+    /// <summary>Checks a WhatsApp Cloud API access token and app secret with Meta, finds the business account and phone number
+    /// (the given IDs, or the token's own when empty), saves the secrets in Windows Credential Manager, turns WhatsApp on and
+    /// starts it: the webhook, its public address and the app's webhook registration.</summary>
+    internal async Task<WhatsAppAccount> ConnectWhatsAppAsync(string accessToken, string appSecret, string? phoneNumberId, string? businessAccountId,
+        string? publicAddress, CancellationToken cancellation)
     {
-        Update(saved => saved with { Telegram = saved.Telegram with { Enabled = enabled } });
-        if (enabled) Start();
-        else Stop();
+        var secrets = new WhatsAppSecrets(accessToken.Trim(), appSecret.Trim());
+        publicAddress = publicAddress?.Trim() ?? "";
+        if (publicAddress.Length > 0 && (!Uri.TryCreate(publicAddress, UriKind.Absolute, out var address) ||
+                !(address.Scheme == Uri.UriSchemeHttps || address.IsLoopback && FixtureApi("MARTLET_WHATSAPP_API") is not null)))
+            throw new ArgumentException("The public address must be an https:// address that forwards to this PC.");
+        if (publicAddress.Length == 0 && Cloudflared is null)
+            throw new InvalidOperationException("Martlet needs Cloudflare's free cloudflared to give WhatsApp an address. Press Get cloudflared first.");
+        WhatsAppAccount account;
+        using (var probe = cloud(secrets)) account = await probe.DescribeAsync(phoneNumberId, businessAccountId, cancellation).ConfigureAwait(false);
+        var port = Preferences.WhatsApp.Port is > 0 and var kept ? kept : WhatsAppWebhook.FreePort();
+        Save(MessagingApp.WhatsApp, secrets.Pack(), saved => ((WhatsAppPreferences)saved) with
+        {
+            Name = account.Name, Number = account.Number, AppId = account.AppId, BusinessAccountId = account.BusinessAccountId,
+            PhoneNumberId = account.PhoneNumberId, Port = port, PublicAddress = publicAddress
+        });
+        return account;
     }
 
-    internal void SetSpeakReplies(bool speak) => Update(saved => saved with { Telegram = saved.Telegram with { SpeakReplies = speak } });
-
-    /// <summary>Starts the bot when it is turned on and its token is saved; does nothing when it already runs.</summary>
-    internal bool Start()
+    private void Save(MessagingApp app, string secret, Func<ChannelPreferences, ChannelPreferences> describe)
     {
-        var saved = Preferences.Telegram;
-        if (!saved.Enabled) return false;
-        if (ReadToken() is not { } token) return false;
+        Stop(app);
+        var fresh = Guid.NewGuid();
+        var error = vault.WriteMessagingToken(Key(app), fresh, secret);
+        if (error != CredentialError.None) throw new InvalidOperationException($"Couldn't save the secrets in Windows Credential Manager ({error}).");
+        var previous = Preferences[app].CredentialId;
+        if (previous != Guid.Empty) vault.DeleteMessagingToken(Key(app), previous);
+        Update(saved => saved.With(app, channel => describe(channel) with { Enabled = true, CredentialId = fresh }));
+        Start(app);
+    }
+
+    /// <summary>Answer the app on this PC: on starts it (with saved secrets), off stops it and keeps them.</summary>
+    internal void SetEnabled(MessagingApp app, bool enabled)
+    {
+        Update(saved => saved.With(app, channel => channel with { Enabled = enabled }));
+        if (enabled) Start(app);
+        else Stop(app);
+    }
+
+    internal void SetSpeakReplies(MessagingApp app, bool speak) => Update(saved => saved.With(app, channel => channel with { SpeakReplies = speak }));
+
+    /// <summary>Starts every app that is turned on and has its secrets saved.</summary>
+    internal void Start()
+    {
+        foreach (var app in Enum.GetValues<MessagingApp>()) Start(app);
+    }
+
+    internal void Stop()
+    {
+        foreach (var app in Enum.GetValues<MessagingApp>()) Stop(app);
+    }
+
+    /// <summary>Starts the app when it is turned on and its secrets are saved; does nothing when it already runs.</summary>
+    internal bool Start(MessagingApp app)
+    {
+        var saved = Preferences[app];
+        if (!saved.Enabled || !saved.Connected) return false;
+        if (ReadSecret(app) is not { } secret) return false;
+        var name = Name(app);
         lock (gate)
         {
-            if (running is not null) return true;
+            if (channels.TryGetValue(app, out var current) && current.Running is not null) return true;
             IMessagingTransport transport;
-            try { transport = transports(token); }
-            catch (ArgumentException) { return false; }
-            var next = new MessagingBridge(transport, saved.Chats, AnswerAsync);
+            try
+            {
+                if (app == MessagingApp.WhatsApp)
+                {
+                    var whatsAppSaved = (WhatsAppPreferences)saved;
+                    if (whatsAppSaved.Port == 0)
+                    {
+                        whatsAppSaved = whatsAppSaved with { Port = WhatsAppWebhook.FreePort() };
+                        preferences = preferences with { WhatsApp = whatsAppSaved };
+                        preferences.Save(directory);
+                    }
+                    transport = whatsApp(WhatsAppSecrets.Unpack(secret) ?? throw new ArgumentException("The saved WhatsApp secrets are unreadable."), whatsAppSaved);
+                }
+                else transport = telegram(secret);
+            }
+            catch (ArgumentException error)
+            {
+                ErrorLog.Warn($"{name} can't start: {error.Message}");
+                return false;
+            }
+            var next = new MessagingBridge(transport, saved.Chats, (message, token) => AnswerAsync(app, message, token));
             next.StatusChanged += _ => Changed?.Invoke();
             next.Paired += chat =>
             {
-                Update(current => current with
-                {
-                    Telegram = current.Telegram with { Chats = [.. current.Telegram.Chats.Where(c => c.Id != chat.Id), chat] }
-                });
-                ErrorLog.Info("Telegram: a new chat paired with Martlet.");
+                Update(current => current.With(app, channel => channel with { Chats = [.. channel.Chats.Where(c => c.Id != chat.Id), chat] }));
+                ErrorLog.Info($"{name}: a new chat paired with Martlet.");
             };
-            bridge = next;
-            var stop = running = new CancellationTokenSource();
+            var stop = new CancellationTokenSource();
+            channels[app] = (next, stop);
             Task.Run(async () =>
             {
                 try { await next.RunAsync(stop.Token).ConfigureAwait(false); }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {
-                    ErrorLog.Warn($"Telegram stopped: {error.GetType().Name}.");
+                    ErrorLog.Warn($"{name} stopped: {error.GetType().Name}.");
                 }
                 finally
                 {
                     transport.Dispose();
                     lock (gate)
-                        if (ReferenceEquals(running, stop))
-                        {
-                            running = null;
-                            stop.Dispose();
-                        }
+                        if (channels.TryGetValue(app, out var still) && ReferenceEquals(still.Running, stop))
+                            channels[app] = (next, null);
+                    stop.Dispose();
                     Changed?.Invoke();
                 }
             });
         }
-        ErrorLog.Info($"Telegram: Martlet answers @{saved.BotUsername} on this PC ({saved.Chats.Count} paired chat{(saved.Chats.Count == 1 ? "" : "s")}).");
+        ErrorLog.Info($"{name}: Martlet answers {saved.Handle} on this PC ({saved.Chats.Count} paired chat{(saved.Chats.Count == 1 ? "" : "s")}).");
         Changed?.Invoke();
         return true;
     }
 
-    internal void Stop()
+    internal void Stop(MessagingApp app)
     {
-        CancellationTokenSource? stop;
+        CancellationTokenSource? stop = null;
         lock (gate)
-        {
-            stop = running;
-            running = null;
-        }
+            if (channels.TryGetValue(app, out var channel) && channel.Running is not null)
+            {
+                stop = channel.Running;
+                channels[app] = (channel.Bridge, null);
+            }
         if (stop is null) return;
-        stop.Cancel();
+        try { stop.Cancel(); }
+        catch (ObjectDisposedException) { }
         Changed?.Invoke();
     }
 
-    /// <summary>Stops the bot, deletes its token and forgets the bot and its paired chats.</summary>
-    internal void Disconnect()
+    /// <summary>Stops the app, deletes its secrets and forgets its account and paired chats.</summary>
+    internal void Disconnect(MessagingApp app)
     {
-        Stop();
-        lock (gate) bridge = null;
-        var id = Preferences.Telegram.CredentialId;
-        if (id != Guid.Empty) vault.DeleteMessagingToken(TelegramKey, id);
-        Update(saved => saved with { Telegram = new() });
+        Stop(app);
+        lock (gate) channels.Remove(app);
+        var id = Preferences[app].CredentialId;
+        if (id != Guid.Empty) vault.DeleteMessagingToken(Key(app), id);
+        Update(saved => app == MessagingApp.WhatsApp ? saved with { WhatsApp = new() } : saved with { Telegram = new() });
     }
 
-    internal PairingCode? StartPairing()
+    internal PairingCode? StartPairing(MessagingApp app)
     {
         PairingCode? code;
-        lock (gate) code = running is null ? null : bridge?.StartPairing();
+        lock (gate) code = channels.TryGetValue(app, out var channel) && channel.Running is not null ? channel.Bridge.StartPairing() : null;
         Changed?.Invoke();
         return code;
     }
 
-    internal void CancelPairing()
+    internal void CancelPairing(MessagingApp app)
     {
-        lock (gate) bridge?.CancelPairing();
+        lock (gate) if (channels.TryGetValue(app, out var channel)) channel.Bridge.CancelPairing();
         Changed?.Invoke();
     }
 
-    internal void RemoveChat(string id)
+    internal void RemoveChat(MessagingApp app, string id)
     {
-        lock (gate) bridge?.Forget(id);
-        Update(saved => saved with { Telegram = saved.Telegram with { Chats = [.. saved.Telegram.Chats.Where(chat => chat.Id != id)] } });
+        lock (gate) if (channels.TryGetValue(app, out var channel)) channel.Bridge.Forget(id);
+        Update(saved => saved.With(app, channel => channel with { Chats = [.. channel.Chats.Where(chat => chat.Id != id)] }));
     }
 
-    private Task<string> AnswerAsync(InboundMessage message, CancellationToken cancellation) =>
-        Answer is { } answer ? answer(message, cancellation) : Task.FromResult("Martlet can't talk right now. Try again once it's running.");
+    private Task<string> AnswerAsync(MessagingApp app, InboundMessage message, CancellationToken cancellation) =>
+        Answer is { } answer ? answer(app, message, cancellation) : Task.FromResult("Martlet can't talk right now. Try again once it's running.");
 
     private void Update(Func<MessagingPreferences, MessagingPreferences> change)
     {
