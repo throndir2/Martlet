@@ -1500,6 +1500,81 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task AlwaysListeningKeepsListeningWhileMartletSpeaksAndAnswersWhatItHeardAfter() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false }, echo: true);
+        var transcripts = new ConcurrentQueue<string>(["What's the weather like?", "Also, remind me about lunch."]);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json(
+            JsonSerializer.Serialize(new { text = transcripts.TryDequeue(out var next) ? next : "Again." })));
+        var replies = new ConcurrentQueue<string>(["It is sunny today.", "Lunch is at noon."]);
+        fixture.Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(Harness.Trace(replies.TryDequeue(out var next) ? next : "Okay.")));
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        // Echo reduction on (the default), barge-in off (the default).
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: true));
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            await fixture.Advance(() => fixture.Controller.Speaking == PlaybackMode.Reply);
+            var reply = Assert.IsType<LiveConversationOperation>(window.Current);
+            // Martlet is speaking and the microphone stays open: the capture listening since the reply began isn't let go.
+            var disposals = fixture.Capture.Disposals;
+            await fixture.Pass(TimeSpan.FromMilliseconds(500));
+            await Heartbeat();
+            Assert.Equal(PlaybackMode.Reply, fixture.Controller.Speaking);
+            Assert.Equal(disposals, fixture.Capture.Disposals);
+            Assert.StartsWith("Listening. Martlet listens for you, even while it speaks",
+                System.Windows.Automation.AutomationProperties.GetName(Control<Button>(window, "MicChip")));
+            // What you say now is heard and shown...
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            await fixture.Advance(() => fixture.Stt.Calls == 2 && window.Messages.Count(m => m.IsUser) == 2);
+            Assert.Equal(["What's the weather like?", "Also, remind me about lunch."], window.Messages.Where(m => m.IsUser).Select(m => m.Text));
+            Assert.Equal(PlaybackMode.Reply, fixture.Controller.Speaking);
+            Assert.False(reply.OwnershipReleased);
+            // ...without stopping the reply (barge-in is off) or being answered before it finishes.
+            Assert.Equal(1, fixture.Llm.Calls);
+            fixture.Output.AutoConsume = true;
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Lunch is at noon."));
+            Assert.Equal("runtime.Completed", reply.Status.Code);
+            Assert.Equal(2, fixture.Llm.Calls);
+            Assert.Contains("Also, remind me about lunch.", Encoding.UTF8.GetString(fixture.Llm.Body));
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task WithoutEchoReductionAlwaysListeningPausesWhileMartletSpeaks() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false }, echo: true);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json(JsonSerializer.Serialize(new { text = "What's the weather like?" })));
+        fixture.Answer("It is sunny today.");
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        // Nothing tells Martlet's own voice from yours: it would hear itself, so it doesn't listen while it speaks.
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: true, ReduceEcho: false));
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            await fixture.Advance(() => fixture.Controller.Speaking == PlaybackMode.Reply);
+            await fixture.Advance(() => System.Windows.Automation.AutomationProperties.GetName(Control<Button>(window, "MicChip"))
+                .Contains("Not listening while Martlet speaks", StringComparison.Ordinal));
+            var opens = fixture.Capture.Opens;
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            await fixture.Pass(TimeSpan.FromMilliseconds(500));
+            await Heartbeat();
+            // Nothing said while it speaks is recorded.
+            Assert.Equal(PlaybackMode.Reply, fixture.Controller.Speaking);
+            Assert.Equal(opens, fixture.Capture.Opens);
+            Assert.Equal(1, fixture.Stt.Calls);
+            Assert.Single(window.Messages, m => m.IsUser);
+            fixture.Output.AutoConsume = true;
+            // Once Martlet is done it listens again.
+            await fixture.Advance(() => fixture.Capture.Opens > opens);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task WatchingStartsOnlyFromStartWatchingAndStopsFromItsOwnButton() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -2354,7 +2429,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal LocalVoices? Voices { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
-        IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false)
+        IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -2373,7 +2448,10 @@ internal sealed class LiveFixture : IAsyncDisposable
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             nextStyle,
             memory: Memory, voiceIdentity: voiceIdentity, voices: Voices,
-            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History);
+            pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History,
+            // Echo reduction over the fixture microphone, with speakers whose loopback stays quiet and a canceller that keeps
+            // the microphone as it is.
+            echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -2383,9 +2461,9 @@ internal sealed class LiveFixture : IAsyncDisposable
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
-        bool history = false, bool tools = false)
+        bool history = false, bool tools = false, bool echo = false)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools, echo);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -2469,6 +2547,15 @@ internal sealed class LiveFixture : IAsyncDisposable
             await Task.Delay(1, timeout.Token);
         }
     }
+    /// <summary>Lets this much of the fixture clock pass, 5 ms at a time, with the work it wakes running in between.</summary>
+    internal async Task Pass(TimeSpan time)
+    {
+        for (var passed = TimeSpan.Zero; passed < time; passed += TimeSpan.FromMilliseconds(5))
+        {
+            Clock.Advance(TimeSpan.FromMilliseconds(5));
+            await Task.Delay(1);
+        }
+    }
     internal void Answer(params string[] text) => Llm.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(Harness.Trace(text)));
     internal async Task Finish(LiveConversationOperation? operation = null, bool advance = true)
     {
@@ -2530,6 +2617,23 @@ internal sealed class LiveFixture : IAsyncDisposable
     {
         public event Action<bool>? LockedChanged;
         internal void Signal(bool value) => LockedChanged?.Invoke(value);
+        public void Dispose() { }
+    }
+    private sealed class QuietSpeakers : IEchoReferenceFactory
+    {
+        public IEchoReference Open(string? outputEndpointId, CancellationToken cancellationToken) => new Loopback();
+        private sealed class Loopback : IEchoReference
+        {
+            public CaptureSourceFormat Format { get; } = new(16000, 1, 32, DeviceSampleEncoding.IeeeFloat);
+            public void Start() { }
+            public CapturePacket Read(Span<byte> destination) => new(0);
+            public void Stop() { }
+            public void Dispose() { }
+        }
+    }
+    private sealed class KeptMicrophone : IEchoCanceller
+    {
+        public void Process(ReadOnlySpan<float> speaker, Span<float> microphone) { }
         public void Dispose() { }
     }
     internal sealed class DelayedSettings(ISetupService inner) : ISetupService

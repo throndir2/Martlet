@@ -79,6 +79,13 @@ public sealed class EchoReducer : IDisposable
 
     public EchoReductionReport Report { get { lock (gate) return report; } }
 
+    /// <summary>Whether echo reduction tells what the speakers play from the user: once a capture's echo-reducing microphone has
+    /// opened, that capture's own <paramref name="capture"/> timeline decides (false once its canceller or the speakers' sound
+    /// was lost); otherwise the latest report does (a capture that couldn't start echo reduction reports why at once, and before
+    /// any capture nothing says it can't).</summary>
+    public bool Works(EchoTimeline? capture = null) =>
+        capture?.Reducing ?? Report.State is not (EchoReductionState.NoSpeakerAudio or EchoReductionState.Unavailable);
+
     /// <summary>Raised on the capture's worker thread after each capture, or when one starts without echo reduction.</summary>
     public event Action<EchoReductionReport>? Reported;
 
@@ -303,6 +310,7 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
         microphonePcm = new byte[(Rate / 10 + 64) * 2];
         speakerPcm = new byte[(Rate / 10 + 64) * 2];
         output = new byte[pending.Length * 4];
+        timeline?.Reduce(true);
     }
 
     public void Start(CancellationToken cancellationToken)
@@ -518,6 +526,7 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
         var lost = speaker;
         speaker = null;
         state = EchoReductionState.NoSpeakerAudio;
+        timeline?.Reduce(false);
         problem ??= EchoReducer.SpeakerProblem(error is CaptureDeviceException failure ? failure.Code : ErrorCode.AudioCaptureFailed);
         try { lost?.Stop(); }
         catch (Exception) { }
@@ -530,6 +539,7 @@ internal sealed class EchoCancellingCaptureDevice : ICaptureDevice
         var failed = canceller;
         canceller = null;
         state = EchoReductionState.Unavailable;
+        timeline?.Reduce(false);
         problem = "The echo canceller stopped (" + error.GetType().Name + "), so Martlet listened without it.";
         try { failed?.Dispose(); }
         catch (Exception) { }

@@ -515,8 +515,8 @@ Martlet, stop singing". play_song with from=resume restarts that line.*
 end leaves *You finished singing ...*.
 
 **While it sings** the song keeps going (`PlaybackMode.Song`). Always listening
-keeps listening when barge-in or echo reduction is on (the song is taken out of
-what the microphone hears), otherwise it holds off as for a reply; hearing what
+keeps listening when barge-in is on or echo reduction works (the song is taken
+out of what the microphone hears), otherwise it holds off as for a reply; hearing what
 this PC plays holds off unless Windows leaves Martlet out. What is heard passes
 the utterance filter and goes to the Thinking model with the *Said while you
 were singing* note (the song and where it is), so Martlet answers only when
@@ -710,9 +710,12 @@ voice pipeline never waits for a whole reply:
   between sentences. A voice failure on the next sentence surfaces only when
   playback reaches it, so what is already playing finishes; then the voice
   stops for the rest of the reply while its text keeps streaming.
-- **Barge-in.** Optional and off by default. With always listening, ticking
-  *Let me interrupt Martlet by talking* in Companion › Listening keeps the
-  microphone open while Martlet speaks. Talking over a reply with real words
+- **Barge-in.** Optional and off by default. Always listening keeps the
+  microphone open while Martlet speaks either way (whenever echo reduction
+  works; see [listening while Martlet speaks](#hands-free-voice-activity-and-voice-id)),
+  so what you say then is heard and answered after the reply. Ticking
+  *Let me interrupt Martlet by talking* in Companion › Listening also lets you
+  stop a reply by talking over it. Talking over a reply with real words
   stops it: the Thinking request is canceled, the queued audio is dropped and
   what you said is answered next, with the reply so far kept in context. Only
   the microphone can do this, and only with words (`BargeInPolicy`, the one
@@ -753,8 +756,9 @@ voice pipeline never waits for a whole reply:
   after the reply; restarting a reply because you kept talking applies only
   before Martlet starts saying it. Through speakers this relies on echo
   reduction (on by default); if Martlet still stops itself, use headphones or
-  turn the choice off. With it off (the default), listening holds off while
-  Martlet speaks, and Stop, Esc or the talk button still interrupt. Preferences
+  turn the choice off. With it off (the default), talking while Martlet speaks
+  is still heard (with echo reduction working) and answered after the reply, but
+  never stops it; Stop, Esc or the talk button interrupt. Preferences
   saved before barge-in became opt-in had it on only because it was the old
   default, so it starts off once after updating; tick it again to use it.
 - **What is said aloud decides what stops it.** Each reply carries a playback
@@ -882,7 +886,10 @@ video, music or game playing on the PC.
   changed) or the canceller can't load, Martlet listens without echo
   reduction, says why under the check box and logs it once (*Echo reduction:
   …*); otherwise the log notes *Echo reduction is on*. Turning the choice off
-  restarts listening without it.
+  restarts listening without it. Echo reduction is also what lets always
+  listening go on while Martlet speaks: without it (off, or not running) and
+  without barge-in, listening pauses while Martlet speaks so it doesn't hear
+  itself.
 
 ## Thinking models that hear and see
 
@@ -1187,10 +1194,22 @@ the data folder.
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet
-  thinks is lost. Each utterance is still its own action: a fresh authorization,
-  capture epoch, Voice ID check and STT request. It holds off only while Martlet
-  speaks (a reply or a remark, plus 300 ms for the room's echo), so it never
-  hears itself, and while other setup work (a microphone test, Voice ID
+  thinks or speaks is lost. Each utterance is still its own action: a fresh
+  authorization, capture epoch, Voice ID check and STT request. It goes on
+  while Martlet speaks (a reply, a remark or a song) whenever it can tell
+  Martlet's own voice from yours: [echo reduction](#echo-reduction) works (on
+  by default; what is mostly the speakers' sound is let go like a cough) or
+  barge-in is on. What you say then shows in the history at once and is
+  answered once the reply finishes (with barge-in, real words stop it instead);
+  the desktop log notes *Always listening heard you while Martlet spoke; ...*
+  (never the words).
+  Without either (echo reduction off, or it couldn't start or was lost: no
+  speaker audio, the canceller failed), it holds off while Martlet speaks (plus
+  300 ms for the room's echo) so it never hears itself and answers its own
+  words; the talk window's listening button then reads *Not listening while
+  Martlet speaks*. Each capture's own echo state decides (`EchoTimeline.Reducing`,
+  `EchoReducer.Works`), and before one opens the last capture's report does.
+  It also holds off while other setup work (a microphone test, Voice ID
   enrollment) owns the app slot. Idle listening restarts the bounded capture
   every 12 seconds; nothing is uploaded when nobody spoke.
 - What it hears appears in the history right away. Once you pause, everything

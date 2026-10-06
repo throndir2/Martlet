@@ -693,7 +693,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "talkOver: what the voice gate (TalkOverDetector with the capture's echo timeline, which tells the user's voice over the " +
             "speakers' sound) heard in each part: Martlet's own echo must never count as the user, and the user's voice over it must, " +
             "only after the required second of voice. wordCheck is the saved Word check (what stops Martlet is real words; see " +
-            "utterance_filter_check).", new
+            "utterance_filter_check). listensWhileSpeaking: whether always listening goes on while Martlet speaks with these choices " +
+            "(barge-in, or echo reduction that works as it did here; rehearsal.reducing is the capture's own echo state), so what is " +
+            "said then is heard and answered after the reply.", new
         {
             dataDirectory = new { type = "string" },
             delayMs = new { type = "integer", minimum = 0, maximum = 300 }
