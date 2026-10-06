@@ -92,8 +92,8 @@ covers Pictures (NVIDIA's FLUX models). It is Martlet's fastest measured free
 hosted model, sees screenshots and calls tools, and no recording leaves the PC.
 
 **When the owner wants Thinking to hear** (no transcription before the reply,
-and tone of voice): Google Gemini `gemini-3.5-flash-lite` on the free tier, as a
-*Custom compatible server* (see below), with the owner ticking **Let Thinking
+and tone of voice): Google Gemini `gemini-3.5-flash-lite` on the free tier (the
+**Google Gemini** provider, see below), with the owner ticking **Let Thinking
 hear my voice** after reading Google's free-tier terms. It is the only free
 hearing option on a reliable endpoint. NVIDIA's Nemotron 3 Nano Omni is the
 free hearing option on the same NVIDIA key, but it is unreliable today and
@@ -179,10 +179,14 @@ to improve Google's products; don't send personal data unless you accept that.
    import) a project.
 3. Copy the key. Keys made since 2026-05-28 are *authorization keys* tied to
    the project; they work the same way here.
-4. In Martlet: Setup › Thinking › **A cloud provider** › **Custom compatible
-   server**. Base URL `https://generativelanguage.googleapis.com/v1beta/openai`,
-   model `gemini-3.5-flash-lite`, paste the key, tick the consent and save.
-   For hearing, also tick Companion › Listening › **Let Thinking hear my voice**.
+4. In Martlet: Setup (or Companion) › Thinking › **A cloud provider** ›
+   **Google Gemini**. The model box is filled with `gemini-3.5-flash-lite` and
+   the base URL is `https://generativelanguage.googleapis.com/v1beta/openai`;
+   the hint under it repeats these key steps. Paste the key, tick the consent
+   and save. For hearing, also tick Companion › Listening › **Let Thinking hear
+   my voice** (it stays off until you do). To use Gemini as the cross-company
+   fallback instead, choose **Google Gemini** under Companion › Thinking › **If
+   Thinking fails**.
 5. To see the free limits for each model, open
    [aistudio.google.com/rate-limit](https://aistudio.google.com/rate-limit);
    Google's service status is at [aistudio.google.com/status](https://aistudio.google.com/status).
@@ -235,14 +239,17 @@ hearing**, then talk and compare the desktop log's `Reply latency` lines.
 
 ## For the placement engine
 
-External Thinking options, in fallback order, with what the engine needs:
+External Thinking options, in fallback order, with what the engine needs. The
+preset ids are `ChatCompletionsEndpointCatalog.NamedEndpoints[].Id`
+(`ChatCompletionsEndpointCatalog.ById`); `HearingOptIn` marks a preset whose
+default hears but sends the recording only after the owner allows it.
 
-| Option | Base URL | Model ID | Hears | Sees | Tools | Free | Same key covers |
-|---|---|---|---|---|---|---|---|
-| NVIDIA Build default | `https://integrate.api.nvidia.com/v1` | `google/diffusiongemma-26b-a4b-it` | no | yes | yes | yes (40/min) | Pictures (FLUX) |
-| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | yes | yes | yes | yes (limits in AI Studio) | - |
-| NVIDIA Build omni | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | yes | yes | listed | yes (40/min) | Pictures (FLUX) |
-| OpenRouter | `https://openrouter.ai/api/v1` | `google/gemma-4-26b-a4b-it` | no | yes | yes | no (`:free` 50/day) | Pictures (paid) |
+| Option | Preset id | Base URL | Model ID | Hears | Sees | Tools | Free | Same key covers |
+|---|---|---|---|---|---|---|---|---|
+| NVIDIA Build default | `nvidia-build` | `https://integrate.api.nvidia.com/v1` | `google/diffusiongemma-26b-a4b-it` | no | yes | yes | yes (40/min) | Pictures (FLUX) |
+| Google Gemini | `google-gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | yes (opt-in) | yes | yes | yes (limits in AI Studio) | - |
+| NVIDIA Build omni | `nvidia-build` | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | yes (opt-in) | yes | listed | yes (40/min) | Pictures (FLUX) |
+| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` | `google/gemma-4-26b-a4b-it` | no | yes | yes | no (`:free` 50/day) | Pictures (paid) |
 
 A Thinking option that doesn't hear needs Listening (speech-to-text) placed on
 this PC or the network; one that hears still needs it whenever the owner hasn't
