@@ -831,6 +831,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
+        Tool("discord_reply_status", "Martlet's Discord reply engine, from a data directory: the desktop's discord-replies.json " +
+            "(whether the engine is wired, replies, passes, skipped turns with the last reason, failures with the last code, places " +
+            "with history, requests running, the last reply and pass times, its latency, first-words time and prompt-cache use, " +
+            "the Thinking route it last used (route type and model), how it waits for the local conversation on a shared model, " +
+            "turns waiting for it and requests a local reply stopped; never what was said or who said it) and discord.json's chat " +
+            "setup (configured, enabled, owner set, chat modes, rule and people counts; never the token, IDs or names). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("discord_reply_check", "Rehearse the Discord reply engine's production Discord side (DiscordReplier: per-place history, " +
+            "the ambient gate's cooldown and chance, multi-party prompt shaping, [pass] and Discord's 2000-character and voice " +
+            "limits) through the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned replies, NOT " +
+            "AI): seven made-up turns in a server channel, a voice call and the owner's DM, each with its expected outcome (reply, " +
+            "pass or skip and why), what the request carried (roles, lengths, the start of each message) and ok. With live: true it " +
+            "also asks Ollama on this PC (the saved local Thinking model, or model) two made-up turns with the saved persona, never " +
+            "anything anyone said. Loopback only; reads no credentials and spends nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            model = new { type = "string", maxLength = 128 },
+            live = new { type = "boolean" }
+        }),
         Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
             "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
@@ -1068,6 +1089,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
+                "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
+                    OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
