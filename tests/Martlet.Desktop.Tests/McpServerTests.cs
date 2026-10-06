@@ -148,6 +148,47 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task DiscordStatusReadsTheSetupWithoutTheTokenNamesOrPeople()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Discord." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var none = ToolResult((await SendAsync(DataCall("discord_status", directory)))[0]);
+            Assert.Equal("none", none.GetProperty("state").GetString());
+            Assert.False(none.GetProperty("configured").GetBoolean());
+
+            Assert.True(new Martlet.Discord.DiscordPreferences
+            {
+                ApplicationId = 123456789012345678, CredentialId = Guid.NewGuid(), Enabled = true, OwnerUserId = 987654321098765432,
+                ServerChat = Martlet.Discord.DiscordChatMode.Mentions,
+                People = [new(111111111111111111, "canary-alice"), new(222222222222222222, "canary-bob", MayCall: false)]
+            }.Save(directory));
+            var message = (await SendAsync(DataCall("discord_status", directory)))[0];
+            var raw = message.GetRawText();
+            foreach (var secret in new[] { "canary", "987654321098765432", "111111111111111111" })
+                Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
+            var result = ToolResult(message);
+            Assert.Equal("loaded", result.GetProperty("state").GetString());
+            Assert.True(result.GetProperty("configured").GetBoolean());
+            Assert.Equal("123456789012345678", result.GetProperty("applicationId").GetString());
+            // No credential exists under the fresh reference, so the token is not readable (and never returned).
+            Assert.NotEqual("readable", result.GetProperty("token").GetString());
+            Assert.True(result.GetProperty("ownerSet").GetBoolean());
+            Assert.Equal("Mentions", result.GetProperty("serverChat").GetString());
+            Assert.Equal(2, result.GetProperty("people").GetInt32());
+            Assert.Equal(1, result.GetProperty("peopleMayCall").GetInt32());
+            Assert.Contains("reset the bot token", result.GetProperty("next").GetString());
+
+            var check = ToolResult((await SendAsync(DataCall("discord_check", directory)))[0]);
+            Assert.Equal("tokenUnreadable", check.GetProperty("state").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CharacterProfilesReportsKeysAndPartsWithoutNames()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Profiles." + Guid.NewGuid().ToString("N"));
@@ -181,6 +222,11 @@ public sealed class McpServerTests(ITestOutputHelper output)
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
+
+    private static string DataCall(string tool, string dataDirectory) => JsonSerializer.Serialize(new
+    {
+        jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = tool, arguments = new { dataDirectory } }
+    });
 
     [Theory]
     [InlineData(false)]
