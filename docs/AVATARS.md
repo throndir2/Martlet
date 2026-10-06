@@ -160,10 +160,7 @@ Opening Setup temporarily hides the character and restores it afterwards.
 
 Settings › Appearance can color Martlet after the character this PC shows: the
 *Character light/dark* palettes come from the colors of its textures by
-Martlet's rules, the *by Thinking* ones from the Thinking model, which gets the
-colors and a picture (a snapshot of the showing character from the overlay's
-`snapshot` command, else its texture sheet). The overlay's menus and speech
-bubble follow the palette too ([Character palettes](UI_DESIGN.md#character-palettes)).
+Martlet's rules. The overlay's menus and speech bubble follow the palette too ([Character palettes](UI_DESIGN.md#character-palettes)).
 
 The **Advanced** section holds the Audio2Face endpoint used by Automatic mode and
 the Audio2Face-only lane: inspect actual targets, use the mapping helper and

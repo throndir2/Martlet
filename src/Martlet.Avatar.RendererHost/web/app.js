@@ -2,7 +2,7 @@ import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
 
 const canvas = document.getElementById("avatar");
-let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression, snapshot;
+let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression;
 let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
 // Percent-encodes every character but A-Z a-z 0-9 - . _ ~ (like .NET's Uri.EscapeDataString), so the host matches the
@@ -112,11 +112,6 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       }
       post({ started });
     }
-    else if (message.kind === "snapshot") {
-      // Answered once: by the next drawn frame, or with none after a second (a hidden overlay draws no frames).
-      if (!active || snapshot) { post({ snapshot: null }); return; }
-      snapshot = { timer: setTimeout(() => finishSnapshot(null), 1000) };
-    }
     else throw new Error("Unsupported command.");
   } catch (error) {
     active = false; failed = true;
@@ -134,7 +129,6 @@ function draw(now) {
       else if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       adapter.update(Math.min(0.1, last ? (now - last) / 1000 : 0));
     } catch { failed = true; active = false; post({ error: "avatar.renderer_failed" }); }
-    if (snapshot && !failed) finishSnapshot(takeSnapshot());
     // Unsolicited, fire-and-forget: where the top of the head sits, so the host's zoom keeps it in view.
     try {
       const top = adapter.contentTop;
@@ -145,39 +139,4 @@ function draw(now) {
   requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);
-// The character as it shows, for its theme: right after a frame is drawn the WebGL canvas still holds it. Cropped to the
-// character and at most 320 pixels on its longer side, transparent around it; null when nothing is drawn.
-function takeSnapshot() {
-  try {
-    const scale = Math.min(1, 512 / Math.max(1, canvas.width, canvas.height));
-    const width = Math.max(1, Math.round(canvas.width * scale)), height = Math.max(1, Math.round(canvas.height * scale));
-    const full = document.createElement("canvas");
-    full.width = width; full.height = height;
-    const context = full.getContext("2d", { willReadFrequently: true });
-    context.drawImage(canvas, 0, 0, width, height);
-    const pixels = context.getImageData(0, 0, width, height).data;
-    let left = width, top = height, right = -1, bottom = -1;
-    for (let y = 0; y < height; y++)
-      for (let x = 0; x < width; x++)
-        if (pixels[(y * width + x) * 4 + 3] > 16) {
-          if (x < left) left = x;
-          if (x > right) right = x;
-          if (y < top) top = y;
-          if (y > bottom) bottom = y;
-        }
-    if (right < 0) return null;
-    const cropWidth = right - left + 1, cropHeight = bottom - top + 1, fit = Math.min(1, 320 / Math.max(cropWidth, cropHeight));
-    const out = document.createElement("canvas");
-    out.width = Math.max(1, Math.round(cropWidth * fit)); out.height = Math.max(1, Math.round(cropHeight * fit));
-    out.getContext("2d").drawImage(full, left, top, cropWidth, cropHeight, 0, 0, out.width, out.height);
-    const url = out.toDataURL("image/png");
-    return url.length <= 200000 ? url : null;
-  } catch { return null; }
-}
-function finishSnapshot(url) {
-  if (!snapshot) return;
-  clearTimeout(snapshot.timer);
-  snapshot = undefined;
-  post({ snapshot: url });
-}
 post({ ready: true });

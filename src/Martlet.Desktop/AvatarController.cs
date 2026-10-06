@@ -194,24 +194,6 @@ internal sealed partial class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-
-    /// <summary>A small PNG of the character as it shows now (at most 320 pixels on its longer side, transparent around it),
-    /// or null while it is hidden or when the renderer couldn't take one. For the character's theme only; never saved.</summary>
-    internal async Task<byte[]?> SnapshotAsync(CancellationToken token)
-    {
-        if (!IsShowing || renderer is not { HasExited: false } current) return null;
-        var reply = await current.SendAsync("snapshot", new RendererSnapshot(), token).ConfigureAwait(false);
-        if (reply.Data.ValueKind != System.Text.Json.JsonValueKind.Object || !reply.Data.TryGetProperty("snapshot", out var value) ||
-            value.ValueKind != System.Text.Json.JsonValueKind.String) return null;
-        const string prefix = "data:image/png;base64,";
-        var text = value.GetString()!;
-        if (!text.StartsWith(prefix, StringComparison.Ordinal)) return null;
-        var bytes = new byte[(text.Length - prefix.Length) / 4 * 3 + 3];
-        if (!Convert.TryFromBase64String(text[prefix.Length..], bytes, out var written) || written <= PngSignature.Length) return null;
-        return bytes.AsSpan(0, PngSignature.Length).SequenceEqual(PngSignature) ? bytes[..written] : null;
-    }
-
     /// <summary>Returns the character overlay to its default spot, size and zoom on the primary screen. A locked character
     /// stays where it is.</summary>
     internal async Task ResetPositionAsync(CancellationToken token)

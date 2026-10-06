@@ -613,12 +613,11 @@ internal sealed class LiveConversationConfiguration
     /// finished exchange. It keeps the model's default sampling (a picking-out task, not a reply) but the same context size, so
     /// a host's Ollama does not reload the model between the reply and this request, and the same Thinking steps choice. When it
     /// continues a reply that offered tools, they are described again (so the request starts the same) but never run.</summary>
-    internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input, bool imageOptional = false) =>
+    internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
         new(input, TextSelection(), TextLimits, input.Tools.Count > 0 ? Turn(false) with { MaxToolRounds = 1 } : Turn(false), null,
             ChatTarget(), HostTarget(),
             generation: GenerationSettings.Normalize(new() { ContextTokens = ReplyGeneration.ContextTokens, Reasoning = ReplyGeneration.Reasoning }),
-            tools: input.Tools.Count > 0 ? Martlet.Conversation.ThinkLonger.NoTools : null, fallback: TextFallback(),
-            imageOptional: imageOptional && input.Image is not null);
+            tools: input.Tools.Count > 0 ? Martlet.Conversation.ThinkLonger.NoTools : null, fallback: TextFallback());
 
     /// <summary>The word the model answers with to stay quiet after a screen glance or something always listening heard; never
     /// spoken.</summary>

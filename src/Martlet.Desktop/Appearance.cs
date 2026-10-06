@@ -6,8 +6,8 @@ using Martlet.Presentation;
 namespace Martlet.Desktop;
 
 /// <summary>The palette every Martlet window uses (Settings › Appearance): Martlet's own Pink light or Rose dark, or a light or
-/// dark palette made from the colors of the character this PC shows, either by Martlet's rules or by the Thinking model.</summary>
-internal enum AppearanceTheme { Light, Dark, CharacterLight, CharacterDark, ThinkingLight, ThinkingDark }
+/// dark palette made by Martlet's rules from the colors of the character this PC shows.</summary>
+internal enum AppearanceTheme { Light, Dark, CharacterLight, CharacterDark }
 
 internal static class Appearance
 {
@@ -15,14 +15,12 @@ internal static class Appearance
     internal static IReadOnlyList<(AppearanceTheme Theme, string Name)> Choices { get; } =
     [
         (AppearanceTheme.Light, "Pink light"), (AppearanceTheme.Dark, "Rose dark"),
-        (AppearanceTheme.CharacterLight, "Character light"), (AppearanceTheme.CharacterDark, "Character dark"),
-        (AppearanceTheme.ThinkingLight, "Character light by Thinking"), (AppearanceTheme.ThinkingDark, "Character dark by Thinking")
+        (AppearanceTheme.CharacterLight, "Character light"), (AppearanceTheme.CharacterDark, "Character dark")
     ];
 
     internal static string Name(this AppearanceTheme theme) => Choices.First(c => c.Theme == theme).Name;
-    internal static bool IsDark(this AppearanceTheme theme) => theme is AppearanceTheme.Dark or AppearanceTheme.CharacterDark or AppearanceTheme.ThinkingDark;
+    internal static bool IsDark(this AppearanceTheme theme) => theme is AppearanceTheme.Dark or AppearanceTheme.CharacterDark;
     internal static bool FromCharacter(this AppearanceTheme theme) => theme >= AppearanceTheme.CharacterLight;
-    internal static bool ByThinking(this AppearanceTheme theme) => theme is AppearanceTheme.ThinkingLight or AppearanceTheme.ThinkingDark;
 
     /// <summary>The brushes for <paramref name="theme"/>: a character theme's <paramref name="colors"/> (Martlet's own palette
     /// of the same lightness until they are known), or Martlet's own.</summary>
@@ -52,9 +50,14 @@ internal static class Appearance
         catch (DirectoryNotFoundException) { return AppearanceTheme.Light; }
     }
 
-    /// <summary>The theme a saved or shared name stands for, or null for a name this Martlet doesn't know.</summary>
-    internal static AppearanceTheme? Parse(string? name) =>
-        Enum.TryParse<AppearanceTheme>(name, out var theme) && Enum.IsDefined(theme) && name == theme.ToString() ? theme : null;
+    /// <summary>The theme a saved or shared name stands for, or null for a name this Martlet doesn't know. The retired palettes
+    /// the Thinking model made read as the rule-based character palettes.</summary>
+    internal static AppearanceTheme? Parse(string? name) => name switch
+    {
+        "ThinkingLight" => AppearanceTheme.CharacterLight,
+        "ThinkingDark" => AppearanceTheme.CharacterDark,
+        _ => Enum.TryParse<AppearanceTheme>(name, out var theme) && Enum.IsDefined(theme) && name == theme.ToString() ? theme : null
+    };
 
     internal static void Save(string directory, AppearanceTheme theme)
     {

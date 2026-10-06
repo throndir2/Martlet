@@ -372,19 +372,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_theme", "A character model's colors and palettes as Settings > Appearance makes them (docs/UI_DESIGN.md " +
             "\"Character palettes\"): modelPath (a .model3.json or .vrm on this PC), else the model dataDirectory's avatar.json shows, " +
             "else the built-in character. Returns the main colors read from its textures (hex, share, kind, name), the colors the " +
-            "rules build from (tint, accent, glow, lightest and darkest), Martlet's rule-based light and dark palettes with their " +
-            "lowest contrasts and any rule problems, the Thinking request (instructions, message, picture kind and size) and the " +
-            "palettes saved in dataDirectory's character-themes.json. With answer (a simulated Thinking reply), what the production " +
-            "parser and rule repair make of it. With live: true, asks Ollama on this PC (model, or the saved local Thinking model) " +
-            "with the real instructions, message and picture, loopback only, and parses the reply. With previewDirectory (an absolute " +
-            "folder), writes PNG pictures of Martlet's window in each palette and the picture sent (label names the files). name and " +
-            "about stand in for the character list's name and the owner's words on who it is and where it's from (Settings > " +
-            "Appearance); identity shows what the model's files say and what the Thinking model is told. Never " +
-            "returns the model's path.", new
+            "rules build from (tint, accents, lightest and darkest), Martlet's rule-based light and dark palettes with their " +
+            "lowest contrasts and any rule problems, and whether dataDirectory's character-themes.json has the model's colors. With " +
+            "previewDirectory (an absolute folder), writes PNG pictures of Martlet's window in each palette (label names the files). " +
+            "Never returns the model's path.", new
         {
-            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, answer = new { type = "string", maxLength = 16384 },
-            live = new { type = "boolean" }, model = new { type = "string", maxLength = 128 }, previewDirectory = new { type = "string" },
-            label = new { type = "string", maxLength = 40 }, name = new { type = "string", maxLength = 80 }, about = new { type = "string", maxLength = 160 }
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, previewDirectory = new { type = "string" },
+            label = new { type = "string", maxLength = 40 }
         }),
         Tool("character_models_selftest", "Rehearse the shared character models end to end with the production code: two real " +
             "gateways on 127.0.0.1 (pinned TLS, in-memory character-models.json and pieces) and three simulated desktops using the " +
@@ -989,9 +983,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
-                    OptionalString(arguments, "answer"), OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"),
-                    OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), OptionalString(arguments, "name"),
-                    OptionalString(arguments, "about"), cancellation),
+                    OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
                 "creations_status" => CreationsCheck.Status(DataDirectory(arguments)),
                 "creations_check" => OptionalString(arguments, "seedDataDirectory") is { } seed

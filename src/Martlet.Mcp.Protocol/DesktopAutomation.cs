@@ -315,14 +315,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // host service): whether Martlet keeps this PC awake because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
-        // Settings › Appearance: the palette (Pink light, Rose dark, Character light or dark, or Character light or dark by
-        // Thinking; menus and every window follow it) and its status line; the character's colors (how many and where the accent
-        // comes from, or why they couldn't be read; never its name) and the Thinking model's palettes (made when and from what,
-        // its reason and the colors it chose, or how asking went). AppearanceColor-<n> and AppearancePreview-<id> read through
-        // the prefixes below. AppearanceThinkingMake sends the character's colors, name and picture to the Thinking model, so it
-        // needs --allow-ui-effects. Who the character is (AppearanceCharacterAbout, typed by the owner) and what Thinking is told
-        // (AppearanceIdentity) carry its name, so their text is never returned.
-        "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus", "AppearanceThinkingStatus", "AppearanceThinkingMake",
+        // Settings › Appearance: the palette (Pink light, Rose dark, Character light or Character dark; menus and every window
+        // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
+        // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
+        "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
         "DeviceRoleSummary", "DeviceRoleText",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
@@ -412,8 +408,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // on diva"; clicking it installs the role, so it needs --allow-ui-effects).
         "DeepThinkingHost-", "DeepThinkingAddRole-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
-        // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...",
-        // or "...: not made yet" for a Thinking palette not made).
+        // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
         // Companion › Listening › Parakeet in Martlet: each model's title with its tags ("ListenParakeetModel-parakeet-tdt-110m-en"
         // reads "Fastest in English  ·  recommended") and its line ("ListenParakeetModelState-parakeet-tdt-110m-en" reads

@@ -2984,14 +2984,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
     private async Task<(string? Answer, string? Failure)> AskAsync(string purpose, LiveConversationConfiguration configuration,
         BoundedTextInput input, CancellationToken token)
     {
-        var picture = input.Image is not null;
-        var request = configuration.MemoryCaptureRequest(input, imageOptional: picture);
+        var request = configuration.MemoryCaptureRequest(input);
         var capture = CaptureRuntime();
-        // A picture goes only with a request the owner started for it (a character's theme); a model that can't take it is
-        // asked again with the words alone.
         var authorization = new ConversationAuthorization(configuration, voice: false, microphone: false, clock,
-            () => !token.IsCancellationRequested, settings.LoadAsync, vault, token, screen: picture);
-        authorization.BindInput(request.Input, request.Limits.MaxToolRounds, imageOptional: picture);
+            () => !token.IsCancellationRequested, settings.LoadAsync, vault, token);
+        authorization.BindInput(request.Input, request.Limits.MaxToolRounds);
         Volatile.Write(ref captureAuthorization, authorization);
         try
         {
@@ -3028,20 +3025,17 @@ internal sealed class LiveConversationController : IAsyncDisposable
         }
     }
 
-    /// <summary>One request to the saved Thinking model outside a conversation (naming a character's emotes, making its theme):
-    /// <paramref name="instructions"/>, <paramref name="text"/> and an optional <paramref name="image"/> go to it on the
-    /// background runtime. Returns its answer, or null with why not (Thinking isn't set up, or the request failed).</summary>
+    /// <summary>One request to the saved Thinking model outside a conversation (naming a character's emotes):
+    /// <paramref name="instructions"/> and <paramref name="text"/> go to it on the background runtime. Returns its answer, or
+    /// null with why not (Thinking isn't set up, or the request failed).</summary>
     internal async Task<(string? Answer, string? Failure)> AskThinkingAsync(string purpose, string instructions, string text,
-        CancellationToken token) => await AskThinkingAsync(purpose, instructions, text, null, token).ConfigureAwait(false);
-
-    internal async Task<(string? Answer, string? Failure)> AskThinkingAsync(string purpose, string instructions, string text,
-        BoundedImage? image, CancellationToken token)
+        CancellationToken token)
     {
         var loaded = await settings.LoadAsync(token).ConfigureAwait(false);
         if (LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory)) is not { } configured)
             return (null, "Thinking isn't set up yet");
         BoundedTextInput input;
-        try { input = new(text, instructions, image: image); }
+        try { input = new(text, instructions); }
         catch (ContractException) { return (null, "the request is too large"); }
         try { return await AskAsync(purpose, configured, input, token).ConfigureAwait(false); }
         catch (Exception error) when (error is LiveActionException or ContractException or InvalidOperationException)
