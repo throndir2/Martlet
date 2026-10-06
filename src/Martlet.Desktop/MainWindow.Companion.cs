@@ -199,7 +199,7 @@ public partial class MainWindow
         CompanionTab.Pictures => "Let Martlet draw pictures when you ask: on your own graphics card with ComfyUI, or with a paid cloud provider.",
         CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
         CompanionTab.Discord => "Put Martlet on Discord: set up its bot, connect it, invite it to servers and choose where it chats.",
-        CompanionTab.Messaging => "Talk to Martlet from Telegram on your phone, with the same memory and personality, while Martlet runs on this PC.",
+        CompanionTab.Messaging => "Talk to Martlet from Telegram or WhatsApp on your phone, with the same memory and personality, while Martlet runs on this PC.",
         _ => ""
     };
 

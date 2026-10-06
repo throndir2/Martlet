@@ -1,8 +1,9 @@
 # Messaging apps
 
-Martlet can be reached from a messaging app on your phone. Telegram is the
-first; the design (`src\Martlet.Messaging`) keeps each app behind one transport
-so others can follow.
+Martlet can be reached from a messaging app on your phone: Telegram and
+WhatsApp. The design (`src\Martlet.Messaging`) keeps each app behind one
+transport and shares pairing, the allow-list, typing, splitting and retries
+(`MessagingBridge`), so others can follow.
 
 ## Telegram
 
@@ -51,17 +52,90 @@ How it works:
 **Disconnect** stops the bot, deletes the token and forgets the paired chats.
 **Remove** unpairs one chat.
 
+## WhatsApp
+
+What it does: the same as Telegram, from WhatsApp. You write to a WhatsApp
+business number you own (Meta's free test number is enough), and Martlet on
+your companion PC answers in the same conversation as the talk window.
+
+Martlet uses Meta's official **WhatsApp Cloud API**, so nothing unofficial runs
+against your personal WhatsApp account. The Cloud API delivers messages to a
+public web address (a webhook); Martlet sets that up itself.
+
+Set it up in **Companion › Messaging › WhatsApp** (the card has buttons for
+each link):
+
+1. [Create a Meta app](https://developers.facebook.com/apps/creation/) with
+   the use case *Connect with customers through WhatsApp* and a business
+   portfolio (Meta offers to make one).
+2. In the app, open **WhatsApp › API Setup**. Meta gives you a free test
+   number. Under *To*, add your own phone number and confirm it with the code
+   WhatsApp sends you (the test number can only talk to up to five confirmed
+   numbers).
+3. Make a permanent access token: in
+   [System users](https://business.facebook.com/latest/settings/system_users)
+   add a system user (Admin), assign it your app and your WhatsApp account with
+   full control, then **Generate token** with `whatsapp_business_messaging` and
+   `whatsapp_business_management`. API Setup's temporary token also works, for
+   24 hours.
+4. In the app, open **App settings › Basic** and copy the **App secret**.
+5. Paste both in Martlet and press **Connect**. Leave the phone number ID and
+   WhatsApp Business account ID empty and Martlet finds them from the token
+   (`debug_token`, then the account's first number); type them to pick
+   another. You don't configure Webhooks in Meta.
+6. Press **Pair a chat** and send the six-digit code to the number (or open
+   **Open in WhatsApp**, a `wa.me` link with the code filled in).
+
+What Martlet does on Connect and at every start:
+
+- Checks the token with Meta and the app secret against the token's app, then
+  keeps both in Windows Credential Manager
+  (`Martlet/v3/messaging/whatsapp/<id>`). They go only to `graph.facebook.com`.
+- Listens on `http://localhost:<port>` (no administrator rights, no open
+  firewall port) at a random secret path, accepting only deliveries signed with
+  the app secret (`X-Hub-Signature-256`) for its phone number.
+- Opens a public address: by default a free
+  [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/)
+  (`https://….trycloudflare.com`; no account, port or router change). It needs
+  Cloudflare's `cloudflared`: Martlet uses one already installed (PATH,
+  Program Files, winget) or, after you agree, downloads Cloudflare's official
+  build from GitHub into `<data directory>\tools`. The address changes at each
+  start, so Martlet waits until it resolves and points the webhook at it again.
+- Sets the app's webhook (`POST /<app>/subscriptions`, field `messages`, with a
+  fresh verify token, using the app access token) and subscribes the app to the
+  WhatsApp Business account (`POST /<waba>/subscribed_apps`). Meta checks the
+  webhook right away.
+- Marks each message read with "typing" while Martlet answers, and replies as
+  text (split at 4096 characters).
+
+Already have a public HTTPS address (a named Cloudflare tunnel, a reverse
+proxy)? Put it in **Public address**; it must forward to the
+`http://localhost:<port>` Martlet shows, with `Host: localhost` (or
+`127.0.0.1`). The app's webhook belongs to Martlet while it runs, so use a Meta
+app for Martlet only.
+
+Everything else matches Telegram: only paired one-to-one chats are answered,
+strangers are told once how to pair, text only, answered while Windows is
+locked, optional **Also say replies aloud on this PC**, **Disconnect** deletes
+the secrets and forgets the chats, **Remove** unpairs one chat. Business
+numbers may reply freely within 24 hours of your last message, which every
+answer is.
+
 ## Files and diagnostics
 
 - `messaging.json` (data directory): `Telegram.Enabled`, `BotName`,
   `BotUsername`, `CredentialId` (which Credential Manager entry), `Chats` (`Id`,
-  `Name`) and `SpeakReplies`. Never the token.
-- The desktop log records when Telegram connects, a chat pairs and a paired
+  `Name`) and `SpeakReplies`; `WhatsApp` with `Enabled`, `Name`, `Number`,
+  `AppId`, `BusinessAccountId`, `PhoneNumberId`, `Port`, `PublicAddress`,
+  `CredentialId`, `Chats` and `SpeakReplies`. Never a token or app secret.
+- The desktop log records when Telegram or WhatsApp connects, a chat pairs and a paired
   chat's message is answered (never message text).
 - MCP: `messaging_status` reads `messaging.json` (counts chats, never their
   names or IDs); Companion › Messaging's status lines are readable through
-  `ui_*` ([MCP](MCP.md)). `MARTLET_TELEGRAM_API` (a loopback `http://127.0.0.1:<port>/`
-  address only) points the desktop at a local fake Bot API for MCP verification.
+  `ui_*` ([MCP](MCP.md)). `MARTLET_TELEGRAM_API` and `MARTLET_WHATSAPP_API` (a
+  loopback `http://127.0.0.1:<port>/` address only) point the desktop at a local
+  fake Bot API or Graph API for MCP verification; with the latter, a loopback
+  `http://` public address is accepted too.
 
 ## Other apps
 
@@ -70,5 +144,5 @@ longest message) and reuses `MessagingBridge` for pairing, the allow-list,
 typing, splitting and retries. Discord has its own, richer foundation (servers,
 channels, people and chat modes) in [Discord](DISCORD.md). Other candidates:
 Matrix (`/sync` long polling, no public address needed) and Signal through
-`signal-cli`. WhatsApp's Business API needs a public webhook and a business
-account, so it is not a good fit for a personal PC.
+`signal-cli`. A webhook-based app can reuse WhatsApp's pieces: a local
+listener and `IPublicAddress` (Cloudflare quick tunnel or an own address).

@@ -31,7 +31,11 @@ public partial class MainWindow
             () => Dispatcher.Invoke(DiscordAvatarSource),
             DiscordAvatarPictureAsync,
             () => Dispatcher.Invoke(() => homeSettings?.Companion?.ActivePersona?.Name));
-        if (conversation is not null) conversation.DiscordCaller = discord;
+        if (conversation is not null)
+        {
+            conversation.DiscordCaller = discord;
+            conversation.CallCamera = new CallCameraBridge(this);
+        }
         discord.Companion.Requested += request => Dispatcher.BeginInvoke(() =>
             ErrorLog.Info("Discord: someone asked to be Martlet's friend; approve or decline in Companion › Discord."));
         discordPresenceTimer.Tick += (_, _) => UpdateDiscordPresence();

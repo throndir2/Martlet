@@ -271,23 +271,23 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private int voiceMuted;
     private RendererCamera? camera;
 
-    /// <summary>The camera view (its background and the framing it opens with) while the character shows in its own 16:9
-    /// window for OBS (Martlet in your Discord calls), or null for the usual overlay.</summary>
+    /// <summary>The camera view (its background color, any picture and the framing it opens with) while the character shows in
+    /// its own 16:9 window for OBS (Martlet in your Discord calls), or null for the usual overlay.</summary>
     internal RendererCamera? Camera => Volatile.Read(ref camera);
 
-    /// <summary>Opens the camera view (the character on a solid background in an ordinary 16:9 window, framed as asked when it
-    /// opens; a change of background keeps the current framing) or closes it (null). Returns whether the showing character now
-    /// shows it; hidden, it shows that way when it shows next.</summary>
-    internal async Task<bool> SetCameraAsync(RendererCamera? request, CancellationToken token)
+    /// <summary>Opens the camera view (the character on <paramref name="view"/>'s solid color or picture in an ordinary 16:9
+    /// window, framed as asked when it opens; a change of background keeps the current framing) or closes it (null). Returns
+    /// whether the showing character now shows it; hidden, it shows that way when it shows next.</summary>
+    internal async Task<bool> SetCameraAsync(RendererCamera? view, CancellationToken token)
     {
         await changes.WaitAsync(token);
         try
         {
-            request = request is { On: true } ? request : null;
-            Volatile.Write(ref camera, request);
+            view = view is { On: true } ? view : null;
+            Volatile.Write(ref camera, view);
             if (renderer is not { HasExited: false } current || profile is null) return false;
-            await current.SendAsync("camera", request ?? new RendererCamera(false), token);
-            return request is not null;
+            await current.SendAsync("camera", view ?? new RendererCamera(false), token);
+            return view is not null;
         }
         finally { changes.Release(); }
     }
@@ -748,7 +748,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             renderer = next;
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
-            if (Camera is { } open) await next.SendAsync("camera", open, attempt.Token);
+            if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

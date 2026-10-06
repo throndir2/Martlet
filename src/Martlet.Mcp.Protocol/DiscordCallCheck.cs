@@ -86,7 +86,11 @@ internal static class DiscordCallCheck
             {
                 on = saved.On, capture = saved.Capture.ToString(), seeSpeakers = saved.SeeSpeakers, ownerNameSet = saved.OwnerName is not null,
                 output = plan.OutputName, alsoSpeakers = saved.AlsoSpeakers, bargeIn = saved.BargeIn,
-                cameraBackground = saved.CameraBackground.ToString()
+                cameraBackground = saved.CameraBackground.ToString(), cameraPicture = saved.CameraPicture?.ToString(),
+                cameraPictureSaved = DiscordCallPreferences.HasPicture(dataDirectory),
+                cameraTool = saved.On
+                    ? "set_camera_background (color, picture or draw) is offered to every tool-capable reply while the mode is on"
+                    : "set_camera_background isn't offered while the mode is off"
             },
             doctor = new
             {

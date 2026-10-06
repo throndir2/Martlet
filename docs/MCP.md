@@ -1600,15 +1600,35 @@ with the same bot stays connected.
 up), `enabled` (Martlet answers it on this PC), `bot` (its username),
 `botName`, `tokenSaved` (never the token), `chats` (how many chats are paired;
 never their names or IDs) and
-`speakReplies`. The bot token lives in Windows Credential Manager and is never
-read. In the desktop, Companion › Messaging's `MessagingStatus` (whether Martlet
+`speakReplies`, and `whatsApp` with `connected` (a number is set up),
+`enabled`, `number`, `name`, `appId`, `businessAccountId`, `phoneNumberId`,
+`port` (Martlet's localhost webhook port), `publicAddress` (the owner's own;
+empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
+(never the access token or app secret), `chats` and `speakReplies`. The secrets
+live in Windows Credential Manager and are never read. In the desktop,
+Companion › Messaging's `MessagingStatus` (whether Martlet
 answers the bot now, or why not), `MessagingNote` (the last connect outcome),
 `MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
-pairing code works) are readable values; the code itself (`MessagingPairCode`),
-chat names and the token field are not. Its Cancel (`MessagingPairCancel`) only
-withdraws the code and is a safe click; Connect, Pair a chat, Open BotFather,
-Open in Telegram, Remove, Disconnect and its two check boxes need
-`--allow-ui-effects`.
+pairing code works) are readable values, and WhatsApp's card has the same as
+`MessagingWhatsAppStatus`, `MessagingWhatsAppNote`, `MessagingWhatsAppChats`
+and `MessagingWhatsAppPairStatus`, plus `MessagingWhatsAppTunnel` (where Meta
+delivers messages and whether cloudflared is on this PC); the codes themselves
+(`MessagingPairCode`, `MessagingWhatsAppPairCode`), chat names and the secret
+fields are not. The Cancel buttons (`MessagingPairCancel`,
+`MessagingWhatsAppPairCancel`) only withdraw the code and are safe clicks;
+Connect, Pair a chat, Open BotFather, Open in Telegram, Remove, Disconnect and
+the check boxes, and WhatsApp's `MessagingWhatsAppConnect`,
+`MessagingWhatsAppGetCloudflared` (a download, after its confirmation), Meta
+links, `MessagingWhatsAppPairOpen`, `MessagingWhatsAppDisconnect`,
+`MessagingWhatsAppOn` and `MessagingWhatsAppSpeak` need
+`--allow-ui-effects`. `ui_set_text` fills `MessagingWhatsAppToken`,
+`MessagingWhatsAppSecret`, `MessagingWhatsAppPhoneId`,
+`MessagingWhatsAppAccountId` and `MessagingWhatsAppAddress`. To verify WhatsApp
+without Meta, launch the desktop with `MARTLET_WHATSAPP_API` set to a loopback
+fake Graph API that performs the webhook check on `POST /<app>/subscriptions`,
+seed `messaging.json`'s `WhatsApp.Port`, and use `http://127.0.0.1:<port>/` as
+the public address; the fake can then post a signed delivery to the callback
+and record the reply on `POST /<phone>/messages`.
 
 `prompts_status` reads Companion › Prompts from a data directory's
 `settings.json` (optional absolute `dataDirectory`, default the current
@@ -2572,7 +2592,9 @@ Nothing is recorded or played and nothing leaves this PC; without Parakeet,
 `discord-calls.json` (`on`, off by default; `capture` `DiscordApp` or
 `EverythingButMartlet`; `seeSpeakers`; `ownerNameSet`, never the name;
 `output`, the chosen output's name; `alsoSpeakers`; `bargeIn`;
-`cameraBackground`). `doctor` checks this PC without recording or playing:
+`cameraBackground`; `cameraPicture`, where a saved picture came from,
+`cameraPictureSaved`, and `cameraTool`, whether replies get
+`set_camera_background`). `doctor` checks this PC without recording or playing:
 `appLoopback` (Windows can hear one app alone: a process loopback of Discord,
 or of the MCP server itself while Discord isn't running, is set up and closed
 unstarted, so `recorded` is always false; `appLoopbackProblem` otherwise),
@@ -2772,7 +2794,18 @@ and `DeviceReachSection` expanders. Each `Node-<id>` also returns the device's
 card as text: its name, subtitle, status and what it runs (for example
 `IMOUTO, desktop-imouto · imouto-host. Connected. Runs: Martlet companion, Martlet host, Listening`
 or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking, Lip-sync`),
-so one snapshot shows the whole map. `SelectedDevice` and `SelectedDeviceHealth`
+so one snapshot shows the whole map. The map fits up to six devices on each
+side of This PC; the rest fold into a `Node-more:computers` (or
+`Node-more:services`) card, *44 more computers* with how many need attention,
+whose click opens the list. `DevicesViewMap` and `DevicesViewList` switch
+between the map and the list (passive); the list shows by itself once the map
+can't fit every device. The list shows every device as a `Node-<id>` card (This
+PC, then those needing attention, then by name) with `DeviceFilter-all`,
+`-attention`, `-hosts`, `-computers` and `-cloud` pills (passive; each returns
+its count) and a `DeviceSearch` box (`ui_set_text`, `--allow-ui-effects`).
+`DevicesSummary` returns *53 devices, 2 need attention. Select one to see
+details.* and `DeviceListStatus` *Showing 12 of 53 devices.* (or *No device
+matches "gpu".*). Martlet remembers up to 64 paired hosts. `SelectedDevice` and `SelectedDeviceHealth`
 return the selected device's name and status. When a paired host is older
 than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
@@ -3987,32 +4020,51 @@ mode, off by default), `DiscordCallCapture` (*The Discord app only* or
 `DiscordCallOutput` (*Martlet's usual output* or a playback device, a virtual
 cable marked *(virtual cable)*), `DiscordCallAlsoSpeakers`,
 `DiscordCallBargeIn`, `DiscordCallCameraBackground` (*Green*, *Blue*,
-*Magenta*, *Black*), `DiscordCallCamera` (*Open camera view* / *Close camera
+*Magenta*, *Black*, and *Picture* once a picture is saved), the camera
+picture's `DiscordCallCameraFile` (*Choose a picture file...*, a file dialog),
+`DiscordCallCameraCreation` (*A picture from Creations...* and each picture
+creation on this PC; shown only when there is one, its titles never returned),
+`DiscordCallCameraPrompt` and `DiscordCallCameraDraw` (*Draw it*; shown only
+while Companion › Pictures has a place or `MARTLET_PICTURES_FIXTURE=1`, it
+draws a 16:9 picture, keeps it as a `picture` creation and uses it) and
+`DiscordCallCameraPicture` (the saved picture's preview),
+`DiscordCallCamera` (*Open camera view* / *Close camera
 view*), the camera framing buttons `DiscordCallCameraZoomIn` (*Bigger*),
 `DiscordCallCameraZoomOut` (*Smaller*), `DiscordCallCameraLeft`,
 `DiscordCallCameraRight`, `DiscordCallCameraUp`, `DiscordCallCameraDown`
 (each moves the character 10 pixels) and `DiscordCallCameraReset` (*Reset
-framing*), enabled while the camera view shows,
-and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
+framing*), enabled while the camera view shows, and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
 playback devices, looks for Discord and sets up a process loopback unstarted).
-Toggling, choosing, the camera button and the framing buttons save `discord-calls.json` or show a
-window, so they need `--allow-ui-effects`. Returned (SafeValues):
+Toggling, choosing, the picture controls, the camera button and the framing buttons save
+`discord-calls.json`, draw or show a window, so they need `--allow-ui-effects`.
+Returned (SafeValues):
 `DiscordCallStatus` (*Off. Martlet isn't in your Discord calls.* or *On.
 Martlet hears the Discord app* (or *hears everything this PC plays except
 itself*)*, sees who talks: <source>, and speaks into <output>.*),
 `DiscordCallAttribution` (*Who is talking: the Discord window; 2 people named
 so far.*, never who), `DiscordCallOutputStatus` (where Martlet's voice goes,
 or that the chosen output isn't connected), `DiscordCallCameraStatus` (open
-or closed, with its background), `DiscordCallCameraFraming` (*Framing: the
-character at its fitted size, centered.* or, say, *at 150% of its fitted
-size, 12.5% right and 5% up of center*, the saved framing, which dragging,
-the wheel and the arrow keys in the camera window also save once they
-settle; `SetupCharacterView` then reads the camera's zoom), `DiscordCallDoctor` (Check this PC's result)
+or closed, with its background), `DiscordCallCameraPictureStatus` (*The
+camera shows a picture from a file.* / *from Creations* / *Martlet drew*,
+*Drawing it on ...…*, or why a picture couldn't be used; never a title or the
+instruction), `DiscordCallCameraFraming` (*Framing: the character at its
+fitted size, centered.* or, say, *at 150% of its fitted size, 12.5% right and
+5% up of center*, the saved framing, which dragging, the wheel and the arrow
+keys in the camera window also save once they settle; `SetupCharacterView`
+then reads the camera's zoom), `DiscordCallDoctor` (Check this PC's result)
 and the three choices. While the mode is on, the talk window's `LivePcAudio`
 line says *In your Discord call.* or *Hearing someone in your Discord call…*
 (its `help` is the mode's line) and lines from the call show in
 `LiveHistory` as bubbles labelled *Discord call*, each starting with who said
 it (*Alice in the call: ...*). `discord_call_check` reads the same mode.
+While the mode is on, every reply on a route that does function calling also
+gets `set_camera_background` (last among Martlet's own tools): `color`,
+`picture` (a picture creation's id) or `draw` (a new 16:9 picture drawn as a
+`picture-N` job and used when it's ready), so Martlet changes its own webcam
+background. It updates `DiscordCallCameraPictureStatus` like the card's own
+choices (*...a picture from Creations* / *a picture Martlet drew*, never a
+title), and the desktop log notes *Discord call: set_camera_background chose
+...*.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership

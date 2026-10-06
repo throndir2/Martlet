@@ -8,9 +8,14 @@ namespace Martlet.Discord.Calls;
 [JsonConverter(typeof(JsonStringEnumConverter<DiscordCallCapture>))]
 public enum DiscordCallCapture { DiscordApp, EverythingButMartlet }
 
-/// <summary>The solid background of the camera view, for OBS's chroma key.</summary>
+/// <summary>The background of the camera view: a solid color for OBS's chroma key, or the saved picture
+/// (<see cref="DiscordCallPreferences.CameraPictureFile"/>), which needs no key.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DiscordCameraBackground>))]
-public enum DiscordCameraBackground { Green, Blue, Magenta, Black }
+public enum DiscordCameraBackground { Green, Blue, Magenta, Black, Picture }
+
+/// <summary>Where the camera view's picture came from: a file the owner chose, a picture creation, or one drawn for it.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<DiscordCameraPictureSource>))]
+public enum DiscordCameraPictureSource { File, Creation, Drawn }
 
 /// <summary>Martlet in your own Discord calls (companion mode, <c>discord-calls.json</c>): the owner is in a DM, group DM or
 /// server call on their own account and Martlet takes part through this PC. Martlet never controls Discord: it hears the
@@ -38,6 +43,8 @@ public sealed record DiscordCallPreferences
     /// <summary>Martlet stops talking when someone in the call talks over it.</summary>
     public bool BargeIn { get; init; } = true;
     public DiscordCameraBackground CameraBackground { get; init; } = DiscordCameraBackground.Green;
+    /// <summary>Where the saved camera picture came from (null without one).</summary>
+    public DiscordCameraPictureSource? CameraPicture { get; init; }
     /// <summary>How the character is framed in the camera view: its size (1 fits it to the view's height; 0.25 to 16) and where
     /// its middle sits, as fractions of the view's width and height from its center (+x right, +y up).</summary>
     public double CameraZoom { get; init; } = 1;
@@ -46,16 +53,57 @@ public sealed record DiscordCallPreferences
 
     public const double MinimumCameraZoom = 0.25, MaximumCameraZoom = 16, FarthestCameraOffset = 8;
 
-    /// <summary>The camera background as a color (#RRGGBB).</summary>
+    /// <summary>The camera picture (PNG, JPEG or WebP) in Martlet's data folder.</summary>
+    public const string CameraPictureFile = "discord-camera-background";
+
+    /// <summary>The camera background as a color (#RRGGBB); black behind a picture.</summary>
     public string CameraColor => Color(CameraBackground);
 
     public static string Color(DiscordCameraBackground background) => background switch
     {
         DiscordCameraBackground.Blue => "#0047BB",
         DiscordCameraBackground.Magenta => "#FF00FF",
-        DiscordCameraBackground.Black => "#000000",
+        DiscordCameraBackground.Black or DiscordCameraBackground.Picture => "#000000",
         _ => "#00B140"
     };
+
+    /// <summary>The camera background in a few words ("green", "a picture from a file").</summary>
+    public string CameraDescription => CameraBackground != DiscordCameraBackground.Picture ? CameraBackground.ToString().ToLowerInvariant()
+        : CameraPicture switch
+        {
+            DiscordCameraPictureSource.Creation => "a picture from Creations",
+            DiscordCameraPictureSource.Drawn => "a picture Martlet drew",
+            _ => "a picture from a file"
+        };
+
+    public static string PicturePath(string directory) => Path.Combine(directory, CameraPictureFile);
+
+    public static bool HasPicture(string? directory) => directory is not null && File.Exists(PicturePath(directory));
+
+    /// <summary>Keeps <paramref name="bytes"/> as the camera picture. Returns why it can't (not a PNG, JPEG or WebP picture,
+    /// too large, or the folder can't be written), or null once saved.</summary>
+    public static string? SavePicture(string? directory, byte[] bytes)
+    {
+        if (directory is null) return "Martlet can't use its data folder.";
+        if (bytes.Length > Martlet.Core.Pictures.PictureImages.MaximumBytes) return "That picture is too large (24 MB at most).";
+        if (Martlet.Core.Pictures.PictureImages.Probe(bytes) is null) return "That isn't a PNG, JPEG or WebP picture.";
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var temporary = Path.Combine(directory, $"{CameraPictureFile}.{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllBytes(temporary, bytes);
+                File.Move(temporary, PicturePath(directory), overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return "Couldn't keep the picture: " + error.Message; }
+    }
 
     /// <summary>Drops what can't be kept (overlong or control characters), so a loaded file is always usable.</summary>
     public DiscordCallPreferences Normalized()
@@ -68,6 +116,7 @@ public sealed record DiscordCallPreferences
             OutputName = output is null ? null : Clean(OutputName, 256),
             Capture = Enum.IsDefined(Capture) ? Capture : DiscordCallCapture.DiscordApp,
             CameraBackground = Enum.IsDefined(CameraBackground) ? CameraBackground : DiscordCameraBackground.Green,
+            CameraPicture = CameraPicture is { } source && Enum.IsDefined(source) ? source : null,
             CameraZoom = double.IsFinite(CameraZoom) ? Math.Clamp(CameraZoom, MinimumCameraZoom, MaximumCameraZoom) : 1,
             CameraX = double.IsFinite(CameraX) ? Math.Clamp(CameraX, -FarthestCameraOffset, FarthestCameraOffset) : 0,
             CameraY = double.IsFinite(CameraY) ? Math.Clamp(CameraY, -FarthestCameraOffset, FarthestCameraOffset) : 0
@@ -103,7 +152,10 @@ public sealed record DiscordCallPreferences
         {
             var path = Path.Combine(directory, FileName);
             if (!File.Exists(path)) return new();
-            return (JsonSerializer.Deserialize<DiscordCallPreferences>(File.ReadAllText(path)) ?? new()).Normalized();
+            var loaded = (JsonSerializer.Deserialize<DiscordCallPreferences>(File.ReadAllText(path)) ?? new()).Normalized();
+            // A picture that's gone (deleted by hand) leaves the camera on green.
+            return loaded.CameraBackground == DiscordCameraBackground.Picture && !HasPicture(directory)
+                ? loaded with { CameraBackground = DiscordCameraBackground.Green, CameraPicture = null } : loaded;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
     }

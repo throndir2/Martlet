@@ -239,17 +239,29 @@ public sealed class McpServerTests(ITestOutputHelper output)
                 {
                     Enabled = true, BotName = "Martlet", BotUsername = "my_martlet_bot", SpeakReplies = true,
                     Chats = [new("987654321", "Samantha canary"), new("123", "Other")]
+                },
+                WhatsApp = new()
+                {
+                    Enabled = true, Name = "Martlet test", Number = "+1 555-0100", AppId = "670843887433847", BusinessAccountId = "102290129340398",
+                    PhoneNumberId = "106540352242922", Port = 47821, CredentialId = Guid.NewGuid(), Chats = [new("15550199", "Whats canary")]
                 }
             }.Save(directory));
             var message = (await SendAsync(DataCall("messaging_status", directory)))[0];
             var raw = message.GetRawText();
-            foreach (var secret in new[] { "987654321", "Samantha", "canary" }) Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
+            foreach (var secret in new[] { "987654321", "Samantha", "canary", "15550199" }) Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
             var telegram = ToolResult(message).GetProperty("telegram");
             Assert.True(telegram.GetProperty("connected").GetBoolean());
             Assert.True(telegram.GetProperty("enabled").GetBoolean());
             Assert.Equal("my_martlet_bot", telegram.GetProperty("bot").GetString());
             Assert.Equal(2, telegram.GetProperty("chats").GetInt32());
             Assert.True(telegram.GetProperty("speakReplies").GetBoolean());
+            var whatsApp = ToolResult(message).GetProperty("whatsApp");
+            Assert.True(whatsApp.GetProperty("connected").GetBoolean());
+            Assert.Equal("+1 555-0100", whatsApp.GetProperty("number").GetString());
+            Assert.Equal(47821, whatsApp.GetProperty("port").GetInt32());
+            Assert.True(whatsApp.GetProperty("quickTunnel").GetBoolean());
+            Assert.True(whatsApp.GetProperty("secretsSaved").GetBoolean());
+            Assert.Equal(1, whatsApp.GetProperty("chats").GetInt32());
         }
         finally
         {

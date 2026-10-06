@@ -1,7 +1,7 @@
 namespace Martlet.Messaging;
 
-/// <summary>A messaging app Martlet can be reached through. Telegram is the first; each new app adds a transport and a value.</summary>
-public enum MessagingApp { Telegram }
+/// <summary>A messaging app Martlet can be reached through; each app adds a transport and a value.</summary>
+public enum MessagingApp { Telegram, WhatsApp }
 
 /// <summary>A message someone sent the bot. <paramref name="Text"/> is null for anything that isn't text (a photo, a voice
 /// note, a sticker); <paramref name="Private"/> is a one-to-one chat with the bot (Martlet answers only those).</summary>

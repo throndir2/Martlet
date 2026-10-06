@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Creations;
 using Martlet.Discord.Calls;
 
 namespace Martlet.Desktop;
@@ -95,23 +96,24 @@ public partial class MainWindow
         bargeIn.Checked += (_, _) => SaveCall(prefs => prefs with { BargeIn = true });
         bargeIn.Unchecked += (_, _) => SaveCall(prefs => prefs with { BargeIn = false });
 
-        var background = new ComboBox { Width = 160, ItemsSource = CallCameraChoices, SelectedIndex = (int)saved.CameraBackground,
-            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 4) };
+        var background = new ComboBox { Width = 160, ItemsSource = discordCalls.HasPicture ? [.. CallCameraChoices, "Picture"] : CallCameraChoices,
+            SelectedIndex = (int)saved.CameraBackground, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 4) };
         AutomationProperties.SetName(background, "Camera view background");
         AutomationProperties.SetAutomationId(background, "DiscordCallCameraBackground");
         background.SelectionChanged += (_, _) =>
         {
             if (background.SelectedIndex >= 0 && background.SelectedIndex != (int)discordCalls.Preferences.CameraBackground)
             {
+                callPictureState = null;
                 SaveCall(prefs => prefs with { CameraBackground = (DiscordCameraBackground)background.SelectedIndex });
-                if (discordCalls.CameraOpen) avatar.SetCameraAsync(CallCamera(), CancellationToken.None).Forget();
+                RefreshCallCamera();
             }
         };
         var camera = PageButton(discordCalls.CameraOpen ? "Close camera view" : "Open camera view", () => ToggleCallCameraAsync().Forget(),
             id: "DiscordCallCamera");
         var cameraStatus = Note(!discordCalls.CameraOpen ? "The camera view is closed."
             : avatar.IsShowing
-                ? $"The camera view is open: the character in its own 16:9 window titled \"Martlet camera\" on {saved.CameraBackground.ToString().ToLowerInvariant()}."
+                ? $"The camera view is open: the character in its own 16:9 window titled \"Martlet camera\" on {saved.CameraDescription}."
                 : "The camera view is on, but the character isn't showing yet; it opens there as soon as the character shows.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(cameraStatus, "DiscordCallCameraStatus");
@@ -152,11 +154,216 @@ public partial class MainWindow
                 "Your own voice then needs to reach the cable too: speak through Martlet's microphone listening, or mix your " +
                 "microphone into the cable with Voicemeeter or Windows' Listen to this device.", new Thickness(0, 0, 0, 8)),
             Heading("Webcam: the character"),
-            Note("Open the camera view, add it to OBS as a Window Capture of \"Martlet camera\", key out the background with a " +
-                "Chroma Key filter, then Start Virtual Camera in OBS and pick \"OBS Virtual Camera\" as your camera in Discord. " +
-                "Martlet installs no camera driver.", new Thickness(0, 0, 0, 4)),
-            Note("Background:", new Thickness(0, 0, 0, 0)), background, Row(camera), cameraStatus, framing, framingButtons,
+            Note("Open the camera view, add it to OBS as a Window Capture of \"Martlet camera\", key out a color background with a " +
+                "Chroma Key filter (a picture needs none), then Start Virtual Camera in OBS and pick \"OBS Virtual Camera\" as your " +
+                "camera in Discord. Martlet installs no camera driver.", new Thickness(0, 0, 0, 4)),
+            Note("Background:", new Thickness(0, 0, 0, 0)), background, CallPicturePanel(saved), Row(camera), cameraStatus, framing, framingButtons,
             Row(check), doctor]);
+    }
+
+    private string? callPictureState;
+    private string callPicturePrompt = "";
+    private bool callPictureDrawing;
+    private (DateTime Written, System.Windows.Media.ImageSource? Image)? callPicturePreview;
+
+    /// <summary>The camera picture: a file, a picture from Creations or one drawn from an instruction where Companion › Pictures
+    /// draws, with a small preview of the saved one.</summary>
+    private StackPanel CallPicturePanel(DiscordCallPreferences saved)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 4, 0, 4) };
+        var dataDirectory = store?.DataDirectory;
+        panel.Children.Add(Note("Or put the character on a picture:", new Thickness(0, 0, 0, 2)));
+
+        if (discordCalls.HasPicture && dataDirectory is not null)
+        {
+            var path = DiscordCallPreferences.PicturePath(dataDirectory);
+            DateTime written;
+            try { written = System.IO.File.GetLastWriteTimeUtc(path); }
+            catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { written = DateTime.MinValue; }
+            if (callPicturePreview?.Written != written)
+            {
+                System.Windows.Media.ImageSource? image = null;
+                try { image = PictureView.Decode(System.IO.File.ReadAllBytes(path), 320); }
+                catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { }
+                callPicturePreview = (written, image);
+            }
+            var preview = new Image { Source = callPicturePreview?.Image, MaxHeight = 90, MaxWidth = 160, Stretch = System.Windows.Media.Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 4) };
+            AutomationProperties.SetAutomationId(preview, "DiscordCallCameraPicture");
+            AutomationProperties.SetName(preview, "Camera picture");
+            panel.Children.Add(preview);
+        }
+
+        var file = PageButton("Choose a picture file...", ChooseCallPicture, id: "DiscordCallCameraFile");
+
+        var pictures = dataDirectory is null ? [] : CreationStore.View(dataDirectory).Live
+            .Where(c => c.Kind == Martlet.Conversation.PictureCreations.KindName && CreationStore.IsComplete(dataDirectory, c)).ToArray();
+        ComboBox? creations = null;
+        if (pictures.Length > 0)
+        {
+            creations = new ComboBox { Width = 260, ItemsSource = new[] { "A picture from Creations..." }.Concat(pictures.Select(c => c.Title ?? c.Key)).ToArray(),
+                SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
+            AutomationProperties.SetName(creations, "Use a picture from Creations");
+            AutomationProperties.SetAutomationId(creations, "DiscordCallCameraCreation");
+            creations.SelectionChanged += (_, _) =>
+            {
+                if (creations.SelectedIndex > 0) UseCreationPictureAsync(pictures[creations.SelectedIndex - 1]).Forget();
+            };
+        }
+        panel.Children.Add(PictureRow(file, creations));
+
+        if (dataDirectory is not null && PictureClient.IsSetUp(dataDirectory))
+        {
+            var prompt = new TextBox { Width = 320, MaxLength = Martlet.Core.Pictures.PictureRequest.MaximumPromptCharacters, VerticalAlignment = VerticalAlignment.Center,
+                IsEnabled = !callPictureDrawing, Text = callPicturePrompt };
+            prompt.TextChanged += (_, _) => callPicturePrompt = prompt.Text;
+            AutomationProperties.SetName(prompt, "What to draw for the camera background");
+            AutomationProperties.SetAutomationId(prompt, "DiscordCallCameraPrompt");
+            var draw = PageButton(callPictureDrawing ? "Drawing..." : "Draw it", () => DrawCallPictureAsync(prompt.Text).Forget(), id: "DiscordCallCameraDraw");
+            draw.IsEnabled = !callPictureDrawing;
+            prompt.KeyDown += (_, e) =>
+            {
+                if (e.Key != System.Windows.Input.Key.Enter) return;
+                e.Handled = true;
+                DrawCallPictureAsync(prompt.Text).Forget();
+            };
+            panel.Children.Add(Note("Or have Martlet draw one (it's kept in Creations too):", new Thickness(0, 6, 0, 2)));
+            panel.Children.Add(PictureRow(prompt, draw));
+        }
+
+        var state = Note(callPictureState ?? (saved.CameraBackground == DiscordCameraBackground.Picture ? $"The camera shows {saved.CameraDescription}."
+            : discordCalls.HasPicture ? "Choose Picture above to use the saved picture again."
+            : dataDirectory is not null && PictureClient.IsSetUp(dataDirectory) ? "No picture chosen yet."
+            : "No picture chosen yet. Set up Companion › Pictures to have Martlet draw one."), new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(state, "DiscordCallCameraPictureStatus");
+        panel.Children.Add(state);
+        return panel;
+
+        static WrapPanel PictureRow(params FrameworkElement?[] items)
+        {
+            var row = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+            foreach (var item in items.OfType<FrameworkElement>())
+            {
+                item.Margin = new Thickness(0, 0, 10, 6);
+                row.Children.Add(item);
+            }
+            return row;
+        }
+    }
+
+    private void ChooseCallPicture()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose the camera background", Filter = "Pictures (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp", CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        byte[] bytes;
+        try
+        {
+            if (new System.IO.FileInfo(dialog.FileName).Length > Martlet.Core.Pictures.PictureImages.MaximumBytes)
+            {
+                UsedCallPicture("That picture is too large (24 MB at most).", null);
+                return;
+            }
+            bytes = System.IO.File.ReadAllBytes(dialog.FileName);
+        }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException)
+        {
+            UsedCallPicture("Couldn't read that picture: " + error.Message, null);
+            return;
+        }
+        UsedCallPicture(discordCalls.UsePicture(bytes, DiscordCameraPictureSource.File), "a picture from a file");
+    }
+
+    private async Task UseCreationPictureAsync(Martlet.Core.Creations.Creation creation)
+    {
+        if (store is null || closing) return;
+        try
+        {
+            var bytes = await CreationStore.Assets(store.DataDirectory, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, lifetime.Token);
+            UsedCallPicture(bytes is null ? "That picture hasn't reached this PC yet." : discordCalls.UsePicture(bytes, DiscordCameraPictureSource.Creation),
+                "a picture from Creations");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (CreationStore.IsFailure(error)) { UsedCallPicture("Couldn't read that picture: " + error.Message, null); }
+    }
+
+    /// <summary>Draws a 16:9 picture from <paramref name="instruction"/> where Companion › Pictures draws, keeps it in Creations and
+    /// puts the camera on it. A cloud provider asks first, since a picture costs money.</summary>
+    private async Task DrawCallPictureAsync(string instruction)
+    {
+        if (store is null || closing || callPictureDrawing) return;
+        var text = string.Join(' ', instruction.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (text.Length == 0)
+        {
+            callPictureState = "Say what to draw first, for example \"a cosy library at night, warm lamps\".";
+            RenderTab();
+            return;
+        }
+        var dataDirectory = store.DataDirectory;
+        var settings = PictureClient.Settings(dataDirectory);
+        if (settings.Cloud && !PictureClient.Fixture &&
+            !ConfirmationDialog.Confirm(this, $"Draw the camera background with {settings.Describe()}? It may cost money.", "Draw a camera background", "Draw", "Cancel"))
+            return;
+        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == Martlet.Core.Settings.SetupRole.Llm);
+        var maker = PictureClient.For(dataDirectory, homeSettings?.Profile.Id ?? Guid.Empty, thinking);
+        if (maker is null) return;
+        callPictureDrawing = true;
+        callPictureState = $"Drawing it on {maker.Where}…";
+        RenderTab();
+        string? problem = null;
+        try
+        {
+            var availability = await maker.GetAvailabilityAsync(lifetime.Token);
+            if (!availability.Available) problem = availability.Reason ?? "Pictures aren't available right now.";
+            else
+            {
+                var request = new Martlet.Core.Pictures.PictureRequest { Prompt = text, Shape = Martlet.Core.Pictures.PictureShape.Wide };
+                var result = await maker.GenerateAsync(request, null, lifetime.Token);
+                PictureClient.FreeLater(maker);
+                ErrorLog.Info($"Pictures: camera background on {result.Where}: {result.Width}x{result.Height} {result.MediaType}, " +
+                    $"{result.Image.Length / 1024} KiB, {result.Took.TotalSeconds:0.0} s{(result.Fixture ? ", FIXTURE - NOT AI" : "")}.");
+                var author = new Martlet.Core.Creations.CreationAuthor { Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName };
+                var about = Martlet.Conversation.PictureTools.Label(text);
+                try
+                {
+                    await CreationStore.AddAsync(dataDirectory, Martlet.Conversation.PictureCreations.Draft(result, "Camera background: " + about, about, request, author),
+                        Martlet.Core.Creations.CreationRegistry.Shared, DateTimeOffset.UtcNow, lifetime.Token);
+                }
+                catch (Exception error) when (CreationStore.IsFailure(error)) { ErrorLog.Info($"Pictures: couldn't keep the camera background ({error.Message})."); }
+                problem = discordCalls.UsePicture(result.Image, DiscordCameraPictureSource.Drawn);
+            }
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Martlet.Core.Pictures.PictureException error)
+        {
+            problem = error.Message;
+            ErrorLog.Info($"Pictures: camera background on {maker.Where} failed ({error.Code}: {error.Message}).");
+        }
+        finally
+        {
+            callPictureDrawing = false;
+            (maker as IDisposable)?.Dispose();
+        }
+        UsedCallPicture(problem, "a picture Martlet drew");
+    }
+
+    private void UsedCallPicture(string? problem, string? what)
+    {
+        callPictureState = problem ?? $"The camera shows {what}" + (discordCalls.CameraOpen ? "." : " when you open the camera view.");
+        if (problem is null)
+        {
+            ErrorLog.Info($"Discord call: the camera background is now {what}.");
+            RefreshCallCamera();
+        }
+        else ActionText.Text = problem;
+        if (!closing && openTab == CompanionTab.Discord) RenderTab();
+    }
+
+    private void RefreshCallCamera()
+    {
+        if (discordCalls.CameraOpen) avatar.SetCameraAsync(discordCalls.CameraView, CancellationToken.None).Forget();
     }
 
     private string? callDoctor;
@@ -190,7 +397,7 @@ public partial class MainWindow
         try
         {
             if (open && !avatar.IsShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
-            var showing = await avatar.SetCameraAsync(open ? CallCamera() : null, CancellationToken.None);
+            var showing = await avatar.SetCameraAsync(open ? discordCalls.CameraView : null, CancellationToken.None);
             discordCalls.CameraOpen = open;
             ActionText.Text = !open ? "The camera view is closed."
                 : showing ? "The camera view is open. Capture the \"Martlet camera\" window in OBS."
@@ -202,13 +409,6 @@ public partial class MainWindow
             ActionText.Text = "Couldn't change the camera view: " + error.Message;
         }
         if (!closing && openTab == CompanionTab.Discord) RenderTab();
-    }
-
-    /// <summary>The camera view as saved: its background and how the character is framed in it.</summary>
-    private RendererCamera CallCamera()
-    {
-        var saved = discordCalls.Preferences;
-        return new(true, saved.CameraColor, saved.CameraZoom, saved.CameraX, saved.CameraY);
     }
 
     /// <summary>Frames the character in the open camera view from the Discord card: "in", "out", "left", "right", "up", "down"
@@ -254,5 +454,47 @@ public partial class MainWindow
         if (discordCalls.Save(prefs => prefs with { CameraZoom = zoom, CameraX = x, CameraY = y }))
             ErrorLog.Info($"Camera framing saved: {discordCalls.Preferences.CameraFraming}.");
         else ErrorLog.Warn("The camera view's framing couldn't be saved.");
+    }
+
+    // ---------- set_camera_background: Martlet changes its own webcam background ----------
+
+    /// <summary>set_camera_background (on the dispatcher): a plain color, or one of Martlet's pictures (a creation's key or ID;
+    /// <paramref name="drawn"/> when Martlet just drew it for this) saved as the camera picture, shown at once while the camera
+    /// view is open. The words are for the model.</summary>
+    private async Task<string> SetCallBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token)
+    {
+        string? problem;
+        string what, shown;
+        if (color is { } chosen)
+        {
+            problem = discordCalls.Save(prefs => prefs with { CameraBackground = chosen, CameraPicture = null }) ? null : "The background couldn't be saved.";
+            what = shown = "plain " + chosen.ToString().ToLowerInvariant();
+        }
+        else
+        {
+            if (store is null || Martlet.Conversation.PictureCreations.Find(store.DataDirectory, picture) is not { Removed: false } creation)
+                return "There's no picture with that id. Use list_creations to find one, or draw a new one.";
+            byte[]? bytes = null;
+            try { bytes = await CreationStore.Assets(store.DataDirectory, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, token); }
+            catch (Exception error) when (CreationStore.IsFailure(error)) { ErrorLog.Info($"Discord call: couldn't read a picture ({error.Message})."); }
+            if (bytes is null) return "That picture hasn't reached this computer yet. Tell the user you'll try again in a moment.";
+            problem = discordCalls.UsePicture(bytes, drawn ? DiscordCameraPictureSource.Drawn : DiscordCameraPictureSource.Creation);
+            what = $"the picture \"{creation.Title ?? creation.Key}\"";
+            // The card and the log never show a title.
+            shown = drawn ? "a picture Martlet drew" : "a picture from Creations";
+        }
+        UsedCallPicture(problem, shown);
+        if (problem is not null) return $"The background didn't change: {problem} Tell the user briefly.";
+        return discordCalls.CameraOpen ? $"Your webcam background is now {what}; everyone in the call sees it."
+            : $"Your webcam background is now {what}. The camera view is closed right now, so it shows once the owner opens it.";
+    }
+
+    /// <summary>set_camera_background's way to the main window.</summary>
+    private sealed class CallCameraBridge(MainWindow window) : ICallCamera
+    {
+        public bool Offered => window.discordCalls.Preferences.On;
+
+        public Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token) =>
+            window.Dispatcher.InvokeAsync(() => window.SetCallBackgroundAsync(color, picture, drawn, token)).Task.Unwrap();
     }
 }

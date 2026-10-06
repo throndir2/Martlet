@@ -42,13 +42,16 @@ public sealed record RendererVoice(bool Muted);
 public sealed record RendererLock(bool Locked);
 /// <summary>The camera view (Martlet in your Discord calls): the character in its own ordinary 16:9 window (titled "Martlet
 /// camera", in the taskbar, not on top) on a solid <paramref name="Background"/> (#RRGGBB) so OBS can capture that window
-/// cleanly and key the color out, then share it as a virtual camera. Off puts the overlay back where and how it was. While on,
-/// the window keeps its size and its place isn't saved; the character is framed freely inside it: dragged anywhere, zoomed in
-/// or out (<see cref="MinimumZoom"/> to <see cref="MaximumZoom"/>) and nudged with the arrow keys. Opening it starts from
-/// <paramref name="Zoom"/> and the character's middle at <paramref name="X"/>, <paramref name="Y"/> (fractions of the window's
-/// width and height from its center, +x right, +y up); a change of background keeps the current framing. Once a framing change
-/// settles the overlay sends a "framed" <see cref="RendererRequest"/>.</summary>
-public sealed record RendererCamera(bool On, string Background = "#00B140", double Zoom = 1, double X = 0, double Y = 0)
+/// cleanly and key the color out, then share it as a virtual camera; or, with <paramref name="Picture"/> (the full path of a
+/// PNG, JPEG or WebP file on this PC), on that picture, filling the window (the color shows only if it can't be read). Off
+/// puts the overlay back where and how it was. While on, the window keeps its size and its place isn't saved; the character
+/// is framed freely inside it: dragged anywhere, zoomed in or out (<see cref="MinimumZoom"/> to <see cref="MaximumZoom"/>) and
+/// nudged with the arrow keys. Opening it starts from <paramref name="Zoom"/> and the character's middle at
+/// <paramref name="X"/>, <paramref name="Y"/> (fractions of the window's width and height from its center, +x right, +y up); a
+/// change of background keeps the current framing. Once a framing change settles the overlay sends a "framed"
+/// <see cref="RendererRequest"/>.</summary>
+public sealed record RendererCamera(bool On, string Background = "#00B140", string? Picture = null, double Zoom = 1, double X = 0,
+    double Y = 0)
 {
     public const double MinimumZoom = 0.25, MaximumZoom = 16, Farthest = 8;
 }

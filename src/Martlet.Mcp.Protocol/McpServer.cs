@@ -780,8 +780,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             seconds = new { type = "integer", minimum = 3, maximum = 30 }
         }),
         Tool("messaging_status", "Read Companion > Messaging from a data directory's messaging.json (this PC only, never synced): " +
-            "whether Martlet answers its Telegram bot on this PC, the bot's name and username, whether a token is saved, how many chats are paired and whether " +
-            "replies are also said aloud. Never the bot token (Windows Credential Manager) or the chats' names and IDs. Read-only.", new
+            "whether Martlet answers its Telegram bot and its WhatsApp number on this PC, the bot's name and username, the WhatsApp number, name, IDs, port and " +
+            "public address, whether secrets are saved, how many chats are paired and whether replies are also said aloud. Never the bot token, WhatsApp " +
+            "access token or app secret (Windows Credential Manager) or the chats' names and IDs. Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -2862,25 +2863,38 @@ internal sealed class McpServer(DesktopAutomation desktop)
     private static object MessagingStatus(JsonElement arguments)
     {
         var path = Path.Combine(DataDirectory(arguments), "messaging.json");
-        if (!File.Exists(path)) return new { state = "none", telegram = new { connected = false, enabled = false, chats = 0 } };
+        object NoTelegram() => new { connected = false, enabled = false, chats = 0 };
+        object NoWhatsApp() => new { connected = false, enabled = false, chats = 0 };
+        if (!File.Exists(path)) return new { state = "none", telegram = NoTelegram(), whatsApp = NoWhatsApp() };
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (!document.RootElement.TryGetProperty("Telegram", out var telegram) || telegram.ValueKind != JsonValueKind.Object)
-                return new { state = "loaded", telegram = new { connected = false, enabled = false, chats = 0 } };
-            string Text(string name) => telegram.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
-            bool Flag(string name) => telegram.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
-            var chats = telegram.TryGetProperty("Chats", out var list) && list.ValueKind == JsonValueKind.Array ? list.GetArrayLength() : 0;
-            return new
-            {
-                state = "loaded",
-                telegram = new
+            static string Text(JsonElement section, string name) =>
+                section.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+            static bool Flag(JsonElement section, string name) => section.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+            static int Chats(JsonElement section) =>
+                section.TryGetProperty("Chats", out var list) && list.ValueKind == JsonValueKind.Array ? list.GetArrayLength() : 0;
+            static bool Saved(JsonElement section) => Guid.TryParse(Text(section, "CredentialId"), out var credential) && credential != Guid.Empty;
+            var root = document.RootElement;
+            object telegramStatus = root.TryGetProperty("Telegram", out var telegram) && telegram.ValueKind == JsonValueKind.Object
+                ? new
                 {
-                    connected = Text("BotUsername").Length > 0, enabled = Flag("Enabled"), bot = Text("BotUsername"), botName = Text("BotName"),
-                    tokenSaved = Guid.TryParse(Text("CredentialId"), out var credential) && credential != Guid.Empty,
-                    chats, speakReplies = Flag("SpeakReplies")
+                    connected = Text(telegram, "BotUsername").Length > 0, enabled = Flag(telegram, "Enabled"), bot = Text(telegram, "BotUsername"),
+                    botName = Text(telegram, "BotName"), tokenSaved = Saved(telegram), chats = Chats(telegram), speakReplies = Flag(telegram, "SpeakReplies")
                 }
-            };
+                : NoTelegram();
+            object whatsAppStatus = root.TryGetProperty("WhatsApp", out var whatsApp) && whatsApp.ValueKind == JsonValueKind.Object
+                ? new
+                {
+                    connected = Text(whatsApp, "PhoneNumberId").Length > 0, enabled = Flag(whatsApp, "Enabled"), number = Text(whatsApp, "Number"),
+                    name = Text(whatsApp, "Name"), appId = Text(whatsApp, "AppId"), businessAccountId = Text(whatsApp, "BusinessAccountId"),
+                    phoneNumberId = Text(whatsApp, "PhoneNumberId"),
+                    port = whatsApp.TryGetProperty("Port", out var port) && port.TryGetInt32(out var number) ? number : 0,
+                    publicAddress = Text(whatsApp, "PublicAddress"), quickTunnel = Text(whatsApp, "PublicAddress").Length == 0,
+                    secretsSaved = Saved(whatsApp), chats = Chats(whatsApp), speakReplies = Flag(whatsApp, "SpeakReplies")
+                }
+                : NoWhatsApp();
+            return new { state = "loaded", telegram = telegramStatus, whatsApp = whatsAppStatus };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {

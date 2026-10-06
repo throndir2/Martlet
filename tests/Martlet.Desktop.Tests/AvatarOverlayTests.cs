@@ -181,7 +181,7 @@ public sealed class AvatarOverlayTests
             var overlay = window.ViewState();
             var place = (window.Left, window.Top, window.Width, window.Height);
             Assert.False(overlay.Camera);
-            window.UseCamera(new RendererCamera(true, "#00B140", 0.5, 0.1, -0.2));
+            window.UseCamera(new RendererCamera(true, "#00B140", null, 0.5, 0.1, -0.2));
             window.UpdateLayout();
             var framed = window.ViewState();
             Assert.True(framed.Camera);
@@ -209,7 +209,7 @@ public sealed class AvatarOverlayTests
 
             // Far-off framing stays partly in sight; Home recenters it at its fitted size.
             window.UseCamera(new RendererCamera(false));
-            window.UseCamera(new RendererCamera(true, "#00B140", 1, 100, -100));
+            window.UseCamera(new RendererCamera(true, "#00B140", null, 1, 100, -100));
             var far = window.ViewState();
             Assert.InRange(far.X!.Value, 0.5, RendererCamera.Farthest);
             Assert.InRange(far.Y!.Value, -RendererCamera.Farthest, -0.5);
@@ -222,7 +222,7 @@ public sealed class AvatarOverlayTests
             Assert.Equal(overlay.Zoom, back.Zoom);
             Assert.Equal(place, (window.Left, window.Top, window.Width, window.Height));
             Assert.Equal("Martlet character overlay", window.Title);
-            Assert.Throws<InvalidDataException>(() => window.UseCamera(new RendererCamera(true, "#00B140", double.NaN)));
+            Assert.Throws<InvalidDataException>(() => window.UseCamera(new RendererCamera(true, "#00B140", null, double.NaN)));
         }
         finally { window.Close(); }
     });

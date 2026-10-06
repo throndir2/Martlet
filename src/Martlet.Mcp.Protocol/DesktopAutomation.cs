@@ -16,6 +16,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
+        // Devices' Map and List only switch how the devices show.
+        "DevicesViewMap", "DevicesViewList",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
@@ -125,6 +127,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// result ("McpDirectoryResult-io.github.upstash/context7") only shows that server's details.</summary>
     private static readonly string[] SafeClickPrefixes = ["CompanionTab-", "Node-", "CoverageShow-", "Place-", "SpeakingHost-", "SingingHost-", "HealthCheck-", "HealthOpen-",
         "LogLevel-", "LogSource-", "LogPart-", "LogEntry-", "McpDirectoryResult-", "F5AddVoiceDrop-",
+        // Devices' list filters ("DeviceFilter-attention") only filter the cards shown.
+        "DeviceFilter-",
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
         "LiveJobCancel-",
@@ -200,6 +204,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
         // --allow-ui-effects.
         "SelectedDevice", "SelectedDeviceHealth", "SelectedDeviceHealthAction", "ClusterStatus",
+        // Devices: how many devices and how many need attention ("53 devices, 2 need attention. Select one to see details.") and,
+        // in the list, how many it shows ("Showing 12 of 53 devices." or "No device matches \"gpu\".").
+        "DevicesSummary", "DeviceListStatus",
         // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
         // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
         // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
@@ -297,11 +304,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (open or closed, its background), the camera framing line (the character's size and how far it is moved from the
         // middle; its Bigger, Smaller, Left, Right, Up, Down and Reset framing buttons save discord-calls.json, so they need
         // --allow-ui-effects), Check this PC's result, and the What to hear, Voice output and camera background
-        // choices (choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects). Never the owner's
-        // Discord name or anything heard or seen.
+        // choices (choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects), and the camera picture's
+        // line (where the saved picture came from, drawing, or why it couldn't be used; never a title or what was asked for).
+        // Never the owner's Discord name or anything heard or seen.
         "DiscordCallStatus", "DiscordCallAttribution", "DiscordCallOutputStatus", "DiscordCallCameraStatus", "DiscordCallCameraFraming",
         "DiscordCallDoctor",
-        "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground",
+        "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground", "DiscordCallCameraPictureStatus",
         // What the talk window's newest reply, report or look took together (One moment: your words, lines this PC played, the
         // picture and what wanted your attention, finished background work), counts only, never what was said, seen or found.
         "LiveTurnInputs",
@@ -402,6 +410,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // when it last answered; never the token), the connect outcome, how many chats are paired and the pairing note (when
         // the code expires; never the code itself, MessagingPairCode, or chat names).
         "MessagingStatus", "MessagingNote", "MessagingChats", "MessagingPairStatus",
+        // The same for WhatsApp (number, chat count; never the access token, app secret or code), plus where Meta delivers
+        // messages: the own public address or the Cloudflare quick tunnel and whether cloudflared is on this PC.
+        "MessagingWhatsAppStatus", "MessagingWhatsAppNote", "MessagingWhatsAppChats", "MessagingWhatsAppPairStatus", "MessagingWhatsAppTunnel",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
@@ -509,7 +520,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DiscordFriend-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
         // recognition (Available)"; the plan has no personal data).
         "AdvisorChoice-",
