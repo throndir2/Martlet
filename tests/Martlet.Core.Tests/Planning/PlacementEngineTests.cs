@@ -30,12 +30,13 @@ public sealed class PlacementEngineTests
     }
 
     [Fact]
-    public void PreferLocalOnAnEightGigabyteCardGivesThinkingTheCardAndTheVoiceToWindows()
+    public void PreferLocalOnAnEightGigabyteCardGivesThinkingTheCardAndTheVoiceASmallEngine()
     {
         var plan = Plan(HostingPreference.PreferLocal, Pc(32, 16, Nvidia(8)));
 
         Assert.Equal("gemma4:e2b", plan.Primary(PlanComponent.Thinking)!.Option.Id);
-        Assert.Equal("windows-speech", plan.Primary(PlanComponent.Voice)!.Option.Id);
+        // Chatterbox (4.2 GB) does not fit beside Gemma 4 E2B (3.3 GB) on the card; F5 (2 GB at its peak) does.
+        Assert.Equal("f5-tts", plan.Primary(PlanComponent.Voice)!.Option.Id);
         Assert.DoesNotContain(plan.Assignments, a => a.IsExternal);
     }
 
