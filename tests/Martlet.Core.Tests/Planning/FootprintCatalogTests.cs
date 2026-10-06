@@ -35,7 +35,7 @@ public sealed class FootprintCatalogTests
         {
             Assert.False(string.IsNullOrWhiteSpace(option.Source), option.Id);
             if (!option.IsLocal) Assert.Equal(ResourceUse.Zero, option.Reserve);
-            else Assert.True(option.Peak.DiskGb > 0 || option.Id == "loudness-lipsync" || option.Id == "windows-speech", option.Id);
+            else Assert.True(option.Peak.DiskGb > 0 || option.Id is "loudness-lipsync" or "windows-speech" or "macos-speech", option.Id);
         }
     }
 

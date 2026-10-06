@@ -2091,7 +2091,7 @@ and their current use from `nvidia-smi`; `games` keeps its card for games).
 With an absolute `dataDirectory` it adds the paired hosts in that directory's
 `host-hardware.json` (`sources` says what it used). `preference` is `balanced`
 (default), `local` or `hosted`; `providers` lists provider ids with a saved key
-(`nvidia-build`, `google-ai-studio`, `openrouter`, `openai`); `wanted` limits the
+(`nvidia-build`, `google-gemini`, `openrouter`, `openai`); `wanted` limits the
 components; `thinkingFirst` plans latency first. It returns `ranking` and
 `claimOrder`, `assignments` (each component's `Primary` and its `Fallback`
 chain: `option`, `hosting`, `provider`, `machine`, `gpu` and `why`),

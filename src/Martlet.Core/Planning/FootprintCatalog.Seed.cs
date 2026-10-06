@@ -65,7 +65,7 @@ public sealed partial class FootprintCatalog
         new()
         {
             Id = "hosted:gemini", Component = PlanComponent.Thinking, DisplayName = "Google Gemini (free tier)", Hosting = OptionHosting.External,
-            ProviderId = "google-ai-studio", ModelId = "gemini-3.5-flash-lite", QualityTier = 3, HearsAudio = true, SeesImages = true,
+            ProviderId = "google-gemini", ModelId = Settings.ChatCompletionsEndpointCatalog.GeminiDefaultModelId, QualityTier = 3, HearsAudio = true, SeesImages = true,
             FreeTier = true, NeedsSignup = true, Reliability = OptionReliability.High, Evidence = FootprintEvidence.Sourced,
             Source = "docs/HOSTED_THINKING.md (OpenAI-compatible at generativelanguage.googleapis.com/v1beta/openai; 99.5-100% uptime)"
         },

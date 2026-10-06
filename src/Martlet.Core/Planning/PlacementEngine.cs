@@ -352,7 +352,8 @@ public static class PlacementEngine
 
         private int Score(ComponentOption option)
         {
-            var score = option.QualityTier * 10 - ReliabilityPenalty(option);
+            // Slow first words cost: a voice that starts 1.4 s late loses to a slightly plainer one that starts at once.
+            var score = option.QualityTier * 10 - ReliabilityPenalty(option) - Math.Min(50, (option.FirstWordMs ?? 0) / 200);
             if (option.IsLocal)
             {
                 score += option.Component is PlanComponent.Voice or PlanComponent.Listening or PlanComponent.LipSync or PlanComponent.Character

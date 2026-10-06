@@ -949,7 +949,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "cards and their current use from nvidia-smi); with dataDirectory it adds the paired hosts in its host-hardware.json. " +
             "machines: up to 16 of {id, name, gpus: [{name, vendor, vramGb, usedGb, unified}], ramGb, cpuThreads, platform " +
             "(windows|linux|macos), architecture, diskFreeGb, primary, games, battery}. preference: balanced (default), local or " +
-            "hosted; providers: configured provider ids (nvidia-build, google-ai-studio, openrouter, openai); wanted: component " +
+            "hosted; providers: configured provider ids (nvidia-build, google-gemini, openrouter, openai); wanted: component " +
             "names (default all); thinkingFirst: latency first; current: today's [{component, option, machine}] (mode measure " +
             "reports it as-is); join: a machine to evaluate joining; afford: option ids to count spare copies of (default the " +
             "local Deep thinking models); catalog: include the footprint catalog. Returns the ranking, claim order, assignments " +

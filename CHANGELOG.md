@@ -22,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Changed
+- The setup advisor now reads every computer's graphics card and ranks what matters most: a natural local voice gets the graphics card first, then advanced lip-sync, then a local Thinking model, with a free online model (NVIDIA Build, with Google Gemini or a local model as backup) filling in when there's no room. Keeping everything local puts Thinking first instead. It also suggests smarter models that fit and what a new computer could take over. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - When this PC joins your Martlet network, the welcome wizard's suggestions take into account what your other computers already run. ([#491](https://github.com/throndir2/Martlet/pull/491))
 - People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
