@@ -20,7 +20,7 @@ Listening starts only when you press **Start listening** or use push-to-talk. La
 
 ## People
 
-Open **Companion › People**. Voice recognition is on by default and bundled. You can name voices, add aliases, mark **This is my voice**, merge voices, inspect memories for that person, forget one voice or forget all voices.
+Open **Companion › People**. Voice recognition is on by default and bundled. You can name voices and give each as many other names as they go by (up to 40), hear the last few clips of a voice you haven't named yet, mark **This is me**, merge voices, inspect memories for that person, forget one voice or forget all voices.
 
 Voice recognition is convenience, not authentication. Similar voices, recordings, illness, distance and microphone changes can fool it.
 

@@ -531,7 +531,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Saving..."; never the prompt text);
     /// and the Copy button on every read-only text box ("Copy-HostRunOutput" reads "Copy", or "Copied" for a few seconds after a
     /// click; never the text it copies).</summary>
-    private static readonly string[] SafeValuePrefixes = ["DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
+    // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Companion › Discord › Friends and calls: each friend's line ("DiscordFriend-123" reads "Ana (123) — Martlet also knows
         // Ana by voice"). Never a token.

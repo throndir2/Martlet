@@ -374,11 +374,11 @@ everyone's (about no one in particular), as every fact was before voices.
   are folded away below.
   *Belongs to* chooses whose a fact is when you add or update
   it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
-  *This is my voice* on People) unless *Show* lists one voice's facts; then it is
+  *This is me* on People) unless *Show* lists one voice's facts; then it is
   that voice's. The details say *Belongs to*. The status line (`MemoryFactStatus`) counts the facts, how
   many belong to how many people and how many to forgotten voices, never a
   name or a fact.
-- **People.** *What Martlet remembers about them* on each voice opens Memory
+- **People.** *Memories* (what Martlet remembers about them) on each voice opens Memory
   showing that voice's facts. Merging voices keeps every fact of both (a merged
   voice's ID leads to the voice it joined). Forgetting a voice keeps its facts,
   under *Forgotten voices*, until you delete them or give them to someone else.

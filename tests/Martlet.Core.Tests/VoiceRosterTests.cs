@@ -53,6 +53,27 @@ public sealed class VoiceRosterTests
     }
 
     [Fact]
+    public void AFullListWithTheMostNamesStillFits()
+    {
+        var roster = VoiceRoster.Empty;
+        for (var i = 0; i < VoiceRoster.MaximumTombstones; i++)
+            roster = roster.Forget(roster.Add(Voice(1000 + i), 3, "desk-a", Start).Voice!.Id, "desk-a", Start);
+        for (var i = 0; i < VoiceRoster.MaximumVoices; i++)
+        {
+            (roster, var voice) = roster.Add(Voice(i + 1), 3, "desk-a", Start);
+            for (var s = 0; s < VoiceRoster.MaximumSamples; s++)
+                roster = roster.Learn(voice!.Id, Voice(i + 1, noise: 0.5f, variant: s), 2, "desk-a", Start);
+            var names = Enumerable.Range(0, VoiceRoster.MaximumNames + 3).Select(n => $"Person {i} {n} " + new string('x', 30)).ToArray();
+            roster = roster.SetNames(voice!.Id, names[0], names.Skip(1), "desk-a", Start);
+            for (var n = 0; n < 3; n++) roster = roster.AddHeardName(voice.Id, $"Heard {i} {n} " + new string('y', 30), "desk-a", Start);
+        }
+        Assert.All(roster.Live, v => Assert.Equal(VoiceRoster.MaximumNames, v.Names.Count));
+        var bytes = roster.Write();
+        Assert.True(bytes.Length <= VoiceRoster.MaximumBytes, $"{bytes.Length} bytes");
+        Assert.Equal(roster.Digest(), VoiceRoster.Parse(bytes).Digest());
+    }
+
+    [Fact]
     public void JoinAndForgetLeaveTombstonesThatWinEverywhere()
     {
         var roster = VoiceRoster.Empty;
