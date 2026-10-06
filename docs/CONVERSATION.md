@@ -435,8 +435,11 @@ conversation](#singing-in-conversation)).
 
 ## Singing in conversation
 
-*"Martlet, sing me a song."* Martlet answers in character (*"Sure, I'll sing you
-a song, give me a few minutes while I figure out the lyrics and beat!"*), makes
+*"Martlet, sing me a song."* Martlet answers in character (*"Ooh, I'd love to!
+Let me work on a song for you."*) and calls `sing_song` in that same reply,
+choosing what the song is about itself when the user didn't say (small models
+told to talk first and call afterwards, or given a line to say, often said they'd
+sing and never called it, so nothing was made). It makes
 the song in the background while the conversation carries on, brings it up when
 it's ready (*"Nice job on killing that noob! Oh, and that song's ready, wanna
 hear?"*) and sings it on a yes. It is offered while singing is set up (Companion
@@ -966,7 +969,9 @@ the processor before you hear Martlet (except the quick check of something short
 below); elsewhere it starts at once. Its words:
 
 - **Talk window.** Your bubble shows *(your voice; transcribing…)* until the
-  words come, then the words. One the word check wouldn't count as words keeps
+  words come, then the words. When speech-to-text couldn't transcribe it, the
+  bubble goes away and nothing takes its place (Martlet's reply, if any,
+  stays). One the word check wouldn't count as words keeps
   them with a note (*Word check: not words. Thinking heard it anyway.*): Thinking
   already heard it and decided, often with `[pass]`.
 - **The conversation.** The exchange is kept as soon as the reply ends and the
@@ -1098,7 +1103,7 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   the microphone is still hearing or transcribing you, what the PC played
   waits for your words (at most 8 seconds) so your voice played back never
   shows; a line let go before your words came is still removed once they do.
-  The `LivePcAudio` line then adds *This PC plays your voice back too; Martlet
+  The `LivePcAudio` line's tooltip then adds *This PC plays your voice back too; Martlet
   left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
@@ -1113,9 +1118,9 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   unanswered.
 
 The talk window's `LivePcAudio` line says whether Martlet hears the PC now
-(without its own voice, or only on the output you hear while it pauses for
-Martlet's voice), how many lines of your own voice played back it left out, or
-why it can't. The Companion card's status names the other output in use.
+(*Also hearing this PC.*) or why it can't; its tooltip says how (without its
+own voice, or only on the output you hear while it pauses for Martlet's voice)
+and how many lines of your own voice played back it left out. The Companion card's status names the other output in use.
 `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
 left out without recording anything, says which outputs are in use and what

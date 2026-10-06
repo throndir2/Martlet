@@ -152,10 +152,13 @@ public partial class LiveConversationWindow : ThemedWindow
     private long attentionAt;
     private LiveConversationOperation? commentary, handledCommentary;
     private long nextGlance;
-    // Shown in plain sight while vision is on: what the latest check saw (or why it skipped), how the last look went and
-    // why the pacer is holding off. Checks every 3 s never go into the history.
-    private string? sight, lookNote, waitNote, captureNote, visionProblem, sentNote, attentionNote;
-    private bool seeing, twinkling;
+    // The vision line while vision is on: what the latest check saw (or why it skipped) and why the pacer is holding off; how
+    // the last look went (lookFailed: shown on the line too) and what wanted your attention go in its tooltip. Checks every 3 s
+    // never go into the history.
+    private string? sight, lookNote, waitNote, captureNote, visionProblem, attentionNote;
+    private bool seeing, twinkling, lookFailed;
+    // How many monitors the whole screen spans at the latest check, for the vision line's tooltip.
+    private int monitors;
     private DateTime? lastCheck;
     // The bubble of the message you typed that the current reply answers (for its "Martlet saw your screen" note).
     private (LiveConversationOperation Operation, ChatMessage Bubble)? typed;
@@ -819,7 +822,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // The words of what went straight to Thinking, as speech-to-text beside the reply finishes them: they replace the bubble's
     // placeholder (marked when the word check wouldn't count them; Thinking already heard it), and count as what you said lately
-    // so your own voice played back by the PC is left out.
+    // so your own voice played back by the PC is left out. When speech-to-text couldn't transcribe it, the bubble goes: there is
+    // nothing to show (Thinking already heard the recording, and its reply stays).
     private void FollowWords()
     {
         if (awaitingWords.Count == 0) return;
@@ -834,7 +838,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 saidLately.Add((text, now));
                 LeaveOutYourVoice();
             }
-            else bubble.Text = "(your voice; speech-to-text couldn't transcribe it)";
+            else Messages.Remove(bubble);
         }
     }
 
@@ -1356,8 +1360,6 @@ public partial class LiveConversationWindow : ThemedWindow
             var seenIt = done.ScreenSent && !rejected && done.Turn?.Snapshot.State == ConversationState.Completed;
             if (rejected) asked?.AddNote("Thinking couldn't take the picture of your screen, so it got your words only.");
             else if (seenIt && done.Seen is { } seen) asked?.AddNote($"Martlet saw {seen.Source.Label}.");
-            sentNote = rejected ? $"Your message at {DateTime.Now:t} went without it: Thinking couldn't take the picture."
-                : seenIt ? $"Your message at {DateTime.Now:t} went with it." : null;
             if (rejected && watching && controller.Configuration is { } selected && selected.Vision() != VisionSupport.Supported)
                 StopWatching($"The Thinking model rejected the picture. {selected.VisionAdvice()}");
         }
@@ -1884,19 +1886,24 @@ public partial class LiveConversationWindow : ThemedWindow
         AutomationProperties.SetName(VisionChip, visionState + ". " + VisionChip.ToolTip);
         var visionLine = VisionLine();
         VisionStatusText.Text = visionLine;
+        SetDetail(VisionStatusText, VisionDetail());
         VisionStatusText.Visibility = VisionChip.Visibility == Visibility.Visible && visionLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         // While Martlet decides where the character looks: what its eyes are on now.
         var gazeShown = watching && watchSource.IsScreen && Gaze is { Decides: true };
         GazeStatusText.Text = gazeShown ? Gaze!.Status : "";
         GazeStatusText.Visibility = gazeShown && VisionStatusText.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
-        var pcLine = PcAudioLine();
+        var (pcLine, pcDetail) = PcAudio();
         PcAudioText.Text = pcLine;
+        SetDetail(PcAudioText, pcDetail);
         PcAudioText.Visibility = available && preferences.HandsFree && pcLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        var chattinessLine = available ? ChattinessLine(SavedChoice, ChattinessNow, BackgroundOn, chattinessAt) : "";
+        var chattinessLine = available ? ChattinessLine(SavedChoice, ChattinessNow, BackgroundOn) : "";
         ChattinessText.Text = chattinessLine;
+        SetDetail(ChattinessText, chattinessLine.Length > 0 ? ChattinessDetail(ChattinessNow, chattinessAt) : "");
         ChattinessText.Visibility = chattinessLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
-        ContextText.Text = ContextLine(turns, contextTokens, controller.Configuration?.Context, controller.LastCache);
+        var contextBudget = controller.Configuration?.Context;
+        ContextText.Text = ContextLine(turns, contextTokens, contextBudget);
+        SetDetail(ContextText, ContextDetail(contextTokens, contextBudget, controller.LastCache));
         ContextRow.Visibility = turns > 0 ? Visibility.Visible : Visibility.Collapsed;
         // Not mid-reply or mid-glance: a finishing turn would put its exchange straight back.
         RefreshContextButton.IsEnabled = owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false };
@@ -1914,50 +1921,66 @@ public partial class LiveConversationWindow : ThemedWindow
         RenderSong();
     }
 
-    /// <summary>The line under the status while vision or hearing what this PC plays is turned on: how chatty Martlet is about
-    /// them, and, while Martlet decides, the level it picked and when it last switched. Empty when there is nothing in the
-    /// background or the choice is a fixed level (Companion says which).</summary>
-    internal static string ChattinessLine(ChattinessChoice choice, Chattiness level, bool background, DateTime? switchedAt)
-    {
-        if (!background || choice != ChattinessChoice.MartletDecides) return "";
-        return $"Martlet decides how chatty it is: {ChattinessTags.Name(level)} right now" +
-            (switchedAt is { } at ? $" (since {at:t})." : ".");
-    }
+    /// <summary>The line under the status while vision or hearing what this PC plays is turned on and Martlet decides how
+    /// chatty it is about them: the level it picked. Empty when there is nothing in the background or the choice is a fixed
+    /// level (Companion says which).</summary>
+    internal static string ChattinessLine(ChattinessChoice choice, Chattiness level, bool background) =>
+        !background || choice != ChattinessChoice.MartletDecides ? "" : $"Chattiness: {ChattinessTags.Name(level)} (Martlet decides).";
 
-    /// <summary>The line under the status while Hear what this PC plays is on: whether Martlet hears the PC now (every app but
-    /// Martlet, or only the output you hear while it pauses for Martlet's voice), and whether it left your own voice out, or why
-    /// it can't. Empty while it is off.</summary>
-    private string PcAudioLine()
+    /// <summary>The chattiness line's tooltip: what Martlet decides means and when it last switched.</summary>
+    internal static string ChattinessDetail(Chattiness level, DateTime? switchedAt) =>
+        "Martlet picks how chatty it is about what it sees and hears" +
+        (switchedAt is { } at ? $" and switched to {ChattinessTags.Name(level)} at {at:t}." : ".");
+
+    /// <summary>The line under the status while Hear what this PC plays is on: whether Martlet hears the PC now, or why it
+    /// can't; empty while it is off. Its tooltip says how (every app but Martlet, or only the output you hear while it pauses
+    /// for Martlet's voice) and whether it left your own voice played back out.</summary>
+    private (string Line, string Detail) PcAudio()
     {
-        if (!preferences.HearPc) return "";
-        if (!controller.CanHearPc) return "Martlet can't hear what this PC plays here.";
-        if (!listening) return "Also hears what this PC plays once you start listening.";
-        if (pcProblem is { } problem) return problem + " Martlet keeps trying.";
-        if (pcListener is null) return "Getting ready to hear this PC…";
-        var own = controller.PcWithoutMartlet switch
+        if (!preferences.HearPc) return ("", "");
+        if (!controller.CanHearPc) return ("Martlet can't hear what this PC plays here.", "");
+        if (!listening) return ("Also hears this PC once you start listening.", "");
+        if (pcProblem is { } problem) return (problem + " Martlet keeps trying.", "");
+        if (pcListener is null) return ("Getting ready to hear this PC…", "");
+        var how = controller.PcWithoutMartlet switch
         {
-            true => " (not Martlet's own voice)",
-            false => controller.PcOutput is { } output ? $" on {output} (paused while Martlet speaks)" : " (paused while Martlet speaks)",
-            null => ""
+            true => "Martlet hears everything this PC plays except its own voice.",
+            false => controller.PcOutput is { } output
+                ? $"Martlet hears what plays on {output}, paused while it speaks."
+                : "Martlet hears what this PC plays, paused while it speaks.",
+            null => "Martlet hears what this PC plays."
         };
-        var line = pcListener.Hearing ? $"Hearing this PC play something{own}…" : $"Also hearing what this PC plays{own}.";
-        return pcEchoes == 0 ? line
-            : line + $" This PC plays your voice back too; Martlet left out {pcEchoes} {(pcEchoes == 1 ? "line" : "lines")} of it.";
+        var echoes = pcEchoes == 0 ? ""
+            : $" This PC plays your voice back too; Martlet left out {pcEchoes} {(pcEchoes == 1 ? "line" : "lines")} of it.";
+        return (pcListener.Hearing ? "Hearing this PC play something…" : "Also hearing this PC.", how + echoes);
     }
 
-    /// <summary>The context row: how many exchanges Martlet keeps in mind, about how many tokens they are and the context size
-    /// replies fit them into (the newest that fit are sent), and how much of the last reply's input the model read from its
-    /// prompt cache, when it said.</summary>
-    internal static string ContextLine(int turns, int tokens, ContextBudget? budget, (long Input, long Cached)? cache = null)
+    /// <summary>The context row: how many exchanges Martlet keeps in mind, and that replies send only the newest once they
+    /// outgrow the context size.</summary>
+    internal static string ContextLine(int turns, int tokens, ContextBudget? budget)
     {
         var kept = turns == 1 ? "Keeps the last exchange in mind" : $"Keeps the last {turns} exchanges in mind";
+        return budget is not null && tokens > budget.InputTokens ? kept + "; replies send the newest that fit." : kept + ".";
+    }
+
+    /// <summary>The context row's tooltip: about how many tokens the exchanges are of the context size replies fit them into,
+    /// and how much of the last reply's input the model read from its prompt cache, when it said.</summary>
+    internal static string ContextDetail(int tokens, ContextBudget? budget, (long Input, long Cached)? cache = null)
+    {
+        var size = budget is null ? null
+            : tokens <= budget.InputTokens ? $"About {tokens:N0} tokens of its {budget.Tokens:N0}-token context."
+            : $"About {tokens:N0} tokens, more than fit its {budget.Tokens:N0}-token context.";
         var cached = cache is { Input: > 0 } last
-            ? $" Last reply: {Math.Min(last.Cached, last.Input) * 100 / last.Input}% of its {last.Input:N0} input tokens came from the model's cache."
-            : "";
-        if (budget is null) return kept + "." + cached;
-        return (tokens <= budget.InputTokens
-            ? $"{kept}, about {tokens:N0} tokens of its {budget.Tokens:N0}-token context."
-            : $"{kept}. Replies send the newest that fit its {budget.Tokens:N0}-token context.") + cached;
+            ? $"Last reply: {Math.Min(last.Cached, last.Input) * 100 / last.Input}% of its {last.Input:N0} input tokens came from the model's cache."
+            : null;
+        return string.Join(" ", new[] { size, cached }.Where(part => part is not null));
+    }
+
+    /// <summary>Puts a status line's details in its tooltip and its accessible help text (which MCP returns as help).</summary>
+    private static void SetDetail(FrameworkElement line, string detail)
+    {
+        line.ToolTip = detail.Length > 0 ? detail : null;
+        AutomationProperties.SetHelpText(line, detail);
     }
 
     private string Activity()
@@ -1992,9 +2015,10 @@ public partial class LiveConversationWindow : ThemedWindow
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…"
-                : tool == ThinkLonger.Name ? "Starting to think it over in the background…" : $"Using {tool}…";
+                : tool == ThinkLonger.Name ? "Starting to think it over in the background…"
+                : tool == SongTools.SingName ? "Starting a song in the background…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
-        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ??
+        return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
     }
 
@@ -2045,8 +2069,9 @@ public partial class LiveConversationWindow : ThemedWindow
         lookWanted = false;
         pacer = new(ChattinessNow, clock);
         nextGlance = clock.GetTimestamp();
-        sight = lookNote = waitNote = captureNote = sentNote = attentionNote = null;
-        seeing = false;
+        sight = lookNote = waitNote = captureNote = attentionNote = null;
+        seeing = lookFailed = false;
+        monitors = 0;
         lastCheck = null;
         // Watching the whole screen also notices what wants your attention: a notification, a flashing taskbar button.
         if (source.Kind == WatchKind.ActiveScreen)
@@ -2079,19 +2104,29 @@ public partial class LiveConversationWindow : ThemedWindow
         }
     }
 
-    /// <summary>The vision line under the status: what the latest check saw, then the last look's outcome or why Martlet is
-    /// holding off, and whether your last message went with the picture. Paused vision shows nothing (the button says so); a
-    /// problem shows here unless the status line already says it. It never contains window titles.</summary>
+    /// <summary>The vision line under the status, kept short: what Martlet watches, then only a look in progress, why it is
+    /// holding off (you seem away, its break, a busy provider, something that wants your attention once you're done talking)
+    /// or a look that failed. Paused vision shows nothing (the button says so); a problem shows here unless the status line
+    /// already says it. The rest is in <see cref="VisionDetail"/>. It never contains window titles.</summary>
     private string VisionLine()
     {
         if (!watching) return visionProblem is { } problem && problem != notice ? problem : "";
         if (sight is null) return $"Watching {watchSource.Label} soon.";
-        if (!seeing) return sight + (lookNote is null ? "" : " " + lookNote);
+        if (!seeing) return sight;
         var state = commentary is { OwnershipReleased: false } glance
             ? glance.Attention is { } about ? $"Taking a look at {about.Plain}…" : "Taking a look…"
-            : waitNote ?? lookNote ?? "First look soon.";
-        return $"{sight} {state}" + (attentionNote is null ? "" : " " + attentionNote) + (sentNote is null ? "" : " " + sentNote);
+            : waitNote ?? (lookFailed ? lookNote : null);
+        return state is null ? sight : $"{sight} {state}";
     }
+
+    /// <summary>The vision line's tooltip: how many monitors the whole screen spans, how the last look went and what wanted
+    /// your attention but wasn't looked at. Empty while not watching; never window titles.</summary>
+    private string VisionDetail() => !watching ? "" : string.Join(" ", new[]
+    {
+        monitors > 1 ? $"Your whole screen is {monitors} monitors." : null,
+        lookNote,
+        attentionNote
+    }.Where(note => note is not null));
 
     // Runs on the UI timer: notices conversation and what wants your attention, collects finished glances and schedules the
     // next capture.
@@ -2168,8 +2203,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 };
                 return;
             }
-            sight = source.Kind == WatchKind.ActiveScreen
-                ? result.Monitors > 1 ? $"Watching your whole screen ({result.Monitors} monitors)." : "Watching your whole screen."
+            monitors = source.Kind == WatchKind.ActiveScreen ? result.Monitors : 0;
+            sight = source.Kind == WatchKind.ActiveScreen ? "Watching your whole screen."
                 : !result.BehindMartlet ? $"Watching {source.Label}." : "Watching the window behind Martlet.";
             if (!twinkling) Motion.Blink(VisionDot);
             pacer.ObserveFrame(frame.Change);
@@ -2231,8 +2266,6 @@ public partial class LiveConversationWindow : ThemedWindow
                 PacerVerdict.UserAway => "Waiting until you're back.",
                 PacerVerdict.HourlyLimit => "Taking a break from looking.",
                 PacerVerdict.BackingOff => "The provider is busy; waiting before the next look.",
-                PacerVerdict.AfterConversation => "You're talking; not interrupting.",
-                PacerVerdict.Busy when commentary is not { OwnershipReleased: false } => "You're talking; not interrupting.",
                 _ => null
             };
             if (!lookWanted) return;
@@ -2289,6 +2322,7 @@ public partial class LiveConversationWindow : ThemedWindow
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
         {
             lookNote = "Couldn't prepare the image.";
+            lookFailed = true;
             return false;
         }
         finally
@@ -2302,6 +2336,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var status = done.Status;
         var at = DateTime.Now.ToString("t") + (done.Attention is { } about ? $" ({about.Plain})" : "");
         waitNote = null;
+        lookFailed = false;
         if (done.Passed)
         {
             pacer?.NoteLook(false);
@@ -2330,6 +2365,7 @@ public partial class LiveConversationWindow : ThemedWindow
             ProviderFailureCode.DeadlineExceeded && pacer is not null)
         {
             var wait = pacer!.NoteBackoff();
+            lookFailed = true;
             lookNote = $"Last look {at}: " + (provider == ProviderFailureCode.RateLimited
                 ? "the provider is limiting requests." : "the provider didn't answer.") +
                 $" Looking again in {(int)wait.TotalMinutes} minute{(wait.TotalMinutes >= 2 ? "s" : "")}.";
@@ -2356,7 +2392,7 @@ public partial class LiveConversationWindow : ThemedWindow
         DropAttentionFrame();
         DropLatest();
         attention = lookAttention = null;
-        sentNote = attentionNote = null;
+        attentionNote = null;
         if (noticing)
         {
             attentionWatcher.Stop();
