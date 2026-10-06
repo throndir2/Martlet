@@ -2296,7 +2296,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             founder = roster?.Founder?.Id,
             waiting = local.Waiting is { } wait ? new { hostId = wait.HostId, checkNumber = wait.CheckNumber, since = wait.Since } : null,
             desktops = roster?.Members.Where(m => m.IsDesktop).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
-            hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt }).ToArray(),
+            hosts = roster?.Members.Where(m => m.IsHost).Select(m => new { id = m.Id, name = m.Name, removed = m.Removed, updatedBy = m.UpdatedBy, changedAt = m.ChangedAt, outsideAddresses = m.Addresses?.Count ?? 0 }).ToArray(),
             adopt = local.Adopt,
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom

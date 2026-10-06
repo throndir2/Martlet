@@ -150,6 +150,44 @@ public sealed class ExposureGuardTests
     }
 
     [Fact]
+    public async Task A_host_listed_with_outside_addresses_is_internet_reachable_and_advertises_addresses_set_on_it()
+    {
+        await using var host = await GatewayTestHost.StartAsync();
+        Assert.False(host.Server.Guard.InternetReachable);
+        using var founder = Martlet.Core.Network.NetworkKey.Create("desktop-a");
+        var now = host.Clock.GetUtcNow();
+        var roster = Martlet.Core.Network.NetworkRoster.Found(founder, "A", now)
+            .AddHost(founder, host.Identity.HostId, "Fixture", host.Origin.CanonicalOrigin, host.Identity.SpkiFingerprint, now)
+            .SetHostAddresses(founder, host.Identity.HostId, ["home.example.net:9443"], now.AddSeconds(1));
+        host.Server.AttachNetworkStorage(new RosterStorage(roster.Write()));
+        Assert.True(host.Server.Guard.InternetReachable);
+
+        var setAt = now.AddMinutes(1);
+        host.Server.Exposure = new() { OutsideAddresses = ["gpu-box.tailnet.ts.net:9443"], OutsideAddressesSetAt = setAt };
+        var credential = await host.PairAsync(GatewayRole.Voice, "desktop-a");
+        using var signer = new GatewayRequestSigner(host.Identity, credential, host.Clock);
+        using var response = await host.Client.SendAsync(host.SignedGet("/martlet/v1/network", GatewayRole.Voice, signer));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("gpu-box.tailnet.ts.net:9443", document.RootElement.GetProperty("advertised_addresses")[0].GetString());
+        Assert.Equal(setAt, document.RootElement.GetProperty("advertised_at").GetDateTimeOffset());
+        Assert.Equal("home.example.net:9443", document.RootElement.GetProperty("roster").GetProperty("members")
+            .EnumerateArray().Single(m => m.GetProperty("kind").GetString() == "host").GetProperty("addresses")[0].GetString());
+
+        using var audit = await host.Client.SendAsync(host.SignedGet(GatewayHttpApplication.SecurityAuditPath, GatewayRole.Voice, signer));
+        using var auditDocument = JsonDocument.Parse(await audit.Content.ReadAsStringAsync());
+        Assert.True(auditDocument.RootElement.GetProperty("internet_reachable").GetBoolean());
+        Assert.Equal("home.example.net:9443", auditDocument.RootElement.GetProperty("outside_addresses")[0].GetString());
+    }
+
+    private sealed class RosterStorage(byte[] bytes) : IGatewayNetworkStorage
+    {
+        private byte[]? saved = bytes;
+        public byte[]? Load() => saved;
+        public void Save(byte[] value) => saved = value;
+    }
+
+    [Fact]
     public async Task Gateway_refuses_outside_pairing_locks_out_guessing_and_serves_the_audit_to_paired_desktops()
     {
         await using var host = await GatewayTestHost.StartAsync();

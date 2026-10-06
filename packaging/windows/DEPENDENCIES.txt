@@ -61,6 +61,12 @@ complete MIT license from the package's declared source commit
 a5531521952b2814ef5ee11361e078ea3d92eb08. Its two NuGet advisories (GHSA-q939-rpr3-3284,
 GHSA-mggc-4xg6-vcxf) affect only ScpClient, which Martlet never uses.
 
+Desktop also includes Martlet.Discord (authored) and NetCord 1.0.0-beta.28
+(NetCord.dll, lib/net10.0, no NuGet dependencies), the Discord bot client. Its
+archive is pinned in toolchain.json; notices\NetCord-LICENSE.txt is the complete
+MIT license from the package's declared source commit
+52bc355e8e866f1cb8433334e37d9f566b91a265.
+
 Desktop also includes Martlet.EchoCancellation (authored) and, for Companion >
 Listening > Reduce echo from my speakers, WebRTC's acoustic echo canceller:
 SoundFlow.Extensions.WebRtc.Apm 1.4.0 (its managed binding
