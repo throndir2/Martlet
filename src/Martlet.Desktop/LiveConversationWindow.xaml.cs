@@ -605,6 +605,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private long activityAt;
     // Esc stopped a report: what it carried waits for your next message instead of coming straight back.
     private bool reportHeld;
+    // The LiveTurnInputs line and the reply or look it describes.
+    private string? turnInputs;
+    private LiveConversationOperation? inputsFrom;
 
     /// <summary>You are talking, or something you said or typed is about to be answered.</summary>
     private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0 ||
@@ -627,33 +630,121 @@ public partial class LiveConversationWindow : ThemedWindow
 
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
-    /// answered, no reply, look or other work owns Martlet, Martlet isn't paused, and the conversation has been quiet for
-    /// <see cref="ReportQuiet"/>.</summary>
+    /// answered, no reply, look or other work owns Martlet, Martlet isn't paused or singing, and the conversation has been quiet
+    /// for <see cref="ReportQuiet"/>. It takes what else waits along (one moment): the lines this PC played (then it is a reply
+    /// to them with the finished work in its notes), the newest picture and a look that is due.</summary>
     private bool TryReport()
     {
-        // A due reminder is brought up as soon as Martlet is free even when Thinking longer shares results when you talk next.
-        var whenFree = controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree;
-        if (closed || !Available || Paused || reportHeld || !(whenFree ? controller.Jobs.HasNews : controller.Jobs.HasNotice) ||
-            UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
-            commentary is { OwnershipReleased: false } || controller.Singing?.Playing == true ||
-            activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
+        if (closed || !Available || !JobsWaiting || UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
+            commentary is { OwnershipReleased: false } || activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
             return false;
+        return StartMoment(MomentTurn.Plan(MomentTrigger.Report, PcWaiting, jobsWaiting: true, LookDue));
+    }
+
+    // ---------- one moment: whatever starts a reply takes everything else that waits ----------
+
+    /// <summary>Finished background work Martlet may bring up on its own right now: something finished that the user didn't stop
+    /// (Esc holds it for the next message), Thinking longer shares results as soon as Martlet is free or a reminder is due (it
+    /// comes up when free either way), Martlet isn't paused and no song is playing.</summary>
+    private bool JobsWaiting => !reportHeld && !Paused && controller.Singing?.Playing != true &&
+        (WhenFree ? controller.Jobs.HasNews : controller.Jobs.HasNotice);
+
+    /// <summary>Thinking longer shares results as soon as Martlet is free (otherwise only due reminders come up on their own).</summary>
+    private bool WhenFree => controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree;
+
+    /// <summary>The pacer wants a look (or one at what wants your attention) and its picture is there; while Martlet sings, a
+    /// look waits until the song is over.</summary>
+    private bool LookDue => lookWanted && watching && !closed && (lookAttention is not null ? attentionFrame : latestFrame) is not null &&
+        controller.Singing?.Playing != true;
+
+    /// <summary>Lines this PC played wait (none still being told apart from your own voice played back).</summary>
+    private bool PcWaiting => playingQueue.Count > 0 && pcHeld.Count == 0;
+
+    /// <summary>The picture a reply takes: the look's when it takes the look vision wanted (with what wants your attention, if
+    /// that is what it was for), otherwise the newest (<see cref="SeenNow"/>).</summary>
+    private (SeenScreen? Seen, AttentionSignal? About) Sight(bool look)
+    {
+        if (!look) return (SeenNow(), null);
+        var about = lookAttention;
+        var frame = about is not null ? attentionFrame : latestFrame;
+        lookWanted = false;
+        lookAttention = null;
+        waitNote = null;
+        SeenScreen? seen = null;
+        if (frame is not null && controller.Configuration?.Vision() is not (null or VisionSupport.Unsupported))
+        {
+            try { seen = new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource); }
+            catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
+                System.Runtime.InteropServices.ExternalException) { }
+        }
+        if (about is not null) DropAttentionFrame();
+        return seen is null ? (SeenNow(), null) : (seen, about);
+    }
+
+    // A reply that took a look at what wants your attention: the pacer doesn't look at one again right away.
+    private void TookLook(LiveConversationOperation started)
+    {
+        if (started.Look && started.Attention is not null) pacer?.NoteAttention();
+    }
+
+    // A reply that took the look counts as one: the pacer's spacing and hourly budget, and the vision line's last look.
+    private void NoteTakenLook(LiveConversationOperation done, string code)
+    {
+        var at = DateTime.Now.ToString("t") + (done.Attention is { } about ? $" ({about.Plain})" : "");
+        var spoke = code == "runtime.Completed" && !done.Passed;
+        pacer?.NoteLook(spoke);
+        lookNote = $"Last look {at}: " + (spoke ? "answered together with the rest."
+            : code is "runtime.Completed" or "listen.passed" ? "nothing to say." : "stopped.");
+    }
+
+    /// <summary>The talk window's LiveTurnInputs line: what Martlet's newest reply, report or look took together.</summary>
+    internal static string TurnInputsLine(bool glance, bool report, string took, bool look) =>
+        glance ? $"Last look took {took}."
+        : $"Last {(report ? "report" : "reply")} took {took}{(look ? ", counted as a look" : "")}.";
+
+    /// <summary>Starts a moment Martlet begins on its own (finished work came up, or a look is due) that is more than a plain
+    /// glance: a reply to what this PC played with the finished work in its notes, or Martlet's report, either with the
+    /// picture (and the look, when it takes it). False when it couldn't start (a glance is the caller's).</summary>
+    private bool StartMoment(MomentPlan plan)
+    {
+        var playing = plan.PcAudio ? TakePlaying(-1) : [];
+        if (plan.PcAudio && playing.Count == 0) plan = plan with { PcAudio = false };
+        if (plan.Route == MomentRoute.Glance) return false;
+        var (seen, about) = Sight(plan.Look);
         try
         {
-            if (controller.StartReport(Voice, noticesOnly: !whenFree) is not { } report) return false;
-            owned = report;
+            LiveConversationOperation started;
+            if (plan.Route == MomentRoute.Reply)
+            {
+                started = controller.Start(PcMessage(playing), Voice, microphone: false, approved: true, spoken: true,
+                    confidence: playing.Min(entry => entry.Confidence), seen: seen, pcAudio: true, chattiness: BackgroundChattiness,
+                    bringUp: plan.Jobs, attention: about, look: plan.Look);
+                answering = playing;
+                answeredAt = clock.GetTimestamp();
+            }
+            else if (controller.StartReport(Voice, noticesOnly: !WhenFree, seen, about, plan.Look) is { } report)
+            {
+                started = report;
+                if (report.Delivery is { } carried)
+                    foreach (var job in carried.Jobs) AddNote(JobNote(job));
+            }
+            else return false;
+            owned = started;
             yielded = null;
             notice = null;
-            if (report.Delivery is { } carried)
-                foreach (var job in carried.Jobs) AddNote(JobNote(job));
+            TookLook(started);
             Observe();
             return true;
         }
-        catch (LiveActionException error) when (error.Code is "conversation.ownership_busy" or "conversation.controls_blocked") { return false; }
+        catch (LiveActionException error) when (error.Code is "conversation.ownership_busy" or "conversation.controls_blocked")
+        {
+            Requeue(playing);
+            return false;
+        }
         catch (Exception error) when (error is LiveActionException or ContractException)
         {
             ErrorLog.Warn($"Background work: couldn't bring up finished work ({(error as LiveActionException)?.Code ?? "invalid input"}).");
-            reportHeld = true;
+            if (plan.Jobs) reportHeld = true;
             return false;
         }
     }
@@ -760,21 +851,33 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool StartTurn(string? text)
     {
         bool microphone = text is null;
+        // One moment: what this PC played meanwhile goes with what you type, each line marked as the PC's (never your words), and
+        // the reply takes the look vision wanted. Finished work goes with it anyway.
+        var playing = !microphone && PcWaiting ? TakePlaying(text!.Length) : [];
+        var plan = MomentTurn.Plan(MomentTrigger.User, playing.Count > 0, JobsWaiting, LookDue);
+        var (seen, about) = Sight(plan.Look);
         try
         {
             // Pressing Send or the talk button is the action; the destinations were chosen in Companion.
-            owned = controller.Start(text, Voice, microphone, approved: true, localCaptureApproved: microphone, uploadApproved: microphone,
-                listening: microphone ? Listening(false) : null, seen: SeenNow(), chattiness: BackgroundChattiness);
+            owned = playing.Count == 0
+                ? controller.Start(text, Voice, microphone, approved: true, localCaptureApproved: microphone, uploadApproved: microphone,
+                    listening: microphone ? Listening(false) : null, seen: seen, chattiness: BackgroundChattiness, attention: about,
+                    look: plan.Look)
+                : controller.Start(PcMessage(playing.Select(entry => (entry.Text, true)).Append((text!, false))), Voice, microphone: false,
+                    approved: true, seen: seen, pcAudio: true, userWords: text, chattiness: BackgroundChattiness, attention: about,
+                    look: plan.Look);
             yielded = null;
             notice = null;
             answeredAt = clock.GetTimestamp();
             pacer?.NoteConversation();
+            TookLook(owned);
             Observe();
             return true;
         }
         catch (LiveActionException error) { notice = Remedy(error.Code); }
         catch (ContractException) { notice = Remedy("conversation.invalid_input"); }
         catch (VoiceIdentityException error) { notice = error.Message; }
+        Requeue(playing);
         return false;
     }
 
@@ -1239,19 +1342,14 @@ public partial class LiveConversationWindow : ThemedWindow
         foreach (var skipped in heardQueue.Take(heardQueue.Count - recordings.Length)) skipped.Bubble.AddNote("Not answered.");
         heardQueue.Clear();
         // The newest of what the PC played that fits beside your own words.
-        var playing = new List<HeardEntry>();
-        var pcLength = 0;
-        for (var i = playingQueue.Count - 1; i >= 0; i--)
-        {
-            var size = playingQueue[i].Text.Length + PcLine.Length + 1;
-            if (pcLength + size > MaximumPcMessage || Math.Max(length, 0) + pcLength + size > MaximumMessage) break;
-            pcLength += size;
-            playing.Insert(0, playingQueue[i]);
-        }
-        playingQueue.Clear();
+        var playing = TakePlaying(length);
         CallAnswered();
         if (batch.Count == 0 && playing.Count == 0) return false;
         var everything = batch.Concat(playing).OrderBy(entry => entry.At).ToList();
+        // One moment: the reply takes what else waits too (finished work Martlet may bring up, and the look vision wanted). A
+        // reply to you only takes what is already there; it never waits for a look or a job.
+        var plan = MomentTurn.Plan(batch.Count > 0 ? MomentTrigger.User : MomentTrigger.PcAudio, playing.Count > 0, JobsWaiting, LookDue);
+        var (seen, about) = Sight(plan.Look);
         try
         {
             // What the PC played has no recording, so a message with it goes as words only.
@@ -1263,20 +1361,23 @@ public partial class LiveConversationWindow : ThemedWindow
             var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
             owned = straight
                 ? controller.Start(null, Voice, microphone: false, approved: true, spoken: true, heard: batch[^1].Voices,
-                    recording: recording, seen: SeenNow(), timeline: timeline, words: [.. batch.Select(entry => entry.Words!)],
-                    hearLocalOnly: hearing.LocalOnly, discordCall: CallOn)
+                    recording: recording, seen: seen, timeline: timeline, words: [.. batch.Select(entry => entry.Words!)],
+                    hearLocalOnly: hearing.LocalOnly, attention: about, look: plan.Look, discordCall: CallOn)
                 : playing.Count == 0
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
-                    seen: SeenNow(), timeline: timeline, chattiness: BackgroundChattiness, hearLocalOnly: hearing.LocalOnly, discordCall: CallOn)
+                    seen: seen, timeline: timeline, chattiness: BackgroundChattiness, hearLocalOnly: hearing.LocalOnly,
+                    attention: about, look: plan.Look, discordCall: CallOn)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
-                    seen: SeenNow(), pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
-                    timeline: timeline, chattiness: BackgroundChattiness, discordCall: CallOn);
+                    seen: seen, pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
+                    timeline: timeline, chattiness: BackgroundChattiness, bringUp: batch.Count == 0 && plan.Jobs, attention: about,
+                    look: plan.Look, discordCall: CallOn);
             answering = everything;
             yielded = null;
             answeredAt = clock.GetTimestamp();
+            TookLook(owned);
             Observe();
             return true;
         }
@@ -1296,6 +1397,22 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         heardQueue.InsertRange(0, entries.Where(entry => !entry.Pc));
         playingQueue.InsertRange(0, entries.Where(entry => entry.Pc));
+    }
+
+    // The newest of what the PC played that fits beside `length` characters of your own words (-1: none); the rest is let go.
+    private List<HeardEntry> TakePlaying(int length)
+    {
+        var playing = new List<HeardEntry>();
+        var pcLength = 0;
+        for (var i = playingQueue.Count - 1; i >= 0; i--)
+        {
+            var size = playingQueue[i].Text.Length + PcLine.Length + 1;
+            if (pcLength + size > MaximumPcMessage || Math.Max(length, 0) + pcLength + size > MaximumMessage) break;
+            pcLength += size;
+            playing.Insert(0, playingQueue[i]);
+        }
+        playingQueue.Clear();
+        return playing;
     }
 
     /// <summary>One message in the order things were heard: each line the PC played starts with
@@ -1374,6 +1491,7 @@ public partial class LiveConversationWindow : ThemedWindow
         activityAt = clock.GetTimestamp();
         var status = done.Status;
         var code = status.Code;
+        if (done.Look && !done.Commentary) NoteTakenLook(done, code);
         var continued = code == "conversation.continued";
         // What went straight to Thinking wasn't words (a cough, mm): its reply was dropped before it played, so it leaves only the
         // faded "Ignored ..." note, never a reply or a latency line.
@@ -1832,7 +1950,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // Stop quiets Martlet bringing up its background work too; what it carried waits for your next message. Background work
         // itself keeps going (its own Cancel stops it).
-        if (owned is { OwnershipReleased: false, Report: true }) reportHeld = true;
+        if (owned is { OwnershipReleased: false } bringing && (bringing.Report || bringing.BringUp && bringing.Delivery is not null)) reportHeld = true;
         if (owned is not null) controller.Stop(owned, reason, keepContext);
         loading?.RequestCancellation();
         observation?.Cancel();
@@ -1978,6 +2096,15 @@ public partial class LiveConversationWindow : ThemedWindow
         ChattinessText.Text = chattinessLine;
         SetDetail(ChattinessText, chattinessLine.Length > 0 ? ChattinessDetail(ChattinessNow, chattinessAt) : "");
         ChattinessText.Visibility = chattinessLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // What Martlet's newest reply or look took together (MomentTurn), once its request started.
+        foreach (var turn in new[] { owned, commentary })
+            if (turn?.Inputs is { } took && !ReferenceEquals(turn, inputsFrom))
+            {
+                inputsFrom = turn;
+                turnInputs = TurnInputsLine(turn.Commentary, turn.Report, took, turn.Look);
+            }
+        TurnInputsText.Text = turnInputs ?? "";
+        TurnInputsText.Visibility = available && turnInputs is not null ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
         var contextBudget = controller.Configuration?.Context;
         ContextText.Text = ContextLine(turns, contextTokens, contextBudget);
@@ -2193,8 +2320,10 @@ public partial class LiveConversationWindow : ThemedWindow
         if (!watching) return visionProblem is { } problem && problem != notice ? problem : "";
         if (sight is null) return $"Watching {watchSource.Label} soon.";
         if (!seeing) return sight;
-        var state = commentary is { OwnershipReleased: false } glance
-            ? glance.Attention is { } about ? $"Taking a look at {about.Plain}…" : "Taking a look…"
+        var looking = commentary is { OwnershipReleased: false } glance ? glance
+            : owned is { OwnershipReleased: false, Look: true } taking ? taking : null;
+        var state = looking is not null
+            ? looking.Attention is { } about ? $"Taking a look at {about.Plain}…" : "Taking a look…"
             : waitNote ?? (lookFailed ? lookNote : null);
         return state is null ? sight : $"{sight} {state}";
     }
@@ -2375,6 +2504,9 @@ public partial class LiveConversationWindow : ThemedWindow
         var frame = lookAttention is not null ? attentionFrame : latestFrame;
         // While Martlet sings, a look waits until the song is over.
         if (!lookWanted || !watching || closed || frame is null || operations.IsRunning || controller.Singing?.Playing == true) return false;
+        // One moment: a look that is due while lines this PC played or finished work wait is one reply that takes them all.
+        var plan = MomentTurn.Plan(MomentTrigger.Look, PcWaiting, JobsWaiting, lookDue: true);
+        if (plan.Route != MomentRoute.Glance && Available) return StartMoment(plan);
         lookWanted = false;
         var about = lookAttention;
         lookAttention = null;

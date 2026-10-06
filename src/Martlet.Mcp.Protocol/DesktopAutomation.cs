@@ -289,6 +289,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Discord name or anything heard or seen.
         "DiscordCallStatus", "DiscordCallAttribution", "DiscordCallOutputStatus", "DiscordCallCameraStatus", "DiscordCallDoctor",
         "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground",
+        // What the talk window's newest reply, report or look took together (One moment: your words, lines this PC played, the
+        // picture and what wanted your attention, finished background work), counts only, never what was said, seen or found.
+        "LiveTurnInputs",
         // Companion › Vision › How often it comments and the same choice under Listening › Watch along: the chosen option
         // (Quiet, Normal, Chatty or Martlet decides; choosing one with ui_select saves talk-preferences.json, so it needs
         // --allow-ui-effects) and what it means (with Martlet decides, the level Martlet picked while a conversation runs); and

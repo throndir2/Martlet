@@ -978,7 +978,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "think on a destination of its own running in parallel while replies go to the conversation's endpoint (no tools, " +
             "Thinking steps on, never stopped); the production side-by-side check for a second model in Ollama on this PC (a " +
             "fixture Ollama's /api/ps and /api/tags, graphics cards of several sizes, and stopping when loading it pushed " +
-            "Thinking's model off the card); and a long conversation fitted into a paired computer's 16 KiB and 16 messages. " +
+            "Thinking's model off the card); a long conversation fitted into a paired computer's 16 KiB and 16 messages; and one " +
+            "moment (MomentTurn): what each trigger (you, what this PC played, finished work, a due look) takes along when the others " +
+            "wait, and a combined reply carrying the PC's lines and a finished song and report with the One moment instruction at " +
+            "the same place as a plain reply's. " +
             "reasoningMs (200-3000, default 1200) is how long the fixture's hidden " +
             "reasoning takes. Loopback only; reads no credentials.", new
         {
