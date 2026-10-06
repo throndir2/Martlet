@@ -208,6 +208,9 @@ public partial class MainWindow
         ActionText.Text = settingsLastChange;
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
         await RefreshHomeAsync();
+        // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
+        if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
+            foreach (var job in clusterObserved.Keys.ToArray()) clusterObserved[job] = ObservedJob(job);
         if (characterChanged && avatar.IsShowing && Role == DeviceRole.Companion && !closing)
         {
             characterChanged = false;

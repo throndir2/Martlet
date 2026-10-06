@@ -118,6 +118,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
         "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
+        // Companion › Discord's text-chat line: counts of messages seen, considered, answered, passed, dropped and failed, the
+        // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
+        "DiscordTextStatus",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
@@ -284,6 +287,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // when the job left that provider, or ask for one (never the key). Its Use button (SetupCloudSave-<page>) and
         // SetupUseLocalThinking save the route, so they need --allow-ui-effects.
         "SetupJobNow-Thinking", "SetupJobNow-Voice", "SetupJobNow-Listening",
+        // The job's line about your Martlet network: the host your computers use for it and why this PC hasn't switched yet,
+        // or that your other computers use this PC for it (host IDs and reasons only).
+        "SetupJobNetwork-Thinking", "SetupJobNetwork-Voice", "SetupJobNetwork-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
