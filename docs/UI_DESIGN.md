@@ -564,6 +564,11 @@ buttons, selection, links, icons, headings; also used as text), `OnAccent`,
 behind the mascot), plus the mascot itself, whose badge takes the accent's hue
 in a character palette (Martlet's pink otherwise). Everything refers to them as
 `DynamicResource`, so a palette swaps at once.
+The character's speech bubble is drawn wholly in them too, like a piece of
+Martlet's window floating beside the character: a `Surface` card with an
+`Accent` outline, `Text` in Martlet's typeface (Segoe UI) and a soft `Glow` halo
+(no halo in high contrast), in Martlet's own palettes and the character ones
+alike.
 Windows' high contrast always wins.
 
 Settings › Appearance offers *Pink light*, *Rose dark* and two palettes made by
