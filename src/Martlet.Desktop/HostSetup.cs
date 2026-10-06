@@ -16,7 +16,9 @@ internal enum HostSetupMethod { ThisPcDocker, SshDocker, SshNative, OnHost, Agen
 
 internal enum HostVerb { Setup, Pair, Add, Status, Remove, Update }
 
-/// <summary>A martlet-host command. Add and Remove name the role (see <see cref="HostRoles"/>); every role uses the same flow.</summary>
+/// <summary>A martlet-host command. Add and Remove name the role (see <see cref="HostRoles"/>); every role uses the same flow.
+/// <see cref="Changing"/>: adding a role the host already runs, to change its settings (the same <c>add</c>, whose dialog
+/// shows what it runs with now).</summary>
 internal sealed record HostAction(HostVerb Verb, string? Role = null)
 {
     internal static readonly HostAction Setup = new(HostVerb.Setup);
@@ -24,7 +26,13 @@ internal sealed record HostAction(HostVerb Verb, string? Role = null)
     internal static readonly HostAction Status = new(HostVerb.Status);
     internal static readonly HostAction Update = new(HostVerb.Update);
     internal static HostAction Add(string role) => new(HostVerb.Add, role);
+    internal static HostAction Change(string role) => new(HostVerb.Add, role) { Changing = true };
     internal static HostAction Remove(string role) => new(HostVerb.Remove, role);
+
+    internal bool Changing { get; init; }
+
+    /// <summary>"Add" or "Change", for run window titles.</summary>
+    internal string AddVerb => Changing ? "Change" : "Add";
 }
 
 internal sealed record HostSetupTarget(HostSetupMethod Method, string SshTarget, string Address, string? HostId, string Version);

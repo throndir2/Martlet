@@ -45,7 +45,8 @@
 # (retire=<service>|<command>). role.conf entries between
 # "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the Audio2Face engine).
 # Adding a role that is already installed reuses what is there: images, downloads and data volumes are kept, unchanged
-# containers keep running, and the gateway keeps running unless what it serves changed (gateway_current).
+# containers keep running, and the gateway keeps running unless what it serves changed (gateway_current). Only what is
+# answered changes: unanswered choices and GPU or CPU stay as the role runs now (describe reports them, role.*_current).
 # Each system change is confirmed first (typed "yes", or --yes when Martlet desktop already asked the owner).
 set -euo pipefail
 
@@ -532,6 +533,13 @@ cmd_describe() {
     [[ -n "${line}" ]] && printf 'role.suggested=%s\n' "${line%%|*}"
   done < <(conf_values "${conf}" choice_by_vram)
   [[ "$(conf_value "${conf}" gpu)" == optional\|* ]] && printf 'role.accelerator=gpu cpu\n'
+  # What an installed role runs with now, so Martlet shows it when you change the role's settings (adding it again keeps
+  # what isn't answered): role.choice_current=<VAR>|<value> and role.accelerator_current=gpu|cpu.
+  local kind value
+  while IFS='|' read -r kind value; do
+    [[ "${kind}" == choice ]] && printf 'role.choice_current=%s\n' "${value}"
+    [[ "${kind}" == accelerator ]] && printf 'role.accelerator_current=%s\n' "${value}"
+  done < <(role_current "${role}")
   # On a host with several NVIDIA cards, which card it runs on: role.gpu=<uuid>|<name>|<MiB>|<other roles pinned to it>,
   # and the card it runs on now (role.gpu_current, "all" when it uses every card).
   if [[ -n "$(conf_value "${conf}" gpu)" ]]; then
@@ -666,6 +674,23 @@ role_gpu() {
   conf_value "${project}/.env" MARTLET_GPU 2>/dev/null || true
 }
 
+# What installed role $1 runs with now, from its .env: "choice|<VAR>|<value>" for each role.conf choice that holds one of
+# its options, and "accelerator|gpu" or "accelerator|cpu" for a role with a gpu entry. Nothing when it isn't installed.
+role_current() {
+  local role="$1" file="${PROJECTS}/$1/.env" conf line var label options default value
+  [[ -f "$(installed_file "${role}")" && -f "${file}" ]] || return 0
+  conf="$(role_dir "${role}")/role.conf"
+  while IFS= read -r line; do
+    IFS='|' read -r var label options default <<< "${line}"
+    [[ "${var}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    value="$(conf_value "${file}" "${var}")"
+    if [[ -n "${value}" && " ${options} " == *" ${value} "* ]]; then printf 'choice|%s|%s\n' "${var}" "${value}"; fi
+  done < <(conf_values "${conf}" choice)
+  value="$(conf_value "${file}" MARTLET_ACCELERATOR)"
+  if [[ "${value}" == gpu || "${value}" == cpu ]]; then printf 'accelerator|%s\n' "${value}"; fi
+  return 0
+}
+
 # The installed roles other than $1 pinned to card $2, space-separated.
 gpu_users() {
   local self="$1" uuid="$2" other users=()
@@ -680,6 +705,8 @@ gpu_users() {
 automatic_gpu() {
   local role="$1" current i best="" best_free=-1 free pass
   current="$(role_gpu "${role}")"
+  # Installed on the GPU without a card of its own: it runs on every card and keeps doing so.
+  if [[ -z "${current}" && -f "$(installed_file "${role}")" && -f "${PROJECTS}/${role}/compose.gpu.yaml" ]]; then printf 'all'; return; fi
   for i in "${!NVIDIA_IDS[@]}"; do [[ "${NVIDIA_IDS[i]}" == "${current}" ]] && { printf '%s' "${current}"; return; }; done
   for pass in free any; do
     for i in "${!NVIDIA_IDS[@]}"; do
@@ -1780,6 +1807,16 @@ cmd_add() {
   env_lines+=("MARTLET_SOURCE=${SOURCE}")
   local line name prompt var label options default value
 
+  # Adding an installed role again changes only what is answered: unanswered choices and GPU or CPU stay as they are now.
+  declare -A current_choice=()
+  local current_accelerator="" current_kind current_value
+  while IFS='|' read -r current_kind current_value; do
+    case "${current_kind}" in
+      choice) current_choice["${current_value%%|*}"]="${current_value#*|}" ;;
+      accelerator) current_accelerator="${current_value}" ;;
+    esac
+  done < <(role_current "${role}")
+
   # GPU or CPU: roles with an optional GPU overlay run on the NVIDIA GPU when this host can use one; gpu=required
   # roles always add their overlay (they cannot run on the CPU).
   local gpu_entry gpu_mode overlay="" accelerator="" vram=0 gpu_choice=""
@@ -1801,6 +1838,10 @@ cmd_add() {
     if [[ "${gpu_mode}" == required ]]; then
       accelerator=gpu
     else
+      # Installed already: it stays where it runs now (on the GPU only while this host still has one).
+      if [[ "${current_accelerator}" == cpu || ( "${current_accelerator}" == gpu && ${NVIDIA_MB} -gt 0 ) ]]; then
+        suggested="${current_accelerator}"
+      fi
       accelerator="${INPUT[choice.accelerator]:-}"
       if [[ -z "${accelerator}" ]] && ! unattended; then
         read -r -p "Run ${role} on [gpu/cpu] (default ${suggested}): " accelerator
@@ -1862,7 +1903,10 @@ cmd_add() {
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
     IFS='|' read -r var label options default <<< "${line}"
-    if [[ -n "${suggested_choice[${var}]:-}" ]]; then
+    if [[ -n "${current_choice[${var}]:-}" ]]; then
+      # Installed already: an unanswered choice keeps what the role runs with now.
+      default="${current_choice[${var}]}"
+    elif [[ -n "${suggested_choice[${var}]:-}" ]]; then
       default="${suggested_choice[${var}]}"
       if [[ "${accelerator}" == gpu ]]; then note "Suggested for ${vram} MiB of GPU memory: ${default}"; fi
     fi

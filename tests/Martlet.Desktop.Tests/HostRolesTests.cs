@@ -211,6 +211,11 @@ public sealed class HostRolesTests
             c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/deep-thinking");
         Assert.DoesNotContain(a.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-a/deep-thinking");
+        // A role it runs can have its settings (its model...) changed from here, on that role's row.
+        Assert.Contains(a.Commands, c => c.Action == NodeAction.ChangeRole && c.Argument == "gpu-a/deep-thinking" &&
+            c.Label == "Change Deep thinking settings" && c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
+        Assert.Contains(a.Commands, c => c.Action == NodeAction.ChangeRole && c.Argument == "gpu-a/ollama");
+        Assert.DoesNotContain(Host("gpu-b", null).Commands, c => c.Action == NodeAction.ChangeRole);
         var thinking = Host("gpu-a", "gpu-a");
         Assert.Contains(thinking.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Thinks things over in the background for this PC (qwen3-8b).");
         Assert.DoesNotContain(thinking.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking));

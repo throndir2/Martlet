@@ -12,7 +12,7 @@ internal enum NodeHealth { Ready, Unknown, Off, Attention }
 internal enum NodeAction
 {
     Companion, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
-    UseForLipSync, LipSyncThisPc, InstallRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
+    UseForLipSync, LipSyncThisPc, InstallRole, ChangeRole, RemoveRole, HostStatus, UpdateHost, ForgetHost,
     PrepareHost, RebootHost, ShutdownHost, WakeHost, PrepareComputer, UseForThinking, UseForListening, UseForSpeaking
 }
 
@@ -556,6 +556,10 @@ internal static class NetworkMap
                 if (!offered)
                     target.Commands.Add(new(NodeAction.InstallRole, local ? $"Install {role.Name} here" : $"Install {role.Name}",
                         Argument: id + "/" + role.Kind));
+                // A role it runs: change its settings (model, GPU or CPU, graphics card...) the way it was added.
+                if (offered)
+                    target.Commands.Add(new(NodeAction.ChangeRole, $"Change {role.Name} settings",
+                        Argument: id + "/" + role.Kind, Component: RoleComponent(role.Kind)));
                 if (check is null || offered)
                     target.Commands.Add(new(NodeAction.RemoveRole, local ? $"Remove {role.Name} here" : $"Remove {role.Name}",
                         Argument: id + "/" + role.Kind, Component: offered ? RoleComponent(role.Kind) : null));
