@@ -248,6 +248,7 @@
           "Martlet.Avatar.Audio2Face": "[0.45.0, )",
           "Martlet.Avatar.Hosting": "[0.45.0, )",
           "Martlet.Conversation": "[0.45.0, )",
+          "Martlet.Credentials.Windows": "[0.45.0, )",
           "Martlet.Discord": "[0.45.0, )",
           "Martlet.Doctor": "[0.45.0, )",
           "Martlet.EchoCancellation": "[0.45.0, )",

@@ -724,6 +724,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("discord_status", "Read Companion > Discord's saved setup from a data directory's discord.json: whether a bot token is saved " +
+            "and readable in Windows Credential Manager (never the token), the application ID, whether the bot connects when Martlet runs, " +
+            "the chat modes, channel-rule and people counts, whether the owner's account and home server are set, and the next setup step. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("discord_check", "Connect the data directory's saved Discord bot once with Martlet's production bot host and report whether " +
+            "Discord accepts it: Online with the bot's name and server count, a rejected token, or Message Content Intent left off in the " +
+            "Developer Portal; then disconnect. Sends no messages. Needs a saved token (Companion > Discord).", new
+        {
+            dataDirectory = new { type = "string" },
+            seconds = new { type = "integer", minimum = 3, maximum = 30 }
+        }),
         Tool("messaging_status", "Read Companion > Messaging from a data directory's messaging.json (this PC only, never synced): " +
             "whether Martlet answers its Telegram bot on this PC, the bot's name and username, whether a token is saved, how many chats are paired and whether " +
             "replies are also said aloud. Never the bot token (Windows Credential Manager) or the chats' names and IDs. Read-only.", new
@@ -1105,6 +1118,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "discord_status" => DiscordCheck.Status(DataDirectory(arguments)),
+                "discord_check" => await DiscordCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "seconds"), cancellation),
                 "messaging_status" => MessagingStatus(arguments),
                 "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
                 "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
