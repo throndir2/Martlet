@@ -207,16 +207,13 @@ public partial class MainWindow
         RenderWelcomePlan();
     }
 
-    /// <summary>The paired hosts' hardware as the placement engine reads it, for the join suggestion.</summary>
+    /// <summary>The network this PC joined as the placement engine reads it (the other computers' hardware and what they run
+    /// today, <see cref="DeviceCapacityInputs.JoinNetwork"/>), for the join suggestion.</summary>
     private PlanRequest? WelcomeNetwork()
     {
         if (!welcomeJoined) return null;
-        var hosts = NetworkMap.Hosts(Inputs()).Select(h => h.HostId).ToHashSet(StringComparer.Ordinal);
-        IReadOnlyList<HostHardware> reports;
-        try { reports = HardwareStore?.Load() ?? []; }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException) { reports = []; }
-        var machines = reports.Where(r => hosts.Contains(r.HostId)).Select(r => Martlet.Core.Planning.MachineSpecs.FromHostHardware(r)).ToArray();
-        return new PlanRequest(machines);
+        var inputs = Inputs();
+        return DeviceCapacityInputs.JoinNetwork(inputs, NetworkMap.Build(inputs), DefaultSetup.Catalog(null));
     }
 
     private IReadOnlyCollection<string> ConfiguredProviders()

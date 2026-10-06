@@ -34,6 +34,16 @@ internal static class DeviceCapacityInputs
         return machines;
     }
 
+    /// <summary>The network this PC is joining, for the welcome wizard's join suggestion: the other computers that reported
+    /// their hardware and what they and hosted providers run today (this PC's own local parts left out: it is the newcomer).</summary>
+    internal static PlanRequest JoinNetwork(NetworkInputs inputs, IReadOnlyList<NetworkNode> nodes, FootprintCatalog catalog)
+    {
+        var machines = Machines(inputs, nodes, null).Where(m => m.Id != ThisPcId).ToArray();
+        var current = Current(inputs, nodes, catalog)
+            .Where(c => c.MachineId is null || c.MachineId != ThisPcId && machines.Any(m => m.Id == c.MachineId)).ToArray();
+        return new PlanRequest(machines) { Current = current };
+    }
+
     /// <summary>Today's setup as the engine takes it: every job and host role on the map, with the catalog option that runs
     /// it and the machine (null when a hosted provider does it).</summary>
     internal static IReadOnlyList<CurrentAssignment> Current(NetworkInputs inputs, IReadOnlyList<NetworkNode> nodes, FootprintCatalog catalog)
