@@ -166,6 +166,67 @@ public sealed class AvatarOverlayTests
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task Camera_view_frames_the_character_freely_and_gives_the_overlay_its_view_back() => OnDispatcher(async () =>
+    {
+        using var input = new PendingInput();
+        using var output = new MemoryStream();
+        var window = new RendererWindow(input, output);
+        // Framing needs no browser; without it this also runs where WebView2 can't create its Direct3D device (no display).
+        ((Panel)window.Content).Children.RemoveAt(0);
+        window.Show();
+        try
+        {
+            await Dispatcher.Yield();
+            var overlay = window.ViewState();
+            var place = (window.Left, window.Top, window.Width, window.Height);
+            Assert.False(overlay.Camera);
+            window.UseCamera(new RendererCamera(true, "#00B140", 0.5, 0.1, -0.2));
+            window.UpdateLayout();
+            var framed = window.ViewState();
+            Assert.True(framed.Camera);
+            Assert.Equal("Martlet camera", window.Title);
+            Assert.Equal(0.5, framed.Zoom);
+            Assert.Equal(0.1, framed.X!.Value, 3);
+            Assert.Equal(-0.2, framed.Y!.Value, 3);
+
+            // The arrow keys move the character within the view, not the window, even unzoomed.
+            var view = (FrameworkElement)window.Content;
+            var left = window.Left;
+            Press(window, view, Key.Right);
+            Press(window, view, Key.Up);
+            Assert.Equal(left, window.Left);
+            var nudged = window.ViewState();
+            Assert.Equal(0.1 + 10 / view.ActualWidth, nudged.X!.Value, 0.0005);
+            Assert.Equal(-0.2 + 10 / view.ActualHeight, nudged.Y!.Value, 0.0005);
+
+            // It zooms smaller than it fits, down to a quarter, and a background change keeps the framing.
+            for (var i = 0; i < 20; i++) Press(window, view, Key.Subtract);
+            Assert.Equal(RendererCamera.MinimumZoom, window.ViewState().Zoom);
+            window.UseCamera(new RendererCamera(true, "#FF00FF"));
+            Assert.Equal(RendererCamera.MinimumZoom, window.ViewState().Zoom);
+            Assert.Equal(Color.FromRgb(0xFF, 0, 0xFF), ((SolidColorBrush)window.Background).Color);
+
+            // Far-off framing stays partly in sight; Home recenters it at its fitted size.
+            window.UseCamera(new RendererCamera(false));
+            window.UseCamera(new RendererCamera(true, "#00B140", 1, 100, -100));
+            var far = window.ViewState();
+            Assert.InRange(far.X!.Value, 0.5, RendererCamera.Farthest);
+            Assert.InRange(far.Y!.Value, -RendererCamera.Farthest, -0.5);
+            Press(window, view, Key.Home);
+            Assert.Equal((1d, 0d, 0d), (window.ViewState().Zoom, window.ViewState().X!.Value, window.ViewState().Y!.Value));
+
+            window.UseCamera(new RendererCamera(false));
+            var back = window.ViewState();
+            Assert.False(back.Camera);
+            Assert.Equal(overlay.Zoom, back.Zoom);
+            Assert.Equal(place, (window.Left, window.Top, window.Width, window.Height));
+            Assert.Equal("Martlet character overlay", window.Title);
+            Assert.Throws<InvalidDataException>(() => window.UseCamera(new RendererCamera(true, "#00B140", double.NaN)));
+        }
+        finally { window.Close(); }
+    });
+
     private static IEnumerable<Button> FindButtons(DependencyObject root)
     {
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)

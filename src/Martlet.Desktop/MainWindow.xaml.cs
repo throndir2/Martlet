@@ -520,6 +520,11 @@ public partial class MainWindow : ThemedWindow
             RememberCharacterPlacementAsync().Forget();
             return;
         }
+        if (action == "framed")
+        {
+            RememberCallFramingAsync().Forget();
+            return;
+        }
         ErrorLog.Info($"The character's menu chose '{action}'.");
         switch (action)
         {

@@ -63,7 +63,7 @@ export class VrmAvatarAdapter extends VrmRuntime {
    */
   setView(zoom: number, x: number, y: number, frame = 1): void {
     requireValid(!this.closed, "Renderer is disposed.");
-    finite(zoom, 1, 32, "view zoom"); finite(x, -1000, 1000, "view x"); finite(y, -1000, 1000, "view y");
+    finite(zoom, 0.1, 32, "view zoom"); finite(x, -1000, 1000, "view x"); finite(y, -1000, 1000, "view y");
     finite(frame, 0.1, 1, "view frame");
     this.view = { zoom, x, y, frame };
     this.updateProjection();

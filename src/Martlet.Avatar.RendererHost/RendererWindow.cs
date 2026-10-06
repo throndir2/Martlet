@@ -107,7 +107,12 @@ internal sealed class RendererWindow : Window
         viewport.MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) StartPan(e); };
         viewport.MouseMove += (_, e) => Pan(e.GetPosition(viewport));
         viewport.MouseUp += (_, _) => EndPan();
-        viewport.LostMouseCapture += (_, _) => panFrom = null;
+        viewport.LostMouseCapture += (_, _) =>
+        {
+            if (panFrom is null) return;
+            panFrom = null;
+            FramingChanged();
+        };
         // Mouse wheel grows the overlay up to screen height, then keeps zooming into the character toward the cursor.
         viewport.MouseWheel += (_, e) =>
         {
@@ -118,10 +123,15 @@ internal sealed class RendererWindow : Window
         PreviewKeyDown += (_, e) =>
         {
             var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
-            // A locked place ignores the arrow keys and Home until it is unlocked.
+            // A locked place ignores the arrow keys and Home until it is unlocked. In the camera view they frame the character.
             switch (e.Key)
             {
                 case Key.Escape: Request("hide"); break;
+                case Key.Left when camera is not null: Nudge(-step, 0); break;
+                case Key.Right when camera is not null: Nudge(step, 0); break;
+                case Key.Up when camera is not null: Nudge(0, -step); break;
+                case Key.Down when camera is not null: Nudge(0, step); break;
+                case Key.Home when camera is not null: ResetZoom(); break;
                 case Key.Left when !placementLocked: Left -= step; PlacementChanged(); break;
                 case Key.Right when !placementLocked: Left += step; PlacementChanged(); break;
                 case Key.Up when !placementLocked: Top -= step; PlacementChanged(); break;
@@ -210,18 +220,34 @@ internal sealed class RendererWindow : Window
     }
 
     private bool CanZoomIn => (!FixedSize && FrameWidth < MaxFrameWidth - 0.5) || viewZoom < MaxViewZoom;
-    private bool CanZoomOut => viewZoom > 1 || (!FixedSize && FrameWidth > MinFrameWidth + 0.5);
+    private bool CanZoomOut => camera is not null ? viewZoom > RendererCamera.MinimumZoom + 1e-9
+        : viewZoom > 1 || (!FixedSize && FrameWidth > MinFrameWidth + 0.5);
     private bool IsDefaultZoom => viewZoom == 1 && Math.Abs(FrameWidth - Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width)) < 0.5;
-    private bool CanResetZoom => FixedSize ? viewZoom != 1 : !IsDefaultZoom;
+    private bool CanResetZoom => camera is not null ? viewZoom != 1 || viewX != 0 || viewY != 0
+        : FixedSize ? viewZoom != 1 : !IsDefaultZoom;
 
     /// <summary>
     /// Zooms in by growing the overlay up to its screen-height limit, then by zooming the camera into the
     /// character (toward <paramref name="anchor"/>, or the face). Zooming out reverses that order. While the place is locked
-    /// the overlay keeps its size and only the camera zooms.
+    /// the overlay keeps its size and only the camera zooms. In the camera view the character zooms in or out (smaller than
+    /// it fits, too) around the cursor, or else its own face, which then stays where it is.
     /// </summary>
     private void Zoom(double factor, Point? anchor)
     {
-        if (factor > 1 && !FixedSize && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
+        if (camera is not null)
+        {
+            var zoom = Math.Clamp(viewZoom * factor, RendererCamera.MinimumZoom, RendererCamera.MaximumZoom);
+            var applied = zoom / viewZoom;
+            double cx = viewX, cy = 0.4 * viewZoom + viewY;
+            if (anchor is { } at && viewport.ActualWidth > 0 && viewport.ActualHeight > 0)
+            {
+                cx = (at.X - FrameOffset(viewport.ActualWidth)) / (viewport.ActualWidth * FrameFraction) * 2 - 1;
+                cy = 1 - at.Y / viewport.ActualHeight * 2;
+            }
+            SetView(zoom, cx - (cx - viewX) * applied, cy - (cy - viewY) * applied);
+            FramingChanged();
+        }
+        else if (factor > 1 && !FixedSize && FrameWidth < MaxFrameWidth - 0.5) ResizeOverlay(FrameWidth * factor);
         else if (factor > 1 || viewZoom > 1)
         {
             var point = anchor ?? new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3);
@@ -257,7 +283,17 @@ internal sealed class RendererWindow : Window
     private void ResetZoom()
     {
         SetView(1, 0, 0);
-        if (!FixedSize) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
+        if (camera is not null) FramingChanged();
+        else if (!FixedSize) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
+    }
+
+    /// <summary>Moves the character within its view by screen pixels (+x right, +y down): anywhere in the camera view, or
+    /// within its frame while zoomed in on the overlay.</summary>
+    private void Nudge(double dx, double dy)
+    {
+        if (viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
+        SetView(viewZoom, viewX + dx * 2 / (viewport.ActualWidth * FrameFraction), viewY - dy * 2 / viewport.ActualHeight);
+        FramingChanged();
     }
 
     /// <summary>Back to the default spot, size and zoom on the main screen. The overlay's own Home and menu leave a locked
@@ -276,38 +312,56 @@ internal sealed class RendererWindow : Window
     private bool placementLocked;
     // The camera view (RendererCamera): the overlay as it was before, while the character shows in its 16:9 window.
     private (double Left, double Top, double Width, double Height, bool Topmost)? camera;
+    // The overlay's own zoom and pan, kept while the camera view frames the character its own way.
+    private (double Zoom, double X, double Y) overlayView = (1, 0, 0);
     private bool FixedSize => placementLocked || camera is not null;
 
-    private void UseCamera(RendererCamera request)
+    internal void UseCamera(RendererCamera request)
     {
         if (request.On)
         {
             if (!System.Text.RegularExpressions.Regex.IsMatch(request.Background ?? "", "^#[0-9A-Fa-f]{6}$"))
                 throw new InvalidDataException("The camera background is invalid.");
+            if (!double.IsFinite(request.Zoom) || !double.IsFinite(request.X) || !double.IsFinite(request.Y))
+                throw new InvalidDataException("The camera framing is invalid.");
             var color = (Color)ColorConverter.ConvertFromString(request.Background);
             var brush = new SolidColorBrush(color);
             brush.Freeze();
-            camera ??= (Left, Top, Width, Height, Topmost);
+            var opening = camera is null;
+            if (opening)
+            {
+                EndPan();
+                camera = (Left, Top, Width, Height, Topmost);
+                overlayView = (viewZoom, viewX, viewY);
+            }
             Background = brush;
             viewport.Background = brush;
-            var area = SystemParameters.WorkArea;
-            Width = Math.Min(960, area.Width);
-            Height = Width * 9 / 16;
-            Left = area.Left + (area.Width - Width) / 2;
-            Top = area.Top + (area.Height - Height) / 2;
-            Topmost = false;
-            ShowInTaskbar = true;
-            Title = "Martlet camera";
+            if (opening)
+            {
+                var area = SystemParameters.WorkArea;
+                Width = Math.Min(960, area.Width);
+                Height = Width * 9 / 16;
+                Left = area.Left + (area.Width - Width) / 2;
+                Top = area.Top + (area.Height - Height) / 2;
+                Topmost = false;
+                ShowInTaskbar = true;
+                Title = "Martlet camera";
+                const double farthest = RendererCamera.Farthest;
+                SetView(request.Zoom, Math.Clamp(request.X, -farthest, farthest) * 2 / FrameFraction, Math.Clamp(request.Y, -farthest, farthest) * 2);
+            }
         }
         else if (camera is { } before)
         {
+            EndPan();
             camera = null;
             Background = Brushes.Transparent;
             viewport.Background = Brushes.Transparent;
             (Left, Top, Width, Height, Topmost) = before;
             ShowInTaskbar = false;
             Title = "Martlet character overlay";
+            SetView(overlayView.Zoom, overlayView.X, overlayView.Y);
         }
+        ShowPlacementLock();
         SendView();
     }
     // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
@@ -359,6 +413,27 @@ internal sealed class RendererWindow : Window
         placedTimer.Start();
     }
 
+    private System.Windows.Threading.DispatcherTimer? framedTimer;
+
+    /// <summary>The user moved or zoomed the character within the camera view: once it settles, Martlet reads the view and
+    /// saves the framing, so the camera view opens framed the same way next time.</summary>
+    private void FramingChanged()
+    {
+        if (!CanRequest || camera is null) return;
+        if (framedTimer is null)
+        {
+            framedTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+            framedTimer.Tick += (_, _) =>
+            {
+                framedTimer.Stop();
+                if (!closed && camera is not null) Request("framed");
+            };
+            Closed += (_, _) => framedTimer.Stop();
+        }
+        framedTimer.Stop();
+        framedTimer.Start();
+    }
+
     private void LockPlacement(bool locked)
     {
         if (placementLocked == locked) return;
@@ -371,8 +446,10 @@ internal sealed class RendererWindow : Window
     private void ShowPlacementLock()
     {
         viewport.PlacementLocked = placementLocked;
-        viewport.Cursor = placementLocked ? Cursors.Arrow : Cursors.SizeAll;
-        AutomationProperties.SetName(viewport, placementLocked
+        viewport.Cursor = placementLocked && camera is null ? Cursors.Arrow : Cursors.SizeAll;
+        AutomationProperties.SetName(viewport, camera is not null
+            ? "Martlet camera. Drag to move the character in the view; mouse wheel zooms it in or out; arrow keys nudge it; Home or 0 resets the framing; Shift+drag moves the window; right-click for more options."
+            : placementLocked
             ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom and hide options."
             : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock and hide options.");
     }
@@ -471,8 +548,22 @@ internal sealed class RendererWindow : Window
 
     // Pan is clamped so the zoomed view never leaves the character's fitted frame and the top of the head stays in
     // view: it never rises above the top edge (less a small margin), or above where it sits unzoomed if already cut off.
+    // The camera view frames the character freely: smaller than it fits too, and with its middle anywhere in the view or a
+    // little past its edges, never wholly out of sight.
     private void SetView(double zoom, double x, double y)
     {
+        if (camera is not null)
+        {
+            viewZoom = Math.Clamp(zoom, RendererCamera.MinimumZoom, RendererCamera.MaximumZoom);
+            var reachX = 1 / FrameFraction + viewZoom * 0.9;
+            var reachY = 1 + viewZoom * 0.9;
+            viewX = Math.Clamp(x, -reachX, reachX);
+            viewY = Math.Clamp(y, -reachY, reachY);
+            SendView();
+            PlaceSpeech();
+            return;
+        }
+        zoom = Math.Max(1, zoom);
         viewZoom = zoom;
         viewX = Math.Clamp(x, 1 - zoom, zoom - 1);
         double minY = 1 - zoom, maxY = zoom - 1;
@@ -493,10 +584,12 @@ internal sealed class RendererWindow : Window
     }
 
     /// <summary>The character frame's size, position and camera, how far the top of the head sits below its top edge, the
-    /// overlay's full width including the room beside the frame, and whether its place is locked.</summary>
-    private RendererView ViewState() => new(Math.Round(FrameWidth), Math.Round(Height),
+    /// overlay's full width including the room beside the frame, whether its place is locked, where the character's middle
+    /// sits in the view and whether this is the camera view.</summary>
+    internal RendererView ViewState() => new(Math.Round(FrameWidth), Math.Round(Height),
         WorkAreaTop() is { } screenTop ? Math.Round(Top - screenTop) : null, Math.Round(viewZoom, 3),
-        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width), placementLocked);
+        double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width), placementLocked,
+        Math.Round(viewX * FrameFraction / 2, 4), Math.Round(viewY / 2, 4), camera is not null);
 
     // The camera is in the frame's clip space; frame tells the renderer how much of its canvas width the frame spans.
     private void SendView()
@@ -511,7 +604,7 @@ internal sealed class RendererWindow : Window
 
     private void StartPan(MouseButtonEventArgs e)
     {
-        if (viewZoom <= 1) return;
+        if (viewZoom <= 1 && camera is null) return;
         e.Handled = true;
         panFrom = e.GetPosition(viewport);
         viewport.CaptureMouse();
@@ -530,6 +623,7 @@ internal sealed class RendererWindow : Window
         if (panFrom is null) return;
         panFrom = null;
         viewport.ReleaseMouseCapture();
+        FramingChanged();
     }
 
     // Martlet's own actions first (they go to Martlet over the request pipe), then the overlay's view, then Hide.
@@ -583,7 +677,8 @@ internal sealed class RendererWindow : Window
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
             reset.IsEnabled = CanResetZoom;
-            home.IsEnabled = !placementLocked;
+            reset.Header = camera is not null ? "_Reset framing" : "_Reset zoom";
+            home.IsEnabled = !placementLocked && camera is null;
             placeLock.Header = placementLocked ? "_Unlock position" : "_Lock position";
             placeLock.IsChecked = placementLocked;
             AutomationProperties.SetName(placeLock, placementLocked ? "Unlock position" : "Lock position");
@@ -623,6 +718,17 @@ internal sealed class RendererWindow : Window
     private void DragCharacter(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
+        // In the camera view a drag moves the character within it; Shift+drag moves the window itself.
+        if (camera is not null)
+        {
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                DragMove();
+            }
+            else StartPan(e);
+            return;
+        }
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && viewZoom > 1)
         {
             StartPan(e);
@@ -1011,6 +1117,10 @@ internal sealed class RendererWindow : Window
                         case "in": Zoom(ZoomStep * ZoomStep, null); break;
                         case "out": Zoom(1 / (ZoomStep * ZoomStep), null); break;
                         case "reset": ResetZoom(); break;
+                        case "left": Nudge(-10, 0); break;
+                        case "right": Nudge(10, 0); break;
+                        case "up": Nudge(0, -10); break;
+                        case "down": Nudge(0, 10); break;
                         case "status": break;
                         default: throw new InvalidDataException("Zoom action is invalid.");
                     }

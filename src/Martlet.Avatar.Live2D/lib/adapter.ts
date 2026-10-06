@@ -217,7 +217,7 @@ export class Live2DAdapter {
     finite(x, "view x");
     finite(y, "view y");
     finite(frame, "view frame");
-    this.#view = { zoom: Math.max(1, Math.min(32, zoom)), x, y, frame: Math.max(0.1, Math.min(1, frame)) };
+    this.#view = { zoom: Math.max(0.1, Math.min(32, zoom)), x, y, frame: Math.max(0.1, Math.min(1, frame)) };
   }
 
   /** Top of the visible character (top of the head) in fitted clip space, before view zoom/pan; 1 is the canvas top. */

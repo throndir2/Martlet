@@ -38,6 +38,13 @@ public sealed record DiscordCallPreferences
     /// <summary>Martlet stops talking when someone in the call talks over it.</summary>
     public bool BargeIn { get; init; } = true;
     public DiscordCameraBackground CameraBackground { get; init; } = DiscordCameraBackground.Green;
+    /// <summary>How the character is framed in the camera view: its size (1 fits it to the view's height; 0.25 to 16) and where
+    /// its middle sits, as fractions of the view's width and height from its center (+x right, +y up).</summary>
+    public double CameraZoom { get; init; } = 1;
+    public double CameraX { get; init; }
+    public double CameraY { get; init; }
+
+    public const double MinimumCameraZoom = 0.25, MaximumCameraZoom = 16, FarthestCameraOffset = 8;
 
     /// <summary>The camera background as a color (#RRGGBB).</summary>
     public string CameraColor => Color(CameraBackground);
@@ -60,8 +67,26 @@ public sealed record DiscordCallPreferences
             OutputId = output,
             OutputName = output is null ? null : Clean(OutputName, 256),
             Capture = Enum.IsDefined(Capture) ? Capture : DiscordCallCapture.DiscordApp,
-            CameraBackground = Enum.IsDefined(CameraBackground) ? CameraBackground : DiscordCameraBackground.Green
+            CameraBackground = Enum.IsDefined(CameraBackground) ? CameraBackground : DiscordCameraBackground.Green,
+            CameraZoom = double.IsFinite(CameraZoom) ? Math.Clamp(CameraZoom, MinimumCameraZoom, MaximumCameraZoom) : 1,
+            CameraX = double.IsFinite(CameraX) ? Math.Clamp(CameraX, -FarthestCameraOffset, FarthestCameraOffset) : 0,
+            CameraY = double.IsFinite(CameraY) ? Math.Clamp(CameraY, -FarthestCameraOffset, FarthestCameraOffset) : 0
         };
+    }
+
+    /// <summary>The camera framing as people read it: "the character at its fitted size, centered", or its size and how far it
+    /// is moved from the middle.</summary>
+    [JsonIgnore]
+    public string CameraFraming
+    {
+        get
+        {
+            var size = Math.Abs(CameraZoom - 1) < 0.005 ? "at its fitted size" : $"at {CameraZoom * 100:0}% of its fitted size";
+            static string Part(double value, string plus, string minus) =>
+                Math.Abs(value) < 0.0005 ? "" : $"{Math.Abs(value) * 100:0.#}% {(value > 0 ? plus : minus)}";
+            var moved = string.Join(" and ", new[] { Part(CameraX, "right", "left"), Part(CameraY, "up", "down") }.Where(p => p.Length > 0));
+            return $"the character {size}, " + (moved.Length == 0 ? "centered" : moved + " of center");
+        }
     }
 
     private static string? Clean(string? text, int limit = MaximumNameLength)

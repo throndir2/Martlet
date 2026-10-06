@@ -3988,9 +3988,14 @@ mode, off by default), `DiscordCallCapture` (*The Discord app only* or
 cable marked *(virtual cable)*), `DiscordCallAlsoSpeakers`,
 `DiscordCallBargeIn`, `DiscordCallCameraBackground` (*Green*, *Blue*,
 *Magenta*, *Black*), `DiscordCallCamera` (*Open camera view* / *Close camera
-view*) and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
+view*), the camera framing buttons `DiscordCallCameraZoomIn` (*Bigger*),
+`DiscordCallCameraZoomOut` (*Smaller*), `DiscordCallCameraLeft`,
+`DiscordCallCameraRight`, `DiscordCallCameraUp`, `DiscordCallCameraDown`
+(each moves the character 10 pixels) and `DiscordCallCameraReset` (*Reset
+framing*), enabled while the camera view shows,
+and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
 playback devices, looks for Discord and sets up a process loopback unstarted).
-Toggling, choosing and the camera button save `discord-calls.json` or show a
+Toggling, choosing, the camera button and the framing buttons save `discord-calls.json` or show a
 window, so they need `--allow-ui-effects`. Returned (SafeValues):
 `DiscordCallStatus` (*Off. Martlet isn't in your Discord calls.* or *On.
 Martlet hears the Discord app* (or *hears everything this PC plays except
@@ -3998,7 +4003,11 @@ itself*)*, sees who talks: <source>, and speaks into <output>.*),
 `DiscordCallAttribution` (*Who is talking: the Discord window; 2 people named
 so far.*, never who), `DiscordCallOutputStatus` (where Martlet's voice goes,
 or that the chosen output isn't connected), `DiscordCallCameraStatus` (open
-or closed, with its background), `DiscordCallDoctor` (Check this PC's result)
+or closed, with its background), `DiscordCallCameraFraming` (*Framing: the
+character at its fitted size, centered.* or, say, *at 150% of its fitted
+size, 12.5% right and 5% up of center*, the saved framing, which dragging,
+the wheel and the arrow keys in the camera window also save once they
+settle; `SetupCharacterView` then reads the camera's zoom), `DiscordCallDoctor` (Check this PC's result)
 and the three choices. While the mode is on, the talk window's `LivePcAudio`
 line says *In your Discord call.* or *Hearing someone in your Discord call…*
 (its `help` is the mode's line) and lines from the call show in
