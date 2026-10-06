@@ -28,7 +28,9 @@ public static class LinuxPlatform
                 ? new X11Overlay(environment.OverlayStatus, environment.Desktop.Session == LinuxSessionType.Wayland)
                 : new UnavailableOverlay(environment.OverlayStatus),
             ScreenCapture = new LinuxScreenCapture(environment),
-            Autostart = XdgAutostart.ForCurrentUser()
+            Autostart = XdgAutostart.ForCurrentUser(),
+            // Avalonia's TrayIcon draws the tray; this says whether the desktop has a StatusNotifierItem host to show it.
+            TrayHost = environment.TrayStatus
         };
         // Without a Secret Service the default keeps keys in memory only (and says so) rather than writing them anywhere.
         return environment.Bus.SecretService
