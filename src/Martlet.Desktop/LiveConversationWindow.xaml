@@ -174,9 +174,10 @@
                                 <TextBlock x:Name="Caption" Text="{Binding Caption}" Style="{DynamicResource Muted}" FontSize="11" Margin="6,0,6,3"/>
                                 <Border x:Name="Bubble" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
                                         BorderThickness="1" CornerRadius="16" Padding="13,8">
+                                    <!-- Its automation ID says whose message it is (LiveMessage-You, -Martlet, -Note, -PcAudio), never its words. -->
                                     <TextBox x:Name="Body" Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" IsTabStop="False" TextWrapping="Wrap" FontSize="14"
                                              Foreground="{DynamicResource TextBrush}" Background="Transparent" BorderThickness="0" Padding="0" MinHeight="0"
-                                             AutomationProperties.Name="{Binding Caption}">
+                                             AutomationProperties.Name="{Binding Caption}" AutomationProperties.AutomationId="LiveMessage-Martlet">
                                         <TextBox.Template>
                                             <ControlTemplate TargetType="TextBox">
                                                 <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
@@ -196,6 +197,7 @@
                                     <Setter TargetName="Bubble" Property="Background" Value="{DynamicResource AccentBrush}"/>
                                     <Setter TargetName="Bubble" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                     <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+                                    <Setter TargetName="Body" Property="AutomationProperties.AutomationId" Value="LiveMessage-You"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding IsNote}" Value="True">
                                     <Setter TargetName="Row" Property="HorizontalAlignment" Value="Center"/>
@@ -206,6 +208,7 @@
                                     <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
                                     <Setter TargetName="Body" Property="FontSize" Value="12"/>
                                     <Setter TargetName="Body" Property="TextAlignment" Value="Center"/>
+                                    <Setter TargetName="Body" Property="AutomationProperties.AutomationId" Value="LiveMessage-Note"/>
                                 </DataTrigger>
                                 <!-- What Martlet heard playing on the PC: marked as the PC's, quieter than what you say. -->
                                 <DataTrigger Binding="{Binding IsPcAudio}" Value="True">
@@ -215,6 +218,7 @@
                                     <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
                                     <Setter TargetName="Body" Property="FontStyle" Value="Italic"/>
                                     <Setter TargetName="Body" Property="FontSize" Value="13"/>
+                                    <Setter TargetName="Body" Property="AutomationProperties.AutomationId" Value="LiveMessage-PcAudio"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding HasNote}" Value="False">
                                     <Setter TargetName="NoteText" Property="Visibility" Value="Collapsed"/>

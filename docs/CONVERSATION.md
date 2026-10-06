@@ -959,7 +959,9 @@ the processor before you hear Martlet (except the quick check of something short
 below); elsewhere it starts at once. Its words:
 
 - **Talk window.** Your bubble shows *(your voice; transcribing…)* until the
-  words come, then the words. One the word check wouldn't count as words keeps
+  words come, then the words. When speech-to-text couldn't transcribe it, the
+  bubble goes away and nothing takes its place (Martlet's reply, if any,
+  stays). One the word check wouldn't count as words keeps
   them with a note (*Word check: not words. Thinking heard it anyway.*): Thinking
   already heard it and decided, often with `[pass]`.
 - **The conversation.** The exchange is kept as soon as the reply ends and the

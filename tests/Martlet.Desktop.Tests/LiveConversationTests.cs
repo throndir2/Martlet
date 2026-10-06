@@ -329,6 +329,59 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    // Straight to Thinking (a Thinking model that hears, the recording alone): the bubble shows the words once speech-to-text
+    // beside the reply has them; when it couldn't transcribe it (no words, or it failed) the bubble goes and nothing replaces it.
+    [Theory]
+    [InlineData("Hello there.", 200)]
+    [InlineData("", 200)]
+    [InlineData("", 500)]
+    public Task StraightToThinkingBubbleShowsTheWordsOrNothingWhenNotTranscribed(string transcript, int sttStatus) => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var old = loaded.Settings!.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        var changed = SetupSettings.QueueReplacedCredential(
+            ChatCompletionsSetup.SelectRoute(loaded.Settings!, "http://127.0.0.1:1234/v1", "voxtral-mini-latest"), old);
+        var route = changed.Setup!.Routes.Single(item => item.Role == SetupRole.Llm);
+        await fixture.Save(SetupSettings.ReplaceRoute(changed, route with { Consent = route.Selection() }));
+        Assert.Equal(HearingSupport.Supported, fixture.Controller.Configuration!.Hearing());
+        fixture.Stt.Respond = (_, _) => Task.FromResult(sttStatus == 200
+            ? ProviderFixtures.Json(JsonSerializer.Serialize(new { text = transcript })) : ProviderFixtures.Json("{}", sttStatus));
+        var bodies = new ConcurrentQueue<string>();
+        fixture.Chat.Respond = (_, _) =>
+        {
+            bodies.Enqueue(Encoding.UTF8.GetString(fixture.Chat.Body));
+            return Task.FromResult(TextRecordingHandler.Sse(
+                "data: {\"id\":\"chat-fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"server-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Heard you.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"));
+        };
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearVoice: true));
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            await fixture.Advance(() => fixture.Stt.Calls == 1 && window.Current is { OwnershipReleased: true } &&
+                window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Heard you.") &&
+                !window.Messages.Any(m => m.IsUser && m.Text == LiveConversationWindow.StraightPlaceholder));
+            await Heartbeat();
+            // It went straight: the request carried the recording alone, never a transcript.
+            var sent = Assert.Single(bodies);
+            Assert.Contains("input_audio", sent, StringComparison.Ordinal);
+            Assert.Contains(SpokenWords.StandIn, sent, StringComparison.Ordinal);
+            if (transcript.Length > 0)
+                Assert.Equal(transcript, Assert.Single(window.Messages, m => m.IsUser).Text);
+            else
+                Assert.DoesNotContain(window.Messages, m => m.IsUser);
+            Assert.DoesNotContain(window.Messages, m => m.Text.Contains("couldn't transcribe", StringComparison.Ordinal));
+            // What MCP's ui_snapshot sees: each bubble's kind, never its words.
+            Assert.Equal(transcript.Length > 0 ? ["LiveMessage-You", "LiveMessage-Martlet"] : ["LiveMessage-Martlet"], BubbleIds(window));
+            // Martlet's reply to what it heard stays.
+            Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.True(window.Listener is { Running: true });
+        }
+        finally { window.Close(); }
+    });
+
     [Theory]
     [InlineData("So I was thinking, um", true)]
     [InlineData("I went to the store and", true)]
@@ -2206,6 +2259,20 @@ public sealed class LiveConversationTests
     }
 
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
+    // The automation IDs of the talk window's bubbles, in order.
+    private static string[] BubbleIds(Window window)
+    {
+        window.UpdateLayout();
+        var found = new List<string>();
+        void Walk(DependencyObject node)
+        {
+            if (node is TextBox { Name: "Body" } body) found.Add(System.Windows.Automation.AutomationProperties.GetAutomationId(body));
+            for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
+                Walk(System.Windows.Media.VisualTreeHelper.GetChild(node, i));
+        }
+        Walk(Control<ItemsControl>(window, "History"));
+        return [.. found];
+    }
     private static string Text(Window window, string name) => name == "ResultText"
         ? Control<TextBlock>(window, name).Text : Control<TextBox>(window, name).Text;
     private static string ResponsesCurrentUserText(JsonDocument body)

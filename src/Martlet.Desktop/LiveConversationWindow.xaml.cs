@@ -821,7 +821,8 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // The words of what went straight to Thinking, as speech-to-text beside the reply finishes them: they replace the bubble's
     // placeholder (marked when the word check wouldn't count them; Thinking already heard it), and count as what you said lately
-    // so your own voice played back by the PC is left out.
+    // so your own voice played back by the PC is left out. When speech-to-text couldn't transcribe it, the bubble goes: there is
+    // nothing to show (Thinking already heard the recording, and its reply stays).
     private void FollowWords()
     {
         if (awaitingWords.Count == 0) return;
@@ -836,7 +837,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 saidLately.Add((text, now));
                 LeaveOutYourVoice();
             }
-            else bubble.Text = "(your voice; speech-to-text couldn't transcribe it)";
+            else Messages.Remove(bubble);
         }
     }
 

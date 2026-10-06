@@ -3221,7 +3221,13 @@ rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate). In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
 *Always listening ignored what it heard: ...* and *Barge-in: Martlet stopped its
-reply N ms after you started talking over it (...)*, never the words. Below it, the *Speakers and echo* card has
+reply N ms after you started talking over it (...)*, never the words. Each
+message in `LiveHistory` has an automation ID for whose it is, never its words:
+`LiveMessage-You`, `LiveMessage-Martlet`, `LiveMessage-Note` or
+`LiveMessage-PcAudio`; so `ui_snapshot` shows, for example, that something
+that went straight to Thinking and speech-to-text couldn't transcribe left no
+`LiveMessage-You` bubble (the log says *Background transcript: speech-to-text
+couldn't transcribe what went straight to Thinking ...*). Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
