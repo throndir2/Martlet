@@ -375,6 +375,7 @@ public partial class MainWindow
         EvaluateCoverage();
         RenderHealth(force: true);
         RenderHost();
+        RenderHomeCharacters();
         if (openTab is not null && !tabEdited) RenderTab();
     }
 

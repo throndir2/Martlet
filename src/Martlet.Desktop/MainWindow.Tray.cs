@@ -11,7 +11,7 @@ namespace Martlet.Desktop;
 
 /// <summary>Martlet in the notification area: closing the window keeps Martlet running there (on by default; Exit Martlet, or
 /// Exit in the icon's menu, closes it completely), the icon's menu opens Martlet, starts or shows the talk window, pauses and
-/// resumes Martlet, ends the conversation, shows or hides the character and holds the startup and closing choices, and
+/// resumes Martlet, ends the conversation, shows or hides the character, switches character profiles and holds the startup and closing choices, and
 /// Settings › Startup and closing has the same choices plus Start with Windows.</summary>
 public partial class MainWindow
 {
@@ -175,6 +175,8 @@ public partial class MainWindow
         if (companion || avatar.IsShowing)
             menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
                 () => Character_Click(this, new RoutedEventArgs()), enabled: !blocked && setupService is not null));
+        if (companion && TrayCharacterProfiles(menu, enabled: !blocked && setupService is not null) is { } profiles)
+            menu.Items.Add(profiles);
         menu.Items.Add(new Separator());
         menu.Items.Add(TrayCheck("TrayCloseToTray", "_Keep running when closed", background.CloseToTray, SetCloseToTray));
         menu.Items.Add(TrayCheck("TrayStartWithWindows", "Start with _Windows", ReadStartup().State == StartupState.On,

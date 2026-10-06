@@ -9,6 +9,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Characters;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
@@ -166,23 +167,8 @@ public partial class MainWindow
         try
         {
             turn = await ChangeTurnAsync();
-            if (model is not null && !SharedCharacterModels.IsComplete(store.DataDirectory, model))
-                throw new InvalidOperationException("That character is still being copied to this PC. Try again in a moment.");
-            var pairings = Pairings();
-            var (profile, revision) = await pairings.EnsureProfileAsync(lifetime.Token);
-            var next = profile with
-            {
-                Renderer = model is null ? AvatarRenderer.Live2D : SharedCharacterModels.Renderer(model),
-                ModelPath = model is null ? BundledLive2D.Prefix + BundledLive2D.DefaultCharacter : SharedCharacterModels.EntryPath(store.DataDirectory, model),
-                ResourceRevision = null
-            };
-            if (next != profile) await new AvatarProfileStore(store.DataDirectory).SaveAsync(next, revision, lifetime.Token);
-            homeAvatar = next;
-            var name = model?.Name ?? BundledLive2D.DefaultCharacter;
-            if (avatar.IsShowing && await StopAvatarSafelyAsync()) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+            var name = await SwitchCharacterModelAsync(model, lifetime.Token);
             ActionText.Text = avatar.IsShowing ? $"Martlet now shows '{name}' on this PC." : $"'{name}' is this PC's character. Press Show character to see it.";
-            // A character removed elsewhere stays only while this PC shows it.
-            QueueCharacterModelSync();
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException)
@@ -198,6 +184,37 @@ public partial class MainWindow
                 RenderHome();
             }
         }
+    }
+
+    /// <summary>Saves <paramref name="model"/> (null: the built-in character) as this PC's character and switches a showing
+    /// character over. The caller holds the change turn. Returns the character's name.</summary>
+    private async Task<string> SwitchCharacterModelAsync(CharacterModel? model, CancellationToken token)
+    {
+        if (model is not null && !SharedCharacterModels.IsComplete(store!.DataDirectory, model))
+            throw new InvalidOperationException($"The look '{model.Name}' is still being copied to this PC. Try again in a moment.");
+        var (profile, revision) = await Pairings().EnsureProfileAsync(token);
+        var next = profile with
+        {
+            Renderer = model is null ? AvatarRenderer.Live2D : SharedCharacterModels.Renderer(model),
+            ModelPath = model is null ? BundledLive2D.Prefix + BundledLive2D.DefaultCharacter : SharedCharacterModels.EntryPath(store!.DataDirectory, model),
+            ResourceRevision = null
+        };
+        if (next != profile) await new AvatarProfileStore(store!.DataDirectory).SaveAsync(next, revision, token);
+        homeAvatar = next;
+        if (avatar.IsShowing && await StopAvatarSafelyAsync()) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+        // A character removed elsewhere stays only while this PC shows it.
+        QueueCharacterModelSync();
+        return model?.Name ?? BundledLive2D.DefaultCharacter;
+    }
+
+    /// <summary>The look this PC shows as a character profile names it: a shared model's ID, the built-in character, or null
+    /// for a model file outside your list.</summary>
+    private string? ShownCharacterModelId()
+    {
+        if (homeAvatar is null || BundledLive2D.IsBuiltIn(homeAvatar.ModelPath)) return CharacterProfile.BuiltInModel;
+        if (store is null) return null;
+        try { return SharedCharacterModels.ForPath(store.DataDirectory, SharedCharacterModels.View(store.DataDirectory), homeAvatar.ModelPath)?.Id; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
     }
 
     /// <summary>Adds a character from a model file, then shows it on this PC.</summary>
