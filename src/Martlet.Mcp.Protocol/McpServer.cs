@@ -803,6 +803,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("discord_text_check", "Discord text chat (src\\Martlet.Discord DiscordTextChat, the production pipeline the desktop's " +
+            "bot uses) fed simulated messages through a fake transport and a fixture reply engine (NOT AI, NOT Discord): chat modes " +
+            "(Off, Mentions, Sometimes, Always), addressing (DM, @mention, reply to Martlet, its name), other bots ignored, per-place " +
+            "recent lines, stale turns dropped, replies split under 2,000 characters with @everyone/@here neutralized, quoted replies " +
+            "in channels and /martlet delivery. Without messages it runs fixed scenarios on fixture preferences (scenarios, each " +
+            "passed with a detail); with messages (1-16 of {text, place: server|dm, author: owner|known|stranger|bot, mention, " +
+            "replyToMartlet, channelId, command}) it uses the data directory's discord.json. Returns outcomes, what was sent and the " +
+            "text-chat stats (the desktop's DiscordTextStatus line). Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 4096 },
+            messages = new { type = "array", maxItems = 16, items = new { type = "object" } }
+        }),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
             "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
@@ -1073,6 +1086,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),

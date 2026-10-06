@@ -1,5 +1,6 @@
 using NetCord;
 using NetCord.Gateway;
+using NetCord.Rest;
 
 namespace Martlet.Discord;
 
@@ -25,6 +26,8 @@ public sealed class DiscordBot : IAsyncDisposable
 
     public DiscordBotStatus Status { get { lock (gate) return status; } }
     public GatewayClient? Client { get { lock (gate) return client; } }
+    /// <summary>Every feature's slash commands, registered together after each Ready (see <see cref="DiscordCommands"/>).</summary>
+    public DiscordCommands Commands { get; } = new();
 
     /// <summary>Raised off the UI thread whenever <see cref="Status"/> changes.</summary>
     public event Action<DiscordBotStatus>? Changed;
@@ -40,14 +43,23 @@ public sealed class DiscordBot : IAsyncDisposable
         started.Ready += async ready =>
         {
             Publish(new(DiscordBotState.Online, ready.User.Username, ready.User.Id, started.Cache.Guilds.Count));
-            if (Ready is { } handler) await handler(started).ConfigureAwait(false);
+            if (Ready is { } features)
+                foreach (var handler in features.GetInvocationList().Cast<Func<GatewayClient, ValueTask>>())
+                    await handler(started).ConfigureAwait(false);
+            try { await Commands.RegisterAsync(started.Rest, ready.ApplicationId).ConfigureAwait(false); }
+            catch (Exception error) when (error is RestException or HttpRequestException or TaskCanceledException)
+            {
+                Publish(Status with { Problem = $"Couldn't register Martlet's slash commands: {error.Message}" });
+            }
         };
+        started.InteractionCreate += async interaction => await Commands.HandleAsync(interaction).ConfigureAwait(false);
         started.GuildCreate += _ => { Recount(started); return default; };
         started.GuildDelete += _ => { Recount(started); return default; };
         started.MessageCreate += async message =>
         {
-            if (message.Author.Id == Status.BotId || Message is not { } handler) return;
-            await handler(message).ConfigureAwait(false);
+            if (message.Author.Id == Status.BotId || Message is not { } handlers) return;
+            foreach (var handler in handlers.GetInvocationList().Cast<Func<Message, ValueTask>>())
+                await handler(message).ConfigureAwait(false);
         };
         started.Disconnect += args =>
         {
