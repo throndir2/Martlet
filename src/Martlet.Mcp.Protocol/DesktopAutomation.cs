@@ -400,6 +400,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // when it last answered; never the token), the connect outcome, how many chats are paired and the pairing note (when
         // the code expires; never the code itself, MessagingPairCode, or chat names).
         "MessagingStatus", "MessagingNote", "MessagingChats", "MessagingPairStatus",
+        // The same for WhatsApp (number, chat count; never the access token, app secret or code), plus where Meta delivers
+        // messages: the own public address or the Cloudflare quick tunnel and whether cloudflared is on this PC.
+        "MessagingWhatsAppStatus", "MessagingWhatsAppNote", "MessagingWhatsAppChats", "MessagingWhatsAppPairStatus", "MessagingWhatsAppTunnel",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the

@@ -169,28 +169,28 @@ public sealed class MessagingTests
                 Assert.Equal(Token, token);
                 return transport;
             })
-            { Answer = (_, _) => Task.FromResult("pong") };
+            { Answer = (_, _, _) => Task.FromResult("pong") };
             await Assert.ThrowsAsync<ArgumentException>(() => service.ConnectTelegramAsync("nope", default));
             var bot = await service.ConnectTelegramAsync(" " + Token + " ", default);
             Assert.Equal("my_martlet_bot", bot.Username);
             Assert.Single(native.Secrets);
             Assert.DoesNotContain(Token, native.Secrets.Values.Single());
             Assert.DoesNotContain("AAH_", File.ReadAllText(Path.Combine(directory, MessagingPreferences.FileName)));
-            Assert.True(service.TokenSaved);
-            await Until(() => service.Status.State == MessagingState.Running);
+            Assert.True(service.SecretsSaved(MessagingApp.Telegram));
+            await Until(() => service.Status(MessagingApp.Telegram).State == MessagingState.Running);
 
-            var code = service.StartPairing()!;
+            var code = service.StartPairing(MessagingApp.Telegram)!;
             transport.Incoming.Enqueue([new("42", "Sam", code.Code, Private: true)]);
             await Until(() => service.Preferences.Telegram.Chats.Count == 1);
             Assert.Equal(new MessagingChat("42", "Sam"), MessagingPreferences.Load(directory).Telegram.Chats.Single());
             Assert.True(MessagingPreferences.Load(directory).Telegram.Enabled);
 
-            service.RemoveChat("42");
+            service.RemoveChat(MessagingApp.Telegram, "42");
             Assert.Empty(MessagingPreferences.Load(directory).Telegram.Chats);
-            service.Disconnect();
+            service.Disconnect(MessagingApp.Telegram);
             Assert.Empty(native.Secrets);
             Assert.Equal("", MessagingPreferences.Load(directory).Telegram.BotUsername);
-            Assert.False(service.TokenSaved);
+            Assert.False(service.SecretsSaved(MessagingApp.Telegram));
         }
         finally
         {
@@ -202,11 +202,216 @@ public sealed class MessagingTests
     public void StatusLineSaysWhetherMartletAnswersAndWhyNot()
     {
         var saved = new TelegramPreferences { Enabled = true, BotUsername = "my_martlet_bot", Chats = [new("1", "Me")] };
-        Assert.StartsWith("Not connected", MainWindow.TelegramStatusText(new(), new(MessagingState.Off), connected: false, running: false));
+        Assert.StartsWith("Not connected", MainWindow.MessagingStatusText(new TelegramPreferences(), new(MessagingState.Off), running: false));
         Assert.Equal("Answering @my_martlet_bot on this PC (1 paired chat).",
-            MainWindow.TelegramStatusText(saved, new(MessagingState.Running), connected: true, running: true));
-        Assert.Contains("turned off", MainWindow.TelegramStatusText(saved with { Enabled = false }, new(MessagingState.Off), true, false));
-        Assert.Contains("keeps trying", MainWindow.TelegramStatusText(saved, new(MessagingState.Retrying, Problem: "Couldn't reach Telegram."), true, true));
+            MainWindow.MessagingStatusText(saved, new(MessagingState.Running), running: true));
+        Assert.Contains("turned off", MainWindow.MessagingStatusText(saved with { Enabled = false }, new(MessagingState.Off), false));
+        Assert.Contains("keeps trying", MainWindow.MessagingStatusText(saved, new(MessagingState.Retrying, Problem: "Couldn't reach Telegram."), true));
+    }
+
+    private const string AccessToken = "EAAGm0PX4ZCpsBAKZBcanaryTokenValue0123456789abcdefghijk";
+    private const string AppSecret = "0123456789abcdef0123456789abcdef";
+
+    [Fact]
+    public async Task WhatsAppCloudFindsTheAccountFromTheTokenAndChecksTheAppSecret()
+    {
+        var graph = new GraphStub(request => request.Path switch
+        {
+            var path when path.EndsWith("/debug_token") => new JsonObject
+            {
+                ["data"] = new JsonObject
+                {
+                    ["app_id"] = "670843887433847", ["is_valid"] = true,
+                    ["granular_scopes"] = new JsonArray(new JsonObject { ["scope"] = "whatsapp_business_management", ["target_ids"] = new JsonArray("102290129340398") })
+                }
+            },
+            var path when path.EndsWith("/670843887433847/subscriptions") => new JsonObject { ["data"] = new JsonArray() },
+            var path when path.EndsWith("/102290129340398/phone_numbers") => new JsonObject { ["data"] = new JsonArray(new JsonObject { ["id"] = "106540352242922" }) },
+            var path when path.EndsWith("/106540352242922") => new JsonObject { ["display_phone_number"] = "+1 555-0100", ["verified_name"] = "Martlet test" },
+            _ => null
+        });
+        using var cloud = new WhatsAppCloud(new(AccessToken, AppSecret), graph);
+        var account = await cloud.DescribeAsync(null, " ", default);
+        Assert.Equal(new WhatsAppAccount("670843887433847", "102290129340398", "106540352242922", "+1 555-0100", "Martlet test"), account);
+        Assert.Equal($"Bearer 670843887433847|{AppSecret}", graph.Requests.Single(r => r.Path.EndsWith("/subscriptions")).Authorization);
+        Assert.All(graph.Requests.Where(r => !r.Path.EndsWith("/subscriptions")), r => Assert.Equal("Bearer " + AccessToken, r.Authorization));
+
+        var wrongSecret = new GraphStub(request => request.Path.EndsWith("/debug_token")
+            ? new JsonObject { ["data"] = new JsonObject { ["app_id"] = "670843887433847", ["is_valid"] = true } }
+            : new JsonObject { ["error"] = new JsonObject { ["message"] = "Invalid OAuth access token signature.", ["code"] = 190 } });
+        using var rejected = new WhatsAppCloud(new(AccessToken, AppSecret), wrongSecret);
+        var error = await Assert.ThrowsAsync<MessagingException>(() => rejected.DescribeAsync("106540352242922", "102290129340398", default));
+        Assert.Equal(MessagingFailure.Unauthorized, error.Failure);
+        Assert.Contains("app secret", error.Message);
+        Assert.DoesNotContain(AppSecret, error.Message);
+        Assert.Throws<ArgumentException>(() => new WhatsAppCloud(new("short", AppSecret)));
+        Assert.Throws<ArgumentException>(() => new WhatsAppCloud(new(AccessToken, "not a secret")));
+    }
+
+    [Fact]
+    public void WhatsAppDeliveriesNeedTheAppSecretsSignatureAndKeepOnlyTheirNumbersMessages()
+    {
+        var body = Delivery("106540352242922", ("15550199", "wamid.1", "text", "hello"), ("15550199", "wamid.2", "image", null));
+        Assert.True(WhatsAppWebhook.SignatureValid(Encoding.UTF8.GetBytes(AppSecret), body, Sign(body)));
+        Assert.False(WhatsAppWebhook.SignatureValid(Encoding.UTF8.GetBytes(AppSecret), body, "sha256=00"));
+        Assert.False(WhatsAppWebhook.SignatureValid(Encoding.UTF8.GetBytes(AppSecret), body, null));
+        var messages = WhatsAppWebhook.Parse(body, "106540352242922");
+        Assert.Equal([new WhatsAppMessage(new("15550199", "Sam", "hello", true), "wamid.1"), new WhatsAppMessage(new("15550199", "Sam", null, true), "wamid.2")], messages);
+        Assert.Empty(WhatsAppWebhook.Parse(body, "999999999"));
+    }
+
+    [Fact]
+    public async Task WhatsAppTransportRegistersItsWebhookReceivesSignedMessagesAndReplies()
+    {
+        var port = WhatsAppWebhook.FreePort();
+        using var local = new HttpClient();
+        var graph = new GraphStub(request =>
+        {
+            if (request.Path.EndsWith("/670843887433847/subscriptions"))
+            {
+                // Meta checks the webhook while it saves it.
+                var body = JsonNode.Parse(request.Body)!;
+                var check = $"{body["callback_url"]}?hub.mode=subscribe&hub.verify_token={body["verify_token"]}&hub.challenge=4242";
+                var answer = local.GetStringAsync(check).GetAwaiter().GetResult();
+                return answer == "4242" ? new JsonObject { ["success"] = true }
+                    : new JsonObject { ["error"] = new JsonObject { ["message"] = "Callback verification failed", ["code"] = 2200 } };
+            }
+            return new JsonObject { ["success"] = true, ["messages"] = new JsonArray(new JsonObject { ["id"] = "wamid.out" }) };
+        });
+        var account = new WhatsAppAccount("670843887433847", "102290129340398", "106540352242922", "+1 555-0100", "Martlet test");
+        using var transport = new WhatsAppTransport(new(AccessToken, AppSecret), account, port,
+            new FixedPublicAddress(new Uri($"http://127.0.0.1:{port}/")), graph, verifyPause: TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal(new BotIdentity("Martlet test", "+1 555-0100"), await transport.ConnectAsync(default));
+        Assert.True(transport.Listener.Verified);
+        Assert.StartsWith($"http://127.0.0.1:{port}/whatsapp/", transport.Webhook!.AbsoluteUri);
+        Assert.Contains(graph.Requests, r => r.Path.EndsWith("/102290129340398/subscribed_apps"));
+
+        var delivery = Delivery("106540352242922", ("15550199", "wamid.1", "text", "hello"));
+        using (var unsigned = await local.PostAsync(transport.Webhook, new ByteArrayContent(delivery)))
+            Assert.Equal(HttpStatusCode.Unauthorized, unsigned.StatusCode);
+        using (var wrongPath = await local.PostAsync($"http://127.0.0.1:{port}/whatsapp/guess", new ByteArrayContent(delivery)))
+            Assert.Equal(HttpStatusCode.NotFound, wrongPath.StatusCode);
+        for (var i = 0; i < 2; i++)
+        {
+            var signed = new ByteArrayContent(delivery);
+            signed.Headers.Add("X-Hub-Signature-256", Sign(delivery));
+            using var accepted = await local.PostAsync(transport.Webhook, signed);
+            Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        }
+        var received = await transport.ReceiveAsync(default);
+        Assert.Equal([new InboundMessage("15550199", "Sam", "hello", true)], received);
+
+        await transport.TypingAsync("15550199", default);
+        await transport.TypingAsync("15550199", default);
+        var typing = graph.Requests.Where(r => r.Path.EndsWith("/106540352242922/messages")).ToList();
+        Assert.Single(typing);
+        Assert.Equal("wamid.1", JsonNode.Parse(typing[0].Body)!["message_id"]!.GetValue<string>());
+        await transport.SendAsync("15550199", "hi there", default);
+        var sent = JsonNode.Parse(graph.Requests.Last().Body)!;
+        Assert.Equal("15550199", sent["to"]!.GetValue<string>());
+        Assert.Equal("hi there", sent["text"]!["body"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ServiceConnectsWhatsAppKeepsItsSecretsInTheVaultAndPairsChats()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Messaging." + Guid.NewGuid().ToString("N"));
+        var native = new MemoryNative();
+        var transport = new FakeTransport(MessagingApp.WhatsApp);
+        WhatsAppPreferences? started = null;
+        var graph = new GraphStub(request => request.Path switch
+        {
+            var path when path.EndsWith("/debug_token") => new JsonObject { ["data"] = new JsonObject { ["app_id"] = "670843887433847", ["is_valid"] = true } },
+            var path when path.EndsWith("/subscriptions") => new JsonObject { ["data"] = new JsonArray() },
+            _ => new JsonObject { ["display_phone_number"] = "+1 555-0100", ["verified_name"] = "Martlet test" }
+        });
+        try
+        {
+            using var service = new MessagingService(directory, new WindowsCredentialStore(native), whatsApp: (secrets, saved) =>
+            {
+                Assert.Equal(new WhatsAppSecrets(AccessToken, AppSecret), secrets);
+                started = saved;
+                return transport;
+            }, cloud: secrets => new WhatsAppCloud(secrets, graph));
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.ConnectWhatsAppAsync(AccessToken, AppSecret, null, null, "http://example.com/", default));
+            var account = await service.ConnectWhatsAppAsync(" " + AccessToken, AppSecret, "106540352242922", "102290129340398",
+                "https://martlet.example.com/", default);
+            Assert.Equal("+1 555-0100", account.Number);
+            Assert.Equal(new WhatsAppSecrets(AccessToken, AppSecret), service.SavedWhatsAppSecrets());
+            var file = File.ReadAllText(Path.Combine(directory, MessagingPreferences.FileName));
+            Assert.DoesNotContain("EAAG", file);
+            Assert.DoesNotContain(AppSecret, file);
+            Assert.DoesNotContain(AccessToken, native.Secrets.Values.Single());
+            await Until(() => service.Status(MessagingApp.WhatsApp).State == MessagingState.Running);
+            Assert.Equal("https://martlet.example.com/", started!.PublicAddress);
+            Assert.InRange(started.Port, 1, 65535);
+
+            var code = service.StartPairing(MessagingApp.WhatsApp)!;
+            transport.Incoming.Enqueue([new("15550199", "Sam", code.Code, Private: true)]);
+            await Until(() => service.Preferences.WhatsApp.Chats.Count == 1);
+            Assert.Equal(new MessagingChat("15550199", "Sam"), MessagingPreferences.Load(directory).WhatsApp.Chats.Single());
+            Assert.Empty(MessagingPreferences.Load(directory).Telegram.Chats);
+            Assert.Contains("Answering +1 555-0100", MainWindow.MessagingStatusText(service.Preferences.WhatsApp, service.Status(MessagingApp.WhatsApp), true));
+
+            service.Disconnect(MessagingApp.WhatsApp);
+            Assert.Empty(native.Secrets);
+            Assert.False(MessagingPreferences.Load(directory).WhatsApp.Connected);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static byte[] Delivery(string phoneNumberId, params (string From, string Id, string Type, string? Text)[] messages) =>
+        Encoding.UTF8.GetBytes(new JsonObject
+        {
+            ["object"] = "whatsapp_business_account",
+            ["entry"] = new JsonArray(new JsonObject
+            {
+                ["id"] = "102290129340398",
+                ["changes"] = new JsonArray(new JsonObject
+                {
+                    ["field"] = "messages",
+                    ["value"] = new JsonObject
+                    {
+                        ["messaging_product"] = "whatsapp",
+                        ["metadata"] = new JsonObject { ["display_phone_number"] = "15550100", ["phone_number_id"] = phoneNumberId },
+                        ["contacts"] = new JsonArray(new JsonObject { ["profile"] = new JsonObject { ["name"] = "Sam" }, ["wa_id"] = "15550199" }),
+                        ["messages"] = new JsonArray([.. messages.Select(m => (JsonNode)new JsonObject
+                        {
+                            ["from"] = m.From, ["id"] = m.Id, ["type"] = m.Type,
+                            ["text"] = m.Text is null ? null : new JsonObject { ["body"] = m.Text }
+                        })])
+                    }
+                })
+            })
+        }.ToJsonString());
+
+    private static string Sign(byte[] body) =>
+        "sha256=" + Convert.ToHexStringLower(System.Security.Cryptography.HMACSHA256.HashData(Encoding.UTF8.GetBytes(AppSecret), body));
+
+    private sealed record GraphRequest(string Method, string Path, string Authorization, string Body);
+
+    private sealed class GraphStub(Func<GraphRequest, JsonObject?> answer) : HttpMessageHandler
+    {
+        internal List<GraphRequest> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var seen = new GraphRequest(request.Method.Method, request.RequestUri!.AbsolutePath, request.Headers.Authorization?.ToString() ?? "",
+                request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken));
+            lock (Requests) Requests.Add(seen);
+            var result = await Task.Run(() => answer(seen), cancellationToken);
+            var failed = result?["error"] is not null || result is null;
+            return new(failed ? HttpStatusCode.BadRequest : HttpStatusCode.OK)
+            {
+                Content = new StringContent((result ?? new JsonObject { ["error"] = new JsonObject { ["message"] = "unknown", ["code"] = 100 } }).ToJsonString(),
+                    Encoding.UTF8, "application/json")
+            };
+        }
     }
 
     private static async Task Until(Func<bool> condition)
@@ -234,14 +439,14 @@ public sealed class MessagingTests
         }
     }
 
-    private sealed class FakeTransport : IMessagingTransport
+    private sealed class FakeTransport(MessagingApp app = MessagingApp.Telegram) : IMessagingTransport
     {
         internal MessagingException? ConnectFailure { get; init; }
         internal int ReceiveFailures { get; set; }
         internal ConcurrentQueue<IReadOnlyList<InboundMessage>> Incoming { get; } = new();
         internal List<(string Chat, string Text)> Sent { get; } = [];
         internal ConcurrentBag<string> Typing { get; } = [];
-        public MessagingApp App => MessagingApp.Telegram;
+        public MessagingApp App => app;
         public int MaximumMessageLength => 4096;
 
         public Task<BotIdentity> ConnectAsync(CancellationToken cancellation) =>

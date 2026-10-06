@@ -1600,15 +1600,35 @@ with the same bot stays connected.
 up), `enabled` (Martlet answers it on this PC), `bot` (its username),
 `botName`, `tokenSaved` (never the token), `chats` (how many chats are paired;
 never their names or IDs) and
-`speakReplies`. The bot token lives in Windows Credential Manager and is never
-read. In the desktop, Companion › Messaging's `MessagingStatus` (whether Martlet
+`speakReplies`, and `whatsApp` with `connected` (a number is set up),
+`enabled`, `number`, `name`, `appId`, `businessAccountId`, `phoneNumberId`,
+`port` (Martlet's localhost webhook port), `publicAddress` (the owner's own;
+empty with `quickTunnel` true for a Cloudflare quick tunnel), `secretsSaved`
+(never the access token or app secret), `chats` and `speakReplies`. The secrets
+live in Windows Credential Manager and are never read. In the desktop,
+Companion › Messaging's `MessagingStatus` (whether Martlet
 answers the bot now, or why not), `MessagingNote` (the last connect outcome),
 `MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
-pairing code works) are readable values; the code itself (`MessagingPairCode`),
-chat names and the token field are not. Its Cancel (`MessagingPairCancel`) only
-withdraws the code and is a safe click; Connect, Pair a chat, Open BotFather,
-Open in Telegram, Remove, Disconnect and its two check boxes need
-`--allow-ui-effects`.
+pairing code works) are readable values, and WhatsApp's card has the same as
+`MessagingWhatsAppStatus`, `MessagingWhatsAppNote`, `MessagingWhatsAppChats`
+and `MessagingWhatsAppPairStatus`, plus `MessagingWhatsAppTunnel` (where Meta
+delivers messages and whether cloudflared is on this PC); the codes themselves
+(`MessagingPairCode`, `MessagingWhatsAppPairCode`), chat names and the secret
+fields are not. The Cancel buttons (`MessagingPairCancel`,
+`MessagingWhatsAppPairCancel`) only withdraw the code and are safe clicks;
+Connect, Pair a chat, Open BotFather, Open in Telegram, Remove, Disconnect and
+the check boxes, and WhatsApp's `MessagingWhatsAppConnect`,
+`MessagingWhatsAppGetCloudflared` (a download, after its confirmation), Meta
+links, `MessagingWhatsAppPairOpen`, `MessagingWhatsAppDisconnect`,
+`MessagingWhatsAppOn` and `MessagingWhatsAppSpeak` need
+`--allow-ui-effects`. `ui_set_text` fills `MessagingWhatsAppToken`,
+`MessagingWhatsAppSecret`, `MessagingWhatsAppPhoneId`,
+`MessagingWhatsAppAccountId` and `MessagingWhatsAppAddress`. To verify WhatsApp
+without Meta, launch the desktop with `MARTLET_WHATSAPP_API` set to a loopback
+fake Graph API that performs the webhook check on `POST /<app>/subscriptions`,
+seed `messaging.json`'s `WhatsApp.Port`, and use `http://127.0.0.1:<port>/` as
+the public address; the fake can then post a signed delivery to the callback
+and record the reply on `POST /<phone>/messages`.
 
 `prompts_status` reads Companion › Prompts from a data directory's
 `settings.json` (optional absolute `dataDirectory`, default the current
