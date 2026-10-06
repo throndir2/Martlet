@@ -22,6 +22,8 @@ public static class PromptCatalog
     public const string ReplyLength = "reply_length";
     public const string Listening = "listening";
     public const string PcAudio = "pc_audio";
+    public const string Moment = "moment";
+    public const string MomentAttention = "moment_attention";
     public const string Tools = "tools";
     public const string VoiceTags = "voice_tags";
     public const string CharacterActions = "character_actions";
@@ -105,6 +107,15 @@ public static class PromptCatalog
         "jobs or tools. Share what the user asked for: in full when they asked for something to hear or read (lyrics, a story, a " +
         "plan), otherwise the gist. If a result needs the user's go-ahead, offer it and ask; don't act on it until they say yes. If " +
         "something didn't work out or ran out of time, say so briefly and lightly.";
+
+    public const string DefaultMomentInstructions =
+        "One message can bring you several things at once: what the user says, lines heard from what their PC plays, a picture " +
+        "of what you watch with them, and notes that background work you started has finished. Treat them as one moment and " +
+        "answer them together in one short, natural reply in character, like a friend in the room would (\"Nice one! Oh, and " +
+        "that song you asked for is ready, want to hear it?\"): the user's own words always come first, then whatever else is " +
+        "worth a word right now. Never answer them one by one or list them. When the user talks to you, always answer them; " +
+        "when the message holds none of their words and nothing in it is worth saying anything about, reply with exactly " +
+        "[{silent}].";
 
     public const string DefaultBackgroundDoneNotesInstructions =
         "Background work you started has finished:\n{results}\nAnswer what the user just said first; then, when it fits, bring this " +
@@ -289,6 +300,17 @@ public static class PromptCatalog
             "surprising or worth a quick reaction, say one short line about it, like a friend on the couch. Never summarize or " +
             "repeat it unasked.",
             ["marker", "silent"]),
+        new(Moment, ConversationGroup, "One moment",
+            "Added to every reply and every screen or camera glance, the same way each time (so the start of every request stays " +
+            "the same): one message may bring several things at once, and Martlet answers them together. {silent} is the word the " +
+            "model answers to stay quiet.",
+            DefaultMomentInstructions, ["silent"]),
+        new(MomentAttention, VisionGroup, "Something wants your attention, with a reply",
+            "Goes in the notes of a reply that takes the look Martlet was about to take at something that wants your attention " +
+            "(a notification popped up or a taskbar button flashes while it watches your whole screen). {what} says which.",
+            "On the picture with this message, {what}. If it is a message, call or reminder the user would want to know about, " +
+            "give a quick heads-up in the same reply: who or which app it is from, never the message itself.",
+            ["what"]),
         new(HeardVoice, ConversationGroup, "Your recorded voice",
             "Added to replies when your recording is sent with the transcript (Companion › Listening › Let Thinking hear my voice).",
             "The user's message was spoken. Their recording is attached along with an automatic transcript, which can contain " +

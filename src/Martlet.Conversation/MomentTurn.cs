@@ -1,0 +1,62 @@
+namespace Martlet.Conversation;
+
+/// <summary>What made Martlet start a reply: the user's own words (typed or heard), what this PC played (its pace came up),
+/// finished background work it brings up on its own, or a look at what vision watches.</summary>
+public enum MomentTrigger { User, PcAudio, Report, Look }
+
+/// <summary>How the talk window starts a moment: a reply to a message (the user's words and/or what this PC played, with the
+/// finished work in its notes), Martlet's own report of finished work (its note is the message), or a plain glance.</summary>
+public enum MomentRoute { Reply, Report, Glance }
+
+/// <summary>One moment Martlet answers in one reply: what started it and everything else waiting that it takes along.
+/// <paramref name="User"/>: the user's words; <paramref name="PcAudio"/>: the lines this PC played that wait;
+/// <paramref name="Jobs"/>: finished background work; <paramref name="Look"/>: the look vision wanted (its picture and anything
+/// that wants the user's attention), counted as a look.</summary>
+public sealed record MomentPlan(MomentTrigger Trigger, bool User, bool PcAudio, bool Jobs, bool Look)
+{
+    /// <summary>A reply when there are words (the user's or the PC's), Martlet's report when only finished work waits besides a
+    /// look, and a plain glance only when the look is all there is.</summary>
+    public MomentRoute Route => User || PcAudio ? MomentRoute.Reply : Jobs ? MomentRoute.Report : MomentRoute.Glance;
+
+    /// <summary>Takes more than what started it.</summary>
+    public bool Combined => (User ? 1 : 0) + (PcAudio ? 1 : 0) + (Jobs ? 1 : 0) + (Look ? 1 : 0) > 1;
+}
+
+/// <summary>The four things Martlet hears and sees (the user, what this PC plays, what vision watches and background work that
+/// finished) are one conversation: whatever starts a reply takes everything else that waits with it, so Martlet answers them
+/// together in one reply instead of one after another. The user always comes first and is never kept waiting: a reply to them
+/// only takes what is already there.</summary>
+public static class MomentTurn
+{
+    /// <summary>What a reply started by <paramref name="trigger"/> takes along. <paramref name="pcWaiting"/>: lines this PC played
+    /// wait (not necessarily due on their own); <paramref name="jobsWaiting"/>: finished work Martlet may bring up on its own
+    /// right now (Thinking longer shares results as soon as it is free, nothing the user stopped, no song playing);
+    /// <paramref name="lookDue"/>: the pacer wants a look and there is a picture. A reply to the user always takes finished work
+    /// (it waits for the user's next message too).</summary>
+    public static MomentPlan Plan(MomentTrigger trigger, bool pcWaiting, bool jobsWaiting, bool lookDue) => trigger switch
+    {
+        MomentTrigger.User => new(trigger, User: true, PcAudio: pcWaiting, Jobs: true, Look: lookDue),
+        MomentTrigger.PcAudio => new(trigger, User: false, PcAudio: true, Jobs: jobsWaiting, Look: lookDue),
+        MomentTrigger.Report => new(trigger, User: false, PcAudio: pcWaiting, Jobs: true, Look: lookDue),
+        _ => new(trigger, User: false, PcAudio: pcWaiting, Jobs: jobsWaiting, Look: true)
+    };
+
+    /// <summary>What one reply took, for the talk window and the desktop log (never what was said, seen or found): "your words,
+    /// 2 lines this PC played, the picture (a notification) and 1 finished job".</summary>
+    public static string Describe(bool user, int pcLines, bool picture, string? attention, int jobs, bool report = false)
+    {
+        var parts = new List<string>();
+        if (user) parts.Add("your words");
+        if (pcLines > 0) parts.Add(pcLines == 1 ? "1 line this PC played" : $"{pcLines} lines this PC played");
+        if (picture) parts.Add(attention is { Length: > 0 } about ? $"the picture ({about})" : "the picture");
+        else if (attention is { Length: > 0 } noticed) parts.Add(noticed);
+        if (jobs > 0) parts.Add(jobs == 1 ? "1 finished job" : $"{jobs} finished jobs");
+        else if (report) parts.Add("finished work");
+        return parts.Count switch
+        {
+            0 => "nothing",
+            1 => parts[0],
+            _ => string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1]
+        };
+    }
+}
