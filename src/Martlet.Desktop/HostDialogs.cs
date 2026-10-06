@@ -171,10 +171,10 @@ internal sealed class HostInputDialog : ThemedWindow
         combo.SelectionChanged += (_, _) => Refresh();
     }
 
-    internal void AddText(string key, string label, string text, string? hint = null)
+    internal void AddText(string key, string label, string text, string? hint = null, bool optional = false, int maxLength = 64)
     {
         fields.Children.Add(new Label { Content = label, Padding = new Thickness(0, 6, 0, 4) });
-        var box = new TextBox { Text = text, MaxLength = 64 };
+        var box = new TextBox { Text = text, MaxLength = maxLength };
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetAutomationId(box, "HostInput-" + key);
         fields.Children.Add(box);
@@ -185,7 +185,7 @@ internal sealed class HostInputDialog : ThemedWindow
             fields.Children.Add(note);
         }
         values[key] = () => box.Text.Trim();
-        required.Add(key);
+        if (!optional) required.Add(key);
     }
 
     internal void AddCheck(string key, string label, bool isChecked)

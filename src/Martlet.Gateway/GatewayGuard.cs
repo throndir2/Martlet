@@ -49,6 +49,13 @@ public sealed record GatewayExposure
     /// <summary>Treat every connection as coming from outside home, for a host behind something that hides the real
     /// source (a container runtime's port proxy, a TCP relay), so private-looking sources aren't trusted as home.</summary>
     public bool TreatAllAsOutside { get; init; }
+
+    /// <summary>Outside addresses the owner set on the host itself (martlet-host owner-exposure). The host advertises them to
+    /// member desktops (GET /martlet/v1/network), which sign them into its roster entry when they are newer.</summary>
+    public IReadOnlyList<string>? OutsideAddresses { get; init; }
+
+    /// <summary>When <see cref="OutsideAddresses"/> were set (null: never set on the host).</summary>
+    public DateTimeOffset? OutsideAddressesSetAt { get; init; }
 }
 
 /// <summary>One audit entry: an authentication or pairing decision. Nonsecret.</summary>
@@ -184,7 +191,14 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
     };
 
     private bool Applies(string routeClass, GatewaySourceKind kind) =>
-        kind == GatewaySourceKind.Outside || exposure.InternetReachable || routeClass == "signin";
+        kind == GatewaySourceKind.Outside || InternetReachable || routeClass == "signin";
+
+    /// <summary>Set when this host's own roster entry lists outside addresses.</summary>
+    internal bool Listed { get => listed; set => listed = value; }
+    private volatile bool listed;
+
+    /// <summary>Whether limits apply to every source: the owner said so, or the roster lists outside addresses for this host.</summary>
+    public bool InternetReachable => exposure.InternetReachable || listed || exposure.OutsideAddresses is { Count: > 0 };
 
     /// <summary>Runs before every handler: refuses pairing from outside home unless allowed, spends the source's budget
     /// for routes anyone may call, and refuses a locked-out source. Requests from this computer and the home network pass
