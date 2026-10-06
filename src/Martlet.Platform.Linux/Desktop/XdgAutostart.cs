@@ -6,8 +6,9 @@ namespace Martlet.Platform.Linux.Desktop;
 
 /// <summary>Starts Martlet at login through the XDG autostart folder (~/.config/autostart, or $XDG_CONFIG_HOME/autostart),
 /// which GNOME, KDE, Xfce, Cinnamon, MATE and LXQt all honor. Off until the user turns it on; turning it off deletes the
-/// file. An AppImage starts through $APPIMAGE so the entry survives the AppImage's temporary mount.</summary>
-internal sealed class XdgAutostart(string directory, string executable) : IAutostart
+/// file. An AppImage starts through $APPIMAGE so the entry survives the AppImage's temporary mount; a framework-dependent
+/// run (dotnet Martlet.Companion.dll) starts the same way.</summary>
+internal sealed class XdgAutostart(string directory, params string[] command) : IAutostart
 {
     public const string FileName = "martlet.desktop";
 
@@ -17,8 +18,12 @@ internal sealed class XdgAutostart(string directory, string executable) : IAutos
         if (string.IsNullOrEmpty(config) || !Path.IsPathFullyQualified(config))
             config = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
         var appImage = Environment.GetEnvironmentVariable("APPIMAGE");
-        var executable = !string.IsNullOrEmpty(appImage) && Path.IsPathFullyQualified(appImage) ? appImage : Environment.ProcessPath ?? "martlet";
-        return new XdgAutostart(Path.Combine(config, "autostart"), executable);
+        var process = Environment.ProcessPath ?? "martlet";
+        string[] command = !string.IsNullOrEmpty(appImage) && Path.IsPathFullyQualified(appImage) ? [appImage]
+            : Path.GetFileNameWithoutExtension(process) == "dotnet" && Environment.GetCommandLineArgs() is [var assembly, ..] &&
+              assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? [process, Path.GetFullPath(assembly)]
+            : [process];
+        return new XdgAutostart(Path.Combine(config, "autostart"), command);
     }
 
     public string FilePath => Path.Combine(directory, FileName);
@@ -52,7 +57,7 @@ internal sealed class XdgAutostart(string directory, string executable) : IAutos
             }
             Directory.CreateDirectory(directory);
             var temporary = FilePath + ".tmp";
-            File.WriteAllText(temporary, Entry(executable), new UTF8Encoding(false));
+            File.WriteAllText(temporary, Entry(command), new UTF8Encoding(false));
             File.Move(temporary, FilePath, overwrite: true);
             return FeatureStatus.Yes("Martlet starts when you log in.");
         }
@@ -62,13 +67,13 @@ internal sealed class XdgAutostart(string directory, string executable) : IAutos
         }
     }
 
-    internal static string Entry(string executable) =>
+    internal static string Entry(params string[] command) =>
         string.Join('\n',
             "[Desktop Entry]",
             "Type=Application",
             $"Name={LinuxDesktopIds.DisplayName}",
             "Comment=Martlet companion",
-            $"Exec={QuoteExec(executable)}",
+            $"Exec={string.Join(' ', command.Select(QuoteExec))}",
             $"Icon={LinuxDesktopIds.AppId}",
             "Terminal=false",
             "X-GNOME-Autostart-enabled=true",

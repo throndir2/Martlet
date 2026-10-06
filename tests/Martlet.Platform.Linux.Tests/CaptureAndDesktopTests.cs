@@ -133,6 +133,8 @@ public sealed class CaptureAndDesktopTests
         Assert.Contains("\nExec=/opt/martlet/Martlet.Companion\n", entry);
         Assert.Contains("\nType=Application\n", entry);
         Assert.Contains("\nIcon=io.github.throndir2.Martlet\n", entry);
+        Assert.Contains("\nExec=/usr/bin/dotnet \"/opt/my martlet/Martlet.Companion.dll\"\n",
+            XdgAutostart.Entry("/usr/bin/dotnet", "/opt/my martlet/Martlet.Companion.dll"));
     }
 
     [Fact]
