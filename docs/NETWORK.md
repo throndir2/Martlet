@@ -202,11 +202,34 @@ workable setup is an overlay on every host; with port forwarding, forward one
 port per host (for example 9443 and 9444). A host with no outside address is
 simply not used while away.
 
-**Which address a desktop uses.** A host keeps its home address in the roster
-and gets any number of owner-set outside addresses (hostname or IP with a port).
-The desktop tries the home address first and the outside addresses only when it
-doesn't answer, always pinned to the same host key, and remembers the address
-that worked so the home path never waits on an outside one.
+**Setting outside addresses.** On any member PC: Devices › *Your Martlet*
+*network* › the host's **Outside addresses** (up to four, for example
+`gpu-box.tailnet.ts.net:9443`, `100.101.102.103:9443` or
+`home.example.net:9443`). On a Linux host: `martlet-host owner-exposure --config
+<dir>/host.json --outside <name:port> [--outside ...]` (`--clear-outside` removes
+them; `--allow-pairing-outside-home yes|no` and `--treat-all-as-outside yes|no`
+set the other choices), saved in `exposure.json` beside `host.json` and applied
+when the service restarts. The host advertises what was set on it
+(`GET /martlet/v1/network`: `advertised_addresses`, `advertised_at`), and the
+next member desktop that syncs signs it into the host's roster entry when the
+entry has none or it is newer. Outside addresses are part of the signed entry
+(`NetworkMember.Addresses`; entries without them sign exactly as before, so
+existing rosters are unchanged). Martlet before this release refuses a roster
+that lists outside addresses, so update every computer (Update host) before
+adding them.
+
+**Which address a desktop uses** (`Remote/HostRoutes.cs`). Requests keep the
+host's home origin, so TLS still checks the pinned key and signatures are
+unchanged; only the TCP connection dials elsewhere. The home address goes
+first; outside addresses are tried (all at once) only when it doesn't connect
+within 1.5 seconds, and only for hosts that have them. The address that worked
+is remembered, so later connections go straight to it, while the home address
+gets a 0.1-second head start and wins as soon as this PC is back home. A home
+address that answers with another key (another network's computer with the same
+address, at work) is skipped for five minutes. When nothing answers, the error
+names every address tried and what to check. A host's row on the Devices card
+says how many outside addresses it has and whether it was last reached at home or
+from outside.
 
 **The gateway's guard** (`GatewayGuard.cs`), always on:
 
@@ -260,7 +283,7 @@ that hides the real source).
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
-| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`) |
+| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`) |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
 join it: they use [API keys](API.md), which belong to the network too. A key

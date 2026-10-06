@@ -28,6 +28,11 @@ public sealed record NetworkMember
     public string? Origin { get; init; }
     /// <summary>Hosts: the gateway's TLS key fingerprint (sha256:&lt;hex&gt;).</summary>
     public string? Spki { get; init; }
+    /// <summary>Hosts: owner-set addresses that reach the same gateway from outside home (an overlay network such as
+    /// Tailscale, or a router port forward): "name:port", "IPv4:port" or "[IPv6]:port", at most
+    /// <see cref="NetworkRoster.MaximumAddresses"/>. Desktops try <see cref="Origin"/> first and these when it doesn't answer,
+    /// always pinned to <see cref="Spki"/>. Null when there are none (entries without them sign exactly as before).</summary>
+    public IReadOnlyList<string>? Addresses { get; init; }
     public bool Removed { get; init; }
     public required long Revision { get; init; }
     public required string UpdatedBy { get; init; }
@@ -40,10 +45,11 @@ public sealed record NetworkMember
     /// <summary>About when this entry was written (revisions are hybrid millisecond clocks).</summary>
     [JsonIgnore] public DateTimeOffset ChangedAt => DateTimeOffset.FromUnixTimeMilliseconds(Math.Clamp(Revision, 0, 253_402_300_799_000));
 
-    internal byte[] SigningBytes(string networkId) => Encoding.UTF8.GetBytes(
-        $"martlet-network-member-v1\n{networkId}\n{Kind}\n{Id}\n{Name}\n{Key}\n{Origin}\n{Spki}\n{(Removed ? 1 : 0)}\n{Revision}\n{UpdatedBy}");
+    internal byte[] SigningBytes(string networkId) => Encoding.UTF8.GetBytes(Addresses is { Count: > 0 } addresses
+        ? $"martlet-network-member-v2\n{networkId}\n{Kind}\n{Id}\n{Name}\n{Key}\n{Origin}\n{Spki}\n{(Removed ? 1 : 0)}\n{Revision}\n{UpdatedBy}\n{string.Join(',', addresses)}"
+        : $"martlet-network-member-v1\n{networkId}\n{Kind}\n{Id}\n{Name}\n{Key}\n{Origin}\n{Spki}\n{(Removed ? 1 : 0)}\n{Revision}\n{UpdatedBy}");
 
-    internal string Content => $"{Name}|{Key}|{Origin}|{Spki}|{Removed}|{Signature}";
+    internal string Content => $"{Name}|{Key}|{Origin}|{Spki}|{string.Join(',', Addresses ?? [])}|{Removed}|{Signature}";
 }
 
 /// <summary>The result of joining a roster into another: the joined roster and how many incoming entries were refused
@@ -71,6 +77,8 @@ public sealed record NetworkRoster
     public const int MaximumBytes = 40_960;
     public const int MaximumMembers = 64;
     public const int MaximumNameLength = 64;
+    public const int MaximumAddresses = 4;
+    public const int MaximumAddressLength = 128;
     private const long MaximumRevision = long.MaxValue / 4;
 
     private static readonly JsonSerializerOptions Json = new()
@@ -131,13 +139,29 @@ public sealed record NetworkRoster
         });
     }
 
-    /// <summary>Adds (or updates the address of) a host, signed by member <paramref name="by"/>.</summary>
+    /// <summary>Adds (or updates the address of) a host, signed by member <paramref name="by"/>. Outside addresses it already
+    /// had are kept.</summary>
     public NetworkRoster AddHost(INetworkSigner by, string id, string name, string origin, string spki, DateTimeOffset now) =>
         Put(by, new()
         {
             Kind = NetworkKinds.Host, Id = id, Name = CleanName(name, id), Origin = origin, Spki = spki,
-            Revision = NextRevision(now), UpdatedBy = by.DeviceId, Signature = ""
+            Addresses = Host(id)?.Addresses, Revision = NextRevision(now), UpdatedBy = by.DeviceId, Signature = ""
         });
+
+    /// <summary>Sets a host's outside addresses (empty clears them), signed by member <paramref name="by"/>. Each is
+    /// normalized by <see cref="NormalizeAddress"/>; an invalid one throws.</summary>
+    public NetworkRoster SetHostAddresses(INetworkSigner by, string id, IEnumerable<string> addresses, DateTimeOffset now)
+    {
+        var current = Host(id) is { Removed: false } host ? host : throw new InvalidOperationException($"{id} is not a host in this network.");
+        var list = addresses.Select(a => NormalizeAddress(a) ?? throw new ContractException(ErrorCode.InvalidContract,
+                $"\"{a}\" is not an address Martlet can use: type name:port, IPv4:port or [IPv6]:port, for example home.example.net:9443."))
+            .Distinct(StringComparer.Ordinal).ToArray();
+        ContractRules.Require(list.Length <= MaximumAddresses, $"A host can have at most {MaximumAddresses} outside addresses.");
+        return Put(by, current with
+        {
+            Addresses = list.Length == 0 ? null : list, Revision = NextRevision(now), UpdatedBy = by.DeviceId, Signature = ""
+        });
+    }
 
     /// <summary>Removes a desktop or host from the network, signed by member <paramref name="by"/>. The entry stays as a
     /// tombstone with its key, so an older copy cannot bring it back.</summary>
@@ -254,10 +278,12 @@ public sealed record NetworkRoster
             ContractRules.Require(NetworkKey.TryDecode(member.Signature, 64, out var signature) && signature.Length == 64,
                 "A network member's signature is malformed.");
             if (member.IsDesktop)
-                ContractRules.Require(NetworkKey.IsPublicKey(member.Key) && member.Origin is null && member.Spki is null,
-                    "A network desktop's key is invalid.");
+                ContractRules.Require(NetworkKey.IsPublicKey(member.Key) && member.Origin is null && member.Spki is null &&
+                    member.Addresses is null, "A network desktop's key is invalid.");
             else if (member.IsHost)
-                ContractRules.Require(member.Key is null && IsOrigin(member.Origin) && IsFingerprint(member.Spki),
+                ContractRules.Require(member.Key is null && IsOrigin(member.Origin) && IsFingerprint(member.Spki) &&
+                    (member.Addresses is null || member.Addresses is { Count: > 0 and <= MaximumAddresses } a &&
+                        a.All(x => NormalizeAddress(x) == x) && a.Distinct(StringComparer.Ordinal).Count() == a.Count),
                     "A network host's address or fingerprint is invalid.");
             else
                 ContractRules.Require(false, "A network member's kind is invalid.");
@@ -318,6 +344,35 @@ public sealed record NetworkRoster
             address.AddressFamily == AddressFamily.InterNetworkV6 && (bytes[0] & 0xFE) == 0xFC;
         var canonical = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"https://[{address}]:{uri.Port}" : $"https://{address}:{uri.Port}";
         return isPrivate && canonical == text;
+    }
+
+    /// <summary>
+    /// The canonical form of an outside address ("name:port", "IPv4:port" or "[IPv6]:port"; a leading https:// and a
+    /// trailing slash are dropped, names are lowercased), or null when it isn't one: names are DNS labels (letters, digits,
+    /// hyphens), ports 1-65535, at most <see cref="MaximumAddressLength"/> characters.
+    /// </summary>
+    public static string? NormalizeAddress(string? text)
+    {
+        var value = (text ?? "").Trim();
+        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) value = value[8..];
+        value = value.TrimEnd('/');
+        if (value.Length is 0 or > MaximumAddressLength) return null;
+        var colon = value.LastIndexOf(':');
+        if (colon <= 0 || colon == value.Length - 1 || !int.TryParse(value[(colon + 1)..], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var port) || port is < 1 or > 65535)
+            return null;
+        var host = value[..colon];
+        if (host.StartsWith('[') && host.EndsWith(']'))
+            return IPAddress.TryParse(host[1..^1], out var v6) && v6.AddressFamily == AddressFamily.InterNetworkV6
+                ? $"[{v6}]:{port}" : null;
+        if (host.Contains(':')) return null;
+        if (IPAddress.TryParse(host, out var v4))
+            return v4.AddressFamily == AddressFamily.InterNetwork && host.Count(c => c == '.') == 3 ? $"{v4}:{port}" : null;
+        host = host.ToLowerInvariant().TrimEnd('.');
+        var labels = host.Split('.');
+        return host.Length <= 253 && labels.All(l => l.Length is > 0 and <= 63 && l[0] != '-' && l[^1] != '-' &&
+            l.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-')) && !labels[^1].All(char.IsAsciiDigit)
+            ? $"{host}:{port}" : null;
     }
 
     public override string ToString() => $"Martlet network {NetworkId} ({ActiveDesktops.Count()} desktops, {ActiveHosts.Count()} hosts)";
