@@ -1193,6 +1193,8 @@ as an `input_audio` WAV part, so only an OpenAI-compatible (Chat
 Completions) endpoint takes it. **Ollama on this PC** does too, for models it
 says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). A paired host's
 Ollama and OpenAI's own route don't. Vision works the same way with pictures.
+[Hosted Thinking](HOSTED_THINKING.md) lists the cloud models that hear (Gemini,
+NVIDIA Build's Nemotron 3 Nano Omni), their free tiers and terms.
 
 **On or off.** Your own choice always wins: tick it, or untick it to keep
 Thinking to the transcript. Until you choose, it is **on only while the

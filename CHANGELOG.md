@@ -9,12 +9,18 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- A new [Resource footprints](docs/RESOURCE_FOOTPRINTS.md) page lists how much graphics memory, memory, processor and disk each Thinking model, voice engine, listening model, lip-sync, singing and pictures option takes, and which numbers were measured. Setup recommendations use these numbers. ([#485](https://github.com/throndir2/Martlet/pull/485))
+- Releases now include Linux (AppImage and .deb, x64 and arm64) and macOS (Apple silicon and Intel .dmg) downloads of the new desktop companion; the Mac app also carries the Mac host. ([#484](https://github.com/throndir2/Martlet/pull/484))
+- A Mac can be a Martlet host: its `macos-setup` command runs Martlet's host in the background while you're logged in and lends your other computers the Mac's own Ollama and whisper.cpp, on its graphics chip on Apple silicon. Jobs that need an NVIDIA GPU are never offered there. Not yet tried on a real Mac. ([#482](https://github.com/throndir2/Martlet/pull/482))
+- The Docker host image now also builds for Apple-silicon Macs and other ARM64 computers (CPU only). ([#482](https://github.com/throndir2/Martlet/pull/482))
+- Martlet for Mac (coming with the Mac download) can float the character over full-screen games, talk while you hold a push-to-talk key in any app, keep your keys in the Mac's keychain, watch your screen after you allow it, start at login and show what it is doing in the menu bar. It also finds Ollama, LM Studio or Docker Model Runner running on the Mac. ([#480](https://github.com/throndir2/Martlet/pull/480))
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Changed
 - People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ### Fixed
+- Martlet knows NVIDIA Build's Nemotron 3 Nano Omni hears your voice and sees your screen, and says NVIDIA's retired Gemma 3n models need replacing. A new guide lists which cloud Thinking models hear, their free limits and how to get a key. ([#483](https://github.com/throndir2/Martlet/pull/483))
 - A voice no longer learns "no name yet" or similar placeholders as its name, and ones learned by mistake are dropped. ([#477](https://github.com/throndir2/Martlet/pull/477))
 
 ## [0.49.0] - 2026-10-06

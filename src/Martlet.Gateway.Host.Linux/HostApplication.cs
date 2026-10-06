@@ -15,7 +15,7 @@ internal interface IHostPlatform
 
 internal sealed class NativeHostPlatform : IHostPlatform
 {
-    public LinuxControlDirectory OpenControl(string path) => new(path, new LinuxFileSystem());
+    public LinuxControlDirectory OpenControl(string path) => new(path, PosixFileSystem.Create());
     public IHostTerminal OpenTerminal() => new LinuxTerminal();
     public DurableGatewayHost OpenHost(string command, HostConfiguration config, ServiceApproval? approval,
         CancellationToken cancellation)
@@ -359,6 +359,7 @@ internal static class HostApplication
         var health = false;
         try
         {
+            if (MacHost.Handles(args)) return await MacHost.RunAsync(args, output, cancellation);
             var options = HostOptions.Parse(args);
             if (options is null) { output.WriteLine(HostOptions.Help); return 0; }
             health = options.Command == "health";
@@ -368,6 +369,11 @@ internal static class HostApplication
                 HostConfiguration.MaximumBytes) ?? throw new HostInputException());
             config.CheckIdentity(directory);
             config.CheckPlacement(options.ConfigPath);
+            if (OperatingSystem.IsMacOS() && config.Roles.Select(r => MacHost.Refusal(r.Kind)).FirstOrDefault(r => r is not null) is { } refused)
+            {
+                output.WriteLine($"role.unsupported: {refused}");
+                return 2;
+            }
             if (options.Command == "validate")
             {
                 output.WriteLine("configuration.valid: syntax and selected native config custody admitted; authority/runtime/network not observed.");
@@ -467,6 +473,8 @@ internal static class HostApplication
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
                 output.WriteLine("serving: approved gateway listener; empty worker registry; no model readiness claim.");
+                // A Mac host keeps the Mac from idle sleep while it serves, as a Linux server stays up.
+                using var awake = OperatingSystem.IsMacOS() ? MacNative.KeepAwake() : null;
                 // A closed authority refuses every connection for good; exit so Docker or systemd reopens the same state.
                 while (!owner.AuthorityClosed)
                     await Task.Delay(AuthorityCheckInterval, cancellation);

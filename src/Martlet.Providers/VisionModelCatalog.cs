@@ -36,7 +36,9 @@ public static partial class VisionModelCatalog
         // Qwen3.5 and Ministral 3 take images (Ollama 0.35 lists vision for every size), checked 2026-10-04.
         "qwen35", "ministral3",
         // Checked with an image on NVIDIA Build's Free Endpoints on 2026-10-01.
-        "diffusiongemma", "museglimmer", "kimik3", "glm53flash", "deepseekv41flash"
+        "diffusiongemma", "museglimmer", "kimik3", "glm53flash", "deepseekv41flash",
+        // Nemotron 3 Nano Omni takes images, audio and video (the other Nemotrons are text-only), checked 2026-10-06.
+        "nemotron3nanoomni"
     ];
 
     private static readonly string[] TextOnlyMarkers =

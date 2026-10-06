@@ -44,6 +44,7 @@
     <Project Path="tests/Martlet.Avatar.Audio2Face.Tests/Martlet.Avatar.Audio2Face.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
     <Project Path="tests/Martlet.Companion.Tests/Martlet.Companion.Tests.csproj" />
+    <Project Path="tests/Martlet.Platform.MacOS.Tests/Martlet.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/Martlet.Conversation.Tests/Martlet.Conversation.Tests.csproj" />
     <Project Path="tests/Martlet.Desktop.Tests/Martlet.Desktop.Tests.csproj" />
     <Project Path="tests/Martlet.Discord.Tests/Martlet.Discord.Tests.csproj" />

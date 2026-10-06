@@ -229,7 +229,7 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "an NVIDIA GPU makes replies fast; small models also run on the CPU"),
             Works(Win, Host, "through Docker Desktop (This PC's host service), or as a local server through Chat Completions"),
-            Planned(Mac, Host, "MA02", "native Ollama on the Mac's GPU on Apple silicon; CPU-only and 1-4B models on an Intel Mac"),
+            Works(Mac, Host, "the Mac host (DX04) relays to Ollama installed on the Mac: on the GPU (Metal) on Apple silicon, CPU-only and 1-4B models on an Intel Mac; not yet run on a real Mac"),
             Impossible(Ios, Host, "Ollama does not run on iPhone or iPad; Apple Intelligence does the thinking there"),
             NotPlanned(Android, Host, "Ollama has no Android build; Android hosts use a LiteRT, llama.cpp or Gemini Nano model on the same route")
         ]),
@@ -276,7 +276,7 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "whisper or Parakeet run well on the CPU; an NVIDIA GPU makes whisper faster"),
             Works(Win, Host, "through Docker Desktop (This PC's host service)"),
-            Planned(Mac, Host, "MA02", "whisper.cpp on the Mac's GPU on Apple silicon; base/small models on an Intel Mac's CPU"),
+            Works(Mac, Host, "the Mac host (DX04) runs whisper.cpp from Homebrew: on the GPU (Metal) on Apple silicon, base/small models on an Intel Mac's CPU; Parakeet isn't offered; not yet run on a real Mac"),
             NotPlanned(Ios, Host, "iPhones and iPads use Apple speech recognition instead"),
             Planned(Android, Host, "AN04", "tiny/base models on old phones; speed unmeasured")
         ]),
@@ -459,14 +459,14 @@ public static class PlatformCatalog
         [
             Works(Linux, Host, "Docker or native Linux (systemd); runs in the background"),
             Works(Win, Host, "through Docker Desktop and WSL 2"),
-            Planned(Mac, Host, "MA02", "a login agent; keeps hosting after you quit the window"),
+            Works(Mac, Host, "the Mac host (DX04): Martlet's gateway as a launchd agent while you are logged in, keeping the Mac awake; not yet run on a real Mac"),
             Planned(Ios, Host, "IO03", "only while Martlet is open on the screen; it stops when the app goes to the background"),
             Planned(Android, Host, "AN03", "in the background with a notification showing, even with the screen off")
         ]),
         new("remote-roles", Feature, "Install and remove host roles from your desktop",
         [
             Works(Linux, Host, "over SSH, or in a console on the host"), Works(Win, Host, "This PC's Docker Desktop"),
-            NotPlanned(Mac, Host, "roles are switched on in Martlet on the Mac (a Mac running Docker or Ubuntu is a Linux host)"),
+            NotPlanned(Mac, Host, "roles are chosen on the Mac with its macos-setup command (a Mac running Docker or Ubuntu is a Linux host)"),
             NotPlanned(Ios, Host, "roles are switched on in Martlet on the iPhone or iPad"),
             NotPlanned(Android, Host, "roles are switched on in Martlet on the phone or tablet")
         ])

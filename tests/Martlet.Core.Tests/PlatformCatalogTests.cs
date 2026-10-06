@@ -72,6 +72,24 @@ public sealed class PlatformCatalogTests
     }
 
     [Fact]
+    public void Mac_hosts_serve_ollama_and_whisper_but_never_nvidia_engines()
+    {
+        var mac = PlatformDevice.FromHost("studio", Report("studio", new HostGpu("Apple M2 Max GPU", "apple", 49152, "Metal")) with
+        {
+            Platform = "macos", OsVersion = "15.5", Architecture = "arm64"
+        });
+        Assert.Equal(DevicePlatform.MacOs, mac.Platform);
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("ollama", PlatformSide.Host, mac).Verdict);
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("whisper", PlatformSide.Host, mac).Verdict);
+        Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check("host-service", PlatformSide.Host, mac).Verdict);
+        var f5 = PlatformCatalog.Check("f5", PlatformSide.Host, mac);
+        Assert.Equal(PlatformVerdict.No, f5.Verdict);
+        Assert.Contains("NVIDIA", f5.Reason, StringComparison.Ordinal);
+        Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("audio2face", PlatformSide.Host, mac).Verdict);
+        Assert.False(PlatformCatalog.ManagesRolesRemotely(mac));
+    }
+
+    [Fact]
     public void Every_engine_names_a_known_job_and_at_most_one_entry_per_platform_and_side()
     {
         foreach (var engine in PlatformCatalog.Engines)

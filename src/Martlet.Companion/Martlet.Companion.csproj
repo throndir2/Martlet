@@ -32,21 +32,27 @@
     <InternalsVisibleTo Include="Martlet.Companion.Tests" />
   </ItemGroup>
   <!-- The character renderer: the Windows renderer's web bundle (VRM and Live2D, src\Martlet.Avatar.RendererHost\web) is
-       reused as is. It is built when the VRM package's npm dependencies are installed (npm ci in src\Martlet.Avatar.Vrm);
-       without them the app runs and the character window says the bundle is missing. -->
+       reused as is. When it isn't built yet, the build installs the VRM package's pinned npm dependencies (npm ci, from its
+       package-lock) and bundles it; without Node.js the app still builds and the character window says the bundle is missing.
+       -p:MartletCharacterNpm=false skips the npm install. -->
   <PropertyGroup>
-    <CharacterWeb>$(MSBuildProjectDirectory)\..\Martlet.Avatar.RendererHost\web</CharacterWeb>
+    <CharacterWeb>$(MSBuildProjectDirectory)/../Martlet.Avatar.RendererHost/web</CharacterWeb>
+    <CharacterVrm>$(MSBuildProjectDirectory)/../Martlet.Avatar.Vrm</CharacterVrm>
     <NodeExecutable Condition="'$(NodeExecutable)' == ''">node</NodeExecutable>
   </PropertyGroup>
-  <Target Name="BuildCharacterBundle" BeforeTargets="PrepareForBuild"
-          Condition="!Exists('$(CharacterWeb)\dist\app.js') and Exists('$(MSBuildProjectDirectory)\..\Martlet.Avatar.Vrm\node_modules\esbuild')">
-    <Exec Command="&quot;$(NodeExecutable)&quot; &quot;$(CharacterWeb)\build.mjs&quot; &quot;$(IntermediateOutputPath).&quot;" />
+  <Target Name="BuildCharacterBundle" BeforeTargets="PrepareForBuild" Condition="!Exists('$(CharacterWeb)/dist/app.js')">
+    <Exec Command="npm ci --ignore-scripts --no-audit --no-fund" WorkingDirectory="$(CharacterVrm)" ContinueOnError="true"
+          Condition="!Exists('$(CharacterVrm)/node_modules/esbuild') and '$(MartletCharacterNpm)' != 'false'" />
+    <Exec Command="&quot;$(NodeExecutable)&quot; &quot;$(CharacterWeb)/build.mjs&quot; &quot;$(IntermediateOutputPath).&quot;"
+          Condition="Exists('$(CharacterVrm)/node_modules/esbuild')" />
+    <Warning Text="The character renderer isn't in this build: install Node.js 20.11+ and npm, or run npm ci in src/Martlet.Avatar.Vrm."
+             Condition="!Exists('$(CharacterWeb)/dist/app.js')" />
   </Target>
   <Target Name="IncludeCharacterBundle" AfterTargets="BuildCharacterBundle">
     <ItemGroup>
-      <_CharacterFiles Include="$(CharacterWeb)\dist\app.js;$(CharacterWeb)\dist\app.js.LEGAL.txt;$(CharacterWeb)\dist\THIRD-PARTY-NOTICES.txt" Condition="Exists('$(CharacterWeb)\dist\app.js')" />
+      <_CharacterFiles Include="$(CharacterWeb)/dist/app.js;$(CharacterWeb)/dist/app.js.LEGAL.txt;$(CharacterWeb)/dist/THIRD-PARTY-NOTICES.txt" Condition="Exists('$(CharacterWeb)/dist/app.js')" />
       <Content Include="@(_CharacterFiles)" Link="character\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-      <_CharacterLive2D Include="$(CharacterWeb)\live2d-dist\**\*" />
+      <_CharacterLive2D Include="$(CharacterWeb)/live2d-dist/**/*" />
       <Content Include="@(_CharacterLive2D)" Link="character\live2d\%(_CharacterLive2D.RecursiveDir)%(_CharacterLive2D.Filename)%(_CharacterLive2D.Extension)"
                CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>

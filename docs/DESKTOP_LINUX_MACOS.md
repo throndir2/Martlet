@@ -1,8 +1,8 @@
 # Linux and macOS desktop companion: research, decision and plan
 
-**Plan, 2026-10-06; DX01 delivered the same day (see [Status](#status)).** Linux
-results below are from an Ubuntu 24.04 container under Xvfb; every Mac result
-is NOT RUN (no Mac). The owner asked for:
+**Plan, 2026-10-06. Built slices report their status below (DX01: see
+[Status](#status)); every Linux-desktop and Mac result is NOT RUN until a slice
+reports it.** The owner asked for:
 
 1. A **Mac as the companion PC** (talk to it, character on its screen), and
    whether a Mac can be a **host**.
@@ -147,19 +147,38 @@ catalog's reason, not silently changed.
 
 ## Installers (part of the release build)
 
-`windows-release.yml` (manual dispatch, the only allowed workflow) gains Linux
-and macOS jobs that attach to the same `v<version>` release, with no tests:
+`windows-release.yml` (manual dispatch, the only allowed workflow; shown as
+*Release (manual) - Windows, Linux and macOS*) builds the Linux and macOS
+packages in parallel with the Windows installer, with no tests. An `attach` job
+waits for all three, fails if the Windows job did not create `v<version>` at
+the built commit, uploads the six files, checks GitHub's SHA-256 digests and
+appends Linux/macOS install text and their SHA-256 lines to the release notes.
 
-- **Linux:** `Martlet-<version>-linux-x64.AppImage`,
-  `martlet_<version>_amd64.deb`, plus arm64 equivalents. Self-contained .NET;
-  the `.deb` depends on `libwebkit2gtk-4.1-0` and `libsecret-1-0`.
-- **macOS:** `Martlet-<version>-macos-arm64.dmg` and
-  `Martlet-<version>-macos-x64.dmg`, `.app` bundle ad-hoc signed (not notarized;
-  first launch needs **Open Anyway** once, see
-  [Unsigned builds](MACOS.md#unsigned-builds-what-the-user-sees)). The Mac host
-  ships inside the app bundle.
-- Packaging scripts live in `packaging/linux` and `packaging/macos` and run
-  locally too (Linux packaging on a Linux validation host or WSL).
+- **Linux** (`packaging/linux/build-linux.sh`, ubuntu-24.04, both
+  architectures built on x64): `Martlet-<version>-linux-x64.AppImage`,
+  `martlet_<version>_amd64.deb`, `Martlet-<version>-linux-arm64.AppImage`,
+  `martlet_<version>_arm64.deb`. Self-contained .NET publish; app id and
+  desktop entry `io.github.throndir2.Martlet` (the portals identify Martlet by
+  it). The `.deb` installs to `/opt/martlet` with a `martlet` command, menu
+  entry and icon, depends on `libwebkit2gtk-4.1-0`, `libsecret-1-0`, libicu,
+  X11 libraries and recommends `libpipewire-0.3-0`. The AppImage (pinned
+  appimagetool 1.9.1 and type2 runtime, checked by SHA-256) uses the
+  distribution's WebKitGTK 4.1, libsecret and libicu.
+- **macOS** (`packaging/macos/build-macos.sh`, macos-26, osx-x64
+  cross-published): `Martlet-<version>-macos-arm64.dmg` and
+  `Martlet-<version>-macos-x64.dmg`. `Martlet.app` holds the companion in
+  `Contents/MacOS` and the Mac host (`Martlet.Gateway.Host.Linux`, DX04) in
+  `Contents/Resources/host`; `Info.plist` (`make-bundle.py`) sets
+  `io.github.throndir2.martlet`, `LSMinimumSystemVersion` 14.0 and the
+  microphone and local network usage texts. Ad-hoc signed
+  (`codesign --force --deep -s -`, host binaries first), not Developer ID
+  signed and not notarized: first launch needs **Open Anyway** once, see
+  [Unsigned builds](MACOS.md#unsigned-builds-what-the-user-sees).
+- Both scripts run locally (`--project`, `--output`, `--dotnet`, `--arch` per
+  architecture). Linux packaging needs bash, curl, sha256sum, file and
+  dpkg-deb (a Linux host, WSL or `mcr.microsoft.com/dotnet/sdk` in Docker).
+  `build-macos.sh` builds and checks the bundles anywhere with python3 and
+  makes the `.dmg` only on a Mac (`--no-dmg` skips it).
 
 ## Delivery slices
 
@@ -168,8 +187,28 @@ and macOS jobs that attach to the same `v<version>` release, with no tests:
 | DX01 | `Martlet.Companion` Avalonia app: settings, typed and push-to-talk conversation with cloud and loopback Chat Completions, OpenAI listening/speaking, cross-platform audio, character window with the web bundles, catalog guardrails, platform-service interfaces, MCP reachability | `src/Martlet.Companion`, catalog companion rows |
 | DX02 | Linux integration: overlay (X11/XWayland, layer-shell), hotkey (X11 + portal), Secret Service, tray, autostart, screen capture (X11 + portal) | `src/Martlet.Platform.Linux` |
 | DX03 | macOS integration: floating panel behaviors, Carbon hotkey, Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection, loopback Ollama/LM Studio detection | `src/Martlet.Platform.MacOS` |
-| DX04 | Mac host: .NET gateway on macOS (launchd, macOS custody backend, native Ollama/whisper Metal relays, machine report), plus arm64 host images so Docker on a Mac works CPU-only | gateway, persistence, host setup, `deploy/` |
+| DX04 | Mac host: .NET gateway on macOS (launchd, macOS custody backend, native Ollama/whisper Metal relays, machine report), plus arm64 host images so Docker on a Mac works CPU-only. **Built** ([The Mac host](MACOS.md#the-mac-host-dx04)): `osx-arm64`/`osx-x64` publish and the arm64 host image build; runtime on a Mac NOT RUN (no Mac) | gateway, persistence, host setup, `deploy/` |
 | DX05 | Linux and macOS installers in the release build | `packaging/linux`, `packaging/macos`, `windows-release.yml` |
 
 DX01 lands its interfaces first; DX02, DX03 and DX05 build on them. DX04 is
 independent. Merges are serialized.
+
+## DX03 status: macOS integration (2026-10-06)
+
+Built in `src/Martlet.Platform.MacOS` (plain `net10.0`, Objective-C runtime and
+C exports, no net-macos workload) and returned by `MacPlatform.Create()`.
+Pure logic is unit tested in `tests/Martlet.Platform.MacOS.Tests`, and the
+companion publishes for `osx-arm64` and `osx-x64`. **No Mac was available:
+every native behavior below is NOT RUN** until someone runs it on a real Mac.
+
+| Service | How | NOT RUN on a Mac: what to check |
+| --- | --- | --- |
+| Platform probe (`MacPlatformProbe`) | sysctl `hw.optional.arm64` (Apple silicon, also under Rosetta), `sysctl.proc_translated` (Rosetta), `hw.memsize` (unified memory), `kern.osproductversion`, CPU brand and model. Intel Macs report no usable GPU (local models CPU-only, no MLX or Apple Intelligence); `Warnings()` says so, flags the Intel build under Rosetta and macOS below 14, and notes Audio2Face/F5 need a paired NVIDIA host | Values on an M-series Mac, an Intel Mac and the x64 build under Rosetta |
+| Loopback model servers (`LocalModelServers`) | Asks `127.0.0.1` only: Ollama `:11434/api/tags`, LM Studio `:1234/v1/models`, Docker Model Runner `:12434/engines/v1/models`; returns each running one's Chat Completions base URL and models (Metal on Apple silicon, CPU on Intel) | Detection with each server running (portable code, unit tested with a fake server) |
+| Push-to-talk (`MacPushToTalkHotkey`) | Carbon `RegisterEventHotKey` key down/up, no Accessibility or Input Monitoring permission; requires Command or Control (bare F-keys allowed, with fn on Mac keyboards); suggests Control+Option+T | Hold to talk inside a full-screen game; a combination another app owns reports "already used" |
+| Character overlay (`MacCharacterOverlay`) | From the NSWindow handle: floating level, collectionBehavior canJoinAllSpaces, stationary, ignoresCycle and fullScreenAuxiliary, transparent and shadowless, a runtime subclass that can never become key or main (non-activating without replacing Avalonia's window), click-through toggled 20 times a second by hit-testing the character regions (kept during a drag) | The character over a full-screen game on another Space for 10 minutes, never taking focus; clicks pass through except on the character |
+| Watch my screen (`MacScreenCapture`) | One look = macOS's own `screencapture -x -t jpg -D 1` resized by `sips`; `CGPreflightScreenCaptureAccess` gates every look and `CGRequestScreenCaptureAccess` runs only from the user's Start watching. The permission text explains System Settings, the restart and macOS 15's periodic re-confirmation. A ScreenCaptureKit helper (window choice, exclusions) is a later step | Prompt, restart, a look while a game is in front |
+| Keys (`KeychainCredentialStore`) | Login keychain generic passwords, service "Martlet", account `companion/<name>` | Save, read, delete; the access prompt after an update of an ad-hoc signed build |
+| Start at login (`MacAutostart`) | Inside `Martlet.app` on macOS 13+: `SMAppService.mainAppService` (Login Items, with the "allow in Settings" state); outside a bundle: `~/Library/LaunchAgents/io.github.throndir2.martlet.companion.plist` | Register, approval state, start after logging in |
+| Menu bar (`MacTrayStatus`) | NSStatusItem whose title shows the state ("Martlet ● Listening") with Show, Show or Hide Character and Quit | Item appears after the first `Show`, menu commands arrive |
+| Listening keeps the Mac awake (`MacListeningActivity`) | `NSProcessInfo beginActivity` (no App Nap, no idle sleep) plus an IOKit `PreventUserIdleSystemSleep` assertion while listening; outside the shared contracts, the app holds one while it listens | Replies stay prompt behind a full-screen game with the Mac otherwise idle |
