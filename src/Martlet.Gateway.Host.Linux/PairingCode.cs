@@ -14,7 +14,7 @@ internal static class PairingCode
     internal const string Prefix = "martlet-pair-v1.";
     internal const int DefaultPort = 9443;
 
-    internal static string Format(GatewayPairingCard card) => Prefix + Base64Url.EncodeToString(
+    internal static string Format(GatewayPairingCard card) => Prefix + System.Buffers.Text.Base64Url.EncodeToString(
         JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string>
         {
             ["o"] = card.Origin, ["h"] = card.HostId, ["s"] = card.SpkiFingerprint,

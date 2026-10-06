@@ -184,6 +184,18 @@ internal static class ExposureRehearsal
                     HostRoutes.For(nowhere) is { Route: "none" }, $"{error.Code}: {error.Message}");
             }
         });
+        await Run("The reachability probe (MCP outside_reachability_check) tells answering, closed and wrong-key addresses apart", async () =>
+        {
+            await using var stranger2 = await LabHost.StartAsync("lab-stranger");
+            var spki = host.Identity.SpkiFingerprint;
+            var home = await HostRoutes.ProbeAsync(host.Origin, spki, null, TimeSpan.FromSeconds(4), token);
+            var outside = await HostRoutes.ProbeAsync(deadHome, spki, $"127.0.0.1:{port}", TimeSpan.FromSeconds(4), token);
+            var closed = await HostRoutes.ProbeAsync(deadHome, spki, null, TimeSpan.FromSeconds(4), token);
+            var other = await HostRoutes.ProbeAsync(stranger2.Origin, spki, null, TimeSpan.FromSeconds(4), token);
+            return (home is { Reachable: true, Problem: null } && outside is { Reachable: true, Problem: null } && !closed.Reachable && closed.Problem == "refused" && !other.Reachable && other.Problem == "another key",
+                $"home: {home.Reachable} ({home.Milliseconds} ms{(home.Problem is null ? "" : ", " + home.Problem)}); outside: {outside.Reachable} ({outside.Milliseconds} ms{(outside.Problem is null ? "" : ", " + outside.Problem)}); closed: {closed.Problem}; " +
+                $"another host's key at the address: {other.Problem}");
+        });
         await Run("Outside addresses set on the host itself (martlet-host owner-exposure) are signed into the network by a member desktop", async () =>
         {
             host.Server.Exposure = new() { OutsideAddresses = ["gpu-box.tailnet.ts.net:9443"], OutsideAddressesSetAt = DateTimeOffset.UtcNow };

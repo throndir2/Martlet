@@ -104,6 +104,17 @@
                                         <Button x:Name="LockCharacterButton" Content="Lock character p_osition" Click="LockCharacter_Click" Padding="16,12" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterLock"/>
                                     </WrapPanel>
+                                    <!-- Character profiles (MainWindow.CharacterProfiles.cs): switch look, voice and personality at once -->
+                                    <WrapPanel x:Name="HomeCharacterRow" Margin="0,0,0,8" Visibility="Collapsed">
+                                        <Label x:Name="HomeCharacterLabel" Content="C_haracter" Target="{Binding ElementName=HomeCharacterChoice}"
+                                               VerticalAlignment="Center" Padding="0,4,10,4"/>
+                                        <ComboBox x:Name="HomeCharacterChoice" MinWidth="220" MaxWidth="360" MinHeight="30" VerticalAlignment="Center"
+                                                  SelectionChanged="HomeCharacter_SelectionChanged"
+                                                  AutomationProperties.AutomationId="HomeCharacterProfile" AutomationProperties.Name="Character profile"/>
+                                        <Button x:Name="HomeCharacterManage" Style="{DynamicResource LinkButton}" Content="Manage profiles" Margin="12,0,0,0"
+                                                VerticalAlignment="Center" Click="HomeCharacterManage_Click"
+                                                AutomationProperties.AutomationId="HomeManageCharacters"/>
+                                    </WrapPanel>
                                     <!-- Whether Martlet is listening and watching (MainWindow.BackgroundTalk.cs), with or without the talk window -->
                                     <WrapPanel>
                                         <Border x:Name="ListeningIndicator" Visibility="Collapsed" HorizontalAlignment="Left" CornerRadius="14"
