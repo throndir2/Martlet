@@ -204,6 +204,8 @@ public partial class MainWindow
         // Ends every MCP server Martlet started (they also end with Martlet's process through its job object).
         await StepAsync("stopping your tool servers", "Windows ends any still running along with Martlet.",
             () => Task.Run(async () => await mcpTools.DisposeAsync()));
+        await StepAsync("disconnecting the Discord bot", "Discord shows it offline shortly after Martlet exits.",
+            () => Task.Run(async () => await discord.DisposeAsync()));
         await StepAsync("closing speech captions", "", () => { captions.Dispose(); return Task.CompletedTask; });
         // The renderer runs in a kill-on-close job object, so Windows ends it with Martlet even when its cleanup cannot
         // finish: a stuck character never keeps Martlet open or holds back an update.
