@@ -41,8 +41,6 @@ Martlet.Gateway.Persistence.Tests.OwnerTests.Public_owner_never_exposes_mutable_
 # Bounded-deadline tests that time out on a busy PC; both fail on origin/main 7f088d1 alone (CPU ~97% busy).
 Martlet.Desktop.Tests.AudioSetupDispatcherTests.FailedCaptureAfterPositiveMeterClearsLevelAndFreshSilentTestCannotReplay
 Martlet.Launcher.Tests.LauncherIntegrationTests.InvalidOrLateHandshakeFailsClosed
-# The wrong-nonce case times out (ReadinessTimedOut) instead of failing readiness; fails on origin/main afb9100 alone.
-Martlet.Launcher.Tests.LauncherIntegrationTests.ProductionActivationProbeFailsAndRetainsPendingEvidence
 
 # Create real symbolic links, which Windows allows only with Developer Mode or as administrator.
 Martlet.Launcher.Tests.LauncherReviewRegressionTests.EvidenceRootCannotHideInsidePayloadThroughAncestorLink  # env: symlink privilege

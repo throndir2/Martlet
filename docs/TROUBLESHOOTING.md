@@ -234,6 +234,41 @@ and names a smaller model. Choose a smaller one (for example `gemma4:e4b`
 instead of `gemma4:12b` on a 12 GB card while gaming), or close programs that
 use the graphics card.
 
+## Developer builds: apphost or testhost crashes on a pooled drive
+
+**Symptom (developer PCs only).** A freshly built `Martlet.Mcp.exe`,
+`Martlet.Desktop.exe` or other apphost fails with *The managed DLL bound to
+this executable could not be retrieved from the executable image*, or
+`testhost.exe` dies at startup with `0xC0000005` (Event Viewer: Application
+Error at fault offset `0x23406`, faulting module *unknown*). The same file keeps
+failing until it is rebuilt, which makes one configuration (often Release, the
+default of `Test-Martlet.ps1` and `Invoke-MartletMcp.ps1`) look broken while
+another works.
+
+**Cause.** The checkout is on a StableBit DrivePool volume (CoveFS; check with
+`Get-Volume` or `Get-PhysicalDisk`, which shows a `COVECUBE CoveFsDisk`).
+When an `.exe` or `.dll` is started right after it was copied, before its
+cached data is written out, Windows can map the image with zero-filled pages:
+the import table looks empty (the crash is a call through the never-resolved
+`LoadLibraryExW` slot) or the apphost's bound DLL name reads as empty. Windows
+keeps that bad image cached, so later launches fail too. The file on disk is
+correct (it hash-matches its source); only the mapping is wrong. Measured on
+DrivePool 2.3.11: copy-then-run failed 30 of 480 times on the pool (28 still
+failing 2 s later), 0 of 480 on `C:`, and 0 of 480 on the pool when the file
+was flushed before running.
+
+**What the build does about it.** `Directory.Build.targets` flushes
+(`FlushFileBuffers`) every `.exe`/`.dll` that a Windows build copies to the
+output folder, right after the copy, so the image is written before anything
+runs it. Set `-p:MartletFlushBuildOutputs=false` to skip this. Release builds
+on GitHub's runners are not affected (plain NTFS).
+
+**If a file is already stuck:** delete that project's `bin` folder (or the
+single `.exe`) and build again. **Smallest durable fix:** keep worktrees and
+build output on a plain NTFS volume (for example `C:` or a non-pooled NVMe
+drive) instead of the DrivePool drive, or update DrivePool and report the
+issue to Covecube.
+
 ## Local configuration backup / restore (V07a)
 
 **Configuration backups are NOT support bundles.** The support ZIP described

@@ -1,0 +1,53 @@
+<Project>
+  <!--
+    Flush executables and DLLs to disk right after a build copies them to the output directory.
+    On some virtual/pooled volumes (StableBit DrivePool), starting a freshly copied .exe/.dll before its cached
+    data is written can map the image with zero-filled pages, and Windows keeps that bad image cached: apphosts
+    then fail with "The managed DLL bound to this executable could not be retrieved from the executable image"
+    and testhost.exe crashes with 0xC0000005. See docs/TROUBLESHOOTING.md. Set MartletFlushBuildOutputs=false to skip.
+  -->
+  <PropertyGroup>
+    <MartletFlushBuildOutputs Condition="'$(MartletFlushBuildOutputs)' == '' and '$(OS)' == 'Windows_NT'">true</MartletFlushBuildOutputs>
+  </PropertyGroup>
+
+  <UsingTask TaskName="MartletFlushFiles" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll"
+             Condition="'$(MartletFlushBuildOutputs)' == 'true'">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in Files)
+        {
+            var path = Path.GetFullPath(item.ItemSpec);
+            var extension = Path.GetExtension(path);
+            if (!extension.Equals(".exe", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".dll", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!seen.Add(path) || !File.Exists(path)) continue;
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete)) stream.Flush(true);
+                Log.LogMessage(MessageImportance.Low, "Flushed " + path);
+            }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            {
+                Log.LogMessage(MessageImportance.Low, "Could not flush " + path + ": " + exception.Message);
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- PreserveNewest items (the apphost, testhost.exe, native assets); the list holds only the files copied this build. -->
+  <Target Name="MartletFlushCopiedOutputItems" AfterTargets="_CopyOutOfDateSourceItemsToOutputDirectory"
+          Condition="'$(MartletFlushBuildOutputs)' == 'true' and '@(_SourceItemsToCopyToOutputDirectory)' != ''">
+    <MartletFlushFiles Files="@(_SourceItemsToCopyToOutputDirectory->'$(OutDir)%(TargetPath)')" />
+  </Target>
+
+  <!-- Copy-local references (project and package DLLs) copied this build, and the project's own assembly. -->
+  <Target Name="MartletFlushCopiedReferences" AfterTargets="CopyFilesToOutputDirectory"
+          Condition="'$(MartletFlushBuildOutputs)' == 'true'">
+    <MartletFlushFiles Files="@(ReferencesCopiedInThisBuild);@(MainAssembly)" />
+  </Target>
+</Project>
