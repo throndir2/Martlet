@@ -392,6 +392,21 @@ internal static class HostApplication
                     : $"Host {config.HostId} is not in a Martlet network.");
                 return 0;
             }
+            if (options.Command == "owner-exposure")
+            {
+                // The host's own account (martlet-host --yes) is the owner's confirmation, as for owner-network-reset.
+                var current = HostExposure.Read(directory);
+                var changed = options.Outside.Count > 0 || options.ClearOutside || options.AllowPairingOutsideHome is not null ||
+                    options.TreatAllAsOutside is not null;
+                if (changed)
+                {
+                    current = current.With(options, DateTimeOffset.UtcNow);
+                    current.Write(directory);
+                }
+                output.WriteLine($"Host {config.HostId} {(changed ? "now has" : "has")} {current.Describe()}." +
+                    (changed ? " Restart the service to apply it; member desktops add the outside addresses to your network on their next sync." : ""));
+                return 0;
+            }
             if (options.Command is "serve" or "health")
             {
                 if (approval is null) throw new HostApprovalException();
@@ -419,6 +434,17 @@ internal static class HostApplication
                     owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
+                    try
+                    {
+                        var exposure = HostExposure.Read(directory);
+                        owner.Exposure = exposure.ToGateway();
+                        if (exposure.Outside.Count > 0 || exposure.AllowPairingOutsideHome || exposure.TreatAllAsOutside) owner.RecordActivity("INFO", "Reaching this host from outside home: " + exposure.Describe() + ".");
+                    }
+                    catch (HostInputException)
+                    {
+                        owner.RecordActivity("WARN", "exposure.json is invalid, so this host uses the defaults (no outside addresses, pairing only from home). " +
+                            "Set it again with martlet-host owner-exposure.");
+                    }
                     var (networkState, networkId) = owner.NetworkState;
                     owner.RecordActivity("INFO", networkState switch
                     {
