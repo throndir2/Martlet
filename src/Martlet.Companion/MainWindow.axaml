@@ -1,0 +1,11 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Martlet.Companion.MainWindow"
+        Title="Martlet" Width="560" Height="420">
+  <ScrollViewer Padding="16">
+    <StackPanel Spacing="8">
+      <TextBlock Text="Martlet" FontSize="24" FontWeight="SemiBold" />
+      <TextBlock Name="StatusText" AutomationProperties.AutomationId="CompanionStatus" FontFamily="monospace" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
+</Window>

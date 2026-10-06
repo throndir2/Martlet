@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- macOS integration for Martlet.Companion (DX03 in docs/DESKTOP_LINUX_MACOS.md): floating panel, Carbon hotkey,
+       Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection. Portable net10.0; native calls are made only
+       when running on macOS. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Companion.Platform\Martlet.Companion.Platform.csproj" />
+  </ItemGroup>
+</Project>
