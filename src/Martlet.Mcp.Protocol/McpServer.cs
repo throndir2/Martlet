@@ -239,6 +239,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("outside_reachability_check", "Check how each host in this PC's Martlet network (network.json in a data directory) can " +
+            "be reached: its home address and each owner-set outside address (overlay or port forward), each dialed directly, checked " +
+            "against the host key pinned in the roster and asked GET /health/live (no credential, nothing else). Returns per host which " +
+            "address answered, in how many ms, why the others didn't (refused, no answer in time, name not found, another key) and which " +
+            "one a desktop would use (home first). Contacts the owner's hosts only when contactHosts is true; otherwise it lists what it " +
+            "would check. Returns host IDs and address numbers, never the addresses.", new
+        {
+            dataDirectory = new { type = "string" },
+            contactHosts = new { type = "boolean" }
+        }),
         Tool("network_selftest", "Rehearse the Martlet network end to end with the production code: three real gateways on " +
             "127.0.0.1 (pinned TLS, volatile credentials) and two simulated desktops using the desktop's network client and sync " +
             "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
@@ -1033,6 +1043,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "voice_tags" => VoiceTagsCheck(arguments),
                 "cluster_status" => ClusterStatus(arguments),
                 "network_status" => NetworkStatus(arguments),
+                "outside_reachability_check" => await OutsideReachabilityAsync(arguments, cancellation),
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
                 "nearby_status" => NearbyStatus(arguments),
@@ -2365,6 +2376,44 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom
         };
+    }
+
+    /// <summary>Probes each roster host's home and outside addresses (pinned TLS, GET /health/live) when contactHosts is true.</summary>
+    private static async Task<object> OutsideReachabilityAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var contact = OptionalBool(arguments, "contactHosts") == true;
+        var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
+        Martlet.Core.Network.NetworkRoster? roster = null;
+        try { if (File.Exists(path)) roster = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)).Roster; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+        {
+            return new { state = "unreadable" };
+        }
+        if (roster is null) return new { state = "none", hosts = Array.Empty<object>() };
+        var hosts = new List<object>();
+        foreach (var host in roster.ActiveHosts.Where(h => h.Origin is not null && h.Spki is not null))
+        {
+            var outside = host.Addresses ?? [];
+            if (!contact)
+            {
+                hosts.Add(new { id = host.Id, outsideAddresses = outside.Count, checkedNow = false });
+                continue;
+            }
+            var timeout = TimeSpan.FromSeconds(4);
+            var probes = await Task.WhenAll(new string?[] { null }.Concat(outside).Select(address =>
+                Martlet.Avatar.Audio2Face.Remote.HostRoutes.ProbeAsync(host.Origin!, host.Spki!, address, timeout, cancellation)));
+            var home = probes[0];
+            var outsideResults = probes.Skip(1).Select((p, i) => new { address = i + 1, reachable = p.Reachable, ms = p.Milliseconds, problem = p.Problem }).ToArray();
+            var use = home.Reachable ? "home" : outsideResults.FirstOrDefault(o => o.reachable) is { } first ? $"outside {first.address}" : "none";
+            hosts.Add(new
+            {
+                id = host.Id, outsideAddresses = outside.Count, checkedNow = true,
+                home = new { reachable = home.Reachable, ms = home.Milliseconds, problem = home.Problem },
+                outside = outsideResults, wouldUse = use
+            });
+        }
+        return new { state = "member", contacted = contact, hosts };
     }
 
     /// <summary>"Let my other computers find this PC" as the desktop keeps it (the file names match Martlet.Desktop's Nearby and
