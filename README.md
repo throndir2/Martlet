@@ -224,6 +224,15 @@ Change any of it in **Companion**, or click **Get a setup recommendation**.
 > providers may charge for use). The installer isn't code-signed, so Windows may
 > ask you to confirm before it runs.
 
+**Linux and Mac (early desktop companion):** each release also has
+`Martlet-<version>-linux-x64.AppImage` / `martlet_<version>_amd64.deb` (and
+`arm64` versions) and `Martlet-<version>-macos-arm64.dmg` (Apple silicon) /
+`-macos-x64.dmg` (Intel, macOS 14 or later). On Ubuntu or Debian run
+`sudo apt install ./martlet_<version>_amd64.deb`; the AppImage needs WebKitGTK
+4.1 and libsecret. The Mac app isn't notarized: the first time, choose **Done**,
+then **System Settings > Privacy & Security > Open Anyway**. See
+[Linux and macOS](docs/DESKTOP_LINUX_MACOS.md#installers-part-of-the-release-build).
+
 ## 🔒 Private by design
 
 - **Nothing turns on by itself.** The microphone, camera and screen stay off until you press a button.
