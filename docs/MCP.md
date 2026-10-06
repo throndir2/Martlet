@@ -2020,7 +2020,13 @@ was active, Martlet's echo got at least 20 dB quieter, the detector heard it
 without reduction but not with it, it still heard the user alone (kept within
 3 dB) and over Martlet, and `talkOver.ok`: Martlet's echo and the short sound
 never talked over it, while the user over Martlet did, no sooner than
-`requiredMs`. It contacts nothing.
+`requiredMs`. `listensWhileSpeaking` says whether always listening goes on
+while Martlet speaks with the saved choices: `bargeIn`, or `reduceEcho` with
+echo reduction that works (`EchoReducer.Works` with the rehearsal's own
+timeline; `rehearsal.reducing` is that capture's echo state: `true` while the
+canceller cleaned it, `false` once lost, `null` if it never started); `ok`
+also requires the rehearsal's echo reduction to work. Without a canceller
+`listensWhileSpeaking` is `bargeIn`. It contacts nothing.
 
 `utterance_filter_check` checks [listening for words](CONVERSATION.md#listening-for-words)
 and barge-in (Companion › Listening › **Word check**; optional absolute
@@ -3072,7 +3078,10 @@ Status fields include the talk window's `LiveStatus` (its status line),
 `LiveMic` (the Start listening / Stop listening button; its value starts with
 the state: *Not listening* until it is pressed, then *Listening*, *Can't
 listen* or *Mic unavailable* with the reason; while Martlet speaks it reads
-*Not listening while Martlet speaks*. Clicking it opens the microphone, so it
+*Listening. Martlet listens for you, even while it speaks…* when echo
+reduction works (or barge-in is on), and *Not listening while Martlet speaks,
+so it doesn't hear itself* when listening pauses instead (echo reduction off
+or not running, without barge-in). Clicking it opens the microphone, so it
 needs `--allow-ui-effects`; errors, Stop and `LiveStop` never stop listening,
 only the button or *Pause Martlet* in the notification-area menu does, and
 listening that can't start yet, such as Voice ID not set up, reads *Can't
@@ -3248,14 +3257,16 @@ then `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
 `talk-preferences.json`) and `TalkBargeInAbout` (returned: that it is optional
-and off by default, and what talking over
+and off by default, that Martlet keeps listening while it speaks either way
+(with echo reduction on) and answers what was said after the reply, and what talking over
 Martlet takes: real words, a word like "stop" or "wait" right away, never a hum,
 a cough, laughter, a quick "yeah" or what this PC plays, checked while you talk
 with Parakeet on this PC and otherwise once you pause; `utterance_filter_check`
 rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate). In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
-*Always listening ignored what it heard: ...* and *Barge-in: Martlet stopped its
+*Always listening ignored what it heard: ...*, *Always listening heard you
+while Martlet spoke; ...* (said while a reply played, without barge-in) and *Barge-in: Martlet stopped its
 reply N ms after you started talking over it (...)*, never the words. Each
 message in `LiveHistory` has an automation ID for whose it is, never its words:
 `LiveMessage-You`, `LiveMessage-Martlet`, `LiveMessage-Note` or
@@ -3449,7 +3460,9 @@ microphone hears each clip once in real time, after a short lead-in, at least
 `MARTLET_SIMULATE_MICROPHONE_GAP` seconds (default 8) after the previous one
 ended, and silence otherwise; the speakers take replies at real-time pace and
 play nothing. Echo reduction and hearing what this PC plays are off while the
-microphone is simulated. The desktop log says so at start (*Simulated
+microphone is simulated; since the fixture microphone hears only its clips,
+never what plays, always listening goes on while Martlet speaks (a clip due
+during a reply is heard then and answered after it). The desktop log says so at start (*Simulated
 microphone ... FIXTURE*) and as each clip plays. With a disposable data
 directory whose Thinking is Ollama on this PC, Listening Parakeet and Voice a
 Windows voice, `ui_click` `HomeListen` (with `--allow-ui-effects`) runs whole

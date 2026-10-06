@@ -27,8 +27,9 @@ internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, 
 // is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice); HearLocalOnly: only because it
 // was never chosen, so only while the recording stays on this PC (checked again for each message). Straight: with Hear, what was
 // said goes straight to a Thinking model that hears as the recording alone, and speech-to-text runs beside the reply
-// (Companion › Listening › When Thinking can hear you). BargeIn: keep listening while
-// Martlet speaks, so talking over a reply with real words (BargeInPolicy) stops it. ReduceEcho: what
+// (Companion › Listening › When Thinking can hear you). BargeIn: talking over a reply with real words (BargeInPolicy) stops
+// it; without it, always listening still listens while Martlet speaks whenever echo reduction works, and what it hears waits
+// for the reply to finish. ReduceEcho: what
 // the PC plays (Martlet's voice included) is removed from the
 // microphone first (Companion › Listening › Reduce echo from my speakers), so speakers work without headphones. Pc: listens to
 // what this PC plays instead of the microphone (Companion › Listening › Hear what this PC plays): never Voice ID, voice
@@ -815,10 +816,11 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     /// <summary>Starts always listening: one loop on its own slot beside replies that records one utterance at a time and
-    /// transcribes each (in order) while it already listens for the next, so nothing said while Martlet thinks is lost. Each
-    /// utterance is still its own action (fresh authorization, capture epoch, Voice ID check and STT request). It holds off only
-    /// while Martlet speaks, so it never hears itself, or while other setup work owns the app slot; microphone and
-    /// speech-to-text failures are reported and listening carries on.</summary>
+    /// transcribes each (in order) while it already listens for the next, so nothing said while Martlet thinks or speaks is
+    /// lost. Each utterance is still its own action (fresh authorization, capture epoch, Voice ID check and STT request). It
+    /// holds off only while other setup work owns the app slot, and while Martlet speaks when it can't tell Martlet's own voice
+    /// from yours (no echo reduction and no barge-in), so it never hears itself; microphone and speech-to-text failures are
+    /// reported and listening carries on.</summary>
     internal LiveListener Listen(ListeningOptions options)
     {
         if (!options.HandsFree || options.Pc && (options.RequireVoiceId || options.Hear || options.ReduceEcho || options.Straight))
@@ -855,24 +857,35 @@ internal sealed class LiveConversationController : IAsyncDisposable
     }
 
     /// <summary>Whether this listener holds off right now. Hearing what this PC plays holds off only while Martlet speaks (or
-    /// sings) and Windows can't leave Martlet's own voice out of it (never for barge-in: only the user interrupts). While Martlet
-    /// sings, the microphone keeps listening when barge-in or echo reduction is on (the song is taken out of what it hears), so
-    /// the user can talk to it or ask it to stop; otherwise it holds off as for a reply.</summary>
-    private bool Held(ListeningOptions options) => options.Pc
-        ? pcAudio?.WithoutMartlet != true && (Held(false) || singing?.Playing == true)
-        : Held(options.BargeIn) || !options.BargeIn && !options.ReduceEcho && singing?.Playing == true;
+    /// sings) and Windows can't leave Martlet's own voice out of it (never for barge-in: only the user interrupts). The
+    /// microphone keeps listening while Martlet speaks or sings whenever it can tell Martlet's own voice from yours
+    /// (<see cref="ListensOverMartlet"/>), so what you say then is heard and answered after; otherwise it holds off.
+    /// <paramref name="echo"/>: the capture under way, whose own echo reduction decides once it has opened.</summary>
+    private bool Held(ListeningOptions options, EchoTimeline? echo = null)
+    {
+        if (options.Pc) return pcAudio?.WithoutMartlet != true && (Held(false) || singing?.Playing == true);
+        var over = ListensOverMartlet(options, echo);
+        return Held(over) || !over && singing?.Playing == true;
+    }
 
-    /// <summary>Always listening holds off while Martlet speaks (a reply or a remark, plus a short tail for the room's echo), so
-    /// it never hears itself, and while other setup work (a microphone test, Voice ID enrollment) owns the app slot. With
-    /// barge-in it keeps listening while Martlet speaks, so you can talk over a reply to stop it.</summary>
-    internal bool Held(bool bargeIn)
+    /// <summary>Whether the microphone can go on listening while Martlet speaks or sings: barge-in is on (talking over it is the
+    /// point), echo reduction works (what the speakers play is taken out of what the microphone hears, and what is mostly their
+    /// sound is let go like a cough), or the microphone is the FIXTURE one that hears only its clips. Echo reduction that is off,
+    /// couldn't start or was lost can't tell Martlet's voice from yours: listening would hear Martlet and answer its own words.</summary>
+    private bool ListensOverMartlet(ListeningOptions options, EchoTimeline? echo = null) =>
+        options.BargeIn || captureDevices is SimulatedMicrophone || options.ReduceEcho && echoReducer?.Works(echo) == true;
+
+    /// <summary>Always listening holds off while other setup work (a microphone test, Voice ID enrollment) owns the app slot,
+    /// and, when it can't tell Martlet's own voice from yours (<paramref name="overMartlet"/> false), while Martlet speaks (a
+    /// reply or a remark, plus a short tail for the room's echo), so it never hears itself.</summary>
+    internal bool Held(bool overMartlet)
     {
         lock (gate)
         {
             var now = clock.GetTimestamp();
             if (active is { Worker: not null } current && !current.OwnershipReleased)
             {
-                if (bargeIn) return false;
+                if (overMartlet) return false;
                 if (current.Turn?.Snapshot is { State: ConversationState.Playing } or { MayHavePlayed: true, OwnershipReleased: false })
                 {
                     spokeUntil = now + (long)(SpeechTail.TotalSeconds * clock.TimestampFrequency);
@@ -880,7 +893,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 }
                 return now < spokeUntil;
             }
-            return operations.IsRunning || !bargeIn && now < spokeUntil;
+            return operations.IsRunning || !overMartlet && now < spokeUntil;
         }
     }
 
@@ -936,6 +949,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 listening.BeginTranscribing();
                 utterance.Hearing = false;
                 utterance.TalkingOver = false;
+                if (!listening.Options.Pc && !listening.Options.BargeIn && Speaking == PlaybackMode.Reply)
+                    ErrorLog.Info("Always listening heard you while Martlet spoke; without barge-in that doesn't stop the reply, " +
+                        "and what you said is answered after it.");
                 if (!listening.Options.Pc)
                 {
                     // An utterance that ran to the recording limit has no detected end: count from now.
@@ -3141,10 +3157,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     }
                 }
                 while (true);
-                // Always listening stops listening the moment Martlet starts speaking, unless you were already talking. Hearing the
-                // output you hear (Martlet's voice included) ends what it was hearing right there instead, so a video that
-                // was talking goes on without Martlet's own words.
-                if (operation.Listen && (accepted < 0 || operation.Listening!.Pc) && Held(operation.Listening!))
+                // Always listening that can't tell Martlet's own voice from yours stops listening the moment Martlet starts
+                // speaking, unless you were already talking. Hearing the output you hear (Martlet's voice included) ends what it
+                // was hearing right there instead, so a video that was talking goes on without Martlet's own words.
+                if (operation.Listen && (accepted < 0 || operation.Listening!.Pc) && Held(operation.Listening!, operation.Echo))
                 {
                     if (accepted < 0)
                     {

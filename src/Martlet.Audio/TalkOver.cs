@@ -23,7 +23,7 @@ public sealed class EchoTimeline
     /// stays well under this.</summary>
     public const double SpeakersRemovedDb = 10;
     private readonly byte[] frames;
-    private int written;
+    private int written, reducing;
 
     public EchoTimeline(TimeSpan duration)
     {
@@ -33,6 +33,12 @@ public sealed class EchoTimeline
 
     /// <summary>Frames written so far.</summary>
     public int Frames => Volatile.Read(ref written);
+
+    /// <summary>Whether the echo canceller cleans this capture: null until its echo-reducing microphone opens (it never does when
+    /// echo reduction couldn't start), then true, and false once the canceller or what the speakers play was lost.</summary>
+    public bool? Reducing => Volatile.Read(ref reducing) switch { 1 => true, 2 => false, _ => null };
+
+    internal void Reduce(bool working) => Volatile.Write(ref reducing, working ? 1 : 2);
 
     public HeardSource this[int frame] =>
         frame >= 0 && frame < Math.Min(Frames, frames.Length) ? (HeardSource)Volatile.Read(ref frames[frame]) : HeardSource.Unknown;
