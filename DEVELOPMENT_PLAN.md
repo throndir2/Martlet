@@ -35,7 +35,7 @@ for acceptance. This adds requirements, not implemented controls or permission
 to enable listening, run models or spend money.
 
 **Validation policy update, 2026-09-26:** the owner's
-[validation policy](README.md#local-only-validation-policy) supersedes all
+[validation policy](CONTRIBUTING.md#local-only-validation-policy) supersedes all
 earlier hosted-CI plans and the 2026-09-13 local-gate requirement. Martlet is a
 prototype: local tests, package/smoke gates and independent review are not
 required per change. Do not create replacement remote validation; agents may

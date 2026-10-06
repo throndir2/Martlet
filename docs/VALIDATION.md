@@ -4,7 +4,7 @@ Every change is validated on the developer's own machines before it merges: its
 [targeted tests](#targeted-tests-only) (the tests it adds or changes and the suite
 directly covering the changed code, nothing broader), plus the actual behavior through
 Martlet's MCP server. No remote CI runs, ever (see the
-[validation policy](../README.md#local-only-validation-policy)). This page is the flow
+[validation policy](../CONTRIBUTING.md#local-only-validation-policy)). This page is the flow
 for people and coding agents alike; [AGENTS.md](../AGENTS.md) adds the agent-specific
 rules.
 

@@ -255,7 +255,7 @@ authority owns aggregate concurrency; there is no pending-turn queue here.
 
 ## Local reproduction and retained gates
 
-Use the pinned SDK and the [local-only policy](../../README.md#local-only-validation-policy).
+Use the pinned SDK and the [local-only policy](../../CONTRIBUTING.md#local-only-validation-policy).
 Keep output/temp/CLI-home/NuGet paths in an explicitly chosen private C: directory
 on the pooled-drive developer host; never use D: for VSTest outputs. These are
 developer commands, not a customer invocation or model smoke:

@@ -291,7 +291,7 @@ sandbox or proof against hostile code in the same process.
 | Immutable config, errors and privacy | `ValidationAndPrivacyTests`: defensive copy, unsupported/invalid bounds, malformed Unicode, enum/NaN/infinity/null cases, cross-session handles, exhaustion, safe JSON/ToString canaries and BCL-only dependencies |
 
 The former dedicated hosted participation workflow is removed under the
-[local-only repository policy](../../README.md#local-only-validation-policy).
+[local-only repository policy](../../CONTRIBUTING.md#local-only-validation-policy).
 Retain the SDK pin and direct-project locked restore, Release build and tests
 below; no remote replacement or live calls are needed.
 

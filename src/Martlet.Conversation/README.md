@@ -400,7 +400,7 @@ CLI home/SDK path and CI=true, with this session's unique C: artifacts to
 avoid the independently established pooled-drive VSTest native startup issue.
 Central test pins/SDK/runner/cache and existing locks are unchanged. These
 direct-project commands remain local validation under the
-[repository policy](../../README.md#local-only-validation-policy); the former
+[repository policy](../../CONTRIBUTING.md#local-only-validation-policy); the former
 dedicated hosted workflow is removed, not replaced.
 
 **Not run / not claimed:** live provider HTTP, keys or vault writes, real

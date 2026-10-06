@@ -331,7 +331,7 @@ separately authorized live smoke could provide real inference evidence.
 
 Use SDK 10.0.401, existing centrally pinned test packages, committed generated
 lock files and the direct-project local commands below, following the
-[repository policy](../../README.md#local-only-validation-policy). The former
+[repository policy](../../CONTRIBUTING.md#local-only-validation-policy). The former
 hosted provider workflow is removed, not replaced. The integration owner now
 also includes this project in the root solution. Ordinary restore can access
 NuGet; test execution uses only in-process authored fixtures and does not access a network,

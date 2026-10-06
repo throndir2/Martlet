@@ -10,7 +10,7 @@ Schema ownership stays with the core owner; coordinate shared edits through
 the implementation coordinator.
 
 **Current policy, 2026-10-03:** the
-[validation policy](../README.md#local-only-validation-policy) supersedes this
+[validation policy](../CONTRIBUTING.md#local-only-validation-policy) supersedes this
 first slice's hosted-CI configuration and F05 handoff. Every change passes its
 targeted tests locally through `scripts\Test-Martlet.ps1` before merge
 ([Validating changes](VALIDATION.md)); build, package and smoke commands remain
