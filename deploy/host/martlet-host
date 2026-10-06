@@ -859,15 +859,20 @@ settings_value() { conf_value "${CONF}/host.env" "$1"; }
 
 # host.json is generated from the host settings plus one fragment per installed role.
 render_config() {
-  local roles=() file kind endpoint model binding
+  local roles=() file kind endpoint model slots binding
   for file in "${CONF}/roles"/*.role; do
     [[ -e "${file}" ]] || continue
     kind="$(conf_value "${file}" kind)"
     [[ -n "${kind}" ]] || continue
-    endpoint="$(conf_value "${file}" endpoint)"; model="$(conf_value "${file}" model)"
-    [[ "${kind}" =~ ^[a-z0-9-]+$ && "${endpoint}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/$ && "${model}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ ]] ||
+    endpoint="$(conf_value "${file}" endpoint)"; model="$(conf_value "${file}" model)"; slots="$(conf_value "${file}" slots)"
+    [[ "${kind}" =~ ^[a-z0-9-]+$ && "${endpoint}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}/$ && "${model}" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*$ &&
+       ( -z "${slots}" || "${slots}" =~ ^[1-9]$ ) ]] ||
       fail "Invalid role record ${file}."
-    roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\"}")
+    if [[ -n "${slots}" && "${slots}" != 1 ]]; then
+      roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\",\"slots\":${slots}}")
+    else
+      roles+=("{\"kind\":\"${kind}\",\"endpoint\":\"${endpoint}\",\"model\":\"${model}\"}")
+    fi
   done
   local joined; joined="$(IFS=,; printf '%s' "${roles[*]:-}")"
   # In Docker the port is published into the container's namespace, so the gateway listens there.
@@ -1853,9 +1858,11 @@ unpublish_roles() {
 # Records role $1 as installed and publishes it: a gateway route (kind $2 on loopback port $3, model $4) or, for a
 # route-less role, its feature $5 in the machine report. Runs holding the gateway lock (with_gateway).
 publish_role() {
-  local role="$1" kind="$2" port="$3" model="$4" feature="$5"
+  local role="$1" kind="$2" port="$3" model="$4" feature="$5" slots="${6:-1}"
   if [[ -n "${kind}" ]]; then
-    ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")" )
+    ( umask 077; printf 'kind=%s\nendpoint=http://127.0.0.1:%s/\nmodel=%s\n' "${kind}" "${port}" "${model}" > "$(installed_file "${role}")"
+      # A role that runs several requests at once (the deep-thinking role's Ollama slots) says how many.
+      if [[ "${slots}" != 1 ]]; then printf 'slots=%s\n' "${slots}" >> "$(installed_file "${role}")"; fi )
     collect_machine
     apply_config
   else
@@ -2180,12 +2187,18 @@ cmd_add() {
     done
   done 3< <(conf_values "${conf}" post_start)
 
-  local model_from model="${role}" previous=""
+  local model_from model="${role}" previous="" slots_from slots=1
   model_from="$(conf_value "${conf}" model_from)"
+  # slots_from=VAR: the choice saying how many requests the role runs at once (the deep-thinking role's thinks at once).
+  slots_from="$(conf_value "${conf}" slots_from)"
+  if [[ -n "${slots_from}" ]]; then
+    slots="${chosen[${slots_from}]:-1}"
+    [[ "${slots}" =~ ^[1-9]$ ]] || fail "Invalid ${slots_from}."
+  fi
   if [[ -n "${kind}" ]]; then
     if [[ -n "${model_from}" ]]; then model="${chosen[${model_from}]:-${role}}"; fi
     if [[ -f "$(installed_file "${role}")" ]]; then previous="$(conf_value "$(installed_file "${role}")" model)"; fi
-    with_gateway publish_role "${role}" "${kind}" "${port}" "${model}" ""
+    with_gateway publish_role "${role}" "${kind}" "${port}" "${model}" "" "${slots}"
     retire_previous "${role}" "${conf}" "${previous}" "${model}"
     say "Role ${role} is running and published through the gateway. Paired desktops pick it up automatically."
   else

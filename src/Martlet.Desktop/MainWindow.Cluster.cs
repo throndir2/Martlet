@@ -276,9 +276,13 @@ public partial class MainWindow
         var offers = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var route in probe.Routes ?? [])
             if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
-        hostChecks[probe.HostId] = new(true, previous?.Reachable == true && previous.Offers?.Count == offers.Count &&
-                offers.All(o => previous.Offers.GetValueOrDefault(o.Key) == o.Value) ? previous.Text : HostControl.Describe(offers),
-            offers, release, probe.Routes);
+        var next = new HostCheck(true, "", offers, release, probe.Routes);
+        hostChecks[probe.HostId] = next with
+        {
+            Text = previous?.Reachable == true && previous.Offers?.Count == offers.Count &&
+                offers.All(o => previous.Offers.GetValueOrDefault(o.Key) == o.Value) && previous.DeepThinkingSlots == next.DeepThinkingSlots
+                ? previous.Text : HostControl.Describe(offers, probe.Routes)
+        };
         NoteSingingHost();
     }
 

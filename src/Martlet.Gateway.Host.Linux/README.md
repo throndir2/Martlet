@@ -9,11 +9,12 @@ are reused. The Windows `Martlet.Gateway.Host` CLI is unchanged.
 **No workers are registered** unless `host.json` lists host **roles**. Every
 role is declared the same way and maps to one gateway relay worker for a service
 on this host's own numeric HTTP loopback (`ollama`, `deep-thinking`, `stt`, `f5`, `xtts`, `gpt-sovits`, `chatterbox`, `dia`, `singing` and `audio2face` exist today;
-`deep-thinking` is a second Ollama of its own, relayed on Deep thinking's route):
+`deep-thinking` is a second Ollama of its own, relayed on Deep thinking's route; its optional `slots`, 1 to 4, is how many
+thinks its Ollama runs at once, which the gateway admits and advertises as the route's `maximum_concurrency`):
 
 ```json
 "roles": [ { "kind": "ollama", "endpoint": "http://127.0.0.1:11434/", "model": "llama3.2:3b" },
-           { "kind": "deep-thinking", "endpoint": "http://127.0.0.1:11435/", "model": "qwen3:8b" },
+           { "kind": "deep-thinking", "endpoint": "http://127.0.0.1:11435/", "model": "qwen3:8b", "slots": 2 },
            { "kind": "stt", "endpoint": "http://127.0.0.1:8178/", "model": "small" },
            { "kind": "f5", "endpoint": "http://127.0.0.1:50080/", "model": "f5tts-v1-base" },
            { "kind": "audio2face", "endpoint": "http://127.0.0.1:52000/", "model": "claire" } ]
