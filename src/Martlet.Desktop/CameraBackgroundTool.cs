@@ -13,9 +13,9 @@ internal interface ICallCamera
     /// Thinking request stay the same).</summary>
     bool Offered { get; }
 
-    /// <summary>Uses <paramref name="color"/> or the picture creation <paramref name="picture"/> (its key or ID) as the
-    /// background and says what happened, for the model.</summary>
-    Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, CancellationToken token);
+    /// <summary>Uses <paramref name="color"/> or the picture creation <paramref name="picture"/> (its key or ID; <paramref name="drawn"/>
+    /// when Martlet just drew it for this) as the background and says what happened, for the model.</summary>
+    Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token);
 }
 
 /// <summary>What set_camera_background asked for: a solid color, a kept picture, or a new picture to draw (16:9) and use.</summary>
@@ -46,7 +46,8 @@ internal static class CameraBackgroundTool
             "{\"draw\": \"a cozy cabin interior at dusk, warm lamplight, watercolour\", \"title\": \"Cabin\"}.";
         if (arguments is null || new[] { color, picture, draw }.Count(text => !string.IsNullOrEmpty(text)) != 1) return (null, usage);
         if (!string.IsNullOrEmpty(color))
-            return Enum.TryParse<DiscordCameraBackground>(color, ignoreCase: true, out var chosen) && Enum.IsDefined(chosen)
+            return Enum.TryParse<DiscordCameraBackground>(color, ignoreCase: true, out var chosen) && Enum.IsDefined(chosen) &&
+                chosen != DiscordCameraBackground.Picture && !char.IsDigit(color[0])
                 ? (new(chosen, null, null), null)
                 : (null, "The color is green, blue, magenta or black.");
         if (!string.IsNullOrEmpty(picture)) return (new(null, picture, null), null);

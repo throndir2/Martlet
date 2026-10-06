@@ -2572,7 +2572,9 @@ Nothing is recorded or played and nothing leaves this PC; without Parakeet,
 `discord-calls.json` (`on`, off by default; `capture` `DiscordApp` or
 `EverythingButMartlet`; `seeSpeakers`; `ownerNameSet`, never the name;
 `output`, the chosen output's name; `alsoSpeakers`; `bargeIn`;
-`cameraBackground`). `doctor` checks this PC without recording or playing:
+`cameraBackground`; `cameraPicture`, where a saved picture came from,
+`cameraPictureSaved`, and `cameraTool`, whether replies get
+`set_camera_background`). `doctor` checks this PC without recording or playing:
 `appLoopback` (Windows can hear one app alone: a process loopback of Discord,
 or of the MCP server itself while Discord isn't running, is set up and closed
 unstarted, so `recorded` is always false; `appLoopbackProblem` otherwise),
@@ -3987,31 +3989,43 @@ mode, off by default), `DiscordCallCapture` (*The Discord app only* or
 `DiscordCallOutput` (*Martlet's usual output* or a playback device, a virtual
 cable marked *(virtual cable)*), `DiscordCallAlsoSpeakers`,
 `DiscordCallBargeIn`, `DiscordCallCameraBackground` (*Green*, *Blue*,
-*Magenta*, *Black*, then *Picture: <title>* for each of Martlet's pictures on
-this PC, newest first), `DiscordCallCamera` (*Open camera view* / *Close camera
+*Magenta*, *Black*, and *Picture* once a picture is saved), the camera
+picture's `DiscordCallCameraFile` (*Choose a picture file...*, a file dialog),
+`DiscordCallCameraCreation` (*A picture from Creations...* and each picture
+creation on this PC; shown only when there is one, its titles never returned),
+`DiscordCallCameraPrompt` and `DiscordCallCameraDraw` (*Draw it*; shown only
+while Companion › Pictures has a place or `MARTLET_PICTURES_FIXTURE=1`, it
+draws a 16:9 picture, keeps it as a `picture` creation and uses it) and
+`DiscordCallCameraPicture` (the saved picture's preview),
+`DiscordCallCamera` (*Open camera view* / *Close camera
 view*) and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
 playback devices, looks for Discord and sets up a process loopback unstarted).
-Toggling, choosing and the camera button save `discord-calls.json` or show a
-window, so they need `--allow-ui-effects`. Returned (SafeValues):
+Toggling, choosing, the picture controls and the camera button save
+`discord-calls.json`, draw or show a window, so they need `--allow-ui-effects`.
+Returned (SafeValues):
 `DiscordCallStatus` (*Off. Martlet isn't in your Discord calls.* or *On.
 Martlet hears the Discord app* (or *hears everything this PC plays except
 itself*)*, sees who talks: <source>, and speaks into <output>.*),
 `DiscordCallAttribution` (*Who is talking: the Discord window; 2 people named
 so far.*, never who), `DiscordCallOutputStatus` (where Martlet's voice goes,
 or that the chosen output isn't connected), `DiscordCallCameraStatus` (open
-or closed, with its background: *green* or *the picture "<title>"*, and why a
-chosen picture can't show), `DiscordCallDoctor` (Check this PC's result)
-and the three choices. While the mode is on, every reply on a route that does
-function calling also gets `set_camera_background` (last among Martlet's own
-tools): `color`, `picture` (a picture creation's id) or `draw` (a new 16:9
-picture drawn as a `picture-N` job and used when it's ready), so Martlet changes
-its own webcam background; the desktop log notes *Discord call:
-set_camera_background chose ...*, and `discord_call_check`'s `saved` reports
-`cameraBackground`, `cameraPicture`, `cameraPictureHere` and `cameraTool`. While the mode is on, the talk window's `LivePcAudio`
+or closed, with its background), `DiscordCallCameraPictureStatus` (*The
+camera shows a picture from a file.* / *from Creations* / *Martlet drew*,
+*Drawing it on ...…*, or why a picture couldn't be used; never a title or the
+instruction), `DiscordCallDoctor` (Check this PC's result)
+and the three choices. While the mode is on, the talk window's `LivePcAudio`
 line says *In your Discord call.* or *Hearing someone in your Discord call…*
 (its `help` is the mode's line) and lines from the call show in
 `LiveHistory` as bubbles labelled *Discord call*, each starting with who said
 it (*Alice in the call: ...*). `discord_call_check` reads the same mode.
+While the mode is on, every reply on a route that does function calling also
+gets `set_camera_background` (last among Martlet's own tools): `color`,
+`picture` (a picture creation's id) or `draw` (a new 16:9 picture drawn as a
+`picture-N` job and used when it's ready), so Martlet changes its own webcam
+background. It updates `DiscordCallCameraPictureStatus` like the card's own
+choices (*...a picture from Creations* / *a picture Martlet drew*, never a
+title), and the desktop log notes *Discord call: set_camera_background chose
+...*.
 
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership

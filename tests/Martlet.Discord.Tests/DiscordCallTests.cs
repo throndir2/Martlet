@@ -214,14 +214,12 @@ public sealed class DiscordCallTests
             var saved = fresh with
             {
                 On = true, Capture = DiscordCallCapture.EverythingButMartlet, OwnerName = " Ben\u0007 ", OutputId = "{0.0.0}.{cable}",
-                OutputName = "CABLE Input (VB-Audio Virtual Cable)", CameraBackground = DiscordCameraBackground.Magenta,
-                CameraPicture = "a1b2c3d4"
+                OutputName = "CABLE Input (VB-Audio Virtual Cable)", CameraBackground = DiscordCameraBackground.Magenta
             };
             Assert.True(saved.Save(directory));
             var loaded = DiscordCallPreferences.Load(directory);
             Assert.Equal(saved with { OwnerName = "Ben" }, loaded);
             Assert.Equal("#FF00FF", loaded.CameraColor);
-            Assert.Null((saved with { CameraPicture = "not a key" }).Normalized().CameraPicture);
             File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{ not json");
             Assert.False(DiscordCallPreferences.Load(directory).On);
             File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{\"On\":true,\"OutputId\":\"\",\"OutputName\":\"x\"}");
@@ -229,6 +227,35 @@ public sealed class DiscordCallTests
             Assert.True(blank.On);
             Assert.Null(blank.OutputId);
             Assert.Null(blank.OutputName);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void TheCameraKeepsAPictureAndFallsBackToGreenWithoutIt()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-calls-").FullName;
+        try
+        {
+            Assert.False(DiscordCallPreferences.HasPicture(directory));
+            Assert.NotNull(DiscordCallPreferences.SavePicture(directory, [1, 2, 3, 4]));
+            Assert.False(DiscordCallPreferences.HasPicture(directory));
+            // A 1x1 PNG.
+            var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+            Assert.Null(DiscordCallPreferences.SavePicture(directory, png));
+            Assert.True(DiscordCallPreferences.HasPicture(directory));
+            Assert.Equal(png, File.ReadAllBytes(DiscordCallPreferences.PicturePath(directory)));
+            var saved = new DiscordCallPreferences { CameraBackground = DiscordCameraBackground.Picture, CameraPicture = DiscordCameraPictureSource.Drawn };
+            Assert.True(saved.Save(directory));
+            var loaded = DiscordCallPreferences.Load(directory);
+            Assert.Equal(saved, loaded);
+            Assert.Equal("#000000", loaded.CameraColor);
+            Assert.Equal("a picture Martlet drew", loaded.CameraDescription);
+            File.Delete(DiscordCallPreferences.PicturePath(directory));
+            var gone = DiscordCallPreferences.Load(directory);
+            Assert.Equal(DiscordCameraBackground.Green, gone.CameraBackground);
+            Assert.Null(gone.CameraPicture);
+            Assert.Equal("green", gone.CameraDescription);
         }
         finally { Directory.Delete(directory, true); }
     }

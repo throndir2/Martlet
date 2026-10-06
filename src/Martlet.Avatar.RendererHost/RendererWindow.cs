@@ -287,19 +287,14 @@ internal sealed class RendererWindow : Window
             var color = (Color)ColorConverter.ConvertFromString(request.Background);
             var brush = new SolidColorBrush(color);
             brush.Freeze();
-            var behind = request.Picture is { } picture ? CameraPicture(picture) ?? (Brush)brush : brush;
-            var first = camera is null;
             camera ??= (Left, Top, Width, Height, Topmost);
-            Background = brush;
-            viewport.Background = behind;
-            if (first)
-            {
-                var area = SystemParameters.WorkArea;
-                Width = Math.Min(960, area.Width);
-                Height = Width * 9 / 16;
-                Left = area.Left + (area.Width - Width) / 2;
-                Top = area.Top + (area.Height - Height) / 2;
-            }
+            Background = CameraPicture(request.Picture) ?? (Brush)brush;
+            viewport.Background = request.Picture is null ? brush : Brushes.Transparent;
+            var area = SystemParameters.WorkArea;
+            Width = Math.Min(960, area.Width);
+            Height = Width * 9 / 16;
+            Left = area.Left + (area.Width - Width) / 2;
+            Top = area.Top + (area.Height - Height) / 2;
             Topmost = false;
             ShowInTaskbar = true;
             Title = "Martlet camera";
@@ -316,29 +311,40 @@ internal sealed class RendererWindow : Window
         SendView();
     }
 
-    // A picture background for the camera view (Martlet sends at most 1280x720), cropped to fill the window. One that can't be
-    // read leaves the solid color (logged), never stopping the character.
-    private static ImageBrush? CameraPicture(string base64)
+    // The camera view's picture, filling the window; null (the color shows) when there's none or it can't be read.
+    private static ImageBrush? CameraPicture(string? path)
     {
+        if (path is null) return null;
         try
         {
-            var bytes = Convert.FromBase64String(base64);
+            if (!Path.IsPathFullyQualified(path)) throw new InvalidDataException("The camera picture's path isn't a full path.");
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is 0 or > 24 * 1024 * 1024) throw new InvalidDataException("The camera picture is missing or too large.");
+            var bytes = File.ReadAllBytes(path);
+            int width;
+            using (var probe = new MemoryStream(bytes, writable: false))
+                width = System.Windows.Media.Imaging.BitmapDecoder.Create(probe, System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile |
+                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation, System.Windows.Media.Imaging.BitmapCacheOption.None).Frames[0].PixelWidth;
             var image = new System.Windows.Media.Imaging.BitmapImage();
-            using var stream = new MemoryStream(bytes, writable: false);
-            image.BeginInit();
-            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            image.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile;
-            image.StreamSource = stream;
-            image.EndInit();
+            using (var stream = new MemoryStream(bytes, writable: false))
+            {
+                image.BeginInit();
+                image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                image.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile;
+                if (width > 1920) image.DecodePixelWidth = 1920;
+                image.StreamSource = stream;
+                image.EndInit();
+            }
             image.Freeze();
-            var brush = new ImageBrush(image) { Stretch = Stretch.UniformToFill };
+            var brush = new ImageBrush(image) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Center };
             brush.Freeze();
+            ErrorLog.Info($"Camera view: on a {image.PixelWidth}x{image.PixelHeight} picture.");
             return brush;
         }
-        catch (Exception error) when (error is FormatException or NotSupportedException or FileFormatException or IOException or
-            InvalidOperationException or ArgumentException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException or InvalidDataException or
+            FileFormatException or ArgumentException or InvalidOperationException)
         {
-            ErrorLog.Info($"The camera picture can't be read ({error.GetType().Name}); the camera view shows its color instead.");
+            ErrorLog.Warn($"Camera view: couldn't show its picture ({error.Message}), so it shows its color.");
             return null;
         }
     }
@@ -990,7 +996,7 @@ internal sealed class RendererWindow : Window
                 if (message.Kind == "camera")
                 {
                     UseCamera(RendererProtocol.Data<RendererCamera>(message));
-                    await ReplyAsync("ok", new { camera = camera is not null, picture = viewport.Background is ImageBrush });
+                    await ReplyAsync("ok", new { camera = camera is not null });
                     continue;
                 }
                 if (message.Kind == "snapshot")

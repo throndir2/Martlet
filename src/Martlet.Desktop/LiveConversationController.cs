@@ -2186,8 +2186,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         if (arguments.Draw is { } draw)
             return StartPicture(operation, configured, draw, CameraBackgroundTool.Name,
-                (creation, later) => camera.SetBackgroundAsync(null, creation.Key, later));
-        var result = await camera.SetBackgroundAsync(arguments.Color, arguments.Picture, token).ConfigureAwait(false);
+                (creation, later) => camera.SetBackgroundAsync(null, creation.Key, drawn: true, later));
+        var result = await camera.SetBackgroundAsync(arguments.Color, arguments.Picture, drawn: false, token).ConfigureAwait(false);
         tools?.Record("Martlet", CameraBackgroundTool.Name, arguments.Color is { } color ? "color " + color : "picture", "", false);
         ErrorLog.Info($"Discord call: set_camera_background chose {(arguments.Color is { } chosen ? chosen.ToString().ToLowerInvariant() : "a picture")}.");
         return new(result);

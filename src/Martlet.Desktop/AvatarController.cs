@@ -271,21 +271,22 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private int voiceMuted;
     private RendererCamera? camera;
 
-    /// <summary>The camera view (its color and any picture background) while the character shows in its own 16:9 window for OBS
+    /// <summary>The camera view (its background color and any picture) while the character shows in its own 16:9 window for OBS
     /// (Martlet in your Discord calls), or null for the usual overlay.</summary>
     internal RendererCamera? Camera => Volatile.Read(ref camera);
 
-    /// <summary>Opens or changes the camera view (the character on a solid color or a picture in an ordinary 16:9 window) or
-    /// closes it (null). Returns whether the showing character now shows it; hidden, it shows that way when it shows next.</summary>
+    /// <summary>Opens the camera view (the character on <paramref name="view"/>'s solid color or picture in an ordinary 16:9
+    /// window) or closes it (null). Returns whether the showing character now shows it; hidden, it shows that way when it shows
+    /// next.</summary>
     internal async Task<bool> SetCameraAsync(RendererCamera? view, CancellationToken token)
     {
         await changes.WaitAsync(token);
         try
         {
-            Volatile.Write(ref camera, view is { On: true } ? view : null);
+            Volatile.Write(ref camera, view);
             if (renderer is not { HasExited: false } current || profile is null) return false;
             await current.SendAsync("camera", view ?? new RendererCamera(false), token);
-            return view is { On: true };
+            return view is not null;
         }
         finally { changes.Release(); }
     }

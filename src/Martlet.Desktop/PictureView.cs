@@ -29,34 +29,4 @@ internal static class PictureView
             return null;
         }
     }
-
-    /// <summary>A picture as a JPEG for the camera view's background: at most 1280x720 and <paramref name="maximumBytes"/> (it
-    /// travels in one renderer message), lowering the quality and then the size until it fits. Null when it can't be read.</summary>
-    internal static byte[]? CameraJpeg(byte[] bytes, int maximumBytes = 180_000)
-    {
-        try
-        {
-            using var stream = new MemoryStream(bytes, writable: false);
-            var frame = BitmapDecoder.Create(stream, BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.OnLoad).Frames[0];
-            foreach (var (width, height) in new[] { (1280, 720), (960, 540), (640, 360) })
-            {
-                var scale = Math.Min(1, Math.Min((double)width / frame.PixelWidth, (double)height / frame.PixelHeight));
-                BitmapSource sized = scale < 1 ? new TransformedBitmap(frame, new ScaleTransform(scale, scale)) : frame;
-                foreach (var quality in new[] { 85, 70, 55 })
-                {
-                    var encoder = new JpegBitmapEncoder { QualityLevel = quality };
-                    encoder.Frames.Add(BitmapFrame.Create(sized));
-                    using var output = new MemoryStream();
-                    encoder.Save(output);
-                    if (output.Length <= maximumBytes) return output.ToArray();
-                }
-            }
-            return null;
-        }
-        catch (Exception error) when (error is NotSupportedException or FileFormatException or IOException or InvalidOperationException or ArgumentException)
-        {
-            ErrorLog.Info($"Pictures: couldn't use a picture as the camera background ({error.Message}).");
-            return null;
-        }
-    }
 }
