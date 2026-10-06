@@ -39,29 +39,30 @@
                     <!-- No fixed accessible name: the status text itself is what screen readers announce (and MCP reads). -->
                     <TextBlock x:Name="ResultText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveStatus"/>
-                    <!-- While vision is on: what Martlet is watching, how its last look went and why it is holding off. -->
+                    <!-- While vision is on: what Martlet is watching, a look in progress or why it is holding off; its tooltip
+                         (help in MCP) says how the last look went. -->
                     <TextBlock x:Name="VisionStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveVisionStatus"/>
                     <!-- While Martlet decides where the character looks (Companion › Vision): what its eyes are on now. -->
                     <TextBlock x:Name="GazeStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveGaze"/>
-                    <!-- While Hear what this PC plays is on: whether Martlet hears the PC now, or why it can't. -->
+                    <!-- While Hear what this PC plays is on: whether Martlet hears the PC now, or why it can't; its tooltip says how. -->
                     <TextBlock x:Name="PcAudioText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LivePcAudio"/>
                     <!-- While Martlet decides how chatty it is and vision or hearing this PC is on: the level it picked. -->
                     <TextBlock x:Name="ChattinessText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveChattiness"/>
-                    <!-- How many recent exchanges the next reply sees as context (kept across settings changes). -->
-                    <!-- Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
-                    <StackPanel x:Name="ContextRow" Orientation="Horizontal" Margin="0,2,0,0" Visibility="Collapsed">
-                        <TextBlock x:Name="ContextText" Style="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center"
-                                   AutomationProperties.AutomationId="LiveContext"/>
+                    <!-- How many recent exchanges the next reply sees as context (kept across settings changes); its tooltip has
+                         the tokens. Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
+                    <WrapPanel x:Name="ContextRow" Margin="0,2,0,0" Visibility="Collapsed">
+                        <TextBlock x:Name="ContextText" Style="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Margin="0,0,10,0" AutomationProperties.AutomationId="LiveContext"/>
                         <Button x:Name="RefreshContextButton" Content="_Refresh context" Click="RefreshContext_Click" Style="{DynamicResource LinkButton}"
-                                FontSize="12" Padding="0" Margin="10,0,0,0" VerticalAlignment="Center" ToolTipService.ShowOnDisabled="True"
+                                FontSize="12" Padding="0" VerticalAlignment="Center" ToolTipService.ShowOnDisabled="True"
                                 ToolTip="Forget the earlier exchanges so Martlet's next reply starts fresh. The messages stay on screen."
                                 AutomationProperties.AutomationId="LiveRefreshContext"
                                 AutomationProperties.HelpText="Forgets the earlier exchanges so the next reply starts fresh. The messages stay on screen."/>
-                    </StackPanel>
+                    </WrapPanel>
                 </StackPanel>
             </DockPanel>
         </Border>

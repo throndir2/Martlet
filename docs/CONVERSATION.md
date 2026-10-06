@@ -1091,7 +1091,7 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   the microphone is still hearing or transcribing you, what the PC played
   waits for your words (at most 8 seconds) so your voice played back never
   shows; a line let go before your words came is still removed once they do.
-  The `LivePcAudio` line then adds *This PC plays your voice back too; Martlet
+  The `LivePcAudio` line's tooltip then adds *This PC plays your voice back too; Martlet
   left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
@@ -1106,9 +1106,9 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   unanswered.
 
 The talk window's `LivePcAudio` line says whether Martlet hears the PC now
-(without its own voice, or only on the output you hear while it pauses for
-Martlet's voice), how many lines of your own voice played back it left out, or
-why it can't. The Companion card's status names the other output in use.
+(*Also hearing this PC.*) or why it can't; its tooltip says how (without its
+own voice, or only on the output you hear while it pauses for Martlet's voice)
+and how many lines of your own voice played back it left out. The Companion card's status names the other output in use.
 `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
 left out without recording anything, says which outputs are in use and what

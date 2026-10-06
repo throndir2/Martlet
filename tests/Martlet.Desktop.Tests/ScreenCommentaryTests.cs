@@ -116,12 +116,13 @@ public sealed class ScreenCommentaryTests
     [Fact]
     public void The_talk_window_and_companion_say_what_martlet_decided()
     {
-        Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Quiet, false, null));
-        Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.Quiet, Chattiness.Quiet, true, null));
-        Assert.Equal("Martlet decides how chatty it is: normal right now.",
-            LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Normal, true, null));
-        Assert.StartsWith("Martlet decides how chatty it is: chatty right now (since ",
-            LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Chatty, true, DateTime.Now));
+        Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Quiet, false));
+        Assert.Equal("", LiveConversationWindow.ChattinessLine(ChattinessChoice.Quiet, Chattiness.Quiet, true));
+        Assert.Equal("Chattiness: normal (Martlet decides).",
+            LiveConversationWindow.ChattinessLine(ChattinessChoice.MartletDecides, Chattiness.Normal, true));
+        Assert.Equal("Martlet picks how chatty it is about what it sees and hears.", LiveConversationWindow.ChattinessDetail(Chattiness.Normal, null));
+        Assert.StartsWith("Martlet picks how chatty it is about what it sees and hears and switched to chatty at ",
+            LiveConversationWindow.ChattinessDetail(Chattiness.Chatty, DateTime.Now));
         Assert.EndsWith("Right now it is quiet.", MainWindow.ChattinessStatus(ChattinessChoice.MartletDecides, Chattiness.Quiet));
         Assert.Equal(MainWindow.ChattinessAbout, MainWindow.ChattinessStatus(ChattinessChoice.MartletDecides, null));
         Assert.StartsWith("Chatty:", MainWindow.ChattinessStatus(ChattinessChoice.Chatty, Chattiness.Quiet));

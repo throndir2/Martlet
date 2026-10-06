@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -1221,7 +1222,7 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
-            Assert.Equal("Also hears what this PC plays once you start listening.", Control<TextBlock>(window, "PcAudioText").Text);
+            Assert.Equal("Also hears this PC once you start listening.", Control<TextBlock>(window, "PcAudioText").Text);
             Click(window, "MicChip");
             using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
                 while (!window.Messages.Any(m => m.Role == ChatRole.Martlet))
@@ -1244,6 +1245,21 @@ public sealed class LiveConversationTests
         }
         finally { window.Close(); }
     });
+
+    [Fact]
+    public void TheContextRowStaysShortAndItsTooltipHasTheTokens()
+    {
+        var budget = new ContextBudget(32_768, 4_096, ContextSource.Saved, null);
+        Assert.Equal("Keeps the last exchange in mind.", LiveConversationWindow.ContextLine(1, 300, budget));
+        Assert.Equal("Keeps the last 8 exchanges in mind.", LiveConversationWindow.ContextLine(8, 1_593, budget));
+        Assert.Equal("Keeps the last 8 exchanges in mind.", LiveConversationWindow.ContextLine(8, 1_593, null));
+        Assert.Equal("Keeps the last 90 exchanges in mind; replies send the newest that fit.",
+            LiveConversationWindow.ContextLine(90, 40_000, budget));
+        Assert.Equal($"About {1_593:N0} tokens of its {32_768:N0}-token context.", LiveConversationWindow.ContextDetail(1_593, budget));
+        Assert.Equal($"About {40_000:N0} tokens, more than fit its {32_768:N0}-token context. Last reply: 75% of its {2_000:N0} " +
+            "input tokens came from the model's cache.", LiveConversationWindow.ContextDetail(40_000, budget, (2_000, 1_500)));
+        Assert.Equal("", LiveConversationWindow.ContextDetail(1_593, null));
+    }
 
     [Fact]
     public void PcLinesAreMarkedInTheOrderTheyWereHeard() =>
@@ -1277,7 +1293,11 @@ public sealed class LiveConversationTests
             Assert.Single(window.Messages, m => m.Role == ChatRole.Martlet);
             Assert.DoesNotContain(window.Messages, m => m.IsPcAudio);
             Assert.DoesNotContain("[PC audio]", Encoding.UTF8.GetString(fixture.Llm.Body), StringComparison.Ordinal);
-            Assert.EndsWith("This PC plays your voice back too; Martlet left out 1 line of it.", Control<TextBlock>(window, "PcAudioText").Text);
+            // The line stays short; how many lines of your voice it left out is in its tooltip (MCP's help).
+            var pcLine = Control<TextBlock>(window, "PcAudioText");
+            Assert.DoesNotContain("left out", pcLine.Text);
+            Assert.EndsWith("This PC plays your voice back too; Martlet left out 1 line of it.", AutomationProperties.GetHelpText(pcLine));
+            Assert.Equal(AutomationProperties.GetHelpText(pcLine), pcLine.ToolTip);
         }
         finally { window.Close(); }
     });
@@ -1528,6 +1548,30 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    [Fact]
+    public Task TheVisionLineSaysOnlyWhatMartletWatches() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("[pass]");
+        var glancer = new FrameGlancer();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true,
+            ScreenScope: (int)WatchKind.ActiveWindow), glancer);
+        try
+        {
+            await Loaded(window);
+            Click(window, "VisionChip");
+            await fixture.Advance(() => glancer.Captures > 0);
+            await Ticks(fixture);
+            var line = Control<TextBlock>(window, "VisionStatusText");
+            // No "First look soon.", "You're talking; not interrupting." or last look in the line; those are its tooltip.
+            Assert.True(line.Text is "Watching your active window." or "Watching your active window. Taking a look…", line.Text);
+            var help = System.Windows.Automation.AutomationProperties.GetHelpText(line);
+            Assert.True(help.Length == 0 || help.StartsWith("Last look ", StringComparison.Ordinal), help);
+            Assert.DoesNotContain(FrameGlancer.Title, line.Text + help);
+        }
+        finally { window.End(); }
+    });
+
     /// <summary>Lets the window's timer run while the clock passes a few capture ticks.</summary>
     private static async Task Ticks(LiveFixture fixture)
     {
@@ -1547,6 +1591,21 @@ public sealed class LiveConversationTests
         {
             Interlocked.Increment(ref captures);
             return new(null, GlanceSkip.MartletInFront);
+        }
+        public TimeSpan UserIdle => TimeSpan.Zero;
+        public void Release() { }
+    }
+
+    /// <summary>A window in front that always shows a tiny picture with a private title.</summary>
+    private sealed class FrameGlancer : IScreenGlancer
+    {
+        internal const string Title = "Private window title";
+        private int captures;
+        internal int Captures => Volatile.Read(ref captures);
+        public GlanceResult Capture(ScreenScope scope)
+        {
+            Interlocked.Increment(ref captures);
+            return new(new ScreenFrame(new byte[2 * 2 * 4], 2, 2, Title, 0.5), GlanceSkip.None);
         }
         public TimeSpan UserIdle => TimeSpan.Zero;
         public void Release() { }
@@ -2116,15 +2175,16 @@ public sealed class LiveConversationTests
         try
         {
             await Loaded(window);
-            Assert.Equal("Martlet decides how chatty it is: normal right now.", Control<TextBlock>(window, "ChattinessText").Text);
+            Assert.Equal("Chattiness: normal (Martlet decides).", Control<TextBlock>(window, "ChattinessText").Text);
             Assert.Equal(Visibility.Visible, Control<TextBlock>(window, "ChattinessText").Visibility);
             fixture.Answer("Got it, I'll hush. ", "[chattiness:quiet]");
             Control<TextBox>(window, "InputText").Text = "Please be quiet for a bit.";
             Click(window, "SendButton");
             await fixture.Finish();
             await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Got it, I'll hush."));
-            await Until(() => Control<TextBlock>(window, "ChattinessText").Text.StartsWith(
-                "Martlet decides how chatty it is: quiet right now (since ", StringComparison.Ordinal));
+            await Until(() => Control<TextBlock>(window, "ChattinessText").Text == "Chattiness: quiet (Martlet decides).");
+            Assert.StartsWith("Martlet picks how chatty it is about what it sees and hears and switched to quiet at ",
+                AutomationProperties.GetHelpText(Control<TextBlock>(window, "ChattinessText")));
             Assert.Contains(window.Messages, m => m.Role == ChatRole.Note &&
                 m.Text == LiveConversationWindow.ChattinessSwitched(Chattiness.Normal, Chattiness.Quiet));
             Assert.Contains("Your chattiness right now: normal.", Encoding.UTF8.GetString(fixture.Llm.Body));
