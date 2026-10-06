@@ -588,6 +588,8 @@
                             </CheckBox>
                             <TextBlock x:Name="BackgroundStatusText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="BackgroundStatus"/>
+                            <TextBlock x:Name="StayAwakeText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="StayAwakeStatus"/>
                         </StackPanel>
                     </Border>
 
