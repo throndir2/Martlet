@@ -9,6 +9,7 @@ namespace Martlet.Gateway;
 internal sealed partial class GatewayHttpApplication
 {
     internal const int MaximumPairingRequestBytes = 8_192;
+    internal static readonly TimeSpan PairingBodyDeadline = TimeSpan.FromSeconds(10);
     private static readonly JsonSerializerOptions Json = CreateJson();
     private static readonly string? MartletVersion = typeof(GatewayHttpApplication).Assembly.GetName().Version?.ToString(3);
     private readonly GatewayHostIdentity identity;
@@ -47,16 +48,24 @@ internal sealed partial class GatewayHttpApplication
         Logs = new(identity.HostId, clock);
         Network = new(identity, credentials, clock, (level, message) => Logs.Own(level, message));
         ApiKeys = new(identity.HostId, clock);
+        Guard = new(clock, (level, message, repeatKey) => Logs.Own(level, message, repeatKey));
     }
+
+    /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>
+    internal GatewayRequestGuard Guard { get; }
 
     internal async Task InvokeAsync(HttpContext context)
     {
         var traceId = TraceId();
+        var routeClass = "credential";
         try
         {
             GatewayRules.Require(context.Request.IsHttps, "binding.unsafe");
             var rawTarget = context.Features.Get<IHttpRequestFeature>()?.RawTarget;
             GatewayRules.Require(rawTarget is not null && rawTarget.Length <= 256, "request.invalid");
+            routeClass = GatewayRequestGuard.RouteClass(rawTarget!);
+            context.Items[GatewayGuard.ContextItem] = Guard;
+            Guard.Admit(context, routeClass);
             if (context.Request.Method == HttpMethods.Get && rawTarget == "/health/live")
             {
                 EnsureEmptyRequest(context.Request);
@@ -82,6 +91,7 @@ internal sealed partial class GatewayHttpApplication
                 var proof = await ReadPairingAsync<GatewayPairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
                 var credential = pairing.Exchange(proof, context.RequestAborted);
                 LogPaired(credential);
+                Guard.Succeeded(context, routeClass, "paired", credential.DeviceId);
                 await WritePairingAsync(context, credential, null).ConfigureAwait(false);
                 return;
             }
@@ -90,6 +100,7 @@ internal sealed partial class GatewayHttpApplication
                 var proof = await ReadPairingAsync<GatewayCodePairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
                 var result = pairing.Exchange(proof, context.RequestAborted);
                 LogPaired(result.Credential);
+                Guard.Succeeded(context, routeClass, "paired", result.Credential.DeviceId);
                 await WritePairingAsync(context, result.Credential, result.HostProof).ConfigureAwait(false);
                 return;
             }
@@ -98,7 +109,13 @@ internal sealed partial class GatewayHttpApplication
                 var proof = await ReadPairingAsync<GatewayMemberPairingProof>(context.Request, context.RequestAborted).ConfigureAwait(false);
                 var credential = Network.PairMember(proof, context.RequestAborted);
                 LogMemberPaired(credential);
+                Guard.Succeeded(context, routeClass, "paired", credential.DeviceId);
                 await WritePairingAsync(context, credential, null).ConfigureAwait(false);
+                return;
+            }
+            if (rawTarget == SecurityAuditPath)
+            {
+                await InvokeSecurityAuditAsync(context).ConfigureAwait(false);
                 return;
             }
             if (IsNetworkTarget(rawTarget!))
@@ -254,6 +271,7 @@ internal sealed partial class GatewayHttpApplication
         }
         catch (GatewayProtocolException error)
         {
+            Guard.Failed(context, routeClass, error.Failure.Code);
             await WriteFailureAsync(context, traceId, error.Failure).ConfigureAwait(false);
         }
         catch (BadHttpRequestException error)
@@ -306,14 +324,24 @@ internal sealed partial class GatewayHttpApplication
             request.ContentLength > MaximumPairingRequestBytes ? "request.too_large" : "request.invalid");
         using var output = new MemoryStream();
         var buffer = new byte[4096];
-        while (true)
+        // Anyone may call these routes, so a slow sender can't hold the connection open: the whole body within 10 seconds.
+        using var deadline = new CancellationTokenSource(PairingBodyDeadline);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
         {
-            var read = await request.Body.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (read == 0)
-                break;
-            if (output.Length + read > MaximumPairingRequestBytes)
-                throw new GatewayProtocolException("request.too_large");
-            output.Write(buffer, 0, read);
+            while (true)
+            {
+                var read = await request.Body.ReadAsync(buffer, linked.Token).ConfigureAwait(false);
+                if (read == 0)
+                    break;
+                if (output.Length + read > MaximumPairingRequestBytes)
+                    throw new GatewayProtocolException("request.too_large");
+                output.Write(buffer, 0, read);
+            }
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new GatewayProtocolException("request.timeout");
         }
         GatewayRules.Require(output.Length > 0, "request.invalid");
         var bytes = output.ToArray();
