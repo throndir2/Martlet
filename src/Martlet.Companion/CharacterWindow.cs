@@ -67,7 +67,7 @@ public sealed class CharacterWindow : Window
         }, TimeSpan.FromSeconds(2));
         Opened += (_, _) =>
         {
-            if (Screens.ScreenFromWindow(this)?.WorkingArea ?? Screens.Primary?.WorkingArea is { } area)
+            if ((Screens.ScreenFromWindow(this) ?? Screens.Primary)?.WorkingArea is { } area)
                 Position = new PixelPoint(area.Right - (int)(Width * RenderScaling) - 24, area.Bottom - (int)(Height * RenderScaling) - 24);
             if (TryGetPlatformHandle() is { } handle)
             {
