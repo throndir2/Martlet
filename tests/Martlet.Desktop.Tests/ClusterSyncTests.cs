@@ -1,6 +1,8 @@
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
+using Martlet.Core.Settings;
+using Martlet.Core.Sync;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -41,6 +43,74 @@ public sealed class ClusterSyncTests
         Assert.Equal("gpu-d", ClusterSync.FailoverTarget(withLogs, ClusterJobs.Thinking, "gpu-a", probes, hardware));
         Assert.Null(ClusterSync.FailoverTarget(plan, ClusterJobs.Listening, "gpu-a", probes, hardware));
         Assert.Null(ClusterSync.FailoverTarget(plan, ClusterJobs.Thinking, "gpu-a", [Probe("gpu-a", false), Probe("gpu-e", true)], hardware));
+    }
+
+    private static AppSettings LocalOllama(string model) =>
+        ChatCompletionsSetup.SelectRoute(SetupSettings.Begin(null), MainWindow.LocalOllamaBaseUrl, model);
+
+    private static SharedSetting Shared(SharedRoute route, string by, DateTimeOffset at) => new()
+    {
+        Key = "thinking", Value = AppSettingsSections.Write(route), Revision = at.ToUnixTimeMilliseconds(), UpdatedAt = at, UpdatedBy = by
+    };
+
+    [Fact]
+    public void A_new_computer_never_records_Martlet_defaults_over_the_network_choice()
+    {
+        // A computer that just joined does nothing yet: it records nothing, so the plan's host reaches it a check later.
+        Assert.False(ClusterSync.Seeds(ClusterSync.Local(ClusterJobs.Thinking, SetupSettings.Begin(null), null)));
+        Assert.False(ClusterSync.Seeds(ClusterSync.Local(ClusterJobs.LipSync, null, null)));
+        Assert.True(ClusterSync.Seeds(new LocalJob("diva-host", false)));
+        Assert.True(ClusterSync.Seeds(new LocalJob(null, true)));
+    }
+
+    [Fact]
+    public void Thinking_with_this_PCs_own_Ollama_is_done_by_this_PC_for_every_computer_through_its_host_service()
+    {
+        var settings = LocalOllama("gemma4:e4b");
+        Assert.Equal(new LocalJob(null, false), ClusterSync.Local(ClusterJobs.Thinking, settings, null));
+        var here = ClusterSync.Local(ClusterJobs.Thinking, settings, null, "diva-host");
+        Assert.Equal(new LocalJob("diva-host", false, true), here);
+        // Other jobs and other routes stay as they are.
+        Assert.Equal(new LocalJob(null, false), ClusterSync.Local(ClusterJobs.Listening, settings, null, "diva-host"));
+        Assert.Equal(new LocalJob(null, false),
+            ClusterSync.Local(ClusterJobs.Thinking, ChatCompletionsSetup.SelectRoute(SetupSettings.Begin(null), "https://openrouter.ai/api/v1",
+                "google/gemma-4-26b-a4b-it"), null, "diva-host"));
+
+        // It keeps its direct route when the plan names its own host service, or leaves the job to each computer's choice.
+        var plan = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "diva-host", false, false, null, "desktop-diva", Now);
+        Assert.True(ClusterSync.Matches(plan.For(ClusterJobs.Thinking)!, here));
+        Assert.True(ClusterSync.Matches(plan.Assign(ClusterJobs.Thinking, null, false, false, null, "desktop-a", Now).For(ClusterJobs.Thinking)!, here));
+        Assert.False(ClusterSync.Matches(plan.Assign(ClusterJobs.Thinking, "gpu-b", false, false, null, "desktop-a", Now).For(ClusterJobs.Thinking)!, here));
+        Assert.False(ClusterSync.Matches(plan.Assign(ClusterJobs.Thinking, null, false, false, null, "desktop-a", Now).For(ClusterJobs.Thinking)!,
+            new LocalJob("diva-host", false)));
+    }
+
+    [Fact]
+    public void The_computer_Thinking_was_set_up_on_takes_it_on_for_every_computer()
+    {
+        var settings = LocalOllama("gemma4:e4b");
+        var mine = ClusterSync.OwnOllama(settings);
+        var here = ClusterSync.Local(ClusterJobs.Thinking, settings, null, "diva-host");
+        var route = SharedRoute.From(mine!)!;
+        var setUpHere = Shared(route, "desktop-diva", Now.AddDays(-2));
+        var checkedAt = Now;
+        // A new computer's old default ("each computer's own choice") written after the owner set Thinking up on Diva.
+        var seeded = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, null, false, false, null, "desktop-new", Now.AddDays(-1)).For(ClusterJobs.Thinking);
+
+        Assert.True(ClusterSync.Claims(ClusterJobs.Thinking, seeded, here, setUpHere, mine, "desktop-diva", checkedAt));
+        Assert.True(ClusterSync.Claims(ClusterJobs.Thinking, null, here, setUpHere, mine, "desktop-diva", checkedAt));
+        // Not when another computer chose the shared route, a host does the job, the route differs, or this PC knows no host service.
+        Assert.False(ClusterSync.Claims(ClusterJobs.Thinking, seeded, here, Shared(route, "desktop-other", Now.AddDays(-2)), mine, "desktop-diva", checkedAt));
+        Assert.False(ClusterSync.Claims(ClusterJobs.Thinking, seeded, here, Shared(route with { Model = "gemma4:12b" }, "desktop-diva", Now.AddDays(-2)),
+            mine, "desktop-diva", checkedAt));
+        var hosted = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "gpu-b", false, false, null, "desktop-other", Now.AddDays(-1)).For(ClusterJobs.Thinking);
+        Assert.False(ClusterSync.Claims(ClusterJobs.Thinking, hosted, here, setUpHere, mine, "desktop-diva", checkedAt));
+        Assert.False(ClusterSync.Claims(ClusterJobs.Thinking, seeded, new LocalJob(null, false), setUpHere, mine, "desktop-diva", checkedAt));
+        Assert.False(ClusterSync.Claims(ClusterJobs.Listening, seeded, here, setUpHere, mine, "desktop-diva", checkedAt));
+        // A plan change newer than this PC's last look at the shared settings waits: the shared route may have changed with it.
+        Assert.False(ClusterSync.Claims(ClusterJobs.Thinking, seeded, here, setUpHere, mine, "desktop-diva", null));
+        var fresh = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, null, false, false, null, "desktop-other", Now).For(ClusterJobs.Thinking);
+        Assert.False(ClusterSync.Claims(ClusterJobs.Thinking, fresh, here, setUpHere, mine, "desktop-diva", checkedAt));
     }
 
     [Fact]
