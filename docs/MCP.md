@@ -2696,8 +2696,13 @@ needs `--allow-ui-effects`. With the character showing,
 to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
 whether the overlay took it and where it put it (to the left or right of the
 character's head, above it, or in its fixed place, with the bubble's screen
-position and size), and whether the text as laid out on screen lies inside the
-bubble (*holding all its text*, or *but its text doesn't fit inside it*).
+position and size), whether the text as laid out on screen lies inside the
+bubble (*holding all its text*, or *but its text doesn't fit inside it*), and
+whether the colors it is drawn in are the palette Martlet's windows use now
+(*in the Character dark colors*, or *but not in the Pink light colors (fill
+#..., outline #...)* naming each part that differs). The overlay reports the
+fill, outline, text and halo colors of the bubble as shown; they are the
+palette's Surface, Accent, Text and Glow (no halo in Windows' high contrast).
 Every bubble is sized to its whole text, including the first one after the
 bubble was hidden; very long speech widens it (up to 640 pixels) so it stays
 within half the screen's height. The bubble itself is drawn by the separate
