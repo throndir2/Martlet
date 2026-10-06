@@ -122,7 +122,7 @@ public static class SongTools
 
     /// <summary>What the model is told when the song started: its job, and to tell the user now unless it already did.</summary>
     public static string Started(BackgroundJob job, bool toldUser, bool writing) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(job.Kind.TimeLimit) }) + "\n" +
+        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(job.Kind.TimeLimit!.Value) }) + "\n" +
         (writing ? "The lyrics and music are being made now." : "The music is being made for those lyrics now.") +
         (toldUser
             ? " You already told the user, so add nothing more, or at most a few words."

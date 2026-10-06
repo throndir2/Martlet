@@ -692,9 +692,11 @@ throwaway certificate) on `127.0.0.1`, a desktop that pairs while at home
 through its paired client, then the host told to treat every connection as
 outside home, and a stranger's pinned HTTPS client. It runs
 `src\Martlet.NodeLinkCheck` (mode `exposure`, `ExposureRehearsal.cs`) and returns
-`{exitCode, report}` like `network_selftest`. Its steps: a pairing card used
-from outside is refused (`pair.outside_home`) and stays open; once the owner
-allows pairing from outside the same card pairs; five failed requests lock the
+`{exitCode, report}` like `network_selftest`. Its steps: a typed pairing code
+used from outside is refused (`pair.outside_home`, also as the desktop's code
+pairing sees it) and stays open; a one-use card opened for one named device
+pairs from outside without the opt-in; once the owner allows typed codes from
+outside the same code pairs; five failed requests lock the
 address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
@@ -1081,7 +1083,12 @@ an automatic `update` stops with `MARTLET-BUSY` naming all three adds; a
 waiting `--yes update` holds back a role change asked for after it
 (`later-change-waits-for-update`); once the adds are killed every waiting
 change continues (`waiting-changes-continue`); and no records are left in
-`engine.holders/` (`ended-changes-leave-no-records`). The desktop's reader
+`engine.holders/` (`ended-changes-leave-no-records`). With a fake `dotnet` and
+`systemctl`, `exposure` without options asks the gateway once and restarts
+nothing (`exposure-prints`), with options and no `--yes` or terminal it stops
+with *Nothing changed.* (`exposure-asks-first`), and `--yes exposure --outside
+... --treat-all-as-outside yes` passes exactly those options to the gateway's
+`owner-exposure` and restarts it (`exposure-saves-and-restarts`). The desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
 `/tmp/fake`): an automatic `setup` while an `add` engine session runs in the
@@ -1960,6 +1967,25 @@ quiet (Martlet decides).*) and in
 `logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
 Martlet decides).* It reads no credentials and contacts nothing.
 
+`vision_history_check` rehearses how what Martlet sees is kept in the
+conversation ([Screen commentary](SCREEN_COMMENTARY.md#what-martlet-saw-stays-in-the-conversation))
+with the desktop's production code: `prompts.seen` is Companion › Prompts ›
+*What you saw* as the data directory's settings.json sends it (optional
+absolute `dataDirectory`, default the current user's), `tag` the seen tag
+(`[seen:…]`, any words on one line) and `markers` the line markers
+(`[Screen]`, `[Camera]`). Each sample look reply (or `reply`, up to 1,024
+characters of one line) goes through the production speech segmenter and chat
+stripper with the seen and chattiness tags a look is offered (`spoken`,
+`shown`, `passed`, `tags`, `seen`: the description kept, `tagHidden`) and is
+kept in a production conversation buffer as the desktop keeps a look
+(`replacedPassedLook` when it took the place of the passed look before it),
+then a typed message that came with a picture. `history` is the conversation
+as the next reply sends it (`role`, `text`, `vision`, and `memoryReads`: what
+memory and learning names may read of a user line, null for a look). A running
+conversation's looks show in `logs_tail` `contains` `Vision:` as *Vision: the
+conversation keeps a screen glance (passed, described, in place of the passed
+look before it).* It reads no credentials and contacts nothing.
+
 `discord_text_check` feeds simulated Discord messages through the production
 [Discord](DISCORD.md) text pipeline (`DiscordTextChat` in `src\Martlet.Discord`,
 the one the desktop's bot uses) with a fake transport and a fixture reply engine
@@ -2137,7 +2163,7 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 `think_longer_status` shows Companion › **Deep thinking** as replies use it
 (optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
-*Off*; `effort` *Medium* or *High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12;
+*Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
 `delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
@@ -2212,7 +2238,10 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
+the conversation ending (dropped), all on a fixture kind with limits; and
+`deepThinkingUnlimited`: Deep thinking's own kind has no time or hourly limit
+(`timeLimit`/`hourlyLimit` *none*, 20 thinks `startedInARow`, one still running
+past the fixture's time limit, `requestTimeHours` 24). `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
@@ -2589,6 +2618,14 @@ than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
 example *Update available: Update to Martlet 0.40.0*); clicking it runs the
 same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
+paired host Martlet manages (this PC's host service, or one over SSH), `SelectedDeviceOutside`
+(in *Details*) returns its outside access in counts and choices only (*2 outside
+addresses; pairing codes from outside home refused; every connection treated as
+outside home.*), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+(`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
+default for Docker hosts; `HostInputCancel` closes it, `HostInputOk` runs
+`martlet-host exposure` and restarts the host's gateway, so it needs
+`--allow-ui-effects`). For a
 paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
 as this PC knows it, kept current by the release every host announces on each
 network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
@@ -3622,11 +3659,12 @@ runs on this PC and can't think something over while it answers you. ...*,
 does none of the conversation's jobs, so a think runs there alongside the
 conversation.*), `ThinkLongerStatus`
 (*On. When a task needs it, Martlet says it'll think it over and works on it in
-the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
+the background (Medium effort, no time limit, no limit on how many) while you keep
 talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
 from working: no Thinking, a paired host's model, a model that turned tools
-down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
-`ThinkLongerTime`, `ThinkLongerPerHour` and `ThinkLongerDelivery` (returned;
+down, nowhere to think in parallel) and the choices `ThinkLongerEffort` and
+`ThinkLongerDelivery` (returned; a think has no time limit or hourly limit, so
+there is no choice for either;
 `ui_select` on them saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
 `DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
@@ -3972,7 +4010,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

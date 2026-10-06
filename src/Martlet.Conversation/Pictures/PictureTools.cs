@@ -63,7 +63,7 @@ public static class PictureTools
 
     /// <summary>What the model is told when the picture started: its job, and to tell the user now unless it already did.</summary>
     public static string Started(BackgroundJob job, bool toldUser, string where) =>
-        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(job.Kind.TimeLimit) }) + "\n" +
+        JsonSerializer.Serialize(new { status = "started", id = job.Id, time_limit = BackgroundJobs.Duration(job.Kind.TimeLimit!.Value) }) + "\n" +
         $"It's being drawn now on {where}; it appears in the talk window when it's ready and a note tells you." +
         (toldUser ? " You already told the user, so add nothing more, or at most a few words."
             : " Tell the user now, in one short sentence in character, that you're drawing it.") +

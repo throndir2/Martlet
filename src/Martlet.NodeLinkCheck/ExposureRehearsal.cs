@@ -75,23 +75,35 @@ internal static class ExposureRehearsal
 
         host.Server.Exposure = new() { TreatAllAsOutside = true, InternetReachable = true };
         GatewayPairingCard? laptopCard = null;
-        await Run("Marked reachable from outside: a pairing card used from outside home is refused and stays open", async () =>
+        GatewayCodePairingCard? code = null;
+        await Run("Marked reachable from outside: a typed pairing code used from outside home is refused and stays open", async () =>
         {
-            laptopCard = host.Server.Pairing.OpenWindow(new() { DeviceId = "lab-laptop", DisplayName = "LAB-LAPTOP", Roles = [GatewayRole.Voice] });
-            var refused = await Call(HttpMethod.Post, "/martlet/v1/pair", PairingProof(laptopCard));
-            return (refused is { Status: 403, Code: "pair.outside_home" } && host.Server.Pairing.IsOpen(laptopCard.PairingId),
-                $"HTTP {refused.Status} {refused.Code}; window still open: {host.Server.Pairing.IsOpen(laptopCard.PairingId)}");
+            code = host.Server.Pairing.OpenCodeWindow(new() { Roles = [GatewayRole.Voice] });
+            var refused = await Call(HttpMethod.Post, "/martlet/v1/pair/code", "{}");
+            var stillOpen = host.Server.Pairing.IsOpen(code.PairingId);
+            string? desktopSees = null;
+            try { await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code.Code.Reveal(), "lab-phone", "LAB-PHONE", token); }
+            catch (Audio2FaceHostException error) { desktopSees = error.Code; }
+            return (refused is { Status: 403, Code: "pair.outside_home" } && stillOpen && desktopSees == "pair.outside_home" &&
+                    host.Server.Pairing.IsOpen(code.PairingId),
+                $"HTTP {refused.Status} {refused.Code}; window still open: {stillOpen}; the desktop's code pairing gets {desktopSees}");
         });
 
-        await Run("The owner allows pairing from outside home: the same card then pairs", async () =>
+        await Run("A card opened for one named device (as Martlet pairs with its own host service) pairs from outside without the opt-in", async () =>
         {
-            host.Server.Exposure = host.Server.Exposure with { AllowPairingOutsideHome = true };
-            var paired = await Call(HttpMethod.Post, "/martlet/v1/pair", PairingProof(laptopCard!));
+            laptopCard = host.Server.Pairing.OpenWindow(new() { DeviceId = "lab-laptop", DisplayName = "LAB-LAPTOP", Roles = [GatewayRole.Voice] });
+            var paired = await Call(HttpMethod.Post, "/martlet/v1/pair", PairingProof(laptopCard));
             var audit = await desktop!.ReadSecurityAuditAsync(token);
             return (paired.Status == 201 && audit.Events.Any(e => e is { Outcome: "success", Subject: "lab-laptop", SourceKind: "outside" }),
                 $"HTTP {paired.Status}; audit records the outside pairing: {audit.Events.Any(e => e.Subject == "lab-laptop" && e.Outcome == "success")}");
         });
-        // The refusal above counted once against this address's pairing; wait out anything left before guessing.
+
+        await Run("The owner allows pairing codes from outside home: the same typed code then pairs", async () =>
+        {
+            host.Server.Exposure = host.Server.Exposure with { AllowPairingOutsideHome = true };
+            var (pairing, _) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token);
+            return (pairing.DeviceId == "lab-phone", $"paired {pairing.DeviceId} with {pairing.HostId}");
+        });        // The refusal above counted once against this address's pairing; wait out anything left before guessing.
         await Run("A stranger guessing credentials is locked out after five failures, with Retry-After", async () =>
         {
             var codes = new List<string?>();
@@ -131,7 +143,7 @@ internal static class ExposureRehearsal
             var outcomes = audit.Events.GroupBy(e => e.Outcome).ToDictionary(g => g.Key, g => g.Count());
             var ok = audit is { InternetReachable: true, AllowPairingOutsideHome: true, TreatAllAsOutside: true } &&
                 outcomes.ContainsKey("refused") && outcomes.ContainsKey("throttled") && outcomes.ContainsKey("failure") &&
-                lines.Any(l => l.StartsWith("Refused a pairing attempt from 127.0.0.1", StringComparison.Ordinal)) &&
+                lines.Any(l => l.StartsWith("Refused a pairing code from 127.0.0.1", StringComparison.Ordinal)) &&
                 lines.Any(l => l.StartsWith("Locked out credential requests from 127.0.0.1 (outside home)", StringComparison.Ordinal)) &&
                 lines.Any(l => l.StartsWith("Throttled health requests from 127.0.0.1", StringComparison.Ordinal));
             return (ok, $"audit: {string.Join(", ", outcomes.Select(o => $"{o.Key} {o.Value}"))}; totals {audit.Successes}/{audit.Failures}/" +

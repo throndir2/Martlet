@@ -24,7 +24,8 @@ public interface IGatewayRequestGuard
     void Record(GatewayGuardRequest request, GatewayGuardOutcome outcome, string code, string? subject);
 }
 
-/// <param name="RouteClass">"health", "pair", "join", "signin" or "credential" (any signed or API-key route).</param>
+/// <param name="RouteClass">"health", "pair" (a one-use card opened for one named device), "pair-code" (a short typed code),
+/// "join", "signin" or "credential" (any signed or API-key route).</param>
 /// <param name="RemoteAddress">The connection's source address (normalized; never a forwarded header).</param>
 /// <param name="Subject">Who the request claims to be, e.g. "local:owner" or "oidc:&lt;iss&gt;|&lt;sub&gt;"; null if unknown.</param>
 public sealed record GatewayGuardRequest(string RouteClass, string RemoteAddress, string? Subject);
@@ -42,8 +43,9 @@ public sealed record GatewayExposure
     /// outside ones.</summary>
     public bool InternetReachable { get; init; }
 
-    /// <summary>Accept pairing windows (one-use cards and typed codes) from outside home. Off by default: a short code
-    /// can be guessed over the internet, so pairing stays on the home network unless the owner opts in.</summary>
+    /// <summary>Accept short typed pairing codes from outside home. Off by default: a short code could be guessed over the
+    /// internet, so typed codes work on the home network unless the owner opts in. A one-use card opened for one named
+    /// device (a 32-byte token, as Martlet uses to pair with its own host service) can't be guessed and works from anywhere.</summary>
     public bool AllowPairingOutsideHome { get; init; }
 
     /// <summary>Treat every connection as coming from outside home, for a host behind something that hides the real
@@ -183,7 +185,8 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
     internal static string RouteClass(string rawTarget) => rawTarget switch
     {
         "/health/live" or "/health/ready" => "health",
-        "/martlet/v1/pair" or GatewayPairingCode.Path => "pair",
+        "/martlet/v1/pair" => "pair",
+        GatewayPairingCode.Path => "pair-code",
         Martlet.Core.Network.NetworkPairing.Path => "join",
         _ when rawTarget.StartsWith("/martlet/v1/signin/", StringComparison.Ordinal) ||
                rawTarget == "/martlet/v1/signin" => "signin",
@@ -210,11 +213,11 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
         if (!Applies(routeClass, kind)) return;
         var address = Address(context);
         var now = clock.GetUtcNow();
-        if (routeClass == "pair" && kind == GatewaySourceKind.Outside && !exposure.AllowPairingOutsideHome)
+        if (routeClass == "pair-code" && kind == GatewaySourceKind.Outside && !exposure.AllowPairingOutsideHome)
         {
             Add(now, routeClass, address, kind, "refused", "pair.outside_home", null);
-            log(LogLevels.Warn, $"Refused a pairing attempt from {address} (outside home). Pairing codes work on the home network " +
-                "unless \"Allow pairing from outside home\" is on.", "guard-refused|" + address);
+            log(LogLevels.Warn, $"Refused a pairing code from {address} (outside home). Typed pairing codes work on the home network " +
+                "unless \"Allow pairing codes from outside home\" is on.", "guard-refused|" + address);
             CountFailure(now, routeClass + "|" + address);
             throw new GatewayProtocolException("pair.outside_home");
         }
@@ -302,7 +305,7 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
             Add(now, request.RouteClass, request.RemoteAddress, kind, "success", code, clean);
             lock (gate)
                 foreach (var key in keys) counters.Remove(key);
-            if (request.RouteClass is not ("pair" or "join")) // pairing already logs the device it paired
+            if (request.RouteClass is not ("pair" or "pair-code" or "join")) // pairing already logs the device it paired
                 log(LogLevels.Info, $"{Title(request.RouteClass)} succeeded for {clean ?? "a device"} from {request.RemoteAddress} ({Describe(kind)}).", null);
             return;
         }
@@ -386,7 +389,7 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
 
     private static string Title(string routeClass) => routeClass switch
     {
-        "pair" => "Pairing",
+        "pair" or "pair-code" => "Pairing",
         "join" => "Network pairing",
         "signin" => "Sign-in",
         _ => "Authentication"

@@ -367,6 +367,7 @@ internal static class HostActions
             HostVerb.Update => $"Update {ssh}",
             HostVerb.Setup => $"Set up {ssh}",
             HostVerb.Pair => $"Pair with {ssh}",
+            HostVerb.Exposure => $"Set how {ssh} is reached from outside home",
             _ => $"Work on {ssh}"
         } : $"{(add ? action.AddVerb : "Remove")} {role} on {ssh}";
         return HostRunWindow.RunAsync(owner, title, async run =>
@@ -420,6 +421,7 @@ internal static class HostActions
             HostVerb.Setup => ThisPcSetupTitle,
             HostVerb.Update => "Update this PC's host",
             HostVerb.Status => "Check this PC's host",
+            HostVerb.Exposure => "Set how this PC's host is reached from outside home",
             _ => "Work on this PC's host"
         };
         if (action.Verb == HostVerb.Pair) throw new InvalidOperationException("Use the Pair step to pair a desktop.");
@@ -451,6 +453,7 @@ internal static class HostActions
                 HostVerb.Remove => $"Removing {role} from this PC...",
                 HostVerb.Setup => "Setting up this PC as a host...",
                 HostVerb.Update => "Updating this PC's host. Pairings and roles stay...",
+                HostVerb.Exposure => "Saving how this PC's host is reached from outside home; its gateway restarts...",
                 _ => "Working on this PC..."
             });
             var output = new EngineOutput(run.Output);
@@ -464,6 +467,7 @@ internal static class HostActions
                 HostVerb.Remove => $"{role} was removed from this PC.",
                 HostVerb.Setup => "This PC is set up as a host. Pair your main PC next.",
                 HostVerb.Update => "This PC's host is up to date.",
+                HostVerb.Exposure => "This PC's host is serving with its new outside access settings.",
                 _ => "Finished on this PC."
             };
         }, join: true);
