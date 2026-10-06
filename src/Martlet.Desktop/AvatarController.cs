@@ -210,7 +210,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private RendererPlacement? lockedPlacement;
 
     /// <summary>Where the character is locked on this PC's desktop, or null while it moves freely. A newly shown character
-    /// goes back there and stays locked; only Martlet's window unlocks it.</summary>
+    /// goes back there and stays locked until it is unlocked.</summary>
     internal RendererPlacement? LockedPlacement
     {
         get => Volatile.Read(ref lockedPlacement);

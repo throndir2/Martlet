@@ -118,7 +118,7 @@ internal sealed class RendererWindow : Window
         PreviewKeyDown += (_, e) =>
         {
             var step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 1 : 10;
-            // A locked place ignores the arrow keys and Home; only Martlet's window unlocks it.
+            // A locked place ignores the arrow keys and Home until it is unlocked.
             switch (e.Key)
             {
                 case Key.Escape: Request("hide"); break;
@@ -268,7 +268,7 @@ internal sealed class RendererWindow : Window
 
     // ---------- locked placement ----------
 
-    // Locked, the overlay can't be dragged, nudged, sent home or resized from here; only Martlet's window unlocks it.
+    // Locked, the overlay can't be dragged, nudged, sent home or resized until it is unlocked.
     private bool placementLocked;
     // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
     private bool voiceMuted;
@@ -443,8 +443,8 @@ internal sealed class RendererWindow : Window
         var zoomOut = Item("Zoom _out", "CharacterZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
         var reset = Item("_Reset zoom", "CharacterResetZoom", "0", ResetZoom);
         var home = Item("Reset _position and size", "CharacterResetPosition", "Home", ResetToDefault);
-        // Locking goes through Martlet, which saves the place; a locked character only opens Martlet, where it unlocks.
-        var placeLock = Item("_Lock position", "CharacterLockPosition", null, () => Request(placementLocked ? "settings" : "lock"));
+        // Locking and unlocking go through Martlet, which saves the place.
+        var placeLock = Item("_Lock position", "CharacterLockPosition", null, () => Request(placementLocked ? "unlock" : "lock"));
         var onTop = new MenuItem { Header = "_Keep on top", IsCheckable = true, IsChecked = Topmost };
         AutomationProperties.SetAutomationId(onTop, "CharacterOnTop");
         onTop.Checked += (_, _) => Topmost = true;
@@ -467,9 +467,9 @@ internal sealed class RendererWindow : Window
             zoomOut.IsEnabled = CanZoomOut;
             reset.IsEnabled = CanResetZoom;
             home.IsEnabled = !placementLocked;
-            placeLock.Header = placementLocked ? "Position locked: _unlock in Martlet..." : "_Lock position";
+            placeLock.Header = placementLocked ? "_Unlock position" : "_Lock position";
             placeLock.IsChecked = placementLocked;
-            AutomationProperties.SetName(placeLock, placementLocked ? "Position locked: unlock in Martlet" : "Lock position");
+            AutomationProperties.SetName(placeLock, placementLocked ? "Unlock position" : "Lock position");
             onTop.IsChecked = Topmost;
         };
         return menu;

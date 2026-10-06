@@ -2747,11 +2747,11 @@ refused; the overlay ignores dragging, the arrow keys and Home; its
 `CharacterResetPosition`, Home's `ResetCharacterPosition` and Companion's
 `SetupCharacterResetPosition` are disabled; and zoom (the wheel, the menu or
 `SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
-Only Martlet's window unlocks it: the same `ToggleCharacterLock` and
-`SetupCharacterLock` then read *Unlock character position* and *Unlock
-position* (also while the character is hidden), and the overlay menu's item
-reads *Position locked: unlock in Martlet* and only opens Companion ›
-Character. `SetupCharacterPlacement` says whether the position is locked and
+The same `ToggleCharacterLock` and `SetupCharacterLock` then read *Unlock
+character position* and *Unlock position* (also while the character is
+hidden), and the overlay menu's `CharacterLockPosition` reads *Unlock
+position* (carried out by Martlet: *The character's menu chose 'unlock'.*);
+each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
 where (device-independent pixels), and `SetupCharacterView` ends with
 *Position locked.* when the overlay reports it. A locked character shows at
 its locked place again after Hide/Show or a Martlet restart (at its default
