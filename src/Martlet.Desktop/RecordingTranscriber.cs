@@ -85,6 +85,10 @@ internal sealed class RecordingTranscriber : IDisposable
         });
     }
 
+    /// <summary>What 16 kHz mono PCM16 says, trimmed (Discord voice hands over its utterances already converted).</summary>
+    internal async Task<string> TranscribePcmAsync(ReadOnlyMemory<byte> pcm16kMono, CancellationToken token) =>
+        (await transcribe(pcm16kMono, token).ConfigureAwait(false)).Trim();
+
     /// <summary>What <paramref name="wave"/> (a mono 16-bit PCM WAV) says, trimmed; empty when no words were heard.</summary>
     internal async Task<string> TranscribeAsync(ReadOnlyMemory<byte> wave, CancellationToken token)
     {

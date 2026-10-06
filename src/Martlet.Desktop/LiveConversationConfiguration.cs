@@ -267,22 +267,21 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>The paired Martlet host whose voice engine (F5, XTTS-v2 or Dia) speaks, when Speaking was handed to a host on the
     /// Devices page.</summary>
-    internal HostSpeechTarget? HostSpeechTarget()
-    {
-        var route = Route(SetupRole.Tts);
-        return IsHostVoice(route) && route.Gateway is { } gateway && route.GatewayDeviceId is { } device &&
+    internal HostSpeechTarget? HostSpeechTarget() => HostSpeechTargetOf(Route(SetupRole.Tts));
+
+    /// <summary>The paired host voice of a Voice route, or null when it isn't one (Discord voice uses it outside a conversation).</summary>
+    internal static HostSpeechTarget? HostSpeechTargetOf(SetupRoute? route) =>
+        IsHostVoice(route) && route!.Gateway is { } gateway && route.GatewayDeviceId is { } device &&
             route.CredentialId is { } credential && route.Reference is { } reference
             ? new(gateway.Origin, gateway.HostId, gateway.SpkiFingerprint, device, credential, route.ModelId,
                 reference.PresetId, reference.ReferenceRevision, route.GatewaySnapshot?.RouteId ?? SelfHostSetup.F5RouteId)
             : null;
-    }
 
     /// <summary>The installed Windows voice that speaks on this PC, when Its voice uses the Windows voice.</summary>
-    internal WindowsVoiceTarget? WindowsVoiceTarget()
-    {
-        var route = Route(SetupRole.Tts);
-        return IsWindowsVoice(route) && route.VoiceId is { } voice ? new(voice) : null;
-    }
+    internal WindowsVoiceTarget? WindowsVoiceTarget() => WindowsVoiceTargetOf(Route(SetupRole.Tts));
+
+    internal static WindowsVoiceTarget? WindowsVoiceTargetOf(SetupRoute? route) =>
+        IsWindowsVoice(route) && route!.VoiceId is { } voice ? new(voice) : null;
 
     /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, the installed Windows voice, or
     /// the host's F5 model and the applied reference voice (its preset ID; the voice itself stays in the local F5 preset store).</summary>

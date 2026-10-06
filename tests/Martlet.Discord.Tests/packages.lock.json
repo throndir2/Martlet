@@ -93,9 +93,16 @@
       "martlet.discord": {
         "type": "Project",
         "dependencies": {
-          "Martlet.Core": "[0.44.0, )",
+          "Concentus": "[2.2.2, )",
+          "Martlet.Core": "[0.45.0, )",
           "NetCord": "[1.0.0-beta.28, )"
         }
+      },
+      "Concentus": {
+        "type": "CentralTransitive",
+        "requested": "[2.2.2, )",
+        "resolved": "2.2.2",
+        "contentHash": "2B9YmHPKO+k7YpAAnqmiXwiMJnfjfj1C868RszOll2iZWLnGTAiC1q21L/d7CvTan7T+hyqU8dR0Dcy3cpjVfQ=="
       },
       "NetCord": {
         "type": "CentralTransitive",
