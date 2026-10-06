@@ -214,12 +214,14 @@ public sealed class DiscordCallTests
             var saved = fresh with
             {
                 On = true, Capture = DiscordCallCapture.EverythingButMartlet, OwnerName = " Ben\u0007 ", OutputId = "{0.0.0}.{cable}",
-                OutputName = "CABLE Input (VB-Audio Virtual Cable)", CameraBackground = DiscordCameraBackground.Magenta
+                OutputName = "CABLE Input (VB-Audio Virtual Cable)", CameraBackground = DiscordCameraBackground.Magenta,
+                CameraPicture = "a1b2c3d4"
             };
             Assert.True(saved.Save(directory));
             var loaded = DiscordCallPreferences.Load(directory);
             Assert.Equal(saved with { OwnerName = "Ben" }, loaded);
             Assert.Equal("#FF00FF", loaded.CameraColor);
+            Assert.Null((saved with { CameraPicture = "not a key" }).Normalized().CameraPicture);
             File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{ not json");
             Assert.False(DiscordCallPreferences.Load(directory).On);
             File.WriteAllText(Path.Combine(directory, DiscordCallPreferences.FileName), "{\"On\":true,\"OutputId\":\"\",\"OutputName\":\"x\"}");

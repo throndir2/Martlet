@@ -1,6 +1,9 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Avatar.Hosting;
+using Martlet.Conversation;
+using Martlet.Core.Creations;
 using Martlet.Discord.Calls;
 
 namespace Martlet.Desktop;
@@ -94,23 +97,35 @@ public partial class MainWindow
         bargeIn.Checked += (_, _) => SaveCall(prefs => prefs with { BargeIn = true });
         bargeIn.Unchecked += (_, _) => SaveCall(prefs => prefs with { BargeIn = false });
 
-        var background = new ComboBox { Width = 160, ItemsSource = CallCameraChoices, SelectedIndex = (int)saved.CameraBackground,
+        var pictures = CameraPictures();
+        var backgrounds = new List<string>(CallCameraChoices);
+        backgrounds.AddRange(pictures.Select(picture => "Picture: " + (picture.Title ?? picture.Key)));
+        var chosenBackground = (int)saved.CameraBackground;
+        if (saved.CameraPicture is { } savedPicture)
+        {
+            var found = pictures.FindIndex(picture => picture.Key == savedPicture || picture.Id == savedPicture);
+            if (found < 0) backgrounds.Add("Picture: (not on this PC)");
+            chosenBackground = found < 0 ? backgrounds.Count - 1 : CallCameraChoices.Length + found;
+        }
+        var background = new ComboBox { Width = 320, ItemsSource = backgrounds, SelectedIndex = chosenBackground,
             HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 4) };
         AutomationProperties.SetName(background, "Camera view background");
         AutomationProperties.SetAutomationId(background, "DiscordCallCameraBackground");
         background.SelectionChanged += (_, _) =>
         {
-            if (background.SelectedIndex >= 0 && background.SelectedIndex != (int)discordCalls.Preferences.CameraBackground)
-            {
-                SaveCall(prefs => prefs with { CameraBackground = (DiscordCameraBackground)background.SelectedIndex });
-                if (discordCalls.CameraOpen) avatar.SetCameraAsync(discordCalls.Preferences.CameraColor, CancellationToken.None).Forget();
-            }
+            var index = background.SelectedIndex;
+            if (index < 0 || index == chosenBackground || index >= CallCameraChoices.Length + pictures.Count) return;
+            SaveCall(prefs => index < CallCameraChoices.Length
+                ? prefs with { CameraBackground = (DiscordCameraBackground)index, CameraPicture = null }
+                : prefs with { CameraPicture = pictures[index - CallCameraChoices.Length].Key });
+            if (discordCalls.CameraOpen) ApplyCallCameraAsync(CancellationToken.None).Forget();
         };
         var camera = PageButton(discordCalls.CameraOpen ? "Close camera view" : "Open camera view", () => ToggleCallCameraAsync().Forget(),
             id: "DiscordCallCamera");
-        var cameraStatus = Note(!discordCalls.CameraOpen ? "The camera view is closed."
+        var cameraStatus = Note(!discordCalls.CameraOpen ? $"The camera view is closed. Its background: {CameraBackgroundName(saved)}."
             : avatar.IsShowing
-                ? $"The camera view is open: the character in its own 16:9 window titled \"Martlet camera\" on {saved.CameraBackground.ToString().ToLowerInvariant()}."
+                ? $"The camera view is open: the character in its own 16:9 window titled \"Martlet camera\" on {CameraBackgroundName(saved)}." +
+                    (callCameraProblem is { } problem ? " " + problem : "")
                 : "The camera view is on, but the character isn't showing yet; it opens there as soon as the character shows.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(cameraStatus, "DiscordCallCameraStatus");
@@ -137,8 +152,9 @@ public partial class MainWindow
                 "microphone into the cable with Voicemeeter or Windows' Listen to this device.", new Thickness(0, 0, 0, 8)),
             Heading("Webcam: the character"),
             Note("Open the camera view, add it to OBS as a Window Capture of \"Martlet camera\", key out the background with a " +
-                "Chroma Key filter, then Start Virtual Camera in OBS and pick \"OBS Virtual Camera\" as your camera in Discord. " +
-                "Martlet installs no camera driver.", new Thickness(0, 0, 0, 4)),
+                "Chroma Key filter (skip it with a picture background), then Start Virtual Camera in OBS and pick \"OBS Virtual " +
+                "Camera\" as your camera in Discord. Martlet installs no camera driver. In the call Martlet can change its background " +
+                "itself, to a color, one of its pictures or a new picture it draws.", new Thickness(0, 0, 0, 4)),
             Note("Background:", new Thickness(0, 0, 0, 0)), background, Row(camera), cameraStatus,
             Row(check), doctor]);
     }
@@ -174,7 +190,9 @@ public partial class MainWindow
         try
         {
             if (open && !avatar.IsShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
-            var showing = await avatar.SetCameraAsync(open ? discordCalls.Preferences.CameraColor : null, CancellationToken.None);
+            RendererCamera? view = null;
+            if (open) (view, callCameraProblem) = await CallCameraViewAsync(CancellationToken.None);
+            var showing = await avatar.SetCameraAsync(view, CancellationToken.None);
             discordCalls.CameraOpen = open;
             ActionText.Text = !open ? "The camera view is closed."
                 : showing ? "The camera view is open. Capture the \"Martlet camera\" window in OBS."
@@ -186,5 +204,116 @@ public partial class MainWindow
             ActionText.Text = "Couldn't change the camera view: " + error.Message;
         }
         if (!closing && openTab == CompanionTab.Discord) RenderTab();
+    }
+
+    // ---------- the camera view's background ----------
+
+    private string? callCameraProblem;
+    private (string Id, string Base64)? cameraPictureCache;
+
+    /// <summary>Martlet's pictures on this PC (newest first, at most 40), the ones the camera view can show.</summary>
+    private List<Creation> CameraPictures()
+    {
+        if (store is null) return [];
+        var directory = store.DataDirectory;
+        try
+        {
+            return CreationStore.View(directory).Live
+                .Where(c => c.Kind == PictureCreations.KindName && CreationStore.IsComplete(directory, c))
+                .OrderByDescending(c => c.CreatedAt).Take(40).ToList();
+        }
+        catch (Exception error) when (CreationStore.IsFailure(error)) { return []; }
+    }
+
+    private string CameraBackgroundName(DiscordCallPreferences saved) =>
+        saved.CameraPicture is { } reference && store is not null && PictureCreations.Find(store.DataDirectory, reference) is { Removed: false } picture
+            ? $"the picture \"{picture.Title ?? picture.Key}\""
+            : saved.CameraBackground.ToString().ToLowerInvariant();
+
+    /// <summary>The camera view as the saved choices make it: the color, and the chosen picture (a JPEG small enough for one
+    /// renderer message) when it is on this PC; otherwise what's wrong, and the color shows.</summary>
+    private async Task<(RendererCamera View, string? Problem)> CallCameraViewAsync(CancellationToken token)
+    {
+        var saved = discordCalls.Preferences;
+        var view = new RendererCamera(true, saved.CameraColor);
+        if (saved.CameraPicture is not { } reference) return (view, null);
+        if (store is null || PictureCreations.Find(store.DataDirectory, reference) is not { Removed: false } creation)
+            return (view, "The chosen picture isn't in Martlet's creations any more, so the camera view shows its color.");
+        var title = creation.Title ?? creation.Key;
+        if (cameraPictureCache is { } cached && cached.Id == creation.Id) return (view with { Picture = cached.Base64 }, null);
+        try
+        {
+            var (image, _, problem) = await PictureCreations.LoadAsync(creation, CreationStore.Assets(store.DataDirectory, creation), token);
+            if (image is null) return (view, $"\"{title}\" can't show yet: {problem}");
+            var jpeg = await Task.Run(() => PictureView.CameraJpeg(image), token);
+            if (jpeg is null) return (view, $"\"{title}\" couldn't be made into a background, so the camera view shows its color.");
+            var base64 = Convert.ToBase64String(jpeg);
+            cameraPictureCache = (creation.Id, base64);
+            return (view with { Picture = base64 }, null);
+        }
+        catch (Exception error) when (CreationStore.IsFailure(error))
+        {
+            return (view, $"\"{title}\" can't be read right now ({error.Message}).");
+        }
+    }
+
+    /// <summary>Shows the saved background in the open camera view; returns what went wrong, if anything.</summary>
+    private async Task<string?> ApplyCallCameraAsync(CancellationToken token)
+    {
+        if (!discordCalls.CameraOpen) return null;
+        try
+        {
+            var (view, problem) = await CallCameraViewAsync(token);
+            callCameraProblem = problem;
+            await avatar.SetCameraAsync(view, token);
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.IO.IOException or TimeoutException or
+            Martlet.Core.Contracts.ContractException or OperationCanceledException)
+        {
+            callCameraProblem = "Couldn't change the camera view: " + error.Message;
+        }
+        if (callCameraProblem is not null) ErrorLog.Info("Discord call camera: " + callCameraProblem);
+        if (!closing && openTab == CompanionTab.Discord && !tabEdited) RenderTab();
+        return callCameraProblem;
+    }
+
+    /// <summary>set_camera_background (on the dispatcher): saves a color or one of Martlet's pictures as the camera view's
+    /// background and shows it when the view is open. The words are for the model.</summary>
+    private async Task<string> SetCallBackgroundAsync(DiscordCameraBackground? color, string? picture, CancellationToken token)
+    {
+        string name;
+        if (color is { } chosen)
+        {
+            if (!discordCalls.Save(prefs => prefs with { CameraBackground = chosen, CameraPicture = null }))
+                return "The background couldn't be saved. Tell the user briefly.";
+            name = "plain " + chosen.ToString().ToLowerInvariant();
+        }
+        else
+        {
+            if (store is null || PictureCreations.Find(store.DataDirectory, picture) is not { Removed: false } creation)
+                return "There's no picture with that id. Use list_creations to find one, or draw a new one.";
+            if (!CreationStore.IsComplete(store.DataDirectory, creation))
+                return "That picture hasn't reached this computer yet. Tell the user you'll try again in a moment.";
+            if (!discordCalls.Save(prefs => prefs with { CameraPicture = creation.Key }))
+                return "The background couldn't be saved. Tell the user briefly.";
+            name = $"the picture \"{creation.Title ?? creation.Key}\"";
+        }
+        if (!discordCalls.CameraOpen)
+        {
+            if (!closing && openTab == CompanionTab.Discord && !tabEdited) RenderTab();
+            return $"Your webcam background is now {name}. The camera view is closed right now, so it shows once the owner opens it.";
+        }
+        var problem = await ApplyCallCameraAsync(token);
+        return problem is null ? $"Your webcam background is now {name}; everyone in the call sees it."
+            : $"Your webcam background is saved as {name}, but: {problem} Tell the user briefly.";
+    }
+
+    /// <summary>set_camera_background's way to the main window.</summary>
+    private sealed class CallCameraBridge(MainWindow window) : ICallCamera
+    {
+        public bool Offered => window.discordCalls.Preferences.On;
+
+        public Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, CancellationToken token) =>
+            window.Dispatcher.InvokeAsync(() => window.SetCallBackgroundAsync(color, picture, token)).Task.Unwrap();
     }
 }

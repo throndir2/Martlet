@@ -287,14 +287,19 @@ internal sealed class RendererWindow : Window
             var color = (Color)ColorConverter.ConvertFromString(request.Background);
             var brush = new SolidColorBrush(color);
             brush.Freeze();
+            var behind = request.Picture is { } picture ? CameraPicture(picture) ?? (Brush)brush : brush;
+            var first = camera is null;
             camera ??= (Left, Top, Width, Height, Topmost);
             Background = brush;
-            viewport.Background = brush;
-            var area = SystemParameters.WorkArea;
-            Width = Math.Min(960, area.Width);
-            Height = Width * 9 / 16;
-            Left = area.Left + (area.Width - Width) / 2;
-            Top = area.Top + (area.Height - Height) / 2;
+            viewport.Background = behind;
+            if (first)
+            {
+                var area = SystemParameters.WorkArea;
+                Width = Math.Min(960, area.Width);
+                Height = Width * 9 / 16;
+                Left = area.Left + (area.Width - Width) / 2;
+                Top = area.Top + (area.Height - Height) / 2;
+            }
             Topmost = false;
             ShowInTaskbar = true;
             Title = "Martlet camera";
@@ -309,6 +314,33 @@ internal sealed class RendererWindow : Window
             Title = "Martlet character overlay";
         }
         SendView();
+    }
+
+    // A picture background for the camera view (Martlet sends at most 1280x720), cropped to fill the window. One that can't be
+    // read leaves the solid color (logged), never stopping the character.
+    private static ImageBrush? CameraPicture(string base64)
+    {
+        try
+        {
+            var bytes = Convert.FromBase64String(base64);
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            using var stream = new MemoryStream(bytes, writable: false);
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            var brush = new ImageBrush(image) { Stretch = Stretch.UniformToFill };
+            brush.Freeze();
+            return brush;
+        }
+        catch (Exception error) when (error is FormatException or NotSupportedException or FileFormatException or IOException or
+            InvalidOperationException or ArgumentException)
+        {
+            ErrorLog.Info($"The camera picture can't be read ({error.GetType().Name}); the camera view shows its color instead.");
+            return null;
+        }
     }
     // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
     private bool voiceMuted;
@@ -958,7 +990,7 @@ internal sealed class RendererWindow : Window
                 if (message.Kind == "camera")
                 {
                     UseCamera(RendererProtocol.Data<RendererCamera>(message));
-                    await ReplyAsync("ok", new { camera = camera is not null });
+                    await ReplyAsync("ok", new { camera = camera is not null, picture = viewport.Background is ImageBrush });
                     continue;
                 }
                 if (message.Kind == "snapshot")

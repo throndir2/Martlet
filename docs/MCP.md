@@ -3987,7 +3987,8 @@ mode, off by default), `DiscordCallCapture` (*The Discord app only* or
 `DiscordCallOutput` (*Martlet's usual output* or a playback device, a virtual
 cable marked *(virtual cable)*), `DiscordCallAlsoSpeakers`,
 `DiscordCallBargeIn`, `DiscordCallCameraBackground` (*Green*, *Blue*,
-*Magenta*, *Black*), `DiscordCallCamera` (*Open camera view* / *Close camera
+*Magenta*, *Black*, then *Picture: <title>* for each of Martlet's pictures on
+this PC, newest first), `DiscordCallCamera` (*Open camera view* / *Close camera
 view*) and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
 playback devices, looks for Discord and sets up a process loopback unstarted).
 Toggling, choosing and the camera button save `discord-calls.json` or show a
@@ -3998,8 +3999,15 @@ itself*)*, sees who talks: <source>, and speaks into <output>.*),
 `DiscordCallAttribution` (*Who is talking: the Discord window; 2 people named
 so far.*, never who), `DiscordCallOutputStatus` (where Martlet's voice goes,
 or that the chosen output isn't connected), `DiscordCallCameraStatus` (open
-or closed, with its background), `DiscordCallDoctor` (Check this PC's result)
-and the three choices. While the mode is on, the talk window's `LivePcAudio`
+or closed, with its background: *green* or *the picture "<title>"*, and why a
+chosen picture can't show), `DiscordCallDoctor` (Check this PC's result)
+and the three choices. While the mode is on, every reply on a route that does
+function calling also gets `set_camera_background` (last among Martlet's own
+tools): `color`, `picture` (a picture creation's id) or `draw` (a new 16:9
+picture drawn as a `picture-N` job and used when it's ready), so Martlet changes
+its own webcam background; the desktop log notes *Discord call:
+set_camera_background chose ...*, and `discord_call_check`'s `saved` reports
+`cameraBackground`, `cameraPicture`, `cameraPictureHere` and `cameraTool`. While the mode is on, the talk window's `LivePcAudio`
 line says *In your Discord call.* or *Hearing someone in your Discord call…*
 (its `help` is the mode's line) and lines from the call show in
 `LiveHistory` as bubbles labelled *Discord call*, each starting with who said

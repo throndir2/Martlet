@@ -294,8 +294,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord › Martlet in your Discord calls: the mode's line (on or off, whether Martlet hears the Discord
         // app alone or everything but itself, who-is-talking source and the output its voice goes to), the who-is-talking line
         // (its source and how many people were named, never who), the output line (the device's name), the camera view's line
-        // (open or closed, its background), Check this PC's result, and the What to hear, Voice output and camera background
-        // choices (choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects). Never the owner's
+        // (open or closed, its background: a color or the picture's title), Check this PC's result, and the What to hear, Voice
+        // output and camera background choices (the colors, then "Picture: <title>" for each of Martlet's pictures on this PC;
+        // choosing one with ui_select saves discord-calls.json, so it needs --allow-ui-effects). Never the owner's
         // Discord name or anything heard or seen.
         "DiscordCallStatus", "DiscordCallAttribution", "DiscordCallOutputStatus", "DiscordCallCameraStatus", "DiscordCallDoctor",
         "DiscordCallCapture", "DiscordCallOutput", "DiscordCallCameraBackground",

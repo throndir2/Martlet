@@ -8,7 +8,7 @@ namespace Martlet.Discord.Calls;
 [JsonConverter(typeof(JsonStringEnumConverter<DiscordCallCapture>))]
 public enum DiscordCallCapture { DiscordApp, EverythingButMartlet }
 
-/// <summary>The solid background of the camera view, for OBS's chroma key.</summary>
+/// <summary>The solid background of the camera view, for OBS's chroma key (or around a picture background while it loads).</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DiscordCameraBackground>))]
 public enum DiscordCameraBackground { Green, Blue, Magenta, Black }
 
@@ -38,6 +38,9 @@ public sealed record DiscordCallPreferences
     /// <summary>Martlet stops talking when someone in the call talks over it.</summary>
     public bool BargeIn { get; init; } = true;
     public DiscordCameraBackground CameraBackground { get; init; } = DiscordCameraBackground.Green;
+    /// <summary>A picture Martlet made (a picture creation's key or ID) shown behind the character instead of the solid color,
+    /// or null for the color. Chosen on the call card or by Martlet itself (set_camera_background).</summary>
+    public string? CameraPicture { get; init; }
 
     /// <summary>The camera background as a color (#RRGGBB).</summary>
     public string CameraColor => Color(CameraBackground);
@@ -60,7 +63,8 @@ public sealed record DiscordCallPreferences
             OutputId = output,
             OutputName = output is null ? null : Clean(OutputName, 256),
             Capture = Enum.IsDefined(Capture) ? Capture : DiscordCallCapture.DiscordApp,
-            CameraBackground = Enum.IsDefined(CameraBackground) ? CameraBackground : DiscordCameraBackground.Green
+            CameraBackground = Enum.IsDefined(CameraBackground) ? CameraBackground : DiscordCameraBackground.Green,
+            CameraPicture = Clean(CameraPicture) is { } picture && !picture.Contains(' ') ? picture : null
         };
     }
 

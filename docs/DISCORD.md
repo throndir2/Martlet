@@ -209,13 +209,20 @@ by default) Martlet stops a reply once someone in the call has talked over it fo
 someone in the Discord call...*).
 
 **Webcam: the character.** *Open camera view* moves the character into its own ordinary 16:9 window titled *Martlet camera*
-(in the taskbar, not on top) on a solid green, blue, magenta or black background; its size and place are fixed and never
-saved, and closing it puts the overlay back where it was. In OBS (installed by you): add a Window Capture of *Martlet camera*,
-add a Chroma Key filter for the background, **Start Virtual Camera**, then pick **OBS Virtual Camera** as your camera in
-Discord. Martlet ships no virtual camera driver.
+(in the taskbar, not on top) on a solid green, blue, magenta or black background, or on one of Martlet's pictures (cropped
+to fill the window; no chroma key needed); its size and place are fixed and never saved, and closing it puts the overlay
+back where it was. In OBS (installed by you): add a Window Capture of *Martlet camera*, add a Chroma Key filter for a solid
+background, **Start Virtual Camera**, then pick **OBS Virtual Camera** as your camera in Discord. Martlet ships no virtual
+camera driver.
+
+**Martlet changes its own background.** While the mode is on, Martlet gets the `set_camera_background` tool: someone in the
+call (or you) asks for a different background, or Martlet decides a new one fits, and it switches to a color, one of its
+pictures (`picture`, a creation id) or draws a new 16:9 picture (`draw`, while [pictures](PICTURES.md) are set up) that
+becomes the background when it's ready and is kept in Creations like any other picture. The choice is saved, so a closed
+camera view opens with it.
 
 **Settings and status.** `discord-calls.json` (`DiscordCallPreferences`): `On`, `Capture`, `SeeSpeakers`, `OwnerName`,
-`OutputId`/`OutputName`, `AlsoSpeakers`, `BargeIn`, `CameraBackground`. The card's status lines, *Check this PC* and MCP's
+`OutputId`/`OutputName`, `AlsoSpeakers`, `BargeIn`, `CameraBackground`, `CameraPicture`. The card's status lines, *Check this PC* and MCP's
 `discord_call_check` (a doctor check plus a simulated call utterance) are described in [MCP](MCP.md).
 
 ## Voice
