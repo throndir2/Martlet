@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Platform-service contracts for the Linux and macOS companion (docs/DESKTOP_LINUX_MACOS.md). Martlet.Platform.Linux
+       (DX02) and Martlet.Platform.MacOS (DX03) implement them; Martlet.Companion picks one at startup. No UI dependency. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+  </ItemGroup>
+</Project>

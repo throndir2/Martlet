@@ -6,6 +6,8 @@
     <Project Path="src/Martlet.Avatar.Hosting/Martlet.Avatar.Hosting.csproj" />
     <Project Path="src/Martlet.Avatar.RendererHost/Martlet.Avatar.RendererHost.csproj" />
     <Project Path="src/Martlet.Core/Martlet.Core.csproj" />
+    <Project Path="src/Martlet.Companion.Platform/Martlet.Companion.Platform.csproj" />
+    <Project Path="src/Martlet.Companion/Martlet.Companion.csproj" />
     <Project Path="src/Martlet.Conversation/Martlet.Conversation.csproj" />
     <Project Path="src/Martlet.Credentials.Windows/Martlet.Credentials.Windows.csproj" />
     <Project Path="src/Martlet.Desktop/Martlet.Desktop.csproj" />
@@ -30,6 +32,8 @@
     <Project Path="src/Martlet.Mcp.Protocol/Martlet.Mcp.Protocol.csproj" />
     <Project Path="src/Martlet.NodeLinkCheck/Martlet.NodeLinkCheck.csproj" />
     <Project Path="src/Martlet.Support/Martlet.Support.csproj" />
+    <Project Path="src/Martlet.Platform.Linux/Martlet.Platform.Linux.csproj" />
+    <Project Path="src/Martlet.Platform.MacOS/Martlet.Platform.MacOS.csproj" />
     <Project Path="src/Martlet.Providers/Martlet.Providers.csproj" />
     <Project Path="src/Martlet.Participation/Martlet.Participation.csproj" />
     <Project Path="src/Martlet.Sherpa/Martlet.Sherpa.csproj" />
@@ -39,6 +43,7 @@
     <Project Path="tests/Martlet.Avatars.Tests/Martlet.Avatars.Tests.csproj" />
     <Project Path="tests/Martlet.Avatar.Audio2Face.Tests/Martlet.Avatar.Audio2Face.Tests.csproj" />
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
+    <Project Path="tests/Martlet.Companion.Tests/Martlet.Companion.Tests.csproj" />
     <Project Path="tests/Martlet.Conversation.Tests/Martlet.Conversation.Tests.csproj" />
     <Project Path="tests/Martlet.Desktop.Tests/Martlet.Desktop.Tests.csproj" />
     <Project Path="tests/Martlet.Discord.Tests/Martlet.Discord.Tests.csproj" />

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Martlet for Linux and macOS (docs/DESKTOP_LINUX_MACOS.md, DX01): Avalonia companion app over the portable
+       libraries. Platform services come from Martlet.Platform.Linux / Martlet.Platform.MacOS (PlatformSelector). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Martlet.Companion</AssemblyName>
+    <RootNamespace>Martlet.Companion</RootNamespace>
+    <ApplicationIcon />
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <ProjectReference Include="..\Martlet.Companion.Platform\Martlet.Companion.Platform.csproj" />
+    <ProjectReference Include="..\Martlet.Platform.Linux\Martlet.Platform.Linux.csproj" />
+    <ProjectReference Include="..\Martlet.Platform.MacOS\Martlet.Platform.MacOS.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Companion.Tests" />
+  </ItemGroup>
+</Project>
