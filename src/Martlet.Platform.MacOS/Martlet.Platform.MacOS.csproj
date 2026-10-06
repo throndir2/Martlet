@@ -1,11 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- macOS integration for Martlet.Companion (DX03 in docs/DESKTOP_LINUX_MACOS.md): floating panel, Carbon hotkey,
-       Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection. Portable net10.0; native calls are made only
+  <!-- macOS integration for Martlet.Companion (DX03 in docs/DESKTOP_LINUX_MACOS.md): character overlay window behaviors,
+       Carbon push-to-talk hot key, Keychain, menu bar item, screen looks, login item, App Nap/sleep assertions and the
+       Apple silicon/Intel probe. Portable net10.0: AppKit, Carbon, Security, CoreGraphics, IOKit and ServiceManagement
+       are reached through the Objective-C runtime and C exports (no net-macos workload), and native calls are made only
        when running on macOS. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Martlet.Companion.Platform\Martlet.Companion.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Platform.MacOS.Tests" />
   </ItemGroup>
 </Project>

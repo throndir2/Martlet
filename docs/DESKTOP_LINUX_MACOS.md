@@ -1,7 +1,7 @@
 # Linux and macOS desktop companion: research, decision and plan
 
-**Plan, 2026-10-06. Nothing below is built yet; every Linux-desktop and Mac
-result is NOT RUN until a slice reports it.** The owner asked for:
+**Plan, 2026-10-06. Built slices report their status below; every
+Linux-desktop and Mac result is NOT RUN until a slice reports it.** The owner asked for:
 
 1. A **Mac as the companion PC** (talk to it, character on its screen), and
    whether a Mac can be a **host**.
@@ -125,3 +125,23 @@ and macOS jobs that attach to the same `v<version>` release, with no tests:
 
 DX01 lands its interfaces first; DX02, DX03 and DX05 build on them. DX04 is
 independent. Merges are serialized.
+
+## DX03 status: macOS integration (2026-10-06)
+
+Built in `src/Martlet.Platform.MacOS` (plain `net10.0`, Objective-C runtime and
+C exports, no net-macos workload) and returned by `MacPlatform.Create()`.
+Pure logic is unit tested in `tests/Martlet.Platform.MacOS.Tests`, and the
+companion publishes for `osx-arm64` and `osx-x64`. **No Mac was available:
+every native behavior below is NOT RUN** until someone runs it on a real Mac.
+
+| Service | How | NOT RUN on a Mac: what to check |
+| --- | --- | --- |
+| Platform probe (`MacPlatformProbe`) | sysctl `hw.optional.arm64` (Apple silicon, also under Rosetta), `sysctl.proc_translated` (Rosetta), `hw.memsize` (unified memory), `kern.osproductversion`, CPU brand and model. Intel Macs report no usable GPU (local models CPU-only, no MLX or Apple Intelligence); `Warnings()` says so, flags the Intel build under Rosetta and macOS below 14, and notes Audio2Face/F5 need a paired NVIDIA host | Values on an M-series Mac, an Intel Mac and the x64 build under Rosetta |
+| Loopback model servers (`LocalModelServers`) | Asks `127.0.0.1` only: Ollama `:11434/api/tags`, LM Studio `:1234/v1/models`, Docker Model Runner `:12434/engines/v1/models`; returns each running one's Chat Completions base URL and models (Metal on Apple silicon, CPU on Intel) | Detection with each server running (portable code, unit tested with a fake server) |
+| Push-to-talk (`MacPushToTalkHotkey`) | Carbon `RegisterEventHotKey` key down/up, no Accessibility or Input Monitoring permission; requires Command or Control (bare F-keys allowed, with fn on Mac keyboards); suggests Control+Option+T | Hold to talk inside a full-screen game; a combination another app owns reports "already used" |
+| Character overlay (`MacCharacterOverlay`) | From the NSWindow handle: floating level, collectionBehavior canJoinAllSpaces, stationary, ignoresCycle and fullScreenAuxiliary, transparent and shadowless, a runtime subclass that can never become key or main (non-activating without replacing Avalonia's window), click-through toggled 20 times a second by hit-testing the character regions (kept during a drag) | The character over a full-screen game on another Space for 10 minutes, never taking focus; clicks pass through except on the character |
+| Watch my screen (`MacScreenCapture`) | One look = macOS's own `screencapture -x -t jpg -D 1` resized by `sips`; `CGPreflightScreenCaptureAccess` gates every look and `CGRequestScreenCaptureAccess` runs only from the user's Start watching. The permission text explains System Settings, the restart and macOS 15's periodic re-confirmation. A ScreenCaptureKit helper (window choice, exclusions) is a later step | Prompt, restart, a look while a game is in front |
+| Keys (`KeychainCredentialStore`) | Login keychain generic passwords, service "Martlet", account `companion/<name>` | Save, read, delete; the access prompt after an update of an ad-hoc signed build |
+| Start at login (`MacAutostart`) | Inside `Martlet.app` on macOS 13+: `SMAppService.mainAppService` (Login Items, with the "allow in Settings" state); outside a bundle: `~/Library/LaunchAgents/io.github.throndir2.martlet.companion.plist` | Register, approval state, start after logging in |
+| Menu bar (`MacTrayStatus`) | NSStatusItem whose title shows the state ("Martlet ● Listening") with Show, Show or Hide Character and Quit | Item appears after the first `Show`, menu commands arrive |
+| Listening keeps the Mac awake (`MacListeningActivity`) | `NSProcessInfo beginActivity` (no App Nap, no idle sleep) plus an IOKit `PreventUserIdleSystemSleep` assertion while listening; outside the shared contracts, the app holds one while it listens | Replies stay prompt behind a full-screen game with the Mac otherwise idle |
