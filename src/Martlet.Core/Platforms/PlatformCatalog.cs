@@ -38,6 +38,8 @@ public static class PlatformFeatures
     /// <summary>The device hosts only while Martlet is open on its screen (iPhone, iPad).</summary>
     public const string ForegroundOnly = "foreground-only";
     public const string OnBattery = "battery";
+    /// <summary>Martlet's x64 build runs under Windows' x64 emulation on a Windows on Arm PC.</summary>
+    public const string X64Emulation = "x64-emulation";
 }
 
 /// <summary>What a device reported about itself: this PC, or a paired host's machine report. Missing facts are null and
@@ -61,6 +63,25 @@ public sealed record PlatformDevice
     /// assumed to.</summary>
     public bool ForegroundOnly => Features?.Contains(PlatformFeatures.ForegroundOnly) == true ||
         Platform == DevicePlatform.Ios && Features is null;
+
+    /// <summary>A Windows PC with an ARM64 processor (Snapdragon X and similar). NVIDIA GPUs don't work there.</summary>
+    public bool WindowsOnArm => Platform == DevicePlatform.Windows && Arm64 == true;
+
+    /// <summary>This PC, the Windows companion, from its detected processor (<see cref="MachineArchitecture"/>), memory and
+    /// graphics cards. Martlet's x64 build on Windows on Arm reports the ARM64 machine, not the emulated process.</summary>
+    public static PlatformDevice ThisPc(MachineArchitecture architecture, Version? osVersion = null, double? memoryGb = null,
+        IReadOnlyList<PlatformGpu>? gpus = null, string name = "This PC") => new()
+    {
+        Platform = DevicePlatform.Windows,
+        Name = name,
+        OsVersion = osVersion,
+        Arm64 = architecture.Machine == System.Runtime.InteropServices.Architecture.Arm64,
+        MemoryGb = memoryGb,
+        Gpus = gpus,
+        Features = architecture.WindowsOnArm && architecture.Emulated
+            ? new HashSet<string>(StringComparer.Ordinal) { PlatformFeatures.X64Emulation }
+            : new HashSet<string>(StringComparer.Ordinal)
+    };
 
     /// <summary>A paired host from its last machine report. Hosts that predate platform reporting run the Linux host
     /// engine (native Linux, or Docker containers on Windows or a Mac), so they count as Linux.</summary>
@@ -106,6 +127,9 @@ public sealed record PlatformRequirement
         var unknown = new List<string>();
         if (NvidiaGb is { } need)
         {
+            if (device.WindowsOnArm)
+                return No($"{engine} needs an NVIDIA GPU with {need:0} GB+; {device.Name} is a Windows on Arm PC, and NVIDIA GPUs " +
+                    "don't work on Windows on Arm.");
             if (device.Gpus is null) unknown.Add($"{device.Name} hasn't reported its hardware yet");
             else
             {

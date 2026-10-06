@@ -216,17 +216,8 @@ public partial class MainWindow
         return DeviceCapacityInputs.JoinNetwork(inputs, NetworkMap.Build(inputs), DefaultSetup.Catalog(null));
     }
 
-    private IReadOnlyCollection<string> ConfiguredProviders()
-    {
-        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
-        if (thinking?.CredentialId is null) return [];
-        return thinking.Origin switch
-        {
-            ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl => ["nvidia-build"],
-            ChatCompletionsEndpointCatalog.OpenRouterBaseUrl => ["openrouter"],
-            _ => thinking.RouteType == SetupRouteType.OpenAi ? ["openai"] : []
-        };
-    }
+    private IReadOnlyCollection<string> ConfiguredProviders() =>
+        DefaultSetup.ConfiguredProviders(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), homeSettings?.ThinkingFallback);
 
     private void RenderWelcomePlan()
     {

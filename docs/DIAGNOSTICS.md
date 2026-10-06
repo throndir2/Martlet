@@ -187,6 +187,7 @@ fixtures, never live readiness.
 | `settings.load` | Yes | Local read-only `SettingsStore.LoadAsync`; loaded, first-run, malformed/newer or inaccessible |
 | `application.version` | Yes | Local read-only executing application/version evidence |
 | `runtime.version` | Yes | Local read-only executing .NET 10 runtime evidence; not SDK, install, host or GPU inventory |
+| `platform.architecture` | Yes | Local read-only processor type (`IsWow64Process2`, so the x64 build on Windows on Arm reports ARM64) and whether Martlet runs emulated; no GPU or host inventory |
 | `provider.connection` | No | Permissioned/network/provider-cost; not configured / not run |
 | `audio.input` | No | Permissioned/device; skipped / not run |
 | `audio.playback` | No | Permissioned/device; skipped / not run, no audibility claim |
@@ -271,6 +272,9 @@ links that change permissions, automatic reinstall, secret collection or uploads
 | `settings.inaccessible` | Failed / configuration exit 3 | `settings.check_access` |
 | `application.available`, `runtime.available` | Passed (process only) | `diagnostics.refresh` |
 | `runtime.unsupported` | Failed | `diagnostics.report` |
+| `platform.x64` | Passed (processor only) | `diagnostics.refresh` |
+| `platform.arm64_emulated`, `platform.arm64_native` | Passed (Windows on Arm; x64 emulation or native) | `platform.windows_on_arm` |
+| `platform.unsupported` | Warning (neither x64 nor ARM64) | `diagnostics.report` |
 | `provider.unavailable` | Not configured | `provider.setup` |
 | `audio.input_unavailable` | Skipped | `audio.input_guide` |
 | `audio.output_unavailable` | Skipped | `audio.output_guide` |

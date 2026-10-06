@@ -167,4 +167,28 @@ public sealed class DefaultSetupTests
         Assert.NotEmpty(plan.Joining);
         Assert.Contains(plan.Joining, s => s.MachineId == "this-pc");
     }
+
+    private static SetupRoute Route(string origin, Guid? key, SetupRouteType type = SetupRouteType.ChatCompletions) => new()
+    {
+        RouteType = type, Role = SetupRole.Llm, ProviderAlias = "chat", Origin = origin, ModelId = "m", CredentialId = key,
+        ConfigurationRevision = Guid.NewGuid()
+    };
+
+    private static ThinkingFallbackSettings Fallback(string origin, Guid? key) =>
+        new() { Origin = origin, ModelId = "m", CredentialId = key, ConfigurationRevision = Guid.NewGuid() };
+
+    [Fact]
+    public void SavedKeysCountAsConfiguredProvidersByPresetId()
+    {
+        Assert.Empty(DefaultSetup.ConfiguredProviders(null, null));
+        Assert.Equal(["google-gemini"], DefaultSetup.ConfiguredProviders(Route(ChatCompletionsEndpointCatalog.GeminiBaseUrl, Guid.NewGuid()), null));
+        Assert.Equal(["nvidia-build", "google-gemini"], DefaultSetup.ConfiguredProviders(
+            Route(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, Guid.NewGuid()), Fallback(ChatCompletionsEndpointCatalog.GeminiBaseUrl, Guid.NewGuid())));
+        // No key: not configured. A fallback on the same endpoint borrows the Thinking key and isn't counted twice.
+        Assert.Empty(DefaultSetup.ConfiguredProviders(Route(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, null), null));
+        Assert.Equal(["nvidia-build"], DefaultSetup.ConfiguredProviders(
+            Route(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, Guid.NewGuid()), Fallback(ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl, null)));
+        Assert.Empty(DefaultSetup.ConfiguredProviders(null, Fallback(ChatCompletionsEndpointCatalog.GeminiBaseUrl, null)));
+        Assert.Equal(["openai"], DefaultSetup.ConfiguredProviders(Route("https://api.openai.com/v1", Guid.NewGuid(), SetupRouteType.OpenAi), null));
+    }
 }

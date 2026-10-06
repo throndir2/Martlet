@@ -15,8 +15,7 @@ public sealed class SetupAdvisorTests
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Thinking").Availability);
         Assert.NotNull(Role(advice, "Thinking").HowTo);
         Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
-        // Free first: with the GPU kept for games and no paid provider set up, Windows voices speak on the processor.
-        Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
+        Assert.Equal("Online", Role(advice, "Voice").Where);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
         Assert.DoesNotContain(AdvisorNextStep.Hosts, advice.NextSteps);
     }
@@ -35,8 +34,7 @@ public sealed class SetupAdvisorTests
         // Chatterbox Turbo runs today: the plan says how to set it up, never "Planned".
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Voice").Availability);
         Assert.Contains("Voice engine", Role(advice, "Voice").HowTo, StringComparison.Ordinal);
-        // A card with room left takes listening too: Whisper starts its transcript a little sooner and frees the processor.
-        Assert.Equal("Whisper speech recognition on a GPU", Role(advice, "Speech-to-text").Choice);
+        Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Speech-to-text").Availability);
     }
 
@@ -47,7 +45,7 @@ public sealed class SetupAdvisorTests
         {
             var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Fastest, ThisPcGpu = gpu, VoiceInput = true });
             Assert.Contains("small", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
-            Assert.Equal(AdvisorAvailability.Available, Role(advice, "Speech-to-text").Availability);
+            Assert.Equal("Parakeet speech recognition", Role(advice, "Speech-to-text").Choice);
             Assert.DoesNotContain(advice.Roles, r => r.Choice.Contains("Windows speech recognition", StringComparison.Ordinal));
         }
     }
@@ -87,12 +85,11 @@ public sealed class SetupAdvisorTests
         });
 
         Assert.Equal("Computer 2 (GPU)", Role(advice, "Thinking").Where);
+        Assert.Equal("Computer 3 (GPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal("Computer 3 (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("Computer 4 (GPU)", Role(advice, "Lip-sync").Where);
-        // Idle cards come first, so listening gets one of its own.
-        Assert.Equal("Computer 5 (GPU)", Role(advice, "Speech-to-text").Where);
         Assert.Equal(6, advice.Machines.Count);
-        Assert.StartsWith("Spare", advice.Machines[5].Runs[0], StringComparison.Ordinal);
+        Assert.StartsWith("Spare", advice.Machines[4].Runs[0], StringComparison.Ordinal);
         Assert.Contains(AdvisorNextStep.VoiceLibrary, advice.NextSteps);
     }
 
@@ -101,7 +98,7 @@ public sealed class SetupAdvisorTests
     {
         var advice = SetupAdvisor.Recommend(new() { CustomVoice = true });
 
-        Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
+        Assert.Equal("Online", Role(advice, "Voice").Where);
         Assert.Contains(advice.Notes, n => n.StartsWith("A custom voice needs an NVIDIA GPU", StringComparison.Ordinal));
     }
 
@@ -115,9 +112,7 @@ public sealed class SetupAdvisorTests
         });
 
         Assert.Equal("gpu-box (GPU)", Role(advice, "Thinking").Where);
-        // The fastest model that hears runs; a smarter one that also fits is offered as an upgrade.
-        Assert.Contains("small", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
-        Assert.Contains(advice.Notes, n => n.Contains("also fits", StringComparison.Ordinal));
+        Assert.Contains("large", Role(advice, "Thinking").Choice, StringComparison.Ordinal);
         Assert.Equal("old-laptop (GPU)", Role(advice, "Voice").Where);
         Assert.Equal("NVIDIA, 24 GB", advice.Machines.Single(m => m.Name == "gpu-box").Hardware);
         Assert.StartsWith("Not needed", advice.Machines.Single(m => m.Name == "nas").Runs[0], StringComparison.Ordinal);

@@ -58,8 +58,10 @@ and necessary redistributable native dependencies. No desktop inference GPU is
 required for P1. Windows 24H2 is a compatibility candidate only while its edition
 is serviced; it is close to Home/Pro end-of-servicing at the research date
 ([S03](RESEARCH.md#s03)). The installer accepts any x64 Windows 10 2004
-(build 19041) or newer so current Windows 10 and 11 PCs can install, but ARM64,
-Windows 10, Linux/macOS desktop, and enterprise deployment tooling are not
+(build 19041) or newer and Windows 11 on Arm (the x64 build under Windows' x64
+emulation; Windows 10 on Arm is refused) so current Windows 10 and 11 PCs can
+install, but Windows on Arm, Windows 10, Linux/macOS desktop, and enterprise
+deployment tooling are not
 initial qualified support claims.
 
 **Packaging:** unsigned per-user Inno Setup EXE (code signing is not required

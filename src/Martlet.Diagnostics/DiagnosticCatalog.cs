@@ -30,7 +30,8 @@ public static class DiagnosticCatalog
         new("pipeline.unavailable", "This pipeline stage is not executed by ordinary diagnostics. Use the separate explicit Desktop conversation timeline. Configuration is not real provider/device readiness."),
         new("host.setup", "Host and GPU diagnostics are unavailable. Do not change firewall, drivers or services on the strength of this status."),
         new("conversation.review", "Review the real conversation stage and supported saved routes. Use typed/text-only fallback if audio failed. Stop and wait for actual cleanup before a NEW explicitly permitted action; no automatic retry. Completion is not account readiness or proof of heard speech."),
-        new("conversation.wait", "The observed conversation action is unfinished or stopped. Wait for actual resource release; a timeout does not prove IO stopped. No replacement worker, replay or renewed permission is implied.")
+        new("conversation.wait", "The observed conversation action is unfinished or stopped. Wait for actual resource release; a timeout does not prove IO stopped. No replacement worker, replay or renewed permission is implied."),
+        new("platform.windows_on_arm", "Windows on Arm: use cloud thinking, listening and speaking, or pair another computer with an NVIDIA GPU for GPU jobs such as Audio2Face and voice cloning. NVIDIA GPUs don't work on Windows on Arm.")
     ]);
 
     public static IReadOnlyList<DiagnosticFinding> Findings { get; } = Array.AsReadOnly<DiagnosticFinding>(
@@ -43,6 +44,10 @@ public static class DiagnosticCatalog
         new("application.available", ProbeOutcome.Passed, "The Martlet diagnostic application is running. This is not a pipeline or installation qualification.", "diagnostics.refresh"),
         new("runtime.available", ProbeOutcome.Passed, "The required .NET 10 runtime is executing this process. No external runtime, GPU or host was inspected.", "diagnostics.refresh"),
         new("runtime.unsupported", ProbeOutcome.Failed, "This process is not running the required .NET 10 runtime.", "diagnostics.report", ErrorCode.UnsupportedVersion),
+        new("platform.x64", ProbeOutcome.Passed, "This PC has an x64 processor and Martlet runs natively on it. No GPU or host was inspected.", "diagnostics.refresh"),
+        new("platform.arm64_emulated", ProbeOutcome.Passed, "This PC is Windows on Arm (ARM64). Martlet's x64 build runs under Windows' x64 emulation, which works but uses more processor time and battery. No GPU or host was inspected.", "platform.windows_on_arm"),
+        new("platform.arm64_native", ProbeOutcome.Passed, "This PC is Windows on Arm (ARM64) and Martlet's ARM64 build runs natively on it. No GPU or host was inspected.", "platform.windows_on_arm"),
+        new("platform.unsupported", ProbeOutcome.Warning, "This PC's processor is neither x64 nor ARM64; Martlet is built and tested for x64 Windows and Windows 11 on Arm only.", "diagnostics.report"),
         new("provider.unavailable", ProbeOutcome.NotConfigured, "Connection not checked by this report. Provider execution is not a diagnostic probe here. No network or credential-store requests were made.", "provider.setup"),
         new("audio.input_unavailable", ProbeOutcome.Skipped, "Microphone diagnostics are unavailable. No devices were enumerated or opened.", "audio.input_guide"),
         new("audio.output_unavailable", ProbeOutcome.Skipped, "Playback diagnostics are unavailable. No audio devices were opened and no sound was played.", "audio.output_guide"),

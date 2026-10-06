@@ -111,6 +111,23 @@ internal static class DefaultSetup
         return new(thinking.Item1, thinking.Item2, voice, listenOnGpu, listening, LocalSpeechSetup.RecommendedParakeetModel(language), gpu, lipSync);
     }
 
+    /// <summary>The hosted providers (planner provider ids: the preset ids "nvidia-build", "openrouter", "google-gemini", and
+    /// "openai") with a saved key: the Thinking route's, and the If Thinking fails fallback's (its own key, or the Thinking
+    /// route's when it borrows it).</summary>
+    internal static IReadOnlyCollection<string> ConfiguredProviders(SetupRoute? thinking, ThinkingFallbackSettings? fallback)
+    {
+        var providers = new List<string>();
+        if (thinking?.CredentialId is not null)
+        {
+            if (thinking.RouteType == SetupRouteType.OpenAi) providers.Add("openai");
+            else if (ChatCompletionsEndpointCatalog.Named(thinking.Origin)?.Id is { } id) providers.Add(id);
+        }
+        if (fallback is not null && (fallback.CredentialId is not null || fallback.UsesThinkingKey(thinking)) &&
+            ChatCompletionsEndpointCatalog.Named(fallback.Origin)?.Id is { } fallbackId)
+            providers.Add(fallbackId);
+        return providers.Distinct(StringComparer.Ordinal).ToArray();
+    }
+
     /// <summary>The welcome wizard's suggestion for this PC from the placement engine, with the owner's preference: "keep
     /// everything on my computers" plans nothing hosted; "free online services are fine" lets Thinking go to NVIDIA Build so
     /// this PC's card goes to the voice and face. <paramref name="network"/>, when this PC joined a Martlet network, adds the

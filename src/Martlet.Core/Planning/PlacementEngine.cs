@@ -44,13 +44,7 @@ public static class PlacementEngine
             Machines = [.. network.Machines.Where(m => m.Id != newMachine.Id), newMachine],
             Current = current
         };
-        var proposed = Plan(joined, catalog);
-        // Besides what changes, what the new machine makes possible: a smarter model that now fits there.
-        return
-        [
-            .. Compare(current, proposed, catalog),
-            .. proposed.Suggestions.Where(s => s.Kind == SuggestionKind.Upgrade && s.MachineId == newMachine.Id)
-        ];
+        return Compare(current, Plan(joined, catalog), catalog);
     }
 
     /// <summary>What changes when the machine <paramref name="machineId"/> leaves (rebalancing its components).</summary>
@@ -114,15 +108,13 @@ public static class PlacementEngine
                     $"{Where(next.MachineId)} can run {to.DisplayName}" +
                     (nowOption is null ? "." : $", better than {nowOption.DisplayName}.") + $" {next.Why}"));
             else
-                suggestions.Add(new(nowOption.QualityTier > to.QualityTier ? SuggestionKind.Downgrade : SuggestionKind.Move,
-                    info.Component, next.MachineId, now.OptionId, to.Id,
-                    $"Use {to.DisplayName} on {Where(next.MachineId)} instead of {nowOption.DisplayName}. {next.Why}"));
+                suggestions.Add(new(SuggestionKind.Move, info.Component, next.MachineId, now.OptionId, to.Id,
+                    $"Use {to.DisplayName} on {Where(next.MachineId)}" +
+                    (nowOption is null ? "." : $" instead of {nowOption.DisplayName}.") + $" {next.Why}"));
         }
-        foreach (var fallback in proposed.Assignments.Where(a => a.Role == AssignmentRole.Fallback &&
-                     !current.Any(c => c.Component == a.Component && c.OptionId == a.Option.Id)))
+        foreach (var fallback in proposed.Assignments.Where(a => a.Role == AssignmentRole.Fallback))
             suggestions.Add(new(SuggestionKind.AddFallback, fallback.Component, fallback.MachineId, null, fallback.Option.Id, fallback.Why));
-        suggestions.AddRange(proposed.Suggestions.Where(s => s.Kind == SuggestionKind.SignUp &&
-            !current.Any(c => c.OptionId == s.ToOptionId)));
+        suggestions.AddRange(proposed.Suggestions.Where(s => s.Kind == SuggestionKind.SignUp));
         return suggestions;
     }
 
@@ -141,9 +133,6 @@ public static class PlacementEngine
             var cpu = machine.Cpu.Capacity * CpuOversubscription - machine.Cpu.Used;
             var disk = machine.Disk.Capacity > 0 ? machine.Disk.Free : double.MaxValue;
             var gpus = machine.Gpus.Select(g => g.Vram.Free).ToArray();
-            if (ComponentRanking.Of(option.Component).Necessity == ComponentNecessity.Optional)
-                foreach (var voice in machine.Items.Where(i => i.Component == PlanComponent.Voice && i.GpuIndex is not null))
-                    gpus[voice.GpuIndex!.Value] = 0;
             for (var i = 0; i < 64; i++)
             {
                 var ramNeed = option.Peak.RamGb;
@@ -190,17 +179,14 @@ public static class PlacementEngine
 
     internal static string Gb(double gb) => gb.ToString("0.#", CultureInfo.InvariantCulture);
 
-    private sealed class Card(int index, MachineGpu spec, double usable, bool forGames)
+    private sealed class Card(int index, MachineGpu spec, double capacity)
     {
         public int Index { get; } = index;
         public MachineGpu Spec { get; } = spec;
-        /// <summary>What the planner may use; 0 on a card kept for games.</summary>
-        public double Capacity => ForGames ? 0 : Usable;
-        public double Usable { get; } = usable;
-        public bool ForGames { get; } = forGames;
+        public double Capacity { get; } = capacity;
         public double Used { get; set; }
         public bool Exclusive { get; set; }
-        public double Free(bool allowGames = false) => (allowGames ? Usable : Capacity) - Used;
+        public double Free => Capacity - Used;
     }
 
     private sealed class Node
@@ -240,8 +226,8 @@ public static class PlacementEngine
             var cards = spec.Gpus.Select((gpu, i) =>
             {
                 var reserve = gpu.UnifiedMemory ? 0 : Math.Max(GpuReserveGb, gpu.VramGb * 0.1);
-                var usable = Math.Max(0, gpu.VramGb - Math.Max(gpu.UsedGb, reserve));
-                return new Card(i, gpu, Math.Round(usable, 2), spec.KeepGpuForGames);
+                var capacity = spec.KeepGpuForGames ? 0 : Math.Max(0, gpu.VramGb - Math.Max(gpu.UsedGb, reserve));
+                return new Card(i, gpu, Math.Round(capacity, 2));
             }).ToList();
             var ramReserve = spec.IsPrimary ? Math.Max(4, spec.RamGb * 0.25) : Math.Max(2, spec.RamGb * 0.15);
             var cpuReserve = spec.IsPrimary ? 2 : 1;
@@ -255,7 +241,7 @@ public static class PlacementEngine
 
         public PlacementPlan Run()
         {
-            foreach (var step in ComponentRanking.ClaimOrder(Preference, request.ThinkingFirst))
+            foreach (var step in ComponentRanking.ClaimOrder(Preference))
             {
                 switch (step)
                 {
@@ -266,16 +252,12 @@ public static class PlacementEngine
                     case PlanStep.ThinkingPrimary: ThinkingPrimary(); break;
                     case PlanStep.ThinkingFallback: ThinkingFallback(); break;
                     case PlanStep.ListeningUpgrade: ListeningUpgrade(); break;
-                    case PlanStep.DeepThinking:
-                        // Upgrades of the core parts are judged before optional ones take the room.
-                        UpgradeSuggestions(optional: false);
-                        Simple(PlanComponent.DeepThinking);
-                        break;
+                    case PlanStep.DeepThinking: Simple(PlanComponent.DeepThinking); break;
                     case PlanStep.Singing: Simple(PlanComponent.Singing); break;
                     case PlanStep.Pictures: Simple(PlanComponent.Pictures); break;
                 }
             }
-            UpgradeSuggestions(optional: true);
+            UpgradeSuggestions();
             AddNotes();
             var ordered = assignments.OrderBy(a => ComponentRanking.Of(a.Component).Rank).ThenBy(a => a.Role).ToArray();
             var droppedOrdered = dropped.OrderBy(d => ComponentRanking.Of(d.Component).Rank).ToArray();
@@ -306,8 +288,8 @@ public static class PlacementEngine
                     continue;
                 }
                 var card = option.UsesGpu
-                    ? node.Cards.Where(c => GpuMatches(option, c.Spec.Vendor, c.Spec.VramGb)).OrderByDescending(c => c.Free()).FirstOrDefault()
-                      ?? node.Cards.OrderByDescending(c => c.Free()).FirstOrDefault()
+                    ? node.Cards.Where(c => GpuMatches(option, c.Spec.Vendor, c.Spec.VramGb)).OrderByDescending(c => c.Free).FirstOrDefault()
+                      ?? node.Cards.OrderByDescending(c => c.Free).FirstOrDefault()
                     : null;
                 var use = option.Reserve;
                 if (card is null && option.UsesGpu) use = use with { RamGb = use.RamGb + use.VramGb, VramGb = 0 };
@@ -330,7 +312,7 @@ public static class PlacementEngine
 
         private static MachineUsage Usage(Node node) => new(node.Spec.Id, node.Spec.Name, node.Spec.Platform, node.Spec.IsPrimary,
             node.Cards.Select(c => new GpuUsage(c.Index, c.Spec.Name, c.Spec.Vendor, c.Spec.VramGb,
-                new(c.ForGames && c.Used > 0 ? c.Usable : c.Capacity, Math.Round(c.Used, 2)), c.Spec.UnifiedMemory)).ToArray(),
+                new(c.Capacity, Math.Round(c.Used, 2)), c.Spec.UnifiedMemory)).ToArray(),
             new(node.RamCapacity, Math.Round(node.RamUsed, 2)), new(node.CpuCapacity, Math.Round(node.CpuUsed, 2)),
             new(node.DiskCapacity, Math.Round(node.DiskUsed, 2)), node.Items.ToArray());
 
@@ -338,12 +320,10 @@ public static class PlacementEngine
             option.ProviderId is { } provider && request.ConfiguredProviders.Contains(provider, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Whether a hosted option may be planned: never when the user keeps everything local; configured providers
-        /// always; free sign-up providers for anything but the audio path (voice, listening and lip-sync would send the
-        /// user's voice or Martlet's to a free tier, whose terms ask not to).</summary>
+        /// always; free sign-up providers for Thinking and Deep thinking (the user can get a key for free).</summary>
         private bool ExternalAllowed(ComponentOption option) =>
             !option.IsLocal && Preference != HostingPreference.PreferLocal &&
-            (Configured(option) || option.FreeTier &&
-                option.Component is not (PlanComponent.Voice or PlanComponent.Listening or PlanComponent.LipSync));
+            (Configured(option) || option.FreeTier && option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking);
 
         private static int ReliabilityPenalty(ComponentOption option) => option.Reliability switch
         {
@@ -354,8 +334,7 @@ public static class PlacementEngine
 
         private int Score(ComponentOption option)
         {
-            // Slow first words cost: a voice that starts 1.4 s late loses to a slightly plainer one that starts at once.
-            var score = option.QualityTier * 10 - ReliabilityPenalty(option) - Math.Min(50, (option.FirstWordMs ?? 0) / 200);
+            var score = option.QualityTier * 10 - ReliabilityPenalty(option);
             if (option.IsLocal)
             {
                 score += option.Component is PlanComponent.Voice or PlanComponent.Listening or PlanComponent.LipSync or PlanComponent.Character
@@ -368,48 +347,36 @@ public static class PlacementEngine
 
         // Placement on machines.
 
-        private static bool IsLanguageModel(PlanComponent component) => component is PlanComponent.Thinking or PlanComponent.DeepThinking;
-
-        private (Node Node, Card? Card)? FindSlot(ComponentOption option, bool allowGameCards = false)
+        private (Node Node, Card? Card)? FindSlot(ComponentOption option)
         {
             var currentMachine = request.Current.FirstOrDefault(c => c.Component == option.Component && c.OptionId == option.Id)?.MachineId;
-            var languageModel = IsLanguageModel(option.Component);
             (Node, Card?)? best = null;
-            (int, int, int, int, int, int, double) bestKey = default;
+            var bestKey = (0, 0, 0, 0d);
             foreach (var node in nodes)
             {
                 if (!option.RunsOn(node.Spec.Platform) || option.RunsInApp && !node.Spec.IsPrimary) continue;
                 if (node.Spec.Platform == "macos" && option.Gpu == GpuRequirement.Nvidia) continue;
+                var ramNeed = option.Peak.RamGb;
+                Card? card = null;
+                if (option.UsesGpu)
+                {
+                    card = node.Cards.Where(c => GpuMatches(option, c.Spec.Vendor, c.Spec.VramGb) && c.Free >= option.GpuGb &&
+                            !c.Exclusive && (option.CanShareGpu || c.Used == 0))
+                        .OrderBy(c => c.Free).FirstOrDefault();
+                    if (card is null) continue;
+                    if (card.Spec.UnifiedMemory) ramNeed += option.GpuGb;
+                }
+                if (node.RamCapacity - node.RamUsed < ramNeed) continue;
                 if (node.CpuCapacity * CpuOversubscription - node.CpuUsed < option.Steady.CpuThreads) continue;
                 if (node.DiskCapacity > 0 && node.DiskCapacity - node.DiskUsed < option.Peak.DiskGb) continue;
-                var optional = ComponentRanking.Of(option.Component).Necessity == ComponentNecessity.Optional;
-                var cards = option.UsesGpu
-                    ? node.Cards.Where(c => GpuMatches(option, c.Spec.Vendor, c.Spec.VramGb) && c.Free(allowGameCards) >= option.GpuGb &&
-                        !c.Exclusive && (option.CanShareGpu || c.Used == 0) &&
-                        // Optional jobs burst the card's compute; next to the voice they would make it start late.
-                        !(optional && node.Items.Any(i => i.GpuIndex == c.Index && i.Component == PlanComponent.Voice))).Cast<Card?>()
-                    : [null];
-                foreach (var card in cards)
+                // Keep what runs where it runs; prefer always-on machines, then hosts over the PC the user sits at (its
+                // games and desktop stay smooth), then the tightest fit so bigger cards stay free.
+                var key = (node.Spec.Id == currentMachine ? 0 : 1, node.Spec.OnBattery ? 1 : 0, node.Spec.IsPrimary ? 1 : 0,
+                    card is null ? -(node.CpuCapacity - node.CpuUsed) : card.Free);
+                if (best is null || key.CompareTo(bestKey) < 0)
                 {
-                    var ramNeed = option.Peak.RamGb + (card is { Spec.UnifiedMemory: true } ? option.GpuGb : 0);
-                    if (node.RamCapacity - node.RamUsed < ramNeed) continue;
-                    var sharesWithModel = card is not null && !languageModel &&
-                        node.Items.Any(i => i.GpuIndex == card.Index && IsLanguageModel(i.Component));
-                    // Keep what runs where it runs; prefer always-on machines, then hosts over the PC the user sits at (its
-                    // games and desktop stay smooth); keep audio work off a language model's card (generation competes for
-                    // it) and on an idle card when there is one; put any-vendor work on AMD/Intel/Apple so NVIDIA stays for
-                    // NVIDIA-only engines; then language models take the roomiest card (room to grow) and everything else
-                    // the tightest fit, so big cards stay free.
-                    var key = (node.Spec.Id == currentMachine ? 0 : 1, node.Spec.OnBattery ? 1 : 0, node.Spec.IsPrimary ? 1 : 0,
-                        sharesWithModel ? 1 : 0, card is { Used: > 0 } ? 1 : 0,
-                        option.Gpu == GpuRequirement.AnyGpu && card is { Spec.IsNvidia: true } ? 1 : 0,
-                        card is null ? -(node.CpuCapacity * CpuOversubscription - node.CpuUsed)
-                            : languageModel ? -card.Free(allowGameCards) : card.Free(allowGameCards));
-                    if (best is null || key.CompareTo(bestKey) < 0)
-                    {
-                        best = (node, card);
-                        bestKey = key;
-                    }
+                    best = (node, card);
+                    bestKey = key;
                 }
             }
             return best;
@@ -417,55 +384,47 @@ public static class PlacementEngine
 
         private bool Fits(ComponentOption option) => !option.IsLocal || FindSlot(option) is not null;
 
-        private Assignment Place(ComponentOption option, AssignmentRole role, string why, bool allowGameCards = false)
+        private Assignment Place(ComponentOption option, AssignmentRole role, string why)
         {
             Assignment assignment;
             if (!option.IsLocal) assignment = new(option.Component, option, null, null, role, why);
             else
             {
-                var (node, card) = FindSlot(option, allowGameCards) ?? throw new InvalidOperationException($"{option.Id} does not fit.");
+                var (node, card) = FindSlot(option) ?? throw new InvalidOperationException($"{option.Id} does not fit.");
                 var use = option.Reserve;
-                if (card is null) use = use with { VramGb = 0 };
-                var item = new UsageItem(option.Component, option.Id, card?.Index, use);
-                node.Items.Add(item);
-                Account(node, item, option, +1);
+                if (card is not null)
+                {
+                    card.Used += option.GpuGb;
+                    if (!option.CanShareGpu) card.Exclusive = true;
+                    if (card.Spec.UnifiedMemory) node.RamUsed += option.GpuGb;
+                }
+                node.RamUsed += use.RamGb;
+                node.CpuUsed += use.CpuThreads;
+                node.DiskUsed += use.DiskGb;
+                node.Items.Add(new(option.Component, option.Id, card?.Index, use));
                 assignment = new(option.Component, option, node.Spec.Id, card?.Index, role, why);
             }
             assignments.Add(assignment);
             return assignment;
         }
 
-        private UsageItem? Unplace(Assignment assignment)
+        private void Unplace(Assignment assignment)
         {
             assignments.Remove(assignment);
-            if (assignment.MachineId is null) return null;
+            if (assignment.MachineId is null) return;
             var node = nodes.First(n => n.Spec.Id == assignment.MachineId);
             var item = node.Items.First(i => i.Component == assignment.Component && i.OptionId == assignment.Option.Id);
             node.Items.Remove(item);
-            Account(node, item, assignment.Option, -1);
-            return item;
-        }
-
-        /// <summary>Puts back an assignment <see cref="Unplace"/> removed, on the same machine and card.</summary>
-        private void Restore(Assignment assignment, UsageItem? item, int index)
-        {
-            assignments.Insert(Math.Min(index, assignments.Count), assignment);
-            if (item is null) return;
-            var node = nodes.First(n => n.Spec.Id == assignment.MachineId);
-            node.Items.Add(item);
-            Account(node, item, assignment.Option, +1);
-        }
-
-        private static void Account(Node node, UsageItem item, ComponentOption option, int sign)
-        {
-            node.RamUsed += sign * item.Use.RamGb;
-            node.CpuUsed += sign * item.Use.CpuThreads;
-            node.DiskUsed += sign * item.Use.DiskGb;
-            if (item.GpuIndex is not { } index) return;
-            var card = node.Cards[index];
-            card.Used += sign * item.Use.VramGb;
-            if (card.Spec.UnifiedMemory) node.RamUsed += sign * item.Use.VramGb;
-            if (!option.CanShareGpu) card.Exclusive = sign > 0;
+            node.RamUsed -= item.Use.RamGb;
+            node.CpuUsed -= item.Use.CpuThreads;
+            node.DiskUsed -= item.Use.DiskGb;
+            if (item.GpuIndex is { } index)
+            {
+                var card = node.Cards[index];
+                card.Used -= item.Use.VramGb;
+                if (card.Spec.UnifiedMemory) node.RamUsed -= item.Use.VramGb;
+                if (!assignment.Option.CanShareGpu) card.Exclusive = false;
+            }
         }
 
         private string MachineName(string? id) => id is null ? "a hosted provider" : nodes.First(n => n.Spec.Id == id).Spec.Name;
@@ -544,11 +503,9 @@ public static class PlacementEngine
             .Where(o => o.IsLocal && (!hearingOnly || o.HearsAudio))
             .OrderBy(o => o.UsesGpu ? 0 : 1).ThenByDescending(o => o.HearsAudio).ThenBy(o => o.FirstWordMs ?? int.MaxValue);
 
-        // Hearing barely counts: free tiers ask users not to send voices, so Martlet plans the transcript path by default
-        // (docs/HOSTED_THINKING.md).
         private IEnumerable<ComponentOption> HostedThinking() => catalog.For(PlanComponent.Thinking)
             .Where(ExternalAllowed)
-            .OrderByDescending(o => (Configured(o) ? 20 : 0) + (o.HearsAudio ? 2 : 0) + o.QualityTier * 10 - ReliabilityPenalty(o))
+            .OrderByDescending(o => (Configured(o) ? 20 : 0) + (o.HearsAudio ? 10 : 0) + o.QualityTier * 10 - ReliabilityPenalty(o) * 2)
             .ThenBy(o => o.FirstWordMs ?? int.MaxValue);
 
         private void ThinkingPrimary()
@@ -562,16 +519,6 @@ public static class PlacementEngine
             var localGpu = LocalThinking(hearingOnly: false).Where(o => o.UsesGpu).FirstOrDefault(Fits);
             var hosted = HostedThinking().FirstOrDefault();
             var localCpu = LocalThinking(hearingOnly: false).Where(o => !o.UsesGpu).FirstOrDefault(Fits);
-            // Keeping everything local with only a gaming card: the card beats the processor (seconds per reply), with a warning.
-            if (localGpu is null && Preference == HostingPreference.PreferLocal &&
-                LocalThinking(hearingOnly: false).Where(o => o.UsesGpu).FirstOrDefault(o => FindSlot(o, allowGameCards: true) is not null) is { } gaming)
-            {
-                var placed = Place(gaming, AssignmentRole.Primary,
-                    $"{gaming.DisplayName} on the graphics card you game on: you keep everything local, and the processor would take " +
-                    $"seconds per reply. It may slow games while Martlet thinks.", allowGameCards: true);
-                notes.Add($"The local model may slow games on {MachineName(placed.MachineId)}. Another computer with a graphics card avoids that.");
-                return;
-            }
             ComponentOption? chosen;
             string why;
             if (Preference == HostingPreference.PreferHosted && hosted is not null)
@@ -608,18 +555,16 @@ public static class PlacementEngine
             if (!chosen.IsLocal && chosen.NeedsSignup && !Configured(chosen)) SignUp(chosen);
         }
 
-        /// <summary>The fallback chain behind a hosted primary that can fail: a local model on a graphics card (fast and
-        /// offline-proof) ends it; otherwise another company's endpoint (one outage never takes both down), then a local model
-        /// on the processor as the last resort.</summary>
         private void ThinkingFallback()
         {
             var primary = assignments.FirstOrDefault(a => a.Component == PlanComponent.Thinking);
             if (primary is null || primary.Option.IsLocal || primary.Option.Reliability == OptionReliability.High) return;
-            var gpu = LocalThinking(hearingOnly: false).Where(o => o.UsesGpu).FirstOrDefault(Fits);
-            if (gpu is not null)
+            var local = LocalThinking(hearingOnly: false).FirstOrDefault(Fits);
+            if (local is not null)
             {
-                Place(gpu, AssignmentRole.Fallback,
-                    $"{gpu.DisplayName} on the graphics card takes over when {primary.Option.DisplayName} is down or rate-limited.");
+                Place(local, AssignmentRole.Fallback,
+                    $"{local.DisplayName} {WhereText(local)} takes over when {primary.Option.DisplayName} is down or rate-limited" +
+                    (local.UsesGpu ? "." : $" (slower, about {Seconds(local.FirstWordMs ?? 0)} to the first word)."));
                 return;
             }
             var other = HostedThinking().FirstOrDefault(o => o.ProviderId != primary.Option.ProviderId);
@@ -627,16 +572,8 @@ public static class PlacementEngine
             {
                 Place(other, AssignmentRole.Fallback, $"{other.DisplayName} takes over when {primary.Option.DisplayName} is down or rate-limited.");
                 if (other.NeedsSignup && !Configured(other)) SignUp(other);
-            }
-            var cpu = LocalThinking(hearingOnly: false).Where(o => !o.UsesGpu).FirstOrDefault(Fits);
-            if (cpu is not null)
-            {
-                Place(cpu, AssignmentRole.Fallback,
-                    $"{cpu.DisplayName} takes over when {(other is null ? primary.Option.DisplayName : "both endpoints")} " +
-                    $"can't answer (slower, about {Seconds(cpu.FirstWordMs ?? 0)} to the first word, but it works offline).");
                 return;
             }
-            if (other is not null) return;
             notes.Add($"Nothing can stand in when {primary.Option.DisplayName} is down: Martlet can't reply until it is back.");
         }
 
@@ -644,25 +581,18 @@ public static class PlacementEngine
         {
             var current = assignments.FirstOrDefault(a => a.Component == PlanComponent.Listening && a.Role == AssignmentRole.Primary);
             if (current is null || !current.Option.IsLocal || current.Option.UsesGpu) return;
-            // Whisper on a card only moves there when it is better, starts its transcript sooner, or the processor running
-            // Parakeet is overcommitted (Parakeet keeps up to 8 threads busy while it decodes).
-            var node = nodes.First(n => n.Spec.Id == current.MachineId);
-            var busy = node.CpuUsed > node.CpuCapacity;
             var upgrade = catalog.For(PlanComponent.Listening)
-                .Where(o => o.UsesGpu && (o.QualityTier > current.Option.QualityTier || o.QualityTier == current.Option.QualityTier &&
-                    (busy || o.FirstWordMs < current.Option.FirstWordMs)))
+                .Where(o => o.UsesGpu && o.QualityTier > current.Option.QualityTier)
                 .OrderByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).FirstOrDefault(Fits);
             if (upgrade is null) return;
             Unplace(current);
             Place(upgrade, AssignmentRole.Primary,
-                $"{upgrade.DisplayName}: a card had room left after the more important parts" +
-                (busy ? ", and it takes the work off a busy processor." : "."));
+                $"{upgrade.DisplayName}: a card had room left after the more important parts, and it frees the processor.");
         }
 
-        private void UpgradeSuggestions(bool optional)
+        private void UpgradeSuggestions()
         {
-            foreach (var assignment in assignments.Where(a => a.Role == AssignmentRole.Primary &&
-                         (ComponentRanking.Of(a.Component).Necessity == ComponentNecessity.Optional) == optional).ToList())
+            foreach (var assignment in assignments.Where(a => a.Role == AssignmentRole.Primary).ToList())
             {
                 var option = assignment.Option;
                 // Thinking: a smarter local model that hears, when it fits beside everything else in place of the current one.
@@ -671,19 +601,19 @@ public static class PlacementEngine
                         (assignment.Component != PlanComponent.Thinking || o.HearsAudio || !option.HearsAudio))
                     .OrderBy(o => o.QualityTier).ToList();
                 if (better.Count == 0) continue;
-                var index = assignments.IndexOf(assignment);
-                var item = Unplace(assignment);
+                Unplace(assignment);
                 var fits = better.Where(Fits).OrderByDescending(o => o.QualityTier).FirstOrDefault();
-                var fitsOn = fits is null ? null : MachineOf(fits);
-                Restore(assignment, item, index);
-                if (fits is not null && IsLanguageModel(assignment.Component))
-                    suggestions.Add(new(SuggestionKind.Upgrade, assignment.Component, fitsOn, option.Id, fits.Id,
+                var restored = Place(option, assignment.Role, assignment.Why);
+                assignments.Remove(restored);
+                assignments.Insert(0, restored);
+                if (fits is not null && assignment.Component is PlanComponent.Thinking or PlanComponent.DeepThinking)
+                    suggestions.Add(new(SuggestionKind.Upgrade, assignment.Component, MachineOf(fits), option.Id, fits.Id,
                         $"{fits.DisplayName} also fits: smarter than {option.DisplayName}" +
                         (fits.FirstWordMs is { } ms && option.FirstWordMs is { } now && ms > now
                             ? $", but its first word comes later (about {Seconds(ms)} instead of {Seconds(now)})." : ".")));
                 else if (fits is null)
                 {
-                    var next = better.OrderByDescending(o => o.QualityTier).ThenBy(o => o.GpuGb).First();
+                    var next = better[0];
                     suggestions.Add(new(SuggestionKind.Upgrade, assignment.Component, null, option.Id, next.Id,
                         $"{next.DisplayName} would be better than {option.DisplayName}; it needs " +
                         (next.UsesGpu

@@ -219,7 +219,9 @@ Prefer something else, like a cloud provider or another of your computers?
 Change any of it in **Companion**, or click **Get a setup recommendation**.
 
 > [!NOTE]
-> Martlet runs on Windows 10 (version 2004 or later) and Windows 11, 64-bit. A
+> Martlet runs on Windows 10 (version 2004 or later) and Windows 11, 64-bit,
+> and on Windows 11 on Arm PCs such as Snapdragon X laptops (under Windows' x64
+> emulation; Windows 10 on Arm isn't supported). A
 > graphics card is optional: with a cloud provider any PC will do (cloud
 > providers may charge for use). The installer isn't code-signed, so Windows may
 > ask you to confirm before it runs.
