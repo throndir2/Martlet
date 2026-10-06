@@ -3090,7 +3090,7 @@ checking the page.
 Companion › Character's *Emotes and motions* card lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
 shows (or would show). `CharacterActionsStatus` reads how many emotes and
-motions the model has (with Martlet's nod and shake) and whether they were named
+motions the model has (with the Martlet gestures its rig supports) and whether they were named
 by the Thinking model (and when) or from the model's own files, or why they
 couldn't be read; `CharacterActionsNaming` the Thinking model's naming
 (*Asking the Thinking model...*, *The Thinking model named 10 emotes and motions
