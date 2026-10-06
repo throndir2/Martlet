@@ -30,6 +30,7 @@ public partial class MainWindow : ThemedWindow
     private readonly DesktopConversationHistory? conversationHistory;
     private readonly LorebookStore? lorebooks;
     private readonly SmartHome smartHome;
+    private readonly MessagingService messaging;
     private readonly McpToolService mcpTools;
     private readonly VoiceIdentity voiceIdentity;
     private readonly LocalVoices localVoices;
@@ -80,6 +81,8 @@ public partial class MainWindow : ThemedWindow
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);
+        messaging = new(store?.DataDirectory, vault) { Answer = AnswerMessageAsync };
+        messaging.Changed += () => Dispatcher.BeginInvoke(MessagingChanged);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         localVoices = new(store?.DataDirectory);
@@ -191,6 +194,8 @@ public partial class MainWindow : ThemedWindow
         {
             await ShowSavedCharacterAsync(onlyIfAutoShow: true);
             if (background.StartCompanion && !closing) await StartCompanionAsync();
+            // Messaging apps (Companion › Messaging): the paired chats reach Martlet whenever it runs on this companion PC.
+            if (!closing) messaging.Start();
         }
         else ErrorLog.Info("Martlet started as a Martlet host: the character and listening stay off on this PC" +
             (background.StartCompanion ? " (When Martlet starts, show the character and start listening is kept for when it's your companion PC)." : "."));

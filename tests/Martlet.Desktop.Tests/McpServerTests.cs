@@ -119,6 +119,45 @@ public sealed class McpServerTests(ITestOutputHelper output)
         });
     }
 
+    [Fact]
+    public async Task MessagingStatusReadsTelegramWithoutTokenOrChats()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Messaging." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var none = ToolResult((await SendAsync(Call(directory)))[0]);
+            Assert.Equal("none", none.GetProperty("state").GetString());
+            Assert.False(none.GetProperty("telegram").GetProperty("connected").GetBoolean());
+
+            Assert.True(new MessagingPreferences
+            {
+                Telegram = new()
+                {
+                    Enabled = true, BotName = "Martlet", BotUsername = "my_martlet_bot", SpeakReplies = true,
+                    Chats = [new("987654321", "Samantha canary"), new("123", "Other")]
+                }
+            }.Save(directory));
+            var message = (await SendAsync(Call(directory)))[0];
+            var raw = message.GetRawText();
+            foreach (var secret in new[] { "987654321", "Samantha", "canary" }) Assert.DoesNotContain(secret, raw, StringComparison.Ordinal);
+            var telegram = ToolResult(message).GetProperty("telegram");
+            Assert.True(telegram.GetProperty("connected").GetBoolean());
+            Assert.True(telegram.GetProperty("enabled").GetBoolean());
+            Assert.Equal("my_martlet_bot", telegram.GetProperty("bot").GetString());
+            Assert.Equal(2, telegram.GetProperty("chats").GetInt32());
+            Assert.True(telegram.GetProperty("speakReplies").GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+
+        static string Call(string dataDirectory) => JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "messaging_status", arguments = new { dataDirectory } }
+        });
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

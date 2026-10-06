@@ -1411,6 +1411,22 @@ directory's `smart-home.json`: `connected`, `address`, `name`, `version`,
 `shared` (this PC follows the connection shared through the hosts), `sharedBy`
 and `sharedRevision`.
 
+`messaging_status` reads Companion › Messaging from a data directory's
+`messaging.json` (this PC only, never synced): `state` (`none`, `loaded` or
+`unreadable` with `problem`) and `telegram` with `connected` (a bot is set
+up), `enabled` (Martlet answers it on this PC), `bot` (its username),
+`botName`, `tokenSaved` (never the token), `chats` (how many chats are paired;
+never their names or IDs) and
+`speakReplies`. The bot token lives in Windows Credential Manager and is never
+read. In the desktop, Companion › Messaging's `MessagingStatus` (whether Martlet
+answers the bot now, or why not), `MessagingNote` (the last connect outcome),
+`MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
+pairing code works) are readable values; the code itself (`MessagingPairCode`),
+chat names and the token field are not. Its Cancel (`MessagingPairCancel`) only
+withdraws the code and is a safe click; Connect, Pair a chat, Open BotFather,
+Open in Telegram, Remove, Disconnect and its two check boxes need
+`--allow-ui-effects`.
+
 `prompts_status` reads Companion › Prompts from a data directory's
 `settings.json` (optional absolute `dataDirectory`, default the current
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
@@ -3612,7 +3628,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

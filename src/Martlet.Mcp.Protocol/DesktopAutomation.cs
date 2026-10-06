@@ -57,6 +57,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Disconnect, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
+        // Messaging: Cancel only withdraws the pairing code shown (nothing is sent or saved). Connect, Pair a chat, Open BotFather,
+        // Open in Telegram, Remove, Disconnect and the two check boxes do the work.
+        "MessagingPairCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
@@ -302,6 +305,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Messaging: whether Martlet answers the Telegram bot on this PC now or why not (bot username, chat count,
+        // when it last answered; never the token), the connect outcome, how many chats are paired and the pairing note (when
+        // the code expires; never the code itself, MessagingPairCode, or chat names).
+        "MessagingStatus", "MessagingNote", "MessagingChats", "MessagingPairStatus",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the

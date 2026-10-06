@@ -633,6 +633,28 @@ public sealed class LiveConversationTests
             request.RootElement.GetProperty("instructions").GetString());
     }
 
+    [Fact]
+    public async Task MessagesFromPairedChatsAreAnsweredWhileLockedButNeverAloud()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Controller.SetSessionLocked(true);
+        Assert.Equal("conversation.controls_blocked",
+            Assert.Throws<LiveActionException>(() => fixture.Controller.Start("hi", voice: false, microphone: false, approved: true)).Code);
+        Assert.Equal("conversation.controls_blocked",
+            Assert.Throws<LiveActionException>(() => fixture.Controller.Start("hi", voice: true, microphone: false, approved: true, remote: true)).Code);
+        Assert.Equal("conversation.invalid_input",
+            Assert.Throws<LiveActionException>(() => fixture.Controller.Start(null, voice: false, microphone: true, approved: true,
+                localCaptureApproved: true, uploadApproved: true, remote: true)).Code);
+        fixture.Answer("Hello from the PC.");
+
+        var operation = fixture.Controller.Start("hi", voice: false, microphone: false, approved: true, remote: true);
+        await fixture.Finish(operation);
+
+        Assert.Equal("runtime.Completed", operation.Status.Code);
+        Assert.Equal("Hello from the PC.", operation.Turn!.Content.Text);
+        Assert.Equal(1, fixture.Llm.Calls);
+    }
+
     [Theory]
     [InlineData("consent")]
     [InlineData("pause")]
@@ -2008,6 +2030,33 @@ public sealed class LiveConversationTests
         Assert.Equal(0, fixture.Llm.Calls);
         Assert.Equal(0, operation.Capture!.Snapshot.RetainedPcmBytes);
     }
+
+    [Fact]
+    public Task MessagesFromPairedChatsJoinTheConversationAndGetTheReplyEvenWhileLocked() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            fixture.Answer("Hello from the PC.");
+            var reply = window.AskFromMessage("hi there", "Sam (Telegram)", speak: false, CancellationToken.None);
+            await fixture.Advance(() => reply.IsCompleted);
+            Assert.Equal("Hello from the PC.", await reply);
+            Assert.Contains(window.Messages, message => message.IsUser && message.Text == "hi there" && message.Caption.StartsWith("Sam (Telegram)"));
+            Assert.Contains(window.Messages, message => message.Role == ChatRole.Martlet && message.Text == "Hello from the PC.");
+
+            fixture.Events.Signal(true);
+            await fixture.Advance(() => fixture.Controller.Controls.Locked);
+            fixture.Answer("Still here.");
+            reply = window.AskFromMessage("are you there?", "Sam (Telegram)", speak: true, CancellationToken.None);
+            await fixture.Advance(() => reply.IsCompleted);
+            Assert.Equal("Still here.", await reply);
+            Assert.Equal(2, fixture.Llm.Calls);
+            Assert.Equal(0, window.RemoteWaiting);
+        }
+        finally { window.Close(); }
+    });
 
     [Fact]
     public Task LostHeldKeyboardFocusCancelsCaptureInsteadOfSending() => DispatcherTest(async () =>
