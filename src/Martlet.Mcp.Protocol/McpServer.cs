@@ -388,7 +388,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture (nod, shake) with what it changes, its tag, voice cue, when to use it, whether " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; Live2D smile, blush, surprise; VRM wave, shrug, bounce) with what it changes, its tag, voice cue, when to use it, whether " +
             "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
             "and the Thinking naming prompt. With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
@@ -736,6 +736,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" },
             seconds = new { type = "integer", minimum = 3, maximum = 30 }
+        }),
+        Tool("messaging_status", "Read Companion > Messaging from a data directory's messaging.json (this PC only, never synced): " +
+            "whether Martlet answers its Telegram bot on this PC, the bot's name and username, whether a token is saved, how many chats are paired and whether " +
+            "replies are also said aloud. Never the bot token (Windows Credential Manager) or the chats' names and IDs. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
         }),
         Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
             "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
@@ -1131,6 +1137,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "smart_home_status" => SmartHomeStatus(arguments),
                 "discord_status" => DiscordCheck.Status(DataDirectory(arguments)),
                 "discord_check" => await DiscordCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "seconds"), cancellation),
+                "messaging_status" => MessagingStatus(arguments),
                 "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
                 "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
@@ -1814,6 +1821,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
             expressions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Expression),
             motions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Motion),
+            gestures = inventory.Sources.Where(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Gesture).Select(s => s.Name).ToArray(),
             fromVTubeStudio = extras is null ? null : new
             {
                 expressions = extras.Expressions.Select(e => new { e.Name, e.File }), motions = extras.Motions.Select(m => new { m.Group, m.File })
@@ -2726,6 +2734,37 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 version = Text("Version"), tokenSaved, control = Flag("Control"), allowSensitive = Flag("AllowSensitive"), modelTools = Flag("ModelTools"),
                 shared = Flag("FollowShare"), sharedBy = Text("SharedBy"),
                 sharedRevision = root.TryGetProperty("SharedRevision", out var revision) && revision.TryGetInt64(out var number) ? number : 0
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", problem = error.Message };
+        }
+    }
+
+    /// <summary>messaging.json in a data directory (the file name and fields match Martlet.Desktop's MessagingPreferences). The
+    /// bot token lives in Windows Credential Manager and is never read here; paired chats are only counted.</summary>
+    private static object MessagingStatus(JsonElement arguments)
+    {
+        var path = Path.Combine(DataDirectory(arguments), "messaging.json");
+        if (!File.Exists(path)) return new { state = "none", telegram = new { connected = false, enabled = false, chats = 0 } };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (!document.RootElement.TryGetProperty("Telegram", out var telegram) || telegram.ValueKind != JsonValueKind.Object)
+                return new { state = "loaded", telegram = new { connected = false, enabled = false, chats = 0 } };
+            string Text(string name) => telegram.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+            bool Flag(string name) => telegram.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+            var chats = telegram.TryGetProperty("Chats", out var list) && list.ValueKind == JsonValueKind.Array ? list.GetArrayLength() : 0;
+            return new
+            {
+                state = "loaded",
+                telegram = new
+                {
+                    connected = Text("BotUsername").Length > 0, enabled = Flag("Enabled"), bot = Text("BotUsername"), botName = Text("BotName"),
+                    tokenSaved = Guid.TryParse(Text("CredentialId"), out var credential) && credential != Guid.Empty,
+                    chats, speakReplies = Flag("SpeakReplies")
+                }
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)

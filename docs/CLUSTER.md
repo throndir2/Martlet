@@ -64,7 +64,20 @@ another host** choice.
   computer with a fast clock cannot make later changes lose.
 - The plan holds no secrets or conversation data: host IDs, HTTPS origins,
   model names, flags and stamps only. JSON, snake case, schema 1, at most
-  16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.
+  16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
+  not a job in the plan. Companion › Deep thinking may think on several paired
+  computers at once (each one's Deep thinking role, ticked *Think here too*,
+  plus the place chosen first: `Pool` in that PC's `deep-thinking.json`, never
+  shared). The computer you talk to keeps answering; each background think goes
+  to a free one of those computers, the one sharing least with the conversation
+  first (one doing none of its jobs before one that also speaks, before the
+  computer doing Thinking), so with four computers one speaks and three think
+  about three things at once. Each result comes back to the speaking computer
+  and is brought into its conversation as usual. Other kinds of background work
+  use the same placement (`BackgroundPlaces`; see [Background job
+  API](CONVERSATION.md#background-job-api-for-new-kinds-of-background-work)).
+  The talk window, `background-jobs.json` and the desktop log name the computer
+  each job runs on.
 
 ## Where copies live and how they sync
 

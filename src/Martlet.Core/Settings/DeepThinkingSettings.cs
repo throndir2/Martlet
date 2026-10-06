@@ -39,6 +39,62 @@ public sealed record DeepThinkingSettings
     public string? HostRouteId { get; init; }
     public DateTimeOffset? ChosenAt { get; init; }
 
+    /// <summary>The most places Deep thinking thinks on at once: this one and up to seven more.</summary>
+    public const int MaxPlaces = 8;
+
+    /// <summary>The other places it thinks on at the same time (Companion › Deep thinking › Think here too): paired computers
+    /// (or endpoints), each a place of its own like this one, so several thinks run at once, one on each. Null (as saved before
+    /// it existed) or empty: it thinks in this one place.</summary>
+    public IReadOnlyList<DeepThinkingSettings>? Pool { get; init; }
+
+    /// <summary>This place alone, without <see cref="Pool"/>.</summary>
+    [JsonIgnore] public DeepThinkingSettings Single => Pool is null ? this : this with { Pool = null };
+
+    /// <summary>Every place it thinks on, this one first.</summary>
+    [JsonIgnore] public IReadOnlyList<DeepThinkingSettings> Places => [Single, .. Pool ?? []];
+
+    /// <summary>A place's key: one per computer (<c>host:diva</c>), endpoint and model, or <c>thinking</c>.</summary>
+    [JsonIgnore]
+    public string Key => Place switch
+    {
+        DeepThinkingPlace.Host => "host:" + HostId,
+        DeepThinkingPlace.Endpoint => $"endpoint:{Origin}|{ModelId}",
+        _ => "thinking"
+    };
+
+    /// <summary>This place first, then <paramref name="pool"/>'s other places (none twice, at most <see cref="MaxPlaces"/>).</summary>
+    public DeepThinkingSettings WithPool(IEnumerable<DeepThinkingSettings> pool)
+    {
+        var self = Single;
+        var others = pool.Select(p => p.Single).Where(p => p.Place != DeepThinkingPlace.SameAsThinking && p.Key != self.Key)
+            .DistinctBy(p => p.Key).Take(MaxPlaces - 1).ToArray();
+        return self with { Pool = others.Length == 0 ? null : others };
+    }
+
+    /// <summary>The computer a place thinks on, by name only: the paired computer ("diva"), "this PC", the provider's host
+    /// ("openrouter.ai"), or for Same as Thinking where <paramref name="thinking"/> runs.</summary>
+    public string Computer(SetupRoute? thinking)
+    {
+        static string? Named(string? origin) => Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+            ? uri.IsLoopback ? "this PC" : uri.IdnHost : null;
+        return Place switch
+        {
+            DeepThinkingPlace.Host => HostId!,
+            DeepThinkingPlace.Endpoint => Named(Origin) ?? "its endpoint",
+            _ when thinking?.Gateway is { } gateway => Uri.TryCreate(gateway.Origin, UriKind.Absolute, out var g) && g.IsLoopback ? "this PC" : gateway.HostId,
+            _ when thinking?.RouteType == SetupRouteType.ChatCompletions => Named(thinking.Origin) ?? "the Thinking model",
+            _ when thinking is not null => "OpenAI",
+            _ => "the Thinking model"
+        };
+    }
+
+    /// <summary>Every place, in words: "diva's Deep thinking (qwen3-8b) and ripley's Deep thinking (gemma4:27b)".</summary>
+    public string DescribeAll()
+    {
+        var all = Places.Select(p => p.Describe()).ToArray();
+        return all.Length == 1 ? all[0] : string.Join(", ", all[..^1]) + " and " + all[^1];
+    }
+
     [JsonIgnore] public bool Separate => Place != DeepThinkingPlace.SameAsThinking;
 
     /// <summary>Whether it thinks with a paired computer's Deep thinking role, a model of its own beside that computer's Thinking.</summary>
@@ -88,6 +144,11 @@ public sealed record DeepThinkingSettings
                     "Same as Thinking keeps no destination of its own.");
                 break;
         }
+        if (Pool is null) return;
+        ContractRules.Require(Pool.Count < MaxPlaces && Pool.All(p => p is { Pool: null, Place: DeepThinkingPlace.Host or DeepThinkingPlace.Endpoint }) &&
+            Pool.Select(p => p.Key).Append(Key).Distinct(StringComparer.Ordinal).Count() == Pool.Count + 1,
+            $"Deep thinking thinks on at most {MaxPlaces} different places, each a paired computer or an endpoint.");
+        foreach (var place in Pool) place.Validate();
     }
 
     public static DeepThinkingSettings Load(string? directory) => Read(directory).Settings;
@@ -161,7 +222,7 @@ public sealed record DeepThinkingSettings
 /// offered. A second model in the same Ollama on this PC runs in a process of its own and answers at the same time, but only
 /// while both fit on the graphics card (Ollama unloads one or makes a request wait otherwise): <see cref="ChecksFit"/> says
 /// Martlet checks that before each think.</summary>
-public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit = false)
+public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit = false, int Rank = 0)
 {
     public static DeepThinkingPlan For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes)
     {
@@ -176,19 +237,19 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
                 : thinking.RouteType == SetupRouteType.GatewayOllama
                     ? new(false, $"Thinking's model runs on {thinking.Gateway?.HostId ?? "a paired computer"} and can't think something over " +
                         "while it answers you. Add the Deep thinking role there, or choose another place for Deep thinking.")
-                    : new(true, "Thinking's provider answers several requests at once, so a think runs alongside the conversation.");
+                    : new(true, "Thinking's provider answers several requests at once, so a think runs alongside the conversation.", Rank: 2);
         if (deep.OnThisPc)
         {
             if (thinking is not null && IsThisPc(thinking) && SameServer(deep, thinking))
                 return new(true, $"It runs as a second model beside Thinking's {thinking.ModelId} on this PC, so a think runs alongside the " +
                     "conversation. Before each think Martlet checks both fit on the graphics card together, and replies may start a " +
                     "little later while it thinks.", ContextBudget.IsLocalOllama(SetupRouteType.ChatCompletions, deep.Origin) &&
-                    ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin));
+                    ContextBudget.IsLocalOllama(thinking.RouteType, thinking.Origin), Rank: 3);
             var shared = routes.Where(r => r.Enabled != false && IsThisPc(r) && r.Role is SetupRole.Llm or SetupRole.Tts).ToArray();
             return shared.Length > 0
                 ? new(true, $"It runs on this PC alongside the conversation and shares the graphics card with {Jobs(shared)}, so replies " +
-                    "may start a little later while it thinks.")
-                : new(true, "It runs on this PC while the conversation's models run elsewhere, so a think runs alongside the conversation.");
+                    "may start a little later while it thinks.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
+                : new(true, "It runs on this PC while the conversation's models run elsewhere, so a think runs alongside the conversation.", Rank: 1);
         }
         if (deep.Place == DeepThinkingPlace.Host)
         {
@@ -197,16 +258,16 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
             if (deep.OnHostRole)
                 return shared.Length > 0
                     ? new(true, $"{deep.HostId}'s Deep thinking role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
-                        "alongside the conversation and shares its graphics card.")
+                        "alongside the conversation and shares its graphics card.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
                     : new(true, $"{deep.HostId}'s Deep thinking role does none of the conversation's jobs, so a think runs there alongside the conversation.");
             if (shared.Any(r => r.Role == SetupRole.Llm))
                 return new(false, $"{deep.HostId} also does Thinking for the conversation, and its model can't think something over while " +
                     "it answers you. Add the Deep thinking role there, or choose another place for Deep thinking.");
             return shared.Length > 0
-                ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.")
+                ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.", Rank: 1)
                 : new(true, $"{deep.HostId} does none of the conversation's jobs, so a think runs there alongside the conversation.");
         }
-        return new(true, "It runs on its own provider, so a think runs alongside the conversation.");
+        return new(true, "It runs on its own provider, so a think runs alongside the conversation.", Rank: 1);
     }
 
     // A route served on this PC: a loopback endpoint (Ollama, LM Studio...) or this PC's own host service.
@@ -224,4 +285,47 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
         SetupRole.Tts => "the voice",
         _ => "listening"
     }).Distinct());
+}
+
+/// <summary>One place Deep thinking can think on: its settings (a single place), whether a think can run there and how
+/// it shares the conversation's hardware (<see cref="DeepThinkingPlan.Rank"/>), and the computer's name.</summary>
+public sealed record DeepThinkingSpot(DeepThinkingSettings Settings, DeepThinkingPlan Plan, string Computer)
+{
+    public string Key => Settings.Key;
+}
+
+/// <summary>Every place Deep thinking is set to think on (Companion › Deep thinking: the place chosen and the computers ticked
+/// Think here too), each with its own <see cref="DeepThinkingPlan"/>. Several thinks run at once, one on each usable place, the
+/// one sharing least with the conversation first; one place that can't run (a computer that also does Thinking without its
+/// Deep thinking role) doesn't stop the others.</summary>
+public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
+{
+    public static DeepThinkingPool For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes)
+    {
+        ArgumentNullException.ThrowIfNull(deep);
+        ArgumentNullException.ThrowIfNull(routes);
+        var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
+        return new([.. deep.Places.Select(place => new DeepThinkingSpot(place, DeepThinkingPlan.For(place, routes), place.Computer(thinking)))]);
+    }
+
+    /// <summary>The places a think can run on now, in the order they were chosen.</summary>
+    public IReadOnlyList<DeepThinkingSpot> Usable => [.. Spots.Where(spot => spot.Plan.Available)];
+
+    public DeepThinkingSpot? Find(string key) => Spots.FirstOrDefault(spot => spot.Key == key);
+
+    /// <summary>Whether Deep thinking can run anywhere and why: the first place's plan with one place, else how many think at once.</summary>
+    public DeepThinkingPlan Plan
+    {
+        get
+        {
+            var usable = Usable;
+            if (Spots.Count == 1 || usable.Count == 0) return Spots[0].Plan;
+            if (usable.Count == 1) return usable[0].Plan;
+            var names = usable.Select(spot => spot.Computer).Distinct(StringComparer.Ordinal).ToArray();
+            return new(true, $"Up to {usable.Count} thinks run at once alongside the conversation, one on each of its places (" +
+                (names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}") +
+                "); each new one goes to the free place that shares least with the conversation.",
+                Rank: usable.Min(spot => spot.Plan.Rank));
+        }
+    }
 }

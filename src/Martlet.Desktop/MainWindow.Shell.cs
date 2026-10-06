@@ -215,6 +215,7 @@ public partial class MainWindow
         RenderBackground();
         UpdateStayAwake();
         if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
+        else if (previous != role) messaging.Start();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         QueueNetworkSync();
@@ -950,12 +951,12 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHost());
+        DeepThinkingHosts());
 
-    /// <summary>The paired computer whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
-    private string? DeepThinkingHost() =>
+    /// <summary>The paired computers whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
+    private IReadOnlyCollection<string>? DeepThinkingHosts() =>
         store is not null && ThinkLongerSettings.Of(homeSettings?.Generation).On &&
-        DeepThinkingSettings.Load(store.DataDirectory) is { OnHostRole: true } deep ? deep.HostId : null;
+        DeepThinkingSettings.Load(store.DataDirectory).Places.Where(p => p.OnHostRole).Select(p => p.HostId!).ToArray() is { Length: > 0 } hosts ? hosts : null;
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {

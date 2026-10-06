@@ -1540,6 +1540,21 @@ Discord didn't answer in time, or `notConfigured`/`tokenUnreadable`),
 with 4014: turn on Message Content Intent), `tokenRejected` (4004),
 `milliseconds` and `next`. It sends no messages; a desktop already connected
 with the same bot stays connected.
+`messaging_status` reads Companion › Messaging from a data directory's
+`messaging.json` (this PC only, never synced): `state` (`none`, `loaded` or
+`unreadable` with `problem`) and `telegram` with `connected` (a bot is set
+up), `enabled` (Martlet answers it on this PC), `bot` (its username),
+`botName`, `tokenSaved` (never the token), `chats` (how many chats are paired;
+never their names or IDs) and
+`speakReplies`. The bot token lives in Windows Credential Manager and is never
+read. In the desktop, Companion › Messaging's `MessagingStatus` (whether Martlet
+answers the bot now, or why not), `MessagingNote` (the last connect outcome),
+`MessagingChats` (how many chats) and `MessagingPairStatus` (until when the
+pairing code works) are readable values; the code itself (`MessagingPairCode`),
+chat names and the token field are not. Its Cancel (`MessagingPairCancel`) only
+withdraws the code and is a safe click; Connect, Pair a chat, Open BotFather,
+Open in Telegram, Remove, Disconnect and its two check boxes need
+`--allow-ui-effects`.
 
 `prompts_status` reads Companion › Prompts from a data directory's
 `settings.json` (optional absolute `dataDirectory`, default the current
@@ -2103,15 +2118,28 @@ alongside the conversation), `checksFit` (a second model in Ollama on this PC,
 checked to fit beside Thinking's before each think) and `why` from the
 production `DeepThinkingPlan`, its Thinking steps `use`, what a think `sends` at
 that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
-`outputTokens` and `carriesTools`, true only with the Thinking model), `tools`
+`outputTokens` and `carriesTools`, true only with the Thinking model, and
+`pool`: every place it thinks on, the first place then each computer ticked
+*Think here too*, each with `computer` (its name), `where`, `place`,
+`hostRole`, `available`, `rank` (lower goes first), `checksFit` and `why`, then
+`usable`, `maxThinks` (how many run at once) and the pool's `available` and
+`why`), `tools`
 (`think_longer` and `cancel_thinking` exactly as the model gets them), the
 filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
-`resultCharacters`, `cut`, `problem`, `canceledBy` and `delivery`;
-`startedLastHour`; and the running think's `where`, `available`, `checksFit`,
-`why`, `parallel` and `attempts`),
+`resultCharacters`, `cut`, `problem`, `canceledBy`, `delivery` and `place`, the
+computer it runs on; `startedLastHour`; `thinks`, each running think's `id`,
+`where`, `computer`, `available`, `checksFit`, `why`, `rank`, `parallel` and
+`attempts` (`thinking` is the first of them); `places`, each Deep thinking place
+with `computer`, `where`, `available`, `rank` and `heldBy` (the job IDs holding
+it now); and `maxThinks`),
 never a task or result. Read-only.
+
+The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
+places think at once, and each paired computer's `DeepThinkingPool-<host>` box
+(*Think on diva too*, ticked or not) reads; ticking it saves
+`deep-thinking.json`, so it needs `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
 from a data directory's `shared-settings.json` (optional absolute
@@ -2174,7 +2202,16 @@ processor), and once the think's model has loaded
 whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
 each `stops` against `expected`). `hostFit`: a 160-message conversation
 fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
-kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
+kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
+`DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
+ripley do none of the conversation's jobs, imouto also speaks: `configured`
+with each `rank`), `maxThinks` 3 and the tool's *Up to 3 at once*; the
+production job list places think-1 on diva and think-2 on ripley, both working
+at once on their own fixture endpoints (standing in for the two computers,
+each through a runtime of its own: `thinkingAtOnce`, `overlapped`), think-3 on
+imouto (`placed`), refuses a fourth as `busy` naming each place (`refused`,
+with what the model is told), frees every place once they finish (`freedAfter`)
+and places the next on diva again (`nextPlacedOn`). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
 
@@ -3125,7 +3162,7 @@ checking the page.
 Companion › Character's *Emotes and motions* card lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
 shows (or would show). `CharacterActionsStatus` reads how many emotes and
-motions the model has (with Martlet's nod and shake) and whether they were named
+motions the model has (with the Martlet gestures its rig supports) and whether they were named
 by the Thinking model (and when) or from the model's own files, or why they
 couldn't be read; `CharacterActionsNaming` the Thinking model's naming
 (*Asking the Thinking model...*, *The Thinking model named 10 emotes and motions
@@ -3902,7 +3939,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
