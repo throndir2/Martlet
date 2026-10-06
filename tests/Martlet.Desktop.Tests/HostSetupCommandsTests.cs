@@ -31,6 +31,42 @@ public sealed class HostSetupCommandsTests
             HostSetupCommands.Engine(HostAction.Exposure(clear)), false));
     }
     [Fact]
+    public void Outside_access_needs_sign_in_first_and_says_so_when_paused()
+    {
+        RunSta(() =>
+        {
+            var opened = 0;
+            var audit = new Martlet.Avatar.Audio2Face.Remote.HostSecurityAudit("gpu-pc", true, false, true, 0, 0, 0, 0, [])
+            {
+                OutsideAccessBlockedReason = "signin.not_set_up", OutsideAccessPaused = true
+            };
+            var (dialog, blocked) = MainWindow.OutsideAccessDialog("gpu-pc", true, ["gpu-pc.tailnet.ts.net:9443"], audit, false, () => opened++);
+            Assert.Equal("signin.not_set_up", blocked);
+            var note = Find<TextBlock>(dialog, "OutsideAccessBlockedReason");
+            Assert.StartsWith("Outside access paused: sign-in is off. Sign-in isn't set up on this host", note.Text);
+            Assert.EndsWith("(signin.not_set_up)", note.Text);
+            Assert.False(Find<CheckBox>(dialog, "HostInput-allowCodes").IsEnabled);
+            Assert.True(Find<CheckBox>(dialog, "HostInput-treatAll").IsEnabled);
+            Find<Button>(dialog, "OutsideAccessSetUpSignIn").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(1, opened);
+            dialog.Close();
+
+            // Sign-in usable: no note, every choice open.
+            var (usable, none) = MainWindow.OutsideAccessDialog("gpu-pc", true, [], audit with { OutsideAccessBlockedReason = null, OutsideAccessPaused = false },
+                false, () => opened++);
+            Assert.Null(none);
+            Assert.Null(FindOrNull<TextBlock>(usable, "OutsideAccessBlockedReason"));
+            Assert.True(Find<CheckBox>(usable, "HostInput-allowCodes").IsEnabled);
+            usable.Close();
+
+            // Read from outside while paused (the audit itself refused): still explained.
+            var (away, why) = MainWindow.OutsideAccessDialog("gpu-pc", true, ["gpu-pc.tailnet.ts.net:9443"], null, true, () => { });
+            Assert.Equal("signin.not_set_up", why);
+            Assert.StartsWith("Outside access paused: sign-in is off.", Find<TextBlock>(away, "OutsideAccessBlockedReason").Text);
+            away.Close();
+        });
+    }
+    [Fact]
     public void This_pc_docker_builds_this_version_then_runs_the_engine_with_the_lan_address()
     {
         var script = HostSetupCommands.Script(Target(HostSetupMethod.ThisPcDocker, hostId: "gaming-pc-host"), HostAction.Setup);

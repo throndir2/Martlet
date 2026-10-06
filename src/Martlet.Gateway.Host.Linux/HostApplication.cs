@@ -399,13 +399,26 @@ internal static class HostApplication
                 var current = HostExposure.Read(directory);
                 var changed = options.Outside.Count > 0 || options.ClearOutside || options.AllowPairingOutsideHome is not null ||
                     options.TreatAllAsOutside is not null;
+                var blocked = SignInBlocked(directory);
                 if (changed)
                 {
-                    current = current.With(options, DateTimeOffset.UtcNow);
-                    current.Write(directory);
+                    var next = current.With(options, DateTimeOffset.UtcNow);
+                    // A host becomes reachable from outside only once sign-in is set up on it; removing and keeping never need it.
+                    if (blocked is not null && GatewayOutsideAccess.Expands(current.Outside, current.AllowPairingOutsideHome, next.Outside, next.AllowPairingOutsideHome))
+                    {
+                        output.WriteLine($"outside.needs_signin: {GatewayOutsideAccess.Describe(blocked)} ({blocked}), so host {config.HostId} can't get new " +
+                            "outside addresses or accept typed codes from outside home yet. Set it up first (martlet-host owner-signin-owner, or " +
+                            "Settings › Sign-in from outside in Martlet). Nothing changed.");
+                        return 5;
+                    }
+                    next.Write(directory);
+                    current = next;
                 }
                 output.WriteLine($"Host {config.HostId} {(changed ? "now has" : "has")} {current.Describe()}." +
                     (changed ? " Restart the service to apply it; member desktops add the outside addresses to your network on their next sync." : ""));
+                if ((current.Outside.Count > 0 || current.AllowPairingOutsideHome) && blocked is not null)
+                    output.WriteLine($"Outside access paused: {GatewayOutsideAccess.Describe(blocked)} ({blocked}). Requests from outside home are refused " +
+                        "until sign-in is set up again or the outside addresses are removed (they are kept).");
                 return 0;
             }
             if (HostSignIn.Handles(options.Command))
@@ -483,6 +496,8 @@ internal static class HostApplication
                 if (options.Command == "owner-pair")
                 {
                     // martlet-host pair serves the owner's outside access choices too (typed codes from outside, the real source).
+                    // Sign-in decides whether this public endpoint serves outside home, here as in serve (and lets people sign in).
+                    if (owner.Enabled) owner.AttachSignIn(new ControlSignInStorage(directory));
                     ApplyExposure(owner, directory, output);
                     exit = await PairOnceAsync(owner, config, directory, options, platform.Input, output, cancellation);
                 }
@@ -665,6 +680,18 @@ internal static class HostApplication
     /// five wrong tries close it, or it is withdrawn (a "cancel" line, or the end of stdin, so it never outlives the pipe or
     /// session that showed it; a Docker TTY whose console closed never ends, which martlet-host reports as busy). A
     /// --device-id invitation (Martlet redeems it by itself) still ends after five minutes or "cancel".</summary>
+    /// <summary>Why sign-in isn't usable on this host (null: usable), from signin.json read as is: no service runs here, and
+    /// sign-in's own service would tidy the file as it reads it.</summary>
+    internal static string? SignInBlocked(LinuxControlDirectory directory)
+    {
+        try
+        {
+            return GatewayOutsideAccess.SignInBlockedReason(directory.Read(LinuxControlDirectory.SignIn, LinuxControlDirectory.MaximumSignInBytes) is { } bytes
+                ? GatewaySignInDocument.Parse(bytes) : null);
+        }
+        catch (Exception error) when (error is not OperationCanceledException) { return "signin.not_set_up"; }
+    }
+
     /// <summary>Serves the owner's outside access choices (exposure.json) on <paramref name="owner"/>: what serve and pair apply.</summary>
     private static void ApplyExposure(DurableGatewayHost owner, LinuxControlDirectory directory, TextWriter? output)
     {
@@ -676,6 +703,13 @@ internal static class HostApplication
             {
                 owner.RecordActivity("INFO", "Reaching this host from outside home: " + exposure.Describe() + ".");
                 output?.WriteLine("Reaching this host from outside home: " + exposure.Describe() + ".");
+                if ((exposure.Outside.Count > 0 || exposure.AllowPairingOutsideHome) && SignInBlocked(directory) is { } blocked)
+                {
+                    var paused = $"Outside access paused: {GatewayOutsideAccess.Describe(blocked)}. Requests from outside home are refused until " +
+                        "sign-in is set up again or the outside addresses are removed (they are kept).";
+                    owner.RecordActivity("WARN", paused);
+                    output?.WriteLine(paused);
+                }
             }
         }
         catch (HostInputException)

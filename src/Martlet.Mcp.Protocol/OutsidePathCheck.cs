@@ -126,6 +126,24 @@ internal static class OutsidePathCheck
                 $"owner-init: exit {init}; host {HostId} at {HomeOrigin} (published on {outside}), pin {spki ?? "(none)"}");
             if (spki is null) return Report(passed, steps, port);
 
+            // A host becomes a public endpoint only once sign-in is set up on it.
+            var (early, earlyText) = await Docker(Run(null, false, Gateway("owner-exposure", "--outside", outside)), token);
+            string? ownerProblem = null;
+            {
+                var container = name + "-owner";
+                containers.Add(container);
+                await using var owner = Attached.Start(Run(container, false, Gateway("owner-signin-owner", "--user", "owner")));
+                await owner.WriteLineAsync("a long owner passphrase");
+                var secretLine = await owner.WaitForAsync(l => l.StartsWith("secret: ", StringComparison.Ordinal), TimeSpan.FromSeconds(60), token);
+                if (secretLine is null) ownerProblem = "no authenticator secret shown";
+                else await owner.WriteLineAsync(Martlet.Core.Access.Totp.Code(secretLine["secret: ".Length..].Trim(), DateTimeOffset.UtcNow));
+                var ownerExit = await owner.WaitForExitAsync(TimeSpan.FromSeconds(60), token);
+                if (ownerExit != 0) ownerProblem ??= $"owner-signin-owner exit {ownerExit}: {Tail(owner.Text)}";
+            }
+            Step("exposure-needs-signin-first", early == 5 && earlyText.Contains("outside.needs_signin", StringComparison.Ordinal) && ownerProblem is null,
+                $"before sign-in: owner-exposure --outside exit {early}, {LastLine(earlyText)}; then owner-signin-owner set an owner account " +
+                $"with an authenticator: {ownerProblem ?? "ok"}");
+
             var (refused, refusedText) = await Docker(Run(null, false, Gateway("owner-exposure", "--outside", "evil;reboot:1")), token);
             var (exposed, exposedText) = await Docker(Run(null, false, Gateway("owner-exposure", "--outside", outside)), token);
             Step("owner-exposure", refused == 2 && exposed == 0 && exposedText.Contains(
@@ -239,9 +257,25 @@ internal static class OutsidePathCheck
                     $"failures and throttles from {string.Join(", ", sources)}; host log: {locked ?? "(no lockout line)"}");
             }
 
+            // Sign-in removed later (signin.json gone): the addresses stay, requests from outside home are refused, and the paired
+            // owner still reaches sign-in's settings to set it up again.
+            var (removed, removedText) = await Docker(["exec", "-u", "1000:1000", serve, "rm", "/srv/martlet/signin.json"], token);
+            await Task.Delay(TimeSpan.FromSeconds(5.5), token);
+            string? pausedSees = null;
+            try { using var c = Connect(pairing); await c.ReadRoutesAsync(token); pausedSees = "served"; }
+            catch (Audio2FaceHostException error) { pausedSees = error.Code; }
+            var strangerSees = await StrangerAsync(spki, outside, token);
+            string? settingsSees;
+            try { using var c = Connect(pairing); settingsSees = (await c.ReadSignInSettingsAsync(token)).BlockedReason ?? "usable"; }
+            catch (Audio2FaceHostException error) { settingsSees = error.Code; }
+            Step("outside-paused-without-signin", removed == 0 && pausedSees == "outside.paused" && strangerSees.StartsWith("403 outside.paused", StringComparison.Ordinal) &&
+                    settingsSees == "signin.not_set_up",
+                $"signin.json removed (exit {removed}{(removed == 0 ? "" : ", " + removedText.Trim())}): the paired desktop gets {pausedSees}, " +
+                $"a stranger {strangerSees}; sign-in's settings still answer the owner ({settingsSees})");
+
             var home = await HostRoutes.ProbeAsync(HomeOrigin, spki, null, TimeSpan.FromSeconds(3), token);
             var reached = await HostRoutes.ProbeAsync(HomeOrigin, spki, outside, TimeSpan.FromSeconds(3), token);
-            Step("probe-tells-home-and-outside-apart", !home.Reachable && reached.Reachable,
+            Step("probe-tells-home-and-outside-apart", !home.Reachable && reached is { Reachable: true, Problem: "answered 403 Forbidden" },
                 $"home {HomeOrigin[8..]}: {home.Problem} after {home.Milliseconds} ms; outside {outside}: reachable in {reached.Milliseconds} ms" +
                 (reached.Problem is { } note ? $" ({note})" : ""));
         }

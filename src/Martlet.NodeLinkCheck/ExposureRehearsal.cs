@@ -5,6 +5,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Access;
 using Martlet.Gateway;
 
 namespace Martlet.NodeLinkCheck;
@@ -98,9 +99,33 @@ internal static class ExposureRehearsal
                 $"HTTP {paired.Status}; audit records the outside pairing: {audit.Events.Any(e => e.Subject == "lab-laptop" && e.Outcome == "success")}");
         });
 
-        await Run("The owner allows pairing codes from outside home: the same typed code then pairs", async () =>
+        await Run("Allowing typed codes from outside without sign-in pauses outside access; the owner sets up sign-in from outside", async () =>
         {
             host.Server.Exposure = host.Server.Exposure with { AllowPairingOutsideHome = true };
+            string? codeSees = null, auditSees = null;
+            try { await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token); }
+            catch (Audio2FaceHostException error) { codeSees = error.Code; }
+            try { await desktop!.ReadSecurityAuditAsync(token); }
+            catch (Audio2FaceHostException error) { auditSees = error.Code; }
+            var reason = host.Server.Guard.OutsideAccessBlockedReason;
+            // Sign-in's own settings stay reachable for the paired owner, so it can be fixed from outside.
+            var secret = Totp.NewSecret();
+            var settings = await desktop!.ChangeSignInSettingsAsync(new System.Text.Json.Nodes.JsonObject
+            {
+                ["action"] = "owner", ["user"] = "owner", ["password"] = "a long owner passphrase", ["totp_secret"] = secret,
+                ["code"] = Totp.Code(secret, DateTimeOffset.UtcNow)
+            }, token);
+            await Task.Delay(TimeSpan.FromSeconds(5.5), token); // the guard reads sign-in at most every five seconds
+            var after = await desktop.ReadSecurityAuditAsync(token);
+            return (codeSees == "outside.paused" && auditSees == "outside.paused" && reason == "signin.not_set_up" && settings.Usable &&
+                    !after.OutsideAccessPaused && after.OutsideAccessBlockedReason is null &&
+                    after.Events.Any(e => e is { Outcome: "refused", Code: "outside.paused" }),
+                $"without sign-in ({reason}): the typed code gets {codeSees}, the desktop's audit read gets {auditSees}; the owner sets up an " +
+                $"owner account over the sign-in settings route (usable: {settings.Usable}); then paused: {after.OutsideAccessPaused}");
+        });
+
+        await Run("The owner allows pairing codes from outside home: the same typed code then pairs", async () =>
+        {
             var (pairing, _) = await Audio2FaceHostClient.PairWithCodeAsync(host.Origin, code!.Code.Reveal(), "lab-phone", "LAB-PHONE", token);
             return (pairing.DeviceId == "lab-phone", $"paired {pairing.DeviceId} with {pairing.HostId}");
         });        // The refusal above counted once against this address's pairing; wait out anything left before guessing.
@@ -252,7 +277,7 @@ internal static class ExposureRehearsal
         });
     }
 
-    private sealed class LabHost : IAsyncDisposable, IGatewayAuditSink
+    private sealed class LabHost : IAsyncDisposable, IGatewayAuditSink, IGatewaySignInStorage
     {
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
@@ -270,6 +295,7 @@ internal static class ExposureRehearsal
                 host.Origin = $"https://127.0.0.1:{FreePort()}";
                 var origin = new GatewayOrigin(host.Origin);
                 host.Server = new GatewayServer(host.Identity, origin, [], host);
+                host.Server.AttachSignInStorage(host);
                 host.listener = await host.Server.StartAsync(new GatewayTlsBinding(origin, host.Identity, host.certificate),
                     new KestrelGatewayListenerFactory());
                 return host;
@@ -282,6 +308,11 @@ internal static class ExposureRehearsal
         }
 
         public void Record(GatewayAuditEvent gatewayEvent) { }
+
+        // signin.json in memory.
+        private byte[]? signIn;
+        public byte[]? Load() => signIn;
+        public void Save(byte[] bytes) => signIn = bytes;
 
         public async ValueTask DisposeAsync()
         {

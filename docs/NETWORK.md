@@ -320,6 +320,48 @@ every source), *allow typed pairing codes from outside home* (off by default)
 and *treat every connection as outside home* (for a host behind a port proxy or
 TCP relay that hides the real source, such as a gateway Docker publishes).
 
+**Sign-in comes first.** Sign-in stays optional: a host with no outside addresses
+(and typed codes kept at home) works exactly as before and needs no sign-in. A
+host becomes a public endpoint only once sign-in is set up on it, meaning at
+least one usable method: an owner account with an authenticator (TOTP), or a
+configured provider with at least one allowed identity. Sign-in owns that rule
+(`GatewaySignInSettings.BlockedReason`: `signin.not_set_up` or
+`signin.no_allowed_identity`); outside access only reads it
+(`GatewayOutsideAccess`).
+
+- The host enforces it. `martlet-host owner-exposure` (and `martlet-host
+  exposure`, the Outside access dialog and the `host.exposure` command, which all
+  run it) refuses with exit 5 and `outside.needs_signin` to add an outside
+  address it doesn't already have, or to allow typed codes from outside, while
+  sign-in isn't usable. It reads `signin.json` as it is, without starting
+  sign-in's service. Removing addresses, keeping them and *treat every
+  connection as outside home* never need sign-in. That last one only says how
+  requests are classified (for Docker-published gateways), not that the host is
+  public.
+- If sign-in later loses its last usable method (the owner account removed, the
+  last allowed identity or provider removed, `signin.json` gone) while the host
+  has outside addresses or allows typed codes from outside, the addresses are
+  kept and outside access is **paused**. The guard refuses every request from
+  outside home with `outside.paused` (403), audits it as `refused` and logs
+  *Refused a ... request from ... (outside home): outside access is paused
+  because sign-in isn't set up on this host. The outside addresses are kept.*
+  Home and this computer are unaffected. The one exception is the sign-in
+  settings route (`/martlet/v1/signin/settings`, a paired desktop's signed
+  request), so the owner can set sign-in up again from anywhere. The guard reads
+  sign-in at most every five seconds. `serve`, `martlet-host pair` and
+  `owner-exposure` print *Outside access paused: ...* while it lasts.
+- The security audit (`GET /martlet/v1/security/audit`) carries
+  `outside_access_blocked_reason` (absent when sign-in is usable) and
+  `outside_access_paused`. The Outside access dialog shows why it is limited
+  (`OutsideAccessBlockedReason`, starting *Outside access paused: sign-in is
+  off.* when it is) and a **Set up sign-in first** button
+  (`OutsideAccessSetUpSignIn`) that opens the host's sign-in settings. Until
+  then it only lets addresses be removed, typed codes be turned off and the
+  connection treatment change. The Devices map's *Outside home* detail and the
+  host's row in *Your Martlet network* say *Outside access paused: sign-in is
+  off* too. Sign-in's own window warns before a change that would leave a host
+  with outside addresses without sign-in (`SignInOutsideWarning`).
+
 **This PC's host service and other hosts Martlet manages.** On the Devices map,
 select this PC, a host Martlet reaches over SSH, or a host whose own Martlet runs
 its commands (the `host.exposure` command between computers; an older Martlet
@@ -541,7 +583,11 @@ client, connection, network sync and route fallback reach it with its home
 address dead: a typed code is refused from outside and a device card pairs, the
 roster signs the address the host advertises, home fails and the outside
 address answers (the next connection goes straight there), a stranger is locked
-out on the sixth request and the audit and host log name 203.0.113.1. Also
+out on the sixth request and the audit and host log name 203.0.113.1;
+`owner-exposure` refuses an outside address before sign-in (exit 5) and accepts
+it once `owner-signin-owner` set an owner account with an authenticator; and with
+`signin.json` removed from the running host, the paired desktop and a stranger
+get `outside.paused` while sign-in's settings still answer the owner. Also
 `exposure_selftest` (loopback, every guard rule), `host_engine_check`'s
 exposure steps (the engine) and `node_link_check`'s `exposure-command` (the
 `host.exposure` command through a real gateway and the desktop's agent loop).

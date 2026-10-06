@@ -200,6 +200,35 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
     internal bool Listed { get => listed; set => listed = value; }
     private volatile bool listed;
 
+    /// <summary>Why sign-in isn't usable on this host (null: usable), read through sign-in's own API; set by the gateway.</summary>
+    internal Func<string?>? SignInBlocked { get; set; }
+    private (DateTimeOffset At, string? Reason)? signInRead;
+    private static readonly TimeSpan SignInReadInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>Whether the host is a public endpoint: its roster entry or exposure lists outside addresses, or typed codes
+    /// are allowed from outside home. Treating every connection as outside alone is not.</summary>
+    public bool PublicEndpoint => listed || exposure.OutsideAddresses is { Count: > 0 } || exposure.AllowPairingOutsideHome;
+
+    /// <summary>Why outside access can't be (or isn't) served: sign-in has no usable method (null: it has). Read at most every
+    /// five seconds, since sign-in re-reads its settings each time.</summary>
+    public string? OutsideAccessBlockedReason
+    {
+        get
+        {
+            if (SignInBlocked is null) return null;
+            var now = clock.GetUtcNow();
+            if (signInRead is { } read && now - read.At < SignInReadInterval) return read.Reason;
+            string? reason;
+            try { reason = SignInBlocked(); }
+            catch (Exception error) when (error is not OperationCanceledException) { reason = "signin.not_set_up"; }
+            signInRead = (now, reason);
+            return reason;
+        }
+    }
+
+    /// <summary>A public endpoint whose sign-in has no usable method: requests from outside home are refused.</summary>
+    public bool OutsideAccessPaused => PublicEndpoint && OutsideAccessBlockedReason is not null;
+
     /// <summary>Whether limits apply to every source: the owner said so, or the roster lists outside addresses for this host.</summary>
     public bool InternetReachable => exposure.InternetReachable || listed || exposure.OutsideAddresses is { Count: > 0 };
 
@@ -207,9 +236,22 @@ public sealed class GatewayRequestGuard : IGatewayRequestGuard
     /// for routes anyone may call, and refuses a locked-out source. Requests from this computer and the home network pass
     /// untouched (no lock, no lookup; pairing windows already close after five wrong tries) unless the host is
     /// internet-reachable; sign-in is limited from every source.</summary>
-    internal void Admit(HttpContext context, string routeClass)
+    internal void Admit(HttpContext context, string routeClass) => Admit(context, routeClass, null);
+
+    internal void Admit(HttpContext context, string routeClass, string? rawTarget)
     {
         var kind = Source(context);
+        // A public endpoint whose sign-in has no usable method serves nothing outside home, except the paired owner fixing
+        // sign-in (a signed request to the sign-in settings).
+        if (kind == GatewaySourceKind.Outside && rawTarget != GatewayHttpApplication.SignInSettingsPath && OutsideAccessPaused)
+        {
+            var from = Address(context);
+            var at = clock.GetUtcNow();
+            Add(at, routeClass, from, kind, "refused", GatewayOutsideAccess.Paused, null);
+            log(LogLevels.Warn, $"Refused a {routeClass} request from {from} (outside home): outside access is paused because " +
+                GatewayOutsideAccess.Describe(OutsideAccessBlockedReason) + ". The outside addresses are kept.", "guard-paused|" + from);
+            throw new GatewayProtocolException(GatewayOutsideAccess.Paused);
+        }
         if (!Applies(routeClass, kind)) return;
         var address = Address(context);
         var now = clock.GetUtcNow();

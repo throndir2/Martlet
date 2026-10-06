@@ -188,14 +188,35 @@ internal sealed class HostInputDialog : ThemedWindow
         if (!optional) required.Add(key);
     }
 
-    internal void AddCheck(string key, string label, bool isChecked)
+    internal void AddCheck(string key, string label, bool isChecked, bool enabled = true)
     {
         var box = new CheckBox { Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap }, IsChecked = isChecked,
-            Margin = new Thickness(0, 6, 0, 4) };
+            Margin = new Thickness(0, 6, 0, 4), IsEnabled = enabled };
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetAutomationId(box, "HostInput-" + key);
         fields.Children.Add(box);
         values[key] = () => box.IsChecked == true ? "yes" : "";
+    }
+
+    /// <summary>A highlighted note (status text, automation ID <paramref name="id"/>) with an optional button beside it that
+    /// runs <paramref name="action"/> (automation ID <paramref name="actionId"/>).</summary>
+    internal void AddNote(string id, string text, string? actionLabel = null, string? actionId = null, Action? action = null)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 4) };
+        var note = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
+        note.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+        AutomationProperties.SetAutomationId(note, id);
+        AutomationProperties.SetName(note, text);
+        panel.Children.Add(note);
+        if (actionLabel is not null && action is not null)
+        {
+            var button = new Button { Content = actionLabel, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 0),
+                Padding = new Thickness(12, 4, 12, 4) };
+            AutomationProperties.SetAutomationId(button, actionId ?? id + "Action");
+            button.Click += (_, _) => action();
+            panel.Children.Add(button);
+        }
+        fields.Children.Add(panel);
     }
 
     internal void AddRemember(string text)
