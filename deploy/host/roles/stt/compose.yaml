@@ -1,12 +1,20 @@
-# Martlet speech-to-text host service (the bot's hearing), loopback-only behind the Martlet gateway.
-# Official whisper.cpp server image (MIT), pinned to release v1.9.4 (this CPU build; compose.gpu.yaml switches to the
-# CUDA build of the same release). On its first start it downloads the chosen ggml model from Hugging Face at a pinned
-# revision into the Martlet-managed martlet-stt-models volume and checks its SHA-256 (kept on re-add), then serves only
-# on 127.0.0.1:8178 (host loopback natively, the gateway's network namespace in Docker mode); the Martlet gateway is the
-# single LAN entry point. Utterances are transcribed in memory; nothing is written to disk.
+# Martlet speech-to-text host service (the bot's hearing), loopback-only behind the Martlet gateway. role.conf's
+# STT_ENGINE choice picks one Compose profile; both engines answer whisper.cpp's POST /inference on 127.0.0.1:8178 (host
+# loopback natively, the gateway's network namespace in Docker mode), and the Martlet gateway is the single LAN entry point.
+# Utterances are transcribed in memory; nothing is written to disk.
+#
+# whisper: the official whisper.cpp server image (MIT), pinned to release v1.9.4 (this CPU build; compose.gpu.yaml switches
+#   to the CUDA build of the same release). On its first start it downloads the chosen ggml model from Hugging Face at a
+#   pinned revision into the Martlet-managed martlet-stt-models volume and checks its SHA-256 (kept on re-add), then serves.
+#
+# parakeet: NVIDIA Parakeet through sherpa-onnx 1.13.8 on the CPU, built on this host from Martlet's workers/parakeet
+#   sources (workers/parakeet/host/Dockerfile: hash-pinned packages). On its first start (or martlet-host's prepare step) it
+#   downloads the chosen model's sherpa-onnx export from Hugging Face at a pinned revision, each file SHA-256 checked, into
+#   the martlet-stt-parakeet-models volume (kept on re-add), then loads it and serves.
 
 services:
   stt:
+    profiles: [ whisper ]
     image: ghcr.io/ggml-org/whisper.cpp:main-927cfce34f31707e17f2bff35c349632fb9e2c3a
     restart: unless-stopped
     environment:
@@ -42,6 +50,24 @@ services:
         threads=$$(nproc); if [ "$$threads" -gt 8 ]; then threads=8; fi
         exec /app/build/bin/whisper-server --host 127.0.0.1 --port 8178 -m "$$model" -l auto -t "$$threads" --suppress-nst
 
+  parakeet:
+    profiles: [ parakeet ]
+    build:
+      # Hosts that installed stt before it had engines may lack MARTLET_SOURCE; they run whisper, which builds nothing.
+      context: ${MARTLET_SOURCE:-.}/workers/parakeet
+      dockerfile: host/Dockerfile
+    image: martlet-parakeet:1
+    pull_policy: build
+    restart: unless-stopped
+    init: true
+    environment:
+      STT_MODEL: ${STT_MODEL:?set by martlet-host}
+    volumes:
+      - parakeet-models:/opt/martlet-parakeet/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
 volumes:
   models:
     name: martlet-stt-models
+  parakeet-models:
+    name: martlet-stt-parakeet-models

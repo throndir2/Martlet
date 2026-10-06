@@ -100,6 +100,23 @@ public sealed class SttRelayTests
     }
 
     [Fact]
+    public async Task A_hosts_parakeet_answers_the_same_route_with_its_own_engine_release()
+    {
+        await using var parakeet = await FakeWhisper.StartAsync(200, "{\"text\":\"Can you remind me to call my sister?\"}");
+        await using var worker = new SttRelayWorker(parakeet.Endpoint, "parakeet-tdt-0.6b-v3-int8");
+        Assert.Equal(SttRelayWorker.ParakeetModelRevision, worker.Route.ModelRevision);
+        Assert.Equal(SttRelayWorker.ModelRevision, SttRelayWorker.RevisionFor("large-v3-turbo"));
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        Assert.Equal("parakeet-tdt-0.6b-v3-int8", route.ModelId);
+
+        Assert.Equal("Can you remind me to call my sister?",
+            await connection.TranscribeAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30), Utterance));
+        Assert.Equal(44 + Utterance.Length, Assert.Single(parakeet.Requests).Wave.Length);
+    }
+
+    [Fact]
     public void Worker_only_relays_to_loopback_and_cleans_non_speech_tags()
     {
         Assert.Throws<ArgumentException>(() => new SttRelayWorker(new Uri("http://192.168.1.5:8178/"), "small"));

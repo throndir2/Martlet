@@ -391,7 +391,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// each device on the Devices map ("Node-pc:desktop-imouto" reads "IMOUTO, desktop-imouto. Active now. Runs: Martlet app,
     /// Listening", "Node-cloud:openrouter.ai" reads "OpenRouter, openrouter.ai. Ready. Runs: Thinking");
     /// API keys ("ApiKeyRow-AbC..." reads "Home Assistant. See status and logs. Made on desktop-a 10/2/2026. ... ID AbCdEf.",
-    /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local";
+    /// never the key or its verifier); a host role's choices in its Add dialog ("HostInput-choice.A2F_ENGINE" reads "local",
+    /// a variant's own "HostInput-choice.STT_MODEL@STT_ENGINE=parakeet" reads "Parakeet TDT 110M (English)";
     /// never its secret fields), the terms that follow a variant choice ("HostInputTerms-A2F_ENGINE") and each Companion › Prompts
     /// prompt's state ("PromptState-reply_length" reads "Edited. About 82 tokens." or, while it saves, "Edited. About 82 tokens.
     /// Saving..."; never the prompt text);

@@ -10,7 +10,7 @@ namespace Martlet.Desktop;
 
 /// <summary>Fills in what a voice recording says, so adding a voice only needs its words checked. It uses speech-to-text the
 /// owner already has: Listening's own model when it is Parakeet on this PC (nothing is sent anywhere) or a paired Martlet
-/// host's whisper (the recording goes only to that computer, which gets the voice anyway), otherwise a Parakeet model that is
+/// host's whisper or Parakeet (the recording goes only to that computer, which gets the voice anyway), otherwise a Parakeet model that is
 /// downloaded (the most accurate for Windows' display language). A cloud Listening route is never used, since it would upload
 /// the recording and may cost money.</summary>
 internal sealed class RecordingTranscriber : IDisposable
@@ -28,7 +28,7 @@ internal sealed class RecordingTranscriber : IDisposable
         this.owned = owned;
     }
 
-    /// <summary>Who fills in the words, as the dialog says it: "Parakeet on this PC" or "Whisper on gpu-pc".</summary>
+    /// <summary>Who fills in the words, as the dialog says it: "Parakeet on this PC", "Whisper on gpu-pc" or "Parakeet on gpu-pc".</summary>
     internal string Name { get; }
 
     /// <summary>The longest recording it can transcribe at once.</summary>
@@ -78,7 +78,7 @@ internal sealed class RecordingTranscriber : IDisposable
     private static RecordingTranscriber Host(HostTextTarget target, string modelId)
     {
         var client = new HostTranscriptionClient();
-        return new($"Whisper on {target.HostId}", 30_000, (pcm, token) =>
+        return new($"{(LocalSpeechSetup.IsParakeetModel(modelId) ? "Parakeet" : "Whisper")} on {target.HostId}", 30_000, (pcm, token) =>
         {
             var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
             return client.TranscribeAsync(target, modelId, pcm, ids, 0, DateTimeOffset.UtcNow.AddSeconds(30), token);

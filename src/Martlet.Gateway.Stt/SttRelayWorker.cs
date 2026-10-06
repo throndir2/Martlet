@@ -11,7 +11,8 @@ using System.Text.RegularExpressions;
 namespace Martlet.Gateway.Stt;
 
 /// <summary>
-/// Gateway relay from a paired client to this host's own loopback whisper.cpp server (the <c>stt</c> host role).
+/// Gateway relay from a paired client to this host's own loopback speech-to-text server (the <c>stt</c> host role): whisper.cpp,
+/// or Martlet's Parakeet service (workers/parakeet), which answers the same <c>/inference</c> contract.
 /// Enabling it in the host configuration is the host owner's standing permission for paired <c>voice</c> devices to
 /// send one bounded microphone utterance at a time for transcription by the model the owner installed; nothing else
 /// on the host is reachable through it. The utterance is held in memory only and never written to disk.
@@ -20,7 +21,10 @@ public sealed partial class SttRelayWorker : ITranscriptionGatewayInferenceWorke
 {
     public const string DefaultDestinationId = "stt-host";
     public const string DefaultWorkerId = "whisper-relay";
+    /// <summary>The engine release a whisper model runs on.</summary>
     public const string ModelRevision = "whisper.cpp-1.9.4";
+    /// <summary>The engine release a Parakeet model (<c>parakeet-...</c>) runs on.</summary>
+    public const string ParakeetModelRevision = "sherpa-onnx-1.13.8";
     private const int MaximumResponseBytes = 256 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, false);
     private readonly Uri inference;
@@ -36,9 +40,9 @@ public sealed partial class SttRelayWorker : ITranscriptionGatewayInferenceWorke
             !IPAddress.IsLoopback(address) || endpoint.AbsolutePath != "/")
             throw new ArgumentException("The speech-to-text relay only reaches a loopback http://127.0.0.1:<port>/ server.", nameof(endpoint));
         if (model is not { Length: > 0 and <= 64 } || !ModelPattern().IsMatch(model))
-            throw new ArgumentException("Use a whisper model name such as small or large-v3-turbo.", nameof(model));
+            throw new ArgumentException("Use a speech-to-text model name such as small, large-v3-turbo or parakeet-tdt-110m-en.", nameof(model));
         inference = new Uri(endpoint, "inference");
-        Route = GatewayInferenceRoute.Transcription(destinationId, workerId, model, ModelRevision);
+        Route = GatewayInferenceRoute.Transcription(destinationId, workerId, model, RevisionFor(model));
         http = new HttpClient(handler ?? new SocketsHttpHandler
         {
             UseProxy = false, AllowAutoRedirect = false, UseCookies = false, Credentials = null,
@@ -47,6 +51,10 @@ public sealed partial class SttRelayWorker : ITranscriptionGatewayInferenceWorke
     }
 
     public GatewayInferenceRoute Route { get; }
+
+    /// <summary>The engine release <paramref name="model"/> runs on: sherpa-onnx for a Parakeet model, else whisper.cpp.</summary>
+    public static string RevisionFor(string model) =>
+        model.StartsWith("parakeet-", StringComparison.Ordinal) ? ParakeetModelRevision : ModelRevision;
 
     [GeneratedRegex(@"\A[a-z0-9][a-z0-9.-]*\z")]
     private static partial Regex ModelPattern();

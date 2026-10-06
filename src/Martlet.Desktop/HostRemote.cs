@@ -14,7 +14,9 @@ internal sealed record HostProbe(bool Docker, bool DockerAccess, string Sudo, st
 }
 
 /// <summary>A role's inputs as the host's role.conf declares them (martlet-host describe). <paramref name="SecretWhen"/> and
-/// <paramref name="TermsWhen"/> belong to one variant of the role: they apply only when choice <c>Variable</c> is <c>Value</c>.
+/// <paramref name="TermsWhen"/> belong to one variant of the role: they apply only when choice <c>Variable</c> is <c>Value</c>,
+/// as do choices with a <see cref="HostRoleChoice.When"/> (a variant's own models) and, with <see cref="GpuWhen"/>, the
+/// GPU or CPU option and graphics card (the stt role's whisper engine; Parakeet runs on the CPU).
 /// <see cref="Stops"/> names the installed roles adding it stops first (another voice engine: one runs per host).</summary>
 internal sealed record HostRoleInputs(string Title, string Requires, string Terms, bool Installed,
     IReadOnlyList<HostRoleSecret> Secrets, IReadOnlyList<HostRoleChoice> Choices, bool GpuOrCpu = false)
@@ -22,6 +24,8 @@ internal sealed record HostRoleInputs(string Title, string Requires, string Term
     public IReadOnlyDictionary<string, (string Variable, string Value)> SecretWhen { get; init; } =
         new Dictionary<string, (string, string)>(StringComparer.Ordinal);
     public IReadOnlyList<(string Variable, string Value, string Text)> TermsWhen { get; init; } = [];
+    /// <summary>The variant whose GPU option this is (role.gpu_when), or null when every variant has it.</summary>
+    public (string Variable, string Value)? GpuWhen { get; init; }
     public IReadOnlyList<string> Stops { get; init; } = [];
     /// <summary>The host's NVIDIA cards when it has several (role.gpu), so the owner can put this role on one of them.</summary>
     public IReadOnlyList<HostCard> Gpus { get; init; } = [];
@@ -44,8 +48,15 @@ internal sealed record HostCard(string Id, string Name, int MemoryMb, IReadOnlyL
 
 internal sealed record HostRoleSecret(string Name, string Prompt, bool Stored);
 
-/// <summary>A role choice; <paramref name="Suggested"/> when the host suggests the default by its GPU memory.</summary>
-internal sealed record HostRoleChoice(string Variable, string Label, IReadOnlyList<string> Options, string Default, bool Suggested = false);
+/// <summary>A role choice; <paramref name="Suggested"/> when the host suggests the default by its GPU memory; <paramref name="When"/>
+/// when only one variant has it (choice <c>Variable</c> is <c>Value</c>), such as the stt role's whisper or Parakeet models.</summary>
+internal sealed record HostRoleChoice(string Variable, string Label, IReadOnlyList<string> Options, string Default, bool Suggested = false,
+    (string Variable, string Value)? When = null)
+{
+    /// <summary>The dialog field's key: <c>choice.VAR</c>, or <c>choice.VAR@WHEN=VALUE</c> for one variant's (the answer is
+    /// still <c>choice.VAR</c>; see <see cref="HostInputDialog.Cleaned"/>).</summary>
+    internal string Key => "choice." + Variable + (When is { } when ? $"@{when.Variable}={when.Value}" : "");
+}
 
 /// <summary>Drives martlet-host on SSH hosts through <see cref="HostShell"/>: probe, setup, pair, roles and status, all
 /// unattended (--yes). The owner's click in Martlet is the confirmation; secrets and choices go over stdin.</summary>
@@ -278,10 +289,12 @@ internal sealed partial class HostRemote(HostShell shell)
         var installed = false;
         var gpuOrCpu = false;
         var suggested = new HashSet<string>(StringComparer.Ordinal);
+        var suggestedWhen = new HashSet<(string, string, string)>();
         var secrets = new List<HostRoleSecret>();
         var choices = new List<HostRoleChoice>();
         var secretWhen = new Dictionary<string, (string, string)>(StringComparer.Ordinal);
         var termsWhen = new List<(string, string, string)>();
+        (string, string)? gpuWhen = null;
         IReadOnlyList<string> stops = [];
         var gpus = new List<HostCard>();
         string? gpuCurrent = null;
@@ -324,12 +337,25 @@ internal sealed partial class HostRemote(HostShell shell)
                 case "role.choice" when value.Split('|') is [var variable, var label, var options, var fallback]:
                     choices.Add(new(variable, label, options.Split(' ', StringSplitOptions.RemoveEmptyEntries), fallback));
                     break;
+                case "role.choice_when" when value.Split('|') is [var when, var variable, var label, var options, var fallback] &&
+                                             Condition(when) is { } condition:
+                    choices.Add(new(variable, label, options.Split(' ', StringSplitOptions.RemoveEmptyEntries), fallback, When: condition));
+                    break;
+                case "role.suggested_when" when value.Split('|') is [var when, var variable] && Condition(when) is { } condition:
+                    suggestedWhen.Add((condition.Variable, condition.Value, variable));
+                    break;
+                case "role.gpu_when" when Condition(value) is { } condition:
+                    gpuWhen = condition;
+                    break;
             }
         }
         return new(title, requires, terms, installed, secrets,
-            choices.Select(c => c with { Suggested = suggested.Contains(c.Variable) }).ToList(), gpuOrCpu)
+            choices.Select(c => c with
+            {
+                Suggested = c.When is { } when ? suggestedWhen.Contains((when.Variable, when.Value, c.Variable)) : suggested.Contains(c.Variable)
+            }).ToList(), gpuOrCpu)
         {
-            SecretWhen = secretWhen, TermsWhen = termsWhen, Stops = stops, Gpus = gpus, GpuCurrent = gpuCurrent,
+            SecretWhen = secretWhen, TermsWhen = termsWhen, Stops = stops, Gpus = gpus, GpuCurrent = gpuCurrent, GpuWhen = gpuWhen,
             Current = current, AcceleratorCurrent = acceleratorCurrent
         };
     }

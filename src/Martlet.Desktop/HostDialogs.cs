@@ -94,7 +94,8 @@ internal sealed class HostInputDialog : ThemedWindow
 
     internal bool Remembered => remember?.IsChecked == true;
 
-    // Fields shown only while a choice has a given value (a role variant's own secret), and text that follows a choice.
+    // Fields shown only while a choice has a given value (a role variant's own secret, choices or GPU option), and text that
+    // follows a choice.
     private readonly Dictionary<string, (string Choice, string Value, UIElement[] Elements)> conditional = new(StringComparer.Ordinal);
     private readonly List<(string Choice, TextBlock Text, IReadOnlyDictionary<string, string> ByValue)> followers = [];
 
@@ -224,10 +225,16 @@ internal sealed class HostInputDialog : ThemedWindow
         IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false) =>
         Cleaned(RoleDialog(host, role, inputs, recommended, local, agent).Ask(owner));
 
-    /// <summary>What <see cref="ForRole"/> returns for the dialog's values: answers without empty fields or "automatic".</summary>
-    internal static Dictionary<string, string>? Cleaned(Dictionary<string, string>? values) =>
-        values?.Where(pair => pair.Value.Length > 0 && pair.Value != Automatic)
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+    /// <summary>What <see cref="ForRole"/> returns for the dialog's values: answers without empty fields or "automatic", with a
+    /// variant's own choice (<c>choice.VAR@WHEN=VALUE</c>) answered as <c>choice.VAR</c>.</summary>
+    internal static Dictionary<string, string>? Cleaned(Dictionary<string, string>? values)
+    {
+        if (values is null) return null;
+        var cleaned = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in values)
+            if (value.Length > 0 && value != Automatic) cleaned[key.Split('@')[0]] = value;
+        return cleaned;
+    }
 
     internal static HostInputDialog RoleDialog(string host, string role, HostRoleInputs inputs,
         IReadOnlyDictionary<string, (string Value, string Why)>? recommended = null, bool local = false, bool agent = false)
@@ -252,32 +259,50 @@ internal sealed class HostInputDialog : ThemedWindow
         var dialog = change
             ? new HostInputDialog($"Change {role}", $"Change {role} on {host}", message, "_Apply")
             : new HostInputDialog($"Add {role}", $"Add {role} on {host}", message, "_Install");
-        (string Value, string Why)? Pick(string key, IEnumerable<string> options) =>
-            recommended?.GetValueOrDefault(key) is { Value: { } value } pick && options.Contains(value) ? pick : null;
+        // A recommendation for a variant's own choice ("choice.VAR@WHEN=VALUE") wins over one for the choice in general.
+        (string Value, string Why)? Pick(IEnumerable<string> options, params string[] keys) =>
+            keys.Select(key => recommended?.GetValueOrDefault(key)).FirstOrDefault(pick => pick is { Value: { } value } && options.Contains(value));
+        void When(string key, (string Variable, string Value)? when)
+        {
+            if (when is { } condition) dialog.ShowWhen(key, "choice." + condition.Variable, condition.Value);
+        }
+        void AddRoleChoice(HostRoleChoice choice)
+        {
+            // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now.
+            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && choice.Options.Contains(current) ? current : null;
+            var automatic = choice.Suggested && now is null;
+            string[] options = automatic ? [Automatic, .. choice.Options] : [.. choice.Options];
+            var pick = Pick(options, choice.Key, "choice." + choice.Variable);
+            var label = pick is { } chosen ? $"{choice.Label} (recommended: {OptionText(chosen.Value)}, {chosen.Why})"
+                : automatic ? choice.Label + " (automatic recommended by the host)" : choice.Label;
+            dialog.AddChoice(choice.Key, now is null ? label : $"{label} (now: {OptionText(now)})",
+                options.Select(option => (option, OptionText(option))).ToArray(), now ?? pick?.Value ?? (automatic ? Automatic : choice.Default));
+            When(choice.Key, choice.When);
+        }
+        // The choices that pick a variant (the stt or Audio2Face engine) come first, then what that variant asks.
+        var conditions = inputs.Choices.Select(c => c.When?.Variable).Append(inputs.GpuWhen?.Variable)
+            .Concat(inputs.TermsWhen.Select(t => t.Variable)).Concat(inputs.SecretWhen.Values.Select(w => w.Variable))
+            .OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var first = inputs.Choices.Where(c => c.When is null && conditions.Contains(c.Variable)).ToArray();
+        foreach (var choice in first) AddRoleChoice(choice);
         if (inputs.GpuOrCpu)
         {
             // Installed: what it runs on now, chosen (no Automatic, which would keep it anyway).
             var now = inputs.AcceleratorCurrent;
             string[] options = now is null ? [Automatic, "gpu", "cpu"] : ["gpu", "cpu"];
-            var pick = Pick("choice.accelerator", options);
+            var pick = Pick(options, "choice.accelerator");
             dialog.AddChoice("choice.accelerator",
                 (now is null ? "Run on" : $"Run on (now: {now})") + (pick is { } chosen ? $" (recommended: {chosen.Value}, {chosen.Why})"
                     : now is null ? " (automatic chooses the GPU when available)" : ""),
                 options, now ?? pick?.Value ?? Automatic);
+            When("choice.accelerator", inputs.GpuWhen);
         }
-        if (inputs.Gpus.Count > 1) AddGpuChoice(dialog, inputs, recommended);
-        foreach (var choice in inputs.Choices)
+        if (inputs.Gpus.Count > 1)
         {
-            var key = "choice." + choice.Variable;
-            var now = inputs.Current.GetValueOrDefault(choice.Variable) is { } current && choice.Options.Contains(current) ? current : null;
-            var automatic = choice.Suggested && now is null;
-            string[] options = automatic ? [Automatic, .. choice.Options] : [.. choice.Options];
-            var pick = Pick(key, options);
-            var label = pick is { } chosen ? $"{choice.Label} (recommended: {chosen.Value}, {chosen.Why})"
-                : automatic ? choice.Label + " (automatic recommended by the host)" : choice.Label;
-            dialog.AddChoice(key, now is null ? label : $"{label} (now: {now})", options,
-                now ?? pick?.Value ?? (automatic ? Automatic : choice.Default));
+            AddGpuChoice(dialog, inputs, recommended);
+            When("choice.gpu", inputs.GpuWhen);
         }
+        foreach (var choice in inputs.Choices.Except(first)) AddRoleChoice(choice);
         // A variant's own terms (for example each Audio2Face engine's) follow the choice that selects it.
         foreach (var variable in inputs.TermsWhen.Select(t => t.Variable).Distinct(StringComparer.Ordinal))
             dialog.AddFollowingText("HostInputTerms-" + variable, "choice." + variable, inputs.TermsWhen
@@ -292,6 +317,10 @@ internal sealed class HostInputDialog : ThemedWindow
         }
         return dialog;
     }
+
+    /// <summary>A choice option as the dialog shows it: a Parakeet model by its name ("Parakeet TDT 110M (English)"), any other as
+    /// the host names it.</summary>
+    internal static string OptionText(string option) => Martlet.Sherpa.ParakeetModels.Find(option)?.ToString() ?? option;
 
     /// <summary>On a host with several NVIDIA cards, which one the role runs on (<c>choice.gpu</c>): automatic, one card, or
     /// every card together. An installed role starts on the card it runs on now (or every card), so changing something else

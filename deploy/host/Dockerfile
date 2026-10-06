@@ -36,7 +36,7 @@ COPY --from=build /out /opt/martlet/gateway
 COPY deploy/host /opt/martlet/host
 # Sources that host roles build their images from (f5: workers/f5/host/Dockerfile; xtts: workers/xtts/host/Dockerfile;
 # gpt-sovits: workers/gpt-sovits/host/Dockerfile; dia: workers/dia/host/Dockerfile; singing: workers/singing/host/Dockerfile;
-# audio2face's local engine: workers/audio2face/Dockerfile).
+# audio2face's local engine: workers/audio2face/Dockerfile; stt's parakeet engine: workers/parakeet/host/Dockerfile).
 COPY workers/f5 /opt/martlet/source/workers/f5
 COPY workers/xtts /opt/martlet/source/workers/xtts
 COPY workers/chatterbox /opt/martlet/source/workers/chatterbox
@@ -44,6 +44,7 @@ COPY workers/gpt-sovits /opt/martlet/source/workers/gpt-sovits
 COPY workers/dia /opt/martlet/source/workers/dia
 COPY workers/singing /opt/martlet/source/workers/singing
 COPY workers/audio2face /opt/martlet/source/workers/audio2face
+COPY workers/parakeet /opt/martlet/source/workers/parakeet
 RUN chmod 0755 /opt/martlet/host/martlet-host && ln -s /opt/martlet/host/martlet-host /usr/local/bin/martlet-host
 ENV MARTLET_HOST_MODE=docker TERM=xterm-256color
 USER 1000:1000

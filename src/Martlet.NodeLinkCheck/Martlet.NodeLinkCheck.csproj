@@ -13,6 +13,8 @@
     <ProjectReference Include="..\Martlet.Gateway.Dia\Martlet.Gateway.Dia.csproj" />
     <!-- singing-check (singing_check) makes a song through the singing role's production relay. -->
     <ProjectReference Include="..\Martlet.Gateway.Singing\Martlet.Gateway.Singing.csproj" />
+    <!-- listening-engine (listening_engine_check) transcribes through the stt role's production relay. -->
+    <ProjectReference Include="..\Martlet.Gateway.Stt\Martlet.Gateway.Stt.csproj" />
     <!-- singing-check paired:<data directory> and singing-status sign requests to a paired host with the desktop's pairing
          secret from Windows Credential Manager (never printed). -->
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />

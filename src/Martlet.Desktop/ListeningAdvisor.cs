@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
+using Martlet.Core.Installation;
+using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
@@ -24,7 +26,7 @@ internal sealed record ListeningAdvice(bool UseGpu, string Reason, string? GpuMo
 {
     internal string Model => UseGpu ? GpuModel! : CpuModel;
 
-    /// <summary>The suggestion as preselected martlet-host answers for the stt role.</summary>
+    /// <summary>The suggestion as preselected martlet-host answers for the stt role (its whisper engine).</summary>
     internal IReadOnlyDictionary<string, (string Value, string Why)> Answers()
     {
         var answers = new Dictionary<string, (string, string)>(StringComparer.Ordinal)
@@ -41,7 +43,8 @@ internal sealed record ListeningAdvice(bool UseGpu, string Reason, string? GpuMo
     {
         var answers = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["choice.accelerator"] = gpu ? "gpu" : "cpu", ["choice.STT_MODEL"] = gpu ? GpuModel ?? "small" : CpuModel
+            ["choice.STT_ENGINE"] = "whisper", ["choice.accelerator"] = gpu ? "gpu" : "cpu",
+            ["choice.STT_MODEL"] = gpu ? GpuModel ?? "small" : CpuModel
         };
         if (gpu && GpuId is { } id) answers["choice.gpu"] = id;
         return answers;
@@ -111,6 +114,33 @@ internal static partial class ListeningAdvisor
     }
 
     private static string Gb(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
+
+    /// <summary>The languages Parakeet TDT 0.6B v3 understands (ISO 639-1): English and 24 other European languages.</summary>
+    private static readonly HashSet<string> ParakeetLanguages = new(StringComparer.Ordinal)
+    {
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl",
+        "es", "sv", "ru", "uk"
+    };
+
+    /// <summary>What Martlet preselects when the stt role is added on a computer: the Parakeet model for Windows' display
+    /// language (the fastest for English, else the one that understands 25 European languages) and, when <paramref name="host"/>
+    /// reported its hardware, the speech recognizer: whisper when it has an NVIDIA graphics card, else Parakeet (the fastest on
+    /// a processor) when it understands that language. <paramref name="local"/> (this PC's host service, where
+    /// <see cref="Advise"/> places whisper) adds <see cref="ListeningAdvice.Answers"/> instead of a recognizer.</summary>
+    internal static Dictionary<string, (string Value, string Why)> HostAnswers(HostHardware? host, CultureInfo language,
+        IReadOnlyDictionary<string, (string Value, string Why)>? local = null)
+    {
+        var answers = new Dictionary<string, (string Value, string Why)>(local ?? new Dictionary<string, (string, string)>(), StringComparer.Ordinal);
+        var english = language.TwoLetterISOLanguageName == "en";
+        answers["choice.STT_MODEL@STT_ENGINE=parakeet"] = (LocalSpeechSetup.RecommendedParakeetModel(language),
+            english ? "the fastest in English" : "it understands 25 European languages");
+        if (local is not null || host is null) return answers;
+        if (host.Gpus.Any(g => g.IsNvidia))
+            answers["choice.STT_ENGINE"] = ("whisper", "its NVIDIA graphics card makes whisper fast");
+        else if (ParakeetLanguages.Contains(language.TwoLetterISOLanguageName))
+            answers["choice.STT_ENGINE"] = ("parakeet", "it has no NVIDIA graphics card, and Parakeet is the fastest on a processor");
+        return answers;
+    }
 
     /// <summary>Reads the NVIDIA card with the most memory from nvidia-smi (hidden, a few seconds at most); null when
     /// there is no NVIDIA driver or it doesn't answer.</summary>

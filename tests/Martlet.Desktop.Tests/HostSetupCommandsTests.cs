@@ -140,6 +140,80 @@ public sealed class HostSetupCommandsTests
         });
     }
 
+    // "martlet-host describe stt": whisper has the GPU option and its own models; Parakeet runs on the CPU with its own.
+    private static readonly string[] SttDescribe =
+    [
+        "role.title=Speech-to-text: the bot's hearing", "role.requires=docker",
+        "role.terms=Paired desktops send your recorded speech to this host one utterance at a time.", "role.installed=no",
+        "role.terms_when=STT_ENGINE=whisper|whisper.cpp (MIT) runs as its official container.",
+        "role.gpu_when=STT_ENGINE=whisper",
+        "role.choice_when=STT_ENGINE=whisper|STT_MODEL|Whisper model|base small medium large-v3-turbo|small",
+        "role.suggested_when=STT_ENGINE=whisper|STT_MODEL",
+        "role.terms_when=STT_ENGINE=parakeet|Parakeet runs on this host's CPU with sherpa-onnx.",
+        "role.choice_when=STT_ENGINE=parakeet|STT_MODEL|Parakeet model|parakeet-tdt-110m-en parakeet-tdt-0.6b-v2-int8 parakeet-tdt-0.6b-v3-int8|parakeet-tdt-110m-en",
+        "role.choice=STT_ENGINE|Speech recognizer|whisper parakeet|whisper",
+        "role.accelerator=gpu cpu"
+    ];
+
+    [Fact]
+    public void Listening_on_another_computer_offers_whisper_and_parakeet_with_their_own_models()
+    {
+        var role = HostRemote.ParseRole(SttDescribe);
+        Assert.Equal(("STT_ENGINE", "whisper"), role.GpuWhen);
+        Assert.True(role.GpuOrCpu);
+        var whisper = role.Choices.Single(c => c.When == ("STT_ENGINE", "whisper"));
+        var parakeet = role.Choices.Single(c => c.When == ("STT_ENGINE", "parakeet"));
+        Assert.True(whisper.Suggested);
+        Assert.False(parakeet.Suggested);
+        Assert.Equal("choice.STT_MODEL@STT_ENGINE=parakeet", parakeet.Key);
+        Assert.Equal(["parakeet-tdt-110m-en", "parakeet-tdt-0.6b-v2-int8", "parakeet-tdt-0.6b-v3-int8"], parakeet.Options);
+
+        // A computer without an NVIDIA graphics card: Parakeet, the fastest on a processor; with one: whisper.
+        var cpuOnly = new Martlet.Core.Installation.HostHardware("imouto-host", "https://192.168.1.30:9443", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, "docker", "Ubuntu 24.04", null, "Ryzen 7", 16, 32, "docker", "no", []);
+        var english = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+        var recommended = ListeningAdvisor.HostAnswers(cpuOnly, english);
+        Assert.Equal("parakeet", recommended["choice.STT_ENGINE"].Value);
+        Assert.Equal("whisper", ListeningAdvisor.HostAnswers(cpuOnly with
+        {
+            Gpus = [new Martlet.Core.Installation.HostGpu("NVIDIA GeForce RTX 4070", "nvidia", 12282, "590.1")]
+        }, english)["choice.STT_ENGINE"].Value);
+        Assert.False(ListeningAdvisor.HostAnswers(cpuOnly, System.Globalization.CultureInfo.GetCultureInfo("ja-JP")).ContainsKey("choice.STT_ENGINE"));
+        Assert.Equal("parakeet-tdt-0.6b-v3-int8",
+            ListeningAdvisor.HostAnswers(null, System.Globalization.CultureInfo.GetCultureInfo("de-DE"))["choice.STT_MODEL@STT_ENGINE=parakeet"].Value);
+
+        RunSta(() =>
+        {
+            var dialog = HostInputDialog.RoleDialog("imouto-host", "stt", role, recommended, agent: true);
+            var engine = Find<ComboBox>(dialog, "HostInput-choice.STT_ENGINE");
+            var runOn = Find<ComboBox>(dialog, "HostInput-choice.accelerator");
+            var whisperModel = Find<ComboBox>(dialog, "HostInput-choice.STT_MODEL@STT_ENGINE=whisper");
+            var parakeetModel = Find<ComboBox>(dialog, "HostInput-choice.STT_MODEL@STT_ENGINE=parakeet");
+            var terms = Find<TextBlock>(dialog, "HostInputTerms-STT_ENGINE");
+            Assert.Equal("parakeet", engine.SelectedItem);
+            Assert.Equal(Visibility.Collapsed, runOn.Visibility);
+            Assert.Equal(Visibility.Collapsed, whisperModel.Visibility);
+            Assert.Equal(Visibility.Visible, parakeetModel.Visibility);
+            Assert.Equal("Parakeet TDT 110M (English)", parakeetModel.SelectedItem);
+            Assert.StartsWith("Parakeet runs", terms.Text);
+            Assert.Equal(new Dictionary<string, string> { ["choice.STT_ENGINE"] = "parakeet", ["choice.STT_MODEL"] = "parakeet-tdt-110m-en" },
+                HostInputDialog.Cleaned(dialog.Answers()));
+            parakeetModel.SelectedItem = "Parakeet TDT 0.6B v3 (25 European languages)";
+            Assert.Equal("parakeet-tdt-0.6b-v3-int8", HostInputDialog.Cleaned(dialog.Answers())!["choice.STT_MODEL"]);
+
+            engine.SelectedItem = "whisper";
+            Assert.Equal(Visibility.Visible, runOn.Visibility);
+            Assert.Equal(Visibility.Visible, whisperModel.Visibility);
+            Assert.Equal(Visibility.Collapsed, parakeetModel.Visibility);
+            Assert.StartsWith("whisper.cpp", terms.Text);
+            // Automatic leaves the GPU or CPU and the model to the host.
+            Assert.Equal(new Dictionary<string, string> { ["choice.STT_ENGINE"] = "whisper" }, HostInputDialog.Cleaned(dialog.Answers()));
+            whisperModel.SelectedItem = "medium";
+            Assert.Equal("medium", HostInputDialog.Cleaned(dialog.Answers())!["choice.STT_MODEL"]);
+            dialog.Close();
+        });
+    }
+
     // "martlet-host describe ollama" on a host with an RTX 3090 (running chatterbox) and an RTX 3080.
     private static readonly string[] TwoGpuDescribe =
     [

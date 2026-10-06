@@ -283,7 +283,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "records it; the desktop's reader reads the busy line. With a " +
             "fake docker CLI it also checks the Docker method: setup does not replace the network holder while an engine session " +
             "(an add) runs in it (an automatic setup stops with MARTLET-BUSY, an attended one waits, then replaces it), and an engine " +
-            "left in a replaced holder's namespace stops at once. Returns notRun when Docker or the image is missing.", new { }),
+            "left in a replaced holder's namespace stops at once. A fixture role with two variants (like the stt role's whisper and " +
+            "Parakeet engines) shows describe listing each variant's own choices, suggestion and GPU option with their condition, an " +
+            "add keeping a variant's own choices, GPU option and prepare step, and a switch stopping the previous variant only once " +
+            "the chosen one is prepared (also when a failed switch is run again). Returns notRun when Docker or the image is missing.", new { }),
         Tool("host_supply_check", "Check that Martlet sets up a native Ubuntu host without internet access by sending what it needs " +
             "from this PC: with the production HostSupplier and HostCheckout and this checkout's real martlet-host, in one disposable " +
             "ubuntu:24.04 container on an internal Docker network (a private LAN address, no way out; never pulled, removed " +
@@ -466,6 +469,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
             endpoint = new { type = "string", maxLength = 64 },
             seconds = new { type = "integer", minimum = 1, maximum = 10 },
             sampleRate = new { type = "integer", @enum = Audio2FaceCheck.SampleRates }
+        }),
+        Tool("listening_engine_check", "Listening on another computer: transcribe phrases a Windows voice says (System.Speech " +
+            "rendered to memory, never played; optional phrases, up to 8 English sentences) with the stt host role's live " +
+            "speech-to-text service on a numeric loopback endpoint (default http://127.0.0.1:8178/: whisper.cpp or Martlet's Parakeet " +
+            "service, workers/parakeet) through the production path: the role's relay (Martlet.Gateway.Stt) inside a real gateway " +
+            "on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired client. Returns the service's /status (Parakeet's engine, " +
+            "model, threads and runtime versions; whisper.cpp has none), the route's model and engine release (modelRevision), each " +
+            "phrase's transcript, word errors and transcribeMs, the word error rate and median time; ok when every phrase came " +
+            "back with at most 20% word errors. model (optional) names the route's model; by default the one /status names, " +
+            "else small. Loopback only; runs Martlet.NodeLinkCheck; nothing is recorded, played or kept.", new
+        {
+            endpoint = new { type = "string", maxLength = 64 },
+            model = new { type = "string", maxLength = 64 },
+            phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
         Tool("voice_engine_check", "Speak one sentence with a self-hosted voice engine's loopback service (a host role's service, " +
             "default chatterbox on http://127.0.0.1:50083; f5 50080, xtts 50081, gpt-sovits 50082, dia 50084) through the production " +
@@ -1010,6 +1027,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "audio2face_check" => await Audio2FaceCheck.RunAsync(OptionalString(arguments, "endpoint"),
                     OptionalInt(arguments, "seconds"), OptionalInt(arguments, "sampleRate"), cancellation),
                 "voice_engine_check" => await VoiceEngineCheckAsync(arguments, cancellation),
+                "listening_engine_check" => await ListeningEngineCheck.RunAsync(arguments, OptionalString(arguments, "endpoint"),
+                    OptionalString(arguments, "model"), cancellation),
                 "singing_status" => await SingingStatusAsync(arguments, cancellation),
                 "singing_check" => await SingingCheckAsync(arguments, cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
@@ -1398,6 +1417,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
     private static async Task<object> NodeLinkCheckAsync(TimeSpan timeLimit, CancellationToken cancellation, string[] arguments)
     {
+        var (exitCode, report) = await NodeLinkCheckReportAsync(timeLimit, cancellation, arguments);
+        return new { exitCode, report };
+    }
+
+    /// <summary>Runs Martlet.NodeLinkCheck with <paramref name="arguments"/> and returns its exit code and JSON report.</summary>
+    internal static async Task<(int ExitCode, JsonElement Report)> NodeLinkCheckReportAsync(TimeSpan timeLimit, CancellationToken cancellation,
+        string[] arguments)
+    {
         var program = NodeLinkCheckProgram();
         var start = new System.Diagnostics.ProcessStartInfo(program)
         {
@@ -1419,7 +1446,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         try
         {
             using var document = JsonDocument.Parse(text);
-            return new { exitCode = process.ExitCode, report = document.RootElement.Clone() };
+            return (process.ExitCode, document.RootElement.Clone());
         }
         catch (JsonException)
         {

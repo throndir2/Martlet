@@ -944,7 +944,21 @@ continues; and the desktop's reader reads that busy line. Finally a native
 with exit 17 (as a role image build does when a download times out) stops with
 exit 1 and `Stopped: Building or starting fixture-build failed ... run
 'martlet-host add fixture-build' again` (`build-failure-says-run-again`, also in
-`logs/engine.log`). Without Docker or the
+`logs/engine.log`). A fixture role with two variants (`FX_ENGINE` `alpha`, with
+a GPU option, a model suggested by GPU memory and its own prepare step, or
+`beta`, with its own models and prepare step), like the `stt` role's whisper and
+Parakeet engines, then checks that `describe` lists each variant's choices,
+suggestion and GPU option with their condition (`role.choice_when`,
+`role.suggested_when`, `role.gpu_when`; `variant-describe`); that an add of
+`beta` keeps its own model and prepare step and ignores a GPU answer
+(`variant-own-choices`); that an install from before the role had variants
+(`profile_legacy`) moves to `beta` by preparing it, creating it, and only then
+stopping `alpha` (`variant-switch-after-prepare`); that the same switch run again
+after it stopped at `up -d` (as a failed build or download would, with `.env`
+already naming `beta`) still stops `alpha` before `beta` starts
+(`variant-retry-stops-the-other`); and that `alpha` refuses
+`beta`'s model, then runs on the CPU with its suggested model on this GPU-less
+fixture (`variant-gpu-and-suggestion`). Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 
@@ -1135,6 +1149,27 @@ loading model can take minutes, so the tool allows six; pass
 `-TimeoutSeconds 400` to the script. As with `audio2face_check`, a role
 service on a host listens only in the host's loopback, so run it there or
 forward the port.
+
+`listening_engine_check` is Listening on another computer, headless: the `stt`
+host role's live speech-to-text service on a numeric loopback `endpoint`
+(default `http://127.0.0.1:8178/`; whisper.cpp or Martlet's
+[Parakeet service](../workers/parakeet/README.md)) transcribes phrases a
+Windows voice says (System.Speech rendered to memory after 0.3 s and before 1 s
+of faint noise, never played; optional `phrases`, up to 8 English sentences)
+through the production path: Martlet.NodeLinkCheck's `listening-engine` mode
+starts a real gateway on 127.0.0.1 (pinned TLS, pairing) with the role's relay
+(`SttRelayWorker`, the one the Linux host creates) and transcribes through the
+desktop's paired client. Optional `model` names the route's model; by default
+the one the service's `/status` names (Parakeet's), else `small`. It returns
+`ok` (every phrase back with at most 20% word errors overall),
+`wordErrorRate`, `medianTranscribeMs`, `endpoint`, `route`, `model`,
+`modelRevision` (`sherpa-onnx-1.13.8` for a Parakeet model, `whisper.cpp-1.9.4`
+otherwise), `status` (the service's own `/status`: Parakeet's `engine`,
+`model`, `threads` and `runtime` versions; whisper.cpp has none), each phrase's
+`said`, `transcript`, `wordErrors` and `transcribeMs`, and `failure` and
+`problem` (for example `worker.unavailable` when nothing answers). Nothing is
+recorded, played or kept. As with `audio2face_check`, run it where the role
+listens or forward the port.
 
 `singing_check` makes one song through the singing role's production path
 ([Singing](SINGING.md)): Martlet.NodeLinkCheck's `singing-check` mode starts a
@@ -3049,13 +3084,25 @@ chosen variant as `HostInputTerms-<VAR>`, and its secrets as
 `HostInput-secret.<name>` password boxes, never with their values. A variant's
 own secret appears only while its choice is selected (the Audio2Face NIM
 engine's `HostInput-secret.ngc_api_key` only for `nim`); hidden fields are not
-required and not sent. `HostInputOk` installs and needs `--allow-ui-effects`.
+required and not sent. A variant's own choices work the same way, as
+`HostInput-choice.<VAR>@<CHOICE>=<value>`: the `stt` role's speech recognizer
+(`HostInput-choice.STT_ENGINE`, `whisper` or `parakeet`) shows either
+`HostInput-choice.STT_MODEL@STT_ENGINE=whisper` (base to large-v3-turbo, with
+*Run on* `HostInput-choice.accelerator`) or
+`HostInput-choice.STT_MODEL@STT_ENGINE=parakeet` (*Parakeet TDT 110M
+(English)*, *Parakeet TDT 0.6B v2 (English)* or *Parakeet TDT 0.6B v3 (25
+European languages)*; Parakeet runs on the CPU, so *Run on* is hidden), and
+either answers as `choice.STT_MODEL`. Adding listening preselects the
+recognizer for that computer (whisper with an NVIDIA graphics card, else
+Parakeet when it understands Windows' display language) and the Parakeet model
+for that language, each with its reason in the label.
+`HostInputOk` installs and needs `--allow-ui-effects`.
 For a role the host already runs (*Change ... settings*, *Change model*), the
 same dialog's `HostInputHeading` reads *Change <role> on <host>* (otherwise *Add
 <role> on <host>*), `HostInputOk` reads *Apply*, and each
 `HostInput-choice.<VAR>` (and `HostInput-choice.accelerator`) starts on what the
 role runs with now, which `martlet-host describe` reports as
-`role.choice_current` and `role.accelerator_current`, without *Automatic*.
+`role.choice_current` and `role.accelerator_current` (a variant's own choice only while that variant runs), without *Automatic*.
 On a host with two or more NVIDIA cards the dialog adds
 `HostInput-choice.gpu` (Automatic, each card by name and memory with the roles
 already on it, or All cards); one-click installs on such a host (listening,

@@ -446,7 +446,7 @@ public partial class MainWindow
         var routeName = route is null ? "" : route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice on this PC"
             : route.RouteType == SetupRouteType.LocalParakeet ? $"{PlaceName(route)}: {ParakeetName(route.ModelId)}"
             : route.RouteType == SetupRouteType.LocalWhisper ? PlaceName(route)
-            : $"{PlaceName(route)}: {route.ModelId}";
+            : $"{PlaceName(route)}: {HostInputDialog.OptionText(route.ModelId)}";
         var status = route is null
             ? section == CompanionTab.Voice
                 ? "Not chosen yet. Pick a voice engine below."
@@ -940,7 +940,7 @@ public partial class MainWindow
 
     private Border ComputersCard(HostJob job, SetupRoute? route, PairedHost? exclude) =>
         ComputersCard(job.Job, job.Engine, job.HostRoleKind, NetworkMap.JobHost(homeSettings, job.Role),
-            $"In use: {job.Engine} {route?.ModelId}.",
+            $"In use: {job.Engine} {(route?.ModelId is { } model ? HostInputDialog.OptionText(model) : null)}.",
             null,
             key => AssignJobAsync(job, key), job.Disclosure, exclude, change: "Change model");
 
@@ -973,7 +973,7 @@ public partial class MainWindow
             var cannot = model is null ? CannotHand(host.HostId, roleKind, job) : null;
             var detail = owner == host.HostId ? ownerDetail
                 : cannot is not null ? $"Unavailable: {cannot}"
-                : model is not null ? $"Runs {engine} ({model})."
+                : model is not null ? $"Runs {engine} ({HostInputDialog.OptionText(model)})."
                 : check?.Reachable == true ? $"{engine} isn't installed there yet. Martlet can set it up."
                 : check?.Reachable == false ? "Not reachable right now." : "Not checked yet.";
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };

@@ -16,10 +16,10 @@ internal static class ParakeetCheck
 {
     /// <summary>The highest word error rate on the clean synthesized phrases that still passes.</summary>
     internal const double MaximumWordErrorRate = 0.2;
-    private const int MaximumPhrases = 8;
+    internal const int MaximumPhrases = 8;
 
     // English phrases with no numbers or names (the English-only models write numbers as digits and don't know Martlet's name).
-    private static readonly string[] Phrases =
+    internal static readonly string[] Phrases =
     [
         "Hey, what's the weather like tomorrow morning?",
         "Can you remind me to call my sister after lunch?",
@@ -199,7 +199,7 @@ internal static class ParakeetCheck
         return builder.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
     }
 
-    private static string[]? Strings(JsonElement arguments, string property, int maximum, int maximumLength)
+    internal static string[]? Strings(JsonElement arguments, string property, int maximum, int maximumLength)
     {
         if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty(property, out var value) || value.ValueKind == JsonValueKind.Null)
             return null;

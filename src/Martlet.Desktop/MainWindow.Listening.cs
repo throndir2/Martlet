@@ -149,7 +149,9 @@ public partial class MainWindow
             Option(gpuFirst ? cpuOption : gpuOption, gpuFirst ? cpuInUse : gpuInUse)
         };
         if (inUse && running is null)
-            stack.Add(Note($"In use: Whisper on this PC.", new Thickness(0, 10, 0, 0)));
+            stack.Add(Note(LocalSpeechSetup.IsParakeetModel(route!.ModelId)
+                ? $"In use: {ParakeetName(route.ModelId)} in this PC's host service."
+                : "In use: Whisper on this PC.", new Thickness(0, 10, 0, 0)));
         if (thisPc is null)
             stack.Add(Note((machine.DockerRunning ? "Docker Desktop is running. "
                     : machine.DockerInstalled ? "Docker Desktop is installed. Martlet starts it when needed. "
