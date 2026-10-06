@@ -2159,7 +2159,24 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
         if (configured.SupportsTools && RemindersTool is { } remind)
             own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
+        // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
+        // connection).
+        if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
+            own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
         return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>Rings a Discord friend for call_on_discord; null while Discord isn't wired.</summary>
+    internal IDiscordCaller? DiscordCaller { get; set; }
+
+    private async ValueTask<ConversationToolResult> CallOnDiscordAsync(IDiscordCaller caller, TextToolCall call, CancellationToken token)
+    {
+        if (DiscordCallTool.Person(call.ArgumentsJson) is not { Length: > 0 } person)
+            return new("Say which friend to call (person).", true);
+        var result = await caller.CallAsync(person, token).ConfigureAwait(false);
+        tools?.Record("Martlet", DiscordCallTool.Name, "called", "", false);
+        ErrorLog.Info("Discord: call_on_discord ran.");
+        return new(result);
     }
 
     /// <summary>Runs one reminders call (set, list, cancel) on this PC's reminders, which travel with the shared settings; set by

@@ -226,6 +226,7 @@ public partial class MainWindow : ThemedWindow
         StartCharacterModels();
         StartCreations();
         StartHomeShare();
+        InitializeDiscordCompanion();
         discord.StartIfEnabledAsync(lifetime.Token).Forget();
         StartNodeAgent();
         StartLogSharing();

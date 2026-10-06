@@ -43,6 +43,7 @@ public partial class MainWindow
         page.Children.Add(DiscordInviteCard(saved));
         page.Children.Add(DiscordChatCard(saved, status));
         page.Children.Add(DiscordPeopleCard(saved, status));
+        page.Children.Add(DiscordFriendsCard());
         page.Children.Add(DiscordCallsCard());
     }
 

@@ -114,6 +114,15 @@ public sealed record RendererRequest(string Action)
 /// </summary>
 public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null,
     bool? Locked = null);
+/// <summary>Over the character's renderer pipe: a picture of the character as it shows now (Discord's bot picture and
+/// <c>/selfie</c>). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole character; the
+/// longer side is at most <paramref name="Edge"/> pixels (64 to 512). Replied to with <see cref="RendererPicture"/>.</summary>
+public sealed record RendererSnapshot(bool Portrait, int Edge = 512)
+{
+    public const int MinimumEdge = 64, MaximumEdge = 512;
+}
+/// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels.</summary>
+public sealed record RendererPicture(string Png, int Width, int Height);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);
