@@ -662,6 +662,11 @@ internal sealed class LiveConversationConfiguration
     internal static string? PcAudio(PromptSettings? prompts) =>
         PromptSettings.Fill(prompts, PromptCatalog.PcAudio, ("marker", PcAudioMarker), ("silent", SilentReply));
 
+    /// <summary>Replies while Martlet is in the owner's own Discord call: the PC's lines are people in the call (named when
+    /// known) who can hear Martlet's spoken reply.</summary>
+    internal static string? DiscordCall(PromptSettings? prompts) =>
+        PromptSettings.Fill(prompts, PromptCatalog.DiscordCall, ("marker", PcAudioMarker), ("silent", SilentReply));
+
     /// <summary>The text without the lines heard from what the PC plays and without what Martlet saw (<see cref="VisionHistory"/>
     /// lines; null when nothing else is left): what memory and learning names may read.</summary>
     internal static string? WithoutMarked(string? text)

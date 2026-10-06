@@ -732,10 +732,20 @@ the reused setup code are refused (`signin.invalid`); the laptop signs in with a
 recovery code, is paired under the host's home origin and its signed requests
 work; it asks to join and the home PC lets it in on the host's attestation
 (`NetworkSyncEngine.ApproveSignedIn`) with no check number, while a PC paired by
-code still waits for one; removing the owner account revokes the laptop
-(`auth.revoked`); the host's security audit holds the sign-in successes and
-failures and no secret. Not covered: the desktop windows, Windows Credential
-Manager, a host reached over the internet and browser sign-in providers.
+code still waits for one; the home PC adds an OpenID Connect provider (its
+client secret kept on the host, `has_client_secret` only) routed to an issuer in
+the same process (`GatewayServer.UseSignInProviderHandler`); a tablet signs in
+through a simulated browser that follows the redirect to the desktop's real
+loopback listener (`LoopbackRedirect`), is refused (`signin.not_allowed`) until
+the home PC allows the identity listed under `refused`, then is paired (the
+host exchanged the code with the client secret and checked the ID token) and
+let into the network the same way; a Steam account allowed by its SteamID64
+signs in through the simulated browser with an OpenID 2.0 assertion the host
+confirms with (simulated) Steam; removing the owner account revokes the
+laptop (`auth.revoked`); the host's security audit holds the sign-in successes
+and failures and no secret. Not covered: the desktop windows, Windows
+Credential Manager, a host reached over the internet, a real browser and a real
+issuer.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
@@ -747,6 +757,10 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
 `SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
+`SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
+`SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
+`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`,
+`SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow`,
 `SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
 `SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
 `SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
@@ -2448,6 +2462,37 @@ words and the question stopping Martlet, backchannels and non-words never.
 Nothing is recorded or played and nothing leaves this PC; without Parakeet,
 `audio.ran` is false with the reason.
 
+`discord_call_check` checks [Martlet in your own Discord calls](DISCORD.md#martlet-in-your-own-calls)
+(Companion › Discord › **Martlet in your Discord calls**; optional absolute
+`dataDirectory`, default the current user's). `saved` is the mode from
+`discord-calls.json` (`on`, off by default; `capture` `DiscordApp` or
+`EverythingButMartlet`; `seeSpeakers`; `ownerNameSet`, never the name;
+`output`, the chosen output's name; `alsoSpeakers`; `bargeIn`;
+`cameraBackground`). `doctor` checks this PC without recording or playing:
+`appLoopback` (Windows can hear one app alone: a process loopback of Discord,
+or of the MCP server itself while Discord isn't running, is set up and closed
+unstarted, so `recorded` is always false; `appLoopbackProblem` otherwise),
+`discordRunning`, `discordWindowShown`, `textReading` (Windows' OCR has a
+language for the user's profile), `outputs` (how many playback devices),
+`virtualCable` (the first one that looks like a virtual cable's input),
+`chosenOutputPresent` and `voiceGoesTo`. `simulation` runs a simulated
+call utterance through the production path: `audio` (a fixture call voice
+through `PcAudioCaptureFactory`, `MicrophoneCapture` and voice activity on a
+simulated clock, two `utterances`), `attribution` (fixture pictures of the
+Discord window drawn with GDI, never shown, kept or sent: a voice channel's
+member list with Alice lit, the call grid with Bob's tile lit and the member
+list with only the owner, Ben, lit; each `scene` has its `speakingGreenPixels`, `marks`
+(`Ring`/`Tile`), `expected` and `named` from the production
+`DiscordSpeakingDetector` and Windows' real OCR on this PC), `message` (the
+lines as the talk window sends them, `[PC audio] Alice in the call: ...`),
+`turns` (each line, whether it says Martlet's name and so is answered at
+once, and the fixture reply: NOT AI, it answers when the name is said and
+otherwise passes) and `prompt` (the default *In your Discord call*
+instructions). `ok` needs two utterances, every scene named as expected
+(skipped where Windows has no OCR language) and the fixture replies. It
+contacts nothing; real Discord calls, a virtual cable and OBS are not
+exercised.
+
 `pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
 (Companion › Listening › Watch along › **Hear what this PC plays**; optional
 absolute `dataDirectory`, default the current user's): `hearPc` (the saved
@@ -3830,6 +3875,32 @@ verifying on a desktop whose sound must not be captured. Each reply writes a
 *Reply latency* line to the desktop log (see [Latency](#latency)), which
 `logs_tail` returns and `latency_report` summarizes.
 
+At the end of Companion › Discord, *Martlet in your Discord calls* (see
+[DISCORD.md](DISCORD.md#martlet-in-your-own-calls)) has `DiscordCallOn` (the
+mode, off by default), `DiscordCallCapture` (*The Discord app only* or
+*Everything this PC plays except Martlet*), `DiscordCallSeeSpeakers`,
+`DiscordCallOwnerName` (the owner's Discord name; never returned),
+`DiscordCallOutput` (*Martlet's usual output* or a playback device, a virtual
+cable marked *(virtual cable)*), `DiscordCallAlsoSpeakers`,
+`DiscordCallBargeIn`, `DiscordCallCameraBackground` (*Green*, *Blue*,
+*Magenta*, *Black*), `DiscordCallCamera` (*Open camera view* / *Close camera
+view*) and `DiscordCallCheck` (*Check this PC*, a SafeClick: it lists the
+playback devices, looks for Discord and sets up a process loopback unstarted).
+Toggling, choosing and the camera button save `discord-calls.json` or show a
+window, so they need `--allow-ui-effects`. Returned (SafeValues):
+`DiscordCallStatus` (*Off. Martlet isn't in your Discord calls.* or *On.
+Martlet hears the Discord app* (or *hears everything this PC plays except
+itself*)*, sees who talks: <source>, and speaks into <output>.*),
+`DiscordCallAttribution` (*Who is talking: the Discord window; 2 people named
+so far.*, never who), `DiscordCallOutputStatus` (where Martlet's voice goes,
+or that the chosen output isn't connected), `DiscordCallCameraStatus` (open
+or closed, with its background), `DiscordCallDoctor` (Check this PC's result)
+and the three choices. While the mode is on, the talk window's `LivePcAudio`
+line says *In your Discord call.* or *Hearing someone in your Discord call…*
+(its `help` is the mode's line) and lines from the call show in
+`LiveHistory` as bubbles labelled *Discord call*, each starting with who said
+it (*Alice in the call: ...*). `discord_call_check` reads the same mode.
+
 Window discovery uses visible top-level native handles filtered to the attached
 process (and its own character renderer child process), then verifies ownership
 around each UI Automation handle lookup.
@@ -4035,7 +4106,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

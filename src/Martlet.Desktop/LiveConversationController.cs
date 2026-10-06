@@ -192,6 +192,9 @@ internal sealed class LiveConversationOperation
     internal bool PcAudio { get; init; }
     /// <summary>What the user said themselves in a message with <see cref="PcAudio"/>; null when it is only what the PC played.</summary>
     [JsonIgnore] internal string? UserWords { get; init; }
+    /// <summary>Martlet in your own Discord calls is on: the reply is told it is in the call (Companion's Discord call prompt in
+    /// place of What this PC plays), and lines from the PC are people in the call talking.</summary>
+    internal bool DiscordCall { get; init; }
     /// <summary>Companion › Vision › How often it comments while vision or hearing this PC is turned on (null otherwise): with
     /// Martlet decides, the reply is told how to switch the level and may end with a chattiness tag.</summary>
     internal ChattinessChoice? BackgroundChattiness { get; init; }
@@ -794,7 +797,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
         ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
         IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false, bool remote = false, bool bringUp = false,
-        AttentionSignal? attention = null, bool look = false)
+        AttentionSignal? attention = null, bool look = false, bool discordCall = false)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -838,7 +841,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, StraightWords = words,
-                PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
+                PcAudio = pcAudio, DiscordCall = discordCall && spoken, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
                 BringUp = bringUp, Attention = seen is null ? null : attention, Look = look,
                 WhileSinging = spoken ? singing?.Now() : null,
                 BackgroundChattiness = chattiness,
@@ -1713,7 +1716,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
-                            operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
+                            operation.DiscordCall ? LiveConversationConfiguration.DiscordCall(prompts)
+                                : operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
                             decides ? LiveConversationConfiguration.ChattinessDecides(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),

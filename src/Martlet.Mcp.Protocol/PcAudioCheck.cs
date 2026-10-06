@@ -134,7 +134,7 @@ internal static class PcAudioCheck
         }
     }
 
-    private static async Task<byte[]> RecordAsync(ICaptureDeviceFactory devices, CancellationToken cancellation)
+    internal static async Task<byte[]> RecordAsync(ICaptureDeviceFactory devices, CancellationToken cancellation)
     {
         var session = Guid.NewGuid();
         await using var capture = new MicrophoneCapture(session, devices);
@@ -150,10 +150,10 @@ internal static class PcAudioCheck
         return pcm;
     }
 
-    private sealed record Segment(double Start, double End, double EndedAt);
+    internal sealed record Segment(double Start, double End, double EndedAt);
 
     // What always listening's voice-activity detector (the default settings it uses for what the PC plays) makes of the stream.
-    private static List<Segment> Segments(byte[] pcm)
+    internal static List<Segment> Segments(byte[] pcm)
     {
         var detector = new EnergyVoiceActivityDetector(new VoiceActivitySettings());
         var segments = new List<Segment>();
@@ -185,7 +185,7 @@ internal static class PcAudioCheck
     private static bool Playing(double t) => t < 3 || t >= 6 && t < 9;
 
     /// <summary>100 ns ticks, moved on 10 ms by each poll of the fixture loopback, so the rehearsal runs faster than real time.</summary>
-    private sealed class SimulatedClock : TimeProvider
+    internal sealed class SimulatedClock : TimeProvider
     {
         private long now = Origin;
         public long Now { get => Volatile.Read(ref now); set => Volatile.Write(ref now, value); }
@@ -194,7 +194,7 @@ internal static class PcAudioCheck
         public static long At(long sample) => Origin + sample * TimeSpan.TicksPerSecond / Rate;
     }
 
-    private sealed class FixtureSources(SimulatedClock clock) : IPcAudioSourceFactory
+    internal sealed class FixtureSources(SimulatedClock clock) : IPcAudioSourceFactory
     {
         public IPcAudioSource Open(CancellationToken cancellationToken) => new Loopback(clock);
     }

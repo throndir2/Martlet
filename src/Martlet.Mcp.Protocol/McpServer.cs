@@ -258,7 +258,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
             "only has the invite: it pins the host (reached by name, so only the pin is trusted), is refused with a wrong password, " +
             "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
-            "with no check number; a non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
+            "with no check number; then an OpenID Connect provider (an issuer in this process, a simulated browser and the desktop's " +
+            "real loopback redirect) is refused until the home PC allows the identity it saw, and joins the same way; a Steam " +
+            "assertion is confirmed by the host; a non-member can't change sign-in and removing the owner account revokes the " +
+            "laptop. Reports " +
             "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
@@ -866,6 +869,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("discord_call_check", "Martlet in your own Discord calls (Companion > Discord, companion mode on the owner's own " +
+            "account; Martlet never automates Discord): the saved mode (discord-calls.json), a doctor check of this PC without recording " +
+            "or playing (a process loopback of one app set up and closed unstarted, Discord's process and window, Windows' OCR language, " +
+            "the playback devices, the chosen output or a virtual cable), then a simulated call utterance through the production path: a " +
+            "fixture call voice through PcAudioCaptureFactory, MicrophoneCapture and voice activity on a simulated clock, fixture " +
+            "pictures of the Discord window (member list, call grid, the owner's own tile) through the speaking detector and Windows' " +
+            "OCR on this PC, the call lines and the In your Discord call prompt, and a fixture reply (NOT AI) that answers when " +
+            "Martlet's name is said and otherwise passes. Contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("discord_text_check", "Discord text chat (src\\Martlet.Discord DiscordTextChat, the production pipeline the desktop's " +
             "bot uses) fed simulated messages through a fake transport and a fixture reply engine (NOT AI, NOT Discord): chat modes " +
             "(Off, Mentions, Sometimes, Always), addressing (DM, @mention, reply to Martlet, its name), other bots ignored, per-place " +
@@ -1200,6 +1214,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
