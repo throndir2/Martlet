@@ -25,6 +25,8 @@ public sealed class VisionModelCatalogTests
     [InlineData("z-ai/glm-5.3-flash", VisionSupport.Supported)]
     [InlineData("meta/muse-glimmer-30b", VisionSupport.Supported)]
     [InlineData("deepseek-ai/deepseek-v4.1-flash", VisionSupport.Supported)]
+    [InlineData("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", VisionSupport.Supported)]
+    [InlineData("nvidia/nemotron-3-super-120b-a12b", VisionSupport.Unsupported)]
     [InlineData("gemma4:e4b", VisionSupport.Supported)]
     [InlineData("qwen2.5vl-7b", VisionSupport.Supported)]
     [InlineData("qwen/qwen2.5-vl-72b-instruct", VisionSupport.Supported)]

@@ -16,7 +16,9 @@ public static partial class HearingModelCatalog
     private static readonly string[] SupportedMarkers =
     [
         "gpt4oaudio", "gpt4ominiaudio", "gptaudio", "qwen2audio", "qwenaudio", "qwen25omni", "qwen3omni", "qwenomni",
-        "phi4multimodal", "voxtral", "ultravox", "minicpmo", "gemma3n", "granitespeech", "kimiaudio", "stepaudio", "audioflamingo"
+        "phi4multimodal", "voxtral", "ultravox", "minicpmo", "gemma3n", "granitespeech", "kimiaudio", "stepaudio", "audioflamingo",
+        // NVIDIA Build's hosted API schema takes input_audio (wav, mp3) for it, checked 2026-10-06 (docs/HOSTED_THINKING.md).
+        "nemotron3nanoomni"
     ];
 
     /// <summary>Classifies an upstream model ID, for example <c>gpt-4o-audio-preview</c>, <c>gemini-2.5-flash</c> or
