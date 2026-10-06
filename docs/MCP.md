@@ -622,6 +622,23 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
 
+`exposure_selftest` (no arguments) rehearses a host reachable from outside
+home ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)) with the
+production code: one real gateway (`lab-exposure`, Kestrel, pinned TLS, a
+throwaway certificate) on `127.0.0.1`, a desktop that pairs while at home
+through its paired client, then the host told to treat every connection as
+outside home, and a stranger's pinned HTTPS client. It runs
+`src\Martlet.NodeLinkCheck` (mode `exposure`, `ExposureRehearsal.cs`) and returns
+`{exitCode, report}` like `network_selftest`. Its steps: a pairing card used
+from outside is refused (`pair.outside_home`) and stays open; once the owner
+allows pairing from outside the same card pairs; five failed requests lock the
+address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
+it, after which the paired desktop's signed requests work again; liveness
+answers 120 requests a minute per outside address; and the paired desktop reads
+the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
+throttled entries with their source) and the host log lines naming each source.
+Not covered: a real internet source, a router port forward or an overlay.
+
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
 (`lab-api-1`, `lab-api-2`: Kestrel, pinned TLS, a throwaway certificate) on

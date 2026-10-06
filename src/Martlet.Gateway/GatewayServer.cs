@@ -101,6 +101,17 @@ public sealed class GatewayServer
     /// <summary>Adds a line to this host's own log (for example a configuration problem the host found at start).</summary>
     public void RecordActivity(string level, string message) => application.Logs.Own(level, message);
 
+    /// <summary>Rate limits, lockouts and the audit log of authentication and pairing decisions (also served to paired
+    /// desktops at /martlet/v1/security/audit).</summary>
+    public GatewayRequestGuard Guard => application.Guard;
+
+    /// <summary>The owner's choices for reaching this host from outside home (see docs/NETWORK.md).</summary>
+    public GatewayExposure Exposure
+    {
+        get => application.Guard.Exposure;
+        set => application.Guard.Exposure = value;
+    }
+
     public GatewayServer(
         GatewayHostIdentity identity,
         GatewayOrigin origin,
