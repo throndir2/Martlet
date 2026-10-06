@@ -122,10 +122,10 @@ internal sealed class RendererWindow : Window
             switch (e.Key)
             {
                 case Key.Escape: Request("hide"); break;
-                case Key.Left when !placementLocked: Left -= step; break;
-                case Key.Right when !placementLocked: Left += step; break;
-                case Key.Up when !placementLocked: Top -= step; break;
-                case Key.Down when !placementLocked: Top += step; break;
+                case Key.Left when !placementLocked: Left -= step; PlacementChanged(); break;
+                case Key.Right when !placementLocked: Left += step; PlacementChanged(); break;
+                case Key.Up when !placementLocked: Top -= step; PlacementChanged(); break;
+                case Key.Down when !placementLocked: Top += step; PlacementChanged(); break;
                 case Key.Home when !placementLocked: ResetToDefault(); break;
                 case Key.OemPlus or Key.Add: Zoom(ZoomStep * ZoomStep, null); break;
                 case Key.OemMinus or Key.Subtract: Zoom(1 / (ZoomStep * ZoomStep), null); break;
@@ -251,6 +251,7 @@ internal sealed class RendererWindow : Window
         Height = height;
         Left = centerX - width / 2;
         Top = top;
+        PlacementChanged();
     }
 
     private void ResetZoom()
@@ -259,11 +260,14 @@ internal sealed class RendererWindow : Window
         if (!placementLocked) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
     }
 
-    private void ResetToDefault()
+    /// <summary>Back to the default spot, size and zoom on the main screen. The overlay's own Home and menu leave a locked
+    /// place alone; Martlet's Reset position (<paramref name="evenLocked"/>) moves it there too, keeping it locked.</summary>
+    private void ResetToDefault(bool evenLocked = false)
     {
-        if (placementLocked) return;
+        if (placementLocked && !evenLocked) return;
         SetView(1, 0, 0);
         PlaceOnDesktop();
+        PlacementChanged();
     }
 
     // ---------- locked placement ----------
@@ -290,8 +294,34 @@ internal sealed class RendererWindow : Window
         AutomationProperties.SetName(muteItem, voiceMuted ? "Unmute voice" : "Mute voice");
     }
 
-    private RendererPlacement Placement() =>
-        new(placementLocked, Math.Round(Left, 2), Math.Round(Top, 2), Math.Round(FrameWidth, 2), Math.Round(Height, 2));
+    private RendererPlacement Placement()
+    {
+        var screen = CurrentScreen();
+        return new(placementLocked, Math.Round(Left, 2), Math.Round(Top, 2), Math.Round(FrameWidth, 2), Math.Round(Height, 2),
+            screen?.Name, screen is { } on ? Math.Round(Left - on.Work.Left, 2) : null, screen is { } at ? Math.Round(Top - at.Work.Top, 2) : null);
+    }
+
+    // Moves and resizes settle for a moment before Martlet is told, so a drag or a spin of the wheel saves once.
+    private System.Windows.Threading.DispatcherTimer? placedTimer;
+
+    /// <summary>The user moved or resized the character (or sent it home): once it settles, Martlet asks where it is and saves
+    /// that on this PC, so it shows there again after Hide/Show, a restart, a shutdown or an update.</summary>
+    private void PlacementChanged()
+    {
+        if (!CanRequest) return;
+        if (placedTimer is null)
+        {
+            placedTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+            placedTimer.Tick += (_, _) =>
+            {
+                placedTimer.Stop();
+                if (!closed) Request("placed");
+            };
+            Closed += (_, _) => placedTimer.Stop();
+        }
+        placedTimer.Stop();
+        placedTimer.Start();
+    }
 
     private void LockPlacement(bool locked)
     {
@@ -311,8 +341,9 @@ internal sealed class RendererWindow : Window
             : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock and hide options.");
     }
 
-    /// <summary>Puts the overlay back where it was locked, at that size, when the character's frame would still be on a screen;
-    /// otherwise it stays at its default spot. Either way it is locked again.</summary>
+    /// <summary>Puts the overlay back where it was saved, at that size, and locks it again when it was locked. On the same
+    /// monitor (by name) when it is still connected, at the same spot on it, with the character's middle kept on that monitor's
+    /// work area; otherwise where it was when that spot is still on a screen; otherwise at its default spot.</summary>
     private void RestorePlacement(RendererPlacement placement)
     {
         if (placement.IsValid)
@@ -320,17 +351,66 @@ internal sealed class RendererWindow : Window
             var frame = Math.Clamp(placement.Width, MinFrameWidth, MaxFrameWidth);
             var height = Math.Clamp(placement.Height, MinFrameWidth, Math.Max(MinFrameWidth, SystemParameters.VirtualScreenHeight));
             var width = OverlayWidth(frame);
-            var center = new Point(placement.Left + FrameOffset(width) + frame / 2, placement.Top + height / 2);
-            if (OnAScreen(center))
+            Point? at = null;
+            if (placement is { Screen: { } name, ScreenLeft: { } dx, ScreenTop: { } dy } && ScreenNamed(name) is { } screen)
+            {
+                var work = screen.Work;
+                var middle = new Point(work.Left + dx + FrameOffset(width) + frame / 2, work.Top + dy + height / 2);
+                var kept = new Point(Math.Clamp(middle.X, work.Left, Math.Max(work.Left, work.Right)),
+                    Math.Clamp(middle.Y, work.Top, Math.Max(work.Top, work.Bottom)));
+                at = new(work.Left + dx + (kept.X - middle.X), work.Top + dy + (kept.Y - middle.Y));
+                ErrorLog.Info($"The character is back where it was left on {ScreenLabel(name)}.");
+            }
+            else if (OnAScreen(new Point(placement.Left + FrameOffset(width) + frame / 2, placement.Top + height / 2)))
+            {
+                at = new(placement.Left, placement.Top);
+                ErrorLog.Info(placement.Screen is { } gone
+                    ? $"The character's screen ({ScreenLabel(gone)}) isn't connected; it shows where it was on the desktop."
+                    : "The character is back where it was left.");
+            }
+            else ErrorLog.Warn("The character's saved position isn't on a screen now; it shows at its default spot.");
+            if (at is { } place)
             {
                 Width = width;
                 Height = height;
-                Left = placement.Left;
-                Top = placement.Top;
+                Left = place.X;
+                Top = place.Y;
             }
-            else ErrorLog.Warn("The character's locked position isn't on a screen now; it shows at its default spot, still locked.");
         }
-        LockPlacement(true);
+        LockPlacement(placement.Locked);
+    }
+
+    /// <summary>A monitor's device name without Windows' <c>\\.\</c> prefix, such as DISPLAY2.</summary>
+    internal static string ScreenLabel(string device) => device.StartsWith(@"\\.\", StringComparison.Ordinal) ? device[4..] : device;
+
+    private readonly record struct ScreenArea(string Name, Rect Work);
+
+    /// <summary>The monitor the character's frame is mostly on (its middle), with its work area in this window's coordinates.</summary>
+    private ScreenArea? CurrentScreen()
+    {
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return null;
+        var frame = Frame;
+        var device = target.TransformToDevice.Transform(new Point(frame.Left + frame.Width / 2, frame.Top + frame.Height / 2));
+        return Describe(MonitorFromPoint(new CursorPoint { X = (int)Math.Round(device.X), Y = (int)Math.Round(device.Y) }, 2));
+    }
+
+    /// <summary>The connected monitor with this device name, or null.</summary>
+    private ScreenArea? ScreenNamed(string name)
+    {
+        var monitors = new List<IntPtr>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (monitor, _, _, _) => { monitors.Add(monitor); return true; }, IntPtr.Zero);
+        foreach (var monitor in monitors)
+            if (Describe(monitor) is { } screen && string.Equals(screen.Name, name, StringComparison.OrdinalIgnoreCase)) return screen;
+        return null;
+    }
+
+    private ScreenArea? Describe(IntPtr monitor)
+    {
+        if (monitor == IntPtr.Zero || PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return null;
+        var info = new MonitorInfoEx { Size = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfoEx>() };
+        if (!GetMonitorInfoEx(monitor, ref info) || string.IsNullOrEmpty(info.Device)) return null;
+        return new(info.Device, new Rect(target.TransformFromDevice.Transform(new Point(info.Work.Left, info.Work.Top)),
+            target.TransformFromDevice.Transform(new Point(info.Work.Right, info.Work.Bottom))));
     }
 
     /// <summary>Whether a point (device-independent pixels, like Left and Top) lies on one of the screens.</summary>
@@ -350,6 +430,7 @@ internal sealed class RendererWindow : Window
         var offset = target.TransformFromDevice.Transform(screen - viewport.PointToScreen(new Point(0, 0)));
         Left += offset.X;
         Top += offset.Y;
+        PlacementChanged();
     }
 
     // Pan is clamped so the zoomed view never leaves the character's fitted frame and the top of the head stays in
@@ -442,7 +523,7 @@ internal sealed class RendererWindow : Window
         var zoomIn = Item("Zoom _in", "CharacterZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
         var zoomOut = Item("Zoom _out", "CharacterZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
         var reset = Item("_Reset zoom", "CharacterResetZoom", "0", ResetZoom);
-        var home = Item("Reset _position and size", "CharacterResetPosition", "Home", ResetToDefault);
+        var home = Item("Reset _position and size", "CharacterResetPosition", "Home", () => ResetToDefault());
         // Locking and unlocking go through Martlet, which saves the place.
         var placeLock = Item("_Lock position", "CharacterLockPosition", null, () => Request(placementLocked ? "unlock" : "lock"));
         var onTop = new MenuItem { Header = "_Keep on top", IsCheckable = true, IsChecked = Topmost };
@@ -512,7 +593,11 @@ internal sealed class RendererWindow : Window
             return;
         }
         e.Handled = true;
-        if (!placementLocked) DragMove();
+        if (!placementLocked)
+        {
+            DragMove();
+            PlacementChanged();
+        }
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
@@ -746,7 +831,7 @@ internal sealed class RendererWindow : Window
             activation = message.Activation;
             var load = RendererProtocol.Data<RendererLoad>(message);
             ApplyOverlayTheme(load.DarkTheme, load.ThemeColors);
-            if (load.Placement is { Locked: true } locked) RestorePlacement(locked);
+            if (load.Placement is { } saved) RestorePlacement(saved);
             UseVoice(load.VoiceMuted);
             var assets = await LocalAvatarFiles.SnapshotAsync(load.Profile, handshake.Token);
             if (assets.Revision != load.ResourceRevision) throw new InvalidDataException("Selected resources changed.");
@@ -832,17 +917,23 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "gaze")
                 {
                     await ReplyAsync("look", Gaze(RendererProtocol.Data<RendererGaze>(message)));
                     continue;
                 }
+                // Martlet's Reset position: back to the default spot even when locked (it stays locked there).
                 if (message.Kind == "home")
                 {
-                    ResetToDefault();
-                    await ReplyAsync("ok", new { });
+                    ResetToDefault(evenLocked: true);
+                    await ReplyAsync("placement", Placement());
+                    continue;
+                }
+                if (message.Kind == "where")
+                {
+                    await ReplyAsync("placement", Placement());
                     continue;
                 }
                 if (message.Kind == "lock")
@@ -1039,6 +1130,27 @@ internal sealed class RendererWindow : Window
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+        CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct MonitorInfoEx
+    {
+        public int Size;
+        public NativeRect Monitor, Work;
+        public uint Flags;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string Device;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfoEx(IntPtr monitor, ref MonitorInfoEx info);
+
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr deviceContext, IntPtr bounds, IntPtr data);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool EnumDisplayMonitors(IntPtr deviceContext, IntPtr clip, MonitorEnumProc callback, IntPtr data);
 
     /// <summary>Top of the work area of the screen the overlay is on, in this window's coordinates.</summary>
     private double? WorkAreaTop() => WorkArea()?.Top;

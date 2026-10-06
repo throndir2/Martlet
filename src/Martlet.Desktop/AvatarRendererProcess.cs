@@ -18,8 +18,8 @@ internal interface IAvatarRenderer : IAsyncDisposable
     /// <summary>A choice from the overlay's menu for Martlet to carry out (one of <see cref="RendererRequest.Actions"/>),
     /// raised off the UI thread.</summary>
     event Action<string>? Requested;
-    /// <summary>Starts the overlay where a locked <paramref name="placement"/> says, with its menu offering to mute or unmute
-    /// Martlet's voice as <paramref name="voiceMuted"/> says.</summary>
+    /// <summary>Starts the overlay where a saved <paramref name="placement"/> says (locked again if it was), with its menu
+    /// offering to mute or unmute Martlet's voice as <paramref name="voiceMuted"/> says.</summary>
     Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted, CancellationToken token);
     Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null);
     /// <summary>The renderer's process while it runs (its windows are the character's own on screen), or null.</summary>
@@ -100,7 +100,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         try
         {
             var response = await SendAsync("load", new RendererLoad(profile, revision,
-                Application.Current is App app && app.SelectedTheme.IsDark(), placement is { Locked: true, IsValid: true } ? placement : null,
+                Application.Current is App app && app.SelectedTheme.IsDark(), placement is { IsValid: true } ? placement : null,
                 (Application.Current as App)?.ThemeColors, voiceMuted),
                 token, TimeSpan.FromSeconds(45));
             if (response.Kind != "capabilities") throw new InvalidDataException("The character renderer didn't report its controls.");

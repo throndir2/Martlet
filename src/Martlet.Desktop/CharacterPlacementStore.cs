@@ -5,9 +5,10 @@ using Martlet.Avatar.Hosting;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Where the character is locked on this PC's desktop, saved locally (character-placement.json: Locked, Left, Top, Width,
-/// Height in device-independent pixels) and never shared with the other Martlet computers. No file means unlocked: the
-/// character then shows at its default spot and moves freely, as before.
+/// Where the character was last left on this PC's desktop, saved locally (character-placement.json: Locked, Left, Top, Width,
+/// Height in device-independent pixels, and Screen, ScreenLeft, ScreenTop: the monitor it was on and its spot there) and never
+/// shared with the other Martlet computers. It sits in Martlet's data folder, so it outlasts restarts, shutdowns and updates.
+/// No file means the character shows at its default spot.
 /// </summary>
 internal static class CharacterPlacementStore
 {
@@ -21,7 +22,7 @@ internal static class CharacterPlacementStore
             var path = Path.Combine(directory, FileName);
             if (!File.Exists(path)) return null;
             var placement = JsonSerializer.Deserialize<RendererPlacement>(File.ReadAllText(path));
-            if (placement is { Locked: true, IsValid: true }) return placement;
+            if (placement is { IsValid: true }) return placement;
             ErrorLog.Warn("The character's saved position isn't usable; it shows unlocked at its default spot.");
             return null;
         }
@@ -32,14 +33,14 @@ internal static class CharacterPlacementStore
         }
     }
 
-    /// <summary>Saves a locked place, or with null (unlocked) removes it. False when it couldn't be saved.</summary>
+    /// <summary>Saves where the character is (locked or not), or with null forgets it. False when it couldn't be saved.</summary>
     internal static bool Save(string? directory, RendererPlacement? placement)
     {
         if (directory is null) return false;
         var path = Path.Combine(directory, FileName);
         try
         {
-            if (placement is not { Locked: true })
+            if (placement is not { IsValid: true })
             {
                 File.Delete(path);
                 return true;
@@ -59,7 +60,7 @@ internal static class CharacterPlacementStore
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            ErrorLog.Warn("The character's position lock couldn't be saved.", error);
+            ErrorLog.Warn("The character's position couldn't be saved.", error);
             return false;
         }
     }

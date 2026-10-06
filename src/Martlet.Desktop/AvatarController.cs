@@ -194,28 +194,54 @@ internal sealed partial class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
-    /// <summary>Returns the character overlay to its default spot, size and zoom on the primary screen. A locked character
-    /// stays where it is.</summary>
-    internal async Task ResetPositionAsync(CancellationToken token)
+    /// <summary>Returns the character overlay to its default spot, size and zoom on the main screen, even when its position is
+    /// locked (it then stays locked there). Hidden, it forgets the saved place, so the character next shows at its default spot,
+    /// unlocked. Returns where the character now is (null once forgotten).</summary>
+    internal async Task<RendererPlacement?> ResetPositionAsync(CancellationToken token)
     {
-        if (PlacementLocked) throw new InvalidOperationException("The character's position is locked. Unlock it first.");
         await changes.WaitAsync(token);
         try
         {
-            if (renderer is { HasExited: false } current) await current.SendAsync("home", new { }, token);
+            if (renderer is { HasExited: false } current && profile is not null)
+            {
+                var reply = await current.SendAsync("home", new { }, token);
+                var place = reply.Kind == "placement" ? RendererProtocol.Data<RendererPlacement>(reply) : null;
+                if (place is not { IsValid: true }) throw new InvalidDataException("The character didn't confirm its position.");
+                Placement = place;
+            }
+            else Placement = null;
+            return Placement;
         }
         finally { changes.Release(); }
     }
 
-    private RendererPlacement? lockedPlacement;
-
-    /// <summary>Where the character is locked on this PC's desktop, or null while it moves freely. A newly shown character
-    /// goes back there and stays locked until it is unlocked.</summary>
-    internal RendererPlacement? LockedPlacement
+    /// <summary>Asks the showing character where it is now (after it was moved or resized) and remembers it. Null while hidden.</summary>
+    internal async Task<RendererPlacement?> ReadPlacementAsync(CancellationToken token)
     {
-        get => Volatile.Read(ref lockedPlacement);
-        set => Volatile.Write(ref lockedPlacement, value is { Locked: true, IsValid: true } ? value : null);
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is not { HasExited: false } current || profile is null) return null;
+            var reply = await current.SendAsync("where", new { }, token);
+            var place = reply.Kind == "placement" ? RendererProtocol.Data<RendererPlacement>(reply) : null;
+            if (place is not { IsValid: true }) throw new InvalidDataException("The character didn't report its position.");
+            return Placement = place;
+        }
+        finally { changes.Release(); }
     }
+
+    private RendererPlacement? placement;
+
+    /// <summary>Where the character was last left on this PC's desktop (and on which monitor), locked or not, or null for its
+    /// default spot. A newly shown character goes back there, locked again if it was.</summary>
+    internal RendererPlacement? Placement
+    {
+        get => Volatile.Read(ref placement);
+        set => Volatile.Write(ref placement, value is { IsValid: true } ? value : null);
+    }
+
+    /// <summary>Where the character is locked, or null while it moves freely.</summary>
+    internal RendererPlacement? LockedPlacement => Placement is { Locked: true } locked ? locked : null;
 
     internal bool PlacementLocked => LockedPlacement is not null;
 
@@ -244,8 +270,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
     }
 
     /// <summary>
-    /// Locks the showing character where it is, or unlocks it (also while it is hidden). Returns the locked place, or null once
-    /// unlocked. Locking needs the character showing: its place is wherever it is now.
+    /// Locks the showing character where it is, or unlocks it (also while it is hidden, keeping where it was). Returns where the
+    /// character now is (null when hidden with no saved place). Locking needs the character showing: its place is wherever it is now.
     /// </summary>
     internal async Task<RendererPlacement?> LockPlacementAsync(bool locked, CancellationToken token)
     {
@@ -258,11 +284,11 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 var place = reply.Kind == "placement" ? RendererProtocol.Data<RendererPlacement>(reply) : null;
                 if (place is null || place.Locked != locked || !place.IsValid)
                     throw new InvalidDataException("The character didn't confirm its position.");
-                LockedPlacement = locked ? place : null;
+                Placement = place;
             }
             else if (locked) throw new InvalidOperationException("Show the character first, then lock it where you want it.");
-            else LockedPlacement = null;
-            return LockedPlacement;
+            else Placement = Placement is { } saved ? saved with { Locked = false } : null;
+            return Placement;
         }
         finally { changes.Release(); }
     }
@@ -668,7 +694,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             var next = createRenderer();
             next.Requested += action => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) Requested?.Invoke(action); };
             renderer = next;
-            await next.StartAsync(selected, snapshot.Revision, LockedPlacement, VoiceMuted, attempt.Token);
+            await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);
