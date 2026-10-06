@@ -206,6 +206,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         Motion.Sway(TalkMascot, 3, 4);
         InputText.Focus();
+        StartFixtureTask();
         await BeginAsync();
     }
 
@@ -312,6 +313,9 @@ public partial class LiveConversationWindow : ThemedWindow
     // there is optional, and a microphone that can't be opened says so here.
     private bool MicrophoneUsable => controller.Configuration is { } selected && selected.Unavailable(Voice, true) is null;
     private bool Available => ready && !locked && loading is null && controller.Configuration is not null;
+
+    /// <summary>The conversation loaded and still can't talk (Thinking isn't set up, or its settings couldn't be read).</summary>
+    internal bool CantTalk => begun && !loadPending && loading is null && (!ready || controller.Configuration is null);
 
     private bool Recording => owned is { OwnershipReleased: false, HandsFree: false } live && live.Authorization.Microphone &&
         live.Turn is null && live.Transcription is null && !live.Status.Finished;
@@ -493,20 +497,37 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <summary>You are talking, or something you said or typed is about to be answered.</summary>
     private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0;
 
+    /// <summary>How long since you last talked with Martlet here (spoke, typed or a turn finished), or null before anything.</summary>
+    internal TimeSpan? SinceActivity => UserBusy ? TimeSpan.Zero : activityAt == 0 ? null : clock.GetElapsedTime(activityAt);
+
+    /// <summary>A due reminder for this conversation: it starts (hidden) when it hasn't yet, and Martlet brings the reminder up on
+    /// its own as soon as it is free, or with what you say next.</summary>
+    internal BackgroundJob? Remind(string label, string text)
+    {
+        if (closed) return null;
+        if (!begun) StartInBackground();
+        var job = controller.Remind(label, text);
+        if (job is not null) ErrorLog.Info($"Reminders: {job.Id} is due; Martlet brings it up as soon as it's free.");
+        RenderActions();
+        return job;
+    }
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused, and the conversation has been quiet for
     /// <see cref="ReportQuiet"/>.</summary>
     private bool TryReport()
     {
-        if (closed || !Available || Paused || reportHeld || controller.Configuration?.ThinkLonger.When != ThinkDelivery.WhenFree ||
-            !controller.Jobs.HasNews || UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
+        // A due reminder is brought up as soon as Martlet is free even when Thinking longer shares results when you talk next.
+        var whenFree = controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree;
+        if (closed || !Available || Paused || reportHeld || !(whenFree ? controller.Jobs.HasNews : controller.Jobs.HasNotice) ||
+            UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
             commentary is { OwnershipReleased: false } || controller.Singing?.Playing == true ||
             activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
             return false;
         try
         {
-            if (controller.StartReport(Voice) is not { } report) return false;
+            if (controller.StartReport(Voice, noticesOnly: !whenFree) is not { } report) return false;
             owned = report;
             yielded = null;
             notice = null;
@@ -525,85 +546,13 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     // The note above Martlet's report: which job finished and how.
-    private static string JobNote(BackgroundJob job) => job.State switch
+    private static string JobNote(BackgroundJob job) => job.Kind.Notice ? $"{job.Kind.Doing}: “{job.Label}”." : job.State switch
     {
         BackgroundJobState.Succeeded => $"Finished: {job.Kind.Doing.ToLowerInvariant()} “{job.Label}” ({BackgroundJobs.Clockface(job.Elapsed)}).",
         BackgroundJobState.TimedOut => $"Ran out of time {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”.",
         BackgroundJobState.Canceled => $"Stopped {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”.",
         _ => $"Couldn't finish {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”."
     };
-
-    // The chips of the jobs shown, by job ID.
-    private readonly Dictionary<string, (DockPanel Chip, TextBlock Text, Button Cancel)> jobChips = new(StringComparer.Ordinal);
-
-    /// <summary>The background work panel: one chip per job that runs or finished and wasn't brought up yet, with what it is
-    /// about, how long it has run and Cancel; the line above says it without what the job is about (MCP reads it).</summary>
-    private void RenderJobs()
-    {
-        var shown = controller.Jobs.Active.Concat(controller.Jobs.Undelivered.Where(job => !job.Quiet)).ToList();
-        foreach (var gone in jobChips.Keys.Where(id => shown.All(job => job.Id != id)).ToArray())
-        {
-            JobChips.Children.Remove(jobChips[gone].Chip);
-            jobChips.Remove(gone);
-        }
-        foreach (var job in shown)
-        {
-            if (!jobChips.TryGetValue(job.Id, out var chip))
-            {
-                var text = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, FontSize = 13 };
-                AutomationProperties.SetAutomationId(text, "LiveJob-" + job.Id);
-                var id = job.Id;
-                var cancel = new Button
-                {
-                    Content = "Cancel", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = "Stop this background work. Martlet hears that you stopped it next time you talk."
-                };
-                AutomationProperties.SetAutomationId(cancel, "LiveJobCancel-" + job.Id);
-                cancel.Click += (_, _) => { controller.CancelJob(id); RenderActions(); };
-                var row = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
-                DockPanel.SetDock(cancel, Dock.Right);
-                row.Children.Add(cancel);
-                row.Children.Add(text);
-                JobChips.Children.Add(row);
-                jobChips[job.Id] = chip = (row, text, cancel);
-            }
-            var state = job.State switch
-            {
-                BackgroundJobState.Waiting or BackgroundJobState.Paused or BackgroundJobState.Running when job.Progress is { } note => " · " + note,
-                BackgroundJobState.Succeeded => " · done",
-                BackgroundJobState.TimedOut => " · ran out of time",
-                BackgroundJobState.Canceled => " · stopped",
-                BackgroundJobState.Failed => " · couldn't finish",
-                _ => ""
-            };
-            chip.Text.Text = $"{job.Kind.Doing}: {job.Label} · {BackgroundJobs.Clockface(job.Elapsed)}{state}";
-            chip.Cancel.Visibility = job.Finished ? Visibility.Collapsed : Visibility.Visible;
-            AutomationProperties.SetName(chip.Cancel, $"Cancel {job.Id}");
-        }
-        JobsPanel.Visibility = shown.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        JobsText.Text = JobsLine(shown, controller.Configuration?.ThinkLonger.When ?? ThinkLongerSettings.DefaultDelivery);
-    }
-
-    /// <summary>The background work line, without what any job is about: each job's ID, state and time, and when finished work
-    /// is brought up.</summary>
-    internal static string JobsLine(IReadOnlyList<BackgroundJob> jobs, ThinkDelivery when)
-    {
-        if (jobs.Count == 0) return "";
-        var parts = jobs.Select(job => job.State switch
-        {
-            BackgroundJobState.Running => $"{job.Id} running for {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.Waiting => job.Progress is { } note ? $"{job.Id} {note}" : $"{job.Id} waiting to start",
-            BackgroundJobState.Paused => $"{job.Id} paused ({BackgroundJobs.Clockface(job.Elapsed)})",
-            BackgroundJobState.Succeeded => $"{job.Id} done after {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.TimedOut => $"{job.Id} ran out of time",
-            BackgroundJobState.Canceled => $"{job.Id} stopped",
-            _ => $"{job.Id} couldn't finish"
-        });
-        var finished = jobs.Any(job => job.Finished && !job.Quiet);
-        return "Working in the background: " + string.Join("; ", parts) + "." + (finished
-            ? when == ThinkDelivery.WhenFree ? " Martlet brings it up as soon as it's free." : " Martlet brings it up when you talk next."
-            : " You can keep talking; Stop doesn't end it.");
-    }
 
     private void Settle()
     {
@@ -1732,6 +1681,8 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         if (e.Key != Key.Escape) return;
         e.Handled = true;
+        // An open task list closes first, like any flyout; the next Esc stops Martlet.
+        if (CloseTasks()) return;
         StopAll("conversation.canceled", button: "Esc");
     }
 

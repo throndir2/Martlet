@@ -21,8 +21,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "McpDirectoryClose", "McpDirectoryOptional",
         // The talk window's Stop (Esc) only stops work (a reply, a recording, vision, a song); it starts nothing and never pauses
         // listening. Refresh context only forgets the exchanges kept in mind for the next reply; it sends nothing and stops
-        // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song.
-        "LiveStop", "LiveRefreshContext", "LiveSongStop",
+        // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song. Its background
+        // tasks chip (LiveTasks) and the task list's close button (LiveTasksClose) only open and close the list.
+        "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
@@ -76,6 +77,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ProblemClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
+        // Character profiles: Home's Manage profiles, the Character and Personality pages' Open profiles and the Profiles page's
+        // links only open a Companion page; New profile... and a profile's Edit (CharacterProfileEdit-<key>) only open the form,
+        // filled in, and Cancel closes it. Nothing is saved until Save; Use (here, Home's HomeCharacterProfile and the icon
+        // menu's TrayCharacterProfile-<key>) and Remove change things, so they need --allow-ui-effects.
+        "HomeManageCharacters", "OpenProfiles", "ProfilesOpenCharacter", "ProfilesOpenVoice", "ProfilesOpenPersonality",
+        "CharacterProfileNew", "CharacterProfileCancel",
         // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
         // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing, Fill in the words (F5AddVoiceFill
         // runs speech-to-text, which may send the recording to the Listening host) and Add voice need --allow-ui-effects.
@@ -87,7 +94,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "NavTasks", "HostRunHide", "TasksClear",
         // Companion › Discord › Friends and calls: What Discord allows only expands. Approve, Decline, Call, Remove, Add, the
         // may-call boxes and Update picture now change things or contact Discord, so they need --allow-ui-effects.
-        "DiscordFriendsAbout"
+        "DiscordFriendsAbout",
+        // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
+        // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
+        // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
+        // Save, recovery codes, Remove, Allow and Make invite change or reveal things, so they need --allow-ui-effects.
+        "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -102,6 +114,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
         "LiveJobCancel-",
+        // Companion › Profiles: a profile's Edit ("CharacterProfileEdit-3f2a9c1b") only opens the form; Save writes.
+        "CharacterProfileEdit-",
+        // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
+        // what it found (LiveJobResult-<id>, which isn't a readable value).
+        "LiveJobResultToggle-",
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
@@ -124,6 +141,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord's text-chat line: counts of messages seen, considered, answered, passed, dropped and failed, the
         // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
         "DiscordTextStatus",
+        // Sign-in from outside: the join window's status line and the host it checked ("home-host at name:port, key checked"),
+        // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
+        // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
+        "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
+        "SignInEnrolledList",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
@@ -134,6 +156,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
+        // Companion › Profiles: how many profiles there are and whether one is in use ("2 profiles. One of them is in use."),
+        // and the profile form's problem ("Give the profile a name."). Never a profile's name.
+        "CharacterProfilesStatus", "CharacterProfileEditorProblem",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
         // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
         // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
@@ -264,12 +289,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // --allow-ui-effects); what Ollama on this PC has downloaded, whether the model typed for it fits beside Thinking's on the
         // graphics card, why Same as Thinking can or can't think here, and what an endpoint's key field will do (never a key or
         // base URL typed). Each paired computer's line reads through DeepThinkingHost- below. In the talk window, the
-        // background work line (each job's id, state and time, and when it is brought up; never what a job is about: LiveJob-<id>
-        // holds that). The song panel's line (the song's id, state, position, line number and section, lead-in, vamps, ducking, or
+        // background tasks chip (LiveTasks: "Background tasks: 1 running · 1 ready") and the task list's line under its title
+        // (that tasks keep going while you talk and when finished work comes up; never what a task is about: LiveJob-<id> holds
+        // that, and each task's status reads through LiveJobState- below). The song panel's line (the song's id, state,
+        // position, line number and section, lead-in, vamps, ducking, or
         // where and why it stopped; never its title or words: LiveSongLine holds those).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
-        "DeepThinkingKeyStatus", "LiveJobs", "LiveSong",
+        "DeepThinkingKeyStatus", "LiveTasks", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -424,6 +451,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
         // recognition (Available)"; the plan has no personal data).
         "AdvisorChoice-",
+        // The talk window's task list: each background task's status ("LiveJobState-think-1" reads "Checking it fits beside
+        // Thinking." or "Done after 1:02. Martlet brought it up."; never what the task is about or what it found).
+        "LiveJobState-",
         // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.")
         // and, for one without the Deep thinking role, its Add button's name ("DeepThinkingAddRole-diva" reads "Add Deep thinking
         // on diva"; clicking it installs the role, so it needs --allow-ui-effects); for one with it, its Change model button's
@@ -447,7 +477,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("TaskState-3" reads "Running for 2 min. Waiting for Docker Desktop to start..." or "Done at 3:41 PM after 5 min.
         // gpu-pc is ready.") and its buttons ("TaskShow-3" reads "Show: Set up gpu-pc" or "Show output: ...", "TaskCancel-3"
         // "Cancel: Set up gpu-pc").
-        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-"];
+        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-",
+        // Companion › Profiles: each profile's state ("CharacterProfileState-3f2a9c1b" reads "In use.", "Ready." or why a part
+        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name).
+        "CharacterProfileState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

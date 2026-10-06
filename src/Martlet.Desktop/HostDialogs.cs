@@ -171,10 +171,10 @@ internal sealed class HostInputDialog : ThemedWindow
         combo.SelectionChanged += (_, _) => Refresh();
     }
 
-    internal void AddText(string key, string label, string text, string? hint = null)
+    internal void AddText(string key, string label, string text, string? hint = null, bool optional = false, int maxLength = 64)
     {
         fields.Children.Add(new Label { Content = label, Padding = new Thickness(0, 6, 0, 4) });
-        var box = new TextBox { Text = text, MaxLength = 64 };
+        var box = new TextBox { Text = text, MaxLength = maxLength };
         AutomationProperties.SetName(box, label);
         AutomationProperties.SetAutomationId(box, "HostInput-" + key);
         fields.Children.Add(box);
@@ -185,7 +185,7 @@ internal sealed class HostInputDialog : ThemedWindow
             fields.Children.Add(note);
         }
         values[key] = () => box.Text.Trim();
-        required.Add(key);
+        if (!optional) required.Add(key);
     }
 
     internal void AddCheck(string key, string label, bool isChecked)
@@ -266,6 +266,10 @@ internal sealed class HostInputDialog : ThemedWindow
         {
             if (when is { } condition) dialog.ShowWhen(key, "choice." + condition.Variable, condition.Value);
         }
+        // Choices whose value picks a variant (its own choices, GPU option, terms or secret).
+        var conditions = inputs.Choices.Select(c => c.When?.Variable).Append(inputs.GpuWhen?.Variable)
+            .Concat(inputs.TermsWhen.Select(t => t.Variable)).Concat(inputs.SecretWhen.Values.Select(w => w.Variable))
+            .OfType<string>().ToHashSet(StringComparer.Ordinal);
         void AddRoleChoice(HostRoleChoice choice)
         {
             // Installed: what it runs with now, chosen. A variant's own choice has it only when that variant runs now.
@@ -278,11 +282,19 @@ internal sealed class HostInputDialog : ThemedWindow
             dialog.AddChoice(choice.Key, now is null ? label : $"{label} (now: {OptionText(now)})",
                 options.Select(option => (option, OptionText(option))).ToArray(), now ?? pick?.Value ?? (automatic ? Automatic : choice.Default));
             When(choice.Key, choice.When);
+            // Recommendations that depend on another (non-variant) choice, "choice.VAR@OTHER=value" (Deep thinking's thinks at
+            // once for each model), follow it: the text under this choice reads the one for what is chosen there now.
+            if (choice.When is not null || recommended is null) return;
+            foreach (var group in recommended.Where(r => r.Key.StartsWith(choice.Key + "@", StringComparison.Ordinal))
+                .Select(r => (Other: r.Key[(choice.Key.Length + 1)..].Split('=', 2), r.Value))
+                .Where(r => r.Other is [{ Length: > 0 } other, { Length: > 0 }] && !conditions.Contains(other) &&
+                    inputs.Choices.Any(c => c.When is null && c.Variable == other))
+                .GroupBy(r => r.Other[0], StringComparer.Ordinal))
+                dialog.AddFollowingText($"HostInputFit-{choice.Variable}-{group.Key}", "choice." + group.Key, group.ToDictionary(
+                    r => r.Other[1], r => $"With {OptionText(r.Other[1])}: {OptionText(r.Value.Value)} recommended ({r.Value.Why}).",
+                    StringComparer.Ordinal));
         }
         // The choices that pick a variant (the stt or Audio2Face engine) come first, then what that variant asks.
-        var conditions = inputs.Choices.Select(c => c.When?.Variable).Append(inputs.GpuWhen?.Variable)
-            .Concat(inputs.TermsWhen.Select(t => t.Variable)).Concat(inputs.SecretWhen.Values.Select(w => w.Variable))
-            .OfType<string>().ToHashSet(StringComparer.Ordinal);
         var first = inputs.Choices.Where(c => c.When is null && conditions.Contains(c.Variable)).ToArray();
         foreach (var choice in first) AddRoleChoice(choice);
         if (inputs.GpuOrCpu)
@@ -375,5 +387,5 @@ internal sealed class HostInputDialog : ThemedWindow
         return dialog;
     }
 
-    private const string Automatic = "automatic";
+    internal const string Automatic = "automatic";
 }

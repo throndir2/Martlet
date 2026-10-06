@@ -222,6 +222,18 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Reminders
+
+On a PC that keeps reminders (any with a data folder), every reply on a route
+that does function calling also gets Martlet's own `reminders` (`action` set,
+list or cancel; `text`, `in_minutes` or `at` for set; `id` for cancel), last,
+after `manage_memories`, always worded the same. It never asks first. Set
+returns the id and the time it is due ("Reminder 3f9a1c set for 4:12 PM (1 h
+from now)"), so the model needs no clock of its own. *Recent tool use* lists
+each call (`Martlet > reminders: set`), never the text; the desktop log notes
+each offer, take and reminder said by id only (`Reminders:`). See
+[Reminders](CONVERSATION.md#reminders).
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -407,7 +419,9 @@ Windows) and optional `dataDirectory` whose saved prompt edits are used. It
 returns the engine, `supportsTags`, its `tags`, the same split into `sounds`
 (non-word sounds such as `[laugh]`) and `tones` (tones of voice such as
 `[whispering]`), `cues` (each tag's
-engine-independent cue, such as `laugh` for `[laugh]`), `prompt` (the *Voice
+engine-independent cue, such as `laugh` for `[laugh]`), `synonyms` (each tag's
+other words that also count as it, such as `whisper`, `whispers` and `hushed`
+for `[whispering]`), `prompt` (the *Voice
 sounds and tones* instructions the Thinking model gets, the sounds and the tones
 each under a line saying where they go, or null), `spoken` (the
 pieces the real speech segmenter hands that engine for a spoken reply, its own
@@ -576,7 +590,8 @@ the folder is deleted and the real vault is never touched.
 `network\device_ecdsa` exists), `networkId`, the roster's `revision` and
 `founder`, `waiting` (`hostId`, `checkNumber`, `since`) while this PC asks to
 join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
-`changedAt`), `adopt` (hosts paired here on purpose, added to the network on
+`changedAt`; hosts also `outsideAddresses`, how many outside addresses the roster
+lists), `adopt` (hosts paired here on purpose, added to the network on
 the next sync), `ignored` (network hosts forgotten here) and `removedFrom`. It
 never returns keys, signatures or host addresses and contacts nothing.
 
@@ -625,6 +640,18 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
 
+`outside_reachability_check` checks how each host in a data directory's
+network can be reached (optional absolute `dataDirectory`; `contactHosts`).
+Without `contactHosts: true` it only lists each host's `id` and how many
+`outsideAddresses` it has (`checkedNow: false`) and contacts nothing. With it,
+it dials each host's home address and each outside address directly, checks the
+TLS key against the roster's pin and asks `GET /health/live` (no credential):
+per host `home` and `outside` (by `address` number) with `reachable`, `ms` and
+`problem` (`refused`, `no answer in time`, `name not found`, `another key`,
+or `answered 429 ...` when the key answered but the guard throttled the
+address), and `wouldUse` (`home`, `outside <n>` or `none`, home first as the
+desktop dials). It never returns the addresses themselves.
+
 `exposure_selftest` (no arguments) rehearses a host reachable from outside
 home ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)) with the
 production code: one real gateway (`lab-exposure`, Kestrel, pinned TLS, a
@@ -640,7 +667,57 @@ it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
 the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
 throttled entries with their source) and the host log lines naming each source.
-Not covered: a real internet source, a router port forward or an overlay.
+Then outside addresses, played by other loopback ports: with the home address
+closed the desktop reaches the host at its outside address, pinned to the same
+key, and the next connection tries it first; with the home address answering it
+is used at once (no wait on an outside one); with nothing answering the error
+names every address tried (`host.unreachable`); outside addresses set on the
+host itself are signed into the roster by a member desktop's network sync; the
+reachability probe behind `outside_reachability_check` tells an answering, a
+closed and a wrong-key address apart; and a
+different computer with another key at the home address is skipped for the
+outside address. Not covered: a real internet source, a router port forward or
+an overlay.
+
+`signin_selftest` (no arguments) rehearses [joining from outside home by
+signing in](NETWORK.md#joining-from-outside-home-by-signing-in) with the
+production code: one real gateway (`lab-signin-host`, Kestrel, pinned TLS, a
+throwaway certificate, in-memory `signin.json` and `network.json`) on
+`127.0.0.1`, a home PC, a laptop and another PC simulated with the desktop's
+sign-in client (`HostSignIn.cs`) and network sync engine. It runs
+`src\Martlet.NodeLinkCheck` (mode `signin`, `SignInRehearsal.cs`) and returns
+`{exitCode, report}` like `network_selftest`. Its steps: the home PC pairs by
+code and founds the network; it sets up the owner account (a wrong
+authenticator code is refused, the right one gives ten recovery codes, the
+password is kept only as a verifier); a computer outside the network can't
+change sign-in (`signin.denied`); the laptop pins the host from an invite whose
+outside address is `localhost:<port>` (the certificate names `127.0.0.1`, so
+only the pin is trusted) and a forged pin reaches nothing; a wrong password and
+the reused setup code are refused (`signin.invalid`); the laptop signs in with a
+recovery code, is paired under the host's home origin and its signed requests
+work; it asks to join and the home PC lets it in on the host's attestation
+(`NetworkSyncEngine.ApproveSignedIn`) with no check number, while a PC paired by
+code still waits for one; removing the owner account revokes the laptop
+(`auth.revoked`); the host's security audit holds the sign-in successes and
+failures and no secret. Not covered: the desktop windows, Windows Credential
+Manager, a host reached over the internet and browser sign-in providers.
+
+Sign-in from outside in the desktop: Add a computer's **Join with an invite**
+(`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
+`SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
+`SignInPassword`, `SignInCode`, `SignInSubmit`, status `SignInJoinStatus`, the
+checked host `SignInHost`, `SignInJoinClose`); a paired host's **Sign-in from
+outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
+`SignInSettingsStatus`, owner state `SignInOwnerState`, `SignInOwnerUser`,
+`SignInOwnerPassword`, `SignInTotpNew`, `SignInTotpSecret`, `SignInTotpLink`,
+`SignInOwnerCode`, `SignInOwnerSave`, `SignInRecoveryNew`, `SignInOwnerRemove`,
+`SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
+`SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
+`SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
+`SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
+`SignInSettingsClose`). Opening and closing both windows are safe clicks; the
+status lines and lists are safe values. Everything else contacts a host or
+changes it and needs `--allow-ui-effects`.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
@@ -687,10 +764,15 @@ bound fits the saved settings; a think on the
 Deep thinking route is held mid-answer while a reply streams on Thinking's
 route, and the reply finishes first (parallel, never queued); each request
 reached its own Ollama (the think with `"think":true`, its own model and a
-32,768-token context, the reply without Thinking steps); and the chat client
+32,768-token context, the reply without Thinking steps); two thinks run at once
+on the Deep thinking role's two slots (`OllamaRelayWorker.DeepThinking` with
+`slots: 2`, advertised as the route's `maximum_concurrency` and read as
+`HostRoute.MaximumConcurrency`) while a reply streams, a third is turned away
+with `job.busy` and each finishes once released; and the chat client
 refuses a route whose ID and path don't match. Nothing leaves loopback and
 nothing is written to disk or Windows Credential Manager; it does not cover
-`martlet-host` installing the role, a real Ollama or model, a GPU or a real LAN.
+`martlet-host` installing the role, a real Ollama or model (the slots' graphics
+memory), a GPU or a real LAN.
 
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
@@ -772,6 +854,19 @@ shows it); `copies` (folders in `character-models`), `incoming` (copies still
 arriving: key and pieces so far) and `showing` (`built-in`, `shared:<key>`,
 `unlisted-copy:<key>` for a copy removed elsewhere that this PC still shows, or
 `model-file-outside-list`). Character names and file paths are never returned.
+Read-only; it contacts nothing.
+
+`character_profiles` reads the character profiles (Companion › Profiles) from a
+data directory (optional absolute `dataDirectory`, default the current user's):
+`state` (`no-settings`, `none` or `loaded`), `count`, `lastUsed` (the key of the
+profile switched to last), `current` (the key of the profile that matches what
+Martlet uses now: the active persona, the look in `avatar.json` and the voice the
+speaking route keeps or the shared voice list chose; null when none does),
+`look` (what this PC shows: `builtin`, `shared:<key>` or
+`model-file-outside-list`), `voiceChosen`, and per profile its `key` (the first 8
+hex digits of its ID, as in `CharacterProfileState-<key>`), `personaSaved`,
+`personaActive`, `look` (`keep`, `builtin`, `ready`, `copying` or `missing`),
+`voice` (`keep`, `listed` or `missing`) and `inUse`. Names are never returned.
 Read-only; it contacts nothing.
 
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
@@ -2003,6 +2098,26 @@ filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `why`, `parallel` and `attempts`),
 never a task or result. Read-only.
 
+`reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
+from a data directory's `shared-settings.json` (optional absolute
+`dataDirectory`): `computers` with a reminders entry, `unreadable` entries
+(a newer Martlet's), `pending`, and each reminder's `id`, `text`, `due`, `set`,
+`setOn`, `state` (*Pending*, *Done*, *Canceled*, *Missed*), `settledBy`,
+`settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
+*Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
+exactly as the model gets it. Read-only.
+
+`reminders_check` rehearses reminders with the production code (`Reminders`,
+`ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
+PCs whose entries merge through the shared settings: set in minutes and at a
+local time on one, listed and canceled on the other, a refused call, both
+offering when it is due, the PC used most recently (5 s against 10 minutes
+idle) taking it while the other stays quiet, the conversation's message when
+Martlet brings it up on its own and the notes when the user talks first, said
+once and settled everywhere, a PC alone taking it at once and one far too late
+let go. `passed` and each step's `passed` and `detail`. No model, network or
+credentials.
+
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
 layout (`ThinkLonger`), conversation runtime and Chat Completions adapter
@@ -2444,13 +2559,21 @@ host service, so it needs `--allow-ui-effects`). The + beside the title,
 `NodeAction-AddComputer` and the page's `AddComputer`, so all three are
 passive clicks.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
-(status text: member with how many computers and hosts, waiting to join with
+(status text: member with how many computers and hosts and how many are reached
+from outside home right now, waiting to join with
 the check number, a host PC in no network that only watches, or in no network),
 `NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
 click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
 text, for example `lab-gpu. Host, not paired with this PC yet; added on
-desktop-diva.`, and for another computer where it was last active, *Active now
-on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>`, each computer that uses
+desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`;
+or *Not reachable at home or outside right now*; for a host with outside
+addresses also the guard's totals it reported, *Guard: 3 failed and 1 throttled
+request(s) since it started, 0 address(es) locked out now.*),
+and for another computer where it was last active, *Active now
+on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>` and, for hosts,
+`NetworkOutside-<ID>` (opens the *Outside addresses* dialog, field
+`HostInput-addresses`, saved by `HostInputOk`; it signs the roster, so it needs
+`--allow-ui-effects`), each computer that uses
 one of this PC's hosts without being a member `NetworkPaired-<device ID>` (status
 text: which hosts it uses and when it was last active), and each request to join
 `NetworkJoin-<device ID>` (status text with the check number) with
@@ -2935,6 +3058,32 @@ file") joins the shared list as soon as it is saved (once it names an existing m
 saved profile then shows Martlet's copy. `character_models` reads the same list
 and copies headlessly.
 
+**Character profiles** (`CompanionTab-Profiles`, first under *Who it is*) switch
+the look, the voice and the personality together. `CharacterProfilesNow` is the
+Now card (it names the character, so it isn't a safe value);
+`CharacterProfilesStatus` reads how many profiles there are and whether one is
+in use ("2 profiles. One of them is in use." or "None matches what Martlet uses
+now."). Each row's `CharacterProfileState-<key>` (the first 8 hex digits of the
+profile's ID) reads "In use.", "Ready." or why a part can't switch here ("Its
+look is still copying to this PC. Using it switches the rest.", "Its voice is no
+longer in your voices."), never a name. Its controls are
+`CharacterProfileUse-<key>` (disabled while in use), `CharacterProfileEdit-<key>`
+(passive: opens the form) and `CharacterProfileRemove-<key>` (asks with
+`ConfirmationYes`/`ConfirmationNo`). `CharacterProfileNew` (passive) opens the
+form filled in with what Martlet uses now: `CharacterProfileName`,
+`CharacterProfilePersona`, `CharacterProfileLook` ("Keep the current look", the
+built-in character or one of your characters), `CharacterProfileVoice` ("Keep
+the current voice" or one of your voices), `CharacterProfileSave` and
+`CharacterProfileCancel` (passive); `CharacterProfileEditorProblem` returns why
+it couldn't save. `ProfilesOpenCharacter`, `ProfilesOpenVoice`,
+`ProfilesOpenPersonality`, the Character and Personality pages' `OpenProfiles`
+and Home's `HomeManageCharacters` only open pages. Home's `HomeCharacterProfile`
+combo box lists every profile ("A mix of your own" when none matches) and
+switches on selection; the notification-area menu's `TrayCharacterProfiles`
+submenu has `TrayCharacterProfile-<key>` items, the one in use ticked. Use,
+Save, Remove and switching from Home or the menu need `--allow-ui-effects`.
+`character_profiles` reads them headlessly.
+
 The **Creations** page (`NavCreations`, between Companion and Diagnostics; its
 content is `CreationsPage`) lists [what Martlet made](CREATIONS.md), newest first.
 `CreationsNote` reads the fixed "Ask Martlet to sing or show any of these.",
@@ -3317,15 +3466,24 @@ context size from Companion › Replies; absent when none, and unchanged when a
 settings change is picked up; beside it,
 `LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
 forgets them so the next reply starts fresh, adds the note *Context refreshed.*
-to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
-works in the background or a finished job waits to be brought up: *Working in
-the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
-it.*, *think-1 checking it fits beside Thinking* (a second model in Ollama on
-this PC, before it starts), *think-1 done after 1:02. Martlet brings it up as soon as it's free.* or
-*... when you talk next.*; never what a job is about), each job's chip
-`LiveJob-<id>` (*Thinking about: <what> · 0:12*; it holds what the job is about,
-so snapshots don't return it) and its `LiveJobCancel-<id>` (a passive click: it
-only stops that job, and the next thing you say tells Martlet), the song panel
+to `LiveHistory` and hides `LiveContext`), `LiveTasks` (the header's background
+tasks chip, shown once Martlet starts a task in the conversation: its name reads
+*Background tasks: 2 running*, *1 running · 1 ready*, *1 ready* or *3 done*; a
+passive click that only opens and closes the task list `LiveTasksPanel` over the
+conversation, which `LiveTasksClose`, Esc or a click in the conversation also
+close), and in that list `LiveJobs` (*Martlet keeps working on these while you
+talk. Stop (Esc) doesn't end them.*, *Finished work comes up as soon as Martlet
+is free.* or *... when you talk next.*; never what a task is about), each task's
+card `LiveTask-<id>` with `LiveJob-<id>` (what the task is about, so snapshots
+don't return it), `LiveJobState-<id>` (*Checking it fits beside Thinking.*,
+*Done after 1:02. Martlet brought it up.*, *You stopped it.*, *Couldn't finish:
+it failed on this PC.*), `LiveJobResultToggle-<id>` (*Show result*, a passive
+click that shows `LiveJobResult-<id>`, which isn't a readable value) and
+`LiveJobCancel-<id>` (a passive click: it only stops that task, and the next
+thing you say tells Martlet). Setting `MARTLET_BACKGROUND_FIXTURE=1` before
+Martlet starts makes opening the talk window start one *FIXTURE - NOT AI* task
+(`fixture-1`) that works until canceled, so these can be checked without a
+model. Then the song panel
 `LiveSongPanel` (shown while Martlet sings or has a song to offer; it has no Play
 button, since only Martlet performs songs): `LiveSong`
 (*Singing 3fa2c19b0d71 · 0:22 of 1:00 · verse line 4 of 12.*, *Starting
@@ -3700,7 +3858,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -446,6 +446,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         server!.AttachNetworkStorage(storage);
     }
 
+    /// <summary>The owner's choices for reaching this host from outside home (docs/NETWORK.md).</summary>
+    public GatewayExposure Exposure
+    {
+        get { RequireOpen(); return server!.Exposure; }
+        set { RequireOpen(); server!.Exposure = value; }
+    }
+
     /// <summary>This host's network state ("unbound", "bound" or "removed") and network ID.</summary>
     public (string State, string? NetworkId) NetworkState
     {
@@ -454,6 +461,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
             RequireOpen();
             return server!.NetworkState;
         }
+    }
+
+    /// <summary>Keeps this host's sign-in settings (owner account, providers, allowed identities) in <paramref name="storage"/>.</summary>
+    public void AttachSignIn(IGatewaySignInStorage storage)
+    {
+        RequireOpen();
+        server!.AttachSignInStorage(storage);
     }
 
     /// <summary>Keeps the commands paired computers send through this host in <paramref name="storage"/> and accepts
