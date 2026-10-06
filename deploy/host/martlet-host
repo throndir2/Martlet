@@ -660,6 +660,7 @@ require_gpu() {
   fi
   note "No working NVIDIA driver was found (nvidia-smi failed)."
   if ask "Install the recommended Ubuntu NVIDIA driver with 'sudo ubuntu-drivers install'? A reboot is required afterwards."; then
+    require_packages "the NVIDIA driver" ubuntu-drivers:ubuntu-drivers-common
     sudo ubuntu-drivers install
     fail "Driver installed. Reboot, then run the same martlet-host command again."
   fi
@@ -685,22 +686,32 @@ require_docker() {
   DOCKER=(sudo -E docker)
 }
 
-# Minimal Ubuntu images (cloud and server "minimized" installs) ship without curl, which downloads use.
-require_curl() {
-  command -v curl >/dev/null 2>&1 && return
-  ask "curl is not installed. Install it with Ubuntu's packages (sudo apt-get install curl ca-certificates)?" ||
-    fail "curl is required to download ${1:-what this step needs}."
-  sudo apt-get update && sudo apt-get install -y curl ca-certificates
-  command -v curl >/dev/null 2>&1 || fail "curl did not install."
+# Bare-metal minimal Ubuntu (Server "minimized", Desktop) can lack tools the engine uses. Each argument is
+# <command or absolute path>:<package>; only the packages whose command or file is missing are installed, after one yes.
+require_packages() {
+  local reason="$1" entry check missing=()
+  shift
+  for entry in "$@"; do
+    check="${entry%%:*}"
+    if [[ "${check}" == /* ]]; then [[ -e "${check}" ]] && continue
+    else command -v "${check}" >/dev/null 2>&1 && continue; fi
+    [[ " ${missing[*]:-} " == *" ${entry#*:} "* ]] || missing+=("${entry#*:}")
+  done
+  [[ ${#missing[@]} -eq 0 ]] && return
+  ask "Install missing Ubuntu packages for ${reason} (sudo apt-get install ${missing[*]})?" ||
+    fail "${missing[*]} is required for ${reason}."
+  sudo apt-get update && sudo apt-get install -y "${missing[@]}" || fail "Could not install ${missing[*]}."
 }
+
+CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+require_curl() { require_packages "${1:-downloads}" curl:curl "${CA_BUNDLE}:ca-certificates"; }
 
 require_nvidia_toolkit() {
   [[ "${MODE}" == docker ]] && return
   command -v nvidia-ctk >/dev/null 2>&1 && return
   ask "Install the NVIDIA Container Toolkit from NVIDIA's apt repository and configure Docker for GPUs?" ||
     fail "The NVIDIA Container Toolkit is required for GPU containers."
-  require_curl "the NVIDIA Container Toolkit"
-  command -v gpg >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y gnupg; }
+  require_packages "the NVIDIA Container Toolkit" curl:curl "${CA_BUNDLE}:ca-certificates" gpg:gnupg
   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
     sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
   curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
@@ -1599,6 +1610,9 @@ cmd_setup() {
     grep -q '^ID=ubuntu' /etc/os-release || fail "Only Ubuntu hosts are supported natively; use the Docker method elsewhere."
     [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
     say "1/4 Martlet gateway"
+    # Everything a bare-metal minimal Ubuntu may lack, checked up front so setup asks at most once. Supplied (offline)
+    # hosts download nothing and may have no apt mirror, so they only need what the steps below check for themselves.
+    [[ -n "${SUPPLY}" ]] || require_packages "this host's setup" curl:curl "${CA_BUNDLE}:ca-certificates" lspci:pciutils
     require_dotnet
     publish_gateway "${GW_APP}"
     mkdir -p "${DATA}/private"; chmod 700 "${DATA}" "${DATA}/private"

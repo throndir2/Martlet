@@ -320,8 +320,10 @@ MARTLET_HOST_ADDRESS=192.168.1.20 ~/Martlet/deploy/host/martlet-host setup
 private LAN address and port desktops use, creates the host identity, installs a
 systemd user service (`martlet-host-gateway`), optionally enables lingering so it
 runs at boot without a login, and links `martlet-host` into `~/.local/bin`.
-Missing curl, Docker, NVIDIA driver or NVIDIA Container Toolkit are installed only
-after a `yes`. On a minimal Ubuntu without ICU (`libicu`), the build and the gateway
+Setup first checks for curl, CA certificates and pciutils, which a bare-metal
+minimal Ubuntu may lack, and installs only the missing ones after a single `yes`.
+Missing Docker, NVIDIA driver (with `ubuntu-drivers-common`) or NVIDIA Container
+Toolkit (with `gnupg`) are likewise checked first and installed only after a `yes`. On a minimal Ubuntu without ICU (`libicu`), the build and the gateway
 run in .NET's invariant globalization mode.
 
 ### Computers without internet
