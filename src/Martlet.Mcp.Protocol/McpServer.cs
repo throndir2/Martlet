@@ -831,6 +831,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
+        Tool("reminders_status", "Martlet's reminders (the reply model's reminders tool: set, list, cancel; docs/CONVERSATION.md#reminders), " +
+            "from a data directory's shared-settings.json: every computer's reminders entry, each reminder's text, due and set times, " +
+            "the computer it was set on, its state (Pending, Done, Canceled, Missed) and who settled it, and each computer's marks " +
+            "(Bid with its idle seconds, Claim, Done, Cancel, Missed), plus the tool exactly as the model gets it. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("reminders_check", "Rehearse reminders end to end with the production code on two simulated companion PCs whose entries " +
+            "merge through the shared settings: setting one with the tool (in minutes and at a local time), the other PC listing and " +
+            "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
+            "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
+            "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
         Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
             "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
@@ -1067,6 +1079,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
+                "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
