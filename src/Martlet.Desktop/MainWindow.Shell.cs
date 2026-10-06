@@ -94,6 +94,7 @@ public partial class MainWindow
         SharedSteps.Changed -= SharedStepsChanged;
         HostRunWindow.RunsChanged -= ShowHostRuns;
         ReleaseHealth();
+        awake.Dispose();
     }
 
     /// <summary>A shared setup step (installing or starting Docker Desktop, for example) started or ended: the host dashboard
@@ -212,6 +213,7 @@ public partial class MainWindow
                 : "This PC is now a companion PC.");
         ApplyRole();
         RenderBackground();
+        UpdateStayAwake();
         if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
@@ -775,6 +777,7 @@ public partial class MainWindow
         // An update that finished by any route (or one that reported busy against Martlet's own run) leaves no stale note.
         HostFoundCurrent(ThisPcHostId, thisPcHostVersion);
         RenderHost();
+        UpdateStayAwake();
     }
 
     /// <summary>What the last read of this PC's host service means, as one sentence for the status line.</summary>
