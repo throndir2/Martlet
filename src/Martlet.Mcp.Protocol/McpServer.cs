@@ -388,7 +388,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture (nod, shake) with what it changes, its tag, voice cue, when to use it, whether " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; Live2D smile, blush, surprise; VRM wave, shrug, bounce) with what it changes, its tag, voice cue, when to use it, whether " +
             "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
             "and the Thinking naming prompt. With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
@@ -724,6 +724,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("discord_status", "Read Companion > Discord's saved setup from a data directory's discord.json: whether a bot token is saved " +
+            "and readable in Windows Credential Manager (never the token), the application ID, whether the bot connects when Martlet runs, " +
+            "the chat modes, channel-rule and people counts, whether the owner's account and home server are set, and the next setup step. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("discord_check", "Connect the data directory's saved Discord bot once with Martlet's production bot host and report whether " +
+            "Discord accepts it: Online with the bot's name and server count, a rejected token, or Message Content Intent left off in the " +
+            "Developer Portal; then disconnect. Sends no messages. Needs a saved token (Companion > Discord).", new
+        {
+            dataDirectory = new { type = "string" },
+            seconds = new { type = "integer", minimum = 3, maximum = 30 }
+        }),
         Tool("terminal_status", "Read Companion > Tools > Terminal from a data directory's terminal.json (this PC only, never " +
             "synced): whether replies may run terminal commands (off by default), the shell and whether it is installed, which shells " +
             "this PC has, whether every command asks first (on by default), the time limit, whether commands start in the home folder " +
@@ -884,6 +897,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
+        Tool("reminders_status", "Martlet's reminders (the reply model's reminders tool: set, list, cancel; docs/CONVERSATION.md#reminders), " +
+            "from a data directory's shared-settings.json: every computer's reminders entry, each reminder's text, due and set times, " +
+            "the computer it was set on, its state (Pending, Done, Canceled, Missed) and who settled it, and each computer's marks " +
+            "(Bid with its idle seconds, Claim, Done, Cancel, Missed), plus the tool exactly as the model gets it. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("reminders_check", "Rehearse reminders end to end with the production code on two simulated companion PCs whose entries " +
+            "merge through the shared settings: setting one with the tool (in minutes and at a local time), the other PC listing and " +
+            "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
+            "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
+            "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
         Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
             "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
@@ -1100,6 +1125,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
                 "home_assistant_find" => await HomeAssistantFindAsync(arguments, cancellation),
                 "smart_home_status" => SmartHomeStatus(arguments),
+                "discord_status" => DiscordCheck.Status(DataDirectory(arguments)),
+                "discord_check" => await DiscordCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "seconds"), cancellation),
                 "terminal_status" => TerminalCheck.Status(DataDirectory(arguments)),
                 "terminal_check" => await TerminalCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "shell"), cancellation),
                 "prompts_status" => await PromptsStatusAsync(arguments, cancellation),
@@ -1125,6 +1152,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
+                "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
@@ -1774,6 +1803,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
             expressions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Expression),
             motions = inventory.Sources.Count(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Motion),
+            gestures = inventory.Sources.Where(s => s.Kind == Martlet.Avatar.Hosting.CharacterActionKind.Gesture).Select(s => s.Name).ToArray(),
             fromVTubeStudio = extras is null ? null : new
             {
                 expressions = extras.Expressions.Select(e => new { e.Name, e.File }), motions = extras.Motions.Select(m => new { m.Group, m.File })

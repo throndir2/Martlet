@@ -154,7 +154,7 @@ public static partial class CharacterActions
     /// word in it, or <c>emote_3</c>/<c>motion_2</c> (its <paramref name="number"/> among its kind).</summary>
     public static string EnglishTag(CharacterActionSource source, int number)
     {
-        if (source.Kind == CharacterActionKind.Gesture) return source.Id == "gesture:nod" ? "nod" : "shake_head";
+        if (source.Kind == CharacterActionKind.Gesture && CharacterActionInventory.Gesture(source.Id) is { } gesture) return gesture.Tag;
         var slug = Slug(source.Name);
         if (slug.Length > 0 && slug.Any(char.IsAsciiLetter)) return slug;
         foreach (var (word, tag) in Translations)
@@ -172,7 +172,7 @@ public static partial class CharacterActions
     {
         CharacterActionKind.Expression => $"the character's emote named \"{source.Name}\"",
         CharacterActionKind.Motion => $"the character's motion named \"{source.Name}\"",
-        _ => source.Id == "gesture:nod" ? "nod, for yes or agreement" : "shake your head, for no or disbelief"
+        _ => CharacterActionInventory.Gesture(source.Id)?.Use ?? $"the gesture named \"{source.Name}\""
     };
 
     /// <summary>Martlet's guess from the model's own name: an English tag and a cue when the name says a feeling.
