@@ -33,12 +33,13 @@ your setup can't.
    2048 px, so the taskbar, the notification area and pop-up notifications are
    in it; it doesn't need a window in front (the desktop counts). The
    **Stop watching** button's dot blinks on each capture (it twinkles
-   while a look is with the model), and a line under the
-   talk window's status says what it sees (*Watching your whole screen (2
-   monitors).*), how the last look went (*nothing worth saying*, *said
-   something*), why it is holding off (you're talking, you seem away, the
-   hourly budget is used), what wanted your attention and whether your last
-   message went with the picture.
+   while a look is with the model), and a short line under the
+   talk window's status says what it sees (*Watching your whole screen.*) and
+   only what changes that: a look in progress, why it is holding off (you seem
+   away, the hourly budget is used, a busy provider) or a failed look. Its
+   tooltip says how the last look went (*nothing to say*, *commented*), how
+   many monitors the whole screen spans and what wanted your attention but
+   wasn't looked at.
    Captures are never added to the history; only remarks are.
 4. A **pacer** decides when to take a real look, the way a person would:
    - never while you are talking to Martlet (hands-free speech, typing, a
@@ -97,8 +98,8 @@ Normal and keeps the level it picked until Martlet closes.
   still count toward the new hourly budget), what the PC plays on its own goes
   to Thinking every 45 / 20 / 12 seconds at Quiet / Normal / Chatty, the talk
   window's history notes the switch (*Martlet went quiet about what it sees and
-  hears.*), its `LiveChattiness` line says *Martlet decides how chatty it is:
-  quiet right now (since 10:14 PM).*, Companion says the level it picked, and
+  hears.*), its `LiveChattiness` line says *Chattiness: quiet (Martlet
+  decides).* (its tooltip says when it switched), Companion says the level it picked, and
   the desktop log writes *Chattiness: Martlet went from normal to quiet (your
   message; Martlet decides).*
 - **Cost.** A switch adds a few tokens to the end of a reply and nothing before
@@ -113,8 +114,7 @@ capture, say a private window in front, sends none), so you can ask *"what do
 you think of this?"*, *"who just messaged me?"* or *"how do I beat this boss?"*.
 The reply is told the picture is what you see right now and to use it only when
 it helps, without describing it unprompted. Your message's bubble says *Martlet
-saw your whole screen.* (or your active window, or the camera), and the vision
-line says *Your message at 10:14 PM went with it.* These pictures don't count
+saw your whole screen.* (or your active window, or the camera). These pictures don't count
 toward the looks per hour, but they make each reply's request larger, which may
 cost more. If the Thinking model rejects the picture, Martlet asks again with
 your words only and says so on your message; a model Martlet doesn't know can
