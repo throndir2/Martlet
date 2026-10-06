@@ -145,7 +145,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines (including *Martlet decides* and *Chattiness right now*), *Screen with your message* (sent with what you type or say while
-   vision is on), the background work notes and the Thinking longer task, the
+   vision is on), *What you saw* (the `[seen: ...]` tag a look or a reply with a picture ends with), the background work notes and the Thinking longer task, the
    Remembering and Learning names requests and the prompt
    that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
@@ -223,7 +223,15 @@ reads the entire conversation again before every reply (on a 12B model, about
   glance instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
   sent, with its notes (a paired host gets the plain messages and the notes
-  with its instructions, as before).
+  with its instructions, as before). What Martlet saw is part of it: every
+  screen glance and camera look, passed or not, is an exchange whose line
+  starts with `[Screen]` or `[Camera]` (where it looked and what it saw, from
+  the look's own `[seen: ...]` tag; passed looks in a row keep only the last),
+  and a message that came with a picture keeps such a line after its words.
+  Pictures are never kept, and these lines are never your words: memory,
+  learning names, the record of conversations and the smart home leave them
+  out, as they do `[PC audio]` lines ([Screen
+  commentary](SCREEN_COMMENTARY.md#what-martlet-saw-stays-in-the-conversation)).
 - **The message** comes last and ends with Martlet's **notes** between
   `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
   remembered facts not already in the notes of an earlier message the request
@@ -1113,7 +1121,8 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
   that is only what the PC played gets none of them, and earlier `[PC audio]`
-  lines are left out of what remembering reads. The sound is never saved.
+  lines (and `[Screen]`/`[Camera]` lines about what Martlet saw) are left out of
+  what remembering reads. The sound is never saved.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.

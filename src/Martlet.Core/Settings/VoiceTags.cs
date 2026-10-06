@@ -83,12 +83,23 @@ public static class VoiceTags
         var kept = voiceTags ?? [];
         var character = CharacterTags(characterTags);
         var engines = SpeechEngines.All;
+        var controls = ControlTags(controlTags);
         return new([
-            Exact.GetValue(kept, _ => new(kept)), new(character), new(ControlTags(controlTags)),
+            Exact.GetValue(kept, _ => new(kept)), new(character), new(controls.Where(tag => !IsOpen(tag.Text))),
             Spelled.GetValue(kept, _ => new(kept.SelectMany(Spellings))), new(character.SelectMany(Spellings)),
             Exact.GetValue(engines, _ => new(Known)), Spelled.GetValue(engines, _ => new(Known.SelectMany(Spellings)))
-        ]);
+        ], [.. controls.Where(tag => IsOpen(tag.Text))]);
     }
+
+    /// <summary>Ends an open control tag: <c>[seen:…]</c> stands for <c>[seen:</c>, any words on one line (no brackets) and
+    /// <c>]</c>, such as <c>[seen: a racing game, last lap]</c>. The tag found is what the reply wrote.</summary>
+    public const string OpenEnd = "…]";
+
+    /// <summary>The longest an open control tag may be, brackets included; a longer one is ordinary text.</summary>
+    public const int MaximumOpenTag = 200;
+
+    /// <summary>Whether <paramref name="tag"/> is an open control tag (<see cref="OpenEnd"/>).</summary>
+    public static bool IsOpen(string tag) => tag.Length > OpenEnd.Length + 1 && tag.EndsWith(OpenEnd, StringComparison.Ordinal);
 
     /// <summary>The tag of <paramref name="tags"/> starting at <paramref name="index"/> in <paramref name="text"/>, or null.</summary>
     public static VoiceTag? At(string text, int index, IReadOnlyList<VoiceTag> tags)
@@ -260,8 +271,14 @@ public sealed class VoiceTagStripper(IEnumerable<string>? characterTags = null, 
 public sealed class VoiceTagSet
 {
     private readonly Group[] groups;
+    // Open control tags (VoiceTags.OpenEnd): what starts each ("[seen:") and the tag as the request lists it.
+    private readonly (string Opener, VoiceTag Tag)[] open;
 
-    internal VoiceTagSet(Group[] groups) => this.groups = groups;
+    internal VoiceTagSet(Group[] groups, IReadOnlyList<VoiceTag>? open = null)
+    {
+        this.groups = groups;
+        this.open = open?.Select(tag => (tag.Text[..^VoiceTags.OpenEnd.Length], tag)).ToArray() ?? [];
+    }
 
     /// <summary>Whether a tag can start with <paramref name="c"/>.</summary>
     public bool CanStart(char c)
@@ -269,26 +286,49 @@ public sealed class VoiceTagSet
         var lower = char.ToLowerInvariant(c);
         foreach (var group in groups)
             if (group.Starts.Contains(lower)) return true;
+        foreach (var (opener, _) in open)
+            if (char.ToLowerInvariant(opener[0]) == lower) return true;
         return false;
     }
 
-    /// <summary>The tag spelled <paramref name="text"/>, from the first group that has it, or null.</summary>
+    /// <summary>The tag spelled <paramref name="text"/>, from the first group that has it, or null. An open control tag is
+    /// found as the reply wrote it.</summary>
     public VoiceTag? Find(string text)
     {
         foreach (var group in groups)
             if (group.Find(text) is { } tag) return tag;
+        foreach (var (opener, tag) in open)
+            if (Open(text, opener) == OpenMatch.Whole) return tag with { Text = text };
         return null;
     }
 
     /// <summary>Every tag whose spelling starts with <paramref name="prefix"/> (a spelling two groups share, once from each).</summary>
-    public IEnumerable<VoiceTag> StartingWith(string prefix) => groups.SelectMany(group => group.StartingWith(prefix));
+    public IEnumerable<VoiceTag> StartingWith(string prefix) => groups.SelectMany(group => group.StartingWith(prefix))
+        .Concat(open.Where(o => Open(prefix, o.Opener) == OpenMatch.Partial).Select(o => o.Tag));
 
     /// <summary>Whether any tag's spelling starts with <paramref name="prefix"/>.</summary>
     public bool StartsAny(string prefix)
     {
         foreach (var group in groups)
             if (group.StartingWith(prefix).Any()) return true;
+        foreach (var (opener, _) in open)
+            if (Open(prefix, opener) == OpenMatch.Partial) return true;
         return false;
+    }
+
+    private enum OpenMatch { None, Partial, Whole }
+
+    // How text matches an open tag that starts with opener: the start of one, a whole one (closed by ']'), or neither (another
+    // bracket, a new line or too long).
+    private static OpenMatch Open(string text, string opener)
+    {
+        if (text.Length <= opener.Length)
+            return opener.StartsWith(text, StringComparison.OrdinalIgnoreCase) ? OpenMatch.Partial : OpenMatch.None;
+        if (text.Length > VoiceTags.MaximumOpenTag || !text.StartsWith(opener, StringComparison.OrdinalIgnoreCase)) return OpenMatch.None;
+        var body = text.AsSpan(opener.Length);
+        var words = body[^1] == ']' ? body[..^1] : body;
+        if (words.IndexOfAny("[]\r\n") >= 0) return OpenMatch.None;
+        return body[^1] == ']' ? OpenMatch.Whole : OpenMatch.Partial;
     }
 
     internal sealed class Group

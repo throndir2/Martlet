@@ -1802,6 +1802,25 @@ quiet (Martlet decides).*) and in
 `logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
 Martlet decides).* It reads no credentials and contacts nothing.
 
+`vision_history_check` rehearses how what Martlet sees is kept in the
+conversation ([Screen commentary](SCREEN_COMMENTARY.md#what-martlet-saw-stays-in-the-conversation))
+with the desktop's production code: `prompts.seen` is Companion › Prompts ›
+*What you saw* as the data directory's settings.json sends it (optional
+absolute `dataDirectory`, default the current user's), `tag` the seen tag
+(`[seen:…]`, any words on one line) and `markers` the line markers
+(`[Screen]`, `[Camera]`). Each sample look reply (or `reply`, up to 1,024
+characters of one line) goes through the production speech segmenter and chat
+stripper with the seen and chattiness tags a look is offered (`spoken`,
+`shown`, `passed`, `tags`, `seen`: the description kept, `tagHidden`) and is
+kept in a production conversation buffer as the desktop keeps a look
+(`replacedPassedLook` when it took the place of the passed look before it),
+then a typed message that came with a picture. `history` is the conversation
+as the next reply sends it (`role`, `text`, `vision`, and `memoryReads`: what
+memory and learning names may read of a user line, null for a look). A running
+conversation's looks show in `logs_tail` `contains` `Vision:` as *Vision: the
+conversation keeps a screen glance (passed, described, in place of the passed
+look before it).* It reads no credentials and contacts nothing.
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from
@@ -3640,7 +3659,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

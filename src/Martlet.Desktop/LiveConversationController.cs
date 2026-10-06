@@ -58,7 +58,7 @@ internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource 
     /// <summary>What the picture shows, for the Screen with your message prompt.</summary>
     internal string Describe()
     {
-        var title = new string(Title.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
+        var title = CleanTitle;
         return Source.Kind switch
         {
             WatchKind.ActiveWindow => title.Length > 0 ? $"the user's active window (\"{title}\")" : "the user's active window",
@@ -68,6 +68,28 @@ internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource 
             _ => "what the user's phone or network camera sees"
         };
     }
+
+    /// <summary>Where the picture was taken, as the conversation keeps it (<see cref="VisionHistory"/>): the source and the
+    /// window's title or the camera's name.</summary>
+    internal string Where()
+    {
+        var title = CleanTitle;
+        return Source.Kind switch
+        {
+            WatchKind.ActiveWindow => title.Length > 0 ? $"the user's active window \"{title}\"" : "the user's active window",
+            WatchKind.ActiveScreen => "the user's whole screen" + (title.Length > 0 ? $" (active window \"{title}\")" : ""),
+            WatchKind.Camera => title.Length > 0 ? $"the user's camera \"{title}\"" : "the user's camera",
+            _ => "the user's phone or network camera"
+        };
+    }
+
+    /// <summary>The line the conversation keeps for this picture: a look Martlet took on its own (with <paramref name="why"/>
+    /// when something drew its attention), or, with <paramref name="message"/>, the picture that came with a message.</summary>
+    internal string HistoryLine(string? seen, bool message = false, string? why = null) => message
+        ? VisionHistory.WithMessage(!Source.IsScreen, Where(), seen)
+        : VisionHistory.Look(!Source.IsScreen, Where(), why, seen);
+
+    private string CleanTitle => new string(Title.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
 
     public override string ToString() => nameof(SeenScreen);
 }
@@ -1213,11 +1235,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             active = operation;
             var camera = source is { IsScreen: false };
             var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention);
+            var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow));
             var worker = operations.TryStart(async token =>
             {
                 await published.Task.ConfigureAwait(false);
                 authorization.BindWorker(token);
-                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, look && !camera, token).ConfigureAwait(false);
+                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, look && !camera, token, looked).ConfigureAwait(false);
             });
             if (worker is null)
             {
@@ -1250,7 +1273,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
-        ChattinessChoice chattiness, bool camera, bool look, CancellationToken worker)
+        ChattinessChoice chattiness, bool camera, bool look, CancellationToken worker, SeenScreen looked)
     {
         // While Martlet decides how chatty it is, the look is told how to switch the level (the same at every level) and the
         // level it is at goes in the notes.
@@ -1277,7 +1300,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides),
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
                     gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
-                    chattiness: decides ? configured.ChattinessNote(level) : null, controlTags: decides ? ChattinessTags.All : null);
+                    chattiness: decides ? configured.ChattinessNote(level) : null,
+                    controlTags: LiveConversationConfiguration.ControlTags(decides, picture: true, configured.Prompts));
                 operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
@@ -1301,16 +1325,25 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (IsFailure(terminal))
                 LogReplyFailure(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             else if (terminal.State == ConversationState.Completed) Succeeded(SetupRole.Llm);
-            if (terminal.State == ConversationState.Completed && !passed)
+            if (terminal.State == ConversationState.Completed)
             {
                 lock (gate)
                 {
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
                     {
-                        var remark = text.Trim();
-                        context.Add("(You glanced at my screen.)", remark);
-                        remarks.Enqueue((clock.GetTimestamp(), remark.Length > 200 ? remark[..200] : remark));
-                        while (remarks.Count > 4) remarks.Dequeue();
+                        // Every look stays in the conversation, passed or not: where Martlet looked and what it saw (the look's
+                        // [seen: ...] words, never the picture), then its remark or [pass]. Passes in a row keep only the last.
+                        var remark = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : text.Trim();
+                        var seen = SeenTags.Description(turn.Controls);
+                        var replaced = context.AddLook(looked.HistoryLine(seen, why: operation.Attention?.Describe()), remark, passed);
+                        ErrorLog.Info($"Vision: the conversation keeps a {(camera ? "camera look" : "screen glance")} " +
+                            $"({(passed ? "passed" : "remark")}, {(seen is null ? "no description" : "described")}" +
+                            $"{(replaced ? ", in place of the passed look before it" : "")}).");
+                        if (!passed)
+                        {
+                            remarks.Enqueue((clock.GetTimestamp(), remark.Length > 200 ? remark[..200] : remark));
+                            while (remarks.Count > 4) remarks.Dequeue();
+                        }
                     }
                 }
             }
@@ -1631,14 +1664,15 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
                             decides ? LiveConversationConfiguration.ChattinessDecides(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
-                            picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
+                            picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
+                            picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply)),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background, recalled, songNote, whileSinging),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
-                        controlTags: decides ? ChattinessTags.All : null,
+                        controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
@@ -1742,15 +1776,20 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     {
                         var earlier = context.Snapshot();
                         var kept = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text;
+                        // A message that came with a picture keeps where it was from and what the reply saw in it (its [seen: ...]
+                        // words), on a line after the message; the picture itself is never kept.
+                        var sawLine = operation.ScreenSent && !terminal.ImageRejected && operation.Seen is { } pictured
+                            ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true) : null;
+                        string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
                         string? said = null;
                         if (straight)
                         {
                             // Straight to Thinking: the exchange is kept now and its words replace what stands in for them once
                             // speech-to-text has them; the record of conversations, memory and learning names follow then.
-                            var exchange = context.Add(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText,
-                                kept, configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
+                            var exchange = context.Add(Saw(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText)!,
+                                kept, configured.HostTarget() is null ? Saw(operation.Sent?.SentUserText) : null);
                             ConversationContextBuffer.Pending(exchange,
-                                KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, turn.Content.Text, passed)));
+                                KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, turn.Content.Text, passed, sawLine)));
                         }
                         else
                         {
@@ -1758,7 +1797,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             // what the PC played keeps its marked lines as they are.
                             said = operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
                             // A pass stays in the conversation too, so later replies know what was said around Martlet.
-                            context.Add(said, kept, configured.HostTarget() is null ? operation.Sent?.SentUserText : null);
+                            context.Add(Saw(said)!, kept, configured.HostTarget() is null ? Saw(operation.Sent?.SentUserText) : null);
                             // The record of conversations keeps the user's own words (never what the PC played) and the reply,
                             // written in the background after the reply. A pass wasn't said to Martlet, and glances never get here.
                             if (!passed && this.history is { } historyRecord && historyRecord.Active(configured.Memory) &&
@@ -1922,10 +1961,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
     // What memory recalls by for a message that has no words yet: the user's last message in the conversation (without what the
     // PC played), or nothing (then the speaker's and the newest facts).
     private static string StraightRecallQuery(IReadOnlyList<TextHistoryMessage> history) =>
-        LiveConversationConfiguration.WithoutPcAudio(history.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text) ?? "";
+        LiveConversationConfiguration.WithoutMarked(history.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text) ?? "";
 
     private sealed record StraightExchange(LiveConversationOperation Operation, LiveConversationConfiguration Configured, Guid Conversation,
-        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed)
+        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed, string? SawLine = null)
     {
         public override string ToString() => nameof(StraightExchange);
     }
@@ -1947,7 +1986,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
             if (disposed) return;
             var hostless = keep.Configured.HostTarget() is null;
             var current = conversationId == keep.Conversation;
-            if (current) filled = context.Fill(keep.Exchange, said, hostless ? sent?.SentUserText : null);
+            // A picture that came with the message stays noted after its words (VisionHistory).
+            if (current) filled = context.Fill(keep.Exchange, keep.SawLine is null ? said : VisionHistory.After(said, keep.SawLine),
+                hostless && sent is not null ? keep.SawLine is null ? sent.SentUserText : VisionHistory.After(sent.SentUserText, keep.SawLine) : null);
             if (!keep.Passed && history is { } historyRecord && historyRecord.Active(keep.Configured.Memory))
             {
                 historyRecord.Record(keep.Conversation, HistoryInputKind.Spoken, userWords, keep.Reply,
@@ -2877,7 +2918,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
         capturesPending++;
         // Earlier lines heard from what the PC played are left out: memory and learning names only read the user.
         var job = new AfterReplyJob(configured, remember, heard,
-            LiveConversationConfiguration.WithoutPcAudio(earlier.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text),
+            LiveConversationConfiguration.WithoutMarked(earlier.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text),
             earlier.LastOrDefault(message => message.Role == TextHistoryRole.Assistant)?.Text,
             user, reply, configured.LocalThinking ? sent : null, captureCancel.Token, present);
         captureTail = AfterReplyAsync(captureTail, job);

@@ -807,6 +807,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("vision_history_check", "How what Martlet sees is kept in the conversation (docs/SCREEN_COMMENTARY.md), rehearsed with " +
+            "the desktop's production code: Companion > Prompts > What you saw as a data directory's settings.json sends it (seen), " +
+            "then sample look replies (or reply) through the production speech segmenter and chat stripper with the [seen: ...] " +
+            "and chattiness tags a look is offered (spoken, shown, passed, tags, seen: the description kept, tagHidden), each kept " +
+            "in a production conversation buffer as the desktop keeps a look ([Screen] line; passed looks in a row keep only the " +
+            "last: replacedPassedLook), then a message that came with a picture. Returns the conversation's lines as the next " +
+            "reply sends them (history: role, text, vision, memoryReads: what memory and learning names may read of a user " +
+            "line). Live looks show in the desktop log (\"Vision: the conversation keeps ...\"). Reads no credentials and " +
+            "contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 1024 }
+        }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
@@ -1064,6 +1077,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     SpeechDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
+                "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
