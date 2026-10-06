@@ -17,7 +17,7 @@ public sealed record RendererModelSummary(int Textures, int TextureDivisor, stri
     string[] MotionGroups, int Expressions, bool Physics, bool Animated);
 public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters, RendererModelSummary? Model = null);
 /// <summary>Plays (<paramref name="On"/>) or ends one emote or motion on the showing character: an <c>expression</c> (held until
-/// ended or replaced), a <c>motion</c> group (played once) or a <c>gesture</c> (<c>nod</c> or <c>shake</c>). The reply says
+/// ended or replaced), a <c>motion</c> group (played once) or a Martlet <c>gesture</c> (<see cref="CharacterGesture"/>). The reply says
 /// whether the model started it.</summary>
 public sealed record RendererAction(string Kind, string Name, bool On = true)
 {

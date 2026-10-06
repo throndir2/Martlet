@@ -1,6 +1,6 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
-import { type Gesture, gestureOffset, isGesture } from "./gestures.js";
+import { type Gesture, gestureFrame, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 
@@ -236,10 +236,13 @@ export class Live2DAdapter {
     return this.#resources?.animator?.setExpression(name) ?? false;
   }
 
-  /** Starts one of Martlet's head gestures ("nod" or "shake"), replacing one already playing. */
+  /** Martlet's gestures this model has the standard parameters for. */
+  get gestures(): readonly Gesture[] { return this.animated ? supportedGestures(this.#parameters.map(p => p.id)) : []; }
+
+  /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing. */
   gesture(name: string): boolean {
     this.#ready();
-    if (!isGesture(name) || !this.animated) return false;
+    if (!isGesture(name) || !this.gestures.includes(name)) return false;
     this.#gesture = { name, seconds: 0 };
     return true;
   }
@@ -453,14 +456,14 @@ export class Live2DAdapter {
       const follow = Math.min(1, deltaSeconds * 5);
       this.#look = { x: this.#look.x + (this.#lookTarget.x - this.#look.x) * follow,
         y: this.#look.y + (this.#lookTarget.y - this.#look.y) * follow };
-      let gesture = { x: 0, y: 0 };
+      let gesture: ReturnType<typeof gestureFrame>;
       if (this.#gesture) {
         this.#gesture.seconds += deltaSeconds;
-        const offset = gestureOffset(this.#gesture.name, this.#gesture.seconds);
-        if (offset) gesture = offset; else this.#gesture = undefined;
+        gesture = gestureFrame(this.#gesture.name, this.#gesture.seconds);
+        if (!gesture) this.#gesture = undefined;
       }
-      animator.update(deltaSeconds, { lookX: this.#look.x + gesture.x, lookY: this.#look.y + gesture.y,
-        lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply });
+      animator.update(deltaSeconds, { lookX: this.#look.x + (gesture?.look.x ?? 0), lookY: this.#look.y + (gesture?.look.y ?? 0),
+        lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply, ...(gesture ? { gesture: gesture.parameters } : {}) });
     } else {
       // No SDK motion/expression/physics writer runs after these composed parameter writes.
       apply();

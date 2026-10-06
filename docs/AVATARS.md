@@ -42,7 +42,8 @@ what each one is.
   and the VTube Studio idle animation idles the model when it has no `Idle`
   group. VRM: the preset emotions and every custom expression; mouth, blink,
   gaze and `neutral` presets stay with lip-sync, blinking and gaze. Every model
-  also gets Martlet's own head gestures, **nod** and **shake**. Each one comes
+  also gets Martlet's own gestures that its rig supports (see *Global
+  gestures* below). Each one comes
   with what it changes: Live2D parameter IDs, their display names from the
   model's `.cdi3.json` and values, and motion lengths; VRM shape names.
 - **Naming** (Companion › Prompts › *Naming character emotes*): the first time a
@@ -86,6 +87,21 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **Global gestures**: Martlet's own gestures (`CharacterActionInventory.AllGestures`)
+  play on any model whose rig has what they move, so replies are offered only
+  the ones the shown model can do:
+
+  | Gesture (tag) | Live2D needs | VRM needs |
+  | --- | --- | --- |
+  | nod (`nod`), shake (`shake_head`), tilt (`tilt_head`) | `ParamAngleY`, `ParamAngleX`, `ParamAngleZ` | `head` bone |
+  | bow (`bow`) | `ParamAngleY` | `spine` bone |
+  | sway (`sway`) | `ParamBodyAngleZ` | `spine` bone |
+  | smile (`smile`), blush (`blush`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamCheek`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
+  | wave (`wave`), shrug (`shrug`), bounce (`bounce`) | not offered (no standard arm or position parameters) | right arm, both arms, `hips` bones |
+
+  Live2D parameters are read from the model's `.moc3`, VRM bones from its
+  humanoid. A gesture is left out when the model's own emote or motion already
+  has its tag (a model with its own `smile` keeps that one).
 - **Where it looks**: the head and eyes follow the mouse, or with Companion ›
   Vision › **Where the character looks** set to *Martlet decides*, glance at
   something that just changed on the watched screen or at the part of it a
