@@ -1984,7 +1984,20 @@ processor), and once the think's model has loaded
 whether Thinking's was unloaded or pushed partly off the card (`afterLoading`,
 each `stops` against `expected`). `hostFit`: a 160-message conversation
 fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
-kept, `inputTokens` 24,576 beside 8,192 for output). Each part has an `ok`; on
+kept, `inputTokens` 24,576 beside 8,192 for output). `moment`: the production
+`MomentTurn` plan for eight situations (`plans.cases`: a look that comes due
+while the PC played and work finished, while only work finished, or alone;
+finished work that comes up while the PC played or a look is due; the PC's pace
+coming up while work finished or while Esc held it; you talking while all of it
+waits), each `route` (*Reply*, *Report* or *Glance*) with what it takes along
+(`takesPcAudio`, `takesFinishedWork`, `takesTheLook`), and `combinedTurn`: the
+owner's example (a song and a report finish while the game plays and a look is
+due) sent as one reply whose message `carries` the PC's marked lines and both
+results in its notes (the song marked to offer), after which both jobs are
+delivered (`newsAfter` false), and whose instructions start exactly like a
+plain reply's up to the end of the One moment instruction
+(`sameStartAsAPlainReply`, `sharedStartCharacters`; `momentInstruction` is the
+text). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
 
@@ -3257,7 +3270,14 @@ context size from Companion › Replies; absent when none, and unchanged when a
 settings change is picked up; beside it,
 `LiveRefreshContext` (*Refresh context*, a passive click, disabled mid-reply)
 forgets them so the next reply starts fresh, adds the note *Context refreshed.*
-to `LiveHistory` and hides `LiveContext`), `LiveJobs` (shown while Martlet
+to `LiveHistory` and hides `LiveContext`), `LiveTurnInputs` (once Martlet has
+replied or looked: what its newest reply, report or look took together, from
+[one moment](CONVERSATION.md#one-moment-everything-in-one-reply): *Last reply
+took your words, 1 line this PC played and the picture.*, *Last reply took 2
+lines this PC played, the picture (a notification) and 2 finished jobs,
+counted as a look.*, *Last report took the picture and 1 finished job.* or
+*Last look took the picture.*; counts only, never what was said, seen or
+found; the desktop log has the same as *Turn took: ...* lines), `LiveJobs` (shown while Martlet
 works in the background or a finished job waits to be brought up: *Working in
 the background: think-1 running for 0:12. You can keep talking; Stop doesn't end
 it.*, *think-1 checking it fits beside Thinking* (a second model in Ollama on

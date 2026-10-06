@@ -257,6 +257,59 @@ them (92 %) from the model's prompt cache.* when the provider reports it
 Ollama on this PC for them), and the talk window's context line ends with
 *Last reply: 92% of its 568 input tokens came from the model's cache.*
 
+## One moment: everything in one reply
+
+Martlet hears and sees four things as one conversation: what you say (typed or
+heard), what this PC plays ([Hear what this PC plays](#hearing-what-this-pc-plays)),
+what vision watches ([Watch my screen](SCREEN_COMMENTARY.md)) and background
+work that finished ([Thinking longer](#thinking-longer-and-background-work),
+songs). Martlet answers one reply at a time, so whatever starts a reply takes
+everything else that waits into that one request (`MomentTurn`), and the model
+answers it all in one breath: *"Nice killing that monster! I can sing that song
+you asked for as a celebration, and I've also finished that report. Wanna
+see?"*
+
+- **You come first and never wait.** Typed text, then what always listening
+  heard, then what the PC played on its own pace, then finished work, then a
+  look, as before. A reply to you takes only what is already there (the lines
+  the PC played meanwhile, the newest picture, all finished work, the look
+  vision was about to take); it never waits for a look or a job, so the time to
+  Martlet's first word doesn't grow. A recording that goes [straight to
+  Thinking](#straight-to-thinking) stays that way unless the PC played
+  something meanwhile (then it goes as words, as before).
+- **What the PC played on its own** takes the finished work Martlet may bring
+  up on its own (Thinking longer shares results as soon as Martlet is free,
+  nothing you stopped with Esc, no song playing), in its notes, and then gets
+  the tools a report gets, so a later tool can act on your yes. It takes the
+  newest picture and a look that is due.
+- **Finished work** that comes up while the PC played becomes a reply to those
+  lines with the results in its notes; otherwise Martlet's report, now with the
+  newest picture (and a due look).
+- **A look** that comes due while the PC's lines or finished work wait is one
+  reply that takes them all (counted as a look: the pacer's spacing and hourly
+  budget, and a look at a notification isn't repeated); only a look with
+  nothing else waiting is a plain glance with the glance prompts.
+- **Pacing stays.** What the PC played on its own still goes at most every
+  PcPace, looks keep the pacer's budget, results keep the 2 seconds of quiet
+  when they start a reply themselves, and nothing starts while Martlet is
+  paused, locked or (for looks and results) singing.
+- **Never your words.** Lines the PC played stay marked `[PC audio]`, and
+  neither they nor a picture are ever your words: memory, learning names and
+  Home Assistant read only what you said yourself.
+
+Every reply and glance carries the same Companion › Prompts › *One moment*
+instruction, first among Martlet's own, so the start of every request stays
+the same and prompt caches are reused: one message can bring several of these
+at once; answer them together in one short, natural reply in character, your
+own words first, and `[pass]` when it holds none of your words and nothing
+worth a word. A reply that took a look at something that wants your attention
+gets *Something wants your attention, with a reply* in its notes. The talk
+window's `LiveTurnInputs` line says what the newest reply took (*Last reply took
+2 lines this PC played, the picture and 1 finished job, counted as a look.*),
+the desktop log has a *Turn took: ...* line per reply and look, and
+`think_longer_check`'s `moment` part in [Martlet MCP](MCP.md) rehearses the
+plan and a combined request.
+
 ## Thinking longer and background work
 
 Replies answer right away (Thinking steps are Off by default). **Thinking
@@ -386,7 +439,11 @@ anything before it:
   *Background work finished*). It brings it up in character, offering rather
   than acting when a result needs the user's go-ahead, with the normal tools
   available. Talking before it speaks (or over it) stops it, and Esc holds it:
-  the results then go with your next message.
+  the results then go with your next message. It is [one moment](#one-moment-everything-in-one-reply)
+  like any reply: lines this PC played meanwhile make it a reply to them with
+  the results in its notes, and it takes the newest picture (and a look that is
+  due) along. Whatever Martlet answers first while results wait (what this PC
+  played, a look that came due) takes them too, without the 2 seconds of quiet.
 - *When I talk next*: the results go in the notes of your next message
   (Companion › Prompts › *Background work finished, with your message*).
 
@@ -1094,7 +1151,10 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   *Watch along*): 45 seconds when Quiet, 12 when Chatty, and with [Martlet
   decides](SCREEN_COMMENTARY.md#martlet-decides-how-chatty-it-is) the level it
   picked, which a reply to what plays may switch. At most the newest 1,500
-  characters go with one message.
+  characters go with one message. What the PC played also goes with whatever
+  else Martlet answers first ([one moment](#one-moment-everything-in-one-reply)):
+  finished work it brings up and a look that comes due take the waiting lines
+  along, and a message you type takes them too.
 - **Your own voice played back.** Hearing only the output you hear (above)
   keeps virtual cables out. Your voice can still reach the PC's sound when it
   is actually played back (a voice changer's or headset app's *hear myself*,
@@ -1111,8 +1171,9 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   The `LivePcAudio` line's tooltip then adds *This PC plays your voice back too; Martlet
   left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
-  names, Home Assistant and MCP tools only ever read your own words: a message
-  that is only what the PC played gets none of them, and earlier `[PC audio]`
+  names and Home Assistant only ever read your own words: a message that is only
+  what the PC played gets none of them, nor MCP tools unless it brings up
+  finished work (then it gets the tools a report gets), and earlier `[PC audio]`
   lines are left out of what remembering reads. The sound is never saved.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken

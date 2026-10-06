@@ -52,6 +52,10 @@
                     <!-- While Martlet decides how chatty it is and vision or hearing this PC is on: the level it picked. -->
                     <TextBlock x:Name="ChattinessText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveChattiness"/>
+                    <!-- What Martlet's last reply took together (your words, what this PC played, the picture, finished work);
+                         never what was said, seen or found. -->
+                    <TextBlock x:Name="TurnInputsText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveTurnInputs"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes); its tooltip has
                          the tokens. Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <WrapPanel x:Name="ContextRow" Margin="0,2,0,0" Visibility="Collapsed">

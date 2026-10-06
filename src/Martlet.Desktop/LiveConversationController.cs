@@ -145,6 +145,14 @@ internal sealed class LiveConversationOperation
     /// <summary>The finished background jobs this reply brings into the conversation (its own message for a report, or the notes
     /// of the user's message); completed once the exchange is kept, otherwise returned for the next reply.</summary>
     [JsonIgnore] internal BackgroundDelivery? Delivery { get; set; }
+    /// <summary>A reply Martlet starts on its own (to what this PC played) may bring up finished background work that waits,
+    /// in its notes, as a report would (Thinking longer shares results as soon as Martlet is free).</summary>
+    internal bool BringUp { get; init; }
+    /// <summary>This reply took the look vision wanted (its picture, and what wants the user's attention if anything does), so it
+    /// counts as a look.</summary>
+    internal bool Look { get; init; }
+    /// <summary>What this reply took (MomentTurn.Describe: never what was said, seen or found), once its request started.</summary>
+    internal string? Inputs { get; set; }
     internal ListeningOptions? Listening { get; init; }
     /// <summary>One utterance recorded by always listening (<see cref="LiveListener"/>): capture and speech-to-text only.</summary>
     internal bool Listen { get; init; }
@@ -152,7 +160,8 @@ internal sealed class LiveConversationOperation
     internal bool Spoken { get; init; }
     internal double? SpokenConfidence { get; init; }
     /// <summary>The message includes lines heard from what the PC plays (each starts with
-    /// <see cref="LiveConversationConfiguration.PcAudioMarker"/>): no tools or Home Assistant without the user's own words, and
+    /// <see cref="LiveConversationConfiguration.PcAudioMarker"/>): no Home Assistant without the user's own words and no tools
+    /// unless they are there or the message brings up finished background work, and
     /// memory and learning names read only <see cref="UserWords"/>.</summary>
     internal bool PcAudio { get; init; }
     /// <summary>What the user said themselves in a message with <see cref="PcAudio"/>; null when it is only what the PC played.</summary>
@@ -744,13 +753,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
         ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
-        IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false)
+        IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false, bool bringUp = false, AttentionSignal? attention = null,
+        bool look = false)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
+        // What the PC played goes as words (typed or heard beside it), never with a recording; only a message that is all the
+        // PC's may bring up finished work on Martlet's own.
         if (listening is not null && !microphone || spoken && microphone || recording is not null && !spoken ||
-            listening?.Pc == true || pcAudio && (!spoken || recording is not null) || !pcAudio && userWords is not null ||
-            words is not null && (words.Count == 0 || recording is null || pcAudio))
+            listening?.Pc == true || pcAudio && (microphone || recording is not null) || !pcAudio && userWords is not null ||
+            words is not null && (words.Count == 0 || recording is null || pcAudio) || bringUp && (!pcAudio || userWords is not null))
             throw new LiveActionException("conversation.invalid_input");
         listening?.Activity.Validate();
         Voiceprint? voiceprint = null;
@@ -784,6 +796,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, StraightWords = words,
                 PcAudio = pcAudio, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
+                BringUp = bringUp, Attention = seen is null ? null : attention, Look = look,
                 WhileSinging = spoken ? singing?.Now() : null,
                 BackgroundChattiness = chattiness,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
@@ -1274,7 +1287,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var level = ChattinessTags.Level(chattiness, decided);
                 var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
-                    LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides),
+                    Join(LiveConversationConfiguration.Moment(configured.Prompts),
+                        LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
                     gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
                     chattiness: decides ? configured.ChattinessNote(level) : null, controlTags: decides ? ChattinessTags.All : null);
@@ -1291,6 +1305,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
             }
+            // Nothing else waited (that would have made it a reply that takes the look along): the look alone.
+            operation.Inputs = MomentTurn.Describe(false, 0, true, operation.Attention?.Plain, 0);
+            ErrorLog.Info($"Turn took: {operation.Inputs} (a look).");
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
             NoteInput(camera ? "Camera glance" : "Screen glance", terminal);
@@ -1546,14 +1563,23 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
             // Tools from MCP servers on this PC, the terminal when it is on and Martlet's own (think_longer while Thinking longer
             // is on and Deep thinking can run where it is set to think, search_conversations while it is allowed, list_creations
-            // and perform_creation while any kind of creation is registered), only for the user's own turns (and Martlet's reports
-            // of its background work) and routes that do function calling. While they are on they are always offered, the same
+            // and perform_creation while any kind of creation is registered), only for the user's own turns (and replies that bring
+            // up background work: Martlet's reports, and what this PC played when finished work goes with it) and routes that do
+            // function calling. While they are on they are always offered, the same
             // way, so every request starts the same.
             DesktopToolset? toolset = null;
             var configured = operation.Authorization.Configuration;
+            // Finished background work that wasn't brought up yet goes with what the user says (its notes), and with what this PC
+            // played when Martlet may bring it up on its own.
+            if (!operation.Report && operation.Delivery is null)
+            {
+                if (own is not null || straight) operation.Delivery = jobs.Take(onItsOwn: false);
+                else if (operation.BringUp) operation.Delivery = jobs.Take(onItsOwn: true);
+            }
             var builtIns = BuiltIns(operation, configured, conversation);
-            if ((own is not null || straight || operation.Report) && tools is not null && (tools.HasTools || builtIns is not null) &&
-                configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
+            // A message carrying finished work gets the tools a report gets, so a later tool can act on the user's yes.
+            if ((own is not null || straight || operation.Report || operation.Delivery is not null) && tools is not null &&
+                (tools.HasTools || builtIns is not null) && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
                 toolset = await tools.PrepareAsync(worker, builtIns).ConfigureAwait(false);
@@ -1562,8 +1588,6 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 operation.LatencyTimeline?.Mark("tools");
             }
 
-            // Finished background work that wasn't brought up yet goes with what the user says (its notes).
-            if ((own is not null || straight) && !operation.Report && operation.Delivery is null) operation.Delivery = jobs.Take(onItsOwn: false);
             // Where the last song stopped and why (or that it ended) goes at the end of the conversation once, with the next
             // message Martlet answers.
             var songNote = singing?.PendingNote;
@@ -1616,6 +1640,10 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
                     ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
+                // The look this reply took was at something that wants the user's attention (a notification, a flashing taskbar
+                // button): a quick heads-up fits in the same reply.
+                var noticed = operation.Attention is { } about
+                    ? PromptSettings.Fill(prompts, PromptCatalog.MomentAttention, ("what", about.Describe())) : null;
                 // Heard while Martlet sings: it keeps singing and answers only when talked to ([pass] otherwise).
                 var whileSinging = operation.WhileSinging is { } sung ? SongTools.WhileSinging(prompts, sung.Title, sung.Where) : null;
                 // While Martlet decides how chatty it is (and vision is on or it hears this PC), every reply is told how to switch
@@ -1625,7 +1653,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
-                        extraInstructions: Join(home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
+                        extraInstructions: Join(LiveConversationConfiguration.Moment(prompts),
+                            home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
                             operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
@@ -1633,7 +1662,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                             recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe()))),
                         voices: VoicePromptContext.Block(operation.Heard),
-                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background, recalled, songNote, whileSinging),
+                        messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
+                            picture is null ? null : noticed, recalled, songNote, whileSinging),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
@@ -1679,6 +1709,13 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 if (straight)
                     foreach (var words in operation.StraightWords!) words.ReplyStarted(operation.ReplyStartedAt);
             }
+            // What this reply took (MomentTurn): the talk window's LiveTurnInputs line and the desktop log, after the request
+            // started so the first words never wait for it.
+            operation.Inputs = MomentTurn.Describe(own is not null || straight,
+                operation.PcAudio ? input!.UserText.Split('\n').Count(line => line.StartsWith(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal)) : 0,
+                operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report);
+            ErrorLog.Info($"Turn took: {operation.Inputs} ({(operation.Report ? "Martlet's report" : own is not null || straight ? "a reply to you" : "a reply to what this PC played")}" +
+                $"{(operation.Look ? ", counted as a look" : "")}).");
             // Which way what was said went to Thinking (MCP's hearing_check reads the newest line), and once speech-to-text beside
             // the reply has the words, how long after the reply started they came.
             if (straight)
@@ -1773,7 +1810,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
                         {
                             delivered.Complete();
                             ErrorLog.Info($"Background work: {string.Join(", ", delivered.Jobs.Select(job => job.Id))} " +
-                                (operation.Report ? "brought up by Martlet on its own" : "brought up with your message") +
+                                (operation.Report ? "brought up by Martlet on its own"
+                                    : own is null && !straight ? "brought up with what this PC played" : "brought up with your message") +
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
                         if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
@@ -2540,7 +2578,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
     /// window decides when: never while the user talks, a turn is pending or Martlet is replying). Its message is Martlet's
     /// note with the results (Companion › Prompts › Background work finished), which stays in the conversation; tools stay
     /// available, so a later tool can act on the user's yes. Null when nothing waits.</summary>
-    internal LiveConversationOperation? StartReport(bool voice)
+    internal LiveConversationOperation? StartReport(bool voice, SeenScreen? seen = null, AttentionSignal? attention = null, bool look = false)
     {
         var delivery = jobs.Take(onItsOwn: true);
         if (delivery is null) return null;
@@ -2555,12 +2593,16 @@ internal sealed class LiveConversationController : IAsyncDisposable
                 var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
                 if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 var input = BackgroundJobs.ReportMessage(selected.Prompts, delivery.Jobs);
+                // While vision is on, the newest picture goes with it too, so the report sees what the user is doing.
+                if (selected.Vision() == VisionSupport.Unsupported) seen = null;
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,
-                    () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);
+                    () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None,
+                    screen: seen is not null);
                 operation = new(authorization, CancellationToken.None)
                 {
-                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken, BackgroundChattiness = lastAsked.Chattiness
+                    Report = true, Delivery = delivery, Spoken = lastAsked.Spoken, BackgroundChattiness = lastAsked.Chattiness,
+                    Seen = seen, Attention = seen is null ? null : attention, Look = look
                 };
                 active = operation;
                 var worker = operations.TryStart(async token =>
