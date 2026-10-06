@@ -1125,6 +1125,32 @@ host_port_open() {
   fi
 }
 
+# Whether a role's containers can look up internet names. Docker Desktop's DNS for containers (192.168.65.7) can stop
+# answering while Docker itself, which pulls images through the host, still resolves; downloads inside a role then fail.
+role_dns_works() {
+  local role_network="$1" name=registry-1.docker.io
+  if [[ "${MODE}" != docker ]]; then
+    timeout 10 getent ahosts "${name}" >/dev/null 2>&1
+  elif [[ "${role_network}" == host ]]; then
+    timeout 20 docker run --rm --network host --entrypoint getent "${IMAGE}" ahosts "${name}" >/dev/null 2>&1
+  else
+    timeout 20 docker run --rm --network "container:${NET}" --entrypoint getent "${IMAGE}" ahosts "${name}" >/dev/null 2>&1
+  fi
+}
+
+# After a role step failed: when name lookups fail inside the role's network, waits a few minutes for them to recover
+# (returns 0: running the step again may work) or stops with what to fix. Returns 1 when names resolve (another cause).
+recover_role_dns() {
+  local role="$1" role_network="$2" attempt
+  role_dns_works "${role_network}" && return 1
+  note "Containers on this computer can't look up internet names right now (Docker's DNS doesn't answer them). Waiting a few minutes for it to recover..."
+  for attempt in $(seq 1 8); do
+    sleep 15
+    if role_dns_works "${role_network}"; then note "Name lookups work again; retrying."; return 0; fi
+  done
+  fail "Containers on this computer can't look up internet names (Docker's DNS for containers doesn't answer), although Docker itself can. Restart Docker Desktop (or Docker), and check that no VPN, firewall or antivirus blocks its DNS, then run 'martlet-host add ${role}' again: what it already downloaded is kept."
+}
+
 role_container_running() {
   local role="$1"
   "${DOCKER[@]}" ps --filter "label=com.docker.compose.project=martlet-${role}" --filter status=running --format '{{.ID}}' 2>/dev/null | grep -q .
@@ -2077,7 +2103,7 @@ cmd_add() {
   ( umask 077; printf '%s\n' "${env_lines[@]}" > "${project}/.env" )
   fill_volume "martlet-${role}-configs" "${project}/files"
 
-  local port minutes ready_address detected_features=()
+  local port minutes ready_address tries detected_features=()
   port="$(conf_value "${conf}" port)"; minutes="$(conf_value "${conf}" ready_timeout_minutes)"
   [[ "${port}" =~ ^[0-9]{2,5}$ ]] || fail "Invalid port in role.conf."
   if [[ "${role_network}" == host ]]; then
@@ -2094,8 +2120,11 @@ cmd_add() {
     [[ -n "${line}" ]] || continue
     [[ "${line}" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "Invalid prepare entry in role.conf."
     say "Preparing ${role} (${line})$(role_container_running "${role}" && printf ' while the running one keeps working')"
-    role_compose "${role}" run --rm --no-deps -T -e MARTLET_PREPARE=1 "${line}" ||
-      fail "Preparing ${role} failed; the running one is unchanged. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
+    tries=0
+    until role_compose "${role}" run --rm --no-deps -T -e MARTLET_PREPARE=1 "${line}"; do
+      (( ++tries < 3 )) && recover_role_dns "${role}" "${role_network}" ||
+        fail "Preparing ${role} failed; the running one is unchanged. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
+    done
   done 3< <(conf_values "${conf}" prepare)
 
   local start_failed="Building or starting ${role} failed (the output above shows why). Check the host's disk space and network, then run 'martlet-host add ${role}' again: the build steps it finished are reused."
@@ -2144,8 +2173,11 @@ cmd_add() {
     [[ "${service}" =~ ^[a-z0-9][a-z0-9_-]*$ && "${step}" =~ ${safe} ]] || fail "Unsafe post_start entry in role.conf."
     read -r -a words <<< "${step}"
     say "Running in ${service}: ${step}"
-    role_compose "${role}" exec -T "${service}" "${words[@]}" ||
-      fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
+    tries=0
+    until role_compose "${role}" exec -T "${service}" "${words[@]}"; do
+      (( ++tries < 3 )) && recover_role_dns "${role}" "${role_network}" ||
+        fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
+    done
   done 3< <(conf_values "${conf}" post_start)
 
   local model_from model="${role}" previous=""
