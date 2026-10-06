@@ -43,7 +43,9 @@ public sealed class DiscordBot : IAsyncDisposable
         started.Ready += async ready =>
         {
             Publish(new(DiscordBotState.Online, ready.User.Username, ready.User.Id, started.Cache.Guilds.Count));
-            if (Ready is { } handler) await handler(started).ConfigureAwait(false);
+            if (Ready is { } features)
+                foreach (var handler in features.GetInvocationList().Cast<Func<GatewayClient, ValueTask>>())
+                    await handler(started).ConfigureAwait(false);
             try { await Commands.RegisterAsync(started.Rest, ready.ApplicationId).ConfigureAwait(false); }
             catch (Exception error) when (error is RestException or HttpRequestException or TaskCanceledException)
             {
@@ -55,8 +57,9 @@ public sealed class DiscordBot : IAsyncDisposable
         started.GuildDelete += _ => { Recount(started); return default; };
         started.MessageCreate += async message =>
         {
-            if (message.Author.Id == Status.BotId || Message is not { } handler) return;
-            await handler(message).ConfigureAwait(false);
+            if (message.Author.Id == Status.BotId || Message is not { } handlers) return;
+            foreach (var handler in handlers.GetInvocationList().Cast<Func<Message, ValueTask>>())
+                await handler(message).ConfigureAwait(false);
         };
         started.Disconnect += args =>
         {
