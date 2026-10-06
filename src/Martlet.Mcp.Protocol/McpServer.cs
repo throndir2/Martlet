@@ -1062,6 +1062,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         }),
+        Tool("work_sharing_status", "Devices > Sharing work from a data directory: the choices (work-sharing.json, the work-sharing " +
+            "shared setting: for Speaking, Thinking, Listening and Deep thinking whether it is shared when its computer is busy, " +
+            "the order chosen (this-pc being each companion PC's own host service) and the computers never used; which computers " +
+            "are kept for one companion PC), the paired computers the shared plan says run each job's engine, the computer each " +
+            "job uses now, and the order this PC (or deviceId) tries them in with the production planner (WorkSharing.Order). " +
+            "Host and device IDs only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            deviceId = new { type = "string" }
+        }),
+        Tool("work_sharing_check", "Rehearse Sharing work with the production planner (WorkSharing.Order) and queue (WorkQueue) on " +
+            "the four-computer example (three companion PCs with host services, machine 2 without a voice, machine 4 for lip-sync " +
+            "and pictures) with simulated computers that run one request at a time and turn another away at once, as a host's " +
+            "gateway does (job.busy), NOT real hosts or models: each companion's order with its own computer first, Thinking left " +
+            "unshared, a busy voice passed over at once, machine 2 waiting while both voices are busy and taken by whichever frees " +
+            "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
+            "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
+            "In-process; reads nothing.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -1314,6 +1332,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
+                "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
@@ -2472,7 +2492,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
                 if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
-                    "model-abilities" || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
+                    "model-abilities" or "work-sharing" || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();

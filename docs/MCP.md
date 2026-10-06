@@ -2294,8 +2294,42 @@ with first words after about 0.1 s and 16 tokens against about 1-3 s and
 and nothing leaves loopback. A paired host's `think` (desktop client, gateway,
 Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN.
 
-`think_longer_status` shows Companion › **Deep thinking** as replies use it
-(optional absolute `dataDirectory`, default the current user's): `settings`,
+`work_sharing_status` shows Devices › **Sharing work** (optional absolute
+`dataDirectory`, default the current user's; optional `deviceId`, default this
+PC's): `file` (`loaded` or `none`), `shared` (the `work-sharing` shared
+setting's canonical JSON), `isDefault`, `device`, `ownHost` (the pairing saved
+as this PC's own host service), `paired`, `planHosts`, and for each of
+`speaking`, `thinking`, `listening` and `deep-thinking`: `role` (the host role
+that does it), `shares` and `sharedByDefault` (Speaking and Listening yes,
+Thinking no), the `order` and `never` chosen, `planned` (the computer the job
+uses now, from `settings.json`), `runs` (paired computers the shared plan says
+run that role) and `tries` (the production `WorkSharing.Order` for that device;
+null for Deep thinking, whose places come from Companion › Deep thinking), and
+`kept` (computers kept for some companion PCs, with `usableHere`). Host and
+device IDs only.
+
+`work_sharing_check` rehearses the production planner and queue (`WorkQueue`)
+on the four-computer example (machines 1 and 3 companions with Chatterbox,
+machine 2 a companion with Deep thinking and no voice, machine 4 lip-sync and
+pictures) with simulated computers that run one request at a time and turn
+another away at once as a host's gateway does (`job.busy`), **NOT real hosts
+or models**. Each step reports `passed` and its detail: each companion's order
+with its own computer first; Thinking left unshared; a busy voice passed over
+at once (`WaitedMs` near 0); machine 2 waiting while both voices are busy and
+taken by whichever frees first (machine 3, `WaitedMs` about 250); four segments
+at once spread two and two; a computer kept for one companion PC or unticked
+for Speaking left out; an unanswering computer skipped; Deep thinking leaving
+out a kept computer; and the shared setting's round trip. `ok` is true when
+every step passed. On the desktop, `ui_snapshot` reads `WorkSharingStatus`
+(how many of this PC's requests another computer took since Martlet started)
+and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
+`WorkSharingPlace-<job>-<host>` ("1. m3-host. never used for it."),
+`WorkSharingHost-<host>` and the `WorkSharingShare-<job>`,
+`WorkSharingOwnFirst-<job>`, `WorkSharingUse-<job>-<host>`,
+`WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
+save `work-sharing.json` and so need `--allow-ui-effects`.
+
+`think_longer_status` shows Companion › **Deep thinking** as replies use it(optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
 *Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
 `delivery` *WhenFree* or *NextMessage*; `chosen`; `webResearch`, Companion ›
@@ -4347,7 +4381,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

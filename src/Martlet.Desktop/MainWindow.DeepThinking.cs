@@ -49,7 +49,7 @@ public partial class MainWindow
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var deep = store is null ? new DeepThinkingSettings() : DeepThinkingSettings.Load(store.DataDirectory);
         var routes = homeSettings?.Setup?.Routes ?? [];
-        var plan = DeepThinkingPool.For(deep, routes).Plan;
+        var plan = DeepThinkingPool.For(deep, routes, WorkSharingRoster.Settings(store?.DataDirectory), WorkSharingRoster.Device).Plan;
         var on = ThinkLongerSettings.Of(homeSettings?.Generation).On;
         var current = PlaceOf(deep, on);
         var place = deepPlaceShown ?? current;
@@ -699,7 +699,7 @@ public partial class MainWindow
             }
             deepPlaceShown = null;
             conversation?.ReloadDeepThinking();
-            var plan = DeepThinkingPool.For(next, homeSettings?.Setup?.Routes ?? []).Plan;
+            var plan = DeepThinkingPool.For(next, homeSettings?.Setup?.Routes ?? [], WorkSharingRoster.Settings(store?.DataDirectory), WorkSharingRoster.Device).Plan;
             ErrorLog.Info($"Deep thinking: now on {next.DescribeAll()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
             var turnedOn = !ThinkLongerSettings.Of(homeSettings?.Generation).On && await SetThinkLongerAsync(true);
             ActionText.Text = done + (turnedOn ? " Deep thinking is on again." : "") +

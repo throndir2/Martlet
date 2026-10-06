@@ -571,6 +571,7 @@ public partial class MainWindow
         }
         // Computers that use one of these hosts but aren't (yet) in the network still show, so every PC sees who is connected.
         foreach (var device in OutsideComputers(roster)) NetworkMembersPanel.Children.Add(PairedRow(device));
+        RenderWorkSharing();
     }
 
     /// <summary>Each computer paired with one of this PC's hosts that is not a member of the network (or of any network, on a

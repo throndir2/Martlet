@@ -165,6 +165,64 @@ talking to its own Ollama directly, so its replies never take the extra hop.
   own host service, and then the plan names it the same way. A Windows voice,
   Parakeet or whisper inside Martlet runs on each companion PC.
 
+## Sharing work between your computers
+
+The plan gives each job one computer, but a computer runs one voice, one
+Thinking reply and one transcription at a time: its gateway turns a second
+request away at once (`job.busy`). Before this, a companion PC whose voice
+computer was busy speaking for another companion PC lost that sentence.
+**Devices › Sharing work** decides what happens instead, and is the same on
+all your computers (`work-sharing.json`, the `work-sharing` shared setting).
+
+Each request goes through Martlet's queue (`WorkQueue`, `Martlet.Core.Cluster`):
+
+1. It goes to the first computer in its order. While that computer is free
+   nothing changes: no extra request, no added latency.
+2. A computer that is busy, or doesn't answer, or no longer runs the engine, is
+   passed over for the next in order at once.
+3. When every one is busy, the request waits in line and tries them again in
+   order every 100 ms and whenever one of this PC's own requests finishes, so
+   whichever computer frees first takes it (up to the request's deadline).
+4. A computer this PC already has a request running on goes last for its next
+   one, saving a round trip it would only refuse.
+
+The order (`WorkSharing.Order`) is deterministic and costs nothing: the paired
+computers the shared plan says run the job's engine (the same voice engine
+for Speaking; the same model for Thinking), from this PC's files. Without
+choices it is the computer the job uses now, then this PC's own host service,
+then the others, fewest plan jobs first. Per job you can:
+
+| Choice | Effect |
+| --- | --- |
+| *Use another computer when this one is busy* | On for Speaking and Listening. Off for Thinking: another computer's model starts your conversation without its prompt cache (a later first word) and pushes that computer's own conversation out of its cache, so a reply waits for its own computer unless you turn it on |
+| *Each companion PC tries its own computer first* | Puts `this-pc` first: every companion PC uses its own host service first, with no network hop |
+| **Up** / **Down** | Sets the order every companion PC tries the computers in |
+| *Use* (untick) | That computer never does this job, even when the plan names it (unless no other can) |
+
+And per computer, *Keep a computer for one companion PC* (**Every companion
+PC** or **Only** one): no other companion PC sends it work, whatever their
+order. Deep thinking keeps its own places (Companion › Deep thinking), but a
+computer unticked for it or kept for another companion PC can't run a think
+from this PC.
+
+For the four computers in the example (machines 1 and 3 companions with
+Chatterbox, machine 2 a companion without a voice, machine 4 for lip-sync and
+pictures) with *own computer first* on: machine 1 speaks on its own Chatterbox,
+machine 3 on its own, and machine 2 on machine 1, or machine 3 when machine 1
+is busy, or whichever of the two finishes first when both are. Keeping machine
+3 for itself leaves machine 2 only machine 1.
+
+Lip-sync, singing and pictures are not shared yet: each stays on its one
+computer. Thinking with Ollama on a companion PC itself talks to that Ollama
+directly, so the queue can't see those replies; Ollama queues them. The
+Devices card's status line (`WorkSharingStatus`) and the desktop log
+(`Sharing work: Speaking went to m3-host (1 busy) after 240 ms.`) say when a
+request went elsewhere. **Qualification:** the planner, queue, settings and
+Devices card are checked locally (`WorkSharingTests`,
+`WorkSharingRosterTests`, MCP `work_sharing_status`, `work_sharing_check` and
+the Devices card through `-Desktop`); requests between real hosts are **NOT
+RUN**.
+
 ## Failover
 
 With failover on for a job, when its host misses two consecutive checks
@@ -234,6 +292,7 @@ NVIDIA Build and its old key.
 | `smart-home` | What Martlet may do with Home Assistant: use it when asked, locks, doors and alarms, flexible requests | |
 | `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
 | `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
+| `work-sharing` | Devices › [Sharing work](#sharing-work-between-your-computers): which jobs go to another computer when theirs is busy, in what order, which computers never do a job and which are kept for one companion PC (`work-sharing.json`) | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 | `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 | `reminders.<device ID>` | One per computer, written only by that computer: the [reminders](CONVERSATION.md#reminders) set on it and what it did about anyone's (offered to say one, took it, said it, canceled it), so any companion PC can list, cancel and say them and the one used most recently says a due one once. Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |

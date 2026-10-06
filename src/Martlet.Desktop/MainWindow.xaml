@@ -343,6 +343,25 @@
                             <StackPanel x:Name="NetworkMembersPanel" AutomationProperties.Name="Computers in your network"/>
                         </StackPanel>
                     </Border>
+                    <!-- Sharing work: which computers take a job when the one doing it is busy (MainWindow.WorkSharing.cs, docs/CLUSTER.md) -->
+                    <Border x:Name="WorkSharingCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Sharing work">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE8AB;" Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Sharing work" FontSize="18" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                               Text="When the computer doing a job is busy, your companion PCs use another that runs it. The same on all your computers."/>
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock x:Name="WorkSharingStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="WorkSharingStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="WorkSharingJobsPanel" AutomationProperties.Name="Jobs your computers share"/>
+                            <StackPanel x:Name="WorkSharingHostsPanel" AutomationProperties.Name="Computers kept for one companion PC"/>
+                        </StackPanel>
+                    </Border>
                     <!-- Apps and API keys: keys that software outside the network uses to call your hosts (MainWindow.ApiKeys.cs, docs/API.md) -->
                     <Border x:Name="ApiKeysCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Apps and API keys">
                         <StackPanel>

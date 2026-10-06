@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Sync;
@@ -143,6 +144,7 @@ public partial class MainWindow
         SmartHomeKey => "what Martlet may do with Home Assistant",
         UpdatesKey => "app updates",
         ModelAbilitiesKey => "what Thinking models hear and see",
+        WorkSharingSettings.SharedKey => "sharing work between your computers",
         _ when SharedPc.IsKey(key) || SharedPc.IsRoleKey(key) => "whether this PC is a companion or a host",
         _ => key
     };
@@ -436,6 +438,22 @@ public partial class MainWindow
                 return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
             if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
             conversation?.ReloadAbilities();
+            return Task.FromResult(SharedApply.Done);
+        });
+        // Devices › Sharing work: which computers each job may go to when the one doing it is busy, in what order, and which
+        // computers are kept for one companion PC. The same on all computers, so every companion PC follows the same rules.
+        yield return new DelegateSection(WorkSharingSettings.SharedKey, "Sharing work", _ =>
+        {
+            var path = Path.Combine(directory, WorkSharingSettings.FileName);
+            var saved = WorkSharingSettings.Load(directory);
+            return Task.FromResult<SharedLocal?>(new(saved.Share(), null, saved.IsDefault, FileTime(path)));
+        }, (setting, _) =>
+        {
+            if (WorkSharingSettings.Parse(setting.Value) is not { } shared)
+                return Task.FromResult(SharedApply.Waiting("It was written by a newer Martlet. Update this PC to use it."));
+            if (!shared.Save(directory)) return Task.FromResult(SharedApply.Waiting("It couldn't be saved on this PC."));
+            WorkSharingRoster.Forget();
+            if (DevicesPage.IsVisible) RenderWorkSharing();
             return Task.FromResult(SharedApply.Done);
         });
     }

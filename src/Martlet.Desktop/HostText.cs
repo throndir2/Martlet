@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
@@ -32,15 +33,40 @@ internal static class HostPairingCredential
 }
 
 /// <summary>Streams replies from a paired host's Ollama through its pinned gateway, reading the pairing secret from
-/// Windows Credential Manager for each request (as <see cref="HostControl.CheckAsync"/> does).</summary>
+/// Windows Credential Manager for each request (as <see cref="HostControl.CheckAsync"/> does). A reply waits for a host busy
+/// with another companion PC's reply; with Thinking shared (Devices › Sharing work) it goes to the next paired computer that
+/// runs the same model instead (<see cref="WorkSharingRoster"/>). Deep thinking's own route is placed by its broker.</summary>
 internal sealed class HostTextClient : IHostTextClient
 {
     public async IAsyncEnumerable<string> StreamAsync(HostTextTarget target, TextModelSelection model, BoundedTextInput input,
         TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, GenerationSettings? generation,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        if (target.RouteId != SelfHostSetup.OllamaRouteId)
+        {
+            await foreach (var delta in ReplyAsync(target, model, input, limits, ids, epoch, deadline, generation, cancellationToken, true)
+                .ConfigureAwait(false))
+                yield return delta;
+            yield break;
+        }
+        IReadOnlyList<HostTextTarget> targets = [.. WorkSharingRoster.Order(WorkSharingRoster.DataDirectory, WorkSharingJobs.Thinking,
+                HostRoles.Ollama, model.UpstreamModelId, target.HostId)
+            .Select(place => place.Host is not { } host || host.HostId == target.HostId ? target : WorkSharingRoster.TextTarget(host, target.RouteId))];
+        await using var deltas = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Thinking, targets, t => t.HostId,
+                (t, token) => ReplyAsync(t, model, input, limits, ids, epoch, deadline, generation, token, false), WorkSharingRoster.Classify,
+                deadline, null, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+        while (await Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
+            yield return deltas.Current;
+    }
+
+    private async IAsyncEnumerable<string> ReplyAsync(HostTextTarget target, TextModelSelection model, BoundedTextInput input,
+        TextGenerationLimits limits, CorrelationIds ids, long epoch, DateTimeOffset deadline, GenerationSettings? generation,
+        [EnumeratorCancellation] CancellationToken cancellationToken, bool guarded)
+    {
         using var connection = Connect(target);
-        var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+        var routes = guarded ? await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false)
+            : await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
         var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == model.UpstreamModelId) ??
             throw Failed("reply", ProviderFailureCode.ModelNotFound, target.RouteId == HostRoute.DeepThinkingRouteId
                 ? $"the host's Deep thinking role doesn't run model {model.UpstreamModelId}"
@@ -62,7 +88,8 @@ internal sealed class HostTextClient : IHostTextClient
             generation?.Temperature ?? HostTextGenerationStream.Temperature, outputTokens, limits.MaxContextTokens,
             input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
-        while (await Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
+        while (await (guarded ? Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken) : deltas.MoveNextAsync().AsTask())
+            .ConfigureAwait(false))
             yield return deltas.Current;
     }
 

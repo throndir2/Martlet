@@ -31,7 +31,7 @@ internal sealed partial class LiveConversationController
         }
         var label = WebResearch.Label(arguments.Topic);
         if (!configured.ThinkLonger.Researches) return new(WebResearch.TurnedOff, true);
-        var pool = DeepThinkingPool.For(Volatile.Read(ref deepThinking), configured.Routes);
+        var pool = DeepPool(configured);
         var plan = pool.Plan;
         if (!plan.Available)
         {

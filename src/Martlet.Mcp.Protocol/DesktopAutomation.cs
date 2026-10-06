@@ -430,6 +430,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // with their public key pins, and the example request (it names $MARTLET_API_KEY, never the key). The key itself
         // (ApiKeyValue) is never returned.
         "ApiKeysStatus", "ApiKeyCreatedTitle", "ApiKeyHosts", "ApiKeyExample",
+        // Devices › Sharing work: how many of this PC's requests another computer took since Martlet started, per job, the last
+        // one's computer, how many were busy and how long it waited. Job names and host IDs only.
+        "WorkSharingStatus",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
         // status line (Martlet is running, listening, paused or watching). StayAwakeStatus (shown only when this PC runs its own
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
@@ -560,7 +563,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-",
         // Companion › Profiles: each profile's state ("CharacterProfileState-3f2a9c1b" reads "In use.", "Ready." or why a part
         // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name).
-        "CharacterProfileState-"];
+        "CharacterProfileState-",
+        // Devices › Sharing work: each job's line ("WorkSharingJob-speaking" reads "Speaking. When the computer doing it is busy
+        // ..."), each computer in its order ("WorkSharingPlace-speaking-diva-host" reads "1. diva-host. this PC's own; does it for
+        // this PC now."), each computer's keep line ("WorkSharingHost-diva-host" reads "diva-host. Kept for desk-1.") and its
+        // choice ("WorkSharingKeep-diva-host"), the Share and own-computer-first boxes ("WorkSharingShare-speaking",
+        // "WorkSharingOwnFirst-speaking"), each Use box ("WorkSharingUse-speaking-diva-host") and Up/Down buttons
+        // ("WorkSharingUp-speaking-diva-host"). Changing any of them saves work-sharing.json and shares it with your other
+        // computers, so it needs --allow-ui-effects. Host IDs, device IDs and fixed text only.
+        "WorkSharing"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

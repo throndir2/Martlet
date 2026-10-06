@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Voices;
@@ -231,22 +232,50 @@ internal static class F5Voices
     };
 }
 
-/// <summary>Speaks reply segments with a paired host's F5 voice through its pinned gateway: reads the route's reference
-/// voice from the F5 preset store and the pairing secret from Windows Credential Manager for each segment.</summary>
+/// <summary>Speaks reply segments with a paired host's voice through its pinned gateway: reads the route's reference voice
+/// from the F5 preset store and the pairing secret from Windows Credential Manager for each segment. Devices › Sharing work:
+/// when that computer is busy with another companion PC's voice, the segment goes to the next paired computer running the
+/// same voice engine (<see cref="WorkSharingRoster"/>), or waits for whichever frees first.</summary>
 internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
 {
     public async IAsyncEnumerable<byte[]> StreamAsync(HostSpeechTarget target, BoundedSpeechInput input, CorrelationIds ids,
         long epoch, DateTimeOffset deadline, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var reference = await ReadReferenceAsync(target, cancellationToken).ConfigureAwait(false);
-        using var connection = Connect(target);
-        var routes = await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
-        var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == target.ModelId) ??
-            throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, "the host isn't ready for speaking");
-        await using var frames = connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken)
+        var targets = Targets(target);
+        await using var frames = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Speaking, targets, t => t.HostId,
+                (t, token) => SpeakAsync(t, reference, input, ids, epoch, deadline, token), WorkSharingRoster.Classify, deadline, null,
+                cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => frames.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
             yield return frames.Current;
+    }
+
+    // The route's own computer first, then the others that run the same voice engine, in Devices › Sharing work's order.
+    private IReadOnlyList<HostSpeechTarget> Targets(HostSpeechTarget target)
+    {
+        if (SpeechEngines.ForRoute(target.RouteId) is not { } engine) return [target];
+        return [.. WorkSharingRoster.Order(dataDirectory, WorkSharingJobs.Speaking, engine.HostRoleKind, null, target.HostId)
+            .Select(place => place.Host is not { } host || host.HostId == target.HostId && place.Model is null ? target
+                : target with
+                {
+                    Origin = host.Pairing.Origin, HostId = host.HostId, SpkiFingerprint = host.Pairing.SpkiFingerprint,
+                    DeviceId = host.Pairing.DeviceId, CredentialId = HostPairingCredential.ToGuid(host.Pairing.CredentialId),
+                    ModelId = place.Model ?? target.ModelId
+                })];
+    }
+
+    private static async IAsyncEnumerable<byte[]> SpeakAsync(HostSpeechTarget target, HostSpeechReference reference,
+        BoundedSpeechInput input, CorrelationIds ids, long epoch, DateTimeOffset deadline,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var connection = Connect(target);
+        var routes = await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
+        var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == target.ModelId) ??
+            throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, $"{target.HostId} isn't ready for speaking");
+        await foreach (var frame in connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken)
+            .ConfigureAwait(false))
+            yield return frame;
     }
 
     private async Task<HostSpeechReference> ReadReferenceAsync(HostSpeechTarget target, CancellationToken token)
