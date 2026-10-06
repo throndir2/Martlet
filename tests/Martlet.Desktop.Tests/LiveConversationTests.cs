@@ -2469,6 +2469,30 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task ADueReminderComesUpOnItsOwnEvenWhenFinishedWorkWaitsForTheNextMessage() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { ThinkLonger = new() { Delivery = ThinkDelivery.NextMessage } } });
+        fixture.Answer("Hey, it's dishes time!");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var job = window.Remind("do the dishes", "do the dishes (they asked for it at 3:12 PM, for 4:12 PM)")!;
+            Assert.True(job.Kind.Notice);
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("a reminder they asked you for is due now", body);
+            Assert.Contains("do the dishes (they asked for it at 3:12 PM, for 4:12 PM)", body);
+            Click(window, "TasksChip");
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet reminded you.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void TheTaskChipCountsRunningReadyAndDoneTasks()
     {
         Assert.Equal("2 running", LiveConversationWindow.TasksChipLine(2, 0, 3));

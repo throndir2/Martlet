@@ -150,9 +150,15 @@ public sealed record SharedSettings
     /// computer records its own choice there, and any other computer may write it to make it switch.</summary>
     public const string RolePrefix = "role.";
 
-    /// <summary>Whether <paramref name="key"/> is about one computer (its own entry, or its role) rather than a setting.</summary>
+    /// <summary>The prefix of the entry where each computer keeps the reminders set on it and what it did about anyone's
+    /// ("reminders.desktop-a"): only that computer writes it.</summary>
+    public const string RemindersPrefix = "reminders.";
+
+    /// <summary>Whether <paramref name="key"/> is about one computer (its own entry, its role or its reminders) rather than a
+    /// setting.</summary>
     public static bool IsDeviceKey(string key) =>
-        key.StartsWith(DevicePrefix, StringComparison.Ordinal) || key.StartsWith(RolePrefix, StringComparison.Ordinal);
+        key.StartsWith(DevicePrefix, StringComparison.Ordinal) || key.StartsWith(RolePrefix, StringComparison.Ordinal) ||
+        key.StartsWith(RemindersPrefix, StringComparison.Ordinal);
 
     public static bool IsKey(string? key) => key is { Length: > 0 and <= 64 } && char.IsAsciiLetterLower(key[0]) &&
         key.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.');

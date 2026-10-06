@@ -222,6 +222,18 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Reminders
+
+On a PC that keeps reminders (any with a data folder), every reply on a route
+that does function calling also gets Martlet's own `reminders` (`action` set,
+list or cancel; `text`, `in_minutes` or `at` for set; `id` for cancel), last,
+after `manage_memories`, always worded the same. It never asks first. Set
+returns the id and the time it is due ("Reminder 3f9a1c set for 4:12 PM (1 h
+from now)"), so the model needs no clock of its own. *Recent tool use* lists
+each call (`Martlet > reminders: set`), never the text; the desktop log notes
+each offer, take and reminder said by id only (`Reminders:`). See
+[Reminders](CONVERSATION.md#reminders).
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -628,6 +640,18 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
 
+`outside_reachability_check` checks how each host in a data directory's
+network can be reached (optional absolute `dataDirectory`; `contactHosts`).
+Without `contactHosts: true` it only lists each host's `id` and how many
+`outsideAddresses` it has (`checkedNow: false`) and contacts nothing. With it,
+it dials each host's home address and each outside address directly, checks the
+TLS key against the roster's pin and asks `GET /health/live` (no credential):
+per host `home` and `outside` (by `address` number) with `reachable`, `ms` and
+`problem` (`refused`, `no answer in time`, `name not found`, `another key`,
+or `answered 429 ...` when the key answered but the guard throttled the
+address), and `wouldUse` (`home`, `outside <n>` or `none`, home first as the
+desktop dials). It never returns the addresses themselves.
+
 `exposure_selftest` (no arguments) rehearses a host reachable from outside
 home ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)) with the
 production code: one real gateway (`lab-exposure`, Kestrel, pinned TLS, a
@@ -648,7 +672,9 @@ closed the desktop reaches the host at its outside address, pinned to the same
 key, and the next connection tries it first; with the home address answering it
 is used at once (no wait on an outside one); with nothing answering the error
 names every address tried (`host.unreachable`); outside addresses set on the
-host itself are signed into the roster by a member desktop's network sync; and a
+host itself are signed into the roster by a member desktop's network sync; the
+reachability probe behind `outside_reachability_check` tells an answering, a
+closed and a wrong-key address apart; and a
 different computer with another key at the home address is skipped for the
 outside address. Not covered: a real internet source, a router port forward or
 an overlay.
@@ -2053,6 +2079,26 @@ filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
 `why`, `parallel` and `attempts`),
 never a task or result. Read-only.
 
+`reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
+from a data directory's `shared-settings.json` (optional absolute
+`dataDirectory`): `computers` with a reminders entry, `unreadable` entries
+(a newer Martlet's), `pending`, and each reminder's `id`, `text`, `due`, `set`,
+`setOn`, `state` (*Pending*, *Done*, *Canceled*, *Missed*), `settledBy`,
+`settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
+*Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
+exactly as the model gets it. Read-only.
+
+`reminders_check` rehearses reminders with the production code (`Reminders`,
+`ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
+PCs whose entries merge through the shared settings: set in minutes and at a
+local time on one, listed and canceled on the other, a refused call, both
+offering when it is due, the PC used most recently (5 s against 10 minutes
+idle) taking it while the other stays quiet, the conversation's message when
+Martlet brings it up on its own and the notes when the user talks first, said
+once and settled everywhere, a PC alone taking it at once and one far too late
+let go. `passed` and each step's `passed` and `detail`. No model, network or
+credentials.
+
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
 layout (`ThinkLonger`), conversation runtime and Chat Completions adapter
@@ -2494,12 +2540,16 @@ host service, so it needs `--allow-ui-effects`). The + beside the title,
 `NodeAction-AddComputer` and the page's `AddComputer`, so all three are
 passive clicks.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
-(status text: member with how many computers and hosts, waiting to join with
+(status text: member with how many computers and hosts and how many are reached
+from outside home right now, waiting to join with
 the check number, a host PC in no network that only watches, or in no network),
 `NetworkCheck` (syncs now; it contacts the paired hosts, so it is not a passive
 click), each computer's row title `NetworkMember-<desktop|host>-<ID>` (status
 text, for example `lab-gpu. Host, not paired with this PC yet; added on
-desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`,
+desktop-diva. 2 outside addresses. Reached from outside home (outside address 1).`;
+or *Not reachable at home or outside right now*; for a host with outside
+addresses also the guard's totals it reported, *Guard: 3 failed and 1 throttled
+request(s) since it started, 0 address(es) locked out now.*),
 and for another computer where it was last active, *Active now
 on diva-host.*) with `NetworkRemove-<desktop|host>-<ID>` and, for hosts,
 `NetworkOutside-<ID>` (opens the *Outside addresses* dialog, field
@@ -3789,7 +3839,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
