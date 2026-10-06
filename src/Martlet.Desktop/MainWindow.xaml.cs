@@ -421,7 +421,7 @@ public partial class MainWindow : ThemedWindow
             .Select(host => new AdvisorComputer(host.AdvisorGpu, host.HostId, HostsWindow.DescribeHardware(host)))
             .ToArray();
     }
-    private void Hosts_Click(object sender, RoutedEventArgs e) => OpenHosts(null, 0);
+    private void Hosts_Click(object sender, RoutedEventArgs e) => OpenHosts(0);
     /// <summary>Shows the prerequisites checklist in Martlet; it changes nothing until the user ticks and installs items.</summary>
     private void Prerequisites_Click(object sender, RoutedEventArgs e) => ChoosePrerequisitesAsync().Forget();
 
