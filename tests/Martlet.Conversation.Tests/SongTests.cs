@@ -71,6 +71,19 @@ public sealed class SongTests
     }
 
     [Fact]
+    public void SingingPromptAsksForTheCallInTheSameReplyWithoutALineToParrot()
+    {
+        var prompt = SongTools.Instructions(null)!;
+        Assert.Contains("call sing_song in the same reply", prompt, StringComparison.Ordinal);
+        Assert.Contains("choose something fitting yourself; don't ask", prompt, StringComparison.Ordinal);
+        Assert.Contains("never say you'll sing without calling sing_song", prompt, StringComparison.Ordinal);
+        // A whole sentence to say let small models answer with it and never call sing_song.
+        Assert.DoesNotContain("like \"", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Tell the user first", SongTools.SingDescription, StringComparison.Ordinal);
+        Assert.Contains("as soon as the user asks for a song", SongTools.SingDescription, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WrittenSongIsReadFromTheLyricsStep()
     {
         var arguments = new SingArguments("a cat", null, null, 60);

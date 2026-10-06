@@ -1990,7 +1990,8 @@ public partial class LiveConversationWindow : ThemedWindow
         if (snapshot?.ActiveTool is { } tool)
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…"
-                : tool == ThinkLonger.Name ? "Starting to think it over in the background…" : $"Using {tool}…";
+                : tool == ThinkLonger.Name ? "Starting to think it over in the background…"
+                : tool == SongTools.SingName ? "Starting a song in the background…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking. Esc stops it." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");

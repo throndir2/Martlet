@@ -3107,7 +3107,8 @@ singing. Ask Martlet to pick up where it left off.* or *Song 3fa2c19b0d71 is rea
 `LiveSongLine` holds, word by word as they are sung) and `LiveSongStop` (*Stop
 singing*, a passive click: it only ends the song musically), with the status
 line reading *Starting to think it over in the background…* while
-`think_longer` runs and *Martlet is bringing up what it worked on…* while
+`think_longer` runs, *Starting a song in the background…* while `sing_song`
+starts a song job, and *Martlet is bringing up what it worked on…* while
 Martlet's own report is on its way; Companion › **Deep thinking**'s
 `DeepThinkingNow` (*Thinks on diva (gemma4:27b), in parallel with the
 conversation.*, *On, but it can't think on the Thinking model (gemma4:e4b), so
