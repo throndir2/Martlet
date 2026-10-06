@@ -17,6 +17,7 @@ public sealed class DiscordRehearsalTransport : IDiscordCompanionTransport
     public List<(ulong UserId, string Text, bool Picture)> Directs { get; } = [];
     public List<DiscordPresenceState> Presences { get; } = [];
     public int Avatars { get; private set; }
+    public int Banners { get; private set; }
     public List<ulong> Deleted { get; } = [];
 
     public IReadOnlyDictionary<ulong, (ulong Guild, string Name, IReadOnlyList<DiscordOverwrite> Overwrites)> Channels
@@ -91,9 +92,13 @@ public sealed class DiscordRehearsalTransport : IDiscordCompanionTransport
         return Task.CompletedTask;
     }
 
-    public Task SetAvatarAsync(byte[] png, CancellationToken token)
+    public Task SetAvatarAsync(byte[] png, byte[]? banner, CancellationToken token)
     {
-        lock (gate) Avatars++;
+        lock (gate)
+        {
+            Avatars++;
+            if (banner is not null) Banners++;
+        }
         return Task.CompletedTask;
     }
 }

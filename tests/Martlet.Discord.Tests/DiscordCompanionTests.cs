@@ -230,7 +230,9 @@ public sealed class DiscordCompanionTests
             Assert.False((await companion.CallAsync(Ana, "Hiyori", null, CancellationToken.None)).Rang);
 
             var picture = new byte[] { 1, 2, 3 };
-            Assert.StartsWith("Bot picture updated", await companion.AvatarAsync(_ => Task.FromResult<byte[]?>(picture), "model:a", false, CancellationToken.None));
+            Assert.StartsWith("Bot picture updated", await companion.AvatarAsync(_ => Task.FromResult<byte[]?>(picture), "model:a", false, CancellationToken.None,
+                _ => Task.FromResult<byte[]?>(picture)));
+            Assert.Equal(1, transport.Banners);
             Assert.StartsWith("The bot's picture already", await companion.AvatarAsync(_ => Task.FromResult<byte[]?>(picture), "model:a", false, CancellationToken.None));
             Assert.StartsWith("Discord allows few", await companion.AvatarAsync(_ => Task.FromResult<byte[]?>(picture), "model:b", false, CancellationToken.None));
             Assert.Equal(1, transport.Avatars);

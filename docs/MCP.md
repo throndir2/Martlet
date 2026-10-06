@@ -1827,6 +1827,41 @@ problem: none.*; no message text, names or IDs). The live bot logs each
 answered, passed, dropped or failed turn as *Discord text: Answered (Mentions,
 addressed), 1 message(s)*.
 
+`discord_companion_check` shows Martlet's [Discord](DISCORD.md) companion
+state as saved in a data directory (`discord.json` and `discord-companion.json`:
+friends' names and how many take calls, friend requests waiting, recent
+declines, the call channels it made, when the bot's picture last changed; never
+the token), then rehearses the production `DiscordCompanion` against an
+in-memory Discord (`DiscordRehearsalTransport`; NOT Discord, no token, no
+network): `friendRequest` (`/friend ask` and asking twice, the owner's approval
+and its welcome DM, `/friend remove`), `call` (the private channel `Hiyori &
+Ana` with its permission `overwrites`: @everyone denied ViewChannel and Connect,
+the friend, the bot and the owner allowed to talk; the ring DM with its jump
+link and a server invite; calling again reuses the channel and joins; the
+channel is removed after the call; a friend who turned calls off is refused),
+`presence` (the status and text for each Martlet state and the 20-second rate
+limit) and `avatar` (the same character is skipped, a new one waits 30 minutes,
+Update now 10). Optional `person` and `character` name the rehearsal. With
+`requestFrom` (a Discord user ID as a string) and `requestName` it also files a
+friend request into the given `dataDirectory`, as `/friend ask` would; it
+refuses without an explicit (disposable) `dataDirectory`. The desktop then lists
+it on Companion › Discord › Friends and calls (see below).
+
+Companion › Discord's **Friends and calls** card: `DiscordFriendsStatus` (*2
+friends, 1 request waiting. No call now. Last call: ...*), `DiscordPresenceStatus`
+(*Discord status: Online, "Hanging out".*), `DiscordAvatarStatus` (when the
+bot's picture last changed and why it didn't), `DiscordFriendsResult` (what the
+last action did) and each friend's line `DiscordFriend-<user id>` (*Ana (123) —
+Martlet also knows Ana by voice* when exactly one voice in People has that
+name) are readable values. `DiscordFriendsAbout` (What Discord allows) only
+expands. `DiscordFriendApprove-<id>`, `DiscordFriendDecline-<id>`,
+`DiscordFriendMayCall-<id>`, `DiscordCall-<id>`, `DiscordFriendRemove-<id>`,
+`DiscordFriendAdd` (with `DiscordFriendAddId` and `DiscordFriendAddName`) and
+`DiscordAvatarUpdate` change `discord.json`/`discord-companion.json` or contact
+Discord, so they need `--allow-ui-effects` (Call and Update picture now only do
+something while the bot is connected). The desktop log notes *Discord: someone
+asked to be Martlet's friend* and *Discord: call_on_discord ran.*
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from
@@ -3665,7 +3700,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

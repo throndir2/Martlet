@@ -22,7 +22,8 @@ public interface IDiscordCompanionTransport
     Task<string> CreateInviteAsync(ulong channelId, CancellationToken token);
     Task SendDirectAsync(ulong userId, string text, byte[]? png, CancellationToken token);
     Task SetPresenceAsync(DiscordPresenceState presence, CancellationToken token);
-    Task SetAvatarAsync(byte[] png, CancellationToken token);
+    /// <summary>Sets the bot's avatar and, when given, its profile banner (both PNG) in one change.</summary>
+    Task SetAvatarAsync(byte[] png, byte[]? banner, CancellationToken token);
 }
 
 /// <summary>The result of calling someone: whether it rang, what to tell the owner and the channel used.</summary>
@@ -283,7 +284,8 @@ public sealed class DiscordCompanion
     /// <summary>Sets the bot's avatar to a picture of the character (<paramref name="source"/> names it, such as the model ID), only
     /// when the character changed (or <paramref name="manual"/>) and no more often than <see cref="DiscordAvatarPolicy"/> allows.
     /// Returns what happened, for the owner.</summary>
-    public async Task<string> AvatarAsync(Func<CancellationToken, Task<byte[]?>> picture, string source, bool manual, CancellationToken token)
+    public async Task<string> AvatarAsync(Func<CancellationToken, Task<byte[]?>> picture, string source, bool manual, CancellationToken token,
+        Func<CancellationToken, Task<byte[]?>>? banner = null)
     {
         if (Transport is not { Online: true } transport) return Avatar("Martlet's Discord bot isn't connected.");
         var current = State;
@@ -293,7 +295,9 @@ public sealed class DiscordCompanion
         var png = await picture(token).ConfigureAwait(false);
         if (png is not { Length: > 0 } || png.Length > DiscordAvatarPolicy.MaximumBytes)
             return Avatar("No picture of the character to use (show the character, or choose one with a picture).");
-        try { await transport.SetAvatarAsync(png, token).ConfigureAwait(false); }
+        var wide = banner is null ? null : await banner(token).ConfigureAwait(false);
+        if (wide is { Length: > DiscordAvatarPolicy.MaximumBytes }) wide = null;
+        try { await transport.SetAvatarAsync(png, wide, token).ConfigureAwait(false); }
         catch (Exception error) when (IsDiscordFailure(error))
         {
             // Count a refusal too, so a rate-limited Discord isn't asked again at once.
@@ -387,8 +391,12 @@ public sealed class NetCordCompanionTransport(GatewayClient client) : IDiscordCo
             Activities = [new UserActivityProperties("Custom Status", UserActivityType.Custom) { State = presence.Text }]
         }, cancellationToken: token).AsTask();
 
-    public Task SetAvatarAsync(byte[] png, CancellationToken token) =>
-        client.Rest.ModifyCurrentUserAsync(options => options.Avatar = new ImageProperties(ImageFormat.Png, png), cancellationToken: token);
+    public Task SetAvatarAsync(byte[] png, byte[]? banner, CancellationToken token) =>
+        client.Rest.ModifyCurrentUserAsync(options =>
+        {
+            options.Avatar = new ImageProperties(ImageFormat.Png, png);
+            if (banner is not null) options.Banner = new ImageProperties(ImageFormat.Png, banner);
+        }, cancellationToken: token);
 
     private static PermissionOverwriteProperties Overwrite(DiscordOverwrite overwrite) =>
         new(overwrite.Id, overwrite.Role ? PermissionOverwriteType.Role : PermissionOverwriteType.User)

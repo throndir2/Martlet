@@ -128,7 +128,9 @@ internal sealed partial class DiscordService : IDiscordCaller
     internal async Task<string> UpdateAvatarAsync(bool manual, CancellationToken token)
     {
         if (avatarPicture is not { } picture || avatarSource?.Invoke() is not { } source) return "No character to take a picture of.";
-        return await Companion.AvatarAsync(picture, source, manual, token).ConfigureAwait(false);
+        // The profile banner shows the whole character when it is on screen (Discord crops it to the banner's shape).
+        return await Companion.AvatarAsync(picture, source, manual, token,
+            characterPicture is { } whole ? cancel => whole(false, cancel) : null).ConfigureAwait(false);
     }
 
     /// <summary>Shows what Martlet is doing as the bot's status (rate limited).</summary>
