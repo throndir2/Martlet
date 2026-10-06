@@ -216,6 +216,15 @@ to bottom: the **map**, the **selected device** with what it does, and
     *Martlet host service* (check, update, status, pair again, forget) have
     their own rows; a role installed on a host but doing no job yet shows as
     *standing by* with *Hand ... to this computer*, *Change ... settings* and *Remove*.
+  - **Resources** (This PC and paired hosts): its hardware on one line, then a
+    bar each for graphics memory, memory, processor and disk split into one
+    segment per job (its share of the device, planned from Martlet's
+    footprint estimates through the placement engine), with a thin mark for
+    what the device reports in use now (this PC's memory, read live). Under
+    the bars: each job's share in words, what is left free for Martlet and
+    *Room for ...* lines from the engine (*Room for another Deep thinking
+    model (Gemma 4 12B) here.*). A host that hasn't reported its hardware
+    lists its jobs and says so.
   - **Give it more to do**: hand the device a job it doesn't do yet (*Hand
     thinking to this computer*...), *Run host services on this PC* or *Take
     lip-sync back to this PC*. *Install or remove roles* (collapsed) holds a
@@ -246,6 +255,13 @@ to bottom: the **map**, the **selected device** with what it does, and
   - **How Martlet reaches it** (hosts, open while no route is set) sets the
     SSH or Docker Desktop route; without one, Martlet copies the command to
     run on the host.
+- **What your computers can run**, under the selected device, sums up the
+  whole network from the placement engine's measure of today's setup: which
+  parts run on your computers (and on which), which online and which aren't
+  set up; the totals of graphics memory, memory, processor threads and free
+  disk; and what else would fit (*Your computers could also run 2 more Deep
+  thinking models (Gemma 4 12B) and Voice (Chatterbox Turbo).*). Add a
+  computer and this line grows, so you can see what a new machine buys.
 - **Settings for all devices** (companion mode) closes the page: **Check all
   hosts** reads every host's roles (explicit only), and **Keep Martlet the same
   on all my computers** (ON by default; unticking it saves `off`) makes Martlet

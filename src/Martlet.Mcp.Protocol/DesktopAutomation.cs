@@ -224,6 +224,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Devices: how many devices and how many need attention ("53 devices, 2 need attention. Select one to see details.") and,
         // in the list, how many it shows ("Showing 12 of 53 devices." or "No device matches \"gpu\".").
         "DevicesSummary", "DeviceListStatus",
+        // Devices' resource view (MainWindow.DeviceCapacity.cs): the selected device's hardware line ("NVIDIA GeForce RTX 5090
+        // (32 GB) · 64 GB memory · 32 processor threads"), what it has left ("Left free: 15 GB graphics memory, ...") and the
+        // network card's lines: what runs where ("On your computers: Thinking (gpu-box). Online: ... Not set up: ..."), the
+        // totals and what else fits ("Your computers could also run 2 more Deep thinking models (Gemma 4 12B)."). Hardware
+        // and Martlet's own estimates only.
+        "DeviceSpecs", "DeviceHeadroom", "CapacityCoverage", "CapacityTotals", "CapacityFits",
         // Settings for all devices: whether Martlet's settings are the same on the paired hosts (how many, when last checked, what
         // was last taken from another computer) and the settings this PC can't follow yet with why (never values or keys). Its
         // SettingsSyncClaim button makes every computer use this PC's settings, so it needs --allow-ui-effects. MemorySyncStatus:
@@ -561,6 +567,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
+        // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
+        // free for Martlet."; keys vram, ram, cpu, disk), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
+        // "Deep thinking (Gemma 4 12B): 25% graphics memory, 3% memory, 6% processor.") and what else fits there
+        // ("DeviceAlsoFits-0" reads "Room for another Deep thinking model (Gemma 4 12B) here.").
+        "DeviceResource-", "DeviceShare-", "DeviceAlsoFits-",
         // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
         // recognition (Available)"; the plan has no personal data).
         "AdvisorChoice-",
