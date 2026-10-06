@@ -72,6 +72,16 @@ public sealed class DefaultSetupTests
     }
 
     [Fact]
+    public void WithoutNvidiaSmiNoJobNeedsTheNvidiaDriver()
+    {
+        var plan = DefaultSetup.Plan([], new GpuInfo("NVIDIA GeForce RTX 4090", 24), 16, English, ramGb: 32);
+        Assert.True(plan.ThinkingOnGpu);
+        Assert.Null(plan.Voice);
+        Assert.False(plan.ListenOnGpu);
+        Assert.False(plan.LipSyncOnGpu);
+    }
+
+    [Fact]
     public void ThinkingElsewhereLeavesTheCardToTheVoice()
     {
         Assert.Null(Plan(8).Voice);

@@ -70,8 +70,19 @@ internal static class DefaultSetup
         if (thinkingGb is > 0 && specs.Gpus.Count > 0)
             specs = specs with { Gpus = [specs.Gpus[0] with { UsedGb = specs.Gpus[0].UsedGb + thinkingGb.Value }, .. specs.Gpus.Skip(1)] };
         var wanted = thinkingGb is null ? Conversation : Conversation.Where(c => c != PlanComponent.Thinking).ToArray();
-        var plan = PlacementEngine.Plan(new PlanRequest([specs]) { Preference = HostingPreference.PreferLocal, Wanted = wanted });
+        var plan = PlacementEngine.Plan(new PlanRequest([specs]) { Preference = HostingPreference.PreferLocal, Wanted = wanted }, Catalog(gpus));
         return FromPlacement(plan, gpus, windowsGpu, threads, language);
+    }
+
+    /// <summary>What this PC can set up: jobs that need an NVIDIA card (a voice engine, Whisper, Audio2Face) only when
+    /// nvidia-smi answers, as Martlet checks the driver through it, and Whisper only on a driver for CUDA 13.</summary>
+    internal static FootprintCatalog Catalog(IReadOnlyList<GpuNow> gpus)
+    {
+        var card = gpus.MaxBy(g => g.TotalGb);
+        var oldDriver = card?.DriverMajor is < ListeningAdvisor.MinimumDriver;
+        if (card is not null && !oldDriver) return FootprintCatalog.Default;
+        return new(FootprintCatalog.Default.Options.Where(o =>
+            !(o.IsLocal && o.Gpu == GpuRequirement.Nvidia && (card is null || o.Component == PlanComponent.Listening))));
     }
 
     /// <summary>The setup steps for what <paramref name="plan"/> places on this PC. Whisper on the card shares the voice
@@ -107,8 +118,11 @@ internal static class DefaultSetup
         {
             Machines = machines, Preference = preference, ConfiguredProviders = configuredProviders ?? [], Wanted = Conversation
         };
-        var plan = PlacementEngine.Plan(request);
-        var joining = network is null ? [] : PlacementEngine.SuggestForJoiningMachine(request with { Machines = [.. machines.Where(m => m.Id != specs.Id)] }, specs);
+        // Alone, this PC plans only what it can set up; in a network the hosts' NVIDIA jobs stay in the catalog.
+        var catalog = network is null ? Catalog(gpus) : FootprintCatalog.Default;
+        var plan = PlacementEngine.Plan(request, catalog);
+        var joining = network is null ? []
+            : PlacementEngine.SuggestForJoiningMachine(request with { Machines = [.. machines.Where(m => m.Id != specs.Id)] }, specs, catalog);
         return new(specs, preference, plan, FromPlacement(plan, gpus, windowsGpu, specs.CpuThreads, language), joining);
     }
 }
@@ -128,10 +142,14 @@ internal sealed record WelcomePlan(MachineSpecs Specs, HostingPreference Prefere
     internal MachineUsage? Here => Placement.Usage(Specs.Id);
 
     /// <summary>A component's share of this PC in percent: graphics memory (of the card it is on), memory and processor.</summary>
+    /// <summary>What the plan's primary parts use here (a backup Thinking model is shown but not set up).</summary>
+    private IEnumerable<UsageItem> Primary(MachineUsage here) =>
+        here.Items.Where(i => Placement.Primary(i.Component) is { MachineId: { } id } a && id == Specs.Id && a.Option.Id == i.OptionId);
+
     internal (int Vram, int Ram, int Cpu) Share(PlanComponent component)
     {
         if (Here is not { } here) return (0, 0, 0);
-        var items = here.Items.Where(i => i.Component == component).ToList();
+        var items = Primary(here).Where(i => i.Component == component).ToList();
         int Percent(double used, double capacity) => capacity <= 0 ? 0 : (int)Math.Round(used / capacity * 100);
         var vram = items.Where(i => i.GpuIndex is not null).Sum(i => Percent(i.Use.VramGb, here.Gpus[i.GpuIndex!.Value].TotalGb));
         return (vram, Percent(items.Sum(i => i.Use.RamGb), Specs.RamGb), Percent(items.Sum(i => i.Use.CpuThreads), Specs.CpuThreads));
@@ -143,8 +161,9 @@ internal sealed record WelcomePlan(MachineSpecs Specs, HostingPreference Prefere
         if (Here is not { } here) return (0, 0, 0);
         var card = here.Gpus.FirstOrDefault();
         int Percent(double used, double capacity) => capacity <= 0 ? 0 : (int)Math.Round(used / capacity * 100);
-        return (card is null ? 0 : Percent(here.Items.Where(i => i.GpuIndex == card.Index).Sum(i => i.Use.VramGb), card.TotalGb),
-            Percent(here.Ram.Used, Specs.RamGb), Percent(here.Cpu.Used, Specs.CpuThreads));
+        var items = Primary(here).ToList();
+        return (card is null ? 0 : Percent(items.Where(i => i.GpuIndex == card.Index).Sum(i => i.Use.VramGb), card.TotalGb),
+            Percent(items.Sum(i => i.Use.RamGb), Specs.RamGb), Percent(items.Sum(i => i.Use.CpuThreads), Specs.CpuThreads));
     }
 
     internal static string Where(Assignment assignment) => assignment.MachineId switch

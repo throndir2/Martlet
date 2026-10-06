@@ -165,7 +165,9 @@ public partial class MainWindow
             (welcomeGpus.Count > 0 ? $", {Gb(card.UsedGb)} in use now" : ""));
         SpecRow("Ram", "Memory", machine.MemoryGb is null ? $"unknown (planned as {Gb(specs.RamGb)})" : Gb(specs.RamGb));
         SpecRow("Cpu", "Processor", $"{specs.CpuThreads} threads" + (machine.Processor is { } cpu ? $" · {cpu}" : ""));
-        WizardSpecs.Text = DescribeSpecs(specs);
+        WizardSpecs.Text = DescribeSpecs(specs) + (card is { IsNvidia: true } && welcomeGpus.Count == 0
+            ? ". Martlet can't reach the NVIDIA driver (nvidia-smi), so jobs that need it stay on the processor or online"
+            : "");
         WizardSpecsNextButton.IsEnabled = true;
         ErrorLog.Info($"Welcome: this PC has {WizardSpecs.Text}.");
     }

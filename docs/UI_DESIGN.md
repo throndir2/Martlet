@@ -47,8 +47,8 @@ obvious next step at every stage, and a living map of the user's computers.
 ## Stages and surfaces
 
 ```text
-first launch ──> Welcome tour ──┬── "Talk with my companion here" ──> Home (what needs attention ─> ready)
-                                └── "Lend this PC to Martlet"     ──> Host dashboard (host service)
+first launch ──> Welcome wizard ──┬── new or joined network › hardware › preference › suggestion ──> Home (what needs attention ─> ready)
+                                  └── "This PC only lends its power"                              ──> Host dashboard (host service)
 Every mode: Home · Devices (map) · Companion* · Creations · Background tasks · Diagnostics · Settings      (* companion mode only)
 ```
 
@@ -62,38 +62,38 @@ Each page answers one question, so no two pages do the same thing:
 | **Background tasks** | What is Martlet working on, and how did it go? | No. It lists long steps (setup, updates, pairing, downloads) running or finished this session, shows their window again and cancels them after asking. |
 | **Settings** | How does the app itself behave? | Appearance, this PC's role, updates, tools. |
 
-### 1. Welcome tour (first launch)
+### 1. Welcome wizard (first launch)
 
 This full-window overlay appears when no device-role choice has been saved
 (`device-role.txt`). The installer asks no setup questions, so this is where
-setup starts. It has up to three short cards, animated between steps and marked
-with step dots:
+setup starts. Its cards are animated between steps and marked with step dots;
+[WELCOME_WIZARD.md](WELCOME_WIZARD.md) has the full flow, the old one and the
+reasons:
 
 1. **Hi, I'm Martlet.** One sentence about what Martlet does, plus *Let's begin*.
-   *Skip for now* leaves the tour and uses companion mode.
-2. **What's this computer for?** Two large choice cards:
-   - *Talk with my companion here* (the PC you sit at).
-   - *Lend this PC to Martlet* (a spare or gaming PC with a GPU that runs heavy
-     parts, such as lip-sync, for another PC).
-3. **How would you like to start?** (companion mode) *Set it all up for me
-   (recommended)* (on a PC not paired with other computers) reads this PC's
-   graphics card and, after one confirmation, sets up Thinking (the smallest
-   local model that hears, Gemma 4 E2B, in Ollama), Voice (a voice engine on the
-   NVIDIA card when it has room beside Thinking, otherwise a Windows voice) and
-   Listening (the default microphone with Parakeet on the processor, or Whisper
-   on the card when room is left after the voice); its line under the title
-   shows the plan. *Recommend a setup for me*
-   opens the setup advisor (its plan adds *Install on this PC* for what it runs
-   here), and *I know what I want* opens Companion › *Thinking*. In host mode,
-   the tour ends on the host dashboard.
+   *Skip for now* leaves the wizard and uses companion mode.
+2. **Is Martlet already on another of your computers?** *No, this is my first
+   one* (start a new Martlet network) or *Yes, join my Martlet network*, which
+   lists the Martlet computers found on the local network and joins one through
+   *Add a computer*'s check-number request. A link makes this a host PC instead.
+3. **Here's what this PC has.** Graphics card and its memory (and what is in use
+   now), memory and processor threads.
+4. **Where may Martlet do its thinking?** *Keep everything on my computers* or
+   *Free online services are fine* (a free NVIDIA key).
+5. **Here's what fits this PC** (or *what this PC can do for your network*): the
+   placement engine's suggestion for Thinking, Voice, Listening and Lip-sync,
+   each with bars for its share of graphics memory, memory and processor and
+   the reason, what's left out and why, and the totals. *Use these
+   suggestions* is the one-click path; *Ask me three questions instead* opens
+   the setup advisor and *I'll choose myself* opens Companion › *Thinking*.
+6. **Get your free NVIDIA key** (only when Thinking goes online): numbered
+   steps, *Open build.nvidia.com*, the key box and its consent.
 
-The tour saves only the device role; it contacts nothing and installs nothing
-until you choose *Set it all up for me* and confirm.
-Each setup installs what it needs (Thinking's *This PC* installs Ollama, the
-advisor's plan installs its items), and **Prerequisites** under Settings › Tools
-installs any item by hand. A tick list of single
-prerequisites was removed because it set up only a fragment of any plan.
-Settings > *This PC's role* changes the role or replays the tour.
+Accepting closes the wizard on Home and asks the one *Set it all up for me*
+confirmation before anything is downloaded or installed, then sets up what the
+plan puts on this PC and lip-sync (Audio2Face when the card has room, otherwise
+the voice's loudness). The wizard saves only the device role until then.
+Settings > *This PC's role* changes the role or replays the wizard.
 
 ### 2. Home (main PC)
 

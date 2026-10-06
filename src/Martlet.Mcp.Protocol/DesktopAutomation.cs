@@ -547,8 +547,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StepDetail-", "StepState-", "Step-",
         // The welcome wizard: each Martlet found ("WizardFound-0": name, address, version and hosts), each hardware line
         // ("WizardSpecRow-Vram") and each suggested part ("WizardPlanItem-Thinking": what, where, its % of graphics memory,
-        // memory and processor, and why).
-        "WizardFound-", "WizardSpecRow-", "WizardPlanItem-",
+        // memory and processor, and why) and, after joining a network, what changes ("WizardJoinSuggestion-0").
+        "WizardFound-", "WizardSpecRow-", "WizardPlanItem-", "WizardJoinSuggestion-",
         // Companion › Discord › Friends and calls: each friend's line ("DiscordFriend-123" reads "Ana (123) — Martlet also knows
         // Ana by voice"). Never a token.
         "DiscordFriend-",

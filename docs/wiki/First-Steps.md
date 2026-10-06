@@ -1,27 +1,29 @@
 # First Steps
 
-After installing, Martlet helps you choose this PC's role and how to start.
+After installing, Martlet's welcome wizard sets this PC up in a few clicks.
 
 ![Home page](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/home.png)
 
-## 1. Choose this PC's role
+## 1. Start a new Martlet network, or join yours
 
-- **Talk with my companion here**: this is the PC where you type, talk, hear replies and show the character.
-- **Lend this PC to Martlet**: this PC is a host that lends compute to another Martlet companion.
+- **No, this is my first one**: this PC starts your Martlet network. Add your other computers later.
+- **Yes, join my Martlet network**: Martlet looks for your other computers on this network. Press **Join**, then **Allow** on the other computer when both show the same check number.
+- **This PC only lends its power to my other computers**: this PC is a host.
 
 Change it later in **Settings › This PC's role**.
 
-## 2. Set it all up
+## 2. Let Martlet suggest a setup
 
-On **Home** (or the tour's last step), choose **Set it all up for me**. Martlet reads this PC's graphics card and, after one confirmation, sets up:
+Martlet reads this PC's graphics card, memory and processor, then asks whether to **keep everything on my computers** or whether **free online services are fine**. It suggests what runs where, with how much of the graphics card, memory and processor each part uses:
 
-| Job | Default |
+| Job | Typically |
 | --- | --- |
-| **Thinking** | The smallest local model that also hears your voice (Gemma 4 E2B) in Ollama on this PC. |
-| **Voice** | A voice engine (Chatterbox Turbo) on the NVIDIA graphics card when it has room beside Thinking; otherwise a Windows voice on the processor. It speaks with a Windows voice until the engine is ready. |
-| **Listening** | Your Windows default microphone, with Parakeet on the processor, or Whisper on the graphics card when room is left after the voice. |
+| **Thinking** | Gemma 4 E2B in Ollama on the graphics card; with free online services, NVIDIA Build (the wizard walks you through the free key). |
+| **Voice** | Chatterbox Turbo on an NVIDIA graphics card with room, otherwise a Windows voice. |
+| **Listening** | Your default microphone with Parakeet on the processor, or Whisper on a card with room to spare. |
+| **Lip-sync** | Audio2Face on a big NVIDIA card, otherwise the mouth follows the voice's loudness. |
 
-The voice gets the graphics card before listening. A PC paired with your other computers uses their setup instead. To choose yourself, use **Set up thinking** or **Get a recommendation**:
+Press **Use these suggestions** and confirm once; Martlet installs what's needed and leaves you on Home. **Set it all up for me** on Home does the same for anything still missing. The voice gets the graphics card before listening. A PC paired with your other computers uses their setup instead. To choose yourself, use **Set up thinking** or **Get a recommendation**:
 
 | Choice | Use it when |
 | --- | --- |
