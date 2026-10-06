@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome }
+internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -33,7 +33,7 @@ internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb, bool Hears);
 
 /// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
-/// Character, Personality, Lorebook, Memory; What it does: Smart home). Each job page asks where the job runs (this PC by default, another of your computers, or a
+/// Profiles, Character, Personality, Lorebook, Memory; What it does: Smart home). Each job page asks where the job runs (this PC by default, another of your computers, or a
 /// cloud provider; voice loudness for lip-sync) and shows only that place's fields, including the API key for a cloud provider.
 /// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
@@ -112,7 +112,7 @@ public partial class MainWindow
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
         CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
-        CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
+        CompanionTab.Profiles or CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
@@ -134,6 +134,7 @@ public partial class MainWindow
         CompanionTab.Listening => "Listening",
         CompanionTab.Vision => "Vision",
         CompanionTab.LipSync => "Lip-sync",
+        CompanionTab.Profiles => "Profiles",
         CompanionTab.Character => "Character",
         CompanionTab.Personality => "Personality",
         CompanionTab.Prompts => "Prompts",
@@ -155,6 +156,7 @@ public partial class MainWindow
         CompanionTab.Listening => "\uE720",
         CompanionTab.Vision => "\uE890",
         CompanionTab.LipSync => "\uE8BD",
+        CompanionTab.Profiles => "\uE748",
         CompanionTab.Character => "\uE77B",
         CompanionTab.Personality => "\uE76E",
         CompanionTab.Prompts => "\uE943",
@@ -176,6 +178,7 @@ public partial class MainWindow
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
         CompanionTab.Vision => "Choose whether Martlet can see your screen or camera once you press Start watching.",
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
+        CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
         CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
         CompanionTab.Personality => "Edit Martlet's personas and response style.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
@@ -340,6 +343,7 @@ public partial class MainWindow
             case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
             case CompanionTab.Vision: RenderVisionPage(body); break;
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
+            case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
             case CompanionTab.Prompts: RenderPromptsTab(body); break;
@@ -1378,6 +1382,7 @@ public partial class MainWindow
             modelStack.Children.Add(modelNote);
         }
         page.Children.Add(modelCard);
+        page.Children.Add(ProfilesLinkCard());
         page.Children.Add(CharacterActionsCard());
         page.Children.Add(CharacterModelsCard());
         page.Children.Add(SpeechDisplayCard());
@@ -1595,6 +1600,8 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("Personas"),
             Note("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.", new Thickness(0, 0, 0, 8)),
             Row(PageButton("Edit personality", () => Companion_Click(this, new RoutedEventArgs()), primary: true, id: "OpenCompanion"))));
+
+        page.Children.Add(ProfilesLinkCard());
 
         page.Children.Add(Card(Heading("Character cards"),
             Note("Import a PNG, JSON or CHARX character card to create a persona.", new Thickness(0, 0, 0, 8)),
