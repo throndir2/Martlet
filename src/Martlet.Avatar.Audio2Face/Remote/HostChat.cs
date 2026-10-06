@@ -26,6 +26,26 @@ public sealed record HostRoute(
     public const string XttsRouteId = "martlet.gateway.xtts-synthesis.v1";
     public const string GptSovitsRouteId = "martlet.gateway.gpt-sovits-synthesis.v1";
     public const string DiaRouteId = "martlet.gateway.dia-synthesis.v1";
+
+    /// <summary>The route as this PC saves it when a job moves to the host: its advertised identity and limits, observed now.</summary>
+    public GatewayRouteSnapshot Snapshot(SetupRouteType routeType) => new()
+    {
+        SchemaVersion = 1, RouteType = routeType, RegistryId = SelfHostSetup.RegistryId,
+        RegistryVersion = SelfHostSetup.RegistryVersion, RouteId = RouteId, Path = Path, ContractId = ContractId,
+        ContractVersion = ContractVersion, DestinationId = DestinationId, WorkerId = WorkerId,
+        WorkerPackageRevision = AdapterVersion, AdapterVersion = AdapterVersion, ModelId = ModelId,
+        ModelRevision = ModelRevision, ModelSha256 = ModelSha256, ArtifactIdentitySha256 = ArtifactIdentitySha256,
+        MaximumRequestBytes = MaximumRequestBytes, MaximumInputBytes = MaximumInputBytes,
+        MaximumOutputBytes = MaximumOutputBytes, MaximumEventBytes = MaximumEventBytes, MaximumEvents = MaximumEvents,
+        MaximumStreamBytes = MaximumStreamBytes, MaximumDurationSeconds = (int)Math.Ceiling(MaximumDuration.TotalSeconds),
+        Cancellation = Cancellation switch
+        {
+            "discard_only" => GatewayCancellationMode.DiscardOnly,
+            "cooperative_compute_cancel" => GatewayCancellationMode.CooperativeComputeCancel,
+            _ => GatewayCancellationMode.RequestAbort
+        },
+        ObservedAtUtc = DateTimeOffset.UtcNow, ProbeRevision = Guid.NewGuid()
+    };
 }
 
 /// <summary>One earlier message of the conversation sent with a host chat request.</summary>

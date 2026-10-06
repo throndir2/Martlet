@@ -59,6 +59,24 @@ internal static class DeepThinkingRehearsal
                 deepRoute.ContractId == thinkingRoute.ContractId && deepRoute.MaximumDuration == thinkingRoute.MaximumDuration;
             return (ok, string.Join("; ", routes.Select(r => $"{r.RouteId} {r.Path} {r.ModelId} (up to {r.MaximumDuration.TotalMinutes:0} min)")));
         });
+        await Run("This PC can move Thinking to the host: the route it advertises (with its long-think bound) saves as the job's route", () =>
+        {
+            if (thinkingRoute is null) return Task.FromResult((false, "NOT RUN: Thinking's route is missing"));
+            var endpoint = new GatewayEndpointSettings
+            {
+                SchemaVersion = 1, Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
+                DeviceRole = SelfHostSetup.GatewayRole
+            };
+            var settings = HostHandoff.ToHost(SetupSettings.Begin(null), SetupRouteType.GatewayOllama, endpoint, Guid.NewGuid(),
+                pairing.DeviceId, thinkingRoute.Snapshot(SetupRouteType.GatewayOllama));
+            settings.Validate();
+            var saved = settings.Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
+            var ok = saved is { Enabled: true, RouteType: SetupRouteType.GatewayOllama } && saved.GatewaySnapshot is { } snapshot &&
+                snapshot.ModelId == thinkingRoute.ModelId &&
+                snapshot.MaximumDurationSeconds == (int)thinkingRoute.MaximumDuration.TotalSeconds;
+            return Task.FromResult((ok, $"saved Thinking on {saved.Gateway?.HostId} with model {saved.GatewaySnapshot?.ModelId}, " +
+                $"up to {saved.GatewaySnapshot?.MaximumDurationSeconds} s a request"));
+        });
         await Run("A think on the Deep thinking route runs while a reply streams on Thinking's route; the reply finishes first", async () =>
         {
             if (thinkingRoute is null || deepRoute is null) return (false, "NOT RUN: a route is missing");

@@ -75,6 +75,24 @@ public sealed class SelfHostSettingsTests : IDisposable
     }
 
     [Fact]
+    public void GatewaySnapshotSavesAHostsLongThinkBoundAndNothingLonger()
+    {
+        // A host's Ollama route lets a background think run fifteen minutes; handing Thinking to that host saves it as is.
+        Assert.Equal(15 * 60, SelfHostSetup.MaximumGatewayRouteDurationSeconds);
+        var snapshot = Snapshot(SetupRouteType.GatewayOllama, "fixture-llm") with
+        {
+            MaximumDurationSeconds = SelfHostSetup.MaximumGatewayRouteDurationSeconds
+        };
+        var settings = HostHandoff.ToHost(SetupSettings.Begin(null), SetupRouteType.GatewayOllama, Endpoint(), Guid.NewGuid(),
+            "fixture-device", snapshot);
+        settings.Validate();
+        Assert.Equal(15 * 60, settings.Setup!.Routes.Single(r => r.Role == SetupRole.Llm).GatewaySnapshot!.MaximumDurationSeconds);
+
+        var tooLong = snapshot with { MaximumDurationSeconds = SelfHostSetup.MaximumGatewayRouteDurationSeconds + 1 };
+        Assert.Contains("route limits", Assert.Throws<ContractException>(tooLong.Validate).Message);
+    }
+
+    [Fact]
     public async Task HistoricalOpenAiSettingsUpgradeAtomicallyWithoutChangingRouteBehavior()
     {
         var current = SetupSettings.SelectRoute(
