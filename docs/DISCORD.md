@@ -218,6 +218,13 @@ and becomes the *Picture* background choice; if that file is gone the camera goe
 add a Window Capture of *Martlet camera*, add a Chroma Key filter for a color background (a picture needs none), **Start
 Virtual Camera**, then pick **OBS Virtual Camera** as your camera in Discord. Martlet ships no virtual camera driver.
 
+**Martlet changes its own background.** While the mode is on, every reply on a route that does function calling also gets
+`set_camera_background`: when someone in the call (or you) asks for a different background, or a new one fits, Martlet
+switches to a plain color (`color`), one of its pictures (`picture`, a creation id from `list_creations`), or draws a new
+16:9 picture (`draw`, while Companion › Pictures has a place) as an ordinary `picture-N` background job that is kept in
+Creations and becomes the background when it's ready. A picture goes through the same `discord-camera-background` file
+as the card's choices, so it stays the background until changed, and shows at once while the camera view is open.
+
 **Settings and status.** `discord-calls.json` (`DiscordCallPreferences`): `On`, `Capture`, `SeeSpeakers`, `OwnerName`,
 `OutputId`/`OutputName`, `AlsoSpeakers`, `BargeIn`, `CameraBackground`, `CameraPicture` (`File`, `Creation` or `Drawn`). The card's status lines, *Check this PC* and MCP's
 `discord_call_check` (a doctor check plus a simulated call utterance) are described in [MCP](MCP.md).

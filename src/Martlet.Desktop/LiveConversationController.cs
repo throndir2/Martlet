@@ -2112,7 +2112,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
     /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
-    /// docs/CREATIONS.md), then manage_memories while memory is on. Null when there are none.</summary>
+    /// docs/CREATIONS.md), then manage_memories while memory is on, then reminders, call_on_discord and set_camera_background
+    /// while they apply. Null when there are none.</summary>
     private BuiltInTools? BuiltIns(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation)
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
@@ -2163,7 +2164,33 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // connection).
         if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
             own.Add((DiscordCallTool.Definition, (call, token) => CallOnDiscordAsync(caller, call, token)));
+        // set_camera_background last, while Martlet is in the owner's Discord calls (the saved choice only).
+        if (configured.SupportsTools && CallCamera is { Offered: true } camera)
+            own.Add((CameraBackgroundTool.Definition, (call, token) => SetCameraBackgroundAsync(operation, configured, camera, call, token)));
         return own.Count == 0 ? null : new(own, guidance);
+    }
+
+    /// <summary>Changes the webcam background in the owner's Discord calls; null while that isn't wired.</summary>
+    internal ICallCamera? CallCamera { get; set; }
+
+    /// <summary>set_camera_background: a color or a kept picture at once; a new picture is drawn first (draw_picture's job) and
+    /// used when it's ready.</summary>
+    private async ValueTask<ConversationToolResult> SetCameraBackgroundAsync(LiveConversationOperation operation,
+        LiveConversationConfiguration configured, ICallCamera camera, TextToolCall call, CancellationToken token)
+    {
+        var (arguments, problem) = CameraBackgroundTool.Parse(call.ArgumentsJson);
+        if (arguments is null)
+        {
+            tools?.Record("Martlet", CameraBackgroundTool.Name, "invalid arguments", "", true);
+            return new(problem!, true);
+        }
+        if (arguments.Draw is { } draw)
+            return StartPicture(operation, configured, draw, CameraBackgroundTool.Name,
+                (creation, later) => camera.SetBackgroundAsync(null, creation.Key, drawn: true, later));
+        var result = await camera.SetBackgroundAsync(arguments.Color, arguments.Picture, drawn: false, token).ConfigureAwait(false);
+        tools?.Record("Martlet", CameraBackgroundTool.Name, arguments.Color is { } color ? "color " + color : "picture", "", false);
+        ErrorLog.Info($"Discord call: set_camera_background chose {(arguments.Color is { } chosen ? chosen.ToString().ToLowerInvariant() : "a picture")}.");
+        return new(result);
     }
 
     /// <summary>Rings a Discord friend for call_on_discord; null while Discord isn't wired.</summary>
@@ -2709,11 +2736,20 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             tools?.Record(server, PictureTools.DrawName, "invalid arguments", "", true);
             return new(problem!, true);
         }
+        return StartPicture(operation, configured, arguments, PictureTools.DrawName, then: null);
+    }
+
+    /// <summary>Starts a picture job for <paramref name="tool"/>; <paramref name="then"/> runs once the picture is kept (and its
+    /// words are added to the note the conversation gets).</summary>
+    private ConversationToolResult StartPicture(LiveConversationOperation operation, LiveConversationConfiguration configured,
+        DrawArguments arguments, string tool, Func<Creation, CancellationToken, Task<string>>? then)
+    {
+        const string server = "Martlet";
         var maker = dataDirectory is null ? null
             : PictureClient.For(dataDirectory, configured.Profile, configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm));
         if (maker is null)
         {
-            tools?.Record(server, PictureTools.DrawName, "not started: pictures off", arguments.About, false);
+            tools?.Record(server, tool, "not started: pictures off", arguments.About, false);
             return new(PictureTools.Unavailable("pictures aren't set up (Companion › Pictures)"), true);
         }
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
@@ -2722,24 +2758,24 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             Device = HostSetupCommands.SuggestedDeviceId(), Computer = Environment.MachineName,
             Persona = configured.Persona?.Name is { Length: > 0 } persona ? persona : null
         };
-        var start = jobs.Start(PictureTools.Kind, arguments.About, (job, token) => MakePictureAsync(job, arguments, maker, author, token));
+        var start = jobs.Start(PictureTools.Kind, arguments.About, (job, token) => MakePictureAsync(job, arguments, maker, author, then, token));
         if (start.Job is not { } started)
         {
             (maker as IDisposable)?.Dispose();
-            tools?.Record(server, PictureTools.DrawName, "not started: " + start.Refusal, arguments.About, false);
+            tools?.Record(server, tool, "not started: " + start.Refusal, arguments.About, false);
             ErrorLog.Info($"Pictures: a new picture wasn't started ({start.Refusal}).");
             return new(PictureTools.Refused(start), true);
         }
-        tools?.Record(server, PictureTools.DrawName, "started " + started.Id, arguments.About, false);
+        tools?.Record(server, tool, "started " + started.Id, arguments.About, false);
         ErrorLog.Info($"Pictures: started {started.Id} ({PictureShapes.Name(arguments.Shape)}, {arguments.Description.Length} characters) on {maker.Where}; " +
             $"{jobs.StartedWithinHour(PictureTools.KindName)} of {PictureTools.PerHour} this hour.");
-        return new(PictureTools.Started(started, toldUser, maker.Where));
+        return new(PictureTools.Started(started, toldUser, maker.Where) + (then is null ? "" : CameraBackgroundTool.WillUse));
     }
 
     // The picture job: the place is checked, the picture drawn, kept as a creation (shared with every paired Martlet computer)
     // and shown in the talk window.
     private async Task<BackgroundJobOutcome> MakePictureAsync(BackgroundJob job, DrawArguments arguments, IPictureMaker maker,
-        CreationAuthor author, CancellationToken token)
+        CreationAuthor author, Func<Creation, CancellationToken, Task<string>>? then, CancellationToken token)
     {
         try
         {
@@ -2775,7 +2811,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             ErrorLog.Info($"Pictures: {job.Id} drew {creation.Key} on {result.Where} ({result.Width}x{result.Height} {result.MediaType}, " +
                 $"{result.Image.Length / 1024} KiB, {result.Model}{(result.Fixture ? ", FIXTURE - NOT AI" : "")}) in {result.Took.TotalSeconds:0.0} s.");
             PictureShown?.Invoke(new(creation.Key, creation.Title ?? arguments.Title, result.Image, result.Fixture));
-            return BackgroundJobOutcome.Done(PictureTools.Ready(creation.Key, creation.Title ?? arguments.Title, result));
+            var used = then is null ? "" : " " + await then(creation, token).ConfigureAwait(false);
+            return BackgroundJobOutcome.Done(PictureTools.Ready(creation.Key, creation.Title ?? arguments.Title, result) + used);
         }
         finally
         {

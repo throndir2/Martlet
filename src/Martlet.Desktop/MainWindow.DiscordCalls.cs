@@ -394,4 +394,46 @@ public partial class MainWindow
         }
         if (!closing && openTab == CompanionTab.Discord) RenderTab();
     }
+
+    // ---------- set_camera_background: Martlet changes its own webcam background ----------
+
+    /// <summary>set_camera_background (on the dispatcher): a plain color, or one of Martlet's pictures (a creation's key or ID;
+    /// <paramref name="drawn"/> when Martlet just drew it for this) saved as the camera picture, shown at once while the camera
+    /// view is open. The words are for the model.</summary>
+    private async Task<string> SetCallBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token)
+    {
+        string? problem;
+        string what, shown;
+        if (color is { } chosen)
+        {
+            problem = discordCalls.Save(prefs => prefs with { CameraBackground = chosen, CameraPicture = null }) ? null : "The background couldn't be saved.";
+            what = shown = "plain " + chosen.ToString().ToLowerInvariant();
+        }
+        else
+        {
+            if (store is null || Martlet.Conversation.PictureCreations.Find(store.DataDirectory, picture) is not { Removed: false } creation)
+                return "There's no picture with that id. Use list_creations to find one, or draw a new one.";
+            byte[]? bytes = null;
+            try { bytes = await CreationStore.Assets(store.DataDirectory, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, token); }
+            catch (Exception error) when (CreationStore.IsFailure(error)) { ErrorLog.Info($"Discord call: couldn't read a picture ({error.Message})."); }
+            if (bytes is null) return "That picture hasn't reached this computer yet. Tell the user you'll try again in a moment.";
+            problem = discordCalls.UsePicture(bytes, drawn ? DiscordCameraPictureSource.Drawn : DiscordCameraPictureSource.Creation);
+            what = $"the picture \"{creation.Title ?? creation.Key}\"";
+            // The card and the log never show a title.
+            shown = drawn ? "a picture Martlet drew" : "a picture from Creations";
+        }
+        UsedCallPicture(problem, shown);
+        if (problem is not null) return $"The background didn't change: {problem} Tell the user briefly.";
+        return discordCalls.CameraOpen ? $"Your webcam background is now {what}; everyone in the call sees it."
+            : $"Your webcam background is now {what}. The camera view is closed right now, so it shows once the owner opens it.";
+    }
+
+    /// <summary>set_camera_background's way to the main window.</summary>
+    private sealed class CallCameraBridge(MainWindow window) : ICallCamera
+    {
+        public bool Offered => window.discordCalls.Preferences.On;
+
+        public Task<string> SetBackgroundAsync(DiscordCameraBackground? color, string? picture, bool drawn, CancellationToken token) =>
+            window.Dispatcher.InvokeAsync(() => window.SetCallBackgroundAsync(color, picture, drawn, token)).Task.Unwrap();
+    }
 }
