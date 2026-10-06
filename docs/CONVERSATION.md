@@ -386,7 +386,11 @@ which machine is free to think depends on the computer you talk to):
   beside its other roles (Thinking's model with its context, the voice, lip-sync,
   listening) for each model (`DeepThinkingSlots`, shown under the choice as
   `HostInputFit-OLLAMA_NUM_PARALLEL-OLLAMA_MODEL`), so the Thinking and voice
-  models are never pushed off the card. The role advertises its slots as its
+  models are never pushed off the card. The sizes come from the planner's
+  footprint catalog ([Resource footprints](RESOURCE_FOOTPRINTS.md)): a Gemma 4
+  think's context is 0.3-0.9 GB, so a 24 GB card beside Thinking's Gemma 4 E4B
+  fits four Gemma 4 12B thinks; models the catalog doesn't know count about three
+  quarters of their size per think. The role advertises its slots as its
   route's `maximum_concurrency`, the gateway admits that many thinks at once
   (one more gets `job.busy`), and a host check reads them
   (`HostCheck.DeepThinkingSlots`; the host's line says "Deep thinking (2 thinks at

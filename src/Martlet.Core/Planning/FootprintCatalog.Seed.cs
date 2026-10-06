@@ -214,6 +214,8 @@ public sealed partial class FootprintCatalog
         },
 
         // Deep thinking: the model again in its own server plus one think's 32,768-token context.
+        Deep("gemma4:e2b", "Gemma 4 E2B (deep thinking)", 3.3, 1.5, 7.5, 0.3, 1, FootprintEvidence.Measured,
+            $"Model VRAM measured as Thinking (docs/VOICE_LATENCY.md); context from config.json ({Doc})"),
         Deep("gemma4:e4b", "Gemma 4 E4B (deep thinking)", 4.9, 2.5, 9.5, 0.7, 2, FootprintEvidence.Measured,
             $"Model VRAM measured as Thinking (docs/VOICE_LATENCY.md); context from config.json ({Doc})"),
         Deep("gemma4:12b", "Gemma 4 12B (deep thinking)", 9.0, 1, 8.0, 0.7, 3, FootprintEvidence.Estimate,
