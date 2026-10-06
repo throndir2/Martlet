@@ -86,8 +86,12 @@ public partial class MainWindow : ThemedWindow
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);
-        messaging = new(store?.DataDirectory, vault) { Answer = AnswerMessageAsync };
+        messaging = new(store?.DataDirectory, vault) { Answer = AnswerMessageAsync, History = conversationHistory };
         messaging.Changed += () => Dispatcher.BeginInvoke(MessagingChanged);
+        // Discord text exchanges join the record while it is kept; deletions and edits there go to Telegram and Discord too.
+        discord.History = conversationHistory;
+        discord.Recording = () => conversationHistory?.Active(homeSettings?.Memory) == true;
+        conversationHistory?.Platforms.Start();
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         localVoices = new(store?.DataDirectory);

@@ -169,10 +169,10 @@ public static partial class PastConversations
         if (terms.Count > 0)
         {
             var needed = Math.Min(3, (terms.Count + 1) / 2);
-            best = history.Search(terms, window?.From, window?.To, exclude, ConversationHistory.MaximumResults)
+            best = history.Search(terms, window?.From, window?.To, exclude, ConversationHistory.MaximumResults, Recallable)
                 .Where(hit => hit.MatchedTerms >= needed).Select(hit => hit.Exchange);
         }
-        else if (window is { } span) best = history.Between(span.From, span.To, exclude, ConversationHistory.MaximumResults).Reverse();
+        else if (window is { } span) best = history.Between(span.From, span.To, exclude, ConversationHistory.MaximumResults, Recallable).Reverse();
         else return [];
         return best.Where(exchange => skip?.Invoke(exchange) != true).Take(limit).OrderBy(exchange => exchange.At).ToArray();
     }
@@ -252,10 +252,14 @@ public static partial class PastConversations
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(request);
         IReadOnlyList<HistoryExchange> found = request.Terms.Count > 0
-            ? history.Search(request.Terms, request.Window?.From, request.Window?.To, exclude, limit).Select(hit => hit.Exchange).ToArray()
-            : request.Window is { } span ? history.Between(span.From, span.To, exclude, limit) : [];
+            ? history.Search(request.Terms, request.Window?.From, request.Window?.To, exclude, limit, Recallable).Select(hit => hit.Exchange).ToArray()
+            : request.Window is { } span ? history.Between(span.From, span.To, exclude, limit, Recallable) : [];
         return found.OrderBy(exchange => exchange.At).ToArray();
     }
+
+    /// <summary>Whether an exchange may come back in the talk window's replies: the PC's own and the owner's paired messaging
+    /// chats, never Discord (servers and DMs with other people; Discord replies keep their own history per place).</summary>
+    public static bool Recallable(HistoryExchange exchange) => exchange.App != HistoryApps.Discord;
 
     /// <summary>What the model is told: today's date and the exchanges found, or that nothing was found.</summary>
     public static string Result(IReadOnlyList<HistoryExchange> found, SearchRequest request, DateTimeOffset now, TimeZoneInfo zone)

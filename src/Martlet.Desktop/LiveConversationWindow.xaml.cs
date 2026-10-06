@@ -129,7 +129,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private ChatMessage? pendingMessage;
     // Messages from paired chats in messaging apps (Companion › Messaging) wait here for the app slot, in order; each gets the
     // reply's text (or why there is none) once its turn finishes.
-    private sealed record RemoteAsk(string Text, ChatMessage Bubble, bool Speak, TaskCompletionSource<string> Reply);
+    private sealed record RemoteAsk(string Text, ChatMessage Bubble, bool Speak, TaskCompletionSource<string> Reply,
+        Martlet.Conversation.HistorySource? Origin = null, string? Speaker = null);
     private readonly List<RemoteAsk> remoteQueue = [];
     private (LiveConversationOperation Operation, RemoteAsk Ask)? remoteAnswering;
     private string? reloadReason;
@@ -511,12 +512,14 @@ public partial class LiveConversationWindow : ThemedWindow
 
     /// <summary>A message from a paired chat in a messaging app: it shows in the history as from <paramref name="from"/>, waits
     /// for Martlet like typed text and gets the reply's text (or why there is none). It is text only: no screen picture goes with
-    /// it, and the reply is said aloud only with <paramref name="speak"/> while Windows isn't locked.</summary>
-    internal Task<string> AskFromMessage(string text, string from, bool speak, CancellationToken token)
+    /// it, and the reply is said aloud only with <paramref name="speak"/> while Windows isn't locked. <paramref name="origin"/>
+    /// (the app, chat and message) and <paramref name="speaker"/> go to the record of conversations with it.</summary>
+    internal Task<string> AskFromMessage(string text, string from, bool speak, CancellationToken token,
+        Martlet.Conversation.HistorySource? origin = null, string? speaker = null)
     {
         if (closed) return Task.FromResult(RemoteCantAnswer);
         var ask = new RemoteAsk(text, Add(ChatRole.User, text, from), speak,
-            new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
+            new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously), origin, speaker);
         var registration = token.Register(() => Dispatcher.BeginInvoke(() =>
         {
             if (remoteQueue.Remove(ask)) ask.Bubble.AddNote("Not answered in time.");
@@ -552,7 +555,8 @@ public partial class LiveConversationWindow : ThemedWindow
             }
             try
             {
-                owned = controller.Start(ask.Text, ask.Speak && !locked && Voice, microphone: false, approved: true, remote: true);
+                owned = controller.Start(ask.Text, ask.Speak && !locked && Voice, microphone: false, approved: true, remote: true,
+                    origin: ask.Origin, originSpeaker: ask.Speaker);
                 remoteAnswering = (owned, ask);
                 typed = (owned, ask.Bubble);
                 yielded = null;

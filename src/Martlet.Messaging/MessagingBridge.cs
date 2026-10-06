@@ -50,6 +50,9 @@ public sealed class MessagingBridge
     public event Action<MessagingStatus>? StatusChanged;
     /// <summary>Raised when a chat paired with the code; the owner's list of chats should keep it.</summary>
     public event Action<MessagingChat>? Paired;
+    /// <summary>Raised once a reply went back to a paired chat: the message it answered and the app's IDs of the reply's pieces
+    /// (empty when the app doesn't give them), so the record of conversations can find them there again.</summary>
+    public event Action<InboundMessage, IReadOnlyList<string>>? Replied;
 
     public MessagingStatus Status { get { lock (gate) return status; } }
     public IReadOnlyList<MessagingChat> Chats => [.. allowed.Select(pair => new MessagingChat(pair.Key, pair.Value)).OrderBy(chat => chat.Name)];
@@ -125,6 +128,7 @@ public sealed class MessagingBridge
 
     internal async Task HandleAsync(InboundMessage message, CancellationToken cancellation)
     {
+        message = message with { App = transport.App };
         // Martlet is one person's companion: group chats are never answered.
         if (!message.Private) return;
         var text = message.Text?.Trim();
@@ -171,9 +175,11 @@ public sealed class MessagingBridge
             }
         }
         if (string.IsNullOrWhiteSpace(reply)) reply = "(Martlet had nothing to say.)";
+        var sent = new List<string>();
         foreach (var part in Split(reply, transport.MaximumMessageLength))
-            await SendAsync(message.ChatId, part, cancellation).ConfigureAwait(false);
+            if (await SendAsync(message.ChatId, part, cancellation).ConfigureAwait(false) is { } id) sent.Add(id);
         Publish(Status with { LastAnswered = clock.GetUtcNow(), Answered = Status.Answered + 1 });
+        Replied?.Invoke(message, sent);
     }
 
     // The code works alone or after /start (a t.me link with ?start=CODE sends "/start CODE").
@@ -209,13 +215,19 @@ public sealed class MessagingBridge
         catch (OperationCanceledException) { }
     }
 
-    private async Task SendAsync(string chatId, string text, CancellationToken cancellation)
+    // The message's ID in the app when the transport gives one; null when it doesn't or sending failed.
+    private async Task<string?> SendAsync(string chatId, string text, CancellationToken cancellation)
     {
-        try { await transport.SendAsync(chatId, text, cancellation).ConfigureAwait(false); }
+        try
+        {
+            if (transport is IMessagingMessageControl control) return await control.SendMessageAsync(chatId, text, cancellation).ConfigureAwait(false);
+            await transport.SendAsync(chatId, text, cancellation).ConfigureAwait(false);
+        }
         catch (MessagingException error) when (error.Failure != MessagingFailure.Unauthorized)
         {
             Publish(Status with { Problem = "Couldn't send a reply: " + error.Message });
         }
+        return null;
     }
 
     /// <summary>Splits a reply into messages of at most <paramref name="limit"/> characters, at a paragraph, line or word break

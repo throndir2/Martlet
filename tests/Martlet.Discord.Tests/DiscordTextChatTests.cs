@@ -224,10 +224,13 @@ public sealed class DiscordTextChatTests
             return new Done();
         }
 
-        public Task SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token)
+        public Task<ulong?> SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token)
         {
-            lock (Sent) Sent.Add((place.ChannelId, text, replyTo));
-            return Task.CompletedTask;
+            lock (Sent)
+            {
+                Sent.Add((place.ChannelId, text, replyTo));
+                return Task.FromResult<ulong?>((ulong)(1000 + Sent.Count));
+            }
         }
 
         private sealed class Done : IDisposable { public void Dispose() { } }

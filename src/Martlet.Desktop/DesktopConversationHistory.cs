@@ -50,6 +50,10 @@ internal sealed record ConversationHistoryPreferences(bool Keep = true, bool Sea
     }
 }
 
+/// <summary>What deleting or editing in the record did: exchanges that went, changes queued for messaging apps, why some of it
+/// stays in an app (one line each) and whether an edited reply had to be cut there.</summary>
+internal sealed record HistoryChange(int Removed, int Queued, IReadOnlyList<string> KeptThere, bool Truncated);
+
 /// <summary>Martlet's record of every conversation on this PC (<see cref="ConversationHistory"/> in the data folder's
 /// <c>conversations</c> folder) while memory is on and <see cref="ConversationHistoryPreferences.Keep"/> is chosen: each finished
 /// exchange is appended in the background, after its reply, so the next reply never waits for the disk. A message that refers to
@@ -77,9 +81,13 @@ internal sealed class DesktopConversationHistory
         this.zone = zone ?? TimeZoneInfo.Local;
         preferences = ConversationHistoryPreferences.Load(dataDirectory);
         Store = new(directory ?? Path.Combine(dataDirectory ?? Path.GetTempPath(), ConversationHistory.DirectoryName), this.clock);
+        Platforms = new(dataDirectory is null && directory is null ? null : Path.Combine(Store.Directory, PlatformChanges.FileName), this.clock);
     }
 
     internal ConversationHistory Store { get; }
+    /// <summary>Deletions and edits waiting for Telegram and Discord (made in the background once <see cref="PlatformChanges.Start"/>
+    /// runs, while the app is connected).</summary>
+    internal PlatformChanges Platforms { get; }
     internal TimeZoneInfo Zone => zone;
     internal TimeProvider Clock => clock;
 
@@ -120,19 +128,50 @@ internal sealed class DesktopConversationHistory
         }, TaskScheduler.Default);
     }
 
-    /// <summary>Records one finished exchange in the background, after the ones before it. Never waits for the disk.</summary>
-    internal void Record(Guid conversation, HistoryInputKind kind, string user, string reply, string? speaker)
+    /// <summary>Records one finished exchange in the background, after the ones before it. Never waits for the disk.
+    /// <paramref name="source"/> is where it happened when it wasn't this PC's talk window.</summary>
+    internal void Record(Guid conversation, HistoryInputKind kind, string user, string reply, string? speaker, HistorySource? source = null)
     {
         Interlocked.Increment(ref pending);
-        lock (gate) tail = AppendAsync(tail, conversation, kind, user, reply, speaker);
+        lock (gate) tail = AppendAsync(tail, conversation, kind, user, reply, speaker, source);
     }
 
-    private async Task AppendAsync(Task previous, Guid conversation, HistoryInputKind kind, string user, string reply, string? speaker)
+    /// <summary>The app's IDs of a reply that went back to a messaging chat: they join the exchange recorded for the message
+    /// they answer (found by the message's ID), after the exchanges recorded before, so deleting or editing it here can do the
+    /// same there.</summary>
+    internal void AttachReplies(string app, string chat, string userMessage, IReadOnlyList<string> replies)
+    {
+        if (replies.Count == 0) return;
+        Interlocked.Increment(ref pending);
+        lock (gate) tail = AttachAsync(tail, app, chat, userMessage, replies.ToArray());
+    }
+
+    private async Task AttachAsync(Task previous, string app, string chat, string userMessage, string[] replies)
     {
         await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ForceYielding);
         try
         {
-            await Store.AppendAsync(conversation, kind, user, reply, speaker).ConfigureAwait(false);
+            await Store.LoadAsync().ConfigureAwait(false);
+            if (Store.FindMessage(app, chat, userMessage) is { } exchange)
+                await Store.ChangeAsync(exchange.Id, found => found with { Source = found.Source! with { ReplyMessages = replies } }).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ErrorLog.Warn($"Conversation history: couldn't note where a reply went ({error.GetType().Name}).");
+        }
+        finally
+        {
+            Interlocked.Decrement(ref pending);
+        }
+    }
+
+    private async Task AppendAsync(Task previous, Guid conversation, HistoryInputKind kind, string user, string reply, string? speaker,
+        HistorySource? source)
+    {
+        await previous.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ForceYielding);
+        try
+        {
+            await Store.AppendAsync(conversation, kind, user, reply, speaker, source).ConfigureAwait(false);
             if (failing) ErrorLog.Info("Conversation history: recording works again.");
             failing = false;
         }
@@ -200,24 +239,93 @@ internal sealed class DesktopConversationHistory
         return (new(PastConversations.Result(found, request, now, zone)), $"found {found.Count}");
     }
 
-    /// <summary>Deletes one recorded conversation.</summary>
-    internal async Task<int> DeleteAsync(Guid conversation, CancellationToken token = default)
+    /// <summary>Deletes one recorded conversation; with <paramref name="there"/>, its messages in Telegram and Discord too (as
+    /// far as each app allows), queued.</summary>
+    internal async Task<HistoryChange> DeleteAsync(Guid conversation, bool there = false, CancellationToken token = default)
     {
         await Idle.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        await Store.LoadAsync(token).ConfigureAwait(false);
+        var plans = there ? Store.Exchanges(conversation).Select(exchange => HistoryPlatforms.Delete(exchange, null, clock.GetUtcNow())).ToArray() : [];
         var removed = await Store.DeleteAsync(conversation, token).ConfigureAwait(false);
-        ErrorLog.Info($"Conversation history: you deleted a conversation ({removed} exchange{(removed == 1 ? "" : "s")}).");
+        var change = Queue(removed, plans);
+        ErrorLog.Info($"Conversation history: you deleted a conversation ({removed} exchange{(removed == 1 ? "" : "s")}" +
+            $"{(change.Queued > 0 ? $"; {change.Queued} message{(change.Queued == 1 ? "" : "s")} to delete in its app" : "")}).");
         Changed?.Invoke();
-        return removed;
+        return change;
     }
 
-    /// <summary>Deletes the whole record.</summary>
-    internal async Task<int> DeleteAllAsync(CancellationToken token = default)
+    /// <summary>Deletes the whole record; with <paramref name="there"/>, every recorded message in Telegram and Discord too (as
+    /// far as each app allows), queued.</summary>
+    internal async Task<HistoryChange> DeleteAllAsync(bool there = false, CancellationToken token = default)
     {
         await Idle.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        var files = await Store.DeleteAllAsync(token).ConfigureAwait(false);
-        ErrorLog.Info("Conversation history: you deleted the whole record.");
+        await Store.LoadAsync(token).ConfigureAwait(false);
+        var now = clock.GetUtcNow();
+        var plans = there ? Store.Where(exchange => exchange.Source is not null).Select(exchange => HistoryPlatforms.Delete(exchange, null, now)).ToArray() : [];
+        var exchanges = Store.Stats.Exchanges;
+        await Store.DeleteAllAsync(token).ConfigureAwait(false);
+        var change = Queue(exchanges, plans);
+        ErrorLog.Info("Conversation history: you deleted the whole record" +
+            (change.Queued > 0 ? $" ({change.Queued} message{(change.Queued == 1 ? "" : "s")} to delete in their apps)." : "."));
         Changed?.Invoke();
-        return files;
+        return change;
+    }
+
+    /// <summary>Deletes one message of an exchange (<paramref name="side"/>; both for null): the exchange goes once nothing of it
+    /// is left. With <paramref name="there"/>, the message goes in its app too (as far as the app allows), queued.</summary>
+    internal async Task<HistoryChange> DeleteMessageAsync(Guid exchange, HistorySide? side, bool there = false, CancellationToken token = default)
+    {
+        await Idle.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        PlatformPlan? plan = null;
+        var now = clock.GetUtcNow();
+        var (before, after) = await Store.ChangeAsync(exchange, found =>
+        {
+            plan = HistoryPlatforms.Delete(found, side, now);
+            var user = side is null or HistorySide.User ? "" : found.User;
+            var reply = side is null or HistorySide.Reply ? "" : found.Reply;
+            return user.Length == 0 && reply.Length == 0 ? null : found with { User = user, Reply = reply, Source = plan.Source, Edited = now };
+        }, token).ConfigureAwait(false);
+        if (before is null) return new(0, 0, [], false);
+        var change = Queue(after is null ? 1 : 0, there && plan is not null ? [plan] : []);
+        ErrorLog.Info($"Conversation history: you deleted {(side is null ? "an exchange" : side == HistorySide.User ? "a message" : "a reply")}" +
+            $"{(change.Queued > 0 ? $" ({change.Queued} message{(change.Queued == 1 ? "" : "s")} to delete in {HistoryApps.Name(before.App)})" : "")}.");
+        Changed?.Invoke();
+        return change;
+    }
+
+    /// <summary>Edits one message of an exchange to <paramref name="text"/> (empty deletes it). With <paramref name="there"/>, an
+    /// edited reply is edited in its app too (as far as the app allows), queued; the person's own messages are never edited
+    /// there (no app lets a bot).</summary>
+    internal async Task<HistoryChange> EditAsync(Guid exchange, HistorySide side, string text, bool there = false, CancellationToken token = default)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return await DeleteMessageAsync(exchange, side, there, token).ConfigureAwait(false);
+        await Idle.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        PlatformPlan? plan = null;
+        var now = clock.GetUtcNow();
+        text = text.Trim();
+        var (before, _) = await Store.ChangeAsync(exchange, found =>
+        {
+            plan = side == HistorySide.Reply ? HistoryPlatforms.Edit(found, text, now)
+                : found.Source is { UserMessages.Count: > 0 } source
+                    ? new([], [HistoryPlatforms.WhyNotEdit(source, HistorySide.User) + ", so your message there stays as it was."], source)
+                    : PlatformPlan.None(found.Source);
+            return side == HistorySide.Reply
+                ? found with { Reply = text, Edited = now, Source = there ? plan.Source : found.Source }
+                : found with { User = text, Edited = now };
+        }, token).ConfigureAwait(false);
+        if (before is null) return new(0, 0, [], false);
+        var change = Queue(0, there && plan is not null ? [plan] : []);
+        ErrorLog.Info($"Conversation history: you edited {(side == HistorySide.User ? "a message" : "a reply")}" +
+            $"{(change.Queued > 0 ? $" ({change.Queued} change{(change.Queued == 1 ? "" : "s")} to make in {HistoryApps.Name(before.App)})" : "")}.");
+        Changed?.Invoke();
+        return change;
+    }
+
+    private HistoryChange Queue(int removed, IReadOnlyList<PlatformPlan> plans)
+    {
+        var changes = plans.SelectMany(plan => plan.Changes).ToArray();
+        Platforms.Enqueue(changes);
+        return new(removed, changes.Length, plans.SelectMany(plan => plan.KeptThere).Distinct().ToArray(), plans.Any(plan => plan.Truncated));
     }
 
     /// <summary>One line on what the record holds and whether Martlet keeps it (never content).</summary>

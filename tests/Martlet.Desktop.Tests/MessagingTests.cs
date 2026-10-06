@@ -143,7 +143,7 @@ public sealed class MessagingTests
 
         Assert.Equal(new BotIdentity("Martlet", "my_martlet_bot"), await transport.ConnectAsync(default));
         var messages = await transport.ReceiveAsync(default);
-        Assert.Equal([new InboundMessage("42", "Sam Lee", "hello", true), new InboundMessage("-100", "Team", null, false)], messages);
+        Assert.Equal([new InboundMessage("42", "Sam Lee", "hello", true, "1"), new InboundMessage("-100", "Team", null, false, "2")], messages);
         await transport.ReceiveAsync(default);
         Assert.Equal(12, JsonNode.Parse(handler.Bodies[2])!["offset"]!.GetValue<long>());
         await transport.SendAsync("42", "hi", default);
@@ -154,6 +154,78 @@ public sealed class MessagingTests
         Assert.DoesNotContain("AAH_", error.Message);
         Assert.All(handler.Paths, path => Assert.StartsWith($"/bot{Token}/", path));
         Assert.Throws<ArgumentException>(() => new TelegramTransport("not a token"));
+    }
+
+    [Fact]
+    public async Task TelegramTransportSendsDeletesAndEditsByMessageId()
+    {
+        var handler = new StubHandler();
+        handler.Answers.Enqueue(Ok(new JsonObject { ["message_id"] = 77 }));
+        handler.Answers.Enqueue(Ok(JsonValue.Create(true)));
+        handler.Answers.Enqueue(Ok(new JsonObject { ["message_id"] = 77 }));
+        handler.Answers.Enqueue(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("""{"ok":false,"error_code":400,"description":"Bad Request: message can't be deleted for everyone"}""")
+        });
+        using var transport = new TelegramTransport(Token, handler, pollSeconds: 0);
+
+        Assert.Equal("77", await transport.SendMessageAsync("42", "hi", default));
+        await transport.DeleteMessageAsync("42", "77", default);
+        Assert.EndsWith("/deleteMessage", handler.Paths[1]);
+        Assert.Equal(77, JsonNode.Parse(handler.Bodies[1])!["message_id"]!.GetValue<long>());
+        await transport.EditMessageAsync("42", "77", "edited", default);
+        Assert.EndsWith("/editMessageText", handler.Paths[2]);
+        Assert.Equal("edited", JsonNode.Parse(handler.Bodies[2])!["text"]!.GetValue<string>());
+        var refused = await Assert.ThrowsAsync<MessagingException>(() => transport.DeleteMessageAsync("42", "5", default));
+        Assert.Equal(MessagingFailure.Protocol, refused.Failure);
+
+        // The platform side of the record turns Telegram's answers into what the queue does next.
+        var platform = new MessagingPlatform(MessagingApp.Telegram, new RefusingControl(new(MessagingFailure.RateLimited, "slow", TimeSpan.FromSeconds(9))));
+        Assert.Equal("telegram", platform.App);
+        var change = new Martlet.Conversation.PlatformChange(Guid.NewGuid(), "telegram", "42", null, "5", Martlet.Conversation.PlatformChangeKind.Delete,
+            true, null, DateTimeOffset.UtcNow);
+        var slowed = await Assert.ThrowsAsync<Martlet.Conversation.PlatformChangeException>(() => platform.ApplyAsync(change, default));
+        Assert.Equal((Martlet.Conversation.PlatformFailure.RateLimited, TimeSpan.FromSeconds(9)), (slowed.Failure, slowed.RetryAfter));
+        var gone = await Assert.ThrowsAsync<Martlet.Conversation.PlatformChangeException>(() =>
+            new MessagingPlatform(MessagingApp.Telegram, new RefusingControl(refused)).ApplyAsync(change, default));
+        Assert.Equal(Martlet.Conversation.PlatformFailure.Refused, gone.Failure);
+    }
+
+    [Fact]
+    public async Task AnsweredMessagesTellWhichMessagesTheReplyWentAs()
+    {
+        var transport = new ControlTransport();
+        var bridge = new MessagingBridge(transport, [new("7", "Me")], (_, _) => Task.FromResult("pong"));
+        (InboundMessage Message, IReadOnlyList<string> Ids)? replied = null;
+        bridge.Replied += (message, ids) => replied = (message, ids);
+        await bridge.HandleAsync(new("7", "Me", "ping", Private: true, MessageId: "500"), default);
+        Assert.NotNull(replied);
+        Assert.Equal("500", replied.Value.Message.MessageId);
+        Assert.Equal(MessagingApp.Telegram, replied.Value.Message.App);
+        Assert.Equal(["1"], replied.Value.Ids);
+    }
+
+    private sealed class RefusingControl(MessagingException error) : IMessagingMessageControl
+    {
+        public Task<string> SendMessageAsync(string chatId, string text, CancellationToken cancellation) => throw error;
+        public Task DeleteMessageAsync(string chatId, string messageId, CancellationToken cancellation) => throw error;
+        public Task EditMessageAsync(string chatId, string messageId, string text, CancellationToken cancellation) => throw error;
+    }
+
+    private sealed class ControlTransport : IMessagingTransport, IMessagingMessageControl
+    {
+        private int sent;
+        public MessagingApp App => MessagingApp.Telegram;
+        public int MaximumMessageLength => 4096;
+        public Task<BotIdentity> ConnectAsync(CancellationToken cancellation) => Task.FromResult(new BotIdentity("Martlet", "bot"));
+        public Task<IReadOnlyList<InboundMessage>> ReceiveAsync(CancellationToken cancellation) => Task.FromResult<IReadOnlyList<InboundMessage>>([]);
+        public Task SendAsync(string chatId, string text, CancellationToken cancellation) => SendMessageAsync(chatId, text, cancellation);
+        public Task TypingAsync(string chatId, CancellationToken cancellation) => Task.CompletedTask;
+        public Task<string> SendMessageAsync(string chatId, string text, CancellationToken cancellation) =>
+            Task.FromResult(Interlocked.Increment(ref sent).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        public Task DeleteMessageAsync(string chatId, string messageId, CancellationToken cancellation) => Task.CompletedTask;
+        public Task EditMessageAsync(string chatId, string messageId, string text, CancellationToken cancellation) => Task.CompletedTask;
+        public void Dispose() { }
     }
 
     [Fact]
@@ -256,7 +328,7 @@ public sealed class MessagingTests
         Assert.False(WhatsAppWebhook.SignatureValid(Encoding.UTF8.GetBytes(AppSecret), body, "sha256=00"));
         Assert.False(WhatsAppWebhook.SignatureValid(Encoding.UTF8.GetBytes(AppSecret), body, null));
         var messages = WhatsAppWebhook.Parse(body, "106540352242922");
-        Assert.Equal([new WhatsAppMessage(new("15550199", "Sam", "hello", true), "wamid.1"), new WhatsAppMessage(new("15550199", "Sam", null, true), "wamid.2")], messages);
+        Assert.Equal([new WhatsAppMessage(new("15550199", "Sam", "hello", true, "wamid.1"), "wamid.1"), new WhatsAppMessage(new("15550199", "Sam", null, true, "wamid.2"), "wamid.2")], messages);
         Assert.Empty(WhatsAppWebhook.Parse(body, "999999999"));
     }
 
@@ -300,7 +372,7 @@ public sealed class MessagingTests
             Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
         }
         var received = await transport.ReceiveAsync(default);
-        Assert.Equal([new InboundMessage("15550199", "Sam", "hello", true)], received);
+        Assert.Equal([new InboundMessage("15550199", "Sam", "hello", true, "wamid.1")], received);
 
         await transport.TypingAsync("15550199", default);
         await transport.TypingAsync("15550199", default);

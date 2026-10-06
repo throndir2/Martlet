@@ -1092,16 +1092,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "on its own, off by default), whether exchanges are recorded and recalled when a message mentions an earlier " +
             "conversation, whether replies are offered search_conversations (exactly as the Thinking model gets it, with its size " +
             "in UTF-8 bytes and estimated tokens) and the Past conversations prompt, and what the record in the data folder's " +
-            "conversations folder holds: files, bytes, conversations, exchanges, unreadable lines and the oldest and newest times. " +
+            "conversations folder holds: files, bytes, conversations, exchanges per app (pc, telegram, discord, whatsapp), unreadable " +
+            "lines and the oldest and newest times, and the deletions and edits waiting for Telegram and Discord " +
+            "(platform-changes.json: pending per app, done, refused, given up, last problem). " +
             "Never what was said. Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("conversation_history_check", "Rehearse the record of conversations with the production code (ConversationHistory and " +
-            "PastConversations) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
+        Tool("conversation_history_check", "Rehearse the record of conversations with the production code (ConversationHistory, " +
+            "PastConversations and HistoryPlatforms) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
             "cut short by a crash skipped after a restart, an ordinary message recalling nothing, \"Do you remember...\" and " +
             "\"What did we talk about yesterday?\" bringing back the right exchanges (never the conversation going on), " +
-            "search_conversations by words and by time and its answers, deleting one conversation and everything, and reading " +
+            "search_conversations by words and by time and its answers, deleting one conversation and everything, exchanges from " +
+            "Telegram and Discord keeping their app, chat and message IDs (Discord never recalled in the talk window), what " +
+            "deleting and editing one message asks of each app (48 hours on Telegram, never your DM messages on Discord, edited " +
+            "replies cut to their pieces), editing and deleting single messages, the queue of changes for the apps (each app's " +
+            "pace, a slow-down waited out, a refusal dropped, an unconnected app waiting, kept over a restart) with a fixture app " +
+            "(not Telegram or Discord), and reading " +
             "bulkExchanges (1,000-100,000, default 20,000) exchanges with recall timings. Nothing leaves this PC.", new
         {
             bulkExchanges = new { type = "integer", minimum = 1_000, maximum = 100_000 }

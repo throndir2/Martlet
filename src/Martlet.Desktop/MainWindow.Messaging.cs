@@ -43,7 +43,10 @@ public partial class MainWindow
             if (ConversationSession() is not { } talk) return Task.FromResult("Martlet is busy on your PC right now. Try again in a moment.");
             if (!talk.IsVisible) talk.StartInBackground();
             ErrorLog.Info($"{name}: a paired chat sent a message; Martlet answers it in the conversation.");
-            var reply = talk.AskFromMessage(message.Text ?? "", $"{message.ChatName} ({name})", messaging.Preferences[app].SpeakReplies, token);
+            var origin = new Martlet.Conversation.HistorySource(app.ToString().ToLowerInvariant(), message.ChatId, null, message.ChatName,
+                message.MessageId is { } id ? [id] : null);
+            var reply = talk.AskFromMessage(message.Text ?? "", $"{message.ChatName} ({name})", messaging.Preferences[app].SpeakReplies, token,
+                origin, message.ChatName);
             RenderConversationButton();
             UpdateTray();
             return reply;
