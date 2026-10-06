@@ -258,7 +258,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
             "only has the invite: it pins the host (reached by name, so only the pin is trusted), is refused with a wrong password, " +
             "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
-            "with no check number; a non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
+            "with no check number; then an OpenID Connect provider (an issuer in this process, a simulated browser and the desktop's " +
+            "real loopback redirect) is refused until the home PC allows the identity it saw, and joins the same way; a Steam " +
+            "assertion is confirmed by the host; a non-member can't change sign-in and removing the owner account revokes the " +
+            "laptop. Reports " +
             "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +

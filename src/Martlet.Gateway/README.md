@@ -363,17 +363,25 @@ Clock sampling occurs inside the store lock, not before admission.
 `GatewaySignInService` (`GatewaySignIn.cs`, routes in `GatewaySignInHttp.cs`)
 lets a computer away from home pair by signing in
 ([NETWORK](../../docs/NETWORK.md#joining-from-outside-home-by-signing-in)).
-`GET /martlet/v1/signin` lists the ways to sign in (`id`, `kind`, `name`;
+`GET /martlet/v1/signin` lists the ways to sign in (`id`, `kind`, `name`, `redirect_port` when fixed;
 nothing secret). `POST /martlet/v1/signin/begin` (`provider`, and for a browser
 provider a PKCE S256 `code_challenge` and a loopback `redirect_uri`
 `http://127.0.0.1:<port>/`) returns a one-use attempt (`attempt_id`, `state`,
 `nonce`, `expires_at` ten minutes on, and a browser provider's `authorize_url`).
 `POST /martlet/v1/signin/complete` (`attempt_id`, `device_id`, `display_name`,
 `proof`; for the owner account `{user, password, code}` where `code` is a
-current TOTP code or a recovery code) answers `201` like pairing
-(`credential_id`, `credential_secret`, `roles` `["voice"]`, `lifetime`
-`paired`) plus `signed_in` (`provider`, `subject`, `label`), after revoking any
-older credential of that device ID. Failures: `signin.unavailable` (404),
+current TOTP code or a recovery code; for an OpenID Connect provider
+`{query, code_verifier}`, the loopback callback's query and the PKCE verifier,
+with which the host exchanges the code itself: `GatewaySignInOidc.cs` checks
+the ID token's signature against the issuer's keys and its `iss`, `aud`/`azp`,
+`exp`, `iat` and `nonce`; discovery and keys are cached for an hour; Discord and
+Steam take the same `{query, code_verifier}`: the host exchanges Discord's code
+with HTTP basic client authentication and reads `/users/@me`, and checks a
+Steam OpenID 2.0 assertion against the attempt's `return_to` and with Steam's
+`check_authentication`, `GatewaySignInDiscordSteam.cs`) answers
+`201` like pairing (`credential_id`, `credential_secret`, `roles` `["voice"]`,
+`lifetime` `paired`) plus `signed_in` (`provider`, `subject`, `label`), after
+revoking any older credential of that device ID. Failures: `signin.unavailable` (404),
 `signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
 `signin.provider` (502); each sign-in outcome is recorded with the request
 guard under route class `signin` and the claimed or verified account as
@@ -384,7 +392,8 @@ non-member while the host is bound) read and change the owner account
 proving the app took it; returns `recovery_codes` once), `recovery-codes`,
 `remove-owner`, `allow`/`disallow` (`provider`, `subject`, `label`),
 `provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
-`issuer`, `client_id`, `client_secret`, `scopes`; an omitted secret keeps the
+`issuer`, `client_id`, `client_secret`, `scopes`, `redirect_port` for a
+provider that only takes registered redirects; an omitted secret keeps the
 saved one) and `remove-provider`; the answer never contains a secret
 (`has_client_secret` only). Storage is `IGatewaySignInStorage`
 (`GatewayServer.AttachSignInStorage`, `DurableGatewayHost.AttachSignIn`); with
