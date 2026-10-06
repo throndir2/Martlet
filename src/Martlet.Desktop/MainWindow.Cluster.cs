@@ -8,6 +8,7 @@ using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Core.Cluster;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Core.Sync;
 using Martlet.F5;
 
 namespace Martlet.Desktop;
@@ -97,18 +98,37 @@ public partial class MainWindow
         RefreshCoverage();
     }
 
+    /// <summary>What this PC does for <paramref name="job"/>, counting a job it does itself as done by its own host service.</summary>
+    private LocalJob LocalJobFor(string job) => ClusterSync.Local(job, homeSettings, homeAvatar, OwnHostId());
+
+    /// <summary>The host service Martlet runs on this PC: the one paired here, or on a host PC the one its dashboard reads.</summary>
+    private string? OwnHostId() => ThisPcHost()?.HostId ?? (Role == DeviceRole.Host ? hostState?.HostId : null);
+
+    /// <summary>The owner's shared route for a conversation job (what it uses when no host does it), or null.</summary>
+    private SharedSetting? SharedJobSetting(string job) => job switch
+    {
+        ClusterJobs.Thinking => settingsNode?.Document.Find(AppSettingsSections.Thinking),
+        ClusterJobs.Listening => settingsNode?.Document.Find(AppSettingsSections.Listening),
+        ClusterJobs.Speaking => settingsNode?.Document.Find(AppSettingsSections.Speaking),
+        _ => null
+    };
+
     /// <summary>Records a job change made on this PC (on the Devices page or in Setup) as the newest entry of the shared plan.</summary>
     private void RecordClusterJob(string job, LocalJob local)
     {
-        clusterObserved[job] = local;
+        clusterObserved[job] = ObservedJob(job);
         clusterFollow.Remove(job);
         if (store is null) return;
         var current = clusterPlan.For(job);
-        if (current is not null && ClusterSync.Matches(current, local) && current.MovedFrom is null) return;
+        if (current is not null && current.HostId == local.HostId && current.Off == local.Off && current.MovedFrom is null) return;
         clusterPlan = clusterPlan.Assign(job, local.HostId, local.Off, current?.Failover ?? false, null, ClusterDevice, DateTimeOffset.UtcNow);
         SaveClusterPlan();
         QueueClusterSync();
     }
+
+    /// <summary>What this PC does for a job, as compared between checks to notice changes: a job it does itself counts as that
+    /// whether or not its own host service is known yet, so learning about the host service later is not a change.</summary>
+    private LocalJob ObservedJob(string job) => ClusterSync.Local(job, homeSettings, homeAvatar, ClusterSync.ThisPcMarker);
 
     /// <summary>Notices jobs that changed outside the Devices page (for example in Setup) and records them. A host PC uses no
     /// jobs, so it records none.</summary>
@@ -117,10 +137,24 @@ public partial class MainWindow
         if (store is null || homeSettings?.Setup is null) return;
         foreach (var job in ClusterJobs.All)
         {
-            var local = ClusterSync.Local(job, homeSettings, homeAvatar);
-            if (Role == DeviceRole.Companion && clusterObserved.TryGetValue(job, out var seen) && seen != local) RecordClusterJob(job, local);
-            clusterObserved[job] = local;
+            var observed = ObservedJob(job);
+            if (Role == DeviceRole.Companion && clusterObserved.TryGetValue(job, out var seen) && seen != observed)
+                RecordClusterJob(job, LocalJobFor(job));
+            clusterObserved[job] = observed;
         }
+    }
+
+    /// <summary>What your Martlet network does for a job, for its Companion page, when that is a host: this PC switches to it,
+    /// or (a job this PC does itself) your other computers use this PC for it. Null when sync is off or no host does it.</summary>
+    private string? NetworkJobNote(string job)
+    {
+        if (!clusterEnabled || clusterPlan.For(job) is not { HostId: { } host } assignment) return null;
+        var local = LocalJobFor(job);
+        if (local.HostId == host) return local.Here ? $"Your other computers use this PC for {job}, through {host}." : null;
+        var by = assignment.UpdatedBy == ClusterDevice ? "" : $", as chosen on {assignment.UpdatedBy}";
+        return $"Your Martlet network does {job} on {host}{by}. " + (clusterFollow.TryGetValue(job, out var why)
+            ? "This PC switches to it as soon as it can: " + why
+            : "This PC switches to it on its next check.");
     }
 
     /// <summary>Marks a forgotten host as removed in the shared plan, so its entry does not return from an older copy.</summary>
@@ -137,7 +171,7 @@ public partial class MainWindow
     private void SetFailover(string job, bool on)
     {
         if (store is null || !clusterEnabled) return;
-        var local = ClusterSync.Local(job, homeSettings, homeAvatar);
+        var local = LocalJobFor(job);
         var current = clusterPlan.For(job);
         var owner = current is null ? local : new LocalJob(current.HostId, current.Off);
         if (on && !ConfirmationDialog.Confirm(this,
@@ -198,11 +232,22 @@ public partial class MainWindow
             var plan = clusterPlan;
             foreach (var probe in probes)
                 if (probe.Plan is { } copy) plan = ClusterPlan.Merge(plan, copy);
-            if (!host && homeSettings?.Setup is not null)
-                foreach (var job in ClusterJobs.All.Where(job => plan.For(job) is null))
+            if (homeSettings?.Setup is not null)
+                foreach (var job in ClusterJobs.All)
                 {
-                    var local = ClusterSync.Local(job, homeSettings, homeAvatar);
-                    plan = plan.Assign(job, local.HostId, local.Off, false, null, ClusterDevice, now);
+                    var local = LocalJobFor(job);
+                    var current = plan.For(job);
+                    // A job nobody recorded yet takes this PC's real choice (never Martlet's default on a new computer), and a
+                    // job set up to run on this PC is done by this PC for every computer, companion or host PC alike.
+                    if (current is null && !host && ClusterSync.Seeds(local) ||
+                        ClusterSync.Claims(job, current, local, SharedJobSetting(job), ClusterSync.OwnOllama(homeSettings), ClusterDevice,
+                            settingsCheckedAt))
+                    {
+                        plan = plan.Assign(job, local.HostId, local.Off, current?.Failover ?? false, null, ClusterDevice, now);
+                        if (current is not null)
+                            ErrorLog.Info($"{ClusterSync.Title(job)} was set up to run on this PC, so this PC does it for all your " +
+                                $"computers through {local.HostId}.");
+                    }
                 }
             if (!host)
                 foreach (var probe in probes.Where(p => p.Reachable))
@@ -247,6 +292,8 @@ public partial class MainWindow
                 {
                     clusterSignature = signature;
                     if (DevicesPage.IsVisible) RenderMap();
+                    // A host PC's Home asks for the roles of the jobs your computers give it.
+                    if (host) RenderHost();
                 }
                 RefreshCoverage();
             }
@@ -309,7 +356,7 @@ public partial class MainWindow
         foreach (var job in ClusterJobs.All)
         {
             if (closing || clusterPlan.For(job) is not { } desired) continue;
-            var before = ClusterSync.Local(job, homeSettings, homeAvatar);
+            var before = LocalJobFor(job);
             if (ClusterSync.Matches(desired, before) && !SpeakingEngineMoved(job, desired))
             {
                 clusterFollow.Remove(job);
@@ -328,8 +375,8 @@ public partial class MainWindow
             {
                 problem = error.Message;
             }
-            var after = ClusterSync.Local(job, homeSettings, homeAvatar);
-            clusterObserved[job] = after;
+            var after = LocalJobFor(job);
+            clusterObserved[job] = ObservedJob(job);
             if (problem is not null)
             {
                 clusterFollow[job] = problem;
@@ -501,11 +548,15 @@ public partial class MainWindow
     private string? ClusterNote(string job)
     {
         var parts = new List<string>();
-        var local = ClusterSync.Local(job, homeSettings, homeAvatar);
+        var local = LocalJobFor(job);
         var assignment = clusterPlan.For(job);
         if (clusterEnabled && clusterFollow.TryGetValue(job, out var follow))
             parts.Add($"Sync wants {(assignment is null ? "another computer" : ClusterSync.Who(job, assignment.HostId, assignment.Off))}, but {follow}");
-        if (clusterEnabled && local.HostId is { } host && clusterProbes.ContainsKey(host) &&
+        if (clusterEnabled && local is { Here: true, HostId: { } own } && assignment?.HostId == own &&
+            clusterProbes.GetValueOrDefault(own) is { Reachable: true } ownProbe && !ownProbe.Serves(job))
+            parts.Add($"Your other computers use this PC for {job} through {own}, which doesn't run " +
+                $"{HostRoles.Get(ClusterSync.RoleKind(job)).Name} yet. Add it to {own} so they can.");
+        else if (clusterEnabled && local.HostId is { } host && clusterProbes.ContainsKey(host) &&
             clusterMisses.GetValueOrDefault(host + "/" + job) > 0)
         {
             parts.Add(assignment?.Failover != true ? $"{host} isn't handling this right now. Turn on failover to move it automatically."

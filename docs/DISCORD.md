@@ -42,6 +42,41 @@ Discord allows, how Martlet is built around it and the work in progress.
   conversation (see AGENTS.md).
 - Voice converts Discord's 48 kHz stereo Opus to Martlet's canonical 16 kHz mono PCM per speaker for speech-to-text, and
   speech output back to 48 kHz Opus.
+- **Slash commands** share one registry: each feature calls `Bot.Commands.Add(command, handler)` (build with
+  `DiscordCommands.Slash`, which allows guild and user installs in servers, the bot's DMs and other DMs and group DMs). After
+  every Ready the bot registers the whole list with **one** `BulkOverwriteGlobalApplicationCommandsAsync`, so no feature's
+  registration removes another's, and dispatches each interaction by command name. Never register commands yourself.
+
+## Text chat
+
+`DiscordService.Text.cs` adapts NetCord messages and interactions to `DiscordTextChat` (`src\Martlet.Discord`), which holds
+the decisions so tests and MCP (`discord_text_check`) run them with a fake transport:
+
+- **Place and speaker:** a DM, or a server channel or thread (named `#channel in Server`); the speaker's server nickname,
+  global name or username, and whether it is the owner (`OwnerUserId`).
+- **Addressed** means a DM, an @mention of the bot or its own managed role, a reply to one of Martlet's messages, or one of
+  its names said as a word (the bot's username, global name and server nickname, and the personas' names).
+- **Chat mode** comes from `DiscordPreferences.TextMode` (DMs: the owner, the People list or anyone when allowed; servers:
+  channel rule, else the server default). `DiscordChatRules.Considers` decides whether the turn goes to the reply engine; in
+  Sometimes the engine may stay quiet on unaddressed turns.
+- Other bots, webhooks, system messages and Martlet itself are never answered (their lines still count as context).
+- Each place keeps its last 20 lines (Martlet's replies included, up to 200 places) for `DiscordTurn.Recent`, and turns run
+  one at a time per place. Martlet shows **typing** while it thinks (up to 2 minutes).
+- **Stale turns:** when a newer message in the same place arrives before a reply is sent, the older turn is dropped and the
+  newer one answers (taking over "addressed" and the message to reply to); after two drops in a row the next reply is sent
+  anyway. `DiscordTextOptions.DropStaleTurns` turns this off.
+- **Sending:** in channels an addressed turn is answered as a Discord reply; DMs and ambient answers are plain messages.
+  Replies are split under 2,000 characters (at paragraph, line, sentence or word breaks), `@everyone`, `@here` and role
+  mentions are neutralized, and messages go with no mentions allowed except the replied-to person. At most one message per
+  1.5 s per channel; NetCord waits out Discord's 429s.
+- **`/martlet message:<text>`** works in servers, Martlet's DMs and (with the app on the person's account) any DM or group
+  DM. In a server where Martlet's bot is installed that channel's mode applies; anywhere else the DM allowance does. It
+  defers ("Martlet is thinking...") and follows up with the reply, quoting the words asked. In a group DM Martlet sees only the
+  command text, never the group's messages.
+- **`/chatmode mode:<Off|Mentions|Sometimes|Always|Server default>`** (servers only; the owner or someone with Manage
+  Channels) saves the current channel's rule in `discord.json`.
+- Status: Companion › Discord's `DiscordTextStatus` line (counts of seen, considered, answered, passed, dropped and failed
+  messages, the last reply's place kind and last problem) and *Discord text: ...* lines in the desktop log.
 
 ## Workstreams
 

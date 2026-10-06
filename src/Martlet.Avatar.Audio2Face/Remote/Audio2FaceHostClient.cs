@@ -400,7 +400,14 @@ public static class Audio2FaceHostClient
             RevocationMode = X509RevocationMode.NoCheck, DisableCertificateDownloads = true
         };
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) =>
-            ValidateCertificate(certificate, chain, errors, accept, now);
+        {
+            var valid = ValidateCertificate(certificate, chain, errors, accept, now);
+            if (!valid) HostRoutes.KeyRejected(origin);
+            return valid;
+        };
+        // The request keeps the home origin (TLS checks the pinned key, signatures are unchanged); HostRoutes only picks
+        // which address the TCP connection dials: home, or an outside address when home doesn't answer.
+        handler.ConnectCallback = HostRoutes.ConnectAsync;
         return new HttpClient(handler, disposeHandler: true)
         {
             BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan
@@ -471,12 +478,20 @@ public static class Audio2FaceHostClient
             }
             return response;
         }
-        catch (HttpRequestException)
+        catch (Exception error) when (error is HttpRequestException ||
+            error is OperationCanceledException && !token.IsCancellationRequested && RecentRouteError(http) is not null)
         {
-            throw new Audio2FaceHostException("host.unreachable",
-                "Could not reach the Martlet host over pinned TLS. Check the address, that the gateway is running, and the fingerprint.");
+            var route = HostRoutes.For(http.BaseAddress?.GetLeftPart(UriPartial.Authority));
+            throw new Audio2FaceHostException("host.unreachable", route is { Error: { } why, Outside.Count: > 0, ErrorAt: { } at } &&
+                DateTimeOffset.UtcNow - at < TimeSpan.FromMinutes(1)
+                ? why
+                : "Could not reach the Martlet host over pinned TLS. Check the address, that the gateway is running, and the fingerprint.");
         }
     }
+
+    private static string? RecentRouteError(HttpClient http) =>
+        HostRoutes.For(http.BaseAddress?.GetLeftPart(UriPartial.Authority)) is { Error: { } why, Outside.Count: > 0, ErrorAt: { } at } &&
+        DateTimeOffset.UtcNow - at < TimeSpan.FromMinutes(1) ? why : null;
 
     internal static async Task<JsonDocument> ReadJson(HttpResponseMessage response, int maximum, CancellationToken token)
     {
