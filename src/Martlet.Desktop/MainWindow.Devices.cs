@@ -460,7 +460,7 @@ public partial class MainWindow
     }
 
     /// <summary>How this desktop reaches a host to install or remove its roles and update it: through Martlet on that computer
-    /// (its paired connection; the default), SSH (Docker or native Ubuntu) or this PC's Docker Desktop.</summary>
+    /// (its paired connection; the default), SSH (Docker or native Linux) or this PC's Docker Desktop.</summary>
     private StackPanel ReachEditor(PairedHost host)
     {
         var panel = new StackPanel { Margin = new Thickness(4, 4, 0, 4), MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left };

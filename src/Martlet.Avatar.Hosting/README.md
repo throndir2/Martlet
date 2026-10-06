@@ -52,7 +52,7 @@ Settings › Tools or Start > **Martlet prerequisites** ([Prerequisites](../../d
 **As a Martlet host (recommended; another computer or this PC):** in Martlet >
 **Martlet hosts** (also linked from Character settings), set up a host and add
 the `audio2face` role: this PC through Docker Desktop, another computer over SSH
-(Docker or native Ubuntu), or by running the same
+(Docker or native Linux), or by running the same
 [`martlet-host setup`, `pair` and `add audio2face`](../../deploy/host/README.md)
 commands on the host yourself. Its default `local` engine builds NVIDIA's
 open-source Audio2Face-3D SDK into a container on the host and downloads the

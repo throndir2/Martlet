@@ -48,7 +48,7 @@ public sealed class HostSupplyDownload(Stream content, long? length, IDisposable
     }
 }
 
-/// <summary>Files for a native Ubuntu host without internet access (see "Computers without internet" in
+/// <summary>Files for a native Linux host without internet access (see "Computers without internet" in
 /// deploy/host/README.md): Martlet's source, the .NET SDK the engine builds the gateway with and the gateway's NuGet
 /// packages, downloaded on this PC and kept under the host account's ~/.cache/martlet/supply.</summary>
 public static partial class HostSupply
@@ -316,7 +316,7 @@ public static partial class HostSupply
     }
 }
 
-/// <summary>Sets a native Ubuntu host without internet access up to build its gateway: downloads Martlet's source, the
+/// <summary>Sets a native Linux host without internet access up to build its gateway: downloads Martlet's source, the
 /// .NET SDK and the gateway's NuGet packages on this PC (cached in <paramref name="cacheDirectory"/>), sends what the host
 /// lacks over <see cref="IHostSupplyChannel"/>, checks every file arrived intact, unpacks the source in ~/Martlet and
 /// removes what is no longer needed. The engine then runs with MARTLET_SUPPLY (<see cref="HostCheckout.Command"/>).</summary>

@@ -89,11 +89,11 @@ feature steps), or a GPU.
 
 | Prerequisite | Needed for | Delivery |
 | --- | --- | --- |
-| Ubuntu 24.04 x86_64 with SSH, **or** another Windows PC with Martlet + Docker Desktop | Running roles | You supply the machine and OS; a Windows host uses the `DockerDesktop` first-run option |
+| An x86_64 Linux with SSH and sudo (any systemd distribution; Docker is optional), **or** another Windows PC with Martlet + Docker Desktop | Running roles | You supply the machine and OS; a Windows host uses the `DockerDesktop` first-run option |
 | Docker Engine + Compose v2 | All container roles | **Host tool** (`martlet-host` installs after `yes`) |
 | NVIDIA driver | GPU roles | **Host tool** on Ubuntu (after `yes`); on Windows, the `NvidiaDriver` item |
 | NVIDIA Container Toolkit | GPU containers on Ubuntu | **Host tool** (after `yes`); Docker Desktop uses WSL 2 GPU support instead |
-| .NET SDK for the native Linux gateway | Native Ubuntu method | **Host tool** (`setup` installs it into `~/.dotnet`, no sudo); the Docker method needs nothing extra |
+| .NET SDK for the native Linux gateway | Native Linux method | **Host tool** (`setup` installs it into `~/.dotnet`, no sudo); the Docker method needs nothing extra |
 | Gateway TLS identity, pairing code | Pinned TLS between client and host | **Host tool** (`setup`, `pair`) |
 | Audio2Face-3D, 4 GB+ VRAM, models `claire`/`mark`/`james`: the default `local` engine is NVIDIA's open-source Audio2Face-3D SDK built on the host ([`workers/audio2face`](../workers/audio2face/README.md); RTX 20 series or newer, driver 570+, models downloaded from Hugging Face on first start); the `nim` engine is NIM `nvcr.io/nim/nvidia/audio2face-3d:1.3` + pinned model configs | Rich lip-sync | **Host tool** (`add audio2face`); `nim` also needs your NGC key |
 

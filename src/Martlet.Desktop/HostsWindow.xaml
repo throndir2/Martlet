@@ -126,7 +126,7 @@
                         <StackPanel>
                             <TextBlock Text="A Linux computer over SSH" FontWeight="SemiBold" FontSize="15"/>
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10"
-                                       Text="Martlet signs in once, runs the host in Docker when the computer has it (or installs it natively on Ubuntu 24.04), then connects automatically."/>
+                                       Text="Martlet signs in once, runs the host in Docker when the computer has it (or installs it natively on Linux with systemd), then connects automatically."/>
                             <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)" Padding="0,0,0,4"/>
                             <DockPanel>
                                 <Button x:Name="SetupButton" DockPanel.Dock="Right" Content="Set up over _SSH" Click="Setup_Click"

@@ -221,7 +221,7 @@ to bottom: the **map**, the **selected device** with what it does, and
     up*, *Restart it*, *Shut it down*, *Pair again or change its setup* and
     *Forget this host*; *Prerequisites* for This PC. Install, remove, update
     and status run the same `martlet-host` engine on that computer the way
-    Martlet reaches it (SSH with Docker, SSH native Ubuntu, or this PC's Docker
+    Martlet reaches it (SSH with Docker, SSH native Linux, or this PC's Docker
     Desktop), in a Martlet run window with live output, *Hide* and *Cancel task*
     (never a console window; see
     [Run windows and Background tasks](#run-windows-and-background-tasks)); the
@@ -317,7 +317,7 @@ choose its jobs.
    firewall, setup and pairing in one run window) and *A Linux computer over
    SSH* (one SSH target and *Set up over SSH*: connect, then run the host in
    Docker when that account can use Docker, directly or with sudo, otherwise
-   natively on Ubuntu 24.04; set up, pair and read the machine report in a run
+   natively on any Linux with systemd; set up, pair and read the machine report in a run
    window). Its private address is filled in from the computer and sits in a
    collapsed expander. Another Windows PC needs no SSH: Martlet there sets
    itself up (*Use as a Martlet host*) and then appears in the network list.

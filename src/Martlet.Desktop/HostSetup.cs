@@ -109,7 +109,7 @@ internal static partial class HostSetupCommands
             $"$D run --rm{run} -u 0 -v {DockerSocket}{Environment(target, setup)}{LockWait(lockWaitSeconds)} {image} {(assumeYes ? "--yes " : "")}{engine}";
     }
 
-    /// <summary>POSIX shell for a native Ubuntu host: keep a Martlet checkout in ~/Martlet and run its engine
+    /// <summary>POSIX shell for a native Linux host: keep a Martlet checkout in ~/Martlet and run its engine
     /// (<see cref="HostCheckout.Command"/>). An update checks out this desktop's release tag (falling back to main) before
     /// rebuilding the gateway from it. <paramref name="supplied"/>: the host has no internet access and Martlet sent it
     /// what it needs (<see cref="HostSupplier"/>).</summary>
