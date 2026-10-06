@@ -88,7 +88,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             log(LogLevels.Warn, "signin.json is unreadable or invalid, so nobody can sign in to this host until it is set up again.");
             return new();
         }
-        var stale = loaded.Sweep();
+        var stale = loaded.Sweep(clock.GetUtcNow());
         if (stale.Count > 0)
         {
             try { storage.Save(loaded.Write()); }
@@ -267,6 +267,53 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
         lock (gate) return refused.Where(r => !document.Allows(r.Identity.Provider, r.Identity.Subject)).ToArray();
     }
 
+    /// <summary>Remembers the network key a device that signed in here asks to join with, so a later removal names exactly
+    /// that key.</summary>
+    internal void RememberJoinKey(string deviceId, string key)
+    {
+        lock (gate)
+        {
+            if (storage is null) return;
+            var current = LoadLocked();
+            var index = current.Enrolled.FindLastIndex(e => e.DeviceId == deviceId);
+            if (index < 0 || current.Enrolled[index].Key == key) return;
+            var next = current.Clone();
+            next.Enrolled[index] = next.Enrolled[index] with { Key = key };
+            try { SaveLocked(next); }
+            catch (Exception error) when (error is not OperationCanceledException) { }
+        }
+    }
+
+    /// <summary>Computers to remove from the network because the sign-in they joined with is no longer allowed, as of
+    /// <paramref name="roster"/>: records the roster already shows removed (with that key), or never listed, are forgotten.</summary>
+    internal IReadOnlyList<GatewaySignInRemoval> Removals(Martlet.Core.Network.NetworkRoster? roster)
+    {
+        lock (gate)
+        {
+            if (storage is null) return [];
+            var current = document = LoadLocked();
+            if (current.Removed.Count == 0) return [];
+            bool Pending(GatewaySignInRemoval r) =>
+                roster?.Desktop(r.DeviceId) is { Removed: false } desktop && (r.Key is null || desktop.Key == r.Key);
+            var pending = current.Removed.Where(Pending).ToArray();
+            if (roster is not null && pending.Length != current.Removed.Count)
+            {
+                var next = current.Clone();
+                next.Removed.RemoveAll(r => !Pending(r));
+                try { SaveLocked(next); }
+                catch (Exception error) when (error is not OperationCanceledException) { }
+            }
+            return pending;
+        }
+    }
+
+    /// <summary>Why nobody can sign in to this host right now (<see cref="GatewaySignInSettings.BlockedReason"/>), or null.</summary>
+    internal string? BlockedReason()
+    {
+        lock (gate) if (storage is null) return "signin.not_set_up";
+        return GatewaySignInSettings.BlockedReason(Snapshot());
+    }
+
     internal GatewaySignInDocument Snapshot()
     {
         lock (gate) return document = LoadLocked();
@@ -280,7 +327,7 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             GatewayRules.Require(storage is not null, "signin.unavailable");
             var next = LoadLocked().Clone();
             var codes = GatewaySignInSettings.Apply(next, change, clock.GetUtcNow());
-            var stale = next.Sweep();
+            var stale = next.Sweep(clock.GetUtcNow());
             SaveLocked(next);
             var revoked = RevokeLocked(stale);
             log(LogLevels.Info, $"{by} changed this host's sign-in settings ({change.Action})" +
@@ -306,6 +353,19 @@ internal static class GatewaySignInSettings
 {
     internal const int MaximumAllowed = 32;
     internal const int MaximumProviders = 8;
+
+    /// <summary>Whether sign-in is usable on a host with these settings: null when it is (an owner account, which always has
+    /// an authenticator, or a configured provider with at least one allowed identity), otherwise why not:
+    /// <c>signin.not_set_up</c> (no settings, or neither an owner account nor a provider) or
+    /// <c>signin.no_allowed_identity</c> (providers, but none with an allowed identity, and no owner account). Pure: reads
+    /// nothing, so martlet-host can ask it of signin.json while the service is stopped.</summary>
+    internal static string? BlockedReason(GatewaySignInDocument? document)
+    {
+        if (document is null || document.Owner is null && document.Providers.Count == 0) return "signin.not_set_up";
+        if (document.Owner is not null) return null;
+        return document.Providers.Any(p => p.Kind is "oidc" or "discord" or "steam" && document.Allowed.Any(a => a.Provider == p.Id))
+            ? null : "signin.no_allowed_identity";
+    }
 
     internal static IReadOnlyList<string>? Apply(GatewaySignInDocument next, GatewaySignInChange change, DateTimeOffset now)
     {
@@ -454,6 +514,21 @@ internal sealed record GatewaySignInEnrollment
     public required string Subject { get; init; }
     public string? Label { get; init; }
     public DateTimeOffset EnrolledAt { get; init; }
+    /// <summary>The network key the device asked to join with through this host (null until it asks).</summary>
+    public string? Key { get; init; }
+}
+
+/// <summary>A computer that joined (or may join) the network through a sign-in that is no longer allowed. Member desktops
+/// remove it from the roster (signed by them) on their next sync, so every host revokes it; the host forgets the record once
+/// the roster shows it removed.</summary>
+internal sealed record GatewaySignInRemoval
+{
+    public required string DeviceId { get; init; }
+    public string? Key { get; init; }
+    public required string Provider { get; init; }
+    public required string Subject { get; init; }
+    public string? Label { get; init; }
+    public DateTimeOffset At { get; init; }
 }
 
 /// <summary>signin.json: everything a host needs to let computers sign in. Holds secrets (the authenticator secret, provider
@@ -474,6 +549,8 @@ internal sealed class GatewaySignInDocument
     public List<GatewaySignInProviderConfig> Providers { get; set; } = [];
     public List<GatewayAllowedSignIn> Allowed { get; set; } = [];
     public List<GatewaySignInEnrollment> Enrolled { get; set; } = [];
+    public List<GatewaySignInRemoval> Removed { get; set; } = [];
+    internal const int MaximumRemoved = 32;
 
     internal byte[] Write()
     {
@@ -490,6 +567,7 @@ internal sealed class GatewaySignInDocument
         parsed.Providers ??= [];
         parsed.Allowed ??= [];
         parsed.Enrolled ??= [];
+        parsed.Removed ??= [];
         foreach (var provider in parsed.Providers) provider.Validate();
         return parsed;
     }
@@ -502,11 +580,25 @@ internal sealed class GatewaySignInDocument
         ? Owner?.User == subject
         : Allowed.Any(a => a.Provider == provider && a.Subject == subject);
 
-    /// <summary>Drops (and returns) the enrollments of identities that may no longer sign in; their computers lose access.</summary>
-    internal IReadOnlyList<GatewaySignInEnrollment> Sweep()
+    /// <summary>Drops (and returns) the enrollments of identities that may no longer sign in; their computers lose access here
+    /// and are recorded in <see cref="Removed"/> so member desktops remove them from the network too.</summary>
+    internal IReadOnlyList<GatewaySignInEnrollment> Sweep(DateTimeOffset now)
     {
         var stale = Enrolled.Where(e => !Allows(e.Provider, e.Subject)).ToArray();
         Enrolled.RemoveAll(e => !Allows(e.Provider, e.Subject));
+        foreach (var enrollment in stale)
+        {
+            Removed.RemoveAll(r => r.DeviceId == enrollment.DeviceId);
+            Removed.Add(new()
+            {
+                DeviceId = enrollment.DeviceId, Key = enrollment.Key, Provider = enrollment.Provider, Subject = enrollment.Subject,
+                Label = enrollment.Label, At = now
+            });
+        }
+        if (Removed.Count > MaximumRemoved) Removed.RemoveRange(0, Removed.Count - MaximumRemoved);
         return stale;
     }
+
+    /// <summary>The enrollments a change would sweep, without changing anything (for martlet-host status and previews).</summary>
+    internal IReadOnlyList<GatewaySignInEnrollment> WouldSweep() => Enrolled.Where(e => !Allows(e.Provider, e.Subject)).ToArray();
 }

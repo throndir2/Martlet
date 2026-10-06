@@ -92,6 +92,11 @@ public sealed class GatewayServer
     /// /martlet/v1/signin) in <paramref name="storage"/>. Without it nobody can sign in here.</summary>
     public void AttachSignInStorage(IGatewaySignInStorage storage) => application.SignIn.Attach(storage);
 
+    /// <summary>Null when someone can sign in to this host (an owner account, or a provider with an allowed identity);
+    /// otherwise why not ("signin.not_set_up", "signin.no_allowed_identity"). A host is reachable from outside home only
+    /// while this is null.</summary>
+    public string? SignInBlockedReason => application.SignIn.BlockedReason();
+
     /// <summary>Sends this host's sign-in provider calls (discovery, keys, code exchange) through <paramref name="handler"/>
     /// instead of the network: for rehearsals with an in-process issuer only.</summary>
     public void UseSignInProviderHandler(HttpMessageHandler handler) =>

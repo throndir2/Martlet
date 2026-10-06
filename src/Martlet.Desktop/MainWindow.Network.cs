@@ -147,6 +147,16 @@ public partial class MainWindow
                 state = state with { Roster = NetworkRoster.Accept(merged, local).Roster };
             NetworkIdentity.Save(directory, state);
             networkState = state;
+            // Outside addresses travel with each pairing too, so a PC that has never been home reconnects whatever its network state.
+            try
+            {
+                foreach (var id in Pairings().KeepRosterAddresses(state.Roster))
+                    ErrorLog.Info($"Martlet network: kept {id}'s outside addresses from the network with its pairing.");
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+            {
+                ErrorLog.Warn("Martlet network: couldn't keep the hosts' outside addresses with their pairings: " + error.Message);
+            }
             if (result.RetireKey) NetworkIdentity.Retire(directory);
             networkJoins = result.Joins;
             networkNotes = result.Notes;

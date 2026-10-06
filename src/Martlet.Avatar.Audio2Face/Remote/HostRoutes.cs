@@ -63,6 +63,14 @@ public static class HostRoutes
         }
     }
 
+    /// <summary>Sets one host's outside addresses from what this PC saved with its pairing, unless it already has some (from the
+    /// network roster, which wins).</summary>
+    public static void Prime(string origin, string? hostId, IEnumerable<string> outside)
+    {
+        if (Key(origin) is { } key && Entries.TryGetValue(key, out var entry) && entry.Outside.Length > 0) return;
+        Set(origin, hostId, outside);
+    }
+
     /// <summary>How this PC last reached each host it knows outside addresses for or has connected to.</summary>
     public static IReadOnlyList<HostRouteStatus> Snapshot() =>
         Entries.Values.Select(e => e.Status()).OrderBy(s => s.HostId ?? s.Origin, StringComparer.Ordinal).ToArray();

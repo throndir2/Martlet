@@ -786,6 +786,29 @@ and failures and no secret. Not covered: the desktop windows, Windows
 Credential Manager, a host reached over the internet, a real browser and a real
 issuer.
 
+`signin_lab` (`action` `start`, `status` or `stop`; `dataDirectory` filled in
+by the script) runs a live sign-in lab for the desktop on a disposable data
+directory, so **Sign-in from outside** can be driven against a real paired host:
+`src\Martlet.NodeLinkCheck` mode `signin-lab` (`SignInLab.cs`) starts a gateway
+on 127.0.0.1 with an owner account, an OpenID Connect provider (an issuer in
+that process), an allowed identity and an outside address set on the host; it
+pairs the desktop of the data directory (`hosts.json` there, the secret in the
+lab credential folder) and a simulated laptop signs in and keeps syncing.
+`status` returns what the lab sees (`network`, `laptopMember`,
+`laptopWasMember`, `laptopRemoved`, `laptopCanUseHost`, the laptop's network
+events). It needs `Invoke-MartletMcp.ps1 -LabCredentials`, which points
+`MARTLET_LAB_CREDENTIALS` of the desktop and MCP server at a
+`lab-credentials` folder in the data directory, so pairing secrets go there
+(plaintext, thrown away with the folder) instead of Windows Credential Manager.
+Example: start the lab, click `NavHome` (the desktop reads `hosts.json` again),
+poll `network_status` until `"state":"member"`, `signin_lab status` until
+`"laptopMember":true`, open Add a computer › `HostsStepRoles` ›
+`HostSignInSettings`, type `authentik` / `lab-user-42`, click `SignInDisallow`,
+then poll `network_status` until the laptop is `"removed":true` and
+`signin_lab status` until `"laptopRemoved":true`. `network_status` also lists
+`pairedHosts` (each paired host in `hosts.json` and how many outside addresses
+are kept with its pairing).
+
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
 `SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
@@ -800,6 +823,8 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
 `SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`,
 `SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow`,
+`SignInRemovedList` (computers your member PCs still have to remove from the
+network), `SignInOutsideWarning` (outside access paused or about to be),
 `SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
 `SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
 `SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,

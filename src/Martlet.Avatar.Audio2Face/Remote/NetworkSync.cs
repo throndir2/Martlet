@@ -280,6 +280,19 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
             ignored.Remove(pairing.HostId);
         }
 
+        // A computer that joined through a sign-in the owner no longer allows (a member host of this network says so) leaves the
+        // network: this PC signs its removal, so every host revokes it. Only that exact key, never this PC.
+        foreach (var removal in views.Values.Where(v => v.Roster?.NetworkId == roster.NetworkId && roster.Host(v.HostId) is { Removed: false })
+                     .SelectMany(v => v.SignInRemovals))
+        {
+            if (removal.DeviceId == signer.DeviceId || roster.Desktop(removal.DeviceId) is not { Removed: false } desktop ||
+                removal.Key is not null && desktop.Key != removal.Key)
+                continue;
+            roster = roster.Remove(signer, NetworkKinds.Desktop, removal.DeviceId, now);
+            events.Add($"Removed {desktop.Name} ({removal.DeviceId}) from your Martlet network: it joined by signing in to {removal.HostId} as " +
+                $"{removal.Label ?? removal.Subject} ({removal.Provider}), which is no longer allowed there. Every host revokes it.");
+        }
+
         var added = new List<(Audio2FaceHostPairing Pairing, string Secret)>();
         string? deniedBy = null;
         foreach (var host in roster.ActiveHosts)

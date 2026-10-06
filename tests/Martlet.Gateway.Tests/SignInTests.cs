@@ -222,4 +222,58 @@ public sealed class SignInTests
         Assert.DoesNotContain(credentials.PairedDevices(), d => d.DeviceId == "laptop");
         Assert.Contains(log, line => line.StartsWith("Revoked laptop"));
     }
+
+    [Fact]
+    public async Task Removing_an_identity_records_its_computers_with_their_join_keys_for_member_desktops()
+    {
+        var clock = new ManualGatewayClock(new DateTimeOffset(2026, 10, 6, 8, 0, 0, TimeSpan.Zero));
+        var identity = new GatewayHostIdentity { HostId = "home-host", SpkiFingerprint = "sha256:" + new string('a', 64) };
+        var credentials = new GatewayCredentialStore(identity, clock);
+        var service = new GatewaySignInService(credentials, clock, new SystemGatewayCrypto(), (_, _) => { });
+        var storage = new MemorySignInStorage();
+        service.Attach(storage);
+        service.Change(new() { Action = "provider", ProviderConfig = new() { Id = "idp", Kind = "oidc", Name = "IdP", Issuer = "https://idp.example", ClientId = "c" } },
+            "home-pc", CancellationToken.None);
+        service.Providers = config => new FakeProvider(new("idp", "user-123", "me@example.net"));
+        service.Change(new() { Action = "allow", Provider = "idp", Subject = "user-123" }, "home-pc", CancellationToken.None);
+        var proof = JsonDocument.Parse("""{"code":"good"}""").RootElement;
+        var (attempt, _) = await service.BeginAsync("idp", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "http://127.0.0.1:53111/", CancellationToken.None);
+        await service.CompleteAsync(attempt.Id, "laptop", "LAPTOP", proof, CancellationToken.None);
+        service.RememberJoinKey("laptop", "laptop-network-key");
+        service.RememberJoinKey("not-enrolled", "other-key");
+        Assert.Equal("laptop-network-key", Assert.Single(service.Snapshot().Enrolled).Key);
+
+        service.Change(new() { Action = "disallow", Provider = "idp", Subject = "user-123" }, "home-pc", CancellationToken.None);
+        var removal = Assert.Single(service.Snapshot().Removed);
+        Assert.Equal(("laptop", "laptop-network-key", "idp", "user-123"), (removal.DeviceId, removal.Key, removal.Provider, removal.Subject));
+        Assert.Contains("\"removed\"", Encoding.UTF8.GetString(storage.Bytes!));
+        Assert.DoesNotContain(credentials.PairedDevices(), d => d.DeviceId == "laptop");
+        // Without a roster (the host in no network) there is nobody to remove it from, and nothing is forgotten.
+        Assert.Empty(service.Removals(null));
+        Assert.Single(service.Snapshot().Removed);
+    }
+
+    [Fact]
+    public void Sign_in_is_usable_with_an_owner_account_or_a_provider_with_an_allowed_identity()
+    {
+        Assert.Equal("signin.not_set_up", GatewaySignInSettings.BlockedReason(null));
+        var document = new GatewaySignInDocument();
+        Assert.Equal("signin.not_set_up", GatewaySignInSettings.BlockedReason(document));
+        document.Providers.Add(new() { Id = "idp", Kind = "oidc", Name = "IdP", Issuer = "https://idp.example", ClientId = "c" });
+        Assert.Equal("signin.no_allowed_identity", GatewaySignInSettings.BlockedReason(document));
+        document.Allowed.Add(new() { Provider = "other", Subject = "x" });
+        Assert.Equal("signin.no_allowed_identity", GatewaySignInSettings.BlockedReason(document));
+        document.Allowed.Add(new() { Provider = "idp", Subject = "user-123" });
+        Assert.Null(GatewaySignInSettings.BlockedReason(document));
+        var owner = new GatewaySignInDocument
+        {
+            Owner = new() { User = "owner", Password = GatewayAccounts.HashPassword("a long owner passphrase", 1000), TotpSecret = "JBSWY3DPEHPK3PXP" }
+        };
+        Assert.Null(GatewaySignInSettings.BlockedReason(owner));
+        var detached = new GatewaySignInService(new GatewayCredentialStore(new GatewayHostIdentity
+        {
+            HostId = "home-host", SpkiFingerprint = "sha256:" + new string('a', 64)
+        }), TimeProvider.System, new SystemGatewayCrypto(), (_, _) => { });
+        Assert.Equal("signin.not_set_up", detached.BlockedReason());
+    }
 }

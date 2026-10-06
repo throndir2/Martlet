@@ -81,6 +81,133 @@ public sealed class NativeTests : IDisposable
         await reopened.CloseCleanlyAsync();
     }
 
+    /// <summary>signin.json with the real martlet-host process: the owner account set up over stdin (authenticator code
+    /// computed from the secret it prints), status and an invite, then the approved service serves sign-in over pinned TLS and
+    /// a computer signs in with a recovery code; the file stays 0600 for the service owner and never holds the password.</summary>
+    [Fact]
+    public async Task Actual_process_keeps_signin_json_and_serves_sign_in_over_pinned_tls()
+    {
+        var port = new TcpListener(IPAddress.Loopback, 0);
+        port.Start();
+        var origin = new GatewayOrigin($"https://127.0.0.1:{((IPEndPoint)port.LocalEndpoint).Port}");
+        port.Stop();
+        WriteConfig(origin);
+        var config = root + "/host.json";
+        var assembly = typeof(HostApplication).Assembly.Location;
+        var (initExit, initOutput) = await RunAsync(assembly, null, "owner-init", "--config", config);
+        Assert.True(initExit == 0, initOutput);
+
+        const string password = "native owner passphrase";
+        string ownerOutput;
+        using (var owner = Start(assembly, "owner-signin-owner", "--config", config, "--user", "owner"))
+        {
+            try
+            {
+                await owner.StandardInput.WriteLineAsync(password);
+                await owner.StandardInput.FlushAsync();
+                var seen = new StringBuilder();
+                string? secret = null;
+                while (secret is null && await owner.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(30)) is { } line)
+                {
+                    seen.AppendLine(line);
+                    if (line.StartsWith("secret: ", StringComparison.Ordinal)) secret = line["secret: ".Length..].Trim();
+                }
+                Assert.True(secret is not null, seen.ToString());
+                await owner.StandardInput.WriteLineAsync(Martlet.Core.Access.Totp.Code(secret!, DateTimeOffset.UtcNow));
+                owner.StandardInput.Close();
+                ownerOutput = seen + await owner.StandardOutput.ReadToEndAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                await owner.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                Assert.True(owner.ExitCode == 0, ownerOutput);
+            }
+            finally { await StopOwned(owner); }
+        }
+        var recovery = ownerOutput.Split('\n').Select(l => l.Trim()).Where(l => l.Length == 11 && l[5] == '-').ToArray();
+        Assert.Equal(10, recovery.Length);
+        var signin = root + "/signin.json";
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(signin));
+        Assert.DoesNotContain(password, await File.ReadAllTextAsync(signin));
+        Assert.DoesNotContain(recovery[0], await File.ReadAllTextAsync(signin));
+
+        var (statusExit, status) = await RunAsync(assembly, null, "owner-signin-status", "--config", config);
+        Assert.True(statusExit == 0, status);
+        Assert.Contains("\"user\":\"owner\"", status);
+        Assert.Contains("\"recoveryCodesLeft\":10", status);
+        var (inviteExit, inviteOutput) = await RunAsync(assembly, null, "owner-invite", "--config", config, "--address", "home.example.net:9443");
+        Assert.True(inviteExit == 0, inviteOutput);
+        var invite = Martlet.Core.Network.NetworkInvite.Parse(inviteOutput.Split('\n')
+            .Single(l => l.StartsWith(Martlet.Core.Network.NetworkInvite.Prefix, StringComparison.Ordinal)));
+        Assert.Equal(origin.CanonicalOrigin, invite.Origin);
+        Assert.Equal(["home.example.net:9443"], invite.Addresses);
+
+        using var process = Start(assembly, "serve", "--config", config);
+        try
+        {
+            var line = await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.StartsWith("serving:", line);
+            using var handler = new SocketsHttpHandler();
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) => certificate is not null &&
+                "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                    new System.Security.Cryptography.X509Certificates.X509Certificate2(certificate).PublicKey.ExportSubjectPublicKeyInfo())) == invite.SpkiFingerprint;
+            using var http = new HttpClient(handler) { BaseAddress = new Uri(invite.Origin + "/") };
+            using (var list = await http.GetAsync("martlet/v1/signin"))
+                Assert.Contains("\"owner\"", await list.Content.ReadAsStringAsync());
+            using var begin = await http.PostAsync("martlet/v1/signin/begin", Json(new { protocol_version = new { major = 2, minor = 0 }, provider = "owner" }));
+            Assert.Equal(HttpStatusCode.OK, begin.StatusCode);
+            var attempt = JsonDocument.Parse(await begin.Content.ReadAsStringAsync()).RootElement.GetProperty("attempt_id").GetString();
+            using var complete = await http.PostAsync("martlet/v1/signin/complete", Json(new
+            {
+                protocol_version = new { major = 2, minor = 0 }, attempt_id = attempt, device_id = "native-laptop", display_name = "NATIVE",
+                proof = new { user = "owner", password, code = recovery[0] }
+            }));
+            var body = await complete.Content.ReadAsStringAsync();
+            Assert.True(complete.StatusCode == HttpStatusCode.Created, body);
+            Assert.Contains("\"signed_in\"", body);
+            var (afterExit, after) = await RunAsync(assembly, null, "owner-signin-status", "--config", config);
+            Assert.True(afterExit == 0, after);
+            Assert.Contains("native-laptop", after);
+            Assert.Contains("\"recoveryCodesLeft\":9", after);
+            Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(signin));
+            Assert.Equal(0, Native.kill(process.Id, 15));
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(40));
+            Assert.Equal(130, process.ExitCode);
+        }
+        finally { await StopOwned(process); }
+
+        static StringContent Json(object value) => new(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json");
+    }
+
+    private void WriteConfig(GatewayOrigin origin)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            schemaVersion = 1, hostId = "native-fixture", stateDirectory = root + "/state",
+            storageBackend = "linuxServicePermissions",
+            binding = new { mode = "loopback", origin = origin.CanonicalOrigin },
+            serviceUid = fs.UserId, serviceGid = fs.GroupId
+        });
+        using var stream = new FileStream(root + "/host.json", new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew, Access = FileAccess.Write,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+        });
+        stream.Write(bytes);
+    }
+
+    private static async Task<(int Exit, string Output)> RunAsync(string assembly, string? input, params string[] args)
+    {
+        using var process = Start(assembly, args);
+        try
+        {
+            if (input is not null) await process.StandardInput.WriteAsync(input);
+            process.StandardInput.Close();
+            var output = await process.StandardOutput.ReadToEndAsync().WaitAsync(TimeSpan.FromSeconds(60));
+            var error = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            return (process.ExitCode, output + error);
+        }
+        finally { await StopOwned(process); }
+    }
+
     [Theory]
     [InlineData("normal")]
     [InlineData("flow-stop")]
@@ -167,7 +294,8 @@ public sealed class NativeTests : IDisposable
                 File.Delete(root + "/state/" + name);
             Directory.Delete(root + "/state", recursive: false);
         }
-        foreach (var name in new[] { "host.json", "service-approval.json", "service-approval.staging", "logs.json", "agent.token", "commands.json" })
+        foreach (var name in new[] { "host.json", "service-approval.json", "service-approval.staging", "logs.json", "agent.token", "commands.json",
+                     "signin.json", "signin.staging", "network.json", "exposure.json", "machine.json" })
             File.Delete(root + "/" + name);
         Directory.Delete(root, recursive: false);
     }

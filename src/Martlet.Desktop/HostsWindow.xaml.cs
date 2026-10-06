@@ -616,9 +616,9 @@ public partial class HostsWindow : ThemedWindow
     /// reaches it and its pinned SSH host key). <paramref name="token"/>: a run window's, so a run that outlives this wizard
     /// (hidden in Background tasks) still keeps its pairing; this wizard's lifetime otherwise.</summary>
     private async Task<PairedHost> SavePairingAsync(Audio2FaceHostPairing pairing, string secret, HostSetupMethod method, string? ssh,
-        string? sshHostKey, CancellationToken? token = null)
+        string? sshHostKey, CancellationToken? token = null, IReadOnlyList<string>? outsideAddresses = null)
     {
-        var (host, lipSync) = await KeepPairingAsync(pairings, pairing, secret, method, ssh, sshHostKey, token ?? lifetime.Token);
+        var (host, lipSync) = await KeepPairingAsync(pairings, pairing, secret, method, ssh, sshHostKey, token ?? lifetime.Token, outsideAddresses);
         paired = host;
         ShowHosts((await pairings.LoadAsync(token ?? lifetime.Token)).Hosts);
         StatusText.Text = $"Paired with {host.HostId}. " + (lipSync
@@ -628,7 +628,8 @@ public partial class HostsWindow : ThemedWindow
     }
 
     private static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
-        string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token)
+        string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token,
+        IReadOnlyList<string>? outsideAddresses = null)
     {
         await pairings.CheckCanKeepAsync(token);
         var store = new WindowsCredentialStore();
@@ -642,7 +643,7 @@ public partial class HostsWindow : ThemedWindow
             Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
             DeviceId = pairing.DeviceId, CredentialId = pairing.CredentialId
         };
-        return await pairings.AddAsync(remote, method, ssh, token, sshHostKey);
+        return await pairings.AddAsync(remote, method, ssh, token, sshHostKey, outsideAddresses: outsideAddresses);
     }
 
     /// <summary>One click sets up Martlet's host service on this PC: offers to install Docker Desktop when it is missing,
@@ -770,9 +771,9 @@ public partial class HostsWindow : ThemedWindow
     private void JoinWithInvite_Click(object sender, RoutedEventArgs e)
     {
         var device = DeviceIdText.Text.Trim();
-        new SignInJoinWindow(device, async (pairing, secret) =>
+        new SignInJoinWindow(device, async (pairing, secret, outside) =>
         {
-            var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null);
+            var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null, outsideAddresses: outside);
             try { await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
             catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
         }) { Owner = this }.ShowDialog();

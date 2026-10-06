@@ -395,12 +395,21 @@ proving the app took it; returns `recovery_codes` once), `recovery-codes`,
 `issuer`, `client_id`, `client_secret`, `scopes`, `redirect_port` for a
 provider that only takes registered redirects; an omitted secret keeps the
 saved one) and `remove-provider`; the answer never contains a secret
-(`has_client_secret` only). Storage is `IGatewaySignInStorage`
+(`has_client_secret` only); it also carries `usable` and `blocked_reason`
+(`GatewaySignInSettings.BlockedReason`, `GatewayServer.SignInBlockedReason`:
+null when an owner account or a provider with an allowed identity exists,
+otherwise `signin.not_set_up` or `signin.no_allowed_identity`) and
+`removed_from_network` (computers whose sign-in was removed and that member
+desktops still have to remove from the roster). Storage is `IGatewaySignInStorage`
 (`GatewayServer.AttachSignInStorage`, `DurableGatewayHost.AttachSignIn`); with
 none attached nobody can sign in. Enrollments whose identity is no longer
 allowed are dropped and their device credentials revoked whenever the settings
 are read. A join request from an enrolled device carries `sign_in` in the
-network document.
+network document. The host remembers the network key an enrolled device
+asks to join with (`/network/join`); when its sign-in is removed the network
+document lists it for member desktops (`sign_in_removals`: `device_id`, `key`,
+`provider`, `subject`, `label`, `at`), which remove it from the roster, and the
+host forgets the record once the roster shows it removed.
 
 ## Signed request and replay contract
 

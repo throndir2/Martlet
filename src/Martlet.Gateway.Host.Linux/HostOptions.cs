@@ -41,7 +41,8 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                                  the first stdin line, prints an authenticator secret and otpauth link, reads a current
                                  authenticator code from the next line, then prints ten one-use recovery codes once
           owner-signin-allow     ... --provider <id> --subject <subject> [--label <text>]: allow an identity
-          owner-signin-disallow  ... --provider <id> --subject <subject>: remove it (its computers lose access)
+          owner-signin-disallow  ... --provider <id> --subject <subject>: remove it and its computers from the network
+                                 (this host revokes them; member desktops remove them from the roster on their next sync)
           owner-invite           ... [--address <name:port>]... [--label <text>]: print a martlet-invite-v1 line (this
                                  host's ID, TLS pin, home address and the outside addresses; no secret)
         Config alone grants no authority. Never put secrets in arguments, environment or logs.

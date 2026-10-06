@@ -155,6 +155,30 @@ over SSH also manages it.
   an attestation, or through a host outside the roster, still need the check
   number. The attestation lasts while the device is paired with that host and
   its identity is still allowed there.
+- **Removing a sign-in removes its computers.** When the owner removes an
+  allowed identity, a provider or the owner account on a host (in the
+  window, **Remove and remove its computers from the network**, or `martlet-host
+  owner-signin-disallow`), that host revokes the computers the sign-in
+  enrolled and records each one, with the network key it asked to join with
+  (`signin.json` `removed`). Member desktops read the records in the host's
+  network answer (`sign_in_removals`, members only) and remove those desktops
+  from the roster on their next sync, signed by them as any removal, so every
+  host revokes them and they leave the network (a new key and a new sign-in
+  are needed to come back). A desktop is removed only when its roster entry
+  still has that key (or the host never saw one), never the syncing PC itself,
+  and only on the word of an active member host; the host drops a record once
+  the roster shows the removal. So a host can at most ask to remove computers
+  that signed in through it, and only those whose sign-in the owner removed.
+- **Outside access needs sign-in.** A host is reachable from outside home only
+  while someone can sign in to it: an owner account (always with an
+  authenticator) or a provider with at least one allowed identity
+  (`GatewaySignInSettings.BlockedReason`: `signin.not_set_up`,
+  `signin.no_allowed_identity`; `blocked_reason` and `usable` in the sign-in
+  settings and `martlet-host owner-signin-status`). The guard pauses outside
+  access while it isn't (its outside addresses are kept). **Sign-in from
+  outside** asks before a change that would leave nobody able to sign in on a
+  host with outside addresses, and says when outside access is paused
+  (`SignInOutsideWarning`).
 - **Revocation.** Hosts revoke every credential of a removed desktop. A removed
   host revokes every network desktop and keeps the roster, so the PCs learn of
   the removal and forget it.
@@ -327,7 +351,7 @@ then joins the network on that host's attestation, with no check number.
 | Set up the owner account on a host: a name, a password (12+ characters) and an authenticator app (any TOTP app: Google Authenticator, Aegis, 1Password, Bitwarden, Microsoft Authenticator). The app must show a correct code before the account is saved; you get ten one-use recovery codes, shown once | At home, on a member PC: **Devices › Add a computer** with the host selected › **Sign-in from outside**; on a Linux host: `martlet-host owner-signin-owner --config ... --user owner` (password on the first stdin line, then the code) |
 | Make an invite: the host's ID, its TLS key fingerprint, its home address, the outside addresses it answers on and the network ID. It holds no secret, so it can be reused and kept in a password manager or note | **Sign-in from outside** › **Make invite** (it starts with the host's outside addresses from **Your Martlet network › Outside addresses**; set them there so the laptop keeps reaching the host once it has joined); `martlet-host owner-invite --config ...` (the addresses from `owner-exposure`, or `--address name:port`) |
 | On the laptop: paste the invite and sign in (account name, password and the code your app shows, or a recovery code) | **Devices › Add a computer › Join with an invite** |
-| Take access away | Remove the laptop from the network (as always), or **Remove owner account** / remove an allowed identity on the host: the host revokes every computer that signed in with it |
+| Take access away | Remove the laptop from the network (as always), or **Remove owner account** / **Remove and remove its computers from the network** for an allowed identity on the host (`martlet-host owner-signin-disallow`): the host revokes every computer that signed in with it and your member computers remove those computers from the network on their next sync, so they lose every host |
 
 How it is protected:
 
@@ -360,9 +384,16 @@ How it is protected:
   provider set up on the host and the account's stable subject, with a label
   for people) must be on the host's allow list; one that signs in but isn't
   gets `signin.not_allowed`. Removing an identity, a provider or the owner
-  account revokes the computers it enrolled on that host (a laptop that already
-  joined the network can still pair by its network key: remove it from the
-  network as well).
+  account revokes the computers it enrolled on that host and removes them from
+  the network (see *Removing a sign-in removes its computers* in the trust
+  model), so a laptop that joined loses every host, not just that one.
+- **Addresses travel with the pairing.** The invite's outside addresses are
+  kept with the pairing in `hosts.json` (`outsideAddresses`) and are dialed
+  from the next start on, so a laptop that has never been on the home network
+  reconnects whatever its network state. Once it is a member, every sync keeps
+  them in step with the host's roster entry, which wins. The home address
+  still goes first and outside addresses only after 1.5 seconds, so nothing is
+  slower at home.
 
 ### Signing in with your identity provider or Google
 
@@ -454,16 +485,24 @@ authenticator secret, invite pinned by an outside name, refusals, sign-in,
 joining on the host's attestation without a check number, an OpenID Connect
 provider with an issuer in the process and a simulated browser through the
 desktop's real loopback redirect, a Steam assertion confirmed by the host,
-revocation, audit),
-the gateway, Core and Linux gateway unit tests (RFC 6238 vectors, lockout,
-allow list, `martlet-host owner-signin-*` and `owner-invite` on a fixture file
-system) and the desktop's **Join with an invite** window on a disposable data
-folder (opened from Add a computer, a malformed invite and an unreachable host
-reported). **NOT RUN:** the **Sign-in from outside** window against a live
-paired host (needs a pairing secret in Windows Credential Manager), a laptop
-signing in over the real internet, `signin.json` on a native or Docker Linux
-host, and signing in at a real Authentik, Authelia, Keycloak, Pocket ID,
-Google, Discord or Steam (no disposable accounts on the development PC).
+removing an identity removing its tablet from the network so a second host
+revokes it too, revocation, audit), the gateway, Core, desktop and Linux
+gateway unit tests (RFC 6238 vectors, lockout, allow list, removal records,
+readiness, outside addresses kept with pairings, `martlet-host owner-signin-*`
+and `owner-invite` on a fixture file system), the real `martlet-host` process
+in Docker on this PC (owner account set up over stdin, status, invite,
+`signin.json` 0600, sign-in over pinned TLS against the approved service), and
+the desktop itself through MCP `signin_lab` on a disposable data folder: the
+desktop pairs with a live lab host (secret in the lab credential folder),
+founds the network, lets the signed-in laptop in on the host's attestation,
+signs the host's outside address into the roster and keeps it with its pairing,
+shows the live host in **Sign-in from outside**, and **Remove and remove its
+computers from the network** makes it remove the laptop, which loses the host.
+**NOT RUN:** a laptop signing in over the real internet, Windows Credential
+Manager itself in that flow (the lab folder stands in), a native (non-Docker)
+Linux host or the packaged `martlet-host` wrapper, and signing in at a real
+Authentik, Authelia, Keycloak, Pocket ID, Google, Discord or Steam (no
+disposable accounts on the development PC).
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`
 (three real gateways on 127.0.0.1 with simulated desktops and a simulated

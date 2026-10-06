@@ -31,6 +31,9 @@ if (args is ["exposure"])
     Console.WriteLine(JsonSerializer.Serialize(exposureReport));
     return exposureOk ? 0 : 1;
 }
+// With "signin-lab <data directory>" it runs a live sign-in lab for the desktop on that data directory (SignInLab).
+if (args is ["signin-lab", var labDirectory])
+    return await Martlet.NodeLinkCheck.SignInLab.RunAsync(labDirectory);
 // With "signin" it rehearses joining from outside home by signing in (SignInRehearsal) and prints its report.
 if (args is ["signin"])
 {
