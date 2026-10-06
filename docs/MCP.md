@@ -222,6 +222,18 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Reminders
+
+On a PC that keeps reminders (any with a data folder), every reply on a route
+that does function calling also gets Martlet's own `reminders` (`action` set,
+list or cancel; `text`, `in_minutes` or `at` for set; `id` for cancel), last,
+after `manage_memories`, always worded the same. It never asks first. Set
+returns the id and the time it is due ("Reminder 3f9a1c set for 4:12 PM (1 h
+from now)"), so the model needs no clock of its own. *Recent tool use* lists
+each call (`Martlet > reminders: set`), never the text; the desktop log notes
+each offer, take and reminder said by id only (`Reminders:`). See
+[Reminders](CONVERSATION.md#reminders).
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -1514,6 +1526,21 @@ directory's `smart-home.json`: `connected`, `address`, `name`, `version`,
 `shared` (this PC follows the connection shared through the hosts), `sharedBy`
 and `sharedRevision`.
 
+`discord_status` reads a data directory's `discord.json` (Companion ›
+Discord): `state` (`none`, `loaded` or `unreadable`), `configured`,
+`applicationId`, `token` (`readable` when Windows Credential Manager holds the
+bot token, `none`, or the credential error; never the token), `enabled`,
+`ownerSet`, `homeServerSet`, `serverChat`, `directChat`, `voiceChat`,
+`directFromAnyone`, `channelRules`, `people`, `peopleMayCall`, `chat` (one
+line) and `next` (the next setup step). `discord_check` (optional `seconds`,
+3-30, default 15) connects the saved bot once with the production
+`DiscordBot` and disconnects: `state` (`Online`, `Failed`, `Connecting` when
+Discord didn't answer in time, or `notConfigured`/`tokenUnreadable`),
+`botName`, `servers`, `problem`, `messageContentIntentOff` (Discord closed
+with 4014: turn on Message Content Intent), `tokenRejected` (4004),
+`milliseconds` and `next`. It sends no messages; a desktop already connected
+with the same bot stays connected.
+
 `prompts_status` reads Companion › Prompts from a data directory's
 `settings.json` (optional absolute `dataDirectory`, default the current
 user's): `state` (`none`, `loaded` or `unreadable` with `problem`),
@@ -2052,6 +2079,26 @@ exactly as the model gets them), the filled `prompt` and `researchPrompt`, and `
 `startedLastHour`; and the running think's `where`, `available`, `checksFit`,
 `why`, `parallel` and `attempts`),
 never a task or result. Read-only.
+
+`reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
+from a data directory's `shared-settings.json` (optional absolute
+`dataDirectory`): `computers` with a reminders entry, `unreadable` entries
+(a newer Martlet's), `pending`, and each reminder's `id`, `text`, `due`, `set`,
+`setOn`, `state` (*Pending*, *Done*, *Canceled*, *Missed*), `settledBy`,
+`settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
+*Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
+exactly as the model gets it. Read-only.
+
+`reminders_check` rehearses reminders with the production code (`Reminders`,
+`ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
+PCs whose entries merge through the shared settings: set in minutes and at a
+local time on one, listed and canceled on the other, a refused call, both
+offering when it is due, the PC used most recently (5 s against 10 minutes
+idle) taking it while the other stays quiet, the conversation's message when
+Martlet brings it up on its own and the notes when the user talks first, said
+once and settled everywhere, a PC alone taking it at once and one far too late
+let go. `passed` and each step's `passed` and `detail`. No model, network or
+credentials.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
@@ -3308,6 +3355,35 @@ backup), `SmartHomeManageProblem` and `SmartHomeUpdate-<n>`. Token and password
 fields are never returned; outcomes of actions are in `logs_tail` (`Status:`
 lines).
 
+Companion › Discord (`CompanionTab-Discord`): `DiscordSetupSteps` (*Step by
+step*) only expands the setup steps. Everything else needs
+`--allow-ui-effects`, a disposable data directory and no real bot token:
+`DiscordOpenPortal`, `DiscordOpenBotPage`, `DiscordFixIntent` and the invite
+buttons `DiscordInviteServer`, `DiscordInviteHome` and `DiscordInviteUser` open
+the browser; `DiscordToken` (a password box, never returned) with
+`DiscordTokenSave` saves the token in Windows Credential Manager and connects
+(a token that isn't one shows *That isn't a Discord bot token...* in
+`DiscordTokenStatus` and saves nothing); `DiscordForget` asks first
+(`ConfirmationYes`) and removes it; `DiscordEnabled` (on/off) and
+`DiscordReconnect` connect or disconnect the bot; `DiscordServerChat`,
+`DiscordDirectChat` and `DiscordVoiceChat` (*Off*, *Only when mentioned*,
+*Sometimes*, *Always*; `ui_select`), `DiscordDirectFromAnyone`, the channel
+rule picker (`DiscordRuleChannel`, `DiscordRuleMode`, `DiscordRuleAdd`,
+`DiscordRuleRemove-<channel>`), `DiscordOwnerId` with `DiscordOwnerSave`
+(digits, a `<@mention>` or a link), `DiscordOwnerPick-<n>` (*That's me:
+name*, from people the bot saw write) and `DiscordHomeServer` save
+`discord.json`. Snapshots return `DiscordSetupNext` (the next setup step),
+`DiscordConfigured` (*A bot token is saved for application 123...*),
+`DiscordTokenStatus`, `DiscordState` (*Online as Martlet in 2 servers.*, or
+*Not connected:* and why), `DiscordEnabledStatus`, `DiscordBotName`,
+`DiscordServers`, `DiscordProblem` (a rejected token, or *Turn on Message
+Content Intent...*), the invite links `DiscordServerLink`, `DiscordHomeLink`
+and `DiscordUserLink` (each with its `Copy-` button), `DiscordChatModes`, the
+three chat-mode choices, `DiscordRule-<channel>` (*Server › #general:
+Always*), `DiscordRuleChannelsStatus`, `DiscordPeopleCount` (counts only),
+`DiscordOwnerStatus`, `DiscordOwnerId` and `DiscordHomeServer`. The token is
+never returned.
+
 A host role's Add dialog (`HostInputDialog`) lists its choices as
 `HostInput-choice.<VAR>` combo boxes whose selected value snapshots return (for
 example `HostInput-choice.A2F_ENGINE` reads `local` or `nim`), the terms of the
@@ -3829,7 +3905,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -530,6 +530,68 @@ model steps run where Deep thinking thinks; `ResearchAsync` in
 `LiveConversationController.Research.cs` is where a placement API can choose
 another computer for them.
 
+## Reminders
+
+*"Remind me to do the dishes in an hour."* Every reply on a route that does
+function calling gets Martlet's own `reminders` tool (last, after
+`manage_memories`, always worded the same so the start of every request stays
+the same): `set` with `text` and `in_minutes` or `at` (a local time such as
+*17:30*, *5:30 pm*, *tomorrow 9:00* or *2026-12-24 18:00*: the next such time,
+up to a year ahead), `list` and `cancel` with an `id`. Set answers with the id
+and when it is due, so Martlet confirms it with the right time without a clock
+of its own.
+
+**When it is due**, Martlet brings it up the way it brings up finished
+background work, whatever *When it shares the result* says for Thinking longer:
+
+- *Martlet is free* (nobody talking, nothing to answer, no reply or look, not
+  paused, quiet for 2 seconds): it starts a reply of its own whose message is
+  its note (Companion › Prompts › *Reminder due*): *"Hey, it's dishes time!"*
+- *You talk first* (or Martlet is mid-reply and you talk again): the reminder
+  goes in the notes of your message (Companion › Prompts › *Reminder due, with
+  your message*), so it fits into the answer: *"Nice job on that boss! Oh, and
+  by the way, you wanted me to remind you about the dishes."*
+
+When no conversation runs on that PC, Martlet starts one without the talk
+window (as Start listening does, but without listening) to say it. Where Martlet
+can't talk (Thinking isn't set up), a Windows notification shows the reminder
+after 30 seconds instead. A reminder due while no companion PC ran is said late
+with how late it is when Martlet starts within 12 hours, and let go after that.
+The talk window's task list shows a due reminder (*Due now. Martlet brings it
+up as soon as it's free.*) until it is said.
+
+**On all your computers.** Reminders travel with the [shared
+settings](CLUSTER.md#one-martlet-on-every-computer) as one entry per computer,
+`reminders.<device ID>`: the reminders set there and what that computer did
+about anyone's (offered, took, said, canceled, let go). Only that computer
+writes its entry, so nothing conflicts and no host needs updating; any computer
+lists and cancels any reminder. When it is due and other companion PCs could
+say it, **the one you used most recently says it, once**:
+
+1. each running companion PC records an offer with how long since someone used
+   it (keyboard, mouse or talking with Martlet there) and syncs at once;
+2. 6 seconds later it syncs again and the offer with the shortest idle time
+   (then the lowest device ID) takes it; the others stay quiet;
+3. that PC says it and marks it said, and every computer sees it settled.
+
+A PC that took it and didn't say it within 10 minutes (it closed, say) lets the
+others try again. A PC alone (sync off, or no other companion PC) says it at
+once. Two companion PCs that can't reach a host meanwhile can't see each other's
+offers, so each says it. Saying the same line on every computer at once was
+left out on purpose: in one room the voices would echo, and a reply already
+under way on one PC would be cut across; the PC you are at is where you hear it.
+
+Checked locally: the tool, times, offers, taking it and wording with
+`RemindersTests` and `SharedRemindersTests`, the real controller and talk window
+bringing a due reminder up on its own through a fixture Thinking endpoint while
+finished work waits for the next message, and the tool offered last with every
+request starting the same (Desktop tests), the whole flow on two simulated
+PCs with MCP `reminders_check`, and on a disposable data folder through
+`-Desktop` a due reminder taken by the desktop, brought into a conversation
+started without the window and, with no Thinking set up, shown as a
+notification and marked said (`reminders_status`). A real model setting and
+saying one, and two real companion PCs through a real host, are **NOT RUN**.
+
 ## Singing in conversation
 
 *"Martlet, sing me a song."* Martlet answers in character (*"Ooh, I'd love to!

@@ -187,6 +187,8 @@ public partial class LiveConversationWindow
         if (jobs.Count == 0) return "";
         var running = jobs.Any(job => !job.Finished);
         var ready = jobs.Any(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet);
+        // A due reminder comes up as soon as Martlet is free whatever Thinking longer says.
+        if (ready && jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet).All(job => job.Kind.Notice)) when = ThinkDelivery.WhenFree;
         var parts = new List<string>();
         if (running) parts.Add("Martlet keeps working on these while you talk. Stop (Esc) doesn't end them.");
         if (ready) parts.Add(when == ThinkDelivery.WhenFree ? "Finished work comes up as soon as Martlet is free." : "Finished work comes up when you talk next.");
@@ -199,6 +201,14 @@ public partial class LiveConversationWindow
     internal static string JobStatus(BackgroundJob job, ThinkDelivery when)
     {
         var took = BackgroundJobs.Clockface(job.Elapsed);
+        if (job.Kind.Notice)
+            return job.Delivery switch
+            {
+                BackgroundDeliveryState.Pending => "Due now. Martlet brings it up as soon as it's free.",
+                BackgroundDeliveryState.Reserved => "Martlet is reminding you.",
+                BackgroundDeliveryState.Delivered => "Martlet reminded you.",
+                _ => "The conversation ended before Martlet reminded you."
+            };
         return job.State switch
         {
             BackgroundJobState.Waiting => job.Progress is { } note ? Sentence(note) : "Waiting to start.",
@@ -254,6 +264,7 @@ public partial class LiveConversationWindow
         "song" => "\uEC4F",
         "image" => "\uEB9F",
         "research" => "\uE721",
+        "reminder" => "\uE823",
         _ => "\uE713"
     };
 }

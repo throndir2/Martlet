@@ -157,6 +157,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeSettingsSync();
+        InitializeReminders();
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
@@ -206,6 +207,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartSettingsSync();
+        StartReminders();
         StartMemorySync();
         StartNetwork();
         StartApiKeys();
