@@ -161,6 +161,9 @@ local work and report the exact blocker.
 
 Publish only the task's changes to the repository's configured remote. Use a
 focused PR targeting `main` with a short description and the validation report.
+Every PR with a change users can notice also adds a line under
+`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) (see
+[Changelog and release notes](#changelog-and-release-notes)).
 Refresh `origin/main` before merging and reconcile if it advanced (rerun the
 targeted tests when the reconcile touched the code they cover). Merge eligible PRs
 one at a time through the normal GitHub path. Never bypass protections, dismiss
@@ -203,11 +206,12 @@ build/package/release workflow (manual dispatch or tag/release trigger only),
 dispatch it and publish GitHub releases without asking. It contains no tests or
 validation, and releases are never cut merely to obtain validation evidence.
 
-To release: bump `<Version>` in `Directory.Build.props` through a normal merged
-PR, then run
+To release, follow [Changelog and release notes](#changelog-and-release-notes):
+one normal merged release PR bumps `<Version>` in `Directory.Build.props`,
+dates the changelog section and refreshes the README's *What's new*; then run
 `gh workflow run windows-release.yml --ref main -f version=<that version>`
-and confirm the release is published as Latest on GitHub. If the build fails,
-fix the cause before dispatching again.
+and confirm the release is published as Latest on GitHub with its notes. If the
+build fails, fix the cause before dispatching again.
 
 Code signing is not required. Martlet is a personal project and publishes
 unsigned installers as actual, normal releases; do not label them prototype
@@ -217,3 +221,49 @@ GitHub asset digest checks integrity, not publisher identity. Retain explicit
 user consent for download and installation, the narrow official-binary use
 rights and third-party notices. Keep the private V07 signed-candidate library's
 trust contract separate from this GitHub installer delivery route.
+
+## Changelog and release notes
+
+[CHANGELOG.md](CHANGELOG.md) is the single source of every release's notes, and
+the README's *What's new* is its newest highlights. Both are written for people
+who use Martlet, not developers.
+
+**In every PR** with a change users can notice (a feature, a behavior change, a
+fix, a removal), add one line under `## [Unreleased]` in the matching
+`### Added`, `### Changed`, `### Fixed` or `### Removed` subsection (create it
+if missing, in that order). Write one plain sentence about what users notice,
+not how it was built, and end it with the PR link, for example
+`- The talk window keeps your place when a reply arrives. ([#480](https://github.com/throndir2/Martlet/pull/480))`.
+Add the link after opening the PR (or use the PR number GitHub will assign).
+Internal-only work (tests, refactors, CI policy, agent instructions,
+developer docs) needs no line, or one shared "Behind-the-scenes improvements"
+line under `### Changed` when a release would otherwise look empty. Never
+rewrite the sections of versions that were already released, except to fix
+a wrong statement.
+
+**In the release PR** (title `Release <version>`), in this order:
+
+1. Pick the version: minor (`0.49.0`) when `Unreleased` has anything under
+   Added or Removed, otherwise patch (`0.48.1`).
+2. Set `<Version>` in `Directory.Build.props`.
+3. In `CHANGELOG.md`, rename `## [Unreleased]` to
+   `## [<version>] - <YYYY-MM-DD>` (today's date) and add a new empty
+   `## [Unreleased]` above it. Tidy the entries: merge duplicates, fix wording,
+   keep the newest first. The section must contain at least one `- ` bullet.
+4. In `README.md`, replace the *What's new in <version>* section's heading
+   version and its three to five highlight bullets with the most notable entries
+   of the new section (plain words, no PR links), keeping the links to the
+   changelog and releases. The download and version badges update themselves;
+   don't hardcode the version anywhere else in the README.
+5. Check the notes locally: `.\scripts\Get-ReleaseNotes.ps1 -Version <version>`
+   must print the section.
+6. Merge the PR, then dispatch `windows-release.yml` with that version. The
+   workflow runs the same script before restoring anything, stops if the
+   section is missing, and publishes it as the release's *What's new* followed
+   by the install, license and SHA-256 text.
+7. Confirm on GitHub that `v<version>` is Latest and its notes show the
+   changelog entries.
+
+If a published release's notes need correcting, fix `CHANGELOG.md` in a normal
+PR and update the release body with `gh release edit v<version> --notes-file`;
+never re-dispatch the workflow for notes.

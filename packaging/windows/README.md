@@ -33,16 +33,19 @@ Agents and the owner may dispatch a release without further approval:
 gh workflow run windows-release.yml --repo throndir2/Martlet --ref main -f version=0.1.0
 ```
 
-The `version` input must equal `<Version>` in `Directory.Build.props` on `main`
-and must not already have a `v<version>` tag; bump the version in a normal PR
-before each new release. The job runs only from `main` of the public repository
+The `version` input must equal `<Version>` in `Directory.Build.props` on `main`,
+must not already have a `v<version>` tag, and `CHANGELOG.md` must have a
+`## [<version>] - <date>` section with at least one entry; bump the version and
+date the changelog in a normal release PR before each new release (see
+[Changelog and release notes](../../AGENTS.md#changelog-and-release-notes)). The job runs only from `main` of the public repository
 and on the first attempt. Before restoring dependencies it checks the version,
-the dispatched `main` commit, tag absence and the binary-use grant. The runner
+the release notes (`scripts\Get-ReleaseNotes.ps1`), the dispatched `main` commit, tag absence and the binary-use grant. The runner
 then uses the exact SDK, Node/npm lock and reviewed Inno compiler to restore,
 compile and package once, checks the clean installer receipt and SHA-256,
 creates `v<version>` at the still-current `main` commit, uploads assets to a
 **draft** GitHub release and publishes it as the latest normal release, titled
-`Martlet <version>`, only if the uploads succeed, GitHub reports the expected
+`Martlet <version>`, with that changelog section as its *What's new* notes,
+only if the uploads succeed, GitHub reports the expected
 asset SHA-256, and the tag still points at the built commit. If a step fails
 after tag creation, inspect and delete the tag/draft before dispatching again;
 never move a tag. A release build does not establish clean-machine
