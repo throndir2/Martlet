@@ -1,5 +1,4 @@
 using Martlet.Core.Installation;
-using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
@@ -22,8 +21,8 @@ internal static class DeepThinkingFit
     internal static readonly IReadOnlyList<(int MiB, string Model)> SuggestedByVram =
         [(0, "gemma4:e2b"), (7000, "gemma4:e4b"), (11000, "gemma4:12b"), (22000, "gemma4:26b")];
 
-    /// <summary>What the host's other roles take on its graphics card (<paramref name="offers"/>: role kind to model), with
-    /// Thinking's model counted with its usual context.</summary>
+    /// <summary>What the host's other roles take on its graphics card (<paramref name="offers"/>: role kind to model), from the
+    /// footprint catalog, with Thinking's model counted with its usual context.</summary>
     internal static IReadOnlyList<(string Name, double Gb)> Others(IReadOnlyDictionary<string, string>? offers)
     {
         var others = new List<(string, double)>();
@@ -31,16 +30,15 @@ internal static class DeepThinkingFit
         if (offers.GetValueOrDefault(HostRoles.Ollama) is { } alias)
         {
             var thinking = Tag(alias);
-            var gb = ListeningAdvisor.OllamaModelGb(thinking);
-            others.Add(($"Thinking's {thinking}", Math.Round(gb + DeepThinkingSlots.ContextGb(gb, GenerationSettings.DefaultHostContextTokens), 1)));
+            others.Add(($"Thinking's {thinking}", Math.Round(DeepThinkingSlots.ThinkingGb(thinking, ListeningAdvisor.OllamaModelGb(thinking)), 1)));
         }
-        foreach (var (kind, name, gb) in new[]
+        foreach (var (kind, name) in new[]
         {
-            (HostRoles.Xtts, "the XTTS voice", 3.0), (HostRoles.GptSovits, "the GPT-SoVITS voice", 3.0), (HostRoles.Dia, "the Dia voice", 5.0),
-            (HostRoles.F5, "the F5 voice", 3.0), (HostRoles.Chatterbox, "the Chatterbox voice", 4.0), (HostRoles.Audio2Face, "Audio2Face lip-sync", 5.0),
-            (HostRoles.Stt, "listening", 2.5), (HostRoles.Singing, "singing", 4.0)
+            (HostRoles.Xtts, "the XTTS voice"), (HostRoles.GptSovits, "the GPT-SoVITS voice"), (HostRoles.Dia, "the Dia voice"),
+            (HostRoles.F5, "the F5 voice"), (HostRoles.Chatterbox, "the Chatterbox voice"), (HostRoles.Audio2Face, "Audio2Face lip-sync"),
+            (HostRoles.Stt, "listening"), (HostRoles.Singing, "singing"), (HostRoles.Pictures, "pictures")
         })
-            if (offers.ContainsKey(kind)) others.Add((name, gb));
+            if (offers.ContainsKey(kind)) others.Add((name, Math.Round(DeepThinkingSlots.RoleGb(kind) ?? 4, 1)));
         return others;
     }
 

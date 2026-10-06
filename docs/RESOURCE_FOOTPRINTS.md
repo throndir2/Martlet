@@ -96,12 +96,15 @@ their last 18-20 layers. This assumes Ollama sizes sliding layers to the window
 So context is cheap for Gemma 4 at Martlet's sizes: a 32,768-token think adds
 about 0.4-0.5 GB of cache beyond 8,192 tokens; the catalog adds 0.2-0.4 GB of
 buffer growth (E) for `ContextGb` 0.7 (E4B, 12B) and 0.9 (26B). Each extra
-*Thinks at once* slot (`OLLAMA_NUM_PARALLEL`) adds one more context.
+*Thinks at once* slot (`OLLAMA_NUM_PARALLEL`) adds one more context; the role's
+recommended slot count (`DeepThinkingSlots`) uses these `ContextGb` values and
+the catalog's VRAM for Thinking and the host's other roles.
 
 ### Deep thinking
 
 | Option id | VRAM | ContextGb (one 32k think) | RAM | Disk | Evidence |
 | --- | --- | --- | --- | --- | --- |
+| `deep-thinking:gemma4:e2b` | 3.3 M | 0.3 E | 1.5-2 E | 7.5 S | M (model VRAM) |
 | `deep-thinking:gemma4:e4b` | 4.9 M | 0.7 E | 2.5-3 E | 9.5 S | M (model VRAM) |
 | `deep-thinking:gemma4:12b` | 9.0 E | 0.7 E | 1-1.5 E | 8.0 S | E |
 | `deep-thinking:gemma4:26b` | 18.5 E | 0.9 E | 1.5-2 E | 19 S | E |
