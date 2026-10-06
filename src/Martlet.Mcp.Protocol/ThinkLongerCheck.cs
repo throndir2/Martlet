@@ -60,12 +60,14 @@ internal static class ThinkLongerCheck
             thinkLonger = new
             {
                 enabled = settings.On, effort = settings.HowHard.ToString(), timeLimit = "none", hourlyLimit = "none",
-                delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null
+                delivery = settings.When.ToString(), chosen = generation?.ThinkLonger is not null,
+                webResearch = settings.WebResearch == true, researches = settings.Researches
             },
             thinking = route is null ? null : new
             {
                 routeType = route.RouteType?.ToString() ?? "OpenAi", model = route.ModelId, supportsTools, toolsRejected = rejected,
                 offered = settings.On && supportsTools && !rejected && pool.Plan.Available,
+                researchOffered = settings.Researches && supportsTools && !rejected && pool.Plan.Available,
                 onThisPc = local
             },
             deepThinking = new
@@ -96,11 +98,12 @@ internal static class ThinkLongerCheck
                     available = pool.Plan.Available, why = pool.Plan.Why
                 }
             },
-            tools = ThinkLonger.Definitions(settings, places.Count).Select(tool => new
+            tools = ThinkLonger.Definitions(settings, places.Count).Concat(settings.Researches ? [WebResearch.Definition] : []).Select(tool => new
             {
                 name = tool.Name, description = tool.Description, parameters = JsonNode.Parse(tool.ParametersJson)
             }).ToArray(),
             prompt = ThinkLonger.Instructions(settings, loaded.Settings?.Prompts),
+            researchPrompt = settings.Researches ? WebResearch.Instructions(loaded.Settings?.Prompts) : null,
             jobs = Jobs(dataDirectory)
         };
     }

@@ -1020,6 +1020,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         }),
+        Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
+            "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
+            "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
+            "unwrapped, page reader keeping readable text, public-address guard on every connection and redirect), research loop " +
+            "(WebResearchRun: first search and pages, then model steps of SEARCH, READ or the report, each a background think through " +
+            "the conversation runtime and Chat Completions adapter), report creation and its web page (ResearchReports), against " +
+            "fixtures on 127.0.0.1 (a search page, web pages including a PDF and a redirect to a private address, and a model with " +
+            "canned answers, NOT AI): a reply says it'll look into it and calls research (returns at once, the reply completes while " +
+            "the job runs), the steps' requests, the note the conversation gets (offer first, perform_creation with the report's " +
+            "id), the report kept in a temporary Creations library and shown as a page; plus the settings (off by default, off with " +
+            "Thinking longer off), the address guard and the limits (busy beside a think, Cancel, the hourly limit, a failed search). " +
+            "Loopback only; no real search or model; reads no credentials.", new { }),
         Tool("songs_status", "Martlet singing in conversation (sing_song, play_song, stop_singing), from a data directory: whether " +
             "background work (Thinking longer, which the song tools come with) is on; the song creations (each song's key, " +
             "length, lines and timed words, tempo, engine, mouth track source, assets and whether it is the FIXTURE - NOT AI song; never its " +
@@ -1252,6 +1264,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
+            "research_check" => await ResearchCheck.RunAsync(cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),
                 "songs_status" => await SongsCheck.StatusAsync(DataDirectory(arguments), cancellation),

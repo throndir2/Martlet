@@ -2203,10 +2203,12 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 (optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
 *Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
-`delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
+`delivery` *WhenFree* or *NextMessage*; `chosen`; `webResearch`, Companion ›
+Deep thinking › *Web research*, off by default, and `researches`, whether it
+applies with Thinking longer), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
-`onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
+`researchOffered` (whether replies get `research`), `onThisPc`), `deepThinking` (this PC's `deep-thinking.json`: `file` *none*,
 *loaded* or *unreadable*, `place` *SameAsThinking*, *Endpoint* or *Host*, `where`,
 `model`, `hostId`, `hostRoute` (a paired computer's route a think goes to:
 `martlet.gateway.deep-thinking-chat.v1` for its Deep thinking role, else its
@@ -2222,8 +2224,9 @@ that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
 `hostRole`, `available`, `rank` (lower goes first), `checksFit` and `why`, then
 `usable`, `maxThinks` (how many run at once) and the pool's `available` and
 `why`), `tools`
-(`think_longer` and `cancel_thinking` exactly as the model gets them), the
-filled `prompt`, and `jobs`: the desktop's `background-jobs.json` (`active` and
+(`think_longer` and `cancel_thinking`, and `research` while web research is on,
+exactly as the model gets them), the filled `prompt` and `researchPrompt`, and
+`jobs`: the desktop's `background-jobs.json` (`active` and
 `recent` jobs with `id`, `kind`, `state`, `progress`, `startedAt`,
 `finishedAt`, `elapsedSeconds`, `timeLimitSeconds`, `offer`,
 `resultCharacters`, `cut`, `problem`, `canceledBy`, `delivery` and `place`, the
@@ -2328,6 +2331,36 @@ plain reply's up to the end of the One moment instruction
 text). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
+
+`research_check` rehearses [web research](CONVERSATION.md#web-research) end to
+end with Martlet's own tool texts and job kind (`WebResearch`), scheduler
+(`BackgroundJobs`), web client (`WebAccess`), research loop (`WebResearchRun`,
+each step a `BackgroundThink` through the conversation runtime and Chat
+Completions adapter) and report creation (`ResearchReports`), against fixtures
+on 127.0.0.1 (NOT AI): a DuckDuckGo-like search page (an ad, results behind
+redirect links), web pages (one with scripts and navigation, a PDF, one
+redirecting to 192.168.1.1, one only a later step asks for) and a model with
+canned answers. `settings`: off by default, on only with Thinking longer on,
+saved lean. `guard`: which addresses count as public (`WebAccess.IsPublic`: no
+loopback, private, shared, link-local, cloud metadata, ULA, multicast or mapped
+private addresses). `flow`: a reply says it'll look into it and calls
+`research`; the tool returns before the reply ends (`toolReturnedMs`,
+`replyMs`) and the job is still running when the reply completes
+(`researchStillRunning`); the job (`research-1`, `Succeeded`, `offer` true,
+`Researching`, 12 minutes, 4 an hour) made 2 searches (`searchQueries`: the
+topic, then the model's), read 3 pages and found 2 unreadable (the PDF, and the
+redirect to a private address, never followed: `privateRedirectFollowed`) in 2
+model steps, each a background message under 16 KiB carrying the numbered
+sources (`steps`); the `note` the conversation gets marks it to offer first and
+says to call `perform_creation` with the report's id; the report is kept as a
+`report` creation in a temporary Creations library (`creation`) and showing it
+writes a page with its source links (`page.links`) and no scripts (`shown`).
+`tool` and `prompt` are exactly what replies get. `limits`: a second research is
+refused as `busy` (and what the model is told) while a think runs beside it,
+Cancel ends it as `Canceled`, the fifth in an hour is refused (`hourly_limit`),
+and a failed first search fails the job (`failedSearch`). Each part has an `ok`.
+No real web search or model is used; reads no credentials; the temporary folder
+is deleted.
 
 `songs_status` shows [singing in conversation](CONVERSATION.md#singing-in-conversation)
 (optional absolute `dataDirectory`, default the current user's):
@@ -3757,6 +3790,12 @@ down, nowhere to think in parallel) and the choices `ThinkLongerEffort` and
 `ThinkLongerDelivery` (returned; a think has no time limit or hourly limit, so
 there is no choice for either;
 `ui_select` on them saves the reply settings, so it needs
+`--allow-ui-effects`); *Web research*'s `WebResearchStatus` (*Off. Martlet
+never searches the web or reads web pages.*, *Off, because Deep thinking is
+off. ...*, *On. When you ask, Martlet looks it up (up to 12 minutes, at most 4 an
+hour), then offers the report.* or *On, but Martlet can't look things up yet:
+...*), its fixed `WebResearchDisclosure` and the `WebResearchOn` check box
+(`checkedState`; `ui_toggle` saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
 `DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and
 `DeepPlace-Cloud` (each only shows its card): `DeepThinkingSameStatus` (what

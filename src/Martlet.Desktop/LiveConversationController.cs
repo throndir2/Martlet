@@ -323,7 +323,7 @@ internal sealed class LiveConversationOperation
 }
 
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
-internal sealed class LiveConversationController : IAsyncDisposable
+internal sealed partial class LiveConversationController : IAsyncDisposable
 {
     private const int MaximumPendingCaptures = 4;
     private readonly object gate = new();
@@ -2109,7 +2109,7 @@ internal sealed class LiveConversationController : IAsyncDisposable
 
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
-    /// prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
+    /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
     /// then search_conversations while the owner lets Martlet search the record of conversations (Companion › Memory,
     /// off by default), then list_creations and perform_creation while any kind of creation is registered (CreationRegistry,
     /// docs/CREATIONS.md), then manage_memories while memory is on. Null when there are none.</summary>
@@ -2125,6 +2125,12 @@ internal sealed class LiveConversationController : IAsyncDisposable
             own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
             own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
             guidance = ThinkLonger.Instructions(settings, configured.Prompts);
+        }
+        // research while Web research is on (Companion › Deep thinking, off by default) and Deep thinking can think.
+        if (OffersResearch(configured))
+        {
+            own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
+            guidance = Join(guidance, WebResearch.Instructions(configured.Prompts));
         }
         // sing_song, play_song and stop_singing while singing is set up (with the Singing prompt).
         if (singing is { Offered: true } && configured.SupportsTools)
