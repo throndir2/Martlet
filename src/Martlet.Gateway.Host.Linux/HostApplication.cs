@@ -437,17 +437,7 @@ internal static class HostApplication
                     owner.AttachMemories(new ControlMemoryStorage(directory));
                     owner.AttachApiKeys(new ControlApiKeyStorage(directory));
                     owner.AttachNetwork(new ControlNetworkStorage(directory));
-                    try
-                    {
-                        var exposure = HostExposure.Read(directory);
-                        owner.Exposure = exposure.ToGateway();
-                        if (exposure.Outside.Count > 0 || exposure.AllowPairingOutsideHome || exposure.TreatAllAsOutside) owner.RecordActivity("INFO", "Reaching this host from outside home: " + exposure.Describe() + ".");
-                    }
-                    catch (HostInputException)
-                    {
-                        owner.RecordActivity("WARN", "exposure.json is invalid, so this host uses the defaults (no outside addresses, pairing only from home). " +
-                            "Set it again with martlet-host owner-exposure.");
-                    }
+                    ApplyExposure(owner, directory, output: null);
                     owner.AttachSignIn(new ControlSignInStorage(directory));
                     var (networkState, networkId) = owner.NetworkState;
                     owner.RecordActivity("INFO", networkState switch
@@ -491,7 +481,11 @@ internal static class HostApplication
                 PublishMachine(owner, directory, output);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}");
                 if (options.Command == "owner-pair")
+                {
+                    // martlet-host pair serves the owner's outside access choices too (typed codes from outside, the real source).
+                    ApplyExposure(owner, directory, output);
                     exit = await PairOnceAsync(owner, config, directory, options, platform.Input, output, cancellation);
+                }
                 else
                 {
                     directory.WriteApproval(ServiceApproval.Create(config, owner.Identity!));
@@ -671,6 +665,26 @@ internal static class HostApplication
     /// five wrong tries close it, or it is withdrawn (a "cancel" line, or the end of stdin, so it never outlives the pipe or
     /// session that showed it; a Docker TTY whose console closed never ends, which martlet-host reports as busy). A
     /// --device-id invitation (Martlet redeems it by itself) still ends after five minutes or "cancel".</summary>
+    /// <summary>Serves the owner's outside access choices (exposure.json) on <paramref name="owner"/>: what serve and pair apply.</summary>
+    private static void ApplyExposure(DurableGatewayHost owner, LinuxControlDirectory directory, TextWriter? output)
+    {
+        try
+        {
+            var exposure = HostExposure.Read(directory);
+            owner.Exposure = exposure.ToGateway();
+            if (exposure.Outside.Count > 0 || exposure.AllowPairingOutsideHome || exposure.TreatAllAsOutside)
+            {
+                owner.RecordActivity("INFO", "Reaching this host from outside home: " + exposure.Describe() + ".");
+                output?.WriteLine("Reaching this host from outside home: " + exposure.Describe() + ".");
+            }
+        }
+        catch (HostInputException)
+        {
+            owner.RecordActivity("WARN", "exposure.json is invalid, so this host uses the defaults (no outside addresses, pairing codes only from home). " +
+                "Set it again with martlet-host owner-exposure.");
+        }
+    }
+
     private static async Task<int> PairOnceAsync(DurableGatewayHost owner, HostConfiguration config,
         LinuxControlDirectory directory, HostOptions options, TextReader input, TextWriter output, CancellationToken cancellation)
     {

@@ -41,6 +41,15 @@ public sealed class ExposureTests
         using var cleared = new StringWriter();
         Assert.Equal(0, await Run(platform, cleared, "--clear-outside", "--treat-all-as-outside", "yes"));
         Assert.Contains("outside addresses: none; pairing codes from outside home: allowed; treat every connection as outside home: yes", cleared.ToString());
+
+        // martlet-host pair (owner-pair) serves the same choices: a typed code then works from outside home.
+        platform.Input = new StringReader("cancel\n");
+        using var pairing = new StringWriter();
+        Assert.Equal(3, await HostApplication.RunAsync(["owner-pair", "--config", "/srv/martlet/host.json"], pairing, default, platform)
+            .WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Contains("Reaching this host from outside home: outside addresses: none; pairing codes from outside home: allowed; " +
+            "treat every connection as outside home: yes.", pairing.ToString());
+        Assert.Contains("pairing.canceled", pairing.ToString());
     }
 
     [Theory]

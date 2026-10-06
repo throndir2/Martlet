@@ -582,8 +582,9 @@ internal static class NetworkMap
                         Argument: id + "/" + role.Kind, Component: offered ? RoleComponent(role.Kind) : null));
             }
             if (managed) target.Commands.Add(new(NodeAction.HostStatus, "Show its status", Argument: id, Component: hostService));
-            // How it is reached from outside home (martlet-host exposure): this PC's host service, or a host Martlet manages over SSH.
-            if (local || paired.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative)
+            // How it is reached from outside home (martlet-host exposure): this PC's host service, a host Martlet manages over SSH,
+            // or one whose own Martlet runs it (the host.exposure command between computers).
+            if (local || paired.Method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative || paired.Method == HostSetupMethod.Agent && managed)
                 target.Commands.Add(new(NodeAction.OutsideAccess, local ? "Outside access for this PC's host service" : "Outside access", Argument: id,
                     Component: hostService));
             if (inputs.HostOutside?.GetValueOrDefault(id) is { } outside) target.Facts.Add(new("Outside home", outside, "SelectedDeviceOutside"));

@@ -381,6 +381,7 @@ public sealed class NodeCommandAgent(Func<CancellationToken, Task<string?>> read
             NodeCommandKinds.DescribeRole => $"Read what {command.Arguments.GetValueOrDefault("role")} needs",
             NodeCommandKinds.AddRole => $"Install {command.Arguments.GetValueOrDefault("role")}",
             NodeCommandKinds.RemoveRole => $"Remove {command.Arguments.GetValueOrDefault("role")}",
+            NodeCommandKinds.Exposure => "Set how the host service is reached from outside home",
             _ => command.Kind
         };
         return $"{what} (from {command.RequestedBy})";

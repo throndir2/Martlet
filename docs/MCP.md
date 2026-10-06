@@ -673,6 +673,35 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
 
+`outside_path_check` (no arguments) checks reaching a host from outside home on
+real sockets ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)). It
+builds this checkout's `Martlet.Gateway.Host.Linux` in the
+`mcr.microsoft.com/dotnet/sdk:10.0.401` image (NuGet packages cached in the
+`martlet-outside-check-nuget` volume) and runs it as uid 1000 in disposable
+`mcr.microsoft.com/dotnet/aspnet:10.0.12` containers with `host.json` and its
+state on an ext4 named volume. The containers are on a Docker network numbered from TEST-NET-3
+(`203.0.113.0/24`) with the gateway port published on `127.0.0.1` only, so the
+gateway sees every connection coming from `203.0.113.1`: a real outside source.
+The host's home origin, `https://192.168.77.20:9443`, answers nothing. It returns
+`{exitCode, report: {passed, total, network, outsideSource, home, published,
+steps}, notCovered}`. Steps: `gateway-built`; `config-valid`; `identity-created`
+(`owner-init`); `owner-exposure` (an address with a shell character is refused
+with exit 2, the published address is saved); `typed-code-refused-from-outside`
+(`owner-pair` shows a code, the desktop's code pairing falls back to the outside
+address and gets `pair.outside_home`, the code stays open until `cancel`);
+`card-pairs-from-outside` (`owner-pair --device-id` and the desktop's real
+pairing); `serve-healthy`; `roster-signs-outside-address` (two network syncs
+found the network and sign in the address the host advertises);
+`home-fails-outside-succeeds` (with no outside address the home address times
+out; with the roster's, the paired connection reaches the host outside, and the
+next connection goes straight there); `guard-locks-out-outside-source` (five
+`401 auth.missing`, then `429 auth.throttled` with `Retry-After`);
+`audit-names-outside-source` (`internet_reachable` from the roster, failures
+from `203.0.113.1 (outside)`, the host log's lockout line); and
+`probe-tells-home-and-outside-apart`. It never pulls (without Docker or the images
+it returns `exitCode` 2 and `notRun`) and removes its containers, volumes and
+network. Not covered: a real router, overlay or internet path.
+
 `outside_reachability_check` checks how each host in a data directory's
 network can be reached (optional absolute `dataDirectory`; `contactHosts`).
 Without `contactHosts: true` it only lists each host's `id` and how many
@@ -1054,7 +1083,10 @@ agent info says `parallel`), a second change to one role waits for the first
 and the sender's `HostCommandList.WaitingText` says so (`same-role-waits`)
 while a status runs beside them (`others-run-beside`), an update waits for
 what runs and holds what was sent after it (`update-waits-for-running`), the
-waiting change runs once the first ends (`same-role-runs-next`), the update
+waiting change runs once the first ends (`same-role-runs-next`), the
+`host.exposure` command reaches the agent with exactly its martlet-host options
+while an address with a shell character or an extra argument is refused
+(`exposure-command`), the update
 then runs alone and the held command after it (`update-runs-alone-then-the-rest`),
 an agent from before commands ran side by side (no `running` list) still gets
 one at a time (`serial-agent-one-at-a-time`), an update that continues later
@@ -2811,7 +2843,8 @@ than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
 example *Update available: Update to Martlet 0.40.0*); clicking it runs the
 same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
-paired host Martlet manages (this PC's host service, or one over SSH), `SelectedDeviceOutside`
+paired host Martlet manages (this PC's host service, one over SSH, or one whose
+own Martlet runs its commands), `SelectedDeviceOutside`
 (in *Details*) returns its outside access in counts and choices only (*2 outside
 addresses; pairing codes from outside home refused; every connection treated as
 outside home.*), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
