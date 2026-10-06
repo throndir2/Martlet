@@ -39,11 +39,18 @@ public static class ComponentRanking
     /// <summary>The order the engine hands out local resources for <paramref name="preference"/>. Voice first because only
     /// it cannot be offloaded for free; Thinking's local model comes after advanced lip-sync when a hosted endpoint can cover
     /// it, and first when the user wants everything local.</summary>
-    public static IReadOnlyList<PlanStep> ClaimOrder(HostingPreference preference) => preference == HostingPreference.PreferLocal
+    public static IReadOnlyList<PlanStep> ClaimOrder(HostingPreference preference, bool thinkingFirst = false) =>
+        preference == HostingPreference.PreferLocal
         ?
         [
             PlanStep.Character, PlanStep.ThinkingPrimary, PlanStep.Voice, PlanStep.Listening, PlanStep.LipSync,
             PlanStep.ListeningUpgrade, PlanStep.DeepThinking, PlanStep.Singing, PlanStep.Pictures
+        ]
+        : thinkingFirst
+        ?
+        [
+            PlanStep.Character, PlanStep.ThinkingPrimary, PlanStep.Voice, PlanStep.Listening, PlanStep.LipSync,
+            PlanStep.ThinkingFallback, PlanStep.ListeningUpgrade, PlanStep.DeepThinking, PlanStep.Singing, PlanStep.Pictures
         ]
         :
         [
