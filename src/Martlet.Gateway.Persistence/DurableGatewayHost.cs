@@ -463,6 +463,13 @@ public sealed class DurableGatewayHost : IAsyncDisposable
         }
     }
 
+    /// <summary>Keeps this host's sign-in settings (owner account, providers, allowed identities) in <paramref name="storage"/>.</summary>
+    public void AttachSignIn(IGatewaySignInStorage storage)
+    {
+        RequireOpen();
+        server!.AttachSignInStorage(storage);
+    }
+
     /// <summary>Keeps the commands paired computers send through this host in <paramref name="storage"/> and accepts
     /// <paramref name="agentToken"/> from the Martlet app on this host that runs them.</summary>
     public void AttachCommands(IGatewayCommandStorage storage, string agentToken)

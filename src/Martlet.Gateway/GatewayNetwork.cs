@@ -339,7 +339,10 @@ internal sealed partial class GatewayHttpApplication
             Roster = roster is null ? null : JsonSerializer.Deserialize<JsonElement>(roster.Write()),
             Joins = joins.Select(j => new JoinRequestDocument
             {
-                DeviceId = j.DeviceId, DisplayName = j.DisplayName, Key = j.Key, CheckNumber = j.CheckNumber, RequestedAt = j.RequestedAt
+                DeviceId = j.DeviceId, DisplayName = j.DisplayName, Key = j.Key, CheckNumber = j.CheckNumber, RequestedAt = j.RequestedAt,
+                SignIn = SignIn.Attestation(j.DeviceId) is { } signedIn
+                    ? new() { Provider = signedIn.Identity.Provider, Subject = signedIn.Identity.Subject, Label = signedIn.Identity.Label, At = signedIn.At }
+                    : null
             }).ToArray(),
             Devices = Network.Devices().Select(d => new PairedDeviceDocument
             {
@@ -413,6 +416,17 @@ internal sealed partial class GatewayHttpApplication
         public required string Key { get; init; }
         public required string CheckNumber { get; init; }
         public required DateTimeOffset RequestedAt { get; init; }
+        /// <summary>Who this desktop signed in as to pair here (<see cref="GatewaySignInService.Attestation"/>); null when it
+        /// paired another way. A member desktop lets such a request in without a check number.</summary>
+        public SignInAttestationDocument? SignIn { get; init; }
+    }
+
+    private sealed record SignInAttestationDocument
+    {
+        public required string Provider { get; init; }
+        public required string Subject { get; init; }
+        public string? Label { get; init; }
+        public required DateTimeOffset At { get; init; }
     }
 
     private sealed record JoinDocument

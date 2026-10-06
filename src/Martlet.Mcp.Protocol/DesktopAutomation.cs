@@ -56,6 +56,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Disconnect, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
+        // Companion › Discord: Step by step only expands the setup steps. The portal and invite buttons open the browser, and
+        // Save, Forget, Reconnect, the on/off box and every choice change things, so they need --allow-ui-effects.
+        "DiscordSetupSteps",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
@@ -77,6 +80,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "ProblemClose",
         // Add a character's Cancel only closes the dialog; Add a character, Use and Remove change things.
         "CharacterModelAddCancel",
+        // Character profiles: Home's Manage profiles, the Character and Personality pages' Open profiles and the Profiles page's
+        // links only open a Companion page; New profile... and a profile's Edit (CharacterProfileEdit-<key>) only open the form,
+        // filled in, and Cancel closes it. Nothing is saved until Save; Use (here, Home's HomeCharacterProfile and the icon
+        // menu's TrayCharacterProfile-<key>) and Remove change things, so they need --allow-ui-effects.
+        "HomeManageCharacters", "OpenProfiles", "ProfilesOpenCharacter", "ProfilesOpenVoice", "ProfilesOpenPersonality",
+        "CharacterProfileNew", "CharacterProfileCancel",
         // Add a voice: Add another recording only adds an empty recording row to the dialog (F5AddVoiceDrop-n removes row n);
         // nothing is read or saved until Add voice. Opening the dialog (F5AddVoice), typing, Fill in the words (F5AddVoiceFill
         // runs speech-to-text, which may send the recording to the Listening host) and Add voice need --allow-ui-effects.
@@ -85,7 +94,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // task has finished), and Clear finished only drops finished tasks' kept output from the list; neither stops, sends or
         // saves anything. Cancel task (HostRunCancel) and a task's Cancel... (TaskCancel-<id>) ask first and then stop the task,
         // so they need --allow-ui-effects.
-        "NavTasks", "HostRunHide", "TasksClear"
+        "NavTasks", "HostRunHide", "TasksClear",
+        // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
+        // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
+        // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
+        // Save, recovery codes, Remove, Allow and Make invite change or reveal things, so they need --allow-ui-effects.
+        "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
@@ -100,6 +114,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A background job's Cancel in the talk window ("LiveJobCancel-think-1") only stops that job: it sends, saves and starts
         // nothing (the next thing you say tells Martlet you stopped it).
         "LiveJobCancel-",
+        // Companion › Profiles: a profile's Edit ("CharacterProfileEdit-3f2a9c1b") only opens the form; Save writes.
+        "CharacterProfileEdit-",
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
@@ -121,6 +137,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord's text-chat line: counts of messages seen, considered, answered, passed, dropped and failed, the
         // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
         "DiscordTextStatus",
+        // Sign-in from outside: the join window's status line and the host it checked ("home-host at name:port, key checked"),
+        // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
+        // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
+        "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
+        "SignInEnrolledList",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
@@ -131,6 +152,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
+        // Companion › Profiles: how many profiles there are and whether one is in use ("2 profiles. One of them is in use."),
+        // and the profile form's problem ("Give the profile a name."). Never a profile's name.
+        "CharacterProfilesStatus", "CharacterProfileEditorProblem",
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
         // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
         // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
@@ -312,6 +336,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Discord: the next setup step, whether a bot token is saved (with its application ID; never the token, and
+        // DiscordToken is never read), what saving the token last did, the connection (state line, on/off, bot name, servers,
+        // problem such as Message Content Intent being off), the invite links (built from the application ID), the chat modes
+        // and channel rules ("DiscordRule-<channel>" through the prefix below), the rule picker's state, the chosen chat modes
+        // in the combo boxes and the people summary (counts only), the owner's account ID and the home server choice.
+        "DiscordSetupNext", "DiscordConfigured", "DiscordTokenStatus", "DiscordState", "DiscordEnabledStatus", "DiscordBotName",
+        "DiscordServers", "DiscordProblem", "DiscordInviteStatus", "DiscordServerLink", "DiscordHomeLink", "DiscordUserLink",
+        "DiscordChatModes", "DiscordServerChat", "DiscordDirectChat", "DiscordVoiceChat", "DiscordRuleChannelsStatus",
+        "DiscordPeopleCount", "DiscordOwnerStatus", "DiscordOwnerId", "DiscordHomeServer",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
@@ -416,7 +449,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
         // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
         // recognition (Available)"; the plan has no personal data).
         "AdvisorChoice-",
@@ -446,7 +479,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("TaskState-3" reads "Running for 2 min. Waiting for Docker Desktop to start..." or "Done at 3:41 PM after 5 min.
         // gpu-pc is ready.") and its buttons ("TaskShow-3" reads "Show: Set up gpu-pc" or "Show output: ...", "TaskCancel-3"
         // "Cancel: Set up gpu-pc").
-        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-"];
+        "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-",
+        // Companion › Profiles: each profile's state ("CharacterProfileState-3f2a9c1b" reads "In use.", "Ready." or why a part
+        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name).
+        "CharacterProfileState-"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -21,7 +21,7 @@ public sealed class VoiceTagTests
     [InlineData("Ha.[chuckle] Right.", "Ha.|[chuckle] Right.")]
     [InlineData("Wow [GASP] really.", "Wow [gasp] really.")]
     [InlineData("A [link](x) here.\nPlain.", "Plain.")]
-    [InlineData("Not a tag [laughing] here.\nPlain.", "Plain.")]
+    [InlineData("Not a tag [yodeling] here.\nPlain.", "Plain.")]
     [InlineData("Ends with [la", "")]
     public void Chatterbox_tags_pass_through_on_every_split(string input, string expected)
     {
@@ -218,6 +218,17 @@ public sealed class VoiceTagTests
     [InlineData("Ahem (clears throat) listen.", "Ahem [clear throat] listen.")]
     [InlineData("{whispering} It's a secret.", "[whispering] It's a secret.")]
     [InlineData("Hm [chuckles] sure.", "Hm [chuckle] sure.")]
+    [InlineData("[whisper] It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("(whisper) It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("{Whisper} It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("*whispers* It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("*whispering* It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("[whispered] It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("(in a whisper) It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("[hushed] It's a secret.", "[whispering] It's a secret.")]
+    [InlineData("(sobbing) I miss her.", "[crying] I miss her.")]
+    [InlineData("Ha [laughing] okay.", "Ha [laugh] okay.")]
+    [InlineData("*giggles* Stop.", "[chuckle] Stop.")]
     public void Other_spellings_of_the_voices_own_tags_are_spoken_as_the_engine_spells_them(string input, string expected)
     {
         for (int split = 0; split <= input.Length; split++)
@@ -237,6 +248,7 @@ public sealed class VoiceTagTests
     [Theory]
     [InlineData("*laughs* That's great.", "That's great.")]
     [InlineData("Oh (sighs) fine.", "Oh fine.")]
+    [InlineData("[whisper] It's a secret.", "It's a secret.")]
     public void A_voice_without_tags_drops_stage_directions_of_known_sounds_instead_of_the_line(string input, string expected)
     {
         for (int split = 0; split <= input.Length; split++)
@@ -254,6 +266,7 @@ public sealed class VoiceTagTests
     [Theory]
     [InlineData("I'm *so* happy.")]
     [InlineData("I'm *happy* to help.")]
+    [InlineData("I'm *quietly* *afraid* of it.")]
     [InlineData("A [nodding] dog (blushing) here.")]
     [InlineData("Keep [brackets] and (parens).")]
     public void Emphasis_and_words_that_arent_a_tags_spelling_are_left_alone(string input)
@@ -300,7 +313,10 @@ public sealed class VoiceTagTests
         var dia = VoiceTags.Spellings(SpeechEngines.Dia.Tags.Single(t => t.Text == "(laughs)"));
         Assert.Contains(dia, t => t.Text == "[laugh]" && t.Canonical == "(laughs)" && t.Cue == "laugh");
         var happy = VoiceTags.Spellings(Chatterbox.Single(t => t.Text == "[happy]")).Select(t => t.Text).ToArray();
-        Assert.Equal(["(happy)", "<happy>", "{happy}"], happy.Order(StringComparer.Ordinal));
+        Assert.Contains("(happy)", happy);
+        Assert.Contains("<happy>", happy);
+        Assert.Contains("{happy}", happy);
+        Assert.Contains("[cheerfully]", happy);
         Assert.DoesNotContain(happy, t => t.StartsWith('*'));
         Assert.Empty(VoiceTags.Spellings(new VoiceTag("[chattiness:quiet]", VoiceTagKind.Control, "")));
     }

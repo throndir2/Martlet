@@ -8,8 +8,18 @@ using Martlet.Core.Characters;
 namespace Martlet.Avatar.Hosting;
 
 /// <summary>What an emote or motion is: a Live2D expression or a VRM expression (held while it shows), a Live2D motion group
-/// (played once) or one of Martlet's own head gestures (every model: nod and shake).</summary>
+/// (played once) or one of Martlet's own gestures (played once; see <see cref="CharacterGesture"/>).</summary>
 public enum CharacterActionKind { Expression, Motion, Gesture }
+
+/// <summary>One of Martlet's own gestures. <see cref="Name"/> is what the renderer plays, <see cref="Tag"/> the default reply
+/// tag and <see cref="Use"/> when to use it. A Live2D model gets it when it has every standard Cubism parameter in
+/// <see cref="Live2DParameters"/>, a VRM when it has every humanoid bone in <see cref="VrmBones"/>; null means that renderer
+/// never gets it. The renderers (Martlet.Avatar.Live2D's gestures.ts, Martlet.Avatar.Vrm's runtime.ts) check the same.</summary>
+public sealed record CharacterGesture(string Name, string Tag, string Use, string Does,
+    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones)
+{
+    public string Id => "gesture:" + Name;
+}
 
 /// <summary>One emote or motion a character model has. <see cref="Id"/> is stable for the model (<c>expression:F01</c>,
 /// <c>motion:TapBody</c>, <c>gesture:nod</c>); <see cref="Name"/> is what the renderer plays (the expression's name or
@@ -25,11 +35,39 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     public const int MaximumSources = 160;
     private const int MaximumDetail = 400;
 
-    public static readonly IReadOnlyList<CharacterActionSource> Gestures =
+    private static readonly string[] Head = ["head"], Spine = ["spine"];
+
+    /// <summary>Every gesture Martlet has; each model gets those its renderer and rig support (<see cref="GesturesFor"/>).</summary>
+    public static readonly IReadOnlyList<CharacterGesture> AllGestures =
     [
-        new("gesture:nod", CharacterActionKind.Gesture, "nod", "Martlet's own gesture on every model: nods the head twice, for yes or agreement."),
-        new("gesture:shake", CharacterActionKind.Gesture, "shake", "Martlet's own gesture on every model: shakes the head, for no or disbelief.")
+        new("nod", "nod", "nod, for yes or agreement", "nods the head twice", ["ParamAngleY"], Head),
+        new("shake", "shake_head", "shake your head, for no or disbelief", "shakes the head", ["ParamAngleX"], Head),
+        new("tilt", "tilt_head", "tilt your head, for curiosity or confusion", "tilts the head to one side", ["ParamAngleZ"], Head),
+        new("bow", "bow", "bow your head, for thanks, an apology or a greeting", "lowers the head in a small bow", ["ParamAngleY"], Spine),
+        new("sway", "sway", "sway side to side, for contentment or enjoying something", "sways the body side to side",
+            ["ParamBodyAngleZ"], Spine),
+        new("smile", "smile", "smile with your eyes, for warmth or happiness", "smiles with the eyes and mouth for a few seconds",
+            ["ParamEyeLSmile", "ParamEyeRSmile"], null),
+        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", ["ParamCheek"], null),
+        new("surprise", "surprised", "raise your brows wide-eyed, for surprise", "raises the brows and widens the eyes",
+            ["ParamBrowLY", "ParamBrowRY"], null),
+        new("wave", "wave", "wave your hand, for hello or goodbye", "raises the right hand and waves", null, ["rightUpperArm", "rightLowerArm"]),
+        new("shrug", "shrug", "shrug, for not knowing or not minding", "shrugs with both arms",
+            null, ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"]),
+        new("bounce", "bounce", "bounce with excitement", "bounces up and down", null, ["hips"])
     ];
+
+    public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);
+
+    /// <summary>The gestures a model gets: those its renderer supports whose parameters (Live2D) or bones (VRM) are all in
+    /// <paramref name="rig"/>.</summary>
+    public static IReadOnlyList<CharacterGesture> GesturesFor(AvatarRenderer renderer, IReadOnlySet<string> rig) =>
+        AllGestures.Where(g => (renderer == AvatarRenderer.Vrm ? g.VrmBones : g.Live2DParameters) is { } needs && needs.All(rig.Contains)).ToArray();
+
+    private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer) =>
+        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, $"Martlet's own gesture: {gesture.Does} (moves " +
+            (renderer == AvatarRenderer.Vrm ? "the " + string.Join(", ", gesture.VrmBones!) + (gesture.VrmBones!.Count == 1 ? " bone" : " bones")
+                : string.Join(", ", gesture.Live2DParameters!)) + ").");
 
     public CharacterActionSource? Find(string id) => Sources.FirstOrDefault(s => s.Id == id);
 
@@ -45,8 +83,61 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     {
         var files = assets.Select(a => CharacterModelLibrary.File(a.Name, a.Bytes)).ToArray();
         var id = CharacterModelLibrary.ModelId(SharedCharacterModels.RendererName(renderer), entry, files);
-        var sources = renderer == AvatarRenderer.Vrm ? VrmSources(assets[0].Bytes) : Live2DSources(entry, assets);
-        return new(id, renderer, [.. sources.Take(MaximumSources - Gestures.Count), .. Gestures]);
+        var sources = (renderer == AvatarRenderer.Vrm ? VrmSources(assets[0].Bytes) : Live2DSources(entry, assets)).ToList();
+        var rig = renderer == AvatarRenderer.Vrm ? VrmBones(assets[0].Bytes) : Live2DParameters(entry, assets);
+        // A gesture whose tag the model's own emote or motion already has is left to the model's.
+        var own = sources.Select((s, i) => CharacterActions.EnglishTag(s, sources.Take(i).Count(o => o.Kind == s.Kind) + 1))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var gestures = GesturesFor(renderer, rig).Where(g => !own.Contains(g.Tag)).Select(g => Source(g, renderer)).ToArray();
+        return new(id, renderer, [.. sources.Take(MaximumSources - gestures.Length), .. gestures]);
+    }
+
+    /// <summary>Which of the parameters Martlet's gestures move a Live2D model has, found in its .moc3 (whose parameter IDs are
+    /// null-padded strings).</summary>
+    private static HashSet<string> Live2DParameters(string entry, IReadOnlyList<AvatarAsset> assets)
+    {
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        var model = assets.FirstOrDefault(a => a.Name == entry);
+        if (model is null) return found;
+        string? mocName = null;
+        try
+        {
+            using var document = JsonDocument.Parse(model.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            if (document.RootElement.TryGetProperty("FileReferences", out var references) && references.ValueKind == JsonValueKind.Object &&
+                references.TryGetProperty("Moc", out var moc) && moc.ValueKind == JsonValueKind.String)
+                mocName = moc.GetString();
+        }
+        catch (JsonException) { }
+        var directory = Path.GetDirectoryName(entry.Replace('\\', '/'))?.Replace('\\', '/');
+        var bytes = assets.FirstOrDefault(a => a.Name == mocName || a.Name == (string.IsNullOrEmpty(directory) ? mocName : directory + "/" + mocName))?.Bytes;
+        if (bytes is null) return found;
+        foreach (var parameter in AllGestures.SelectMany(g => g.Live2DParameters ?? []).Distinct())
+        {
+            var needle = Encoding.ASCII.GetBytes(parameter + "\0");
+            var span = bytes.AsSpan();
+            for (int offset = 0, at; (at = span[offset..].IndexOf(needle)) >= 0; offset += at + 1)
+                if (offset + at == 0 || span[offset + at - 1] == 0) { found.Add(parameter); break; }
+        }
+        return found;
+    }
+
+    /// <summary>The humanoid bones a VRM 1.0 declares.</summary>
+    private static HashSet<string> VrmBones(byte[] glb)
+    {
+        var bones = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            if (glb.Length < 20 || BinaryPrimitives.ReadUInt32LittleEndian(glb) != 0x46546C67) return bones;
+            var length = (int)BinaryPrimitives.ReadUInt32LittleEndian(glb.AsSpan(12));
+            if (length <= 0 || 20 + length > glb.Length || BinaryPrimitives.ReadUInt32LittleEndian(glb.AsSpan(16)) != 0x4E4F534A) return bones;
+            using var document = JsonDocument.Parse(glb.AsMemory(20, length), new JsonDocumentOptions { MaxDepth = 64 });
+            if (document.RootElement.TryGetProperty("extensions", out var extensions) && extensions.TryGetProperty("VRMC_vrm", out var vrm) &&
+                vrm.TryGetProperty("humanoid", out var humanoid) && humanoid.TryGetProperty("humanBones", out var human) &&
+                human.ValueKind == JsonValueKind.Object)
+                foreach (var bone in human.EnumerateObject().Take(64)) bones.Add(bone.Name);
+        }
+        catch (JsonException) { }
+        return bones;
     }
 
     private static string Clip(string text) => text.Length <= MaximumDetail ? text : text[..(MaximumDetail - 3)] + "...";

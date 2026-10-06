@@ -23,6 +23,29 @@ normal supported product path. Live2D's Expandable Application review (required
 because users can load their own models) has been applied for by the owner; a
 public release bundling Live2D waits for that approval.
 
+## Character profiles
+
+A character profile switches who Martlet is in one step: its **look** (the
+built-in character or one of your characters from Companion › Character), its
+**voice** (one of your voices from Companion › Voice › Voices, spoken by the
+voice-cloning engines) and its **personality** (a persona from Companion ›
+Personality). Make and edit them in **Companion › Profiles**; *New profile...*
+starts as whatever Martlet uses now. A profile may keep the current look or voice
+instead of setting one. Switch from the Profiles page, Home's **Character** box
+or the **Character profile** submenu of Martlet's icon by the clock.
+
+Profiles are saved with the personality settings (`companion.characters` in
+`settings.json`), so they travel to your other Martlet computers with the shared
+settings. They name the look and voice by their shared IDs: switching saves the
+look on this PC (as Companion › Character does), chooses the voice on all your
+computers (as *Use* in Voices does) and selects the personality, and an open
+conversation takes the new voice and personality before its next reply. A part
+that can't switch yet (a look still copying to this PC, a removed voice) stays
+as it was and Martlet says why. The profile in use is worked out from what
+Martlet actually uses, so changing the look, voice or personality by hand shows
+"A mix of your own" until a profile matches again. Removing a persona removes the
+profiles built on it.
+
 ## Emotes and motions
 
 Models don't share a standard for emotes. VRM 1.0 has optional preset emotions
@@ -42,7 +65,8 @@ what each one is.
   and the VTube Studio idle animation idles the model when it has no `Idle`
   group. VRM: the preset emotions and every custom expression; mouth, blink,
   gaze and `neutral` presets stay with lip-sync, blinking and gaze. Every model
-  also gets Martlet's own head gestures, **nod** and **shake**. Each one comes
+  also gets Martlet's own gestures that its rig supports (see *Global
+  gestures* below). Each one comes
   with what it changes: Live2D parameter IDs, their display names from the
   model's `.cdi3.json` and values, and motion lengths; VRM shape names.
 - **Naming** (Companion › Prompts › *Naming character emotes*): the first time a
@@ -86,6 +110,21 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **Global gestures**: Martlet's own gestures (`CharacterActionInventory.AllGestures`)
+  play on any model whose rig has what they move, so replies are offered only
+  the ones the shown model can do:
+
+  | Gesture (tag) | Live2D needs | VRM needs |
+  | --- | --- | --- |
+  | nod (`nod`), shake (`shake_head`), tilt (`tilt_head`) | `ParamAngleY`, `ParamAngleX`, `ParamAngleZ` | `head` bone |
+  | bow (`bow`) | `ParamAngleY` | `spine` bone |
+  | sway (`sway`) | `ParamBodyAngleZ` | `spine` bone |
+  | smile (`smile`), blush (`blush`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamCheek`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
+  | wave (`wave`), shrug (`shrug`), bounce (`bounce`) | not offered (no standard arm or position parameters) | right arm, both arms, `hips` bones |
+
+  Live2D parameters are read from the model's `.moc3`, VRM bones from its
+  humanoid. A gesture is left out when the model's own emote or motion already
+  has its tag (a model with its own `smile` keeps that one).
 - **Where it looks**: the head and eyes follow the mouse, or with Companion ›
   Vision › **Where the character looks** set to *Martlet decides*, glance at
   something that just changed on the watched screen or at the part of it a

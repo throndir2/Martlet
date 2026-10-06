@@ -297,4 +297,72 @@ public sealed class OllamaRelayTests
                 host.Clock.GetUtcNow().AddSeconds(30), null, [], "Hello", 0.7, 64, 4_096)) { }
         });
     }
+
+    [Fact]
+    public async Task Deep_thinking_role_with_slots_runs_that_many_thinks_at_once_and_turns_one_more_away()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var deep = await FakeOllama.StartAsync(200, release.Task,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Plan: \"},\"done\":false}",
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"rest.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var deepWorker = OllamaRelayWorker.DeepThinking(deep.Endpoint, "qwen3:8b", slots: 2);
+        Assert.Equal(2, deepWorker.Route.MaximumConcurrency);
+        // Only the Deep thinking route may run several at once, within its bound; clients read the slots from its capability.
+        var capability = GatewayInferenceRouteCapability.From(deepWorker.Route);
+        Assert.Equal(2, GatewayInferenceRoute.FromCapability(capability).MaximumConcurrency);
+        Assert.Throws<GatewayProtocolException>(() => GatewayInferenceRoute.FromCapability(capability with
+            { MaximumConcurrency = Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots + 1 }));
+        await using var conversation = new OllamaRelayWorker(new Uri("http://127.0.0.1:11434/"), "gemma4:e4b");
+        Assert.Throws<GatewayProtocolException>(() => GatewayInferenceRoute.FromCapability(
+            GatewayInferenceRouteCapability.From(conversation.Route) with { MaximumConcurrency = 2 }));
+        Assert.Throws<GatewayProtocolException>(() => OllamaRelayWorker.DeepThinking(deep.Endpoint, "qwen3:8b",
+            slots: Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots + 1));
+        Assert.Throws<GatewayProtocolException>(() => new OllamaRelayWorker(deep.Endpoint, "gemma4:e4b", slots: 2));
+
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [deepWorker]);
+        var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+            card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
+        var connections = Enumerable.Range(0, 3).Select(_ => new Audio2FaceHostConnection(pairing, secret, host.Clock)).ToArray();
+        try
+        {
+            var route = Assert.Single(await connections[0].ReadRoutesAsync(), r => r.RouteId == HostRoute.DeepThinkingRouteId);
+            Assert.Equal(2, route.MaximumConcurrency);
+            var started = new[] { new TaskCompletionSource(), new TaskCompletionSource() };
+            var thinks = Enumerable.Range(0, 2).Select(i => Task.Run(async () =>
+            {
+                var text = "";
+                await foreach (var delta in connections[i].StreamChatAsync(route, NewIds(), 1 + i, host.Clock.GetUtcNow().AddSeconds(60),
+                    null, [], $"Task {i}", 0.7, 256, 8_192))
+                {
+                    text += delta;
+                    started[i].TrySetResult();
+                }
+                return text;
+            })).ToArray();
+            await Task.WhenAll(started.Select(s => s.Task)).WaitAsync(TimeSpan.FromSeconds(20));
+            Assert.All(thinks, t => Assert.False(t.IsCompleted));
+
+            var busy = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+            {
+                await foreach (var _ in connections[2].StreamChatAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30),
+                    null, [], "One more", 0.7, 64, 4_096)) { }
+            });
+            Assert.Equal("job.busy", busy.Code);
+
+            release.SetResult();
+            Assert.Equal(["Plan: rest.", "Plan: rest."], await Task.WhenAll(thinks).WaitAsync(TimeSpan.FromSeconds(20)));
+            // A slot is free again once a think finished.
+            var again = "";
+            await foreach (var delta in connections[2].StreamChatAsync(route, NewIds(), 4, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "Now", 0.7, 64, 4_096))
+                again += delta;
+            Assert.Equal("Plan: rest.", again);
+            Assert.Equal(3, deep.Requests.Count);
+        }
+        finally
+        {
+            foreach (var connection in connections) connection.Dispose();
+        }
+    }
 }

@@ -216,23 +216,10 @@ public partial class MainWindow
         try
         {
             turn = await ChangeTurnAsync();
-            var loaded = await setupService.LoadAsync(token);
-            if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
-            var route = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
-            var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
-            var result = await F5Voices.ReconcileAsync(store.DataDirectory, destination, ClusterDevice, null, null, token);
-            if (!result.Local.TryGetValue(voiceId, out var voice))
-                throw new InvalidOperationException("That voice is still being copied to this PC. Try again in a moment.");
-            var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId) ?? SpeakingEngineChoice.Current;
-            if (SpeechEngines.ReferenceProblem(engine, voice.AudioFormat.DurationMilliseconds,
-                    result.Library.Find(voiceId)?.ClipMilliseconds) is { } problem)
-                throw new InvalidOperationException($"{problem} Add another recording of '{voice.PresetName}' or choose another engine.");
-            var saved = await ApplyVoiceAsync(loaded, voice, token);
-            F5Voices.Choose(store.DataDirectory, voiceId);
-            QueueSpeakingVoiceSync();
+            var (name, saved) = await SwitchVoiceAsync(voiceId, destination, token);
             ActionText.Text = saved
-                ? $"Martlet now uses the voice '{voice.PresetName}' on all your computers.{OpenConversationFollows}"
-                : $"'{voice.PresetName}' is your voice on all your computers.";
+                ? $"Martlet now uses the voice '{name}' on all your computers.{OpenConversationFollows}"
+                : $"'{name}' is your voice on all your computers.";
         }
         catch (OperationCanceledException) { }
         catch (F5Exception error) { ActionText.Text = F5Voices.Describe(error); }
@@ -245,6 +232,46 @@ public partial class MainWindow
             turn?.Dispose();
             if (!closing) RenderHome();
         }
+    }
+
+    /// <summary>Makes a voice the chosen one on all your computers and applies it here (on the speaking route too, when a
+    /// computer speaks). The caller holds the change turn. Returns its name and whether the speaking route changed.</summary>
+    private async Task<(string Name, bool Saved)> SwitchVoiceAsync(string voiceId, string destination, CancellationToken token)
+    {
+        var loaded = await setupService!.LoadAsync(token);
+        if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
+        var route = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
+        var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
+        var result = await F5Voices.ReconcileAsync(store!.DataDirectory, destination, ClusterDevice, null, null, token);
+        if (!result.Local.TryGetValue(voiceId, out var voice))
+            throw new InvalidOperationException(result.Library.Find(voiceId) is { Removed: false } listed
+                ? $"The voice '{listed.Name}' is still being copied to this PC. Try again in a moment."
+                : "That voice is no longer in your voice list.");
+        var engine = SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId) ?? SpeakingEngineChoice.Current;
+        if (SpeechEngines.ReferenceProblem(engine, voice.AudioFormat.DurationMilliseconds,
+                result.Library.Find(voiceId)?.ClipMilliseconds) is { } problem)
+            throw new InvalidOperationException($"{problem} Add another recording of '{voice.PresetName}' or choose another engine.");
+        var saved = await ApplyVoiceAsync(loaded, voice, token);
+        F5Voices.Choose(store.DataDirectory, voiceId);
+        QueueSpeakingVoiceSync();
+        return (voice.PresetName, saved);
+    }
+
+    /// <summary>Where this PC's voices are kept for the speaking route (as Companion › Voice › Voices uses it).</summary>
+    private string VoiceDestination() =>
+        homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts) is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: { } snapshot }
+            ? snapshot.DestinationId : F5Destination;
+
+    /// <summary>The voice Martlet speaks with now, by its shared ID: the one the speaking route keeps, else the one chosen on
+    /// your computers, else the one applied on this PC; null when none is.</summary>
+    private string? CurrentVoiceId()
+    {
+        if (homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts) is { RouteType: SetupRouteType.GatewayF5, Reference: { } reference })
+            return reference.ReferenceRevision;
+        if (store is null) return null;
+        if (F5Voices.LoadLibrary(store.DataDirectory)?.ChosenVoice is { } chosen) return chosen.Id;
+        try { return F5Voices.Applied(store.DataDirectory)?.ReferenceRevision; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or F5Exception) { return null; }
     }
 
     /// <summary>Applies a voice on this PC and, when a computer speaks, saves it on the speaking route. Returns whether the

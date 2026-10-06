@@ -34,7 +34,7 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
 
     public OllamaRelayWorker(Uri endpoint, string model,
         string destinationId = DefaultDestinationId, string workerId = DefaultWorkerId, HttpMessageHandler? handler = null,
-        bool deepThinking = false)
+        bool deepThinking = false, int slots = 1)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         if (endpoint.Scheme != Uri.UriSchemeHttp || !IPAddress.TryParse(endpoint.Host.Trim('[', ']'), out var address) ||
@@ -45,7 +45,7 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
         this.model = model;
         var selection = new OllamaChatModelSelection(Alias(model), model);
         Route = GatewayInferenceRoute.OllamaChat(destinationId, workerId, selection, "ollama",
-            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(model))), deepThinking);
+            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(model))), deepThinking, slots);
         http = new HttpClient(handler ?? new SocketsHttpHandler
         {
             UseProxy = false, AllowAutoRedirect = false, UseCookies = false, Credentials = null,
@@ -56,9 +56,10 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
     public GatewayInferenceRoute Route { get; }
 
     /// <summary>The relay of the deep-thinking host role: its own Ollama (a second server beside the conversation model's), on
-    /// Deep thinking's route, so a think there never waits for a reply or the other way round.</summary>
-    public static OllamaRelayWorker DeepThinking(Uri endpoint, string model, HttpMessageHandler? handler = null) =>
-        new(endpoint, model, DeepThinkingDestinationId, DeepThinkingWorkerId, handler, deepThinking: true);
+    /// Deep thinking's route, so a think there never waits for a reply or the other way round. <paramref name="slots"/> thinks
+    /// run at once (the role's OLLAMA_NUM_PARALLEL), each in its own slot of the one loaded model.</summary>
+    public static OllamaRelayWorker DeepThinking(Uri endpoint, string model, HttpMessageHandler? handler = null, int slots = 1) =>
+        new(endpoint, model, DeepThinkingDestinationId, DeepThinkingWorkerId, handler, deepThinking: true, slots);
 
     /// <summary>The route's model ID for an Ollama model tag, for example llama3.2:3b becomes llama3.2-3b.</summary>
     public static string Alias(string model)

@@ -22,6 +22,7 @@ internal sealed partial class DiscordService : IAsyncDisposable
         Bot.Changed += _ => Changed?.Invoke();
         // Each feature attaches its handlers and adds its slash commands to Bot.Commands (one shared registration).
         AttachText();
+        WatchAuthors();
     }
 
     internal DiscordBot Bot { get; } = new();

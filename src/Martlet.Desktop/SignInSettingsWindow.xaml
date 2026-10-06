@@ -1,0 +1,103 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.SignInSettingsWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}" Title="Martlet - Sign-in from outside"
+        Width="680" MinWidth="520" Height="760" WindowStartupLocation="CenterOwner"
+        AutomationProperties.AutomationId="SignInSettingsWindow">
+    <DockPanel Margin="26,20">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <Button Content="_Close" IsCancel="True" Click="Close_Click" DockPanel.Dock="Right" MinWidth="100"
+                    AutomationProperties.AutomationId="SignInSettingsClose"/>
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" AutomationProperties.LiveSetting="Polite"
+                       AutomationProperties.AutomationId="SignInSettingsStatus"/>
+        </DockPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock x:Name="HeadingText" Style="{DynamicResource SectionHeading}" TextWrapping="Wrap" AutomationProperties.AutomationId="SignInSettingsTitle"/>
+                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14"
+                           Text="Let one of your computers join this host while it is away from home, by signing in instead of typing a code shown here. A computer that signs in is paired like any other and joins your Martlet network by itself. Remove it from the network or remove its sign-in here to take access away."/>
+
+                <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="Owner account" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock x:Name="OwnerStateText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10"
+                                   AutomationProperties.AutomationId="SignInOwnerState"/>
+                        <TextBlock Text="Account name"/>
+                        <TextBox x:Name="OwnerUserText" Margin="0,4,0,8" Text="owner" AutomationProperties.AutomationId="SignInOwnerUser"/>
+                        <TextBlock Text="Password (12 characters or more)"/>
+                        <PasswordBox x:Name="OwnerPasswordText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInOwnerPassword"/>
+                        <Button x:Name="NewSecretButton" Content="1. Make an _authenticator secret" Click="NewSecret_Click" HorizontalAlignment="Left"
+                                AutomationProperties.AutomationId="SignInTotpNew"/>
+                        <StackPanel x:Name="SecretPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       Text="Add it to your authenticator app (Google Authenticator, Aegis, 1Password, Bitwarden...): open the link, or type the secret. It is required for every sign-in."/>
+                            <TextBox x:Name="SecretText" IsReadOnly="True" FontFamily="Consolas" Margin="0,4,0,4" AutomationProperties.AutomationId="SignInTotpSecret"/>
+                            <TextBox x:Name="SecretLinkText" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,0,0,8"
+                                     AutomationProperties.AutomationId="SignInTotpLink"/>
+                            <TextBlock Text="2. The 6-digit code your app shows now"/>
+                            <TextBox x:Name="OwnerCodeText" FontFamily="Consolas" FontSize="16" MaxLength="8" Margin="0,4,0,8"
+                                     AutomationProperties.AutomationId="SignInOwnerCode"/>
+                            <Button x:Name="SaveOwnerButton" Content="3. _Save owner account" Click="SaveOwner_Click" Style="{DynamicResource PrimaryButton}"
+                                    HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInOwnerSave"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="New _recovery codes" Click="NewCodes_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInRecoveryNew"/>
+                            <Button Content="Remo_ve owner account" Click="RemoveOwner_Click" AutomationProperties.AutomationId="SignInOwnerRemove"/>
+                        </StackPanel>
+                        <TextBox x:Name="RecoveryText" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,10,0,0"
+                                 AutomationProperties.AutomationId="SignInRecoveryCodes"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="Other allowed sign-ins" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
+                                   Text="Identities at a sign-in provider set up on this host that may join (the provider's ID and the account's stable subject). Removing one takes access away from the computers it signed in."/>
+                        <TextBlock x:Name="AllowedText" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInAllowedList"/>
+                        <TextBlock x:Name="ProvidersText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   AutomationProperties.AutomationId="SignInProvidersList"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="2*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="AllowProviderText" Margin="0,0,6,0" AutomationProperties.AutomationId="SignInAllowProvider"
+                                     AutomationProperties.Name="Provider ID"/>
+                            <TextBox x:Name="AllowSubjectText" Grid.Column="1" Margin="0,0,6,0" AutomationProperties.AutomationId="SignInAllowSubject"
+                                     AutomationProperties.Name="Subject"/>
+                            <TextBox x:Name="AllowLabelText" Grid.Column="2" AutomationProperties.AutomationId="SignInAllowLabel"
+                                     AutomationProperties.Name="Label (an email or name)"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="A_llow" Click="Allow_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInAllow"/>
+                            <Button Content="Remove" Click="Disallow_Click" AutomationProperties.AutomationId="SignInDisallow"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="Computers that signed in" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock x:Name="EnrolledText" TextWrapping="Wrap" Margin="0,4,0,0" AutomationProperties.AutomationId="SignInEnrolledList"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{DynamicResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="Invite" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
+                                   Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. It starts with the outside addresses your network has for this host (Your Martlet network › Outside addresses); set them there so the computer keeps reaching the host after it joins."/>
+                        <TextBlock Text="Outside address(es), separated by spaces"/>
+                        <TextBox x:Name="InviteAddressText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInInviteAddress"/>
+                        <Button Content="_Make invite" Click="MakeInvite_Click" HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInInviteMake"/>
+                        <TextBox x:Name="InviteText" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"
+                                 AutomationProperties.AutomationId="SignInInviteText"/>
+                        <Button x:Name="CopyInviteButton" Content="_Copy invite" Click="CopyInvite_Click" HorizontalAlignment="Left" Margin="0,8,0,0"
+                                Visibility="Collapsed" AutomationProperties.AutomationId="SignInInviteCopy"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</local:ThemedWindow>
