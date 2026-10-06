@@ -121,13 +121,75 @@ public sealed record CompanionSettings : IContract
     public const int MaximumAggregateTextCharacters = 16_384;
     public const int MaximumAggregateTextUtf8Bytes = 32_768;
 
+    public const int MaximumCharacters = 32;
+
     public required int SchemaVersion { get; init; }
     public required Guid ActivePersonaId { get; init; }
     public required IReadOnlyList<PersonaProfile> Personas { get; init; }
+    /// <summary>The character profiles (Companion › Profiles); absent until the first one is made.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CharacterProfile>? Characters { get; init; }
+    /// <summary>The character profile switched to last, preferred when more than one matches what Martlet uses now.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ActiveCharacterId { get; init; }
 
     [JsonIgnore]
     public PersonaProfile ActivePersona =>
         Personas.Single(persona => persona.Id == ActivePersonaId);
+
+    [JsonIgnore]
+    public IReadOnlyList<CharacterProfile> CharacterList => Characters ?? [];
+
+    /// <summary>The character Martlet is now: the profile switched to last when it still matches, else the first that does,
+    /// else none (something was changed by hand since).</summary>
+    public CharacterProfile? CurrentCharacter(string? modelId, string? voiceId) =>
+        CharacterList.FirstOrDefault(c => c.Id == ActiveCharacterId && c.Matches(ActivePersonaId, modelId, voiceId))
+        ?? CharacterList.FirstOrDefault(c => c.Matches(ActivePersonaId, modelId, voiceId));
+
+    /// <summary>Adds a character profile and returns the settings with it (not yet switched to).</summary>
+    public CompanionSettings AddCharacter(string name, Guid personaId, string? modelId, string? voiceId, out CharacterProfile added)
+    {
+        ContractRules.Require(CharacterList.Count < MaximumCharacters, $"At most {MaximumCharacters} character profiles are supported.");
+        added = new CharacterProfile { Id = Guid.NewGuid(), Name = name, PersonaId = personaId, ModelId = modelId, VoiceId = voiceId };
+        added.Validate();
+        var updated = this with { Characters = CharacterList.Append(added).ToArray() };
+        updated.Validate();
+        return updated;
+    }
+
+    /// <summary>Replaces a character profile's name, personality, look and voice.</summary>
+    public CompanionSettings UpdateCharacter(Guid id, string name, Guid personaId, string? modelId, string? voiceId)
+    {
+        var prior = CharacterList.SingleOrDefault(c => c.Id == id);
+        ContractRules.Require(prior is not null, "Select a character profile from this list.");
+        var replacement = prior! with { Name = name, PersonaId = personaId, ModelId = modelId, VoiceId = voiceId };
+        if (replacement == prior) return this;
+        var updated = this with { Characters = CharacterList.Select(c => c.Id == id ? replacement : c).ToArray() };
+        updated.Validate();
+        return updated;
+    }
+
+    public CompanionSettings RemoveCharacter(Guid id)
+    {
+        ContractRules.Require(CharacterList.Any(c => c.Id == id), "Select a character profile from this list.");
+        var characters = CharacterList.Where(c => c.Id != id).ToArray();
+        var updated = this with
+        {
+            Characters = characters.Length == 0 ? null : characters,
+            ActiveCharacterId = ActiveCharacterId == id ? null : ActiveCharacterId
+        };
+        updated.Validate();
+        return updated;
+    }
+
+    /// <summary>Switches to a character profile's personality and remembers it as the one switched to last. Its look and voice
+    /// are applied by the app, which keeps them on each computer.</summary>
+    public CompanionSettings SelectCharacter(Guid id)
+    {
+        var character = CharacterList.SingleOrDefault(c => c.Id == id);
+        ContractRules.Require(character is not null, "Select a character profile from this list.");
+        return Select(character!.PersonaId) with { ActiveCharacterId = id };
+    }
 
     public static CompanionSettings Create()
     {
@@ -204,10 +266,14 @@ public sealed record CompanionSettings : IContract
         ContractRules.Require(Personas.Any(persona => persona.Id == id),
             "Select a persona from this profile.");
         var personas = Personas.Where(persona => persona.Id != id).ToArray();
+        // A character profile can't be without its personality, so profiles built on this persona go with it.
+        var characters = CharacterList.Where(c => c.PersonaId != id).ToArray();
         var updated = this with
         {
             Personas = personas,
-            ActivePersonaId = ActivePersonaId == id ? personas[0].Id : ActivePersonaId
+            ActivePersonaId = ActivePersonaId == id ? personas[0].Id : ActivePersonaId,
+            Characters = characters.Length == 0 ? null : characters,
+            ActiveCharacterId = characters.Any(c => c.Id == ActiveCharacterId) ? ActiveCharacterId : null
         };
         updated.Validate();
         return updated;
@@ -239,6 +305,23 @@ public sealed record CompanionSettings : IContract
             throw new ContractException(ErrorCode.InvalidContract, "Persona text contains invalid Unicode.");
         }
         ContractRules.Require(ids.Contains(ActivePersonaId), "The active persona must identify a saved profile.");
+        if (Characters is { } characters)
+        {
+            ContractRules.Require(characters.Count is >= 1 and <= MaximumCharacters,
+                $"Companion settings hold 1-{MaximumCharacters} character profiles when any are saved.");
+            var characterIds = new HashSet<Guid>();
+            var characterNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var character in characters)
+            {
+                ContractRules.Require(character is not null, "A character profile cannot be null.");
+                character!.Validate();
+                ContractRules.Require(characterIds.Add(character.Id), "Character profile identities must be unique.");
+                ContractRules.Require(characterNames.Add(character.Name), "Character profile names must be unique.");
+                ContractRules.Require(ids.Contains(character.PersonaId), "Each character profile must use a saved persona.");
+            }
+        }
+        ContractRules.Require(ActiveCharacterId is null || CharacterList.Any(c => c.Id == ActiveCharacterId),
+            "The active character profile must identify a saved one.");
     }
 
     private static int StrictUtf8Length(string text) =>

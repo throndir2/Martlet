@@ -59,7 +59,13 @@ internal static class DeviceComponent
 /// <paramref name="MartletVersion"/> is the release its gateway reported (null when it is 0.2.0 or older) and
 /// <paramref name="Routes"/> holds the routes it advertised.</summary>
 internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null,
-    string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null);
+    string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null)
+{
+    /// <summary>How many thinks its Deep thinking role runs at once (its slots: several on one graphics card), or null when it
+    /// has no Deep thinking role.</summary>
+    public int? DeepThinkingSlots => Routes?.FirstOrDefault(r => r.RouteId == Martlet.Avatar.Audio2Face.Remote.HostRoute.DeepThinkingRouteId)
+        ?.MaximumConcurrency;
+}
 
 /// <summary>A device on the map. <paramref name="HealthCommand"/> is what clicking its status runs, when the status names
 /// something one click fixes ("Update available" updates the host). <paramref name="SharedGpu"/> warns that its voice engine

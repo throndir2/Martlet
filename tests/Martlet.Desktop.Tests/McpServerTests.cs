@@ -160,6 +160,41 @@ public sealed class McpServerTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public async Task CharacterProfilesReportsKeysAndPartsWithoutNames()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Profiles." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var settings = Martlet.Core.Settings.CompanionSettings.Begin(null);
+            var companion = settings.Companion!.Add("Secret persona");
+            companion = companion
+                .AddCharacter("Secret built-in", companion.ActivePersonaId, Martlet.Core.Settings.CharacterProfile.BuiltInModel, null, out var builtIn)
+                .AddCharacter("Secret gone", companion.ActivePersonaId, "0123456789abcdef0123", "missing-voice", out var gone)
+                .SelectCharacter(builtIn.Id);
+            File.WriteAllBytes(Path.Combine(directory, "settings.json"), Martlet.Core.Contracts.ContractJson.Write(settings with { Companion = companion }));
+            var message = (await SendAsync(JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "character_profiles", arguments = new { dataDirectory = directory } }
+            })))[0];
+            Assert.DoesNotContain("Secret", message.GetRawText());
+            var result = ToolResult(message);
+            Assert.Equal(2, result.GetProperty("count").GetInt32());
+            Assert.Equal(builtIn.Key, result.GetProperty("current").GetString());
+            Assert.Equal(builtIn.Key, result.GetProperty("lastUsed").GetString());
+            var profiles = result.GetProperty("profiles").EnumerateArray().ToArray();
+            Assert.Equal(("builtin", "keep", true), (profiles[0].GetProperty("look").GetString(), profiles[0].GetProperty("voice").GetString(),
+                profiles[0].GetProperty("inUse").GetBoolean()));
+            Assert.Equal((gone.Key, "missing", "missing", false), (profiles[1].GetProperty("key").GetString(), profiles[1].GetProperty("look").GetString(),
+                profiles[1].GetProperty("voice").GetString(), profiles[1].GetProperty("inUse").GetBoolean()));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string DataCall(string tool, string dataDirectory) => JsonSerializer.Serialize(new
     {
         jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = tool, arguments = new { dataDirectory } }
