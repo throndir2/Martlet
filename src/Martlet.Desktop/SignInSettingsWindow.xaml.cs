@@ -19,7 +19,6 @@ public partial class SignInSettingsWindow : ThemedWindow
     private readonly string dataDirectory;
     private readonly CancellationTokenSource lifetime = new();
     private string? pendingSecret;
-    private HostSignInSettings? shown;
 
     internal SignInSettingsWindow(AvatarRemoteHost host, string dataDirectory)
     {
@@ -55,10 +54,6 @@ public partial class SignInSettingsWindow : ThemedWindow
 
     private void Show(HostSignInSettings settings, string? done = null)
     {
-        shown = settings;
-        RefusedText.Text = settings.Refused.Count == 0 ? "None."
-            : string.Join(Environment.NewLine, settings.Refused.Select(r =>
-                $"{r.Label ?? r.Subject} ({r.Provider}: {r.Subject}) from {r.DeviceId} {r.EnrolledAt.ToLocalTime():g}"));
         OwnerStateText.Text = settings.OwnerUser is { } user
             ? $"Set up: {user}, with an authenticator; {settings.RecoveryCodesLeft} recovery code(s) left. Setting it again replaces it."
             : "Not set up. Set a name and password, then add the authenticator secret to your app.";
@@ -128,43 +123,6 @@ public partial class SignInSettingsWindow : ThemedWindow
     {
         ["action"] = "disallow", ["provider"] = AllowProviderText.Text.Trim(), ["subject"] = AllowSubjectText.Text.Trim()
     }, "Removed; computers it signed in lost access.");
-
-    private void ProviderKind_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (ProviderIdText is null || (ProviderKindBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is not "google") return;
-        ProviderIdText.Text = "google";
-        ProviderNameText.Text = "Google";
-        ProviderIssuerText.Text = "https://accounts.google.com";
-        ProviderScopesText.Text = "openid email profile";
-    }
-
-    private async void SaveProvider_Click(object sender, RoutedEventArgs e)
-    {
-        var config = new JsonObject
-        {
-            ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant(), ["kind"] = "oidc", ["name"] = ProviderNameText.Text.Trim(),
-            ["issuer"] = ProviderIssuerText.Text.Trim().TrimEnd('/'), ["client_id"] = ProviderClientIdText.Text.Trim(),
-            ["scopes"] = ProviderScopesText.Text.Trim() is { Length: > 0 } scopes ? scopes : null
-        };
-        if (ProviderSecretText.Password.Length > 0) config["client_secret"] = ProviderSecretText.Password;
-        await ChangeAsync(new JsonObject { ["action"] = "provider", ["provider_config"] = config },
-            $"Saved {ProviderNameText.Text.Trim()}. Sign in with it once from the computer to allow, then allow it here.");
-        ProviderSecretText.Clear();
-    }
-
-    private async void RemoveProvider_Click(object sender, RoutedEventArgs e) => await ChangeAsync(new JsonObject
-    {
-        ["action"] = "remove-provider", ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant()
-    }, "Provider removed; computers that signed in with it lost access.");
-
-    private async void AllowRefused_Click(object sender, RoutedEventArgs e)
-    {
-        if (shown?.Refused.FirstOrDefault() is not { } newest) { StatusText.Text = "Nobody is waiting to be allowed."; return; }
-        await ChangeAsync(new JsonObject
-        {
-            ["action"] = "allow", ["provider"] = newest.Provider, ["subject"] = newest.Subject, ["label"] = newest.Label
-        }, $"Allowed {newest.Label ?? newest.Subject}. Sign in again from {newest.DeviceId}.");
-    }
 
     private void MakeInvite_Click(object sender, RoutedEventArgs e)
     {

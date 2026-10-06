@@ -345,49 +345,13 @@ How it is protected:
   joined the network can still pair by its network key: remove it from the
   network as well).
 
-### Signing in with your identity provider or Google
-
-Instead of (or as well as) the owner account, a host can let you sign in in
-the browser with any OpenID Connect issuer: a self-hosted Authentik, Authelia,
-Keycloak or Pocket ID, or Google. Martlet itself runs the flow: the laptop opens
-the system browser with an authorization-code request with PKCE (S256) and a
-loopback redirect `http://127.0.0.1:<free port>/` (RFC 8252), the host builds
-that URL from the issuer's discovery document and the attempt's `state` and
-`nonce`, and once the browser comes back the laptop forwards what it brought
-and its PKCE verifier. The host exchanges the code at the issuer's token
-endpoint itself, with the client secret only it keeps (`client_secret_post`,
-or `client_secret_basic` when that is all the issuer offers; none for a public
-client), and accepts the ID token only when its signature checks against the
-issuer's published keys (RS256/384/512, PS256/384/512, ES256/384; an unknown
-key ID refreshes the key set once) and its issuer, audience (or authorized
-party), expiry and nonce match. The identity is the issuer's stable `sub`; a
-verified email, the user name or the name is its label.
-
-1. At the provider, register a client for Martlet: a public or confidential
-   OAuth2/OpenID client whose redirect URI is `http://127.0.0.1` (loopback,
-   any port; Authentik: *Redirect URIs* `regex:http://127\.0\.0\.1:\d+/`;
-   Keycloak: `http://127.0.0.1:*`; Authelia: `http://127.0.0.1/` with
-   `redirect_uris` loopback ports allowed; Pocket ID: `http://127.0.0.1:*`).
-   For **Google**: Google Cloud console › APIs & Services › Credentials ›
-   *Create credentials* › *OAuth client ID* › *Desktop app* (configure the
-   consent screen first, and add your Google account as a test user while the
-   app is in testing). Google's desktop clients take any loopback port and
-   come with a client secret.
-2. At home: **Sign-in from outside** › *Sign-in providers*: choose *OpenID
-   Connect* (an ID such as `authentik`, a name, the issuer URL such as
-   `https://auth.example.net/application/o/martlet/`) or *Google* (filled in:
-   `https://accounts.google.com`), the client ID and secret, **Save provider**.
-3. Sign in with it once from the computer you want to let in (from home or
-   away): the host refuses (`signin.not_allowed`) and lists the identity under
-   *Signed in but not allowed yet*; **Allow the newest** (or type the provider
-   ID and subject under *Other allowed sign-ins*). From then on that identity
-   pairs, and the computer joins your network as above.
-
 Limits, for now: sign-in is per host (set it up on the host the laptop reaches
 from outside); the laptop reaches the network's other hosts only where they
 have outside addresses ([above](#reaching-your-network-from-outside-home)).
-Discord and Steam sign-in use the same allow list and attestation and arrive
-next; the host already keeps their settings but doesn't offer them yet.
+Sign-in providers in the browser (any OpenID Connect issuer such as Authentik,
+Authelia, Keycloak, Pocket ID or Google, Discord and Steam) use the same allow
+list and attestation and arrive next; the host already stores their settings
+(`provider` changes) but lists them only once their verification ships.
 
 ## Where it lives
 
@@ -412,18 +376,15 @@ does what plan, and grants nothing in the network itself.
 Joining from outside home by signing in is checked through Martlet MCP's
 `signin_selftest` (a real gateway on 127.0.0.1: owner account with a real
 authenticator secret, invite pinned by an outside name, refusals, sign-in,
-joining on the host's attestation without a check number, an OpenID Connect
-provider with an issuer in the process and a simulated browser through the
-desktop's real loopback redirect, revocation, audit),
+joining on the host's attestation without a check number, revocation, audit),
 the gateway, Core and Linux gateway unit tests (RFC 6238 vectors, lockout,
 allow list, `martlet-host owner-signin-*` and `owner-invite` on a fixture file
 system) and the desktop's **Join with an invite** window on a disposable data
 folder (opened from Add a computer, a malformed invite and an unreachable host
 reported). **NOT RUN:** the **Sign-in from outside** window against a live
 paired host (needs a pairing secret in Windows Credential Manager), a laptop
-signing in over the real internet, `signin.json` on a native or Docker Linux
-host, and signing in at a real Authentik, Authelia, Keycloak, Pocket ID or
-Google (no disposable accounts on the development PC).
+signing in over the real internet, and `signin.json` on a native or Docker
+Linux host.
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`
 (three real gateways on 127.0.0.1 with simulated desktops and a simulated

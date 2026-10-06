@@ -1,0 +1,29 @@
+# Martlet pictures host service (Martlet draws pictures with ComfyUI and Z-Image Turbo), loopback-only behind the Martlet
+# gateway. The image is built on this host from Martlet's workers/pictures sources
+# (workers/pictures/host/Dockerfile: ComfyUI v0.39.0 at pinned commit b0b7435 and pinned PyTorch 2.10 CUDA 12.8).
+# "martlet-host add pictures" adds compose.gpu.yaml, then runs "martlet-pictures provision" (downloads and verifies the
+# pinned model files into the martlet-pictures-models volume). ComfyUI listens only on 127.0.0.1:50086 in the gateway's
+# network namespace; the Martlet gateway is the single LAN entry point.
+
+services:
+  pictures:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/pictures
+      dockerfile: host/Dockerfile
+    image: martlet-pictures:1
+    pull_policy: build
+    environment:
+      PICTURES_MODEL: ${PICTURES_MODEL:-z-image-turbo}
+    volumes:
+      - models:/opt/martlet-pictures/models
+      - output:/opt/martlet-pictures/output
+      - temp:/opt/martlet-pictures/temp
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-pictures-models
+  output:
+    name: martlet-pictures-output
+  temp:
+    name: martlet-pictures-temp

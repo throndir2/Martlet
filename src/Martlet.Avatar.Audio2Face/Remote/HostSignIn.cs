@@ -160,35 +160,6 @@ public static class HostSignInClient
             new JsonObject { ["user"] = user, ["password"] = password, ["code"] = code }, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Signs in at a provider in the browser (OpenID Connect, Discord, Steam): starts this computer's loopback
-    /// redirect (http://127.0.0.1:&lt;port&gt;/, RFC 8252) and a PKCE verifier, has the host build the provider's URL, opens it
-    /// with <paramref name="openBrowser"/>, waits for the browser to come back (at most <paramref name="timeout"/>) and hands
-    /// what it brought, with the verifier, to the host to check. The provider's client secret never comes here.</summary>
-    public static async Task<(Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInInBrowserAsync(NetworkInvite invite,
-        string origin, string provider, string deviceId, string displayName, Action<string> openBrowser, TimeSpan timeout,
-        CancellationToken cancellationToken = default)
-    {
-        var (verifier, challenge) = NewPkce();
-        using var redirect = LoopbackRedirect.Start();
-        var attempt = await BeginAsync(invite, origin, provider, challenge, redirect.RedirectUri, cancellationToken).ConfigureAwait(false);
-        if (attempt.AuthorizeUrl is null) throw new Audio2FaceHostException("response.invalid", "The host didn't say where to sign in.");
-        openBrowser(attempt.AuthorizeUrl);
-        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        wait.CancelAfter(timeout);
-        IReadOnlyDictionary<string, string> query;
-        try { query = await redirect.WaitAsync(wait.Token).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new Audio2FaceHostException("signin.expired", "The browser didn't come back in time. Start the sign-in again.");
-        }
-        if (query.TryGetValue("error", out var error))
-            throw new Audio2FaceHostException("signin.invalid", $"The sign-in was canceled or refused in the browser ({Clean(error)}).");
-        var answer = new JsonObject();
-        foreach (var (name, value) in query) answer[name] = value;
-        return await CompleteAsync(invite, attempt, deviceId, displayName, new JsonObject { ["query"] = answer, ["code_verifier"] = verifier },
-            cancellationToken).ConfigureAwait(false);
-    }
-
     private static async Task<JsonDocument> PostAsync(NetworkInvite invite, string origin, string path, byte[] body, HttpStatusCode expected,
         CancellationToken cancellationToken)
     {
@@ -255,11 +226,7 @@ public static class HostSignInClient
 /// <summary>A host's sign-in settings as a member desktop sees them (never a secret).</summary>
 public sealed record HostSignInSettings(string HostId, string? OwnerUser, int RecoveryCodesLeft,
     IReadOnlyList<HostSignInProviderSettings> Providers, IReadOnlyList<HostSignInAllowed> Allowed, IReadOnlyList<HostSignInEnrolled> Enrolled,
-    IReadOnlyList<string>? RecoveryCodes)
-{
-    /// <summary>Identities that signed in at a provider but aren't allowed yet, newest first (DeviceId is the computer that tried).</summary>
-    public IReadOnlyList<HostSignInEnrolled> Refused { get; init; } = [];
-}
+    IReadOnlyList<string>? RecoveryCodes);
 
 public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret);
 
@@ -332,93 +299,11 @@ public sealed partial class Audio2FaceHostConnection
                 root.GetProperty("enrolled").EnumerateArray().Take(64).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
                     e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray(),
                 root.TryGetProperty("recovery_codes", out var codes) && codes.ValueKind == JsonValueKind.Array
-                    ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null)
-            {
-                Refused = root.TryGetProperty("refused", out var refused) && refused.ValueKind == JsonValueKind.Array
-                    ? refused.EnumerateArray().Take(16).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
-                        e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray()
-                    : []
-            };
+                    ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null);
         }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {
             throw new Audio2FaceHostException("response.invalid", "The host's sign-in settings were invalid.");
         }
     }
-}
-
-/// <summary>The one-shot loopback redirect a browser sign-in comes back to (RFC 8252 section 7.3): a socket on 127.0.0.1 and a
-/// free port, answering the first request that carries a sign-in result (a state, code, error or OpenID assertion) with a
-/// short page and returning its query. Nothing else on the computer is opened or registered.</summary>
-public sealed class LoopbackRedirect : IDisposable
-{
-    private readonly System.Net.Sockets.TcpListener listener;
-
-    private LoopbackRedirect(System.Net.Sockets.TcpListener listener) => this.listener = listener;
-
-    public string RedirectUri => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/";
-
-    public static LoopbackRedirect Start()
-    {
-        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return new(listener);
-    }
-
-    public async Task<IReadOnlyDictionary<string, string>> WaitAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-            using var stream = client.GetStream();
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(10));
-            string? line;
-            try
-            {
-                var buffer = new byte[16 * 1024];
-                var read = 0;
-                while (read < buffer.Length && System.Text.Encoding.ASCII.GetString(buffer, 0, read) is var text && !text.Contains("\r\n\r\n", StringComparison.Ordinal))
-                {
-                    var n = await stream.ReadAsync(buffer.AsMemory(read), timeout.Token).ConfigureAwait(false);
-                    if (n == 0) break;
-                    read += n;
-                }
-                line = System.Text.Encoding.ASCII.GetString(buffer, 0, read).Split("\r\n")[0];
-            }
-            catch (Exception error) when (error is IOException or OperationCanceledException && !cancellationToken.IsCancellationRequested) { continue; }
-            var parts = line.Split(' ');
-            var target = parts.Length == 3 && parts[0] == "GET" ? parts[1] : "";
-            var query = target.StartsWith("/?", StringComparison.Ordinal) ? Parse(target[2..]) : new Dictionary<string, string>();
-            var result = query.Keys.Any(k => k is "state" or "code" or "error" || k.StartsWith("openid.", StringComparison.Ordinal));
-            var page = result
-                ? "<!doctype html><meta charset=utf-8><title>Martlet</title><p style=\"font-family:sans-serif\">Martlet got your sign-in. You can close this tab and go back to Martlet.</p>"
-                : "<!doctype html><title>Martlet</title>";
-            var body = System.Text.Encoding.UTF8.GetBytes(page);
-            var head = System.Text.Encoding.ASCII.GetBytes($"HTTP/1.1 {(result ? "200 OK" : "404 Not Found")}\r\nContent-Type: text/html; charset=utf-8\r\n" +
-                $"Content-Length: {body.Length}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
-            try
-            {
-                await stream.WriteAsync(head, cancellationToken).ConfigureAwait(false);
-                await stream.WriteAsync(body, cancellationToken).ConfigureAwait(false);
-            }
-            catch (IOException) { }
-            if (result) return query;
-        }
-    }
-
-    private static Dictionary<string, string> Parse(string query)
-    {
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries).Take(64))
-        {
-            var equals = pair.IndexOf('=');
-            var name = Uri.UnescapeDataString((equals < 0 ? pair : pair[..equals]).Replace('+', ' '));
-            var value = equals < 0 ? "" : Uri.UnescapeDataString(pair[(equals + 1)..].Replace('+', ' '));
-            if (name.Length is > 0 and <= 128 && value.Length <= 4096) result[name] = value;
-        }
-        return result;
-    }
-
-    public void Dispose() => listener.Stop();
 }
