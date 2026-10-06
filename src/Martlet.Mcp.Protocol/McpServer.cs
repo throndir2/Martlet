@@ -258,9 +258,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
             "only has the invite: it pins the host (reached by name, so only the pin is trusted), is refused with a wrong password, " +
             "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
-            "with no check number; then an OpenID Connect provider (an issuer in this process, a simulated browser and the desktop's " +
-            "real loopback redirect) is refused until the home PC allows the identity it saw, and joins the same way; a " +
-            "non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
+            "with no check number; a non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
             "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
@@ -530,6 +528,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
             endpoint = new { type = "string", maxLength = 64 },
             text = new { type = "string", maxLength = 300 }
+        }),
+        Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
+            "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
+            "model; whether an own key is saved, never the key), the loaded custom workflow's node count, the picture creations " +
+            "(shape, size, engine, model, seconds, fixture, assets, whether they're on this PC; never titles or descriptions) and the " +
+            "draw_picture tool and job kind the conversation offers. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("pictures_check", "Draw one picture through the production picture maker and report it: place \"fixture\" (the " +
+            "default: the FIXTURE - NOT AI gradient maker) or \"comfyui\" (a ComfyUI at address, such as http://127.0.0.1:8188, " +
+            "through Martlet's ComfyUI client: status and model check, the workflow (z-image-turbo, checkpoint with checkpoint, or " +
+            "custom with workflowFile, an absolute path to an Export (API) file), queue, history, the picture fetched). Returns " +
+            "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
+            "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
+            "does; with saveDirectory (absolute) it writes the picture there. Never calls a paid cloud provider.", new
+        {
+            place = new { type = "string", @enum = new[] { "fixture", "comfyui" } },
+            address = new { type = "string", maxLength = 512 },
+            workflow = new { type = "string", @enum = new[] { "z-image-turbo", "checkpoint", "custom" } },
+            checkpoint = new { type = "string", maxLength = 255 },
+            workflowFile = new { type = "string", maxLength = 260 },
+            prompt = new { type = "string", maxLength = 2000 },
+            shape = new { type = "string", @enum = new[] { "square", "landscape", "portrait", "wide", "tall" } },
+            dataDirectory = new { type = "string", maxLength = 260 },
+            saveDirectory = new { type = "string", maxLength = 260 }
         }),
         Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
@@ -909,27 +933,6 @@ internal sealed class McpServer(DesktopAutomation desktop)
             model = new { type = "string", maxLength = 128 },
             live = new { type = "boolean" }
         }),
-        Tool("discord_reply_status", "Martlet's Discord reply engine, from a data directory: the desktop's discord-replies.json " +
-            "(whether the engine is wired, replies, passes, skipped turns with the last reason, failures with the last code, places " +
-            "with history, requests running, the last reply and pass times, its latency, first-words time and prompt-cache use, " +
-            "the Thinking route it last used (route type and model), how it waits for the local conversation on a shared model, " +
-            "turns waiting for it and requests a local reply stopped; never what was said or who said it) and discord.json's chat " +
-            "setup (configured, enabled, owner set, chat modes, rule and people counts; never the token, IDs or names). Read-only.", new
-        {
-            dataDirectory = new { type = "string" }
-        }),
-        Tool("discord_reply_check", "Rehearse the Discord reply engine's production Discord side (DiscordReplier: per-place history, " +
-            "the ambient gate's cooldown and chance, multi-party prompt shaping, [pass] and Discord's 2000-character and voice " +
-            "limits) through the production Chat Completions adapter against a fixture endpoint on 127.0.0.1 (canned replies, NOT " +
-            "AI): seven made-up turns in a server channel, a voice call and the owner's DM, each with its expected outcome (reply, " +
-            "pass or skip and why), what the request carried (roles, lengths, the start of each message) and ok. With live: true it " +
-            "also asks Ollama on this PC (the saved local Thinking model, or model) two made-up turns with the saved persona, never " +
-            "anything anyone said. Loopback only; reads no credentials and spends nothing.", new
-        {
-            dataDirectory = new { type = "string" },
-            model = new { type = "string", maxLength = 128 },
-            live = new { type = "boolean" }
-        }),
         Tool("reminders_status", "Martlet's reminders (the reply model's reminders tool: set, list, cancel; docs/CONVERSATION.md#reminders), " +
             "from a data directory's shared-settings.json: every computer's reminders entry, each reminder's text, due and set times, " +
             "the computer it was set on, its state (Pending, Done, Canceled, Missed) and who settled it, and each computer's marks " +
@@ -1153,6 +1156,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "model"), cancellation),
                 "singing_status" => await SingingStatusAsync(arguments, cancellation),
                 "singing_check" => await SingingCheckAsync(arguments, cancellation),
+                "pictures_status" => PicturesCheck.Status(DataDirectory(arguments)),
+                "pictures_check" => await PicturesCheck.RunAsync(OptionalString(arguments, "place"), OptionalString(arguments, "address"),
+                    OptionalString(arguments, "workflow"), OptionalString(arguments, "checkpoint"), OptionalString(arguments, "workflowFile"),
+                    OptionalString(arguments, "prompt"), OptionalString(arguments, "shape"),
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "saveDirectory"),
+                    cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
@@ -1196,9 +1205,6 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
-                "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
-                "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
-                    OptionalBool(arguments, "live") ?? false, cancellation),
                 "think_longer_check" => await ThinkLongerCheck.RunAsync(OptionalInt(arguments, "reasoningMs"), cancellation),
                 "conversation_history_status" => await ConversationHistoryCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "conversation_history_check" => await ConversationHistoryCheck.RunAsync(OptionalInt(arguments, "bulkExchanges"), cancellation),

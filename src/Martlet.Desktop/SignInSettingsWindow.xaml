@@ -78,44 +78,6 @@
 
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
-                        <TextBlock Text="Sign-in providers" FontWeight="SemiBold" FontSize="15"/>
-                        <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="Sign in in the browser with your own identity provider (Authentik, Authelia, Keycloak, Pocket ID or any OpenID Connect issuer) or Google. Register a client for Martlet there (for Google: Google Cloud console › APIs &amp; Services › Credentials › Create OAuth client ID › Desktop app) and enter its ID and secret here; they stay on this host. Then sign in once from the computer you want to allow and allow it below."/>
-                        <ComboBox x:Name="ProviderKindBox" SelectionChanged="ProviderKind_Changed" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInProviderKind">
-                            <ComboBoxItem Content="OpenID Connect (Authentik, Authelia, Keycloak, Pocket ID...)" Tag="oidc" IsSelected="True"/>
-                            <ComboBoxItem Content="Google" Tag="google"/>
-                        </ComboBox>
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,6,0">
-                                <TextBlock Text="ID (short, like authentik)"/>
-                                <TextBox x:Name="ProviderIdText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderId"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="Name people see"/>
-                                <TextBox x:Name="ProviderNameText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderName"/>
-                            </StackPanel>
-                        </Grid>
-                        <TextBlock Text="Issuer URL"/>
-                        <TextBox x:Name="ProviderIssuerText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderIssuer"/>
-                        <TextBlock Text="Client ID"/>
-                        <TextBox x:Name="ProviderClientIdText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderClientId"/>
-                        <TextBlock Text="Client secret (leave empty to keep the saved one, or for a public client)"/>
-                        <PasswordBox x:Name="ProviderSecretText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderSecret"/>
-                        <TextBlock Text="Scopes"/>
-                        <TextBox x:Name="ProviderScopesText" Text="openid email profile" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderScopes"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Save _provider" Click="SaveProvider_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInProviderSave"/>
-                            <Button Content="Remove provider" Click="RemoveProvider_Click" AutomationProperties.AutomationId="SignInProviderRemove"/>
-                        </StackPanel>
-                        <TextBlock Text="Signed in but not allowed yet" FontWeight="SemiBold" Margin="0,12,0,4"/>
-                        <TextBlock x:Name="RefusedText" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInRefusedList"/>
-                        <Button Content="Allow the _newest" Click="AllowRefused_Click" HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInRefusedAllow"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
-                    <StackPanel>
                         <TextBlock Text="Computers that signed in" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock x:Name="EnrolledText" TextWrapping="Wrap" Margin="0,4,0,0" AutomationProperties.AutomationId="SignInEnrolledList"/>
                     </StackPanel>

@@ -26,6 +26,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
+        // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
+        // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
+        // and the Draw with/Turn off buttons need --allow-ui-effects.
+        "PicturesCheck", "PicturesComfyConnect",
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
@@ -128,6 +132,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
+        // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
+        // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
+        "PicturesPlace-", "PicturesHost-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -151,7 +158,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
         // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
-        "SignInEnrolledList", "SignInRefusedList",
+        "SignInEnrolledList",
         "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
@@ -246,6 +253,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (singing_check exercises them headlessly).
         "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingGpu", "SingingQuality", "SingingVoiceMatch",
         "SingingVoiceMatchState", "SingingSetUpVevo",
+        // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
+        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (title, chips,
+        // where it stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
+        // Z-Image Turbo is there), the chosen workflow, a cloud provider's model ID and whether a key is saved or Thinking's is
+        // used (never the key), and the buttons' labels. Pictures themselves are never returned.
+        "PicturesNow", "PicturesTestState", "PicturesEngine", "PicturesFeatures", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
+        "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
+        "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
