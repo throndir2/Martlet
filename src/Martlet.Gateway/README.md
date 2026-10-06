@@ -370,10 +370,14 @@ provider a PKCE S256 `code_challenge` and a loopback `redirect_uri`
 `nonce`, `expires_at` ten minutes on, and a browser provider's `authorize_url`).
 `POST /martlet/v1/signin/complete` (`attempt_id`, `device_id`, `display_name`,
 `proof`; for the owner account `{user, password, code}` where `code` is a
-current TOTP code or a recovery code) answers `201` like pairing
-(`credential_id`, `credential_secret`, `roles` `["voice"]`, `lifetime`
-`paired`) plus `signed_in` (`provider`, `subject`, `label`), after revoking any
-older credential of that device ID. Failures: `signin.unavailable` (404),
+current TOTP code or a recovery code; for an OpenID Connect provider
+`{query, code_verifier}`, the loopback callback's query and the PKCE verifier,
+with which the host exchanges the code itself: `GatewaySignInOidc.cs` checks
+the ID token's signature against the issuer's keys and its `iss`, `aud`/`azp`,
+`exp`, `iat` and `nonce`; discovery and keys are cached for an hour) answers
+`201` like pairing (`credential_id`, `credential_secret`, `roles` `["voice"]`,
+`lifetime` `paired`) plus `signed_in` (`provider`, `subject`, `label`), after
+revoking any older credential of that device ID. Failures: `signin.unavailable` (404),
 `signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
 `signin.provider` (502); each sign-in outcome is recorded with the request
 guard under route class `signin` and the claimed or verified account as
