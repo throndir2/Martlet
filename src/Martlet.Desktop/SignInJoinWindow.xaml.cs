@@ -45,8 +45,8 @@ public partial class SignInJoinWindow : ThemedWindow
             {
                 var choice = new RadioButton
                 {
-                    Content = item.Name, GroupName = "SignInProvider", Margin = new Thickness(0, 2, 0, 2), Tag = item,
-                    IsEnabled = !item.InBrowser
+                    Content = item.InBrowser ? item.Name + " (in your browser)" : item.Name, GroupName = "SignInProvider",
+                    Margin = new Thickness(0, 2, 0, 2), Tag = item
                 };
                 System.Windows.Automation.AutomationProperties.SetAutomationId(choice, "SignInProvider-" + item.Id);
                 choice.Checked += (_, _) => Choose(item);
@@ -88,8 +88,11 @@ public partial class SignInJoinWindow : ThemedWindow
                     deviceId, Environment.MachineName, lifetime.Token);
             else
             {
-                StatusText.Text = $"{provider.Name} sign-in needs a newer Martlet on this PC.";
-                return;
+                StatusText.Text = $"Finish signing in with {provider.Name} in your browser, then come back here.";
+                result = await HostSignInClient.SignInInBrowserAsync(invite, origin, provider.Id, deviceId, Environment.MachineName,
+                    url => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })?.Dispose(),
+                    TimeSpan.FromMinutes(5), lifetime.Token);
+                Activate();
             }
             PasswordText.Clear();
             CodeText.Clear();
@@ -102,7 +105,8 @@ public partial class SignInJoinWindow : ThemedWindow
             ErrorLog.Info($"Sign-in: paired with {result.Pairing.HostId} as {result.Identity.Provider}.");
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or ContractException or JsonException)
+        catch (Exception error) when (error is Audio2FaceHostException or InvalidOperationException or IOException or ContractException or JsonException or
+            System.ComponentModel.Win32Exception or System.Net.Sockets.SocketException)
         {
             StatusText.Text = error.Message;
         }

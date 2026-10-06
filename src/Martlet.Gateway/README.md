@@ -370,7 +370,11 @@ provider a PKCE S256 `code_challenge` and a loopback `redirect_uri`
 `nonce`, `expires_at` ten minutes on, and a browser provider's `authorize_url`).
 `POST /martlet/v1/signin/complete` (`attempt_id`, `device_id`, `display_name`,
 `proof`; for the owner account `{user, password, code}` where `code` is a
-current TOTP code or a recovery code) answers `201` like pairing
+current TOTP code or a recovery code) answers `201` like pairing; for an OpenID Connect provider `proof` is
+`{query, code_verifier}`, the loopback callback's query and the PKCE verifier,
+and the host exchanges the code (`GatewaySignInOidc.cs`: discovery and keys
+cached for an hour, ID token signature, `iss`, `aud`/`azp`, `exp`, `iat`,
+`nonce`), so it
 (`credential_id`, `credential_secret`, `roles` `["voice"]`, `lifetime`
 `paired`) plus `signed_in` (`provider`, `subject`, `label`), after revoking any
 older credential of that device ID. Failures: `signin.unavailable` (404),
