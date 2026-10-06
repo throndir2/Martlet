@@ -9,7 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
-- A new [Resource footprints](docs/RESOURCE_FOOTPRINTS.md) page lists how much graphics memory, memory, processor and disk each Thinking model, voice engine, listening model, lip-sync, singing and pictures option takes, and which numbers were measured. Setup recommendations use these numbers. ([#484](https://github.com/throndir2/Martlet/pull/484))
+- A new [Resource footprints](docs/RESOURCE_FOOTPRINTS.md) page lists how much graphics memory, memory, processor and disk each Thinking model, voice engine, listening model, lip-sync, singing and pictures option takes, and which numbers were measured. Setup recommendations use these numbers. ([#485](https://github.com/throndir2/Martlet/pull/485))
 - A Mac can be a Martlet host: its `macos-setup` command runs Martlet's host in the background while you're logged in and lends your other computers the Mac's own Ollama and whisper.cpp, on its graphics chip on Apple silicon. Jobs that need an NVIDIA GPU are never offered there. Not yet tried on a real Mac. ([#482](https://github.com/throndir2/Martlet/pull/482))
 - The Docker host image now also builds for Apple-silicon Macs and other ARM64 computers (CPU only). ([#482](https://github.com/throndir2/Martlet/pull/482))
 - Martlet for Mac (coming with the Mac download) can float the character over full-screen games, talk while you hold a push-to-talk key in any app, keep your keys in the Mac's keychain, watch your screen after you allow it, start at login and show what it is doing in the menu bar. It also finds Ollama, LM Studio or Docker Model Runner running on the Mac. ([#480](https://github.com/throndir2/Martlet/pull/480))
