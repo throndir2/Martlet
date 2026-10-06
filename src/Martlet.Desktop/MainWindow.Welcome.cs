@@ -351,7 +351,8 @@ public partial class MainWindow
             "1. Press Open build.nvidia.com below and sign in, or create a free NVIDIA account with your email and confirm the email NVIDIA sends.\n" +
             "2. On the API Keys page choose Generate API Key. Accept NVIDIA's trial terms if asked; some accounts must verify a phone number.\n" +
             "3. Copy the key now: it starts with nvapi- and isn't shown again.\n" +
-            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again. The same key also works for Pictures.";
+            "4. Paste it below, tick the box and press Save key. Windows Credential Manager keeps it; Martlet never shows it again. The same key also works for Pictures.\n" +
+            "Want Thinking to hear your voice? Google Gemini can, with a free Google key: choose it later in Companion › Thinking.";
         WizardKeyStatus.Text = "";
         ShowTour(TourKey);
     }
