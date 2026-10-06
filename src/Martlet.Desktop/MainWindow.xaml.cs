@@ -114,6 +114,7 @@ public partial class MainWindow : ThemedWindow
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(new WasapiPcAudioSourceFactory()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
+            conversation.VoiceVolume = Talk.VoiceVolume;
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
         }
         WireCharacterActions();

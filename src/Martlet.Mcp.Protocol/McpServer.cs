@@ -111,6 +111,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             id = new { type = "string" }
         }, ["id"]),
+        Tool("ui_set_range", "Set an enabled slider to a number within its range, such as Companion › Voice's VoiceVolume " +
+            "(0 to 100); the result reports the slider's value and range (requires --allow-ui-effects).", new
+        {
+            id = new { type = "string" }, value = new { type = "number" }
+        }, ["id", "value"]),
         Tool("ui_move", "Move a movable control by dx, dy screen pixels through UI Automation's Transform pattern and report its " +
             "bounds before and after: the character overlay's MoveAvatar moves the character like a drag. ui_snapshot reports " +
             "movable for such controls (false while the character's position is locked, when this is refused). Requires " +
@@ -952,6 +957,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
+                "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
@@ -2407,24 +2413,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new { personality, character, placement = CharacterPlacement(directory), voice = CharacterVoice(directory), lorebooks };
     }
 
-    /// <summary>Whether Martlet's voice is muted, from talk-preferences.json in a data directory (Martlet.Desktop's
-    /// TalkPreferences): SpeakReplies (Companion › Voice's Speak Martlet's replies aloud) is on unless saved off, and Mute
-    /// voice / Unmute voice on the character's right-click menu change the same choice.</summary>
+    /// <summary>Whether Martlet's voice is muted and how loud it is, from talk-preferences.json in a data directory
+    /// (Martlet.Desktop's TalkPreferences): SpeakReplies (Companion › Voice's Speak Martlet's replies aloud) is on unless saved
+    /// off, and Mute voice / Unmute voice on the character's right-click menu change the same choice; VoiceVolume (Companion ›
+    /// Voice's Voice volume, 0 to 1) is full unless saved lower.</summary>
     private static object CharacterVoice(string directory)
     {
         var path = Path.Combine(directory, "talk-preferences.json");
-        if (!File.Exists(path)) return new { state = "none", speakReplies = true, muted = false };
+        if (!File.Exists(path)) return new { state = "none", speakReplies = true, muted = false, volume = 1.0 };
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllBytes(path));
             if (document.RootElement.ValueKind != JsonValueKind.Object)
-                return new { state = "unreadable", speakReplies = true, muted = false, problem = "NotAnObject" };
+                return new { state = "unreadable", speakReplies = true, muted = false, volume = 1.0, problem = "NotAnObject" };
             var speak = !(document.RootElement.TryGetProperty("SpeakReplies", out var value) && value.ValueKind == JsonValueKind.False);
-            return new { state = "loaded", speakReplies = speak, muted = !speak };
+            var volume = document.RootElement.TryGetProperty("VoiceVolume", out var saved) && saved.ValueKind == JsonValueKind.Number &&
+                saved.TryGetDouble(out var number) && double.IsFinite(number) ? Math.Clamp(number, 0, 1) : 1.0;
+            return new { state = "loaded", speakReplies = speak, muted = !speak, volume };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
-            return new { state = "unreadable", speakReplies = true, muted = false, problem = error.GetType().Name };
+            return new { state = "unreadable", speakReplies = true, muted = false, volume = 1.0, problem = error.GetType().Name };
         }
     }
 
@@ -2505,6 +2514,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
         if (element.ValueKind != JsonValueKind.Object ||
             !element.TryGetProperty(property, out var value) || !value.TryGetInt32(out var number))
             throw new ArgumentException($"Missing integer '{property}'.");
+        return number;
+    }
+
+    private static double RequiredDouble(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var number))
+            throw new ArgumentException($"Missing number '{property}'.");
         return number;
     }
 

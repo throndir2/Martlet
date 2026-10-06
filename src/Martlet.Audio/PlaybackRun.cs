@@ -36,10 +36,12 @@ public sealed class PlaybackRun
     private bool clockInvalidated;
     private ulong? lastClockPosition;
     private ulong lastClockFrequency;
+    private readonly Func<double>? volume;
 
     internal PlaybackRun(IPlaybackDeviceFactory devices, PlaybackRequest request, PlaybackOptions options,
-        TimeProvider time, CancellationToken callerToken)
+        TimeProvider time, CancellationToken callerToken, Func<double>? volume = null)
     {
+        this.volume = volume;
         this.request = request;
         this.options = options;
         this.time = time;
@@ -235,6 +237,8 @@ public sealed class PlaybackRun
                 if (pending == 0 && available > 0)
                 {
                     pending = Read(buffer.AsSpan(0, Math.Min(available * alignment, buffer.Length)), out end);
+                    // The volume is read for each device buffer (at most 100 ms), so a change is heard almost at once.
+                    if (volume is not null) PcmGain.Apply(buffer.AsSpan(0, pending), volume());
                     offset = 0;
                 }
                 if (pending > 0 && available > 0)

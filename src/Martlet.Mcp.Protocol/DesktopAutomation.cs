@@ -131,6 +131,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
         // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
         "CharacterMuteVoice",
+        // Companion › Voice › Voice volume: the slider's number (0 to 100) and its label ("80%"). ui_set_range on VoiceVolume
+        // saves talk-preferences.json, so it needs --allow-ui-effects.
+        "VoiceVolume", "VoiceVolumeLevel",
         // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
@@ -484,6 +487,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 // list item's (a Diagnostics log line) its text and a filter pill's (Diagnostics' "From: This PC (...)") its choice.
                 var value = !IsSafeValue(id) ? null
                     : element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ? ((ValuePattern)pattern).Current.Value
+                    // A slider reads as its number ("80" for Voice volume at 80%).
+                    : element.TryGetCurrentPattern(RangeValuePattern.Pattern, out var range)
+                        ? ((RangeValuePattern)range).Current.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ||
                         element.Current.ControlType == ControlType.ListItem || element.Current.ControlType == ControlType.MenuItem ||
                         element.Current.ControlType == ControlType.RadioButton
@@ -655,6 +661,21 @@ internal sealed class DesktopAutomation(bool allowEffects)
             throw new InvalidOperationException($"Control '{id}' is not an enabled checkbox.");
         ((TogglePattern)pattern).Toggle();
         return new { toggled = id, state = ((TogglePattern)pattern).Current.ToggleState.ToString() };
+    }
+
+    internal object SetRange(string id, double value)
+    {
+        if (!allowEffects) throw new InvalidOperationException("Slider changes require --allow-ui-effects.");
+        if (!double.IsFinite(value)) throw new ArgumentException("The value must be a number.");
+        var element = Find(id);
+        if (!element.Current.IsEnabled || !element.TryGetCurrentPattern(RangeValuePattern.Pattern, out var pattern) ||
+            ((RangeValuePattern)pattern).Current.IsReadOnly)
+            throw new InvalidOperationException($"Control '{id}' is not an enabled slider.");
+        var range = (RangeValuePattern)pattern;
+        if (value < range.Current.Minimum || value > range.Current.Maximum)
+            throw new ArgumentException($"'{id}' takes {range.Current.Minimum} through {range.Current.Maximum}.");
+        range.SetValue(value);
+        return new { updated = id, value = range.Current.Value, minimum = range.Current.Minimum, maximum = range.Current.Maximum };
     }
 
     internal const int MaximumMove = 10_000;

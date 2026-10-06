@@ -1365,6 +1365,18 @@ internal sealed class LiveConversationController : IAsyncDisposable
         running?.MuteVoice();
     }
 
+    /// <summary>Companion › Voice › Voice volume (0 to 1): how loud Martlet speaks and sings. A reply or song playing now follows
+    /// a change at once; Windows' own volume is never touched.</summary>
+    internal double VoiceVolume
+    {
+        get => runtime.VoiceVolume;
+        set
+        {
+            runtime.VoiceVolume = value;
+            if (singing is not null) singing.VoiceVolume = value;
+        }
+    }
+
     private async Task SuperviseAsync(LiveConversationOperation operation)
     {
         while (!operation.Worker.Completion.IsCompleted && !operation.ExecutionFinished)

@@ -31,6 +31,14 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public long CurrentEpoch { get { lock (Sync) return epoch; } }
     public ConversationState State { get { lock (Sync) return active?.Snapshot.State ?? ConversationState.Idle; } }
 
+    /// <summary>How loud Martlet's spoken replies play, 0 (silent) to 1 (full, the default); a reply playing now follows a
+    /// change at once. A runtime without speakers ignores it.</summary>
+    public double VoiceVolume
+    {
+        get => Sink?.Volume ?? PcmGain.Full;
+        set { if (Sink is not null) Sink.Volume = value; }
+    }
+
     private ConversationRuntime(OpenAiTextGenerationAdapter text, OpenAiSpeechSynthesisAdapter? speech,
         PcmPlaybackSink? sink, PlaybackOptions options, TimeProvider clock,
         Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chatFactory)

@@ -9,6 +9,15 @@ public sealed class PcmPlaybackSink : IAsyncDisposable
     private PlaybackRun? active;
     private long highestEpoch = -1;
     private bool disposed;
+    private double volume = PcmGain.Full;
+
+    /// <summary>How loud what this sink plays is, 0 (silent) to 1 (as received, the default). A change applies to the playback
+    /// running now within one device buffer, and to every later one.</summary>
+    public double Volume
+    {
+        get => Volatile.Read(ref volume);
+        set => Volatile.Write(ref volume, PcmGain.Clamp(value));
+    }
 
     public PcmPlaybackSink(IPlaybackDeviceFactory devices, PlaybackOptions? options = null, TimeProvider? timeProvider = null)
     {
@@ -32,7 +41,7 @@ public sealed class PcmPlaybackSink : IAsyncDisposable
             if (active is not null && (!active.Completion.IsCompleted || !active.WorkerReleased))
                 throw new InvalidOperationException("Stop playback and await device release before starting another epoch.");
             highestEpoch = request.Epoch;
-            active = new PlaybackRun(devices, request, options, time, cancellationToken);
+            active = new PlaybackRun(devices, request, options, time, cancellationToken, () => Volume);
             return active;
         }
     }

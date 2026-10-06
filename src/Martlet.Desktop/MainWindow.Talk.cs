@@ -44,6 +44,7 @@ public partial class MainWindow
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         avatar.Gaze.Decides = next.DecideGaze;
+        if (conversation is not null) conversation.VoiceVolume = next.VoiceVolume;
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
         if (spoke != next.SpeakReplies) FollowVoice(next.SpeakReplies);
@@ -283,11 +284,37 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(speak, "SpeakReplies");
         speak.Checked += (_, _) => { if (!Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = true }); };
         speak.Unchecked += (_, _) => { if (Talk.SpeakReplies) SaveTalk(Talk with { SpeakReplies = false }); };
+
+        var volume = new Slider { Minimum = 0, Maximum = 100, Value = Math.Round(Talk.VoiceVolume * 100), SmallChange = 5,
+            LargeChange = 10, TickFrequency = 5, IsSnapToTickEnabled = true, Width = 240, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(volume, "Voice volume: how loud Martlet speaks and sings");
+        AutomationProperties.SetAutomationId(volume, "VoiceVolume");
+        var level = Note(VoiceVolumeLabel(Talk.VoiceVolume), new Thickness(8, 0, 0, 0));
+        level.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetAutomationId(level, "VoiceVolumeLevel");
+        volume.ValueChanged += (_, e) =>
+        {
+            var next = e.NewValue / 100;
+            level.Text = VoiceVolumeLabel(next);
+            if (Math.Abs(next - Talk.VoiceVolume) > 0.001) SaveTalk(Talk with { VoiceVolume = next });
+        };
+        var scale = new StackPanel { Orientation = Orientation.Horizontal };
+        scale.Children.Add(volume);
+        scale.Children.Add(level);
+        var volumeRow = Labeled("Voice volume", scale);
+        volumeRow.Margin = new Thickness(0, 12, 0, 0);
+
         return Card(Heading("In conversations"), speak,
             Note("Martlet speaks each reply and shows it in the talk window. Turn this off for text-only replies: they show in the " +
                 "talk window and the character's speech bubble. Mute voice and Unmute voice on the character's right-click menu " +
-                "change this too.", new Thickness(0, 6, 0, 0)));
+                "change this too.", new Thickness(0, 6, 0, 0)),
+            volumeRow,
+            Note("How loud Martlet speaks and sings, on this PC. A reply or song playing now follows at once. Windows' own volume " +
+                "and other apps aren't changed.", new Thickness(0, 4, 0, 0)));
     }
+
+    /// <summary>Companion › Voice › Voice volume's level, as a percentage ("80%").</summary>
+    internal static string VoiceVolumeLabel(double volume) => $"{Math.Round(Martlet.Audio.PcmGain.Clamp(volume) * 100):0}%";
 
     /// <summary>Mute voice or Unmute voice on the character's right-click menu: the same choice as Speak Martlet's replies aloud
     /// (Companion › Voice), so it is saved and shared with your other computers like it.</summary>
