@@ -374,7 +374,11 @@ current TOTP code or a recovery code; for an OpenID Connect provider
 `{query, code_verifier}`, the loopback callback's query and the PKCE verifier,
 with which the host exchanges the code itself: `GatewaySignInOidc.cs` checks
 the ID token's signature against the issuer's keys and its `iss`, `aud`/`azp`,
-`exp`, `iat` and `nonce`; discovery and keys are cached for an hour) answers
+`exp`, `iat` and `nonce`; discovery and keys are cached for an hour; Discord and
+Steam take the same `{query, code_verifier}`: the host exchanges Discord's code
+with HTTP basic client authentication and reads `/users/@me`, and checks a
+Steam OpenID 2.0 assertion against the attempt's `return_to` and with Steam's
+`check_authentication`, `GatewaySignInDiscordSteam.cs`) answers
 `201` like pairing (`credential_id`, `credential_secret`, `roles` `["voice"]`,
 `lifetime` `paired`) plus `signed_in` (`provider`, `subject`, `label`), after
 revoking any older credential of that device ID. Failures: `signin.unavailable` (404),
@@ -388,7 +392,8 @@ non-member while the host is bound) read and change the owner account
 proving the app took it; returns `recovery_codes` once), `recovery-codes`,
 `remove-owner`, `allow`/`disallow` (`provider`, `subject`, `label`),
 `provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
-`issuer`, `client_id`, `client_secret`, `scopes`; an omitted secret keeps the
+`issuer`, `client_id`, `client_secret`, `scopes`, `redirect_port` for a
+provider that only takes registered redirects; an omitted secret keeps the
 saved one) and `remove-provider`; the answer never contains a secret
 (`has_client_secret` only). Storage is `IGatewaySignInStorage`
 (`GatewayServer.AttachSignInStorage`, `DurableGatewayHost.AttachSignIn`); with

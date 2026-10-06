@@ -80,10 +80,12 @@
                     <StackPanel>
                         <TextBlock Text="Sign-in providers" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="Sign in in the browser with your own identity provider (Authentik, Authelia, Keycloak, Pocket ID or any OpenID Connect issuer) or Google. Register a client for Martlet there (for Google: Google Cloud console › APIs &amp; Services › Credentials › Create OAuth client ID › Desktop app) and enter its ID and secret here; they stay on this host. Then sign in once from the computer you want to allow and allow it below."/>
+                                   Text="Sign in in the browser with your own identity provider (Authentik, Authelia, Keycloak, Pocket ID or any OpenID Connect issuer), Google, Discord or Steam. Register a client for Martlet there (Google: Cloud console › APIs &amp; Services › Credentials › OAuth client ID › Desktop app; Discord: Developer Portal › your application › OAuth2, with the redirect http://127.0.0.1:&lt;port&gt;/; Steam needs nothing) and enter its ID and secret here; they stay on this host. Then sign in once from the computer you want to allow and allow it below."/>
                         <ComboBox x:Name="ProviderKindBox" SelectionChanged="ProviderKind_Changed" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInProviderKind">
                             <ComboBoxItem Content="OpenID Connect (Authentik, Authelia, Keycloak, Pocket ID...)" Tag="oidc" IsSelected="True"/>
                             <ComboBoxItem Content="Google" Tag="google"/>
+                            <ComboBoxItem Content="Discord" Tag="discord"/>
+                            <ComboBoxItem Content="Steam" Tag="steam"/>
                         </ComboBox>
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
@@ -104,6 +106,9 @@
                         <PasswordBox x:Name="ProviderSecretText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderSecret"/>
                         <TextBlock Text="Scopes"/>
                         <TextBox x:Name="ProviderScopesText" Text="openid email profile" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderScopes"/>
+                        <TextBlock Text="Loopback port (only for providers that need a registered redirect, such as Discord: register http://127.0.0.1:&lt;port&gt;/ there)"
+                                   TextWrapping="Wrap"/>
+                        <TextBox x:Name="ProviderPortText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInProviderPort"/>
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Save _provider" Click="SaveProvider_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInProviderSave"/>
                             <Button Content="Remove provider" Click="RemoveProvider_Click" AutomationProperties.AutomationId="SignInProviderRemove"/>

@@ -27,6 +27,8 @@ internal sealed class GatewaySignInProviders(TimeProvider clock, HttpMessageHand
     internal IGatewaySignInProvider? Create(GatewaySignInProviderConfig config) => config.Kind switch
     {
         "oidc" => new GatewayOidcProvider(config, this),
+        "discord" => new GatewayDiscordProvider(config, this),
+        "steam" => new GatewaySteamProvider(config, this),
         _ => null
     };
 
@@ -72,6 +74,24 @@ internal sealed class GatewaySignInProviders(TimeProvider clock, HttpMessageHand
                 return document.RootElement.Clone();
             }
             catch (JsonException) { throw new GatewayProtocolException("signin.provider"); }
+        }
+    }
+
+    /// <summary>A provider's plain-text answer (Steam's OpenID 2.0 key-value form).</summary>
+    internal async ValueTask<string> SendTextAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        HttpResponseMessage response;
+        try { response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            throw new GatewayProtocolException("signin.provider");
+        }
+        using (response)
+        {
+            GatewayRules.Require(response.StatusCode == HttpStatusCode.OK, "signin.provider");
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            GatewayRules.Require(bytes.Length is > 0 and <= 16_384, "signin.provider");
+            return Encoding.UTF8.GetString(bytes);
         }
     }
 

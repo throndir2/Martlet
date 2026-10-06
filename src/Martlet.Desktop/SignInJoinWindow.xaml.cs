@@ -91,7 +91,7 @@ public partial class SignInJoinWindow : ThemedWindow
                 StatusText.Text = $"Finish signing in with {provider.Name} in your browser, then come back here.";
                 result = await HostSignInClient.SignInInBrowserAsync(invite, origin, provider.Id, deviceId, Environment.MachineName,
                     url => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true })?.Dispose(),
-                    TimeSpan.FromMinutes(5), lifetime.Token);
+                    TimeSpan.FromMinutes(5), lifetime.Token, provider.RedirectPort);
                 Activate();
             }
             PasswordText.Clear();

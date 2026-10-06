@@ -16,6 +16,9 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 public sealed record HostSignInProvider(string Id, string Kind, string Name)
 {
     public bool InBrowser => Kind != "owner";
+    /// <summary>The loopback port the browser must come back to (providers that only take registered redirect URIs, such as
+    /// Discord); null for any free port.</summary>
+    public int? RedirectPort { get; init; }
 }
 
 /// <summary>Who a computer signed in as (shown to people; the host decides).</summary>
@@ -66,8 +69,11 @@ public static class HostSignInClient
                 if (root.GetProperty("host_id").GetString() != invite.HostId)
                     throw new Audio2FaceHostException("host.pin_mismatch", "A different Martlet host answered; check the invite.");
                 var providers = root.GetProperty("providers").EnumerateArray().Take(16).Select(p => new HostSignInProvider(
-                    p.GetProperty("id").GetString()!, p.GetProperty("kind").GetString()!, Clean(p.GetProperty("name").GetString()) ?? "Sign-in"))
-                    .ToArray();
+                    p.GetProperty("id").GetString()!, p.GetProperty("kind").GetString()!, Clean(p.GetProperty("name").GetString()) ?? "Sign-in")
+                {
+                    RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) && number is >= 1024 and <= 65535
+                        ? number : null
+                }).ToArray();
                 return (origin, providers);
             }
             // Not answering (or answering with another key) here: try the invite's next address.
@@ -166,10 +172,10 @@ public static class HostSignInClient
     /// what it brought, with the verifier, to the host to check. The provider's client secret never comes here.</summary>
     public static async Task<(Audio2FaceHostPairing Pairing, string Secret, HostSignInIdentity Identity)> SignInInBrowserAsync(NetworkInvite invite,
         string origin, string provider, string deviceId, string displayName, Action<string> openBrowser, TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, int? redirectPort = null)
     {
         var (verifier, challenge) = NewPkce();
-        using var redirect = LoopbackRedirect.Start();
+        using var redirect = LoopbackRedirect.Start(redirectPort);
         var attempt = await BeginAsync(invite, origin, provider, challenge, redirect.RedirectUri, cancellationToken).ConfigureAwait(false);
         if (attempt.AuthorizeUrl is null) throw new Audio2FaceHostException("response.invalid", "The host didn't say where to sign in.");
         openBrowser(attempt.AuthorizeUrl);
@@ -261,7 +267,10 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
     public IReadOnlyList<HostSignInEnrolled> Refused { get; init; } = [];
 }
 
-public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret);
+public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret)
+{
+    public int? RedirectPort { get; init; }
+}
 
 public sealed record HostSignInAllowed(string Provider, string Subject, string? Label);
 
@@ -326,7 +335,10 @@ public sealed partial class Audio2FaceHostConnection
             return new(pairing.HostId, owner is { } account ? Text(account, "user") : null,
                 owner is { } left ? left.GetProperty("recovery_codes_left").GetInt32() : 0,
                 root.GetProperty("providers").EnumerateArray().Take(16).Select(p => new HostSignInProviderSettings(Text(p, "id")!, Text(p, "kind")!,
-                    Text(p, "name") ?? "", Text(p, "issuer"), Text(p, "client_id"), Text(p, "scopes"), p.GetProperty("has_client_secret").GetBoolean())).ToArray(),
+                    Text(p, "name") ?? "", Text(p, "issuer"), Text(p, "client_id"), Text(p, "scopes"), p.GetProperty("has_client_secret").GetBoolean())
+                {
+                    RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) ? number : null
+                }).ToArray(),
                 root.GetProperty("allowed").EnumerateArray().Take(64).Select(a => new HostSignInAllowed(Text(a, "provider")!, a.GetProperty("subject").GetString()!,
                     Text(a, "label"))).ToArray(),
                 root.GetProperty("enrolled").EnumerateArray().Take(64).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
@@ -358,10 +370,16 @@ public sealed class LoopbackRedirect : IDisposable
 
     public string RedirectUri => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/";
 
-    public static LoopbackRedirect Start()
+    /// <summary>Listens on 127.0.0.1 at <paramref name="port"/>, or a free port when null.</summary>
+    public static LoopbackRedirect Start(int? port = null)
     {
-        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
+        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, port ?? 0);
+        try { listener.Start(); }
+        catch (System.Net.Sockets.SocketException)
+        {
+            throw new Audio2FaceHostException("signin.port_busy",
+                $"Another program on this PC uses port {port}, which this sign-in must come back to. Close it and try again.");
+        }
         return new(listener);
     }
 

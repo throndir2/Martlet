@@ -177,6 +177,18 @@ internal static class SignInRehearsal
                 $"first try: {refused}; allowed {waiting.Label} ({waiting.Provider}:{waiting.Subject}); signed in as {who}; client secret used by the host: " +
                 $"{issuer.SecretSeen}; let in: {approved.Count}; member: {member}");
         });
+        await Run("A Steam account allowed at home by its SteamID64 signs in (OpenID 2.0 assertion confirmed with Steam by the host)", async () =>
+        {
+            await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "provider", ["provider_config"] = new JsonObject { ["id"] = "steam", ["kind"] = "steam", ["name"] = "Steam" }
+            }, token);
+            await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "allow", ["provider"] = "steam", ["subject"] = LabIssuer.SteamId }, token);
+            using var keyGaming = NetworkKey.Create("lab-gaming-pc");
+            var (_, _, who) = await HostSignInClient.SignInInBrowserAsync(invite, origin!, "steam", keyGaming.DeviceId, "GAMING-PC",
+                issuer.Browse, TimeSpan.FromSeconds(30), token);
+            return (who.Subject == LabIssuer.SteamId && issuer.SteamChecks == 1, $"signed in as {who}; assertions confirmed with Steam: {issuer.SteamChecks}");
+        });
         await Run("Removing the owner account takes the laptop's access away", async () =>
         {
             var settings = await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-owner" }, token);
@@ -224,12 +236,35 @@ internal static class SignInRehearsal
         internal const string ClientSecret = "lab-client-secret";
         private readonly RSA key = RSA.Create(2048);
         private readonly Dictionary<string, string> nonces = new(StringComparer.Ordinal);
+        internal const string SteamId = "76561198000000042";
         internal bool SecretSeen;
+        internal int SteamChecks;
 
         internal void Browse(string url)
         {
             var uri = new Uri(url);
             var query = uri.Query.TrimStart('?').Split('&').Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]));
+            if (uri.Host == "steamcommunity.com")
+            {
+                // Steam's positive assertion, sent back to return_to (which carries the attempt's state).
+                var claimed = "https://steamcommunity.com/openid/id/" + SteamId;
+                var assertion = new Dictionary<string, string>
+                {
+                    ["openid.ns"] = "http://specs.openid.net/auth/2.0", ["openid.mode"] = "id_res",
+                    ["openid.op_endpoint"] = "https://steamcommunity.com/openid/login", ["openid.claimed_id"] = claimed,
+                    ["openid.identity"] = claimed, ["openid.return_to"] = query["openid.return_to"],
+                    ["openid.response_nonce"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") + "lab",
+                    ["openid.assoc_handle"] = "1234567890", ["openid.signed"] = "signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+                    ["openid.sig"] = "bGFi"
+                };
+                var target = query["openid.return_to"] + "&" + string.Join("&", assertion.Select(p => p.Key + "=" + Uri.EscapeDataString(p.Value)));
+                _ = Task.Run(async () =>
+                {
+                    using var steamBrowser = new HttpClient();
+                    using var _ = await steamBrowser.GetAsync(target);
+                });
+                return;
+            }
             var code = Base64Url(RandomNumberGenerator.GetBytes(16));
             lock (nonces) nonces[code] = query["nonce"];
             var back = query["redirect_uri"] + "?code=" + code + "&state=" + Uri.EscapeDataString(query["state"]);
@@ -250,6 +285,15 @@ internal static class SignInRehearsal
             {
                 var p = key.ExportParameters(false);
                 body = new { keys = new[] { new { kty = "RSA", kid = "lab", n = Base64Url(p.Modulus!), e = Base64Url(p.Exponent!) } } };
+            }
+            else if (request.RequestUri.Host == "steamcommunity.com" && request.Method == HttpMethod.Post)
+            {
+                var form = await request.Content!.ReadAsStringAsync(cancellationToken);
+                Interlocked.Increment(ref SteamChecks);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("ns:http://specs.openid.net/auth/2.0\nis_valid:" + (form.Contains("openid.mode=check_authentication") ? "true" : "false") + "\n")
+                };
             }
             else if (path == "/token")
             {

@@ -383,11 +383,31 @@ verified email, the user name or the name is its label.
    ID and subject under *Other allowed sign-ins*). From then on that identity
    pairs, and the computer joins your network as above.
 
+### Signing in with Discord or Steam
+
+- **Discord** (OAuth2, no ID token): in the Discord Developer Portal create an
+  application, and under *OAuth2* add the redirect `http://127.0.0.1:53682/`
+  (Discord only takes redirects registered exactly, so the laptop listens on
+  that port; pick another in **Loopback port** and register that instead) and
+  copy the client ID and secret. At home choose *Discord* under *Sign-in
+  providers*, paste them and **Save provider**. The laptop signs in in the
+  browser (scope `identify`, PKCE); the host exchanges the code with the
+  secret it keeps and asks Discord who the token belongs to (`/users/@me`).
+  The identity is the Discord user ID; the user name is its label.
+- **Steam** (OpenID 2.0): nothing to register. Choose *Steam* and **Save
+  provider**. The laptop signs in at steamcommunity.com in the browser, which
+  sends it back to the laptop's loopback address with a signed assertion; the
+  host checks that it answers this attempt (its `return_to` carries the
+  attempt's state, the realm is the loopback address, it was signed over the
+  endpoint, claimed ID, return address and nonce) and asks Steam to confirm it
+  (`check_authentication`). The identity is the SteamID64.
+
+Allow either the same way: sign in once, then **Allow the newest** at home (or
+type the Discord user ID or SteamID64 under *Other allowed sign-ins*).
+
 Limits, for now: sign-in is per host (set it up on the host the laptop reaches
 from outside); the laptop reaches the network's other hosts only where they
 have outside addresses ([above](#reaching-your-network-from-outside-home)).
-Discord and Steam sign-in use the same allow list and attestation and arrive
-next; the host already keeps their settings but doesn't offer them yet.
 
 ## Where it lives
 
@@ -414,7 +434,8 @@ Joining from outside home by signing in is checked through Martlet MCP's
 authenticator secret, invite pinned by an outside name, refusals, sign-in,
 joining on the host's attestation without a check number, an OpenID Connect
 provider with an issuer in the process and a simulated browser through the
-desktop's real loopback redirect, revocation, audit),
+desktop's real loopback redirect, a Steam assertion confirmed by the host,
+revocation, audit),
 the gateway, Core and Linux gateway unit tests (RFC 6238 vectors, lockout,
 allow list, `martlet-host owner-signin-*` and `owner-invite` on a fixture file
 system) and the desktop's **Join with an invite** window on a disposable data
@@ -422,8 +443,8 @@ folder (opened from Add a computer, a malformed invite and an unreachable host
 reported). **NOT RUN:** the **Sign-in from outside** window against a live
 paired host (needs a pairing secret in Windows Credential Manager), a laptop
 signing in over the real internet, `signin.json` on a native or Docker Linux
-host, and signing in at a real Authentik, Authelia, Keycloak, Pocket ID or
-Google (no disposable accounts on the development PC).
+host, and signing in at a real Authentik, Authelia, Keycloak, Pocket ID,
+Google, Discord or Steam (no disposable accounts on the development PC).
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`
 (three real gateways on 127.0.0.1 with simulated desktops and a simulated

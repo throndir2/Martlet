@@ -704,7 +704,9 @@ through a simulated browser that follows the redirect to the desktop's real
 loopback listener (`LoopbackRedirect`), is refused (`signin.not_allowed`) until
 the home PC allows the identity listed under `refused`, then is paired (the
 host exchanged the code with the client secret and checked the ID token) and
-let into the network the same way; removing the owner account revokes the
+let into the network the same way; a Steam account allowed by its SteamID64
+signs in through the simulated browser with an OpenID 2.0 assertion the host
+confirms with (simulated) Steam; removing the owner account revokes the
 laptop (`auth.revoked`); the host's security audit holds the sign-in successes
 and failures and no secret. Not covered: the desktop windows, Windows
 Credential Manager, a host reached over the internet, a real browser and a real
@@ -722,7 +724,7 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
 `SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
 `SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
-`SignInProviderScopes`, `SignInProviderSave`, `SignInProviderRemove`,
+`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`, `SignInProviderRemove`,
 `SignInRefusedList`, `SignInRefusedAllow`,
 `SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
 `SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,

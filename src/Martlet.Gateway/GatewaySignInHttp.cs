@@ -58,7 +58,7 @@ internal sealed partial class GatewayHttpApplication
             await WriteJsonAsync(context, StatusCodes.Status200OK, new SignInProvidersDocument
             {
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId,
-                Providers = SignIn.Available().Select(p => new SignInProviderDocument { Id = p.Id, Kind = p.Kind, Name = p.Name }).ToArray()
+                Providers = SignIn.Available().Select(p => new SignInProviderDocument { Id = p.Id, Kind = p.Kind, Name = p.Name, RedirectPort = p.RedirectPort }).ToArray()
             }).ConfigureAwait(false);
             return;
         }
@@ -144,7 +144,7 @@ internal sealed partial class GatewayHttpApplication
             Providers = current.Providers.Select(p => new SignInProviderSettingsDocument
             {
                 Id = p.Id, Kind = p.Kind, Name = p.Name, Issuer = p.Issuer, ClientId = p.ClientId, Scopes = p.Scopes,
-                HasClientSecret = p.ClientSecret is not null
+                RedirectPort = p.RedirectPort, HasClientSecret = p.ClientSecret is not null
             }).ToArray(),
             Allowed = current.Allowed.Select(a => new SignInAllowedDocument { Provider = a.Provider, Subject = a.Subject, Label = a.Label, AddedAt = a.AddedAt }).ToArray(),
             Enrolled = current.Enrolled.Select(e => new SignInEnrolledDocument
@@ -203,6 +203,7 @@ internal sealed partial class GatewayHttpApplication
         public required string Id { get; init; }
         public required string Kind { get; init; }
         public required string Name { get; init; }
+        public int? RedirectPort { get; init; }
     }
 
     private sealed record SignInAttemptDocument
@@ -266,6 +267,7 @@ internal sealed partial class GatewayHttpApplication
         public string? Issuer { get; init; }
         public string? ClientId { get; init; }
         public string? Scopes { get; init; }
+        public int? RedirectPort { get; init; }
         public required bool HasClientSecret { get; init; }
     }
 

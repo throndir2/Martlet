@@ -131,20 +131,39 @@ public partial class SignInSettingsWindow : ThemedWindow
 
     private void ProviderKind_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (ProviderIdText is null || (ProviderKindBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is not "google") return;
-        ProviderIdText.Text = "google";
-        ProviderNameText.Text = "Google";
-        ProviderIssuerText.Text = "https://accounts.google.com";
-        ProviderScopesText.Text = "openid email profile";
+        if (ProviderIdText is null) return;
+        switch ((ProviderKindBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag)
+        {
+            case "google":
+                (ProviderIdText.Text, ProviderNameText.Text, ProviderIssuerText.Text, ProviderScopesText.Text, ProviderPortText.Text) =
+                    ("google", "Google", "https://accounts.google.com", "openid email profile", "");
+                break;
+            case "discord":
+                (ProviderIdText.Text, ProviderNameText.Text, ProviderIssuerText.Text, ProviderScopesText.Text, ProviderPortText.Text) =
+                    ("discord", "Discord", "", "identify", "53682");
+                break;
+            case "steam":
+                (ProviderIdText.Text, ProviderNameText.Text, ProviderIssuerText.Text, ProviderScopesText.Text, ProviderPortText.Text) =
+                    ("steam", "Steam", "", "", "");
+                ProviderClientIdText.Text = "";
+                break;
+        }
     }
 
     private async void SaveProvider_Click(object sender, RoutedEventArgs e)
     {
+        var kind = ((ProviderKindBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string) switch
+        {
+            "discord" => "discord", "steam" => "steam", _ => "oidc"
+        };
+        int? port = int.TryParse(ProviderPortText.Text.Trim(), out var number) ? number : null;
         var config = new JsonObject
         {
-            ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant(), ["kind"] = "oidc", ["name"] = ProviderNameText.Text.Trim(),
-            ["issuer"] = ProviderIssuerText.Text.Trim().TrimEnd('/'), ["client_id"] = ProviderClientIdText.Text.Trim(),
-            ["scopes"] = ProviderScopesText.Text.Trim() is { Length: > 0 } scopes ? scopes : null
+            ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant(), ["kind"] = kind, ["name"] = ProviderNameText.Text.Trim(),
+            ["issuer"] = kind == "oidc" ? ProviderIssuerText.Text.Trim().TrimEnd('/') : null,
+            ["client_id"] = ProviderClientIdText.Text.Trim() is { Length: > 0 } client ? client : null,
+            ["scopes"] = ProviderScopesText.Text.Trim() is { Length: > 0 } scopes ? scopes : null,
+            ["redirect_port"] = port
         };
         if (ProviderSecretText.Password.Length > 0) config["client_secret"] = ProviderSecretText.Password;
         await ChangeAsync(new JsonObject { ["action"] = "provider", ["provider_config"] = config },
