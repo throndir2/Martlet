@@ -4,6 +4,25 @@ import { VRM, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 
+type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
+
+/** Martlet's own gestures, played on any VRM that has the humanoid bones they move. */
+export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce"] as const);
+export type VrmGesture = typeof VRM_GESTURES[number];
+const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.freeze({
+  nod: ["head"], shake: ["head"], tilt: ["head"], bow: ["spine"], sway: ["spine"],
+  wave: ["rightUpperArm", "rightLowerArm"], shrug: ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"], bounce: ["hips"],
+});
+const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
+  nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2,
+});
+
+// 0 to 1 over `fade` seconds, held, then back to 0 by `total`.
+function envelope(seconds: number, total: number, fade: number): number {
+  const x = Math.max(0, Math.min(1, Math.min(seconds, total - seconds) / fade));
+  return x * x * (3 - 2 * x);
+}
+
 /** Adapter-local controls, not the shared AvatarFrame wire envelope. */
 export interface PlaybackIdentity {
   sessionId: string;
@@ -220,7 +239,8 @@ export class VrmRuntime {
   private look = { x: 0, y: 0 };
   private composedAge = Number.POSITIVE_INFINITY;
   private readonly actions = new Map<string, { target: number; value: number }>();
-  private gesture: { name: "nod" | "shake"; seconds: number } | undefined;
+  private gesture: { name: VrmGesture; seconds: number } | undefined;
+  private hipsRest: number | undefined;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -257,25 +277,30 @@ export class VrmRuntime {
     return true;
   }
 
-  /** Martlet's own head gestures, the same on every model: "nod" (down and up twice) or "shake" (three turns). */
+  /** Martlet's gestures this model has the humanoid bones for. */
+  get gestures(): readonly VrmGesture[] {
+    const model = this.model;
+    return model ? VRM_GESTURES.filter(name => GESTURE_BONES[name].every(bone => model.humanoid.getNormalizedBoneNode(bone))) : [];
+  }
+
+  /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing: head gestures, a bow, a sway, a wave,
+   *  a shrug or an excited bounce. */
   playGesture(name: string): boolean {
-    this.loaded();
-    if (name !== "nod" && name !== "shake") return false;
-    this.gesture = { name, seconds: 0 };
+    const model = this.loaded();
+    if (!(this.gestures as readonly string[]).includes(name)) return false;
+    if (name === "bounce") this.hipsRest ??= model.humanoid.getNormalizedBoneNode("hips")?.position.y;
+    this.gesture = { name: name as VrmGesture, seconds: 0 };
     return true;
   }
 
-  private gestureOffset(deltaSeconds: number): { x: number; y: number } {
+  /** The playing gesture and how far into it, advanced by `deltaSeconds`; undefined once it is over. */
+  private advanceGesture(deltaSeconds: number): { name: VrmGesture; t: number; weight: number } | undefined {
     const gesture = this.gesture;
-    if (!gesture) return { x: 0, y: 0 };
+    if (!gesture) return undefined;
     const t = gesture.seconds += deltaSeconds;
-    if (gesture.name === "nod" && t < 1.1) {
-      const phase = Math.sin(Math.PI * t / 0.55);
-      return { x: 0, y: -0.9 * phase * phase };
-    }
-    if (gesture.name === "shake" && t < 1.2) return { x: 0.8 * Math.sin(2 * Math.PI * t / 0.4) * Math.sin(Math.PI * t / 1.2), y: 0 };
-    this.gesture = undefined;
-    return { x: 0, y: 0 };
+    const total = GESTURE_SECONDS[gesture.name];
+    if (t >= total) { this.gesture = undefined; return undefined; }
+    return { name: gesture.name, t, weight: envelope(t, total, gesture.name === "bounce" ? 0.15 : 0.35) };
   }
 
   private updateActions(model: VRM, deltaSeconds: number): void {
@@ -296,16 +321,32 @@ export class VrmRuntime {
     this.look = { x: this.look.x + (this.lookTarget.x - this.look.x) * follow, y: this.look.y + (this.lookTarget.y - this.look.y) * follow };
     const bone = (name: Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0]) => model.humanoid.getNormalizedBoneNode(name);
     const breath = Math.sin(this.idleTime * Math.PI * 2 / 4);
-    bone("leftUpperArm")?.rotation.set(0, 0, -1.2 + breath * 0.02);
-    bone("rightUpperArm")?.rotation.set(0, 0, 1.2 - breath * 0.02);
-    bone("leftLowerArm")?.rotation.set(0, -0.15, 0);
-    bone("rightLowerArm")?.rotation.set(0, 0.15, 0);
+    const gesture = this.advanceGesture(deltaSeconds);
+    const w = gesture?.weight ?? 0;
+    const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
+    const wave = gesture?.name === "wave" ? w : 0, shrug = gesture?.name === "shrug" ? w : 0;
+    const waving = wave > 0 ? 0.35 * Math.sin(2 * Math.PI * gesture!.t / 0.5) : 0;
+    bone("leftUpperArm")?.rotation.set(0, 0, lerp(-1.2 + breath * 0.02, -0.95, shrug));
+    bone("rightUpperArm")?.rotation.set(0, 0, lerp(lerp(1.2 - breath * 0.02, 0.95, shrug), -0.25, wave));
+    bone("leftLowerArm")?.rotation.set(0, lerp(-0.15, -1.1, shrug), 0);
+    bone("rightLowerArm")?.rotation.set(0, lerp(lerp(0.15, 1.1, shrug), 0, wave), lerp(0, -1.4 + waving, wave));
+    bone("leftShoulder")?.rotation.set(0, 0, 0.2 * shrug);
+    bone("rightShoulder")?.rotation.set(0, 0, -0.2 * shrug);
     bone("chest")?.rotation.set(breath * 0.015, 0, 0);
+    const side = gesture?.name === "sway" ? w * Math.sin(2 * Math.PI * gesture.t / 1.2) : 0;
+    bone("spine")?.rotation.set(gesture?.name === "bow" ? 0.35 * w : 0, 0, 0.08 * side);
+    const hips = bone("hips");
+    if (hips && this.hipsRest !== undefined)
+      hips.position.y = this.hipsRest + (gesture?.name === "bounce" ? 0.035 * w * Math.abs(Math.sin(2 * Math.PI * gesture.t / 0.6)) : 0);
     if (!this.selection?.head) {
-      const gesture = this.gestureOffset(deltaSeconds);
-      const x = this.look.x + gesture.x, y = this.look.y + gesture.y;
+      let gx = 0, gy = 0;
+      if (gesture?.name === "nod") { const phase = Math.sin(Math.PI * gesture.t / 0.55); gy = -0.9 * phase * phase; }
+      if (gesture?.name === "shake") gx = 0.8 * Math.sin(2 * Math.PI * gesture.t / 0.4) * Math.sin(Math.PI * gesture.t / 1.2);
+      if (gesture?.name === "bow") gy = -0.5 * w;
+      const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side;
+      const x = this.look.x + gx, y = this.look.y + gy;
       bone("neck")?.rotation.set(-y * 0.15, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
-      bone("head")?.rotation.set(-y * 0.2, x * 0.3, 0);
+      bone("head")?.rotation.set(-y * 0.2, x * 0.3, tilt);
     }
     const expressions = model.expressionManager;
     if (!expressions) return;
@@ -556,6 +597,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
-    this.actions.clear(); this.gesture = undefined;
+    this.actions.clear(); this.gesture = undefined; this.hipsRest = undefined;
   }
 }

@@ -753,8 +753,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         ListeningOptions? listening = null, bool spoken = false, HeardVoices? heard = null, double? confidence = null,
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
         ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
-        IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false, bool bringUp = false, AttentionSignal? attention = null,
-        bool look = false)
+        IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false, bool remote = false, bool bringUp = false,
+        AttentionSignal? attention = null, bool look = false)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -762,7 +762,8 @@ internal sealed class LiveConversationController : IAsyncDisposable
         // PC's may bring up finished work on Martlet's own.
         if (listening is not null && !microphone || spoken && microphone || recording is not null && !spoken ||
             listening?.Pc == true || pcAudio && (microphone || recording is not null) || !pcAudio && userWords is not null ||
-            words is not null && (words.Count == 0 || recording is null || pcAudio) || bringUp && (!pcAudio || userWords is not null))
+            words is not null && (words.Count == 0 || recording is null || pcAudio) || bringUp && (!pcAudio || userWords is not null) ||
+            remote && (microphone || spoken || seen is not null || pcAudio || look))
             throw new LiveActionException("conversation.invalid_input");
         listening?.Activity.Validate();
         Voiceprint? voiceprint = null;
@@ -776,7 +777,9 @@ internal sealed class LiveConversationController : IAsyncDisposable
         LiveConversationOperation operation;
         lock (gate)
         {
-            if (disposed || paused || muted || locked) throw new LiveActionException("conversation.controls_blocked");
+            // A message from a paired chat in a messaging app (text in, text out: no microphone, voice or screen) is answered
+            // while Windows is locked too, since that is when you're away from this PC.
+            if (disposed || paused || muted || locked && !(remote && !voice)) throw new LiveActionException("conversation.controls_blocked");
             if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");

@@ -56,6 +56,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Smart home: Find on my network only sends one multicast DNS question for Home Assistant's service type and lists who
         // answers; Not now only hides the setup form. Sign in, Set up, Connect, Disconnect, Add, Install and Restart do the work.
         "SmartHomeFind", "SmartHomeSetupCancel",
+        // Companion › Discord: Step by step only expands the setup steps. The portal and invite buttons open the browser, and
+        // Save, Forget, Reconnect, the on/off box and every choice change things, so they need --allow-ui-effects.
+        "DiscordSetupSteps",
+        // Messaging: Cancel only withdraws the pairing code shown (nothing is sent or saved). Connect, Pair a chat, Open BotFather,
+        // Open in Telegram, Remove, Disconnect and the two check boxes do the work.
+        "MessagingPairCancel",
         // Apps and API keys: Cancel closes the create dialog without making a key, and Done closes the dialog that showed a new
         // key once. Create API key, Create key, Copy (the clipboard) and Revoke change things, so they need --allow-ui-effects.
         "ApiKeyCreateCancel", "ApiKeyCreatedDone",
@@ -336,6 +342,19 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeStatus", "SmartHomeAddress", "SmartHomeFindStatus", "SmartHomeSetupTarget", "SmartHomeSetupStatus",
         "SmartHomeShareState", "SmartHomeShareStatus", "SmartHomeToolsStatus", "SmartHomeDevicesStatus", "SmartHomeMqtt",
         "SmartHomeManageStatus", "SmartHomeManageProblem",
+        // Companion › Discord: the next setup step, whether a bot token is saved (with its application ID; never the token, and
+        // DiscordToken is never read), what saving the token last did, the connection (state line, on/off, bot name, servers,
+        // problem such as Message Content Intent being off), the invite links (built from the application ID), the chat modes
+        // and channel rules ("DiscordRule-<channel>" through the prefix below), the rule picker's state, the chosen chat modes
+        // in the combo boxes and the people summary (counts only), the owner's account ID and the home server choice.
+        "DiscordSetupNext", "DiscordConfigured", "DiscordTokenStatus", "DiscordState", "DiscordEnabledStatus", "DiscordBotName",
+        "DiscordServers", "DiscordProblem", "DiscordInviteStatus", "DiscordServerLink", "DiscordHomeLink", "DiscordUserLink",
+        "DiscordChatModes", "DiscordServerChat", "DiscordDirectChat", "DiscordVoiceChat", "DiscordRuleChannelsStatus",
+        "DiscordPeopleCount", "DiscordOwnerStatus", "DiscordOwnerId", "DiscordHomeServer",
+        // Companion › Messaging: whether Martlet answers the Telegram bot on this PC now or why not (bot username, chat count,
+        // when it last answered; never the token), the connect outcome, how many chats are paired and the pairing note (when
+        // the code expires; never the code itself, MessagingPairCode, or chat names).
+        "MessagingStatus", "MessagingNote", "MessagingChats", "MessagingPairStatus",
         // Companion › Tools › Terminal: whether Martlet may run commands on this PC and how (shell, asks first, time limit) or
         // what keeps it from working, the chosen shell and time limit (choosing either with ui_select saves it, as do the
         // ToolsTerminalOn and ToolsTerminalAskFirst check boxes and the folder buttons, so they need --allow-ui-effects; the
@@ -440,7 +459,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "StepDetail-", "StepState-", "Step-",
         "HostChoice",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
-        "SmartHomeDevice-", "SmartHomeUpdate-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
+        "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-",
         // The setup advisor's plan: each role's pick and status ("AdvisorChoice-3" reads "Speech-to-text: Parakeet speech
         // recognition (Available)"; the plan has no personal data).
         "AdvisorChoice-",

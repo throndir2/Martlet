@@ -137,6 +137,8 @@ function createAnimator(structural: CubismModel, assets: AnimatorAssets): Animat
       expressionManager.updateMotion(model, deltaSeconds);
       for (const target of look) model.addParameterValueById(target.handle, input.lookX * target.x + input.lookY * target.y);
       if (angleZ) model.addParameterValueById(angleZ, input.lookX * input.lookY * -30);
+      if (input.gesture) for (const [name, value] of Object.entries(input.gesture))
+        if (value !== 0 && present.has(name)) model.addParameterValueById(id(name), value);
       breath?.updateParameters(model, deltaSeconds);
       input.overrides();
       physics?.evaluate(model, deltaSeconds);

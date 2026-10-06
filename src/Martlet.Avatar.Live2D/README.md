@@ -38,8 +38,10 @@ the model3.json, such as a VTube Studio model's hotkey files and idle
 animation, named by the host). `setExpression(name)` fades an expression in and
 `setExpression(null)` fades it out (an empty expression replaces it);
 `playMotion(group)` plays one motion of a group once at normal priority, then
-idling resumes; `gesture("nod" | "shake")` adds Martlet's own head gesture to the
-look-at angles (`lib/gestures.ts`).
+idling resumes; `gesture(name)` plays one of Martlet's own gestures the model has
+the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
+`smile`, `blush`, `surprise`), added to the look-at angles and those parameters
+(`lib/gestures.ts`).
 
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,
