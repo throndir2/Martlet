@@ -32,6 +32,7 @@ internal static class ConversationHistoryCheck
         await store.LoadAsync(cancellation);
         var stats = store.Stats;
         var tool = PastConversations.Definition;
+        var platforms = new PlatformChanges(Path.Combine(store.Directory, PlatformChanges.FileName)).Status;
         return new
         {
             settings = loaded.State switch { SettingsLoadState.Loaded => "loaded", SettingsLoadState.FirstRun => "none", _ => "unreadable" },
@@ -49,7 +50,14 @@ internal static class ConversationHistoryCheck
             record = new
             {
                 folder = ConversationHistory.DirectoryName, files = stats.Files, bytes = stats.Bytes, conversations = stats.Conversations,
-                exchanges = stats.Exchanges, skippedLines = stats.Skipped, notIndexed = stats.NotIndexed, oldest = stats.Oldest, newest = stats.Newest
+                exchanges = stats.Exchanges, skippedLines = stats.Skipped, notIndexed = stats.NotIndexed, oldest = stats.Oldest, newest = stats.Newest,
+                apps = stats.Apps
+            },
+            // Deletions and edits waiting for Telegram and Discord (platform-changes.json): counts and one problem line only.
+            platformChanges = new
+            {
+                pending = platforms.Pending, pendingByApp = platforms.PendingByApp, done = platforms.Done, refused = platforms.Refused,
+                gaveUp = platforms.GaveUp, lastProblem = platforms.LastProblem
             }
         };
     }
@@ -69,6 +77,128 @@ internal static class ConversationHistoryCheck
         {
             return (true, false, "unreadable (defaults)");
         }
+    }
+
+    // ---------- messaging apps: sources, single messages, edits and the queue of changes for the apps ----------
+
+    private sealed class FixturePlatform(string app, Clock clock) : IPlatformMessages
+    {
+        internal List<(DateTimeOffset At, PlatformChange Change)> Made { get; } = [];
+        internal int SlowDowns { get; set; } = 1;
+        public string App => app;
+        public TimeSpan Interval => TimeSpan.FromSeconds(1);
+
+        public Task ApplyAsync(PlatformChange change, CancellationToken token)
+        {
+            if (SlowDowns-- > 0) throw new PlatformChangeException(PlatformFailure.RateLimited, "Fixture: slow down.", TimeSpan.FromSeconds(3));
+            if (change.Message == "gone") throw new PlatformChangeException(PlatformFailure.Refused, "Fixture: unknown message.");
+            Made.Add((clock.Now, change));
+            return Task.CompletedTask;
+        }
+    }
+
+    private static async Task AppsAsync(string folder, Clock clock, DateTimeOffset now, TimeZoneInfo zone, Action<string, bool, object> Step,
+        CancellationToken cancellation)
+    {
+        var store = new ConversationHistory(folder, clock);
+        await store.LoadAsync(cancellation);
+        Guid pc = Guid.NewGuid(), server = Guid.NewGuid(), dm = Guid.NewGuid();
+        clock.Now = now.AddHours(-2);
+        await store.AppendAsync(pc, HistoryInputKind.Typed, "Remind me about the dentist on Friday.", "I'll remember the dentist on Friday.",
+            "Sam", new HistorySource(HistoryApps.Telegram, "42", null, "Sam", ["101"]), null, cancellation);
+        var lighthouse = await store.AppendAsync(server, HistoryInputKind.Typed, "Who painted the lighthouse mural?", "Mira did, last summer.",
+            "Ana", new HistorySource(HistoryApps.Discord, "900", "800", "#art in Fixture Server", ["5001"], ["5002", "5003"]), null, cancellation);
+        clock.Now = now.AddDays(-3);
+        var old = await store.AppendAsync(pc, HistoryInputKind.Typed, "What's a good name for a goldfish?", "Bubbles!", "Sam",
+            new HistorySource(HistoryApps.Telegram, "42", null, "Sam", ["90"], ["91"]), null, cancellation);
+        clock.Now = now.AddHours(-1);
+        var direct = await store.AppendAsync(dm, HistoryInputKind.Typed, "Thanks for the help!", "Any time.", "Ana",
+            new HistorySource(HistoryApps.Discord, "700", null, "DM with Ana", ["6001"], ["6002"]), null, cancellation);
+        await store.AppendAsync(pc, HistoryInputKind.Typed, "Good night.", "Sleep well!", null, cancellation);
+        clock.Now = now;
+        var telegram = store.FindMessage(HistoryApps.Telegram, "42", "101");
+        if (telegram is not null)
+            await store.ChangeAsync(telegram.Id, found => found with { Source = found.Source! with { ReplyMessages = ["102"] } }, cancellation);
+        var reread = new ConversationHistory(folder, clock);
+        await reread.LoadAsync(cancellation);
+        var stats = reread.Stats;
+        var conversations = reread.Conversations();
+        var attached = telegram is null ? null : reread.Exchange(telegram.Id);
+        Step("exchanges keep where they happened (Telegram, a Discord server channel and DM, this PC), with the apps' message IDs, after a restart",
+            stats is { Exchanges: 5, Conversations: 3 } && stats.Apps?.GetValueOrDefault(HistoryApps.Telegram) == 2 &&
+            stats.Apps.GetValueOrDefault(HistoryApps.Discord) == 2 && stats.Apps.GetValueOrDefault(HistoryApps.Pc) == 1 &&
+            attached?.Source?.ReplyMessages?.SequenceEqual(["102"]) == true &&
+            conversations.Single(c => c.Id == pc).Apps!.Order().SequenceEqual([HistoryApps.Pc, HistoryApps.Telegram]) &&
+            conversations.Single(c => c.Id == server).ChatName == "#art in Fixture Server",
+            new { stats.Exchanges, apps = stats.Apps, replyIdsAttached = attached?.Source?.ReplyMessages?.Count ?? 0 });
+
+        var recalled = PastConversations.Recall(reread, "Do you remember what I said about the dentist?", now, zone, null);
+        var notDiscord = PastConversations.Recall(reread, "Do you remember who painted the lighthouse mural?", now, zone, null);
+        Step("the talk window recalls Telegram exchanges but never Discord's (other people's chatter; Discord keeps its own history)",
+            recalled.Count == 1 && recalled[0].App == HistoryApps.Telegram && notDiscord.Count == 0,
+            new { telegram = recalled.Count, discord = notDiscord.Count });
+
+        // What deleting or editing asks of each app.
+        var replyGone = HistoryPlatforms.Delete(lighthouse, HistorySide.Reply, now);
+        var serverUser = HistoryPlatforms.Delete(lighthouse, HistorySide.User, now);
+        var dmBoth = HistoryPlatforms.Delete(direct, null, now);
+        var tooOld = HistoryPlatforms.Delete(old, null, now);
+        Step("deleting asks each app only for what it allows: Discord deletes Martlet's pieces and a server message, never your DM; Telegram only for 48 hours",
+            replyGone.Changes.Select(c => c.Message).SequenceEqual(["5002", "5003"]) && replyGone.Changes.All(c => c.Own && c.Kind == PlatformChangeKind.Delete) &&
+            serverUser.Changes.Single() is { Message: "5001", Own: false, Server: "800" } &&
+            dmBoth.Changes.Single() is { Message: "6002", Own: true } && dmBoth.KeptThere.Single().Contains("DM", StringComparison.Ordinal) &&
+            tooOld.Changes.Count == 0 && tooOld.KeptThere.Count == 2,
+            new { replyPieces = replyGone.Changes.Count, serverMessage = serverUser.Changes.Count, dm = dmBoth.Changes.Count, dmKept = dmBoth.KeptThere,
+                  telegramAfter48h = tooOld.KeptThere });
+        var shorter = HistoryPlatforms.Edit(lighthouse, "Mira painted it.", now);
+        var longer = HistoryPlatforms.Edit(direct, new string('x', 2500), now);
+        var user = HistoryPlatforms.WhyNotEdit(lighthouse.Source!, HistorySide.User);
+        Step("editing Martlet's reply edits its pieces there (extra pieces deleted; a longer reply is cut to the pieces it had); your messages are never edited there",
+            shorter.Changes.Select(c => (c.Kind, c.Message)).SequenceEqual([(PlatformChangeKind.Edit, "5002"), (PlatformChangeKind.Delete, "5003")]) &&
+            shorter.Source?.ReplyMessages?.SequenceEqual(["5002"]) == true &&
+            longer.Truncated && longer.Changes.Single() is { Kind: PlatformChangeKind.Edit, Text.Length: <= 2000 } && user is not null,
+            new { shorter = shorter.Changes.Count, longerTruncated = longer.Truncated, userEdit = user });
+
+        // One message, an edit and an exchange in the record itself.
+        var (_, edited) = await reread.ChangeAsync(lighthouse.Id, found => found with { Reply = "Mira painted it.", Edited = now }, cancellation);
+        var (_, halved) = await reread.ChangeAsync(direct.Id, found => found with { User = "", Source = found.Source! with { UserMessages = null } }, cancellation);
+        var (_, gone) = await reread.ChangeAsync(old.Id, _ => null, cancellation);
+        var after = new ConversationHistory(folder, clock);
+        await after.LoadAsync(cancellation);
+        Step("editing a reply, deleting one message and deleting an exchange change only those lines (also after a restart; search follows)",
+            edited is not null && halved is not null && gone is null && after.Stats.Exchanges == 4 &&
+            after.Exchange(lighthouse.Id) is { Reply: "Mira painted it.", Edited: not null } &&
+            after.Exchange(direct.Id) is { User: "", Reply: "Any time." } && after.Exchange(old.Id) is null &&
+            after.Search(["goldfish"], null, null, null, 5).Count == 0 && after.Search(["painted"], null, null, null, 5).Count == 1,
+            new { left = after.Stats.Exchanges });
+
+        // The queue: each app at its pace, its slow-downs waited out, refusals said, unconnected apps waiting, kept over a restart.
+        var queueFile = Path.Combine(folder, PlatformChanges.FileName);
+        var queue = new PlatformChanges(queueFile, clock);
+        var discord = new FixturePlatform(HistoryApps.Discord, clock);
+        PlatformChange Change(string app, string message) =>
+            new(Guid.NewGuid(), app, "900", "800", message, PlatformChangeKind.Delete, true, null, now);
+        queue.Enqueue([Change(HistoryApps.Discord, "5002"), Change(HistoryApps.Discord, "gone"), Change(HistoryApps.Discord, "5003"),
+            Change(HistoryApps.Telegram, "102")]);
+        queue.Connect(discord);
+        var start = clock.Now;
+        for (var round = 0; round < 50; round++)
+        {
+            var wait = await queue.RunDueAsync(cancellation);
+            if (wait is null) break;
+            clock.Now += wait.Value > TimeSpan.Zero ? wait.Value : TimeSpan.Zero;
+        }
+        var status = queue.Status;
+        var times = discord.Made.Select(made => (made.At - start).TotalSeconds).ToArray();
+        var restarted = new PlatformChanges(queueFile, clock).Status;
+        Step("changes go one at a time at each app's pace: a slow-down is waited out, a refusal is dropped and said, an app not connected keeps its changes (also after a restart)",
+            discord.Made.Select(made => made.Change.Message).SequenceEqual(["5002", "5003"]) && times.Length == 2 && times[0] >= 3 &&
+            times[1] - times[0] >= 2 && status is { Pending: 1, Done: 2, Refused: 1 } && status.PendingByApp.ContainsKey(HistoryApps.Telegram) &&
+            restarted is { Pending: 1, Done: 2, Refused: 1 } && status.Describe().Contains("not connected", StringComparison.Ordinal),
+            new { madeAtSeconds = times, status.Pending, status.Done, status.Refused, line = status.Describe() });
+        queue.Clear();
+        Step("Stop waiting changes drops what still waits", new PlatformChanges(queueFile, clock).Status.Pending == 0, new { });
+        clock.Now = now;
     }
 
     // ---------- conversation_history_check ----------
@@ -179,6 +309,8 @@ internal static class ConversationHistoryCheck
             await afterDelete.DeleteAllAsync(cancellation);
             Step("deleting everything removes every month file", ConversationHistory.MonthFiles(folder).Count == 0 && afterDelete.Stats.Exchanges == 0,
                 new { files = ConversationHistory.MonthFiles(folder).Count });
+
+            await AppsAsync(Path.Combine(root, "apps"), clock, now, zone, Step, cancellation);
 
             // A large record: reading it happens once in the background; recall answers from memory in well under a millisecond
             // or two, so a message that mentions an earlier conversation isn't slowed by searching.

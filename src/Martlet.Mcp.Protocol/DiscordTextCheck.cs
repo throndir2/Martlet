@@ -236,10 +236,10 @@ internal static class DiscordTextCheck
         public Sent[] Last(int count) { lock (sent) return [.. sent.Skip(Math.Max(0, sent.Count - count))]; }
         public IDisposable Typing(DiscordPlace place) => new Nothing();
 
-        public Task SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token)
+        public Task<ulong?> SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token)
         {
             Add(new(place.ChannelId, text, replyTo, false));
-            return Task.CompletedTask;
+            return Task.FromResult<ulong?>((ulong)Count);
         }
 
         private sealed class Nothing : IDisposable { public void Dispose() { } }

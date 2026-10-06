@@ -174,6 +174,10 @@ internal sealed class LiveConversationOperation
     /// <summary>A reply Martlet starts on its own (to what this PC played) may bring up finished background work that waits,
     /// in its notes, as a report would (Thinking longer shares results as soon as Martlet is free).</summary>
     internal bool BringUp { get; init; }
+    /// <summary>Where a message from a paired messaging chat came from (the app, the chat and the app's ID of the message), and
+    /// who sent it, for the record of conversations; null for this PC.</summary>
+    [JsonIgnore] internal Martlet.Conversation.HistorySource? Origin { get; init; }
+    [JsonIgnore] internal string? OriginSpeaker { get; init; }
     /// <summary>This reply took the look vision wanted (its picture, and what wants the user's attention if anything does), so it
     /// counts as a look.</summary>
     internal bool Look { get; init; }
@@ -797,7 +801,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
         ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
         IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false, bool remote = false, bool bringUp = false,
-        AttentionSignal? attention = null, bool look = false, bool discordCall = false)
+        AttentionSignal? attention = null, bool look = false, bool discordCall = false, HistorySource? origin = null, string? originSpeaker = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -843,6 +847,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, StraightWords = words,
                 PcAudio = pcAudio, DiscordCall = discordCall && spoken, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
                 BringUp = bringUp, Attention = seen is null ? null : attention, Look = look,
+                Origin = remote ? origin : null, OriginSpeaker = remote ? originSpeaker : null,
                 WhileSinging = spoken ? singing?.Now() : null,
                 BackgroundChattiness = chattiness,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
@@ -1869,7 +1874,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                 historyRecord.Record(conversation, operation.Report ? HistoryInputKind.Report
                                         : operation.Spoken || operation.Authorization.Microphone ? HistoryInputKind.Spoken : HistoryInputKind.Typed,
                                     recordedWords, turn.Content.Text,
-                                    operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null);
+                                    operation.OriginSpeaker ?? (operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null),
+                                    operation.Origin);
                         }
                         // The finished background work this reply carried is in the conversation now.
                         if (operation.Delivery is { } delivered)

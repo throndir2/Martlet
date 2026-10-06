@@ -66,6 +66,7 @@ internal sealed partial class DiscordService
     private async Task HandleTextAsync(DiscordIncoming incoming)
     {
         var result = await Text.HandleAsync(incoming).ConfigureAwait(false);
+        RecordText(incoming, result, command: false);
         if (result.Outcome is not (DiscordTextOutcome.NotConsidered or DiscordTextOutcome.IgnoredBot or DiscordTextOutcome.Empty))
             ErrorLog.Info(DiscordTextChat.Describe(result));
     }
@@ -142,6 +143,7 @@ internal sealed partial class DiscordService
                 }
             }).ConfigureAwait(false);
             ErrorLog.Info(DiscordTextChat.Describe(result) + " (/martlet)");
+            RecordText(incoming, result, command: true);
             if (result.Outcome != DiscordTextOutcome.Answered)
                 await interaction.SendFollowupMessageAsync(new()
                 {
@@ -214,12 +216,13 @@ internal sealed partial class DiscordService
         public IDisposable Typing(DiscordPlace place) =>
             bot.Client is { } client ? client.Rest.EnterTypingScope(place.ChannelId) : new Nothing();
 
-        public async Task SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token)
+        public async Task<ulong?> SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token)
         {
             var client = bot.Client ?? throw new InvalidOperationException("The Discord bot is offline.");
             MessageProperties message = new() { Content = text, AllowedMentions = NoMentions(replyTo is not null) };
             if (replyTo is { } id) message.MessageReference = MessageReferenceProperties.Reply(id, false);
-            await client.Rest.SendMessageAsync(place.ChannelId, message, cancellationToken: token).ConfigureAwait(false);
+            var sent = await client.Rest.SendMessageAsync(place.ChannelId, message, cancellationToken: token).ConfigureAwait(false);
+            return sent.Id;
         }
 
         private sealed class Nothing : IDisposable { public void Dispose() { } }

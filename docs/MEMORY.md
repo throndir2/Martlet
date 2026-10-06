@@ -412,7 +412,9 @@ Turning it off keeps what is already recorded until you delete it.
 
 **On disk.** The data folder's `conversations` folder holds one JSON Lines file
 per month (`history-2026-10.jsonl`, by UTC month), one line per exchange:
-`{"v":1,"id":…,"conversation":…,"at":…,"kind":"typed|spoken|report","speaker":…,"user":…,"reply":…}`.
+`{"v":1,"id":…,"conversation":…,"at":…,"kind":"typed|spoken|report","speaker":…,"user":…,"reply":…}`,
+plus `"source":{"app","chat","server","name","userIds","replyIds"}` for an
+exchange from a messaging app and `"edited"` once it was edited here.
 Each exchange is appended (and flushed to disk) in the background after its
 reply, one at a time, so the next reply never waits for the disk; exiting
 Martlet waits a moment for the last one. Earlier lines are never rewritten by
@@ -470,19 +472,57 @@ bytes, about 153 estimated tokens) goes at the start of every request: providers
 cache it after the first reply of a conversation, but that first reply reads it
 too.
 
-**Seeing and deleting it.** Companion › Memory › **Open conversation history**
-lists the conversations, newest first, shows what was said in the one selected,
-searches everything said (matching exchanges marked ▶) and deletes one
-conversation or everything, each asked first (No by default). Deleting rewrites
-only that conversation's month files (through a temporary file and an atomic
-replace) or removes the files; facts remembered from a conversation stay in
-Memory until you delete them there. Deletion is not a secure wipe of old disk
-blocks.
+**Seeing, searching, editing and deleting it.** Companion › Memory › **Open
+conversation history** lists the conversations, newest first, with the apps
+they happened in (this PC, Telegram, Discord, WhatsApp) and the chat's name;
+the app box shows only one app's conversations and messages. The selected
+conversation shows one entry per message (yours and Martlet's, with when, who,
+the app and *edited*). It searches everything said (matching messages marked
+▶, within the chosen app), edits one message (**Edit message**, then **Save
+edit**; an empty text deletes it) and deletes one message, one conversation or
+everything, each delete asked first (No by default). Deleting one side of an
+exchange keeps the other; the exchange goes once neither is left. Deleting or
+editing rewrites only that line's month file (through a temporary file and an
+atomic replace) or removes the files; facts remembered from a conversation
+stay in Memory until you delete them there, and a conversation still running
+keeps what it has in mind until it is refreshed. Deletion is not a secure wipe
+of old disk blocks.
 
-MCP: `conversation_history_status` (choices, what replies are offered and
-counts, never content) and `conversation_history_check` (the production record,
-recall and search on synthetic conversations); `HistoryStatus` and
-`HistoryWindowStatus` read as text and `OpenHistory` opens the window
+**Messaging apps.** A message from a paired Telegram or WhatsApp chat is
+recorded in the talk window's conversation with its app, chat and the app's
+message IDs (Martlet's reply pieces' IDs join it once they are sent). Each
+answered Discord text message (a server channel, thread, DM or `/martlet`) is
+recorded in that place's own conversation (one per channel or DM) with its
+server, channel and message IDs. The talk window never recalls Discord
+exchanges (other people's chatter; Discord replies keep their own history per
+place), and `search_conversations` doesn't return them either. With **Also
+delete and edit in Telegram and Discord when they allow it** (on), deleting or
+editing here does the same in the app, as far as it allows:
+
+| App | Delete your message | Delete Martlet's | Edit Martlet's | Edit yours |
+| --- | --- | --- | --- | --- |
+| Telegram | private chat, within 48 hours | within 48 hours | yes | no |
+| Discord | in a server (Manage Messages); never in a DM | yes | yes | no |
+| WhatsApp | no (the Cloud API can't) | no | no | no |
+
+An edited reply is split the way it was sent; extra pieces are deleted, and a
+reply that now needs more messages than it had is cut to fit (the window says
+so). What an app won't do is said in the window and stays there as it is. The
+changes go through a queue (`conversations\platform-changes.json`, kept over a
+restart) one at a time per app at its pace (Telegram every half second, Discord
+every second): a "slow down" (429) is waited out for as long as the app asks,
+an app that can't be reached is tried again with a growing pause (given up on
+after 8 tries), a refusal (too old, already gone, missing permission) is
+dropped and said, and changes for an app that isn't connected wait until its
+bot runs. The window's last line shows what waits (`HistoryPlatformStatus`);
+**Stop waiting changes** drops it.
+
+MCP: `conversation_history_status` (choices, what replies are offered, counts
+per app and the changes waiting for apps, never content) and
+`conversation_history_check` (the production record, recall, search, sources,
+single-message edits and deletes, what each app is asked and the queue with a
+fixture app); `HistoryStatus`, `HistoryWindowStatus` and
+`HistoryPlatformStatus` read as text and `OpenHistory` opens the window
 ([MCP](MCP.md)).
 
 ## One memory on every computer

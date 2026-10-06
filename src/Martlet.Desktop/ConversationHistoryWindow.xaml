@@ -3,16 +3,34 @@
         Style="{DynamicResource AppWindowStyle}"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Martlet - Conversation history" Width="980" Height="760" MinWidth="620" MinHeight="460"
+        Title="Martlet - Conversation history" Width="1040" Height="800" MinWidth="680" MinHeight="500"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closed="Window_Closed"
         AutomationProperties.Name="Conversation history">
+    <Window.Resources>
+        <DataTemplate x:Key="WrappedText">
+            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Margin="0,3" />
+        </DataTemplate>
+        <Style x:Key="NamedItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Resources>
     <DockPanel Margin="20">
         <StackPanel DockPanel.Dock="Top">
             <TextBlock Text="Conversation history" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Margin="0,8" TextWrapping="Wrap"
-                       Text="Every conversation Martlet has had on this PC: what you typed or said and Martlet's replies. It stays on this PC, and you can delete a conversation or everything at any time." />
+                       Text="Every conversation Martlet has had: on this PC and in Telegram, Discord and WhatsApp. It stays on this PC. Delete or edit a single message, a conversation or everything at any time." />
             <Label Target="{Binding ElementName=SearchText}" Content="_Search conversations" Padding="0,4" />
             <DockPanel>
+                <ComboBox DockPanel.Dock="Left" x:Name="AppFilter" Width="130" Margin="0,0,8,0" SelectedIndex="0"
+                          SelectionChanged="AppFilter_SelectionChanged" AutomationProperties.AutomationId="HistoryAppFilter"
+                          AutomationProperties.Name="Show conversations from">
+                    <ComboBoxItem Content="All apps" Tag="" />
+                    <ComboBoxItem Content="This PC" Tag="pc" />
+                    <ComboBoxItem Content="Telegram" Tag="telegram" />
+                    <ComboBoxItem Content="Discord" Tag="discord" />
+                    <ComboBoxItem Content="WhatsApp" Tag="whatsapp" />
+                </ComboBox>
                 <Button DockPanel.Dock="Right" x:Name="ShowAllButton" Content="Show _all" Click="ShowAll_Click"
                         Padding="10,5" Margin="8,0,0,0" AutomationProperties.AutomationId="HistoryShowAll" />
                 <Button DockPanel.Dock="Right" x:Name="SearchButton" Content="Searc_h" Click="Search_Click" IsDefault="True"
@@ -20,10 +38,24 @@
                 <TextBox x:Name="SearchText" MaxLength="300" AutomationProperties.AutomationId="HistorySearchText"
                          AutomationProperties.Name="Words to search for" />
             </DockPanel>
-            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,8" AutomationProperties.AutomationId="HistoryWindowStatus"
-                       AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Conversation history status" />
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,8,0,4" AutomationProperties.AutomationId="HistoryWindowStatus"
+                       AutomationProperties.LiveSetting="Polite" />
+            <CheckBox x:Name="AlsoThere" IsChecked="True" Margin="0,2" AutomationProperties.AutomationId="HistoryAlsoThere">
+                <TextBlock TextWrapping="Wrap"
+                           Text="Also delete and edit in Telegram and Discord when they allow it (WhatsApp doesn't let Martlet; changes wait in a queue at each app's pace)" />
+            </CheckBox>
+            <DockPanel Margin="0,2,0,4">
+                <Button DockPanel.Dock="Right" x:Name="PlatformCancelButton" Content="Stop waiting changes" Click="PlatformCancel_Click"
+                        Padding="10,3" Margin="8,0,0,0" AutomationProperties.AutomationId="HistoryPlatformCancel" />
+                <TextBlock x:Name="PlatformText" TextWrapping="Wrap" VerticalAlignment="Center"
+                           AutomationProperties.AutomationId="HistoryPlatformStatus" AutomationProperties.LiveSetting="Polite" />
+            </DockPanel>
         </StackPanel>
         <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Button x:Name="EditButton" Content="Ed_it message" Click="Edit_Click" Padding="10,6" Margin="0,0,8,0"
+                    AutomationProperties.AutomationId="HistoryEditMessage" />
+            <Button x:Name="DeleteMessageButton" Content="Delete _message" Click="DeleteMessage_Click" Padding="10,6" Margin="0,0,8,0"
+                    AutomationProperties.AutomationId="HistoryDeleteMessage" />
             <Button x:Name="DeleteButton" Content="_Delete this conversation" Click="Delete_Click" Padding="10,6" Margin="0,0,8,0"
                     AutomationProperties.AutomationId="HistoryDeleteConversation" />
             <Button x:Name="DeleteAllButton" Content="Delete _everything" Click="DeleteAll_Click" Padding="10,6" Margin="0,0,8,0"
@@ -39,13 +71,27 @@
             </Grid.ColumnDefinitions>
             <DockPanel>
                 <Label DockPanel.Dock="Top" Target="{Binding ElementName=ConversationsList}" Content="Co_nversations" Padding="0,4" />
-                <ListBox x:Name="ConversationsList" SelectionChanged="Conversations_SelectionChanged"
+                <ListBox x:Name="ConversationsList" SelectionChanged="Conversations_SelectionChanged" ItemTemplate="{StaticResource WrappedText}"
+                         ItemContainerStyle="{StaticResource NamedItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          AutomationProperties.AutomationId="HistoryConversations" AutomationProperties.Name="Recorded conversations" />
             </DockPanel>
             <DockPanel Grid.Column="2">
-                <Label DockPanel.Dock="Top" Target="{Binding ElementName=ExchangesText}" Content="What was _said" Padding="0,4" />
-                <TextBox x:Name="ExchangesText" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                         AutomationProperties.AutomationId="HistoryExchanges" AutomationProperties.Name="What was said in the conversation" />
+                <Label DockPanel.Dock="Top" Target="{Binding ElementName=MessagesList}" Content="What was _said" Padding="0,4" />
+                <StackPanel DockPanel.Dock="Bottom" x:Name="EditorPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                    <Label Target="{Binding ElementName=EditText}" x:Name="EditLabel" Content="Edit the message" Padding="0,4" />
+                    <TextBox x:Name="EditText" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" MaxHeight="200"
+                             VerticalScrollBarVisibility="Auto" MaxLength="16384" AutomationProperties.AutomationId="HistoryEditText"
+                             AutomationProperties.Name="The message's new text" />
+                    <WrapPanel Margin="0,6,0,0">
+                        <Button x:Name="EditSaveButton" Content="Save edit" Click="EditSave_Click" Padding="10,4" Margin="0,0,8,0"
+                                AutomationProperties.AutomationId="HistoryEditSave" />
+                        <Button Content="Cancel" Click="EditCancel_Click" Padding="10,4"
+                                AutomationProperties.AutomationId="HistoryEditCancel" />
+                    </WrapPanel>
+                </StackPanel>
+                <ListBox x:Name="MessagesList" SelectionChanged="Messages_SelectionChanged" ItemTemplate="{StaticResource WrappedText}"
+                         ItemContainerStyle="{StaticResource NamedItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.AutomationId="HistoryMessages" AutomationProperties.Name="What was said in the conversation" />
             </DockPanel>
         </Grid>
     </DockPanel>

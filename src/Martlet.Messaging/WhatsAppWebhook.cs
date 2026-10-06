@@ -179,7 +179,7 @@ public sealed class WhatsAppWebhook : IDisposable
                 if ((string?)message["from"] is not { Length: > 0 } from || (string?)message["id"] is not { Length: > 0 } id) continue;
                 var text = (string?)message["type"] == "text" ? (string?)message["text"]?["body"] : null;
                 var name = names.GetValueOrDefault(from) is { Length: > 0 } known ? known : "+" + from;
-                messages.Add(new(new(from, name, text, Private: true), id));
+                messages.Add(new(new(from, name, text, Private: true, MessageId: id), id));
             }
         }
         return messages;

@@ -207,13 +207,13 @@ public sealed class ConversationHistoryDesktopTests
                 await Until(() => list.Items.Count == 2);
                 Assert.Contains("2 conversations and 3 exchanges", Control<TextBlock>(window, "StatusText").Text);
                 Assert.Equal("HistoryWindowStatus", AutomationProperties.GetAutomationId(Control<TextBlock>(window, "StatusText")));
-                Assert.Contains("Biscuit goes to the vet.", Control<TextBox>(window, "ExchangesText").Text);
+                Assert.Contains("Biscuit goes to the vet.", Texts(Control<ListBox>(window, "MessagesList")));
 
                 Control<TextBox>(window, "SearchText").Text = "kyoto";
                 Click(window, "SearchButton");
                 Assert.Single(list.Items);
                 Assert.Contains("Found 1 exchange in 1 conversation", Control<TextBlock>(window, "StatusText").Text);
-                Assert.StartsWith("▶ ", Control<TextBox>(window, "ExchangesText").Text);
+                Assert.StartsWith("▶ ", Texts(Control<ListBox>(window, "MessagesList")));
 
                 Click(window, "DeleteButton");
                 await Until(() => history.Store.Stats.Exchanges == 1);
@@ -232,6 +232,81 @@ public sealed class ConversationHistoryDesktopTests
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     });
+
+    [Fact]
+    public Task TheWindowFiltersByAppAndDeletesAndEditsSingleMessagesHereAndThere() => OnDispatcher(async () =>
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Messages." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var history = new DesktopConversationHistory(directory, zone: TimeZoneInfo.Utc);
+            Guid talk = Guid.NewGuid(), channel = Guid.NewGuid();
+            history.Record(talk, HistoryInputKind.Typed, "Hello from my phone.", "Hi Sam!", "Sam",
+                new HistorySource(HistoryApps.Telegram, "42", null, "Sam", ["101"]));
+            history.AttachReplies(HistoryApps.Telegram, "42", "101", ["102"]);
+            history.Record(talk, HistoryInputKind.Typed, "And from the PC.", "Welcome back.", null);
+            history.Record(channel, HistoryInputKind.Typed, "Who drew the map?", "Ana did.", "Ana",
+                new HistorySource(HistoryApps.Discord, "900", "800", "#maps in Guild", ["5001"], ["5002", "5003"]));
+            await history.Idle;
+            await history.Store.LoadAsync();
+            Assert.Equal(["102"], history.Store.FindMessage(HistoryApps.Telegram, "42", "101")!.Source!.ReplyMessages);
+
+            var asked = new List<string>();
+            var window = new ConversationHistoryWindow(history, (_, _, title) => { asked.Add(title); return true; })
+            { ShowActivated = false, ShowInTaskbar = false };
+            window.Show();
+            try
+            {
+                var list = Control<ListBox>(window, "ConversationsList");
+                var messages = Control<ListBox>(window, "MessagesList");
+                await Until(() => list.Items.Count == 2);
+                Assert.Contains("Discord 1", Control<TextBlock>(window, "StatusText").Text);
+
+                // Only Discord: one conversation, its two messages.
+                Control<ComboBox>(window, "AppFilter").SelectedIndex = 3;
+                Assert.Single(list.Items);
+                Assert.Equal(2, messages.Items.Count);
+                Assert.Contains("#maps in Guild", list.Items[0]!.ToString());
+
+                // Delete Martlet's reply here and in Discord: both its pieces are queued; the person's message stays.
+                messages.SelectedIndex = 1;
+                Click(window, "DeleteMessageButton");
+                await Until(() => history.Platforms.Status.Pending == 2 && Control<TextBlock>(window, "StatusText").Text.StartsWith("Deleted the message."));
+                Assert.Equal(["Delete message"], asked);
+                Assert.Equal(["5002", "5003"], history.Platforms.Pending.Select(change => change.Message));
+                Assert.Equal("", history.Store.Exchanges(channel).Single().Reply);
+                Assert.Contains("2 changes waiting for Discord", Control<TextBlock>(window, "PlatformText").Text);
+
+                // Edit the Telegram reply here and there.
+                Control<ComboBox>(window, "AppFilter").SelectedIndex = 2;
+                Assert.Single(messages.Items.Cast<object>(), item => item.ToString()!.Contains("Hi Sam!"));
+                messages.SelectedIndex = 1;
+                Click(window, "EditButton");
+                Assert.Equal(Visibility.Visible, Control<StackPanel>(window, "EditorPanel").Visibility);
+                Control<TextBox>(window, "EditText").Text = "Hi Sam, good to hear from you!";
+                Click(window, "EditSaveButton");
+                await Until(() => history.Platforms.Status.Pending == 3 && Control<TextBlock>(window, "StatusText").Text.StartsWith("Saved the edit."));
+                var edit = history.Platforms.Pending[^1];
+                Assert.Equal((PlatformChangeKind.Edit, "102", "Hi Sam, good to hear from you!"), (edit.Kind, edit.Message, edit.Text));
+                Assert.NotNull(history.Store.FindMessage(HistoryApps.Telegram, "42", "101")!.Edited);
+
+                // Without "also there", deleting a whole conversation leaves the apps alone.
+                Control<CheckBox>(window, "AlsoThere").IsChecked = false;
+                Control<ComboBox>(window, "AppFilter").SelectedIndex = 0;
+                list.SelectedItem = list.Items.Cast<object>().Single(item => item.ToString()!.Contains("Telegram"));
+                Click(window, "DeleteButton");
+                await Until(() => history.Store.Stats.Exchanges == 1);
+                Assert.Equal(3, history.Platforms.Status.Pending);
+            }
+            finally { window.Close(); }
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    });
+
+    private static string Texts(ListBox list) => string.Join("\n", list.Items.Cast<object>().Select(item => item.ToString()));
 
     private static Martlet.Core.Settings.MemorySettings MemorySettingsOn() =>
         Martlet.Core.Settings.MemorySettings.Create().Configure(true, Martlet.Core.Settings.MemoryStoragePolicy.AppLocalData, null);

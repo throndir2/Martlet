@@ -12,8 +12,10 @@ public sealed record DiscordIncoming(ulong MessageId, DiscordPlace Place, Discor
 
 public enum DiscordTextOutcome { IgnoredBot, Empty, NotConsidered, NoEngine, Passed, Answered, Dropped, Failed }
 
+/// <summary>What the text chat did with a message. <paramref name="Reply"/> is Martlet's reply as sent (before splitting) and
+/// <paramref name="SentIds"/> the Discord IDs of its pieces (when the transport gives them).</summary>
 public sealed record DiscordTextResult(DiscordTextOutcome Outcome, bool Addressed, DiscordChatMode Mode,
-    IReadOnlyList<string> Sent, string? Problem = null);
+    IReadOnlyList<string> Sent, string? Problem = null, string? Reply = null, IReadOnlyList<ulong>? SentIds = null);
 
 /// <summary>What the text chat did since Martlet started (no message text, names or IDs): for the Discord page, MCP and the log.
 /// <paramref name="LastPlaceKind"/> is "DM" or "server" for the last reply sent.</summary>
@@ -47,8 +49,8 @@ public interface IDiscordTextTransport
     IDisposable Typing(DiscordPlace place);
 
     /// <summary>Sends one message (at most <see cref="DiscordTextFormat.Limit"/> characters), as a reply to
-    /// <paramref name="replyTo"/> when given.</summary>
-    Task SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token);
+    /// <paramref name="replyTo"/> when given, and returns its Discord ID (null when unknown).</summary>
+    Task<ulong?> SendAsync(DiscordPlace place, string text, ulong? replyTo, CancellationToken token);
 }
 
 /// <summary>Whether a message was meant for Martlet.</summary>
@@ -282,6 +284,7 @@ public sealed class DiscordTextChat
             }
 
             var pieces = DiscordTextFormat.Split(DiscordTextFormat.Sanitize(text));
+            var ids = new List<ulong>();
             if (command is not null) await command(pieces).ConfigureAwait(false);
             else
                 for (var index = 0; index < pieces.Count; index++)
@@ -289,13 +292,13 @@ public sealed class DiscordTextChat
                     await PaceAsync(message.Place.ChannelId, token).ConfigureAwait(false);
                     // A reply in a channel or thread quotes the message it answers; a DM is a one-to-one conversation.
                     var quote = index == 0 && addressed && !message.Place.Direct;
-                    await transport.SendAsync(message.Place, pieces[index], quote ? replyTo : null, token)
-                        .ConfigureAwait(false);
+                    if (await transport.SendAsync(message.Place, pieces[index], quote ? replyTo : null, token).ConfigureAwait(false) is { } id)
+                        ids.Add(id);
                 }
             Recent.Add(message.Place, new(CompanionName(), text, time.GetUtcNow(), true));
             var kind = message.Place.GuildId is null ? "DM" : "server";
             Count(s => s with { Answered = s.Answered + 1, LastPlaceKind = kind });
-            return new(DiscordTextOutcome.Answered, addressed, mode, pieces);
+            return new(DiscordTextOutcome.Answered, addressed, mode, pieces, Reply: text, SentIds: ids);
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {

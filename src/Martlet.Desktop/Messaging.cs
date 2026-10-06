@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Credentials.Windows;
 using Martlet.Messaging;
@@ -166,6 +167,9 @@ internal sealed class MessagingService : IDisposable
 
     /// <summary>Answers one message the way the conversation does; null while Martlet can't talk.</summary>
     internal Func<MessagingApp, InboundMessage, CancellationToken, Task<string>>? Answer { get; set; }
+    /// <summary>The record of conversations: replies' message IDs go to their exchanges, and while the bot runs, deleting or
+    /// editing a Telegram exchange there deletes or edits it in Telegram too.</summary>
+    internal DesktopConversationHistory? History { get; set; }
     /// <summary>Raised (on any thread) when the preferences, a bridge's status or a pairing code changed.</summary>
     internal event Action? Changed;
 
@@ -303,6 +307,13 @@ internal sealed class MessagingService : IDisposable
             }
             var next = new MessagingBridge(transport, saved.Chats, (message, token) => AnswerAsync(app, message, token));
             next.StatusChanged += _ => Changed?.Invoke();
+            next.Replied += (message, ids) =>
+            {
+                if (message.MessageId is { } id && ids.Count > 0)
+                    History?.AttachReplies(message.App.ToString().ToLowerInvariant(), message.ChatId, id, ids);
+            };
+            var platform = transport is IMessagingMessageControl control ? new MessagingPlatform(transport.App, control) : null;
+            if (platform is not null) History?.Platforms.Connect(platform);
             next.Paired += chat =>
             {
                 Update(current => current.With(app, channel => channel with { Chats = [.. channel.Chats.Where(c => c.Id != chat.Id), chat] }));
@@ -319,6 +330,7 @@ internal sealed class MessagingService : IDisposable
                 }
                 finally
                 {
+                    if (platform is not null) History?.Platforms.Disconnect(platform);
                     transport.Dispose();
                     lock (gate)
                         if (channels.TryGetValue(app, out var still) && ReferenceEquals(still.Running, stop))
@@ -392,4 +404,32 @@ internal sealed class MessagingService : IDisposable
     }
 
     public void Dispose() => Stop();
+}
+
+/// <summary>Deleting and editing messages in a messaging app for the record of conversations (<see cref="PlatformChanges"/>),
+/// through the running bot's transport. Telegram allows about one change a second per chat, so changes go at most two a
+/// second; its "slow down" answers are waited out.</summary>
+internal sealed class MessagingPlatform(MessagingApp app, IMessagingMessageControl control) : IPlatformMessages
+{
+    public string App { get; } = app.ToString().ToLowerInvariant();
+    public TimeSpan Interval => TimeSpan.FromMilliseconds(500);
+
+    public async Task ApplyAsync(PlatformChange change, CancellationToken token)
+    {
+        try
+        {
+            if (change.Kind == PlatformChangeKind.Edit)
+                await control.EditMessageAsync(change.Chat, change.Message, change.Text ?? "", token).ConfigureAwait(false);
+            else await control.DeleteMessageAsync(change.Chat, change.Message, token).ConfigureAwait(false);
+        }
+        catch (MessagingException error)
+        {
+            throw error.Failure switch
+            {
+                MessagingFailure.RateLimited => new PlatformChangeException(PlatformFailure.RateLimited, error.Message, error.RetryAfter),
+                MessagingFailure.Protocol => new PlatformChangeException(PlatformFailure.Refused, error.Message),
+                _ => new PlatformChangeException(PlatformFailure.Unavailable, error.Message)
+            };
+        }
+    }
 }

@@ -81,9 +81,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // asks first), so they need --allow-ui-effects.
         "MemoryNewFact", "MemoryStorageSection", "MemoryExportSection",
         // Companion › Memory's Open conversation history opens the record's window, Close closes it, and Search and Show all
-        // only filter what it lists (from memory; nothing is written). Its two choices save conversation-history.json, typing a
-        // search is ui_set_text, and Delete asks first; those need --allow-ui-effects.
-        "OpenHistory", "HistoryClose", "HistorySearchRun", "HistoryShowAll",
+        // only filter what it lists (from memory; nothing is written). Edit message only opens the editor with the selected
+        // message and its Cancel closes it (nothing is saved until Save edit). Its two choices save conversation-history.json,
+        // typing a search or an edit is ui_set_text, choosing an app, a conversation or a message is ui_select, and Save edit,
+        // Delete message, Delete this conversation, Delete everything and Stop waiting changes write (deletes ask first; with
+        // HistoryAlsoThere on they also queue changes for Telegram and Discord), so they need --allow-ui-effects.
+        "OpenHistory", "HistoryClose", "HistorySearchRun", "HistoryShowAll", "HistoryEditMessage", "HistoryEditCancel",
         // The problem dialog's Close only closes it; its Open logs folder (Explorer) and every Copy button (the clipboard) need
         // --allow-ui-effects.
         "ProblemClose",
@@ -216,9 +219,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last action did (never a fact or a name).
         "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
-        // (conversations, exchanges, since when); the history window's status line (counts, or what a search found). Never what
-        // was said: the window's list and text (HistoryConversations, HistoryExchanges) are not readable values.
-        "HistoryStatus", "HistoryWindowStatus",
+        // (conversations, exchanges, since when, per app); the history window's status line (counts, or what a search found) and
+        // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
+        // window's lists (HistoryConversations, HistoryMessages, whose items are named "Conversation 2 (Telegram)" and
+        // "Message 3: Martlet · Discord") and the editor are not readable values.
+        "HistoryStatus", "HistoryWindowStatus", "HistoryPlatformStatus",
         // The selected paired host's Martlet release as this PC knows it (from its checks and the release it announces on each
         // network sync: "0.22.0, up to date", "Needs update from 0.21.0 to 0.22.0") and what this PC last did to update it; and,
         // for a Windows computer whose voice engine shares its graphics card with other roles, the warning that it can fall

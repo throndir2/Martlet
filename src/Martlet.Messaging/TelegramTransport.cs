@@ -8,7 +8,7 @@ namespace Martlet.Messaging;
 /// <summary>Telegram's Bot API (https://core.telegram.org/bots/api) with long polling: Martlet asks Telegram for new messages
 /// (getUpdates, waiting up to <see cref="PollSeconds"/> for one), so it needs no public address, open port or webhook. The bot
 /// token goes only to api.telegram.org, inside the request path, and never into an exception or log line.</summary>
-public sealed partial class TelegramTransport : IMessagingTransport
+public sealed partial class TelegramTransport : IMessagingTransport, IMessagingMessageControl
 {
     public static readonly Uri DefaultApi = new("https://api.telegram.org/");
     /// <summary>How long one getUpdates waits for a message before answering with none.</summary>
@@ -69,13 +69,31 @@ public sealed partial class TelegramTransport : IMessagingTransport
             var name = string.Join(" ", new[] { (string?)chat["first_name"] ?? (string?)from?["first_name"], (string?)chat["last_name"] ?? (string?)from?["last_name"] }
                 .Where(part => !string.IsNullOrWhiteSpace(part)));
             if (name.Length == 0) name = (string?)chat["title"] ?? (string?)chat["username"] ?? chatId;
-            messages.Add(new(chatId, name, (string?)message["text"], type == "private"));
+            messages.Add(new(chatId, name, (string?)message["text"], type == "private", message["message_id"]?.ToJsonString()));
         }
         return messages;
     }
 
-    public Task SendAsync(string chatId, string text, CancellationToken cancellation) =>
-        CallAsync("sendMessage", new JsonObject { ["chat_id"] = JsonNode.Parse(chatId), ["text"] = text }, TimeSpan.FromSeconds(30), cancellation);
+    public Task SendAsync(string chatId, string text, CancellationToken cancellation) => SendMessageAsync(chatId, text, cancellation);
+
+    public async Task<string> SendMessageAsync(string chatId, string text, CancellationToken cancellation)
+    {
+        var sent = await CallAsync("sendMessage", new JsonObject { ["chat_id"] = JsonNode.Parse(chatId), ["text"] = text }, TimeSpan.FromSeconds(30),
+            cancellation).ConfigureAwait(false);
+        return sent?["message_id"]?.ToJsonString() ?? throw new MessagingException(MessagingFailure.Protocol, "Telegram didn't say which message it sent.");
+    }
+
+    /// <summary>deleteMessage: a bot deletes its own messages and the person's in a private chat, for 48 hours.</summary>
+    public Task DeleteMessageAsync(string chatId, string messageId, CancellationToken cancellation) =>
+        CallAsync("deleteMessage", new JsonObject { ["chat_id"] = JsonNode.Parse(chatId), ["message_id"] = JsonNode.Parse(messageId) },
+            TimeSpan.FromSeconds(30), cancellation);
+
+    /// <summary>editMessageText: the bot's own text messages.</summary>
+    public Task EditMessageAsync(string chatId, string messageId, string text, CancellationToken cancellation) =>
+        CallAsync("editMessageText", new JsonObject
+        {
+            ["chat_id"] = JsonNode.Parse(chatId), ["message_id"] = JsonNode.Parse(messageId), ["text"] = text
+        }, TimeSpan.FromSeconds(30), cancellation);
 
     public Task TypingAsync(string chatId, CancellationToken cancellation) =>
         CallAsync("sendChatAction", new JsonObject { ["chat_id"] = JsonNode.Parse(chatId), ["action"] = "typing" }, TimeSpan.FromSeconds(15), cancellation);

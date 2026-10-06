@@ -48,6 +48,13 @@ How it works:
 - Martlet reads text only for now (photos, voice notes and stickers get a short
   note). A tool call or smart-home action that asks first waits for you at the
   PC and otherwise times out.
+- Each answered message is in Companion › Memory › Open conversation history
+  with its Telegram message IDs (yours and Martlet's reply pieces). Deleting a
+  message there deletes it in Telegram too (within Telegram's 48 hours), and
+  editing Martlet's reply edits it there; your own messages can't be edited by a
+  bot. See [Conversation history](MEMORY.md#conversation-history). WhatsApp's
+  Cloud API can't delete or edit sent messages, so WhatsApp messages are
+  deleted and edited on this PC only.
 
 **Disconnect** stops the bot, deletes the token and forgets the paired chats.
 **Remove** unpairs one chat.
@@ -141,7 +148,10 @@ answer is.
 
 A new app implements `IMessagingTransport` (connect, receive, send, typing,
 longest message) and reuses `MessagingBridge` for pairing, the allow-list,
-typing, splitting and retries. Discord has its own, richer foundation (servers,
+typing, splitting and retries. An app whose bot may find, delete and edit its
+messages also implements `IMessagingMessageControl` (send returning the
+message's ID, delete, edit), so the record of conversations keeps those IDs and
+deletes or edits there through `MessagingPlatform`. Discord has its own, richer foundation (servers,
 channels, people and chat modes) in [Discord](DISCORD.md). Other candidates:
 Matrix (`/sync` long polling, no public address needed) and Signal through
 `signal-cli`. A webhook-based app can reuse WhatsApp's pieces: a local
