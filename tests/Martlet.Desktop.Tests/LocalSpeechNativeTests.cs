@@ -45,6 +45,13 @@ public sealed class LocalSpeechNativeTests
             Assert.Equal("Sam", voices.Roster.Resolve(first.Speaker.Voice.Id)!.DisplayName);
             Assert.Equal(2, voices.Roster.Live.Count);
             Assert.True(File.Exists(Path.Combine(data.FullName, LocalVoices.RosterFile)));
+            // Until the owner names a voice, what it said is kept as its newest clips (written in the background).
+            var id = first.Speaker.Voice.Id;
+            for (var wait = 0; wait < 40 && voices.Clips.List(id).Count < 2; wait++) Thread.Sleep(50);
+            Assert.Equal(2, voices.Clips.List(id).Count);
+            Assert.All(voices.Clips.List(id), clip => Assert.InRange(clip.Seconds, 0.5, VoiceClips.MaximumSeconds));
+            voices.SetNames(id, "Sam", []);
+            Assert.Empty(voices.Clips.List(id));
             using var reloaded = new LocalVoices(data.FullName, "desk-test");
             Assert.Equal(voices.Roster.Digest(), reloaded.Roster.Digest());
         }

@@ -8,6 +8,15 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
+
+### Changed
+- People's voice cards are tidier: names are chips you can add, remove or pick as the one Martlet uses, and a voice can go by up to 40 names instead of 12. ([#477](https://github.com/throndir2/Martlet/pull/477))
+
+### Fixed
+- A voice no longer learns "no name yet" or similar placeholders as its name, and ones learned by mistake are dropped. ([#477](https://github.com/throndir2/Martlet/pull/477))
+
 ## [0.49.0] - 2026-10-06
 
 ### Added

@@ -91,7 +91,9 @@ public sealed record VoiceRoster
     public const int MaximumBytes = 1_048_576;
     public const int MaximumVoices = 64;
     public const int MaximumTombstones = 64;
-    public const int MaximumNames = 12;
+    /// <summary>The most names one voice goes by: as many as still keep a full list (every voice at its most) within
+    /// <see cref="MaximumBytes"/>.</summary>
+    public const int MaximumNames = 40;
     public const int MaximumNameLength = 48;
     public const int MaximumSamples = 5;
     private const long MaximumRevision = long.MaxValue / 4;

@@ -11,7 +11,8 @@ Voice recognition is part of Martlet and on by default: the engine and its two
 voice models ship with Martlet, so there is nothing to download, and Martlet
 starts learning who is talking from your first conversation. Turn it off on
 People at any time (your saved voices are kept). Parakeet stays optional and is
-downloaded only when you ask. Nothing is recorded or uploaded for either. Voices
+downloaded only when you ask. Nothing is uploaded for either, and the only audio
+kept is a few clips of voices you haven't named yet (see below). Voices
 are recognized and learned only from the microphone, never from
 [what the PC plays](CONVERSATION.md#hearing-what-this-pc-plays).
 
@@ -27,20 +28,27 @@ are recognized and learned only from the microphone, never from
 - **Your computers.** The list is the same on all your computers while **Keep
   Martlet the same on all my computers** is on. See
   [sharing](#sharing-between-your-computers).
+- **Keep the last 5 clips of voices you haven't named.** On unless you turn it
+  off (`voice-clips.txt`, this PC only; turning it off deletes every clip). See
+  [clips](#clips-of-voices-you-havent-named).
 - **Voices Martlet knows.** Every voice it has heard, the owner's first, then
-  named ones, then the most recently heard. For each voice you can:
-  - type its **Name** (always wins) and **Also called** (other names,
-    comma-separated, up to 12 in all; removing one here drops it). There is no Save button:
-    names save when you leave the field or press Enter (or two seconds after
-    you stop typing), then sync to your other computers, so a half-typed name
-    isn't shared;
-  - tick **This is my voice**;
-  - **Merge** it into another entry that is the same person (the names,
-    voiceprints and counts combine, and so do the facts Memory keeps for them;
-    it can't be split again);
-  - **What Martlet remembers about them** opens Memory showing that voice's
-    facts ([Whose memories](MEMORY.md#whose-memories));
-  - **Forget this voice** (its voiceprint and names are deleted; what Martlet
+  named ones, then the most recently heard. Each voice is one compact card:
+  - its **names** as chips, the one Martlet uses first (outlined). A voice goes
+    by up to 40 names. Click a name to make it the one Martlet uses; a name
+    marked **?** was only heard in conversation, and clicking it confirms it.
+    **×** removes a name. Type in the box and press Enter (or **Add**) to add
+    one; on a voice you haven't named, what you type becomes the name Martlet
+    uses (it always wins over learned names). Changes save at once and sync to
+    your other computers;
+  - **Hear them**: the voice's last few clips, newest first, while you haven't
+    named it. Play one to hear who it is;
+  - **This is me**;
+  - **Same person as...** then **Merge** (the names, voiceprints, counts and
+    clips combine, and so do the facts Memory keeps for them; it can't be
+    split again);
+  - **Memories** opens Memory showing that voice's facts
+    ([Whose memories](MEMORY.md#whose-memories));
+  - **Forget** (its voiceprint, names and clips are deleted; what Martlet
     remembers about them stays in Memory under *Forgotten voices* until you
     delete it).
   When two voices go by the same name, the page suggests merging them.
@@ -92,7 +100,7 @@ on), while speech-to-text runs:
    someone Martlet knows, up to eight other named voices. It answers at most
    six lines:
    - `NAME V3: Sam`: a name the voice goes by. A voice collects every name it
-     goes by (up to 12), each with a use count; the most used one is shown
+     goes by (up to 40, names you typed first), each with a use count; the most used one is shown
      until you type a name yourself.
    - `CALL V3: Sammy`: the name they ask to be called from now on; it becomes
      the learned name shown (a name you typed still wins).
@@ -105,7 +113,9 @@ on), while speech-to-text runs:
      named differently.
 
    Names go only to listed voices heard in the message, and only real names
-   (at most three words, not "Voice N"). **The companion's own names never
+   (at most three words, not "Voice N" or a placeholder such as "no name yet",
+   "unknown" or "anonymous"; one learned by mistake before this check is
+   dropped like the companion's own names below). **The companion's own names never
    become a voice's**: "Martlet", every persona's name and each word of it
    ("Jane" and "Doe" for *Jane Doe*), a name a persona's text gives it ("You
    are Jane", "Your name is Jane") and a name Martlet's reply gives itself
@@ -118,9 +128,26 @@ on), while speech-to-text runs:
    (never the names).
 
 Recognition waits at most 3 seconds beyond speech-to-text; a slow or failed
-recognition only means nobody is named for that message. Audio is never kept:
-the utterance's samples are a private copy that is cleared when recognition
-ends. `voices.json` holds only voiceprints (256 numbers per sample) and names.
+recognition only means nobody is named for that message. The utterance's
+samples are a private copy that is cleared when recognition ends; the only audio
+kept is a voice's clips while you haven't named it (below). `voices.json` holds
+only voiceprints (256 numbers per sample) and names.
+
+## Clips of voices you haven't named
+
+So you can tell who an unknown voice is, Martlet keeps what it said the last 5
+times it was recognized (or added), each at most 8 seconds: the stretch where
+that person spoke, or the whole utterance when it was too short to split. They
+are 16 kHz mono WAV files in `voice-clips\<voice ID>\` in Martlet's data
+folder, on this PC only: never synced to your other computers or hosts, never
+uploaded. The sixth clip replaces the oldest. Copies are taken while
+recognition runs and written in the background, so replies never wait for them.
+
+A voice keeps clips until you say who it is: type a name for it (or confirm a
+learned one), tick **This is me**, merge it into a voice you named, or forget
+it, and its clips are deleted. A name only learned in conversation keeps the
+clips, so you can check it. Merging moves the clips to the kept voice.
+Unticking **Keep the last 5 clips** deletes every clip and keeps no more.
 
 ## Sharing between your computers
 

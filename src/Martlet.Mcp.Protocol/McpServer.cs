@@ -144,7 +144,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
-            "(from the saved personas) and the most names one voice has. Read-only; no audio, network or models run.", new
+            "(from the saved personas) or a placeholder such as \"no name yet\", and the most names one voice has; and clips: whether " +
+            "People keeps the last few clips of voices not named yet (voice-clips.txt) and how many clips over how many voices (never " +
+            "the audio). Read-only; no audio, network or models run.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" }
@@ -1389,6 +1391,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     // Voices that learned one of the companion's own names; Martlet drops it when it next hears them.
                     withCompanionName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
                         companion.Matches(n.Text))),
+                    withPlaceholderName = list.Live.Count(v => v.Names.Any(n => n.Source == Martlet.Core.Speakers.VoiceNameSource.Conversation &&
+                        Martlet.Core.Speakers.VoiceUpdates.IsNotName(n.Text))),
                     mostNames = list.Live.Select(v => v.Names.Count).DefaultIfEmpty(0).Max(),
                     merged = list.Live.Sum(v => v.MergedVoices), tombstones = list.Voices.Count(v => v.Removed)
                 };
@@ -1413,8 +1417,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             },
             parakeet = Martlet.Sherpa.SherpaComponents.InstalledParakeetModels(speech).Count > 0,
             parakeetModels = ParakeetCheck.Status(directory, speech),
-            roster
+            roster,
+            clips = Clips()
         };
+
+        object Clips()
+        {
+            var root = Path.Combine(directory, "voice-clips");
+            int[] counts;
+            try { counts = Directory.Exists(root) ? Directory.GetDirectories(root).Select(d => Directory.GetFiles(d, "*.wav").Length).Where(n => n > 0).ToArray() : []; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { counts = []; }
+            return new { keep = Choice("voice-clips.txt") ?? "on (default)", voices = counts.Length, clips = counts.Sum() };
+        }
     }
 
     /// <summary>The optional absolute speechDirectory argument (where Parakeet is downloaded), or the current user's.</summary>

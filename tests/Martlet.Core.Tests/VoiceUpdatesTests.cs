@@ -41,6 +41,18 @@ public sealed class VoiceUpdatesTests
     }
 
     [Fact]
+    public void PlaceholdersAreNeverLearnedAsNames()
+    {
+        var (_, a, _) = Two();
+        var answer = $"NAME {a.Tag}: no name yet\nNAME {a.Tag}: Unknown\nCALL {a.Tag}: Name unknown\nNAME {a.Tag}: Anonymous\nNAME {a.Tag}: Nate";
+        var parsed = VoiceUpdates.Parse(answer, Tags(a), [a.Id], CompanionNames.Martlet);
+        Assert.Equal(new[] { "Nate" }, parsed.Updates.Select(u => u.Name).ToArray());
+        Assert.All(parsed.Refused, r => Assert.Equal("not a name", r.Reason));
+        Assert.True(VoiceUpdates.IsNotName("No name yet"));
+        Assert.False(VoiceUpdates.IsNotName("Mary Jane"));
+    }
+
+    [Fact]
     public void LinesAreCheckedAgainstHeardVoicesAndTheCompanionsNames()
     {
         var (_, a, b) = Two();

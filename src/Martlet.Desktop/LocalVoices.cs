@@ -21,7 +21,7 @@ internal sealed record HeardVoices(IReadOnlyList<HeardVoice> Voices, bool Overla
 }
 
 /// <summary>Recognizing the people Martlet hears. The voice list (voices.json) holds voiceprints and the names each voice goes
-/// by, never audio; the engine (sherpa-onnx with the WeSpeaker and pyannote models, AudioTranscriber's pipeline) ships in
+/// by, never audio (the last few clips of voices the owner hasn't named are kept apart, on this PC only: <see cref="VoiceClips"/>); the engine (sherpa-onnx with the WeSpeaker and pyannote models, AudioTranscriber's pipeline) ships in
 /// Martlet's folder and runs on this PC. Whether it is on (voice-recognition.txt, on unless the owner turned it off) is one of
 /// Martlet's shared settings, and the list itself travels through the paired hosts while Martlet is the same on all the
 /// owner's computers.</summary>
@@ -45,6 +45,7 @@ internal sealed class LocalVoices : IDisposable
         by = device ?? HostSetupCommands.SuggestedDeviceId();
         this.clock = clock ?? TimeProvider.System;
         Included = SpeakerEngine.Included(appDirectory);
+        Clips = new VoiceClips(directory);
         if (directory is null) return;
         Enabled = ReadChoice(EnabledFile) ?? true;
         try
@@ -56,6 +57,7 @@ internal sealed class LocalVoices : IDisposable
         {
             LoadError = "Couldn't read your saved voices. Martlet will start a new list.";
         }
+        Clips.Prune(roster);
     }
 
     /// <summary>The data folder's speech directory, where Parakeet is downloaded.</summary>
@@ -70,8 +72,12 @@ internal sealed class LocalVoices : IDisposable
     internal string? LoadError { get; private set; }
     internal string Device => by;
     internal VoiceRoster Roster { get { lock (gate) return roster; } }
+    /// <summary>The last few clips of each voice the owner hasn't named yet, on this PC only.</summary>
+    internal VoiceClips Clips { get; }
     /// <summary>Raised (off the dispatcher too) after the voice list changed.</summary>
     internal event Action? Changed;
+    /// <summary>Raised (off the dispatcher) after a new clip was kept.</summary>
+    internal event Action? ClipsChanged;
 
     internal void SetEnabled(bool on)
     {
@@ -102,6 +108,7 @@ internal sealed class LocalVoices : IDisposable
         lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
         var analysis = current.Analyze(samples);
         var heard = new List<HeardVoice>();
+        var spans = new List<(string Id, double Start, double End)>();
         var repaired = 0;
         lock (gate)
         {
@@ -116,11 +123,13 @@ internal sealed class LocalVoices : IDisposable
                 {
                     case VoiceMatchKind.Known:
                         roster = roster.Learn(match.Voice!.Id, speaker.Voiceprint, speaker.CleanSeconds, by, now);
+                        spans.Add((match.Voice.Id, speaker.Start, speaker.End));
                         heard.Add(new(roster.Resolve(match.Voice.Id), match.Kind, match.Score, speaker.CleanSeconds, false));
                         break;
                     case VoiceMatchKind.New:
                         var (next, added) = roster.Add(speaker.Voiceprint, speaker.CleanSeconds, by, now);
                         roster = next;
+                        if (added is not null) spans.Add((added.Id, speaker.Start, speaker.End));
                         heard.Add(new(added, added is null ? VoiceMatchKind.Unsure : VoiceMatchKind.New, match.Score, speaker.CleanSeconds, added is not null));
                         break;
                     default:
@@ -135,6 +144,7 @@ internal sealed class LocalVoices : IDisposable
                 if (match.Kind == VoiceMatchKind.Known)
                 {
                     roster = roster.Heard(match.Voice!.Id, by, now);
+                    spans.Add((match.Voice.Id, 0, samples.Length / (double)SpeakerEngine.SampleRate));
                     heard.Add(new(roster.Resolve(match.Voice.Id), match.Kind, match.Score, analysis.SpeechSeconds, false));
                 }
                 else heard.Add(new(null, match.Kind, match.Score, analysis.SpeechSeconds, false));
@@ -143,7 +153,7 @@ internal sealed class LocalVoices : IDisposable
                 for (var i = 0; i < heard.Count; i++)
                 {
                     if (heard[i].Voice is not { } voice) continue;
-                    var next = roster.DropHeardNames(voice.Id, companion.Matches, by, now);
+                    var next = roster.DropHeardNames(voice.Id, name => companion.Matches(name) || VoiceUpdates.IsNotName(name), by, now);
                     if (ReferenceEquals(next, roster)) continue;
                     roster = next;
                     repaired++;
@@ -151,26 +161,50 @@ internal sealed class LocalVoices : IDisposable
                 }
             if (!ReferenceEquals(before, roster)) SaveLocked();
         }
-        if (repaired > 0) ErrorLog.Info($"A voice heard went by Martlet's own name, learned by mistake; dropped it from {repaired} voice(s).");
+        KeepClips(samples, spans);
+        if (repaired > 0) ErrorLog.Info($"A voice heard went by Martlet's own name or a placeholder, learned by mistake; dropped it from {repaired} voice(s).");
         if (heard.Any(h => h.Voice is not null)) Changed?.Invoke();
         return new(heard, analysis.Overlap);
     }
 
+    /// <summary>Keeps what each voice the owner hasn't named yet said as its newest clip, copied now (the caller clears the
+    /// samples) and written in the background, so recognition never waits for the disk.</summary>
+    private void KeepClips(float[] samples, IReadOnlyList<(string Id, double Start, double End)> spans)
+    {
+        if (!Clips.Enabled || spans.Count == 0) return;
+        var current = Roster;
+        var now = Now;
+        var clips = new List<(string Id, float[] Samples)>();
+        foreach (var (id, start, end) in spans.DistinctBy(s => s.Id))
+        {
+            if (current.Resolve(id) is not { } voice || !VoiceClips.Wanted(voice)) continue;
+            var first = Math.Clamp((int)(start * SpeakerEngine.SampleRate), 0, samples.Length);
+            var last = Math.Clamp((int)(Math.Min(end, start + VoiceClips.MaximumSeconds) * SpeakerEngine.SampleRate), first, samples.Length);
+            if (last > first) clips.Add((voice.Id, samples[first..last]));
+        }
+        if (clips.Count == 0) return;
+        Task.Run(() =>
+        {
+            foreach (var (id, clip) in clips) Clips.Save(id, clip, now);
+            ClipsChanged?.Invoke();
+        });
+    }
+
     internal void SetNames(string id, string? name, IEnumerable<string> others) => Change(r => r.SetNames(id, name, others, by, Now));
 
-    /// <summary>Drops from every voice the names it learned in conversation that are the <paramref name="companion"/>'s own
-    /// (learning names refuses them now; older versions could pick one up). Names the owner typed stay. Returns how many voices
+    /// <summary>Drops from every voice the names it learned in conversation that are the <paramref name="companion"/>'s own or
+    /// placeholders such as "no name yet" (learning names refuses them now; older versions could pick one up). Names the owner typed stay. Returns how many voices
     /// changed.</summary>
     internal int DropCompanionNames(CompanionNames companion)
     {
         var changed = 0;
         Change(r => r.Live.Aggregate(r, (current, voice) =>
         {
-            var next = current.DropHeardNames(voice.Id, companion.Matches, by, Now);
+            var next = current.DropHeardNames(voice.Id, name => companion.Matches(name) || VoiceUpdates.IsNotName(name), by, Now);
             if (!ReferenceEquals(next, current)) changed++;
             return next;
         }));
-        if (changed > 0) ErrorLog.Info($"Dropped Martlet's own name, learned by mistake, from {changed} voice(s).");
+        if (changed > 0) ErrorLog.Info($"Dropped Martlet's own name or a placeholder, learned by mistake, from {changed} voice(s).");
         return changed;
     }
 
@@ -189,7 +223,11 @@ internal sealed class LocalVoices : IDisposable
     }
 
     internal void SetOwner(string id, bool owner) => Change(r => r.SetOwner(id, owner, by, Now));
-    internal void Join(string fromId, string intoId) => Change(r => r.Join(fromId, intoId, by, Now));
+    internal void Join(string fromId, string intoId)
+    {
+        if (Roster.Resolve(fromId) is { } from && Roster.Resolve(intoId) is { } into && from.Id != into.Id) Clips.Move(from.Id, into.Id);
+        Change(r => r.Join(fromId, intoId, by, Now));
+    }
     internal void Forget(string id) => Change(r => r.Forget(id, by, Now));
 
     /// <summary>Forgets every voice (tombstones remain, so other copies drop them too).</summary>
@@ -209,7 +247,11 @@ internal sealed class LocalVoices : IDisposable
                 changed = true;
             }
         }
-        if (changed) Changed?.Invoke();
+        if (changed)
+        {
+            Clips.Prune(Roster);
+            Changed?.Invoke();
+        }
         return changed;
     }
 
@@ -224,6 +266,7 @@ internal sealed class LocalVoices : IDisposable
             roster = next;
             SaveLocked();
         }
+        Clips.Prune(Roster);
         Changed?.Invoke();
     }
 

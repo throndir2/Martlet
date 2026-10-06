@@ -113,8 +113,20 @@ public static partial class VoiceUpdates
     private static readonly HashSet<string> NotNames = new(StringComparer.OrdinalIgnoreCase)
     {
         CompanionNames.Default, Nothing, "User", "Unknown", "Nobody", "Someone", "Me", "You", "Myself", "Yourself", "Assistant",
-        "Companion", "Speaker", "Person", "None", "No name"
+        "Companion", "Speaker", "Person", "None", "No name", "Anonymous", "Stranger", "Guest", "Nameless"
     };
+
+    // Words of placeholders, never of a name: "no name yet" (how an unnamed voice is listed), "unknown name", "not named".
+    private static readonly HashSet<string> PlaceholderWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "name", "named", "unnamed", "nameless", "unknown", "yet"
+    };
+
+    /// <summary>Whether <paramref name="name"/> is a placeholder rather than a name ("Unknown", "no name yet"), which a voice
+    /// never learns from conversation.</summary>
+    public static bool IsNotName(string? name) =>
+        VoiceRoster.CleanName(name) is not { } clean || NotNames.Contains(clean) || VoiceTag().IsMatch(clean) ||
+        clean.Split(' ').Any(PlaceholderWords.Contains);
 
     /// <summary>The changes in the model's answer. <paramref name="voices"/> maps the listed tags (V3) to voice IDs;
     /// <paramref name="heard"/> holds the IDs of the voices heard in the exchange, the only ones that may get or lose names.</summary>
@@ -169,7 +181,7 @@ public static partial class VoiceUpdates
                 refused.Add(new(number, "the voice wasn't heard in this message"));
                 continue;
             }
-            if (VoiceRoster.CleanName(value) is not { } name || name.Split(' ').Length > 3 || VoiceTag().IsMatch(name) || NotNames.Contains(name))
+            if (VoiceRoster.CleanName(value) is not { } name || name.Split(' ').Length > 3 || IsNotName(name))
             {
                 refused.Add(new(number, "not a name"));
                 continue;

@@ -29,6 +29,12 @@ public partial class MainWindow
             if (CompanionContent.IsKeyboardFocusWithin) peopleStale = true;
             else RenderTab();
         });
+        localVoices.ClipsChanged += () => Dispatcher.BeginInvoke(() =>
+        {
+            if (closing || openTab != CompanionTab.People) return;
+            if (CompanionContent.IsKeyboardFocusWithin) peopleStale = true;
+            else RenderTab();
+        });
         CompanionContent.LostKeyboardFocus += (_, _) =>
         {
             if (peopleStale && openTab == CompanionTab.People && !CompanionContent.IsKeyboardFocusWithin) RenderTab();
@@ -133,7 +139,7 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(status, "PeopleStatus");
         children.Add(status);
-        children.Add(Note("Martlet learns people's voices and names as you talk. Voice matching happens on this PC. Recordings are never saved.",
+        children.Add(Note("Martlet learns people's voices and names as you talk. Voice matching happens on this PC.",
             new Thickness(0, 0, 0, 8)));
         if (localVoices.LoadError is { } error) children.Add(Warning(error));
         if (!localVoices.Included) children.Add(Warning("Reinstall Martlet to recognize voices."));
@@ -146,6 +152,16 @@ public partial class MainWindow
         toggle.Checked += (_, _) => SetRecognition(true);
         toggle.Unchecked += (_, _) => SetRecognition(false);
         children.Add(toggle);
+        var clips = new CheckBox
+        {
+            Content = $"Keep the last {VoiceClips.MaximumClips} clips of voices you haven't named, so you can hear who they are",
+            IsChecked = localVoices.Clips.Enabled, Margin = new Thickness(0, 6, 0, 0)
+        };
+        clips.ToolTip = "Clips stay on this PC and are deleted once you name the voice, mark it as yours or forget it.";
+        AutomationProperties.SetAutomationId(clips, "PeopleKeepClips");
+        clips.Checked += (_, _) => SetKeepClips(true);
+        clips.Unchecked += (_, _) => SetKeepClips(false);
+        children.Add(clips);
         return Card([.. children]);
     }
 
@@ -157,6 +173,20 @@ public partial class MainWindow
             QueueSettingsSync();
             ActionText.Text = on ? "Voice recognition is on. Open conversations use it from your next message."
                 : "Voice recognition is off. Saved voices are kept.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ActionText.Text = $"Couldn't save your choice: {error.Message}";
+        }
+        RenderTab();
+    }
+
+    private void SetKeepClips(bool on)
+    {
+        try
+        {
+            localVoices.Clips.SetEnabled(on);
+            ActionText.Text = on ? "Martlet keeps a few clips of voices you haven't named." : "Martlet keeps no clips, and deleted the ones it had.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -191,8 +221,8 @@ public partial class MainWindow
             children.Add(Note("None yet. Turn recognition on and talk to Martlet. New voices will appear here.", new Thickness(0, 0, 0, 0)));
             return Card([.. children]);
         }
-        children.Add(Note("Name voices, add other names, merge duplicates, see what Martlet remembers about each, or forget voices. " +
-            "Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
+        children.Add(Note("Type a name to say who a voice is, and add as many other names as they go by. Click a name to make it the " +
+            "one Martlet uses; a name with ? was only heard in conversation. Changes sync to your computers.", new Thickness(0, 0, 0, 4)));
         foreach (var voice in voices) children.Add(VoiceEntry(voice, voices));
         children.Add(Row(PageButton("Forget all voices", ForgetAllVoices, link: true, id: "PeopleForgetAll")));
         return Card([.. children]);
@@ -203,68 +233,175 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             OptionTitle(voice.DisplayName, voice.Owner ? "you" : voice.Named ? null : "no name yet"),
-            Note($"{(voice.Named ? voice.Tag.Replace("V", "Voice ") + " · " : "")}heard {voice.Heard} time{(voice.Heard == 1 ? "" : "s")}, " +
-                $"last {Ago(voice.LastHeardAt)}" + (voice.OtherNames.Count > 0 ? $" · also called {string.Join(", ", voice.OtherNames)}" : "") +
-                (voice.MergedVoices > 0 ? $" · {voice.MergedVoices + 1} voices merged" : ""), new Thickness(0, 2, 0, 6))
+            Note($"{(voice.Named ? $"Voice {voice.Number} · " : "")}heard {voice.Heard} time{(voice.Heard == 1 ? "" : "s")}, last {Ago(voice.LastHeardAt)}" +
+                (voice.MergedVoices > 0 ? $" · {voice.MergedVoices + 1} voices merged" : ""), new Thickness(0, 2, 0, 4))
         };
         var twins = all.Where(other => other.Id != voice.Id && other.Named && voice.Named &&
             string.Equals(other.DisplayName, voice.DisplayName, StringComparison.OrdinalIgnoreCase)).ToArray();
         if (twins.Length > 0)
-            stack.Add(Warning($"{string.Join(", ", twins.Select(t => t.Tag.Replace("V", "Voice ")))} also goes by {voice.DisplayName}. " +
+            stack.Add(Warning($"{string.Join(", ", twins.Select(t => $"Voice {t.Number}"))} also goes by {voice.DisplayName}. " +
                 "If they're the same person, merge them below."));
+        stack.Add(VoiceNames(voice));
+        if (VoiceClipRow(voice) is { } clips) stack.Add(clips);
+        stack.Add(VoiceActions(voice, all));
+        return Option(stack, voice.Owner);
+    }
 
-        var name = new TextBox { Width = 220, Text = voice.Name ?? "", MaxLength = VoiceRoster.MaximumNameLength };
-        AutomationProperties.SetName(name, $"Name of {voice.DisplayName}");
-        AutomationProperties.SetAutomationId(name, "PeopleName-" + voice.Number);
-        var others = new TextBox { Width = 300, Text = string.Join(", ", voice.Names.Select(n => n.Text)
-            .Where(n => !string.Equals(n, voice.Name, StringComparison.OrdinalIgnoreCase))), MaxLength = 400 };
-        AutomationProperties.SetName(others, $"Other names of {voice.DisplayName}, comma-separated");
-        AutomationProperties.SetAutomationId(others, "PeopleOtherNames-" + voice.Number);
-        // No Save button: names save when you leave the field or press Enter, or after a pause in typing, and then sync to
-        // your other computers. A half-typed name isn't shared while you are still typing it.
-        var namesSave = new AutoSave(() =>
+    /// <summary>Every name the voice goes by as a chip, the one shown first: click a name to show it (which also confirms a
+    /// learned one), × to remove it. The box adds a name; on a voice the owner hasn't named, it becomes the name shown.</summary>
+    private WrapPanel VoiceNames(KnownVoice voice)
+    {
+        var row = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
+        var names = new[] { voice.DisplayName }.Concat(voice.OtherNames).Where(_ => voice.Named).ToArray();
+        for (var index = 0; index < names.Length; index++)
         {
-            SaveVoiceNames(voice, name.Text, others.Text);
-            return Task.FromResult(true);
-        }, TimeSpan.FromSeconds(2));
-        foreach (var box in new[] { name, others })
-        {
-            box.TextChanged += (_, _) => namesSave.Changed();
-            box.LostKeyboardFocus += (_, _) => { if (namesSave.Pending) namesSave.SaveNowAsync().Forget(); };
-            box.KeyDown += (_, args) => { if (args.Key == System.Windows.Input.Key.Enter) namesSave.SaveNowAsync().Forget(); };
+            var text = names[index];
+            var shown = index == 0;
+            var entry = voice.Names.FirstOrDefault(n => string.Equals(n.Text, text, StringComparison.OrdinalIgnoreCase));
+            var learned = entry?.Source == VoiceNameSource.Conversation && !string.Equals(voice.Name, text, StringComparison.OrdinalIgnoreCase);
+            var label = new Button
+            {
+                Content = learned ? text + " ?" : text, Padding = new Thickness(0), Margin = new Thickness(0),
+                FontWeight = shown ? FontWeights.SemiBold : FontWeights.Normal,
+                ToolTip = (learned ? $"Heard in conversation{(entry is { Uses: > 1 } ? $" {entry.Uses} times" : "")}. " : "") +
+                    (shown && !learned ? "The name Martlet uses." : shown ? "Click to confirm it." : "Click to make it the name Martlet uses.")
+            };
+            label.SetResourceReference(StyleProperty, "LinkButton");
+            label.SetResourceReference(ForegroundProperty, "TextBrush");
+            AutomationProperties.SetName(label, shown ? $"{text}, the name shown" : $"Show {text} as the name");
+            AutomationProperties.SetAutomationId(label, $"PeopleNameShow-{voice.Number}-{index}");
+            label.Click += (_, _) => { if (!shown || learned) SaveVoiceNames(voice, _ => text, all => all); };
+            var remove = new Button { Content = "\u00d7", Padding = new Thickness(6, 0, 0, 0), Margin = new Thickness(0), ToolTip = $"Remove {text}" };
+            remove.SetResourceReference(StyleProperty, "LinkButton");
+            AutomationProperties.SetName(remove, $"Remove {text}");
+            AutomationProperties.SetAutomationId(remove, $"PeopleNameRemove-{voice.Number}-{index}");
+            remove.Click += (_, _) => SaveVoiceNames(voice,
+                shownName => string.Equals(shownName, text, StringComparison.OrdinalIgnoreCase) ? null : shownName,
+                all => all.Where(n => !string.Equals(n, text, StringComparison.OrdinalIgnoreCase)));
+            var chip = new Border { Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { label, remove } } };
+            chip.SetResourceReference(StyleProperty, "Chip");
+            chip.VerticalAlignment = VerticalAlignment.Center;
+            if (shown) chip.SetResourceReference(Border.BorderBrushProperty, "AccentBrush");
+            row.Children.Add(chip);
         }
-        var names = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
-        names.Children.Add(Labeled("Name", name, 60));
-        names.Children.Add(Labeled("Also called", others, 90));
-        stack.Add(names);
 
-        var owner = new CheckBox { Content = "This is my voice", IsChecked = voice.Owner, Margin = new Thickness(0, 4, 0, 0) };
+        var full = voice.Names.Count >= VoiceRoster.MaximumNames;
+        var box = new TextBox { Width = 170, MaxLength = VoiceRoster.MaximumNameLength, IsEnabled = !full,
+            VerticalContentAlignment = VerticalAlignment.Center, Padding = new Thickness(8, 3, 8, 3), MinHeight = 30 };
+        AutomationProperties.SetName(box, voice.Named ? $"Add another name for {voice.DisplayName}" : $"Name {voice.DisplayName}");
+        AutomationProperties.SetAutomationId(box, "PeopleAddName-" + voice.Number);
+        var hint = Note(full ? $"{VoiceRoster.MaximumNames} names at most" : voice.Named ? "Add a name..." : "Who is this?", new Thickness(10, 0, 0, 0));
+        hint.IsHitTestVisible = false;
+        hint.VerticalAlignment = VerticalAlignment.Center;
+        box.TextChanged += (_, _) => hint.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        void Add()
+        {
+            var typed = box.Text.Trim();
+            if (typed.Length == 0) return;
+            if (VoiceRoster.CleanName(typed) is null)
+            {
+                ActionText.Text = $"Not added: names start with a letter and use at most {VoiceRoster.MaximumNameLength} characters.";
+                return;
+            }
+            SaveVoiceNames(voice, shownName => shownName ?? typed, all => all.Append(typed));
+        }
+        box.KeyDown += (_, args) => { if (args.Key == System.Windows.Input.Key.Enter) Add(); };
+        var field = new Grid { Margin = new Thickness(0, 4, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        field.Children.Add(box);
+        field.Children.Add(hint);
+        row.Children.Add(field);
+        var add = PageButton("Add", Add, link: true, id: "PeopleAddNameButton-" + voice.Number);
+        add.IsEnabled = !full;
+        add.Margin = new Thickness(0, 4, 0, 0);
+        add.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(add);
+        return row;
+    }
+
+    /// <summary>The voice's last few clips, until the owner names it: play one to hear who it is.</summary>
+    private WrapPanel? VoiceClipRow(KnownVoice voice)
+    {
+        if (!VoiceClips.Wanted(voice)) return null;
+        var clips = localVoices.Clips.List(voice.Id);
+        if (clips.Count == 0) return null;
+        var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var label = Note($"Hear them ({clips.Count}):", new Thickness(0, 0, 10, 0));
+        label.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetAutomationId(label, "PeopleClips-" + voice.Number);
+        row.Children.Add(label);
+        for (var index = 0; index < clips.Count; index++)
+        {
+            var clip = clips[index];
+            var play = PageButton($"\u25b6 {Ago(clip.At)}", () => PlayClip(clip), link: true, id: $"PeopleClip-{voice.Number}-{index}");
+            play.ToolTip = $"{clip.Seconds:0.#} s, {clip.At.LocalDateTime:g}";
+            row.Children.Add(play);
+        }
+        return row;
+    }
+
+    private void PlayClip(VoiceClip clip)
+    {
+        try
+        {
+            voicePlayer?.Stop();
+            voicePlayer = new System.Media.SoundPlayer(clip.Path);
+            voicePlayer.Play();
+            ActionText.Text = $"Playing a clip from {Ago(clip.At)}.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            ActionText.Text = $"Couldn't play the clip: {error.Message}";
+        }
+    }
+
+    /// <summary>This is me, Same person as (then Merge), what Martlet remembers about them and Forget, on one line.</summary>
+    private WrapPanel VoiceActions(KnownVoice voice, IReadOnlyList<KnownVoice> all)
+    {
+        var row = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+        var owner = new CheckBox { Content = "This is me", IsChecked = voice.Owner, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 16, 6) };
         AutomationProperties.SetAutomationId(owner, "PeopleOwner-" + voice.Number);
         owner.Checked += (_, _) => localVoices.SetOwner(voice.Id, true);
         owner.Unchecked += (_, _) => localVoices.SetOwner(voice.Id, false);
-        stack.Add(owner);
+        row.Children.Add(owner);
 
-        var merge = new ComboBox { Width = 220, ItemsSource = all.Where(v => v.Id != voice.Id).Select(v => v.DisplayName + " (" + v.Tag + ")").ToArray() };
-        AutomationProperties.SetName(merge, $"Merge {voice.DisplayName} into");
-        AutomationProperties.SetAutomationId(merge, "PeopleMergeTarget-" + voice.Number);
         var targets = all.Where(v => v.Id != voice.Id).ToArray();
-        var mergeRow = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-        mergeRow.Children.Add(Labeled("Same person as", merge, 110));
-        var mergeButton = PageButton("Merge", () =>
+        if (targets.Length > 0)
         {
-            if (merge.SelectedIndex < 0) { ActionText.Text = "Choose another voice to merge."; return; }
-            MergeVoices(voice, targets[merge.SelectedIndex]);
-        }, id: "PeopleMerge-" + voice.Number);
-        mergeButton.Margin = new Thickness(10, 0, 0, 0);
-        mergeButton.IsEnabled = targets.Length > 0;
-        mergeRow.Children.Add(mergeButton);
-        stack.Add(mergeRow);
+            var merge = new ComboBox { Width = 190, ItemsSource = targets.Select(v => v.Named ? $"{v.DisplayName} (Voice {v.Number})" : $"Voice {v.Number}").ToArray() };
+            AutomationProperties.SetName(merge, $"Same person as (merge {voice.DisplayName} into)");
+            AutomationProperties.SetAutomationId(merge, "PeopleMergeTarget-" + voice.Number);
+            var hint = Note("Same person as...", new Thickness(10, 0, 0, 0));
+            hint.IsHitTestVisible = false;
+            hint.VerticalAlignment = VerticalAlignment.Center;
+            var field = new Grid { Margin = new Thickness(0, 0, 8, 6), VerticalAlignment = VerticalAlignment.Center };
+            field.Children.Add(merge);
+            field.Children.Add(hint);
+            row.Children.Add(field);
+            var mergeButton = PageButton("Merge", () =>
+            {
+                if (merge.SelectedIndex >= 0) MergeVoices(voice, targets[merge.SelectedIndex]);
+            }, link: true, id: "PeopleMerge-" + voice.Number);
+            mergeButton.IsEnabled = false;
+            mergeButton.VerticalAlignment = VerticalAlignment.Center;
+            mergeButton.Margin = new Thickness(0, 0, 16, 6);
+            merge.SelectionChanged += (_, _) =>
+            {
+                hint.Visibility = merge.SelectedIndex < 0 ? Visibility.Visible : Visibility.Collapsed;
+                mergeButton.IsEnabled = merge.SelectedIndex >= 0;
+            };
+            row.Children.Add(mergeButton);
+        }
 
-        stack.Add(Row(
-            PageButton("What Martlet remembers about them", () => OpenMemoryAsync(voice.Id).Forget(), link: true,
-                id: "PeopleMemories-" + voice.Number),
-            PageButton("Forget this voice", () => ForgetVoice(voice), link: true, id: "PeopleForget-" + voice.Number)));
-        return Option(stack, voice.Owner);
+        var memories = PageButton("Memories", () => OpenMemoryAsync(voice.Id).Forget(), link: true, id: "PeopleMemories-" + voice.Number);
+        memories.ToolTip = "What Martlet remembers about them";
+        foreach (var link in new[] { memories, PageButton("Forget", () => ForgetVoice(voice), link: true, id: "PeopleForget-" + voice.Number) })
+        {
+            link.VerticalAlignment = VerticalAlignment.Center;
+            link.Margin = new Thickness(0, 0, 16, 6);
+            row.Children.Add(link);
+        }
+        return row;
     }
 
     private static DockPanel Labeled(string label, UIElement control, double width)
@@ -284,33 +421,23 @@ public partial class MainWindow
             : when.LocalDateTime.ToString("d");
     }
 
-    /// <summary>Saves a voice's names when they differ from what is saved; the change syncs to your other computers shortly
-    /// after. The page isn't rebuilt under your typing; it refreshes when you leave it.</summary>
-    private void SaveVoiceNames(KnownVoice voice, string name, string others)
+    /// <summary>Changes a voice's names as they are now (the page may be older than the list): <paramref name="name"/> turns
+    /// the name the owner chose (null when none) into the one to show (null leaves it to the names learned), and
+    /// <paramref name="names"/> turns every name it goes by into the ones it should. The change syncs to your other computers
+    /// shortly after.</summary>
+    private void SaveVoiceNames(KnownVoice voice, Func<string?, string?> name, Func<IEnumerable<string>, IEnumerable<string>> names)
     {
         if (closing) return;
-        var typed = name.Trim();
-        if (typed.Length > 0 && VoiceRoster.CleanName(typed) is null)
-        {
-            ActionText.Text = $"Not saved yet: names must start with a letter and use at most {VoiceRoster.MaximumNameLength} characters.";
-            return;
-        }
-        var list = others.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var rejected = list.Where(n => VoiceRoster.CleanName(n) is null).ToArray();
-        var current = localVoices.Roster.Resolve(voice.Id) ?? voice;
-        var wanted = (typed.Length == 0 ? Array.Empty<string>() : [VoiceRoster.CleanName(typed)!]).Concat(list.Select(VoiceRoster.CleanName).OfType<string>())
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (string.Equals(current.Name ?? "", typed.Length == 0 ? "" : VoiceRoster.CleanName(typed), StringComparison.Ordinal) &&
-            wanted.Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(current.Names.Select(n => n.Text).Order(StringComparer.OrdinalIgnoreCase),
-                StringComparer.OrdinalIgnoreCase))
-            return;
         try
         {
-            localVoices.SetNames(voice.Id, typed.Length == 0 ? null : typed, list);
-            ActionText.Text = $"Saved the names of {localVoices.Roster.Resolve(voice.Id)?.DisplayName ?? voice.DisplayName}." +
-                (rejected.Length > 0 ? $" Left out: {string.Join(", ", rejected)}." : "");
+            if (localVoices.Roster.Resolve(voice.Id) is not { } current) return;
+            localVoices.SetNames(current.Id, name(current.Name), names(current.Names.Select(n => n.Text)).ToArray());
+            var now = localVoices.Roster.Resolve(voice.Id);
+            ActionText.Text = $"Saved the names of {now?.DisplayName ?? voice.DisplayName}.";
         }
         catch (ContractException error) { ActionText.Text = error.Message; }
+        // After the click returns: the page is rebuilt, the button with it.
+        Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.People) RenderTab(); });
     }
 
     private void MergeVoices(KnownVoice from, KnownVoice into)

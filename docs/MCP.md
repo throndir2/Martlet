@@ -323,8 +323,11 @@ and `models`, each with `id`, `name`, `languages`, `englishOnly`,
 `recommended` and `inUse`), and counts from `voices.json` (voices, named, owner, with
 learned names, `withCompanionName`: voices that learned one of the companion's
 own names from the saved personas, which Martlet drops when it next hears them,
-`mostNames`: the most names one voice has, merged, tombstones). It never returns
-names, voiceprints or audio and runs no model.
+`withPlaceholderName`: voices that learned a placeholder such as "no name
+yet", dropped the same way, `mostNames`: the most names one voice has, merged,
+tombstones) and `clips` (`keep`: People's *Keep the last 5 clips* choice,
+`voices` and `clips`: how many clips of voices not named yet are kept). It never
+returns names, voiceprints or audio and runs no model.
 
 `voices_naming_check` rehearses [learning names](VOICES.md#what-happens-in-a-conversation)
 with the production checks and changes (`CompanionNames`, `VoiceUpdates` and the
@@ -2897,18 +2900,23 @@ or *in use*: "Fastest in English  ·  recommended") and
 `ListenParakeetModelState-<model ID>` (its name, languages, what it is good
 at, its memory and *Downloaded.*, *Downloads once: 477 MB.* or, while it
 downloads, *Downloading: 46% of 477 MB...*); snapshots return
-these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice (`PeopleName-3`,
-`PeopleOtherNames-3`, `PeopleOwner-3`, `PeopleMergeTarget-3`,
-`PeopleMerge-3`, `PeopleForget-3`; there is no Save button: a name saves when
-its field loses focus, on Enter or two seconds after typing stops, then syncs);
-like `PeopleRecognize` (ticked by default; a shared setting),
+these status texts, as does the talk window's `LiveStatus` (the line under "Martlet": what it is doing, or why the last reply failed, naming the job that failed: *Martlet couldn't speak. ...* for the voice, and *Your Martlet host <ID> didn't answer ...* when the job runs on a paired host). Each voice's controls are numbered by voice: its name chips
+`PeopleNameShow-3-<i>` (make name *i* the one shown; the first is the one
+shown) and `PeopleNameRemove-3-<i>`, the box `PeopleAddName-3` with
+`PeopleAddNameButton-3` (Add; Enter also adds), `PeopleClip-3-<i>` (plays
+clip *i*, newest first), `PeopleOwner-3` (*This is me*),
+`PeopleMergeTarget-3` with `PeopleMerge-3` (enabled once a voice is chosen)
+and `PeopleForget-3`; names save at once, then sync. `PeopleClips-3` reads
+*Hear them (N):* while voice 3 has clips (a passive value). Like
+`PeopleRecognize` (ticked by default; a shared setting), `PeopleKeepClips`
+(ticked by default; this PC only; unticking deletes every clip),
 `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet-<model ID>` (*Download
 and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),
 they
 change data or download and need `--allow-ui-effects` (People has no sharing
 switch of its own: the list follows `ClusterSync`). Each voice's
-`PeopleMemories-3` (*What Martlet remembers about them*) only opens Memory
+`PeopleMemories-3` (*Memories*: what Martlet remembers about them) only opens Memory
 showing that voice's facts, so it is a passive click; read `MemoryFactStatus`
 there (*Showing N.*) or `memory_status` for whose facts are. On Devices, `Node-<id>`
 selects a device on the map (`Node-this-pc`, `Node-host:<host ID>`,
