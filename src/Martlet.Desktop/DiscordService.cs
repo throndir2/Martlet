@@ -20,6 +20,7 @@ internal sealed partial class DiscordService : IAsyncDisposable
         this.vault = vault;
         preferences = DiscordPreferences.Load(directory);
         Bot.Changed += _ => Changed?.Invoke();
+        InitializeVoice();
     }
 
     internal DiscordBot Bot { get; } = new();
