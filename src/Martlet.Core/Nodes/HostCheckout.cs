@@ -1,6 +1,6 @@
 namespace Martlet.Core.Nodes;
 
-/// <summary>The shell that runs martlet-host on a native Ubuntu host over SSH. The engine runs from the Martlet source in
+/// <summary>The shell that runs martlet-host on a native Linux host over SSH. The engine runs from the Martlet source in
 /// ~/Martlet: a git checkout the host clones and updates itself, or, on a computer without internet access, a copy Martlet
 /// unpacked there from files this PC sent (<see cref="HostSupply"/>; the engine then gets MARTLET_SUPPLY and builds from
 /// those files). The text is POSIX sh on one line without double quotes or percent signs, so it also fits the Windows
@@ -21,8 +21,11 @@ public static class HostCheckout
     /// <summary>Makes sure git and a git checkout in ~/Martlet exist. A copy that came from this PC (or anything else that
     /// isn't a checkout) moves to ~/.cache/martlet/source.previous.</summary>
     internal const string Clone =
-        "command -v git >/dev/null 2>&1 || { sudo apt-get update -q && sudo apt-get install -y git; } </dev/null || true; " +
-        "command -v git >/dev/null 2>&1 || { echo 'Stopped: git is not installed here and could not be installed (sudo apt-get install git). " +
+        "command -v git >/dev/null 2>&1 || { if command -v apt-get >/dev/null 2>&1; then sudo apt-get update -q && sudo apt-get install -y git; " +
+        "elif command -v dnf >/dev/null 2>&1; then sudo dnf install -y git; elif command -v yum >/dev/null 2>&1; then sudo yum install -y git; " +
+        "elif command -v zypper >/dev/null 2>&1; then sudo zypper --non-interactive install git; " +
+        "elif command -v pacman >/dev/null 2>&1; then sudo pacman -Sy --noconfirm --needed git; fi; } </dev/null || true; " +
+        "command -v git >/dev/null 2>&1 || { echo 'Stopped: git is not installed here and could not be installed with the system package manager. " +
         "If this computer has no internet access, set it up from Martlet, which sends what it needs from your PC.' >&2; exit 1; }; " +
         "if [ ! -d ~/Martlet/.git ]; then mkdir -p ~/.cache/martlet && rm -rf ~/.cache/martlet/clone && " +
         "{ git clone -q --depth 1 " + Repository + " ~/.cache/martlet/clone </dev/null || " +

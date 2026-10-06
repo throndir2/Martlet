@@ -194,10 +194,10 @@ requirements, terms, secrets, choices, registry login, pinned assets,
 loopback-only Compose service, readiness, and a gateway route listed in
 `host.json` `roles`. Audio2Face is the first role; other roles need their gateway
 relay worker before they are listed. The same engine runs by several methods:
-natively on Ubuntu, or as the `martlet-host` container image on any Docker host
+natively on any Linux with systemd, or as the `martlet-host` container image on any Docker host
 (including Windows with Docker Desktop and remote Docker), launched on the host
 itself or from the desktop's **Martlet hosts** window (this PC via Docker Desktop,
-another computer over SSH with Docker or native Ubuntu). Over SSH the desktop
+another computer over SSH with Docker or natively on Linux). Over SSH the desktop
 drives everything itself (Martlet's own key after one password, pinned host key,
 unattended `martlet-host --yes` with the owner's click as the confirmation) and
 pairs automatically; elsewhere the host shows its address and a short one-use code (`martlet-host pair`) that the owner types in Martlet. The Docker method was run end to end on Windows Docker

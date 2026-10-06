@@ -36,7 +36,7 @@
 # it, and Martlet's automatic updates (no terminal, no --yes) stop with exit 75 and "MARTLET-BUSY ..." instead (see below).
 #
 # Methods (same commands, same roles; see README.md):
-#   native  Ubuntu: ./deploy/host/martlet-host <command> (locally or over SSH)
+#   native  any x86_64 Linux with systemd: ./deploy/host/martlet-host <command> (locally or over SSH)
 #   docker  any Docker host, including Windows (Docker Desktop) and remote Docker over SSH:
 #           docker run --rm -it -u 0 -v /var/run/docker.sock:/var/run/docker.sock \
 #             -e MARTLET_HOST_ADDRESS=<host LAN IPv4> martlet-host <command>
@@ -89,7 +89,7 @@ else
   GW_APP="${DATA}/gateway"
   PROJECTS="${DATA}/roles"
   DOTNET="${HOME}/.dotnet/dotnet"
-  # .NET reads culture data from ICU. A minimal Ubuntu without libicu (and without internet access to install it) builds
+  # .NET reads culture data from ICU. A minimal Linux without libicu (and without internet access to install it) builds
   # and runs the gateway in invariant globalization mode; the gateway uses no culture-specific behavior.
   if ! { PATH="${PATH}:/usr/sbin:/sbin" ldconfig -p 2>/dev/null | grep -q 'libicuuc\.so' || compgen -G '/usr/lib/*/libicuuc.so.*' >/dev/null; }; then
     export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
@@ -659,12 +659,41 @@ require_gpu() {
     return
   fi
   note "No working NVIDIA driver was found (nvidia-smi failed)."
-  if ask "Install the recommended Ubuntu NVIDIA driver with 'sudo ubuntu-drivers install'? A reboot is required afterwards."; then
+  if [[ " $(. /etc/os-release 2>/dev/null; printf '%s %s' "${ID:-}" "${ID_LIKE:-}") " == *" ubuntu "* ]] &&
+     ask "Install the recommended NVIDIA driver with 'sudo ubuntu-drivers install'? A reboot is required afterwards."; then
     require_packages "the NVIDIA driver" ubuntu-drivers:ubuntu-drivers-common
     sudo ubuntu-drivers install
     fail "Driver installed. Reboot, then run the same martlet-host command again."
   fi
-  fail "This role needs an NVIDIA GPU with a working driver."
+  fail "This role needs an NVIDIA GPU with a working driver. Install your distribution's NVIDIA driver, reboot, then try again."
+}
+
+# The system package manager (any distribution): apt-get, dnf, yum, zypper or pacman; empty when there is none of them.
+package_manager() {
+  local tool
+  for tool in apt-get dnf yum zypper pacman; do
+    command -v "${tool}" >/dev/null 2>&1 && { printf '%s' "${tool}"; return 0; }
+  done
+  return 0
+}
+
+# Docker Engine with the compose plugin: the distribution's own packages where they include compose v2, otherwise
+# Docker's install script (https://get.docker.com: Debian, Fedora, CentOS, RHEL and others).
+install_docker() {
+  local pm script
+  pm="$(package_manager)"
+  case "${pm}" in
+    apt-get)
+      sudo apt-get update
+      if apt-cache show docker-compose-v2 >/dev/null 2>&1; then sudo apt-get install -y docker.io docker-compose-v2; return; fi ;;
+    pacman) sudo pacman -Sy --noconfirm --needed docker docker-compose; return ;;
+    zypper) sudo zypper --non-interactive install docker docker-compose; return ;;
+  esac
+  require_curl "Docker's install script"
+  script="$(mktemp)"
+  curl -fsSL https://get.docker.com -o "${script}" || { rm -f "${script}"; fail "Could not download Docker's install script."; }
+  sudo sh "${script}" || { rm -f "${script}"; fail "Docker's install script failed; install Docker Engine with compose, then try again."; }
+  rm -f "${script}"
 }
 
 require_docker() {
@@ -673,9 +702,9 @@ require_docker() {
     return
   fi
   if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
-    ask "Install Ubuntu's Docker Engine and Compose (sudo apt-get install docker.io docker-compose-v2)?" ||
+    ask "Install Docker Engine and Compose with the system package manager (or Docker's install script)?" ||
       fail "Docker Engine with the compose plugin is required."
-    sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2
+    install_docker
     sudo systemctl enable --now docker
   fi
   if docker info >/dev/null 2>&1; then DOCKER=(docker); return; fi
@@ -683,11 +712,12 @@ require_docker() {
      ask "Add ${USER} to the docker group so role services can be managed without sudo (takes effect after logging in again)?"; then
     sudo usermod -aG docker "${USER}"
   fi
-  DOCKER=(sudo -E docker)
+  DOCKER=(sudo docker)
 }
 
-# Bare-metal minimal Ubuntu (Server "minimized", Desktop) can lack tools the engine uses. Each argument is
-# <command or absolute path>:<package>; only the packages whose command or file is missing are installed, after one yes.
+# A minimal system (Ubuntu Server "minimized", a bare-metal install of any distribution) can lack tools the engine
+# uses. Each argument is <command or absolute path>:<package>; only the packages whose command or file is missing are
+# installed with the system package manager, after one yes.
 require_packages() {
   local reason="$1" entry check missing=()
   shift
@@ -698,26 +728,56 @@ require_packages() {
     [[ " ${missing[*]:-} " == *" ${entry#*:} "* ]] || missing+=("${entry#*:}")
   done
   [[ ${#missing[@]} -eq 0 ]] && return
-  ask "Install missing Ubuntu packages for ${reason} (sudo apt-get install ${missing[*]})?" ||
+  local pm; pm="$(package_manager)"
+  [[ -n "${pm}" ]] || fail "${missing[*]} is required for ${reason}; install it, then try again."
+  ask "Install missing packages for ${reason} (sudo ${pm} install ${missing[*]})?" ||
     fail "${missing[*]} is required for ${reason}."
-  sudo apt-get update && sudo apt-get install -y "${missing[@]}" || fail "Could not install ${missing[*]}."
+  install_packages "${missing[@]}" || fail "Could not install ${missing[*]}."
 }
 
+install_packages() {
+  case "$(package_manager)" in
+    apt-get) sudo apt-get update && sudo apt-get install -y "$@" ;;
+    dnf) sudo dnf install -y "$@" ;;
+    yum) sudo yum install -y "$@" ;;
+    zypper) sudo zypper --non-interactive install "$@" ;;
+    pacman) sudo pacman -Sy --noconfirm --needed "$@" ;;
+    *) return 1 ;;
+  esac
+}
+
+# The CA bundle where this distribution keeps it (Debian/Ubuntu/Arch, Fedora/RHEL, openSUSE).
 CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+for _bundle in /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/ca-bundle.pem; do
+  [[ -e "${CA_BUNDLE}" || ! -e "${_bundle}" ]] || CA_BUNDLE="${_bundle}"
+done
 require_curl() { require_packages "${1:-downloads}" curl:curl "${CA_BUNDLE}:ca-certificates"; }
 
 require_nvidia_toolkit() {
   [[ "${MODE}" == docker ]] && return
   command -v nvidia-ctk >/dev/null 2>&1 && return
-  ask "Install the NVIDIA Container Toolkit from NVIDIA's apt repository and configure Docker for GPUs?" ||
+  ask "Install the NVIDIA Container Toolkit from NVIDIA's package repository and configure Docker for GPUs?" ||
     fail "The NVIDIA Container Toolkit is required for GPU containers."
-  require_packages "the NVIDIA Container Toolkit" curl:curl "${CA_BUNDLE}:ca-certificates" gpg:gnupg
-  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
-    sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-  curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' |
-    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
-  sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+  local rpm=https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo
+  require_curl "the NVIDIA Container Toolkit"
+  case "$(package_manager)" in
+    apt-get)
+      require_packages "the NVIDIA Container Toolkit" gpg:gnupg
+      curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
+        sudo gpg --dearmor --yes -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' |
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
+      sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit ;;
+    dnf|yum)
+      curl -fsSL "${rpm}" | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo >/dev/null
+      sudo "$(package_manager)" install -y nvidia-container-toolkit ;;
+    zypper)
+      sudo zypper --non-interactive ar -f "${rpm}" nvidia-container-toolkit 2>/dev/null || true
+      sudo zypper --non-interactive --gpg-auto-import-keys install nvidia-container-toolkit ;;
+    pacman) sudo pacman -Sy --noconfirm --needed nvidia-container-toolkit ;;
+    *) fail "Install the NVIDIA Container Toolkit (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/), then try again." ;;
+  esac
   sudo nvidia-ctk runtime configure --runtime=docker
   sudo systemctl restart docker
 }
@@ -1607,7 +1667,8 @@ cmd_setup() {
   [[ $EUID -ne 0 ]] || fail "Run as your normal user; martlet-host asks before using sudo."
   if [[ "${MODE}" == native ]]; then
     [[ "$(uname -m)" == "x86_64" ]] || fail "Only x86_64 hosts are supported."
-    grep -q '^ID=ubuntu' /etc/os-release || fail "Only Ubuntu hosts are supported natively; use the Docker method elsewhere."
+    command -v systemctl >/dev/null 2>&1 ||
+      fail "Native setup needs a Linux with systemd (it runs the gateway as a user service); use the Docker method elsewhere."
     [[ -f "${REPO}/src/Martlet.Gateway.Host.Linux/Martlet.Gateway.Host.Linux.csproj" ]] || fail "Run from a Martlet source checkout."
     say "1/4 Martlet gateway"
     # Everything a bare-metal minimal Ubuntu may lack, checked up front so setup asks at most once. Supplied (offline)
@@ -1627,9 +1688,14 @@ cmd_setup() {
   note "Desktops will connect to https://$(settings_value lan_ip):$(settings_value port)"
   write_config
   if [[ "${MODE}" == native ]]; then
+    local lan; lan="$(settings_value lan_ip | cut -d. -f1-3).0/24"
     if systemctl is-active --quiet ufw 2>/dev/null &&
        ask "The ufw firewall is active. Allow TCP $(settings_value port) from your private LAN to the gateway?"; then
-      sudo ufw allow proto tcp from "$(settings_value lan_ip | cut -d. -f1-3).0/24" to any port "$(settings_value port)"
+      sudo ufw allow proto tcp from "${lan}" to any port "$(settings_value port)"
+    elif systemctl is-active --quiet firewalld 2>/dev/null &&
+       ask "The firewalld firewall is active. Allow TCP $(settings_value port) from your private LAN to the gateway?"; then
+      local rule="rule family=ipv4 source address=${lan} port port=$(settings_value port) protocol=tcp accept"
+      sudo firewall-cmd --permanent --add-rich-rule="${rule}" && sudo firewall-cmd --add-rich-rule="${rule}"
     fi
     mkdir -p "${HOME}/.local/bin"
     ln -sf "${HERE}/martlet-host" "${HOME}/.local/bin/martlet-host"
@@ -1790,7 +1856,13 @@ role_compose() {
   secret_env+=("COMPOSE_PROFILES=${profiles}")
   # Present only when the role was added to run on the NVIDIA GPU (role.conf gpu=optional|<overlay>).
   if [[ -f "${project}/compose.gpu.yaml" ]]; then files+=(-f compose.gpu.yaml); fi
-  ( cd "${project}" && env "${secret_env[@]}" "${DOCKER[@]}" compose -p "martlet-${role}" --env-file .env "${files[@]}" "$@" )
+  # Through sudo, name the variables to keep: sudo-rs (Ubuntu 25.10's sudo) ignores -E.
+  local docker=("${DOCKER[@]}") names=() pair
+  if [[ "${docker[0]}" == sudo ]]; then
+    for pair in "${secret_env[@]}"; do names+=("${pair%%=*}"); done
+    docker=(sudo "--preserve-env=$(IFS=,; printf '%s' "${names[*]}")" "${docker[@]:1}")
+  fi
+  ( cd "${project}" && env "${secret_env[@]}" "${docker[@]}" compose -p "martlet-${role}" --env-file .env "${files[@]}" "$@" )
 }
 
 installed_roles() {

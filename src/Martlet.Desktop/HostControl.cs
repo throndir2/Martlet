@@ -41,7 +41,7 @@ internal sealed record PairedHost
     {
         HostSetupMethod.ThisPcDocker => "This PC with Docker Desktop",
         HostSetupMethod.SshDocker => $"SSH to {SshTarget ?? "(not set)"} (Docker)",
-        HostSetupMethod.SshNative => $"SSH to {SshTarget ?? "(not set)"} (Ubuntu)",
+        HostSetupMethod.SshNative => $"SSH to {SshTarget ?? "(not set)"} (native)",
         _ => "Martlet on that computer (paired connection)"
     };
 }

@@ -21,9 +21,9 @@ Windows desktop (Martlet) --pinned TLS, paired once--> host: Martlet gateway :94
 | **Desktop: this PC with Docker Desktop** | Windows + Docker Desktop (WSL 2) | Martlet > **Martlet hosts** > *This PC* | containers `martlet-host-net` + `martlet-host-gateway` |
 | **Desktop: another Windows PC that runs Martlet** | Martlet there (*Use as a Martlet host*) + Docker Desktop | Martlet on that PC sets itself up; pair the main PC with the code its host dashboard shows. The main PC then updates it and installs roles there [through Martlet on that PC](../../docs/CLUSTER.md#commands-between-your-computers) | same containers on that PC |
 | **Desktop: another computer over SSH, Docker** | SSH server + Docker (the one prerequisite; Linux x86_64; for another Windows PC install Martlet there and use *This PC*) | Martlet hosts > *over SSH, using Docker* > **Add this computer** (runs in Martlet) | same containers on that host |
-| **Desktop: another computer over SSH, native** | Ubuntu 24.04 x86_64 with SSH | Martlet hosts > *over SSH, native Ubuntu* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
+| **Desktop: another computer over SSH, native** | Any x86_64 Linux with systemd, SSH and sudo (Ubuntu, Debian, Fedora, openSUSE, Arch, ...; no version check) | Martlet hosts > *over SSH, native* > **Add this computer** (runs in Martlet) | systemd user service `martlet-host-gateway` |
 | **On the host, Docker** | any Docker host | `docker run ... martlet-host <command>` (below) | containers |
-| **On the host, native** | Ubuntu 24.04 x86_64 | `./deploy/host/martlet-host <command>` (below) | systemd user service |
+| **On the host, native** | Any x86_64 Linux with systemd | `./deploy/host/martlet-host <command>` (below) | systemd user service |
 
 For SSH hosts the desktop does everything itself (see [Driving Linux hosts from
 Windows](#driving-linux-hosts-from-windows-over-ssh)): you enter `user@computer`
@@ -209,7 +209,7 @@ allowed with a note. See [Platforms](../../docs/PLATFORMS.md).
 
 The report also has a `features` array (up to 16 lowercase tokens). The host
 uses it for route-less and smart-home capabilities: `host-network` means this
-method can run LAN host-network roles (native Ubuntu, or Docker on Linux Engine
+method can run LAN host-network roles (native Linux, or Docker on Linux Engine
 but not Docker Desktop); installed route-less roles add their `feature=` value
 such as `home-assistant`; probes add `ha-existing` (something else on port
 8123), `mqtt-broker` (port 1883), smart-home container names (`zigbee2mqtt`,
@@ -304,9 +304,9 @@ or over `ssh -t user@host`. How it fits together:
   Remove-NetFirewallRule -Name Martlet-Host-Gateway   # to close it again
   ```
 
-### Native Ubuntu
+### Native Linux
 
-On Ubuntu 24.04 x86_64, as your normal user:
+On any x86_64 Linux with systemd (any distribution and release), as your normal user:
 
 ```sh
 git clone https://github.com/throndir2/Martlet ~/Martlet
@@ -321,9 +321,12 @@ private LAN address and port desktops use, creates the host identity, installs a
 systemd user service (`martlet-host-gateway`), optionally enables lingering so it
 runs at boot without a login, and links `martlet-host` into `~/.local/bin`.
 Setup first checks for curl, CA certificates and pciutils, which a bare-metal
-minimal Ubuntu may lack, and installs only the missing ones after a single `yes`.
-Missing Docker, NVIDIA driver (with `ubuntu-drivers-common`) or NVIDIA Container
-Toolkit (with `gnupg`) are likewise checked first and installed only after a `yes`. On a minimal Ubuntu without ICU (`libicu`), the build and the gateway
+minimal install may lack, and installs only the missing ones after a single `yes`.
+Missing Docker, NVIDIA driver (with `ubuntu-drivers-common`, on Ubuntu) or NVIDIA Container
+Toolkit are likewise checked first and installed only after a `yes`, with the
+system package manager (`apt-get`, `dnf`/`yum`, `zypper` or `pacman`; Docker
+falls back to Docker's install script where the distribution has no Compose v2
+package). sudo-rs (Ubuntu 25.10's default `sudo`) works too. On a minimal system without ICU (`libicu`), the build and the gateway
 run in .NET's invariant globalization mode.
 
 ### Computers without internet
@@ -333,7 +336,7 @@ deliberately kept off the internet (or whose DNS or route out is broken) and
 that only this PC reaches over the LAN still gets set up: before **setup** or
 **update** over SSH, Martlet checks whether the host opens a connection to
 GitHub within 8 seconds (`HostCheckout.InternetProbe`). When it can't, Martlet
-falls back to sending the files from this PC (native Ubuntu method):
+falls back to sending the files from this PC (native method):
 
 1. This PC downloads Martlet's source for its version (the `v<version>` tag,
    else `main`), the .NET SDK the engine pins (`DOTNET_SDK`, checked against
@@ -372,7 +375,7 @@ network can use it right away.
 
 **SSH hosts** pair by themselves: **Set up over SSH** in Devices > Add a computer
 (Martlet runs the host in Docker when that account can use Docker, otherwise
-natively on Ubuntu) runs `martlet-host --yes pair --device-id <this PC>
+natively on any Linux with systemd) runs `martlet-host --yes pair --device-id <this PC>
 --name <this PC>` there. The gateway starts its listener, prints the one-use
 code on one line and waits; Martlet reads the code from the output (it is never
 shown or logged; Docker runs the engine with `--log-driver none`), redeems it
@@ -633,8 +636,8 @@ script that runs directly on the computer as your SSH user with sudo (not
 inside the `martlet-host` container), so it works for Docker-method and native
 hosts alike, and before Martlet is installed there at all. The desktop sends the
 script over the SSH connection, so the computer needs no Martlet checkout.
-Ubuntu 22.04 and 24.04 on x86_64 are supported; other systems are refused with
-a clear reason.
+Ubuntu (any release) and Ubuntu-based distributions on x86_64 are supported;
+other systems are refused with a clear reason (they can still be set up natively).
 
 | Item | What it does |
 | --- | --- |

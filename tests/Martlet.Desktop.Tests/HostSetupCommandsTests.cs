@@ -66,6 +66,8 @@ public sealed class HostSetupCommandsTests
         Assert.StartsWith("sh -c '", sudo);
         Assert.Contains("IFS= read -r __martlet_pw", sudo);
         Assert.Contains("SUDO_ASKPASS", sudo);
+        // sudo-rs (Ubuntu 25.10) has no -A: the wrapper validates with -S from the password file instead.
+        Assert.Contains("-S -p", sudo);
         Assert.EndsWith("sudo id -u'", sudo);
         Assert.Equal("bold", HostShell.Clean("\u001b[1mbold\u001b[0m\r"));
         Assert.Equal(new HostShellTarget("me", "gpu-pc", 2222), HostShellTarget.Parse("me@gpu-pc:2222"));
@@ -96,23 +98,30 @@ public sealed class HostSetupCommandsTests
         Assert.False(choice.Suggested || role.GpuOrCpu);
         var ollama = HostRemote.ParseRole(["role.choice=OLLAMA_MODEL|Model|llama3.2:3b qwen2.5:7b|llama3.2:3b", "role.suggested=OLLAMA_MODEL", "role.accelerator=gpu cpu"]);
         Assert.True(Assert.Single(ollama.Choices).Suggested && ollama.GpuOrCpu);
-        var probe = new HostProbe(false, false, "password", "Ubuntu 24.04.1 LTS", "x86_64", "192.168.1.20", "gpu");
+        var probe = new HostProbe(false, false, "password", "Ubuntu 25.10", "x86_64", "192.168.1.20", "gpu", Systemd: true);
         Assert.Contains("Docker is not installed", HostRemote.Blocker(HostSetupMethod.SshDocker, probe, "me@gpu"));
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));
-        // One SSH choice: Docker when the account can use it (directly or with sudo), otherwise native on Ubuntu.
+        // One SSH choice: Docker when the account can use it (directly or with sudo), otherwise native on any systemd Linux.
         Assert.Equal(HostSetupMethod.SshNative, HostRemote.Choose(probe));
         Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(probe with { Docker = true }));
         Assert.Equal(HostSetupMethod.SshNative, HostRemote.Choose(probe with { Docker = true, Sudo = "none" }));
         Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(probe with { Docker = true, DockerAccess = true, Sudo = "none", OperatingSystem = "Debian 12" }));
-        var debian = probe with { OperatingSystem = "Debian GNU/Linux 12" };
-        Assert.Contains("Install Docker Engine", HostRemote.Blocker(HostRemote.Choose(debian), debian, "me@gpu"));
+        foreach (var os in new[] { "Debian GNU/Linux 13 (trixie)", "Fedora Linux 42", "openSUSE Tumbleweed", "Arch Linux" })
+        {
+            var other = probe with { OperatingSystem = os };
+            Assert.Equal(HostSetupMethod.SshNative, HostRemote.Choose(other));
+            Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, other, "me@gpu"));
+        }
+        var noSystemd = probe with { OperatingSystem = "Alpine Linux v3.22", Systemd = false };
+        Assert.Contains("Install Docker Engine", HostRemote.Blocker(HostRemote.Choose(noSystemd), noSystemd, "me@gpu"));
+        Assert.Contains("without systemd", HostRemote.Blocker(HostSetupMethod.SshNative, noSystemd, "me@gpu"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
 
         // A computer without internet access: Martlet sends a native host what setup and update need, and says plainly what it can't send.
         Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Setup, "me@gpu"));
         Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Update, "me@gpu"));
-        Assert.Contains("Ubuntu host it runs without Docker", HostRemote.OfflineBlocker(HostSetupMethod.SshDocker, HostVerb.Setup, "me@gpu"));
+        Assert.Contains("Linux host it runs without Docker", HostRemote.OfflineBlocker(HostSetupMethod.SshDocker, HostVerb.Setup, "me@gpu"));
         Assert.Contains("Docker images and models", HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Add, "me@gpu"));
     }
 

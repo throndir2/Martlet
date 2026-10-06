@@ -1135,7 +1135,7 @@ image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 
 `host_supply_check` (optional `cacheDirectory`; default
-`%TEMP%\Martlet\host-supply-check`) checks how Martlet sets up a native Ubuntu
+`%TEMP%\Martlet\host-supply-check`) checks how Martlet sets up a native Linux
 host [without internet access](../deploy/host/README.md#computers-without-internet),
 with the production `HostSupplier` and `HostCheckout` and this checkout's real
 engine. It archives this checkout like GitHub's source archive and starts one
@@ -2885,7 +2885,7 @@ never returned, and `ApiKeyCopy` writes the clipboard; `ApiKeyCreatedDone`
 
 A paired host's `DeviceReachSection` holds `HostReachNow` (*Reached via: ...*,
 status text), `HostReachMethod` (a combo box: *Through Martlet on that computer
-(paired connection)*, *SSH, with Docker there*, *SSH, native Ubuntu*, *This
+(paired connection)*, *SSH, with Docker there*, *SSH, native Linux*, *This
 PC, with Docker Desktop*; `ui_select` needs `--allow-ui-effects` and saves at
 once), `HostReachHint` (status text) and `HostReachSsh` (saved when it loses
 focus, on Enter or 1.5 seconds after typing stops; there is no Save button).
@@ -2994,7 +2994,7 @@ address and code fields, which also open by themselves when nobody answers on
 the network) and the `HostAddressSection` and `DeviceIdSection` expanders only
 change what the wizard shows, so they are passive clicks. `SetupThisPc` (*Set
 up this PC*) and `SetupHost` (*Set up over SSH*, with `SshTarget`; Martlet
-picks Docker or native Ubuntu from what the computer has) set up and pair a
+picks Docker or native Linux from what the computer has) set up and pair a
 new host and need `--allow-ui-effects`; a successful connection of any kind
 moves to Roles. Snapshots return `HostStatus` (the wizard's status line: what
 pairing did, or why it was refused, such as *That code doesn't match...* or *No

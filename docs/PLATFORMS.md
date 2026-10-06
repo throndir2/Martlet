@@ -57,7 +57,7 @@ macOS 14, iOS/iPadOS 26, Android 8.0.
 
 ## Devices that do jobs (hosts)
 
-| Job or feature | Linux (Docker or native Ubuntu, x86_64) | Windows (Docker Desktop, This PC) | macOS (the Martlet app) | iPhone / iPad | Android |
+| Job or feature | Linux (Docker or native with systemd, x86_64) | Windows (Docker Desktop, This PC) | macOS (the Martlet app) | iPhone / iPad | Android |
 | --- | --- | --- | --- | --- | --- |
 | Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU) | **Works** | Planned (MA02): native, on the GPU on Apple silicon; Intel CPU-only, 1-4B | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android; a LiteRT or llama.cpp model serves the same route |
 | Thinking: Apple Intelligence | Impossible | Impossible | Planned (MA02; Apple silicon, macOS 26+) | Planned (IO03; Apple Intelligence devices, iOS 26+) | Impossible |

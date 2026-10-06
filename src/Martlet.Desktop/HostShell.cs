@@ -190,7 +190,13 @@ internal sealed partial class HostShell(string dataDirectory, IHostShellPrompts 
             "if __martlet_sudo=$(command -v sudo); then",
             "  mkdir \"$__martlet_dir/bin\"",
             "  printf '#!/bin/sh\\ncat \"%s/pw\"\\n' \"$__martlet_dir\" > \"$__martlet_dir/askpass\"",
-            "  printf '#!/bin/sh\\nexec %s -A \"$@\"\\n' \"$__martlet_sudo\" > \"$__martlet_dir/bin/sudo\"",
+            // sudo-rs (Ubuntu 25.10's default sudo) has no -A: validate with -S from the password file, then run the
+            // command from the same wrapper process so it uses that credential (sudo-rs keys it by parent process).
+            "  if \"$__martlet_sudo\" -V 2>/dev/null | grep -q '^Sudo version'; then",
+            "    printf '#!/bin/sh\\nexec %s -A \"$@\"\\n' \"$__martlet_sudo\" > \"$__martlet_dir/bin/sudo\"",
+            "  else",
+            "    printf '#!/bin/sh\\n%s -S -p \"\" -v < \"%s/pw\" >/dev/null 2>&1\\n%s \"$@\"\\n' \"$__martlet_sudo\" \"$__martlet_dir\" \"$__martlet_sudo\" > \"$__martlet_dir/bin/sudo\"",
+            "  fi",
             "  chmod 700 \"$__martlet_dir/askpass\" \"$__martlet_dir/bin/sudo\"",
             "  export SUDO_ASKPASS=\"$__martlet_dir/askpass\" PATH=\"$__martlet_dir/bin:$PATH\"",
             "fi",
