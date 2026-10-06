@@ -5,8 +5,8 @@ using Martlet.Discord.Calls;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Listening › Martlet in your Discord calls (companion mode on the owner's own Discord account; the bot
-/// lives on Companion › Discord). Every control has an automation ID; the status lines are MCP SafeValues.</summary>
+/// <summary>Companion › Discord › Martlet in your Discord calls (companion mode on the owner's own Discord account, under
+/// Martlet's own bot). Every control has an automation ID; the status lines are MCP SafeValues.</summary>
 public partial class MainWindow
 {
     private readonly DiscordCallService discordCalls;
@@ -154,7 +154,7 @@ public partial class MainWindow
     private async Task RefreshCallOutputsAsync()
     {
         await discordCalls.RefreshOutputsAsync(CancellationToken.None);
-        if (!closing && openTab == CompanionTab.Listening && !tabEdited) RenderTab();
+        if (!closing && openTab == CompanionTab.Discord && !tabEdited) RenderTab();
     }
 
     private async Task CheckCallAsync()
@@ -165,7 +165,7 @@ public partial class MainWindow
         var result = await Task.Run(() => DiscordCallDoctor.Check(saved, outputs));
         callDoctor = result.Describe();
         ErrorLog.Info("Discord call check: " + callDoctor);
-        if (!closing && openTab == CompanionTab.Listening) RenderTab();
+        if (!closing && openTab == CompanionTab.Discord) RenderTab();
     }
 
     private async Task ToggleCallCameraAsync()
@@ -185,6 +185,6 @@ public partial class MainWindow
         {
             ActionText.Text = "Couldn't change the camera view: " + error.Message;
         }
-        if (!closing && openTab == CompanionTab.Listening) RenderTab();
+        if (!closing && openTab == CompanionTab.Discord) RenderTab();
     }
 }

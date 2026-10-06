@@ -40,6 +40,9 @@ public sealed class ChatMessage : INotifyPropertyChanged
     public string Text { get => text; set => Set(ref text, value); }
     public string Note { get => note; set { if (Set(ref note, value)) Changed(nameof(HasNote)); } }
     public bool HasNote => note.Length > 0;
+    /// <summary>A picture Martlet shows with this message (draw_picture, or perform_creation showing one again).</summary>
+    public System.Windows.Media.ImageSource? Picture { get; init; }
+    public bool HasPicture => Picture is not null;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     internal void AddNote(string line) => Note = note.Length == 0 ? line : note + "  " + line;
@@ -124,6 +127,11 @@ public partial class LiveConversationWindow : ThemedWindow
     // Typed text waits here while an idle listen or a screen remark hands the app slot over.
     private string? pendingText;
     private ChatMessage? pendingMessage;
+    // Messages from paired chats in messaging apps (Companion › Messaging) wait here for the app slot, in order; each gets the
+    // reply's text (or why there is none) once its turn finishes.
+    private sealed record RemoteAsk(string Text, ChatMessage Bubble, bool Speak, TaskCompletionSource<string> Reply);
+    private readonly List<RemoteAsk> remoteQueue = [];
+    private (LiveConversationOperation Operation, RemoteAsk Ask)? remoteAnswering;
     private string? reloadReason;
     // The load that runs now takes a changed setup in an open conversation (said once in the log).
     private bool following;
@@ -196,6 +204,7 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Start();
         sessionEvents.LockedChanged += SessionSwitch;
         controller.MemoryCaptured += MemoryCaptured;
+        controller.PictureShown += PictureShown;
         controller.VoicesNamed += VoicesNamed;
         controller.ChattinessDecided += ChattinessDecided;
         if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
@@ -206,6 +215,7 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         Motion.Sway(TalkMascot, 3, 4);
         InputText.Focus();
+        StartFixtureTask();
         await BeginAsync();
     }
 
@@ -312,6 +322,9 @@ public partial class LiveConversationWindow : ThemedWindow
     // there is optional, and a microphone that can't be opened says so here.
     private bool MicrophoneUsable => controller.Configuration is { } selected && selected.Unavailable(Voice, true) is null;
     private bool Available => ready && !locked && loading is null && controller.Configuration is not null;
+
+    /// <summary>The conversation loaded and still can't talk (Thinking isn't set up, or its settings couldn't be read).</summary>
+    internal bool CantTalk => begun && !loadPending && loading is null && (!ready || controller.Configuration is null);
 
     private bool Recording => owned is { OwnershipReleased: false, HandsFree: false } live && live.Authorization.Microphone &&
         live.Turn is null && live.Transcription is null && !live.Status.Finished;
@@ -438,12 +451,18 @@ public partial class LiveConversationWindow : ThemedWindow
         Settle();
         Collect();
         FollowCall();
-        if (loading is not null || locked) return;
+        if (loading is not null) return;
+        // While Windows is locked only messages from paired chats are answered (text only, never aloud).
+        if (locked)
+        {
+            if (!operations.IsRunning) TryRemote();
+            return;
+        }
         KeepListening();
         Interrupt();
         if (operations.IsRunning)
         {
-            if (pendingText is not null || reloadReason is not null) YieldSlot();
+            if (pendingText is not null || reloadReason is not null || remoteQueue.Count > 0) YieldSlot();
             return;
         }
         // The reply may have released the slot just now; settle it before anything replaces it.
@@ -463,7 +482,12 @@ public partial class LiveConversationWindow : ThemedWindow
             LoadAsync().Forget();
             return;
         }
-        if (!Available) return;
+        if (!Available)
+        {
+            // Loaded without a Thinking setup: a message from a chat is told so instead of waiting for nothing.
+            if (ready && controller.Configuration is null) FailRemote("Martlet isn't set up to think yet. Set up Thinking in Companion on your PC.");
+            return;
+        }
         if (pendingText is { } text)
         {
             pendingText = null;
@@ -478,8 +502,99 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         if (TryAnswer()) return;
+        if (TryRemote()) return;
         if (TryReport()) return;
         TryStartCommentary();
+    }
+
+    // ---------- messages from paired chats (Companion › Messaging) ----------
+
+    /// <summary>A message from a paired chat in a messaging app: it shows in the history as from <paramref name="from"/>, waits
+    /// for Martlet like typed text and gets the reply's text (or why there is none). It is text only: no screen picture goes with
+    /// it, and the reply is said aloud only with <paramref name="speak"/> while Windows isn't locked.</summary>
+    internal Task<string> AskFromMessage(string text, string from, bool speak, CancellationToken token)
+    {
+        if (closed) return Task.FromResult(RemoteCantAnswer);
+        var ask = new RemoteAsk(text, Add(ChatRole.User, text, from), speak,
+            new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
+        var registration = token.Register(() => Dispatcher.BeginInvoke(() =>
+        {
+            if (remoteQueue.Remove(ask)) ask.Bubble.AddNote("Not answered in time.");
+            ask.Reply.TrySetCanceled(token);
+        }));
+        ask.Reply.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+        remoteQueue.Add(ask);
+        activityAt = clock.GetTimestamp();
+        reportHeld = false;
+        follow = true;
+        Pump();
+        RenderActions();
+        return ask.Reply.Task;
+    }
+
+    /// <summary>Messages from paired chats waiting for Martlet.</summary>
+    internal int RemoteWaiting => remoteQueue.Count;
+
+    private const string RemoteCantAnswer = "Martlet can't talk right now. Try again in a moment.";
+
+    private bool TryRemote()
+    {
+        while (remoteQueue.Count > 0)
+        {
+            var ask = remoteQueue[0];
+            remoteQueue.RemoveAt(0);
+            if (ask.Reply.Task.IsCompleted) continue;
+            if (ready && controller.Configuration is null)
+            {
+                ask.Bubble.AddNote("Not answered: Thinking isn't set up.");
+                ask.Reply.TrySetResult("Martlet isn't set up to think yet. Set up Thinking in Companion on your PC.");
+                continue;
+            }
+            try
+            {
+                owned = controller.Start(ask.Text, ask.Speak && !locked && Voice, microphone: false, approved: true, remote: true);
+                remoteAnswering = (owned, ask);
+                typed = (owned, ask.Bubble);
+                yielded = null;
+                answeredAt = clock.GetTimestamp();
+                pacer?.NoteConversation();
+                Observe();
+                return true;
+            }
+            catch (LiveActionException error) when (error.Code == "conversation.ownership_busy")
+            {
+                remoteQueue.Insert(0, ask);
+                return false;
+            }
+            catch (Exception error) when (error is LiveActionException or ContractException)
+            {
+                var why = error is LiveActionException live ? Remedy(live.Code) : Remedy("conversation.invalid_input");
+                ask.Bubble.AddNote("Not answered.");
+                ask.Reply.TrySetResult("Martlet couldn't answer: " + why);
+            }
+        }
+        return false;
+    }
+
+    private void FailRemote(string why)
+    {
+        foreach (var ask in remoteQueue)
+        {
+            ask.Bubble.AddNote("Not answered.");
+            ask.Reply.TrySetResult(why);
+        }
+        remoteQueue.Clear();
+    }
+
+    // A finished turn that answered a message from a chat sends its text back (or why there is none).
+    private void FinishRemote(LiveConversationOperation done)
+    {
+        if (remoteAnswering is not { } answering || !ReferenceEquals(answering.Operation, done)) return;
+        remoteAnswering = null;
+        var content = done.Turn?.Content;
+        var text = content?.Text?.Trim() is { Length: > 0 } said ? said : content?.Refusal?.Trim() ?? "";
+        if (text.Length > 0) answering.Ask.Reply.TrySetResult(text);
+        else answering.Ask.Reply.TrySetResult(Outcome(done) is { } why ? "Martlet couldn't answer: " + why : "(Martlet had nothing to say.)");
     }
 
     // ---------- background work (think_longer) ----------
@@ -492,7 +607,23 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool reportHeld;
 
     /// <summary>You are talking, or something you said or typed is about to be answered.</summary>
-    private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0;
+    private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0 ||
+        remoteQueue.Count > 0;
+
+    /// <summary>How long since you last talked with Martlet here (spoke, typed or a turn finished), or null before anything.</summary>
+    internal TimeSpan? SinceActivity => UserBusy ? TimeSpan.Zero : activityAt == 0 ? null : clock.GetElapsedTime(activityAt);
+
+    /// <summary>A due reminder for this conversation: it starts (hidden) when it hasn't yet, and Martlet brings the reminder up on
+    /// its own as soon as it is free, or with what you say next.</summary>
+    internal BackgroundJob? Remind(string label, string text)
+    {
+        if (closed) return null;
+        if (!begun) StartInBackground();
+        var job = controller.Remind(label, text);
+        if (job is not null) ErrorLog.Info($"Reminders: {job.Id} is due; Martlet brings it up as soon as it's free.");
+        RenderActions();
+        return job;
+    }
 
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
@@ -500,14 +631,16 @@ public partial class LiveConversationWindow : ThemedWindow
     /// <see cref="ReportQuiet"/>.</summary>
     private bool TryReport()
     {
-        if (closed || !Available || Paused || reportHeld || controller.Configuration?.ThinkLonger.When != ThinkDelivery.WhenFree ||
-            !controller.Jobs.HasNews || UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
+        // A due reminder is brought up as soon as Martlet is free even when Thinking longer shares results when you talk next.
+        var whenFree = controller.Configuration?.ThinkLonger.When == ThinkDelivery.WhenFree;
+        if (closed || !Available || Paused || reportHeld || !(whenFree ? controller.Jobs.HasNews : controller.Jobs.HasNotice) ||
+            UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
             commentary is { OwnershipReleased: false } || controller.Singing?.Playing == true ||
             activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
             return false;
         try
         {
-            if (controller.StartReport(Voice) is not { } report) return false;
+            if (controller.StartReport(Voice, noticesOnly: !whenFree) is not { } report) return false;
             owned = report;
             yielded = null;
             notice = null;
@@ -526,85 +659,13 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     // The note above Martlet's report: which job finished and how.
-    private static string JobNote(BackgroundJob job) => job.State switch
+    private static string JobNote(BackgroundJob job) => job.Kind.Notice ? $"{job.Kind.Doing}: “{job.Label}”." : job.State switch
     {
         BackgroundJobState.Succeeded => $"Finished: {job.Kind.Doing.ToLowerInvariant()} “{job.Label}” ({BackgroundJobs.Clockface(job.Elapsed)}).",
         BackgroundJobState.TimedOut => $"Ran out of time {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”.",
         BackgroundJobState.Canceled => $"Stopped {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”.",
         _ => $"Couldn't finish {job.Kind.Doing.ToLowerInvariant()} “{job.Label}”."
     };
-
-    // The chips of the jobs shown, by job ID.
-    private readonly Dictionary<string, (DockPanel Chip, TextBlock Text, Button Cancel)> jobChips = new(StringComparer.Ordinal);
-
-    /// <summary>The background work panel: one chip per job that runs or finished and wasn't brought up yet, with what it is
-    /// about, how long it has run and Cancel; the line above says it without what the job is about (MCP reads it).</summary>
-    private void RenderJobs()
-    {
-        var shown = controller.Jobs.Active.Concat(controller.Jobs.Undelivered.Where(job => !job.Quiet)).ToList();
-        foreach (var gone in jobChips.Keys.Where(id => shown.All(job => job.Id != id)).ToArray())
-        {
-            JobChips.Children.Remove(jobChips[gone].Chip);
-            jobChips.Remove(gone);
-        }
-        foreach (var job in shown)
-        {
-            if (!jobChips.TryGetValue(job.Id, out var chip))
-            {
-                var text = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, FontSize = 13 };
-                AutomationProperties.SetAutomationId(text, "LiveJob-" + job.Id);
-                var id = job.Id;
-                var cancel = new Button
-                {
-                    Content = "Cancel", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = "Stop this background work. Martlet hears that you stopped it next time you talk."
-                };
-                AutomationProperties.SetAutomationId(cancel, "LiveJobCancel-" + job.Id);
-                cancel.Click += (_, _) => { controller.CancelJob(id); RenderActions(); };
-                var row = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
-                DockPanel.SetDock(cancel, Dock.Right);
-                row.Children.Add(cancel);
-                row.Children.Add(text);
-                JobChips.Children.Add(row);
-                jobChips[job.Id] = chip = (row, text, cancel);
-            }
-            var state = job.State switch
-            {
-                BackgroundJobState.Waiting or BackgroundJobState.Paused or BackgroundJobState.Running when job.Progress is { } note => " · " + note,
-                BackgroundJobState.Succeeded => " · done",
-                BackgroundJobState.TimedOut => " · ran out of time",
-                BackgroundJobState.Canceled => " · stopped",
-                BackgroundJobState.Failed => " · couldn't finish",
-                _ => ""
-            };
-            chip.Text.Text = $"{job.Kind.Doing}: {job.Label} · {BackgroundJobs.Clockface(job.Elapsed)}{state}";
-            chip.Cancel.Visibility = job.Finished ? Visibility.Collapsed : Visibility.Visible;
-            AutomationProperties.SetName(chip.Cancel, $"Cancel {job.Id}");
-        }
-        JobsPanel.Visibility = shown.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        JobsText.Text = JobsLine(shown, controller.Configuration?.ThinkLonger.When ?? ThinkLongerSettings.DefaultDelivery);
-    }
-
-    /// <summary>The background work line, without what any job is about: each job's ID, state and time, and when finished work
-    /// is brought up.</summary>
-    internal static string JobsLine(IReadOnlyList<BackgroundJob> jobs, ThinkDelivery when)
-    {
-        if (jobs.Count == 0) return "";
-        var parts = jobs.Select(job => job.State switch
-        {
-            BackgroundJobState.Running => $"{job.Id} running for {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.Waiting => job.Progress is { } note ? $"{job.Id} {note}" : $"{job.Id} waiting to start",
-            BackgroundJobState.Paused => $"{job.Id} paused ({BackgroundJobs.Clockface(job.Elapsed)})",
-            BackgroundJobState.Succeeded => $"{job.Id} done after {BackgroundJobs.Clockface(job.Elapsed)}",
-            BackgroundJobState.TimedOut => $"{job.Id} ran out of time",
-            BackgroundJobState.Canceled => $"{job.Id} stopped",
-            _ => $"{job.Id} couldn't finish"
-        });
-        var finished = jobs.Any(job => job.Finished && !job.Quiet);
-        return "Working in the background: " + string.Join("; ", parts) + "." + (finished
-            ? when == ThinkDelivery.WhenFree ? " Martlet brings it up as soon as it's free." : " Martlet brings it up when you talk next."
-            : " You can keep talking; Stop doesn't end it.");
-    }
 
     private void Settle()
     {
@@ -1392,6 +1453,7 @@ public partial class LiveConversationWindow : ThemedWindow
             restarts = 0;
         }
         notice = Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
+        FinishRemote(done);
         // The setup was changed elsewhere (Companion is usable while this window is open): load it before the next turn.
         if (code == "conversation.configuration_changed") reloadReason ??= "Your setup changed.";
     }
@@ -1740,6 +1802,8 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         if (e.Key != Key.Escape) return;
         e.Handled = true;
+        // An open task list closes first, like any flyout; the next Esc stops Martlet.
+        if (CloseTasks()) return;
         StopAll("conversation.canceled", button: "Esc");
     }
 
@@ -2031,7 +2095,8 @@ public partial class LiveConversationWindow : ThemedWindow
             return controller.Tools?.PendingApproval is { Answer.IsCompleted: false } ask
                 ? $"Allow {ask.Label}? Answer above." : tool == Martlet.Mcp.Client.TerminalTool.Name ? "Running a command…"
                 : tool == ThinkLonger.Name ? "Starting to think it over in the background…"
-                : tool == SongTools.SingName ? "Starting a song in the background…" : $"Using {tool}…";
+                : tool == SongTools.SingName ? "Starting a song in the background…"
+                : tool == PictureTools.DrawName ? "Starting a picture in the background…" : $"Using {tool}…";
         if (live.Report && snapshot?.State != ConversationState.Playing) return "Martlet is bringing up what it worked on…";
         return snapshot?.State == ConversationState.Playing ? "Martlet is speaking." : LocalModelNote(false) ??
             (live.Spoken ? "Martlet is thinking… keep talking if you're not done." : "Martlet is thinking…");
@@ -2464,6 +2529,42 @@ public partial class LiveConversationWindow : ThemedWindow
         });
     }
 
+    // Opens a shown picture full size (Esc closes it).
+    private void Picture_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ChatMessage { Picture: { } picture } message }) return;
+        var viewer = new Window
+        {
+            Title = message.Text, Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Width = Math.Min(SystemParameters.WorkArea.Width * 0.8, 1100), Height = Math.Min(SystemParameters.WorkArea.Height * 0.85, 1100),
+            Content = new System.Windows.Controls.Image { Source = picture, Stretch = System.Windows.Media.Stretch.Uniform, Margin = new Thickness(8) }
+        };
+        viewer.SetResourceReference(BackgroundProperty, "SurfaceBrush");
+        AutomationProperties.SetAutomationId(viewer, "LivePictureViewer");
+        viewer.KeyDown += (_, key) => { if (key.Key == Key.Escape) viewer.Close(); };
+        viewer.Show();
+    }
+
+    // Raised off the dispatcher when Martlet shows a picture: it joins the history as Martlet's, with its title.
+    private void PictureShown(ShownPicture picture) => Dispatcher.BeginInvoke(() =>
+    {
+        if (closed) return;
+        var image = PictureView.Decode(picture.Image);
+        if (image is null)
+        {
+            AddNote($"Couldn't show “{picture.Title}”.");
+            return;
+        }
+        Messages.Add(new ChatMessage(ChatRole.Martlet, picture.Title + (picture.Fixture ? " (FIXTURE - NOT AI)" : ""), $"Martlet · {DateTime.Now:t}")
+        {
+            Picture = image
+        });
+        LastShownPicture = picture.Key;
+    });
+
+    /// <summary>The creation key of the last picture shown here (MCP: LivePicture).</summary>
+    internal string? LastShownPicture { get; private set; }
+
     // Raised off the dispatcher once background remembering finishes for an exchange.
     private void MemoryCaptured(MemoryCaptureReport report) => Dispatcher.BeginInvoke(() =>
     {
@@ -2522,6 +2623,9 @@ public partial class LiveConversationWindow : ThemedWindow
         listening = false;
         StopListening(keepHeard: false);
         StopAll("conversation.closed", keepContext: false);
+        FailRemote(RemoteCantAnswer);
+        if (remoteAnswering is { } answering) answering.Ask.Reply.TrySetResult(RemoteCantAnswer);
+        remoteAnswering = null;
         // Ending the conversation ends its background work: nothing is brought up any more.
         controller.EndBackgroundWork();
         attentionWatcher.Stop();
@@ -2535,6 +2639,7 @@ public partial class LiveConversationWindow : ThemedWindow
         warmup = null;
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
+        controller.PictureShown -= PictureShown;
         controller.VoicesNamed -= VoicesNamed;
         controller.ChattinessDecided -= ChattinessDecided;
         homeQuestion?.TrySetResult(false);

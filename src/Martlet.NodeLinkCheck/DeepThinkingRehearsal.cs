@@ -23,6 +23,8 @@ internal static class DeepThinkingRehearsal
 {
     private const string ThinkingModel = "gemma4:e4b";
     private const string DeepModel = "qwen3:8b";
+    /// <summary>Thinks at once on the Deep thinking role, as martlet-host publishes a role added with OLLAMA_NUM_PARALLEL 2.</summary>
+    private const int Slots = 2;
 
     internal static async Task<(bool Ok, object Report)> RunAsync(CancellationToken token)
     {
@@ -49,15 +51,16 @@ internal static class DeepThinkingRehearsal
             }
         }
 
-        await Run("The host advertises Thinking's route and the Deep thinking role's own route, each with its own model", async () =>
+        await Run("The host advertises Thinking's route and the Deep thinking role's own route, each with its own model, and how many thinks run at once", async () =>
         {
             var routes = await replies.ReadRoutesAsync(token);
             thinkingRoute = routes.FirstOrDefault(r => r.RouteId == HostRoute.OllamaChatRouteId);
             deepRoute = routes.FirstOrDefault(r => r.RouteId == HostRoute.DeepThinkingRouteId);
-            var ok = thinkingRoute is { Path: HostRoute.OllamaChatPath, ModelId: "gemma4-e4b" } &&
-                deepRoute is { Path: HostRoute.DeepThinkingPath, ModelId: "qwen3-8b" } &&
+            var ok = thinkingRoute is { Path: HostRoute.OllamaChatPath, ModelId: "gemma4-e4b", MaximumConcurrency: 1 } &&
+                deepRoute is { Path: HostRoute.DeepThinkingPath, ModelId: "qwen3-8b", MaximumConcurrency: Slots } &&
                 deepRoute.ContractId == thinkingRoute.ContractId && deepRoute.MaximumDuration == thinkingRoute.MaximumDuration;
-            return (ok, string.Join("; ", routes.Select(r => $"{r.RouteId} {r.Path} {r.ModelId} (up to {r.MaximumDuration.TotalMinutes:0} min)")));
+            return (ok, string.Join("; ", routes.Select(r =>
+                $"{r.RouteId} {r.Path} {r.ModelId} (up to {r.MaximumDuration.TotalMinutes:0} min, {r.MaximumConcurrency} at once)")));
         });
         await Run("This PC can move Thinking to the host: the route it advertises (with its long-think bound) saves as the job's route", () =>
         {
@@ -115,6 +118,53 @@ internal static class DeepThinkingRehearsal
             return Task.FromResult((ok, $"Deep thinking's Ollama got {deep.Requests.Count} request(s): {toDeep}; " +
                 $"the conversation model's got {conversation.Requests.Count}: {toConversation}"));
         });
+        await Run($"{Slots} thinks run at once on the Deep thinking role's {Slots} slots while a reply streams; one more is turned away (job.busy) until a slot frees", async () =>
+        {
+            if (thinkingRoute is null || deepRoute is null) return (false, "NOT RUN: a route is missing");
+            deep.Hold();
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(60);
+            var connections = Enumerable.Range(0, Slots).Select(_ => new Audio2FaceHostConnection(pairing, secret)).ToArray();
+            try
+            {
+                var started = Enumerable.Range(0, Slots).Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+                var texts = Enumerable.Range(0, Slots).Select(_ => new StringBuilder()).ToArray();
+                var running = Enumerable.Range(0, Slots).Select(i => Task.Run(async () =>
+                {
+                    await foreach (var delta in connections[i].StreamChatAsync(deepRoute, Ids(), 10 + i, deadline, "You are Martlet.", [],
+                        $"Think it over: task {i + 1}.", 0.7, 1_024, 8_192, cancellationToken: token))
+                    {
+                        texts[i].Append(delta);
+                        started[i].TrySetResult();
+                    }
+                }, token)).ToArray();
+                await Task.WhenAll(started.Select(s => s.Task)).WaitAsync(TimeSpan.FromSeconds(20), token);
+                var allAtOnce = running.All(t => !t.IsCompleted);
+                string? turnedAway = null;
+                try
+                {
+                    await foreach (var _ in thinks.StreamChatAsync(deepRoute, Ids(), 20, deadline, null, [], "One more think.", 0.7, 64, 4_096,
+                        cancellationToken: token)) { }
+                }
+                catch (Audio2FaceHostException error) { turnedAway = error.Code; }
+                var reply = new StringBuilder();
+                await foreach (var delta in replies.StreamChatAsync(thinkingRoute, Ids(), 21, deadline, "You are Martlet.", [], "Still there?",
+                    0.7, 256, 8_192, cancellationToken: token))
+                    reply.Append(delta);
+                var thinkingWhileReplied = running.All(t => !t.IsCompleted);
+                deep.Release();
+                await Task.WhenAll(running).WaitAsync(TimeSpan.FromSeconds(20), token);
+                var done = texts.All(t => t.ToString() == "I thought it over: here's the plan.");
+                return (allAtOnce && turnedAway == "job.busy" && thinkingWhileReplied && reply.ToString() == "Sure, here you go." && done,
+                    $"{running.Length} thinks {(allAtOnce ? "streamed at the same time" : "did not overlap")}; one more got " +
+                    $"{turnedAway ?? "no refusal"}; the reply \"{reply}\" finished while {(thinkingWhileReplied ? "both" : "not both")} still " +
+                    $"thought; then each think finished: {string.Join(" | ", texts.Select(t => $"\"{t}\""))}");
+            }
+            finally
+            {
+                deep.Release();
+                foreach (var connection in connections) connection.Dispose();
+            }
+        });
         await Run("The desktop's chat client refuses a host route that is neither conversation model", async () =>
         {
             if (deepRoute is null) return (false, "NOT RUN: the Deep thinking route is missing");
@@ -136,9 +186,9 @@ internal static class DeepThinkingRehearsal
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
             scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS) with the real Ollama relay on Thinking's route and the Deep " +
-                "thinking role's relay on its own route, each over its own fixture Ollama (canned text, NOT AI), and a simulated " +
-                "desktop using the desktop's paired client. Not covered: martlet-host installing the role, a real Ollama or model, " +
-                "a GPU and a real LAN.",
+                $"thinking role's relay on its own route with {Slots} thinks at once (its OLLAMA_NUM_PARALLEL slots), each over its own " +
+                "fixture Ollama (canned text, NOT AI), and a simulated desktop using the desktop's paired client. Not covered: " +
+                "martlet-host installing the role, a real Ollama or model (its slots' graphics memory), a GPU and a real LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -165,7 +215,7 @@ internal static class DeepThinkingRehearsal
                 host.origin = $"https://127.0.0.1:{FreePort()}";
                 var gatewayOrigin = new GatewayOrigin(host.origin);
                 host.workers.Add(new OllamaRelayWorker(new Uri("http://127.0.0.1:11434/"), ThinkingModel, handler: conversation));
-                host.workers.Add(OllamaRelayWorker.DeepThinking(new Uri("http://127.0.0.1:11435/"), DeepModel, handler: deep));
+                host.workers.Add(OllamaRelayWorker.DeepThinking(new Uri("http://127.0.0.1:11435/"), DeepModel, handler: deep, slots: Slots));
                 host.server = new GatewayServer(host.identity, gatewayOrigin, [], host, inferenceWorkers: host.workers);
                 host.listener = await host.server.StartAsync(new GatewayTlsBinding(gatewayOrigin, host.identity, host.certificate),
                     new KestrelGatewayListenerFactory());
@@ -230,11 +280,18 @@ internal static class DeepThinkingRehearsal
     /// <see cref="Held"/>, waits before the second until <see cref="Release"/>, as a long think does.</summary>
     private sealed class FixtureOllama(string first, string rest) : HttpMessageHandler
     {
-        private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal bool Held { get; init; }
+        private TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool Held { get; set; }
         internal List<Asked> Requests { get; } = [];
 
         internal void Release() => released.TrySetResult();
+
+        /// <summary>Holds the requests that come from now on until the next <see cref="Release"/>.</summary>
+        internal void Hold()
+        {
+            released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Held = true;
+        }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

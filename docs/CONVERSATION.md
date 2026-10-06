@@ -315,6 +315,19 @@ which machine is free to think depends on the computer you talk to):
   there, with its current model selected. The old model keeps thinking until the
   new one is downloaded and loaded; then this PC (and each of your computers, on
   its next check) thinks with the new one.
+  The same dialog asks how many thinks it runs at once (*Thinks at once*, 1 to
+  4: its Ollama's `OLLAMA_NUM_PARALLEL`), so one graphics card counts as several
+  places for background work. Ollama loads the model once and reserves one
+  think's context per slot when it loads, so only the choice costs memory, never
+  a running think: Martlet recommends the most that fit on that computer's card
+  beside its other roles (Thinking's model with its context, the voice, lip-sync,
+  listening) for each model (`DeepThinkingSlots`, shown under the choice as
+  `HostInputFit-OLLAMA_NUM_PARALLEL-OLLAMA_MODEL`), so the Thinking and voice
+  models are never pushed off the card. The role advertises its slots as its
+  route's `maximum_concurrency`, the gateway admits that many thinks at once
+  (one more gets `job.busy`), and a host check reads them
+  (`HostCheck.DeepThinkingSlots`; the host's line says "Deep thinking (2 thinks at
+  once)").
   The conversation's newest
   exchanges that fit the gateway's 16 KiB and 16 messages go with the task (no
   tools), and the computer loads 32,768 tokens of context for it. A computer's
@@ -331,6 +344,30 @@ which machine is free to think depends on the computer you talk to):
   OpenAI-compatible server (HTTPS, or a server on this PC), with its own key in
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
+
+**Several computers at once.** Each paired computer on *Another of your
+computers* has *Think here too* (`DeepThinkingPool-<host>`): ticked, Deep
+thinking thinks there as well as where it is set to think, so several thinks
+run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
+`Pool` in `deep-thinking.json`, which a file saved before it existed simply
+lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
+on this PC* and a cloud provider change the first place and keep the ticked
+computers; unticking the first place's computer makes the next one first.
+`think_longer` may then run as many thinks at once as there are usable places
+(its description says *Up to N at once*, from the settings only, so the request
+start stays the same), and each new think goes to a free place: the one that
+shares least with the conversation first (its plan's `Rank`: 0 does none of the
+conversation's jobs, 1 shares a computer with the voice or listening, or is a
+cloud provider or this PC, 2 shares Thinking's computer or provider, 3 is a
+second model beside Thinking's on this PC's graphics card), then the order they
+were chosen. One place that can't think (a computer that does Thinking without
+its Deep thinking role) doesn't stop the others. A song's lyrics are written on
+the same places: a free one, else the least busy. When every place is busy a
+new think is refused and the model is told what holds each place (*think-1 on
+diva and think-2 on ripley are still running...*). Each think has its own
+runtime and authorization on its place, and its result reaches the speaking
+computer exactly as one think's does (see Delivery). The page's
+`DeepThinkingPoolStatus` says how many places think at once.
 
 **Always in parallel** (`DeepThinkingPlan`, shown on the page as
 `DeepThinkingParallel`). A think always runs alongside the conversation and is
@@ -367,14 +404,20 @@ Thinking's own model twice needs a second server (for example another `ollama
 serve` on its own port, chosen as a server on this PC under *A cloud provider or
 server*), which holds a second copy of the model in graphics memory.
 
-**While it runs** you keep talking and Martlet keeps replying. The talk window
-shows a chip per job (*Thinking about: …* with its time and *Cancel*) and the
-line above it (`LiveJobs`); the desktop log notes each start, fit check and end
+**While it runs** you keep talking and Martlet keeps replying. The talk window's
+header shows a background tasks chip (a spinner and *1 running*, then *1 ready*
+once it finishes and *1 done* once Martlet brought it up); clicking it opens the
+task list over the conversation: one card per task with its kind, what it is
+about, the computer it runs on (*on diva*), its status and time, its result
+(*Show result*) and *Cancel* (`LiveTasks`, `LiveJobs`: *think-1 on diva running
+for 0:12*, `LiveJobState-<id>`); the desktop log notes each start with where it
+was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
-Stop (Esc) ends a reply, never a think; the chip's Cancel, `cancel_thinking`,
+Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation, quitting Martlet or the time limit do. At most one
-think runs at a time (a second call is refused and Martlet is told to wait or
-cancel the first) and at most 3, 6 (default) or 12 start in any hour.
+think runs at a time on each place it thinks on (one place: one at a time; a
+call beyond that is refused and Martlet is told to wait or cancel one) and at
+most 3, 6 (default) or 12 start in any hour.
 **Delivery.** When a job finishes (or fails, or runs out of time) its result is
 added at the end of the conversation as a new message, never by rewriting
 anything before it:
@@ -411,16 +454,30 @@ think_longer is the first kind and a song is next. A kind is a
    (`LiveConversationController.BuiltIns`: always offered while its feature is
    on, so the request start never changes; the handler returns at once).
 2. In the handler, call `jobs.Start(kind, label, runAsync)`. `label` is a few
-   words for the chip and the conversation (it is never logged). `runAsync(job,
+   words for the task list and the conversation (it is never logged). `runAsync(job,
    token)` does the work on a thread-pool thread and returns
    `BackgroundJobOutcome.Done(result)` (the text the conversation gets; for a
    song, what is ready and how to play it, such as its ID) or
    `BackgroundJobOutcome.Failed(problem)` (a few plain words); the token is
    canceled by Cancel, the conversation ending, Martlet quitting and the time
    limit. While it works it may call `job.Report(Running/Waiting/Paused,
-   "a few words")`, which the chip shows. `Start` returns `BackgroundJobStart`:
+   "a few words")`, which the task's card shows. `Start` returns `BackgroundJobStart`:
    the job, or `Refusal` (`busy`, `hourly_limit`, `closed`) with a `Message` to
    tell the model.
+   To run on another computer, pass a pool: `jobs.Start(kind, label, runAsync,
+   places)`, where each `BackgroundPlace(Id, Name, Rank)` is a computer or
+   provider (`Name` is the computer's name only; lower `Rank` goes first). The
+   job list picks the best free place atomically with the limits, holds it
+   until the job finishes (whatever its kind: places are shared by every kind
+   started on them) and refuses `busy` naming what holds each place when none
+   is free; `runAsync` reads `job.Place`. Deep thinking's places are
+   `ThinkLonger.Places(DeepThinkingPool.For(deepThinkingSettings, routes))`,
+   and `pool.Find(job.Place.Id)` gives that place's settings (a paired
+   computer's route or an endpoint) to build the request with, as
+   `ThinkLongerAsync` does. A step that needs a place for a while asks
+   `jobs.Places.TryAcquire(places, holder, share)` (with `share`, the least
+   busy place when none is free) and disposes the `BackgroundPlaceLease`. Set
+   the kind's `MaxActive` to the number of places (at most 8).
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
 4. Background work runs in parallel with the conversation, never in turns with
    it: run it where it doesn't hold up a reply (a song made by a host role on a
@@ -429,14 +486,77 @@ think_longer is the first kind and a song is next. A kind is a
    think on a second model in Ollama on this PC does with `OllamaSideBySide`),
    refusing with `BackgroundJobOutcome.Failed` when it doesn't.
 
-The job list does the rest: limits, cancellation, the time limit (`TimedOut`),
-the chip and `LiveJobs`, `background-jobs.json` (kinds, states and times only),
+The job list does the rest: limits, placement, cancellation, the time limit (`TimedOut`),
+the header chip and task list (`LiveTasks`, `LiveJobs`; give a new kind its title and icon in
+`LiveConversationWindow.KindTitle`/`KindGlyph`; each names its place), `background-jobs.json` (kinds, states, places and times only),
 and delivery: `Take(onItsOwn)` hands finished jobs to the next reply, which
 completes or returns them, and `BackgroundJobs.ReportMessage` /
 `ReportNotes` word them (with `Offer` kinds marked to offer first). The model
 acting on the user's yes is an ordinary later tool call in that conversation
 (for a song, `play_song` with the song's ID; see [Singing in
 conversation](#singing-in-conversation)).
+
+## Reminders
+
+*"Remind me to do the dishes in an hour."* Every reply on a route that does
+function calling gets Martlet's own `reminders` tool (last, after
+`manage_memories`, always worded the same so the start of every request stays
+the same): `set` with `text` and `in_minutes` or `at` (a local time such as
+*17:30*, *5:30 pm*, *tomorrow 9:00* or *2026-12-24 18:00*: the next such time,
+up to a year ahead), `list` and `cancel` with an `id`. Set answers with the id
+and when it is due, so Martlet confirms it with the right time without a clock
+of its own.
+
+**When it is due**, Martlet brings it up the way it brings up finished
+background work, whatever *When it shares the result* says for Thinking longer:
+
+- *Martlet is free* (nobody talking, nothing to answer, no reply or look, not
+  paused, quiet for 2 seconds): it starts a reply of its own whose message is
+  its note (Companion › Prompts › *Reminder due*): *"Hey, it's dishes time!"*
+- *You talk first* (or Martlet is mid-reply and you talk again): the reminder
+  goes in the notes of your message (Companion › Prompts › *Reminder due, with
+  your message*), so it fits into the answer: *"Nice job on that boss! Oh, and
+  by the way, you wanted me to remind you about the dishes."*
+
+When no conversation runs on that PC, Martlet starts one without the talk
+window (as Start listening does, but without listening) to say it. Where Martlet
+can't talk (Thinking isn't set up), a Windows notification shows the reminder
+after 30 seconds instead. A reminder due while no companion PC ran is said late
+with how late it is when Martlet starts within 12 hours, and let go after that.
+The talk window's task list shows a due reminder (*Due now. Martlet brings it
+up as soon as it's free.*) until it is said.
+
+**On all your computers.** Reminders travel with the [shared
+settings](CLUSTER.md#one-martlet-on-every-computer) as one entry per computer,
+`reminders.<device ID>`: the reminders set there and what that computer did
+about anyone's (offered, took, said, canceled, let go). Only that computer
+writes its entry, so nothing conflicts and no host needs updating; any computer
+lists and cancels any reminder. When it is due and other companion PCs could
+say it, **the one you used most recently says it, once**:
+
+1. each running companion PC records an offer with how long since someone used
+   it (keyboard, mouse or talking with Martlet there) and syncs at once;
+2. 6 seconds later it syncs again and the offer with the shortest idle time
+   (then the lowest device ID) takes it; the others stay quiet;
+3. that PC says it and marks it said, and every computer sees it settled.
+
+A PC that took it and didn't say it within 10 minutes (it closed, say) lets the
+others try again. A PC alone (sync off, or no other companion PC) says it at
+once. Two companion PCs that can't reach a host meanwhile can't see each other's
+offers, so each says it. Saying the same line on every computer at once was
+left out on purpose: in one room the voices would echo, and a reply already
+under way on one PC would be cut across; the PC you are at is where you hear it.
+
+Checked locally: the tool, times, offers, taking it and wording with
+`RemindersTests` and `SharedRemindersTests`, the real controller and talk window
+bringing a due reminder up on its own through a fixture Thinking endpoint while
+finished work waits for the next message, and the tool offered last with every
+request starting the same (Desktop tests), the whole flow on two simulated
+PCs with MCP `reminders_check`, and on a disposable data folder through
+`-Desktop` a due reminder taken by the desktop, brought into a conversation
+started without the window and, with no Thinking set up, shown as a
+notification and marked said (`reminders_status`). A real model setting and
+saying one, and two real companion PCs through a real host, are **NOT RUN**.
 
 ## Singing in conversation
 
@@ -468,7 +588,7 @@ computer, which can't think something over while it answers), the result asks
 the reply to write the lyrics itself and call `sing_song` again with them. Then
 the song maker
 (`ISongMaker`, the singing host) makes it in the voice Martlet speaks with and
-the Singing card's quality and voice match; the chip follows its stages
+the Singing card's quality and voice match; the task's card follows its stages
 (*Writing the lyrics*, *Writing the music*, *Matching the singing to the
 voice*..., *Timing the mouth to the singing*). Its mouth track is made once,
 from the vocals stem (never the mix; see *Lip sync* below). The finished song is
@@ -598,7 +718,7 @@ game/call audio. Capturing other people requires their permission.
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
 | LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
-| Background think (think_longer) | One at a time, 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
+| Background think (think_longer) | One at a time on each Deep thinking place (up to 8), 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio files or ordinary content logs; finished exchanges (the user's own words and the reply, never audio, glances or what the PC plays) go to the [record of conversations](MEMORY.md#conversation-history) on this PC only while memory and *Keep a record of my conversations* are on |
 
@@ -1167,7 +1287,14 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   `*nods*`, `(sighs)`, `*clears throat*`). So `[nod]` for `{nod}` plays the
   nod and `*laughs*` is spoken as Chatterbox's `[laugh]` (or Dia's `(laughs)`),
   instead of the tag showing in the chat and silencing the rest of its line.
-  Tones of voice take only other brackets, never `*...*`, and emphasis such as
+  A sound's or tone's other words (`VoiceTags.Synonyms`) count too, in any
+  bracket and as `*...*` when they read as a stage direction (ending in -s or
+  -ing): `[whisper]`, `(whispers)`, `*whispers softly*`, `{hushed}` and
+  `(in a whisper)` are Chatterbox's `[whispering]`, `[sobbing]` its `[crying]`
+  and `*giggles*` its `[chuckle]`. Without them a hallucinated `[whisper]` was
+  unknown bracketed text and silenced its whole sentence.
+  Tones of voice otherwise take only other brackets (and `*...*` for an -ing
+  tone such as `*whispering*`), and emphasis such as
   `*so*` is left alone. When two tags share a spelling, the speaking voice's
   own tag wins, then the character's, then another engine's: `[happy]` is
   Chatterbox's tone while Chatterbox speaks and the character's `{happy}` emote

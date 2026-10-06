@@ -186,6 +186,17 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(ask, "CreationAsk");
         CreationDetail.Children.Add(ask);
 
+        // A picture shows itself here (Martlet shows it in conversation too).
+        if (creation.Kind == Martlet.Conversation.PictureCreations.KindName && CreationStore.IsComplete(dataDirectory, creation))
+        {
+            var picture = new Image { MaxHeight = 360, MaxWidth = 520, Stretch = System.Windows.Media.Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 6) };
+            AutomationProperties.SetAutomationId(picture, "CreationPicture");
+            AutomationProperties.SetName(picture, creation.Title);
+            CreationDetail.Children.Add(picture);
+            LoadCreationPictureAsync(picture, dataDirectory, creation).Forget();
+        }
+
         if (!string.IsNullOrWhiteSpace(creation.Summary)) CreationDetail.Children.Add(Body(creation.Summary));
         foreach (var section in kind?.DetailsFor(creation) ?? CreationKind.Sections(creation))
         {
@@ -222,6 +233,19 @@ public partial class MainWindow
         TextBlock Body(string text) => new() { Text = text.Trim(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0), FontSize = 14 };
         static TextBlock Subheading(string text, double top) =>
             new() { Text = text, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, top, 0, 2), TextWrapping = TextWrapping.Wrap };
+    }
+
+    private async Task LoadCreationPictureAsync(Image target, string dataDirectory, Creation creation)
+    {
+        try
+        {
+            var bytes = await CreationStore.Assets(dataDirectory, creation).ReadAsync(Martlet.Conversation.PictureCreations.Image, lifetime.Token);
+            if (bytes is null || closing) return;
+            var image = await Task.Run(() => PictureView.Decode(bytes, 1040));
+            if (!closing) target.Source = image;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (CreationStore.IsFailure(error)) { ErrorLog.Info($"Creations: couldn't show the picture ({error.Message})."); }
     }
 
     private async Task RenameCreationAsync(Creation creation, string? title)

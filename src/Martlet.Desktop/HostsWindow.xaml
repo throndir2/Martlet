@@ -74,6 +74,12 @@
                                 <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"
                                            Text="Not listed? Guest Wi-Fi, a VPN, another subnet or a firewall can hide it. Enter the address and pairing code it shows instead."/>
                             </DockPanel>
+                            <DockPanel Margin="0,10,0,0">
+                                <Button x:Name="JoinWithInviteButton" DockPanel.Dock="Right" Content="Join with an _invite" Click="JoinWithInvite_Click"
+                                        VerticalAlignment="Center" Margin="16,0,0,0" AutomationProperties.AutomationId="HostsJoinWithInvite"/>
+                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Text="Away from home? Paste the invite you made at home and sign in; this PC then joins your Martlet network by itself."/>
+                            </DockPanel>
                             <StackPanel x:Name="ManualPanel" Visibility="Collapsed" Margin="0,12,0,0" AutomationProperties.AutomationId="ManualPanel">
                                 <TextBlock x:Name="PairCodeHelp" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
                                            AutomationProperties.AutomationId="PairCodeHelp"
@@ -161,6 +167,9 @@
                                 <Button Content="Chec_k host" Click="Check_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="CheckHost"/>
                                 <Button Content="_Update host" Click="UpdateHost_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="UpdateHost"
                                         ToolTip="Update the host. Pairings and jobs stay"/>
+                                <Button Content="Sign-in from _outside" Click="SignInSettings_Click" Margin="0,0,10,0"
+                                        AutomationProperties.AutomationId="HostSignInSettings"
+                                        ToolTip="Let your computers join this host from outside home by signing in"/>
                                 <Button Content="_Forget host" Click="Forget_Click" AutomationProperties.AutomationId="ForgetHost"/>
                             </WrapPanel>
                         </StackPanel>

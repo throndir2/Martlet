@@ -64,7 +64,20 @@ another host** choice.
   computer with a fast clock cannot make later changes lose.
 - The plan holds no secrets or conversation data: host IDs, HTTPS origins,
   model names, flags and stamps only. JSON, snake case, schema 1, at most
-  16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.
+  16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
+  not a job in the plan. Companion › Deep thinking may think on several paired
+  computers at once (each one's Deep thinking role, ticked *Think here too*,
+  plus the place chosen first: `Pool` in that PC's `deep-thinking.json`, never
+  shared). The computer you talk to keeps answering; each background think goes
+  to a free one of those computers, the one sharing least with the conversation
+  first (one doing none of its jobs before one that also speaks, before the
+  computer doing Thinking), so with four computers one speaks and three think
+  about three things at once. Each result comes back to the speaking computer
+  and is brought into its conversation as usual. Other kinds of background work
+  use the same placement (`BackgroundPlaces`; see [Background job
+  API](CONVERSATION.md#background-job-api-for-new-kinds-of-background-work)).
+  The talk window, `background-jobs.json` and the desktop log name the computer
+  each job runs on.
 
 ## Where copies live and how they sync
 
@@ -223,6 +236,7 @@ NVIDIA Build and its old key.
 | `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
 | `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
+| `reminders.<device ID>` | One per computer, written only by that computer: the [reminders](CONVERSATION.md#reminders) set on it and what it did about anyone's (offered to say one, took it, said it, canceled it), so any companion PC can list, cancel and say them and the one used most recently says a due one once. Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 
 Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
 

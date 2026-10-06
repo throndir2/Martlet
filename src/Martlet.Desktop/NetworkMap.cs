@@ -59,7 +59,13 @@ internal static class DeviceComponent
 /// <paramref name="MartletVersion"/> is the release its gateway reported (null when it is 0.2.0 or older) and
 /// <paramref name="Routes"/> holds the routes it advertised.</summary>
 internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictionary<string, string>? Offers = null,
-    string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null);
+    string? MartletVersion = null, IReadOnlyList<Martlet.Avatar.Audio2Face.Remote.HostRoute>? Routes = null)
+{
+    /// <summary>How many thinks its Deep thinking role runs at once (its slots: several on one graphics card), or null when it
+    /// has no Deep thinking role.</summary>
+    public int? DeepThinkingSlots => Routes?.FirstOrDefault(r => r.RouteId == Martlet.Avatar.Audio2Face.Remote.HostRoute.DeepThinkingRouteId)
+        ?.MaximumConcurrency;
+}
 
 /// <summary>A device on the map. <paramref name="HealthCommand"/> is what clicking its status runs, when the status names
 /// something one click fixes ("Update available" updates the host). <paramref name="SharedGpu"/> warns that its voice engine
@@ -72,7 +78,7 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     bool CharacterShowing, IReadOnlyDictionary<string, HostCheck> HostChecks, IReadOnlyList<HostHardware>? HostHardware = null,
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
-    IReadOnlyList<MartletComputer>? Computers = null, string? DeepThinkingHost = null);
+    IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -459,7 +465,7 @@ internal static class NetworkMap
                         (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
                 // Deep thinking is this PC's own choice (Companion > Deep thinking), not a job handed out here.
                 else if (role.Kind == HostRoles.DeepThinking && model is not null)
-                    target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHost == paired.HostId
+                    target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
                         : $"Ready ({model}). Choose it in Companion > Deep thinking to use it.", DeviceComponent.Standby(role.Kind)));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
@@ -550,7 +556,7 @@ internal static class NetworkMap
             if (companion && !speaks && Can(HostRoles.Speaking))
                 target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Use this PC's host service for speaking" : "Use this computer for speaking",
                     check?.Offers?.ContainsKey(HostRoles.Speaking) == true, id, Ready(HostRoles.Speaking)));
-            if (companion && inputs.DeepThinkingHost != id && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
+            if (companion && inputs.DeepThinkingHosts?.Contains(id) != true && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
                 target.Commands.Add(new(NodeAction.Companion, "Choose it for Deep thinking", Argument: nameof(CompanionTab.DeepThinking),
                     Component: Ready(HostRoles.DeepThinking)));
             foreach (var role in HostRoles.All)

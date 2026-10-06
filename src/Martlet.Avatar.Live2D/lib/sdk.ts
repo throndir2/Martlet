@@ -69,6 +69,8 @@ export interface AnimatorInput {
   readonly lookY: number;
   /** 0..1 mouth opening from speech loudness. */
   readonly lipSync: number;
+  /** Additive offsets to parameters by ID (a Martlet gesture); IDs the model lacks are ignored. */
+  readonly gesture?: Readonly<Record<string, number>>;
   /** Host-composed parameter writes, applied after motion/breath and before physics/pose. */
   readonly overrides: () => void;
 }

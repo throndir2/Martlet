@@ -358,6 +358,41 @@ they are made, so held time still accepts them.
 The standalone volatile constructor has no persistence guarantee.
 Clock sampling occurs inside the store lock, not before admission.
 
+### Sign-in enrollment
+
+`GatewaySignInService` (`GatewaySignIn.cs`, routes in `GatewaySignInHttp.cs`)
+lets a computer away from home pair by signing in
+([NETWORK](../../docs/NETWORK.md#joining-from-outside-home-by-signing-in)).
+`GET /martlet/v1/signin` lists the ways to sign in (`id`, `kind`, `name`;
+nothing secret). `POST /martlet/v1/signin/begin` (`provider`, and for a browser
+provider a PKCE S256 `code_challenge` and a loopback `redirect_uri`
+`http://127.0.0.1:<port>/`) returns a one-use attempt (`attempt_id`, `state`,
+`nonce`, `expires_at` ten minutes on, and a browser provider's `authorize_url`).
+`POST /martlet/v1/signin/complete` (`attempt_id`, `device_id`, `display_name`,
+`proof`; for the owner account `{user, password, code}` where `code` is a
+current TOTP code or a recovery code) answers `201` like pairing
+(`credential_id`, `credential_secret`, `roles` `["voice"]`, `lifetime`
+`paired`) plus `signed_in` (`provider`, `subject`, `label`), after revoking any
+older credential of that device ID. Failures: `signin.unavailable` (404),
+`signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
+`signin.provider` (502); each sign-in outcome is recorded with the request
+guard under route class `signin` and the claimed or verified account as
+subject, and `TryAdmit` adds the per-account lockout. The member-only
+`GET`/`POST /martlet/v1/signin/settings` (signed; `signin.denied` for a
+non-member while the host is bound) read and change the owner account
+(`owner`: `user`, `password` of 12+ characters, `totp_secret` Base32, `code`
+proving the app took it; returns `recovery_codes` once), `recovery-codes`,
+`remove-owner`, `allow`/`disallow` (`provider`, `subject`, `label`),
+`provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
+`issuer`, `client_id`, `client_secret`, `scopes`; an omitted secret keeps the
+saved one) and `remove-provider`; the answer never contains a secret
+(`has_client_secret` only). Storage is `IGatewaySignInStorage`
+(`GatewayServer.AttachSignInStorage`, `DurableGatewayHost.AttachSignIn`); with
+none attached nobody can sign in. Enrollments whose identity is no longer
+allowed are dropped and their device credentials revoked whenever the settings
+are read. A join request from an enrolled device carries `sign_in` in the
+network document.
+
 ## Signed request and replay contract
 
 Every authenticated request uses:
@@ -444,11 +479,11 @@ nonce: TLS with the pinned host key protects them in transit.
 | `GET /martlet/v1/logs?after=N[&limit=L]` | Signed scoped device request, any role | Host ID and a page of this host's [log](../../docs/DIAGNOSTICS.md#diagnostics-page-and-shared-logs), oldest first, after store position `N` (`0` for the oldest): its own activity and every computer's lines the owner's desktops share with it. Each entry is `{source, component, seq, at, level, message, relayed_by?}`; `next` is the position to continue from and `more` says whether more are waiting. `limit` 1-1000 (default 500); at most about 448 KiB per page |
 | `GET /martlet/v1/logs?own_after=S[&limit=L]` | Signed scoped device request, any role | The same page shape with only this gateway's own lines (`source` = host ID, `component` `gateway`) whose `seq` is after `S`, so a desktop can read just them. `after` and `own_after` together, unknown or repeated parameters are `request.invalid` |
 | `GET /martlet/v1/api-keys` | Signed scoped device request, any role (never an API key) | Host ID, this host's copy of the network's API keys (`keys`: schema-1 `ApiKeyList` with names, scopes, expiry, stamps and SHA-256 verifiers) and `used` (key ID → when it was last accepted here since the gateway started) |
-| `GET /martlet/v1/security/audit` | Signed scoped device request, any role (never an API key) | Host ID, the exposure choices (`internet_reachable`, `allow_pairing_outside_home`, `treat_all_as_outside`), the guard's totals (`successes`, `failures`, `throttled`, `locked_out`) and its last 256 `events` (`{at, route_class, source, source_kind, outcome, code, subject?}`), oldest first ([guard](../../docs/NETWORK.md#reaching-your-network-from-outside-home)) |
+| `GET /martlet/v1/security/audit` | Signed scoped device request, any role (never an API key) | Host ID, the exposure choices (`internet_reachable`, `outside_addresses` from this host's roster entry, `allow_pairing_outside_home`, `treat_all_as_outside`), the guard's totals (`successes`, `failures`, `throttled`, `locked_out`) and its last 256 `events` (`{at, route_class, source, source_kind, outcome, code, subject?}`), oldest first ([guard](../../docs/NETWORK.md#reaching-your-network-from-outside-home)) |
 | `POST /martlet/v1/api-keys` | Signed device body, any role (never an API key) | Strict schema-1 `ApiKeyList`, at most 32 KiB, merged per key (a revoked entry always wins, otherwise the newest stamp) into the host's copy, which is saved to `api-keys.json` when a storage is attached; returns the same document as GET |
 | `POST /martlet/v1/logs` | Signed device body, any role | Strict schema-1 `LogBatch` (at most 384 KiB, 1,000 lines, 64 streams): lines from the sending desktop's own logs and every other computer's lines it holds (other desktops' and other hosts'). Per stream (`source`/`component`) only lines with a `seq` newer than the newest kept are stored, so redelivery is harmless; lines whose source is not the sender record `relayed_by`. Returns `accepted` and the `marks` (newest `seq`) of every stream the batch names. Saved to `logs.json` when a storage is attached (`GatewayServer.AttachLogStorage`) |
 | `POST /martlet/v1/inference/ollama-chat` | Signed `voice` body plus action permission | Exact selected native-chat model/revision/artifacts; `input` plus optional `system` and `history` (`user`/`assistant`, at most 16) within one 16,384-byte text budget; bounded UTF-8 text events. `Martlet.Gateway.Ollama` relays it to the host's loopback Ollama (`ollama` host role) |
-| `POST /martlet/v1/inference/deep-thinking-chat` | Signed `voice` body plus action permission | Route `martlet.gateway.deep-thinking-chat.v1`, the same native-chat contract, payload and bounds as `ollama-chat`, relayed by `OllamaRelayWorker.DeepThinking` to the `deep-thinking` host role's own loopback Ollama (a second server beside the conversation model's), so Deep thinking's background thinks never queue behind replies |
+| `POST /martlet/v1/inference/deep-thinking-chat` | Signed `voice` body plus action permission | Route `martlet.gateway.deep-thinking-chat.v1`, the same native-chat contract, payload and bounds as `ollama-chat`, relayed by `OllamaRelayWorker.DeepThinking` to the `deep-thinking` host role's own loopback Ollama (a second server beside the conversation model's), so Deep thinking's background thinks never queue behind replies. The role's slots (`OLLAMA_NUM_PARALLEL`, 1 to 4) are the route's `maximum_concurrency`: the gateway admits that many thinks at once and answers one more with `job.busy`; every other route stays at one |
 | `POST /martlet/v1/inference/f5-synthesis` | Signed `voice` body plus action permission | Exact F5/reference identity, WAV/transcript/chunk bounds and contiguous 24 kHz PCM. `Martlet.Gateway.F5` relays it to the host's loopback F5 service (`f5` host role; route `F5Relay`: pinned model weights, discard-only cancellation). Every voice engine in `SpeechEngines` (XTTS-v2, GPT-SoVITS) has its own route and path on this contract; the reference length must fit the engine (GPT-SoVITS: 3-10 s), and an optional `reference_language` (`en`/`ja`) carries the recording's language for GPT-SoVITS. For a voice the shared speaking-voice list says was made from several recordings, an engine that learns from several (`MultipleReferences`: XTTS-v2, GPT-SoVITS) passes when one of them fits its bounds and its loopback service also gets `reference.clips` (`start_sample`, `sample_count`, `transcript` per recording); other engines clone the joined recording |
 | `POST /martlet/v1/inference/perception/ocr` | Signed `perception` body plus action permission | Selected P02 OCR identity and bounded selected-window frame |
 | `POST /martlet/v1/inference/perception/vlm` | Signed `perception` body plus action permission | Selected P02 VLM identity, frame and bounded question |

@@ -19,14 +19,25 @@ Discord allows, how Martlet is built around it and the work in progress.
 
 ## Setting up (owner)
 
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and choose **New Application**. Name it after
-   your character.
-2. On **Bot**: **Reset Token**, copy it and paste it into Martlet (Companion › Discord). Martlet keeps it in Windows Credential
-   Manager.
-3. Still on **Bot**, under **Privileged Gateway Intents**, turn on **Message Content Intent**.
+Everything happens on **Companion › Discord**, which walks through these steps (its first line always says what to do next):
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) (**Open the Developer Portal**) and choose
+   **New Application**. Name it after your character.
+2. On **Bot**: **Reset Token**, copy it and paste it into **Bot token**, then **Save and connect**. Martlet checks that it looks
+   like a bot token, keeps it in Windows Credential Manager (never in `discord.json`, logs or MCP) and connects. **Forget the
+   bot** disconnects and removes it.
+3. Still on **Bot**, under **Privileged Gateway Intents**, turn on **Message Content Intent**. Without it Discord refuses the
+   connection (close code 4014) and the page says so, with a button to the bot's page; **Reconnect** afterwards.
 4. On **Installation**, allow both **Guild Install** and **User Install**.
-5. In Martlet, use **Add to a server** for each server (and your home server), and **Add to my account** to use `/martlet` in DMs
-   and group DMs.
+5. In Martlet, use **Add to a server** for each server and **Add to home server** for your own small server (it may also make
+   private call channels), and **Add to my account** to use `/martlet` in DMs and group DMs. Each link has a Copy button.
+6. Under **People on Discord**, set your own account: DM the bot and choose **That's me**, or paste your user ID (Discord's
+   Settings › Advanced › Developer Mode, then right-click your name › Copy User ID). Pick the home server there too.
+
+**Connection** turns the bot on or off (it then connects whenever Martlet runs) and shows its state, name, server count and any
+problem. **Where Martlet chats** sets the server, DM and voice chat modes (Off, Only when mentioned, Sometimes, Always), whether
+anyone may DM it, and per-channel rules picked from the connected bot's servers. MCP reads all of it (`discord_status`,
+`discord_check` and the page's `Discord*` values; see [MCP](MCP.md)).
 
 ## Architecture
 
@@ -81,7 +92,7 @@ the decisions so tests and MCP (`discord_text_check`) run them with a fake trans
 ## Martlet in your own calls
 
 The bot above is Martlet's own Discord account. **Martlet in your own calls** is the other way in: you are in a DM call, a
-group DM call or a server call on **your own** account, and Martlet takes part through your PC (Companion › Listening ›
+group DM call or a server call on **your own** account, and Martlet takes part through your PC (Companion › Discord ›
 **Martlet in your Discord calls**, off by default; it works while always listening runs). It is the only way Martlet can be in
 a DM or group-DM call or show up as a webcam, because bots can't do either.
 

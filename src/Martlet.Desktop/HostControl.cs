@@ -67,6 +67,7 @@ internal static class HostRoles
     internal const string GptSovits = "gpt-sovits";
     internal const string Dia = "dia";
     internal const string Singing = "singing";
+    internal const string Pictures = "pictures";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -124,7 +125,10 @@ internal static class HostRoles
         new(Singing, "Sings", "Singing", "an NVIDIA GPU with at least 6 GB",
             Audio2FaceHostConnection.SongRouteId, "singing",
             "Writes songs from lyrics and a style and sings them in a voice from your voice library (ACE-Step 1.5 and SoulX-Singer). " +
-            "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle.")
+            "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle."),
+        new(Pictures, "Draws", "Pictures", "an NVIDIA GPU with at least 8 GB",
+            Audio2FaceHostConnection.PictureRouteId, "pictures",
+            "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??
@@ -353,11 +357,13 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
 /// sync (<see cref="ClusterSync"/>).</summary>
 internal static class HostControl
 {
-    /// <summary>Which Martlet roles (and models) a reachable host runs, in words.</summary>
-    internal static string Describe(IReadOnlyDictionary<string, string> offers) => offers.Count == 0
+    /// <summary>Which Martlet roles (and models) a reachable host runs, in words; a Deep thinking role that runs several thinks
+    /// at once (<paramref name="routes"/>) says how many.</summary>
+    internal static string Describe(IReadOnlyDictionary<string, string> offers, IReadOnlyList<HostRoute>? routes = null) => offers.Count == 0
         ? "Connected. No host roles installed."
         : "Connected. Runs " + string.Join(", ", HostRoles.All.Where(r => offers.ContainsKey(r.Kind))
-            .Select(r => r.Name)) + ".";
+            .Select(r => r.Kind == HostRoles.DeepThinking && new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots is > 1 and var slots
+                ? $"{r.Name} ({slots} thinks at once)" : r.Name)) + ".";
 
     /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports.</summary>
     internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token)
@@ -373,7 +379,7 @@ internal static class HostControl
             var offers = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var route in routes)
                 if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
-            var text = Describe(offers);
+            var text = Describe(offers, routes);
             string? version = null;
             try
             {

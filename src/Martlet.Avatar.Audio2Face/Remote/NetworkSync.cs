@@ -130,6 +130,7 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(paired);
         ArgumentNullException.ThrowIfNull(connect);
+        HostRoutes.Update(state.Roster);
         var reads = await Task.WhenAll(paired.Select(p => ReadAsync(p, connect, token)));
         var views = new Dictionary<string, HostNetworkView>(StringComparer.Ordinal);
         var notes = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -147,6 +148,7 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(paired);
         ArgumentNullException.ThrowIfNull(connect);
+        HostRoutes.Update(state.Roster);
         var events = new List<string>();
         var notes = new Dictionary<string, string>(StringComparer.Ordinal);
         var revoked = new HashSet<string>(StringComparer.Ordinal);
@@ -221,6 +223,7 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
 
         foreach (var view in views.Values.Where(v => v.Roster?.NetworkId == roster.NetworkId))
             roster = NetworkRoster.Accept(roster, view.Roster!).Roster;
+        HostRoutes.Update(roster);
         NetworkSyncResult Leave(NetworkRoster from, string text)
         {
             events.Add(text);
@@ -262,6 +265,16 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
                 roster = roster.AddHost(signer, pairing.HostId, pairing.HostId, pairing.Origin, pairing.SpkiFingerprint, now);
                 if (entry?.Removed != false)
                     events.Add($"Added {pairing.HostId} to your Martlet network; your other computers pair with it by themselves.");
+            }
+            // Outside addresses the owner set on the host itself (martlet-host owner-exposure) join its entry when it has none
+            // or they are newer than the entry.
+            if (view.AdvertisedAddresses is { } advertised && view.AdvertisedAt is { } setAt && roster.Host(pairing.HostId) is { Removed: false } listed &&
+                (setAt > listed.ChangedAt || listed.Addresses is null && advertised.Count > 0) && !advertised.SequenceEqual(listed.Addresses ?? []))
+            {
+                roster = roster.SetHostAddresses(signer, pairing.HostId, advertised, now);
+                events.Add(advertised.Count == 0
+                    ? $"{pairing.HostId} has no outside addresses any more (set on the host)."
+                    : $"{pairing.HostId} can be reached from outside home at {string.Join(", ", advertised)} (set on the host).");
             }
             adopt.Remove(pairing.HostId);
             ignored.Remove(pairing.HostId);
@@ -323,6 +336,7 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
             .Where(j => !roster.Trusts(j.DeviceId, j.Key) && !(roster.Desktop(j.DeviceId) is { Removed: true } r && r.Key == j.Key))
             .GroupBy(j => j.DeviceId, StringComparer.Ordinal).Select(g => g.OrderByDescending(j => j.RequestedAt).First())
             .OrderBy(j => j.RequestedAt).ToArray();
+        HostRoutes.Update(roster);
         return new()
         {
             State = state with
@@ -359,6 +373,23 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
         return (state, approved);
     }
 
+    /// <summary>Lets in every desktop whose join request a member host of the network attests was paired by signing in (the
+    /// owner account, or an identity the owner allowed on that host). The owner set that sign-in up at home, so the sign-in is
+    /// the owner's approval and a check number would only repeat it. Requests through a host that is not an active member of
+    /// this PC's roster are left for an Allow. Returns the new state and the requests it let in.</summary>
+    public (NetworkLocalState State, IReadOnlyList<HostJoinRequest> Approved) ApproveSignedIn(NetworkLocalState state,
+        IReadOnlyList<HostJoinRequest> joins)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(joins);
+        if (state.Roster is not { } roster) return (state, []);
+        var approved = joins.Where(j => j.SignIn is not null && j.DeviceId != signer.DeviceId && roster.Host(j.HostId) is { Removed: false } &&
+                !(roster.Desktop(j.DeviceId) is { Removed: true } removed && removed.Key == j.Key))
+            .DistinctBy(j => j.DeviceId, StringComparer.Ordinal).ToArray();
+        foreach (var join in approved) state = Approve(state, join);
+        return (state, approved);
+    }
+
     /// <summary>Removes a desktop or host from the network (signed by this PC); the next sync shares it, hosts revoke the
     /// removed desktop and a removed host stops trusting the network's desktops.</summary>
     public NetworkLocalState Remove(NetworkLocalState state, string kind, string id)
@@ -368,6 +399,13 @@ public sealed class NetworkSyncEngine(INetworkSigner signer, string displayName,
             throw new InvalidOperationException("Remove another computer; this PC can't remove itself.");
         var next = state with { Roster = roster.Remove(signer, kind, id, time.GetUtcNow()) };
         return kind == NetworkKinds.Host ? next with { Adopt = next.Adopt.Where(h => h != id).ToArray() } : next;
+    }
+
+    /// <summary>Sets a host's outside addresses (empty removes them), signed by this PC; the next sync shares them.</summary>
+    public NetworkLocalState SetHostAddresses(NetworkLocalState state, string hostId, IEnumerable<string> addresses)
+    {
+        var roster = state.Roster ?? throw new InvalidOperationException("This PC is not in a Martlet network.");
+        return state with { Roster = roster.SetHostAddresses(signer, hostId, addresses, time.GetUtcNow()) };
     }
 
     private static async Task<(Audio2FaceHostPairing Pairing, HostNetworkView? View, string? Note, bool Revoked)> ReadAsync(

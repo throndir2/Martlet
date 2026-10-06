@@ -206,6 +206,15 @@ public sealed class HostRolesTests
         var thinking = Choices("ollama");
         Assert.Equal(2, thinking.Length);
         Assert.Equal(thinking, Choices(HostRoles.DeepThinking));
+        // Martlet's thinks-at-once recommendation covers the same models and suggestion, and the role publishes its slots.
+        var deep = File.ReadAllLines(Path.Combine(RolesDirectory(), HostRoles.DeepThinking, "role.conf"));
+        Assert.Equal(string.Join(' ', DeepThinkingFit.Models), deep.Single(l => l.StartsWith("choice=OLLAMA_MODEL|", StringComparison.Ordinal)).Split('|')[2]);
+        Assert.Equal("choice_by_vram=OLLAMA_MODEL|" + string.Join(' ', DeepThinkingFit.SuggestedByVram.Select(s => $"{s.MiB}@{s.Model}")),
+            deep.Single(l => l.StartsWith("choice_by_vram=OLLAMA_MODEL|", StringComparison.Ordinal)));
+        Assert.Equal("1 2 3 4", deep.Single(l => l.StartsWith("choice=OLLAMA_NUM_PARALLEL|", StringComparison.Ordinal)).Split('|')[2]);
+        Assert.Contains("slots_from=OLLAMA_NUM_PARALLEL", deep);
+        Assert.Contains("OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}",
+            File.ReadAllText(Path.Combine(RolesDirectory(), HostRoles.DeepThinking, "compose.yaml")));
     }
 
     [Fact]
@@ -242,7 +251,7 @@ public sealed class HostRolesTests
         };
         NetworkNode Host(string id, string? deepThinkingHost) =>
             NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, Hosts: hosts,
-                DeepThinkingHost: deepThinkingHost)).Single(n => n.Id == "host:" + id);
+                DeepThinkingHosts: deepThinkingHost is null ? null : [deepThinkingHost])).Single(n => n.Id == "host:" + id);
 
         var a = Host("gpu-a", null);
         Assert.Contains(a.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Ready (qwen3-8b). Choose it in Companion > Deep thinking to use it.");

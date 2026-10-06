@@ -141,6 +141,20 @@ over SSH also manages it.
   itself would. Before this, a main PC paired through *Pair your main PC* on a
   host PC still waited for an Allow on that same host PC. Requests through any
   other host still need the check number and an Allow.
+- **Joining by signing in.** A computer away from home pairs with a host by
+  signing in (below) instead of a code shown on the host. The host issues the
+  same `voice` credential pairing does and remembers which identity enrolled
+  that device; its answer to members (`GET /martlet/v1/network`) marks that
+  device's join request with the identity (`sign_in`: provider, subject,
+  label, when). A member desktop lets such a request in by itself
+  (`NetworkSyncEngine.ApproveSignedIn`) when the attesting host is an active
+  host of its roster: the owner set the sign-in up at home (the owner account
+  with its authenticator, or an identity the owner allowed on that host), so
+  that sign-in is the owner's approval, as an Allow would be. Only member
+  desktops still sign roster entries; the host only attests. Requests without
+  an attestation, or through a host outside the roster, still need the check
+  number. The attestation lasts while the device is paired with that host and
+  its identity is still allowed there.
 - **Revocation.** Hosts revoke every credential of a removed desktop. A removed
   host revokes every network desktop and keeps the roster, so the PCs learn of
   the removal and forget it.
@@ -202,11 +216,42 @@ workable setup is an overlay on every host; with port forwarding, forward one
 port per host (for example 9443 and 9444). A host with no outside address is
 simply not used while away.
 
-**Which address a desktop uses.** A host keeps its home address in the roster
-and gets any number of owner-set outside addresses (hostname or IP with a port).
-The desktop tries the home address first and the outside addresses only when it
-doesn't answer, always pinned to the same host key, and remembers the address
-that worked so the home path never waits on an outside one.
+**Setting outside addresses.** On any member PC: Devices › *Your Martlet*
+*network* › the host's **Outside addresses** (up to four, for example
+`gpu-box.tailnet.ts.net:9443`, `100.101.102.103:9443` or
+`home.example.net:9443`). On a Linux host: `martlet-host owner-exposure --config
+<dir>/host.json --outside <name:port> [--outside ...]` (`--clear-outside` removes
+them; `--allow-pairing-outside-home yes|no` and `--treat-all-as-outside yes|no`
+set the other choices), saved in `exposure.json` beside `host.json` and applied
+when the service restarts. The host advertises what was set on it
+(`GET /martlet/v1/network`: `advertised_addresses`, `advertised_at`), and the
+next member desktop that syncs signs it into the host's roster entry when the
+entry has none or it is newer. Outside addresses are part of the signed entry
+(`NetworkMember.Addresses`; entries without them sign exactly as before, so
+existing rosters are unchanged). Martlet before this release refuses a roster
+that lists outside addresses, so update every computer (Update host) before
+adding them.
+
+**Which address a desktop uses** (`Remote/HostRoutes.cs`). Requests keep the
+host's home origin, so TLS still checks the pinned key and signatures are
+unchanged; only the TCP connection dials elsewhere. The home address goes
+first; outside addresses are tried (all at once) only when it doesn't connect
+within 1.5 seconds, and only for hosts that have them. The address that worked
+is remembered, so later connections go straight to it, while the home address
+gets a 0.1-second head start and wins as soon as this PC is back home. A home
+address that answers with another key (another network's computer with the same
+address, at work) is skipped for five minutes. When nothing answers, the error
+names every address tried and what to check. A host's row on the Devices card
+says how many outside addresses it has and whether it was last reached at home,
+from outside or not at all, and the card's status line counts the hosts reached
+from outside right now. The desktop log records each change of route (`Martlet
+network: reaching gpu-box from outside home ...`, `... at home again`, or the
+addresses tried when nothing answered). Every five minutes the desktop reads the
+security audit of each paired host that has outside addresses; the host's row
+shows its guard's totals and the log names new failures, lockouts and refused
+pairings with their sources. MCP `outside_reachability_check` (with
+`contactHosts: true`) probes every host's home and outside addresses with the
+pinned key and `GET /health/live`, without a credential.
 
 **The gateway's guard** (`GatewayGuard.cs`), always on:
 
@@ -250,6 +295,64 @@ every source), *allow pairing from outside home* (off by default) and *treat
 every connection as outside home* (for a host behind a port proxy or TCP relay
 that hides the real source).
 
+## Joining from outside home by signing in
+
+Pairing codes stay at home, so a laptop that is already away joins by signing
+in. Signing in gates only that first pairing: what it gets is exactly what
+pairing gets (a `voice` credential bound to that host's pinned TLS key, used to
+sign every request, never expiring, revoked like any pairing), and the laptop
+then joins the network on that host's attestation, with no check number.
+
+| You do | Where |
+| --- | --- |
+| Set up the owner account on a host: a name, a password (12+ characters) and an authenticator app (any TOTP app: Google Authenticator, Aegis, 1Password, Bitwarden, Microsoft Authenticator). The app must show a correct code before the account is saved; you get ten one-use recovery codes, shown once | At home, on a member PC: **Devices › Add a computer** with the host selected › **Sign-in from outside**; on a Linux host: `martlet-host owner-signin-owner --config ... --user owner` (password on the first stdin line, then the code) |
+| Make an invite: the host's ID, its TLS key fingerprint, its home address, the outside addresses it answers on and the network ID. It holds no secret, so it can be reused and kept in a password manager or note | **Sign-in from outside** › **Make invite** (it starts with the host's outside addresses from **Your Martlet network › Outside addresses**; set them there so the laptop keeps reaching the host once it has joined); `martlet-host owner-invite --config ...` (the addresses from `owner-exposure`, or `--address name:port`) |
+| On the laptop: paste the invite and sign in (account name, password and the code your app shows, or a recovery code) | **Devices › Add a computer › Join with an invite** |
+| Take access away | Remove the laptop from the network (as always), or **Remove owner account** / remove an allowed identity on the host: the host revokes every computer that signed in with it |
+
+How it is protected:
+
+- **Pin first.** The laptop connects only to the key in the invite: the TLS
+  certificate must have that SPKI fingerprint before anything is sent (it names
+  the host's home address, so a name mismatch from outside is expected; the pin
+  is the authority, as for every pairing). The outside addresses are tried
+  first, then the home address.
+- **Two factors.** The password is kept on the host only as a PBKDF2-SHA256
+  verifier (600,000 iterations, 16-byte salt). Every sign-in also needs a
+  current authenticator code (RFC 6238: 30-second steps, one step of drift,
+  each code accepted once) or an unused recovery code (kept as SHA-256
+  verifiers, each works once). Wrong sign-ins count toward the guard's lockout
+  per address and per account (five free, then 1 s doubling up to 15 minutes),
+  from home too, and every outcome is in the host's security audit.
+- **One-use attempts.** Each sign-in starts with `POST /martlet/v1/signin/begin`
+  (an attempt with its own state and nonce, ten minutes, one use) and ends with
+  `POST /martlet/v1/signin/complete`. The proof travels only over the pinned
+  connection.
+- **Secrets stay on the host.** `signin.json` beside `host.json` (0600, service
+  owner) holds the verifiers, the authenticator secret, provider client
+  secrets and the allow list. The desktop never reads a secret back
+  (`GET /martlet/v1/signin/settings` returns names, counts, providers with
+  `has_client_secret`, allowed identities and the computers that signed in).
+  Only an active member desktop of the host's network (any paired desktop while
+  the host is in no network) may read or change it (`signin.denied` otherwise);
+  `martlet-host owner-signin-*` edits it on the host and the running gateway
+  picks the change up on its next sign-in check.
+- **Allow list.** The owner account is always allowed. Any other identity (a
+  provider set up on the host and the account's stable subject, with a label
+  for people) must be on the host's allow list; one that signs in but isn't
+  gets `signin.not_allowed`. Removing an identity, a provider or the owner
+  account revokes the computers it enrolled on that host (a laptop that already
+  joined the network can still pair by its network key: remove it from the
+  network as well).
+
+Limits, for now: sign-in is per host (set it up on the host the laptop reaches
+from outside); the laptop reaches the network's other hosts only where they
+have outside addresses ([above](#reaching-your-network-from-outside-home)).
+Sign-in providers in the browser (any OpenID Connect issuer such as Authentik,
+Authelia, Keycloak, Pocket ID or Google, Discord and Steam) use the same allow
+list and attestation and arrive next; the host already stores their settings
+(`provider` changes) but lists them only once their verification ships.
+
 ## Where it lives
 
 | Piece | Location |
@@ -260,7 +363,8 @@ that hides the real source).
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
-| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`) |
+| Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/settings`); `Martlet.Core` `Access/Totp.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs`, `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest` |
+| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`) |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
 join it: they use [API keys](API.md), which belong to the network too. A key
@@ -268,6 +372,19 @@ made or revoked on any member PC reaches every host the same way as the who
 does what plan, and grants nothing in the network itself.
 
 ## Qualification
+
+Joining from outside home by signing in is checked through Martlet MCP's
+`signin_selftest` (a real gateway on 127.0.0.1: owner account with a real
+authenticator secret, invite pinned by an outside name, refusals, sign-in,
+joining on the host's attestation without a check number, revocation, audit),
+the gateway, Core and Linux gateway unit tests (RFC 6238 vectors, lockout,
+allow list, `martlet-host owner-signin-*` and `owner-invite` on a fixture file
+system) and the desktop's **Join with an invite** window on a disposable data
+folder (opened from Add a computer, a malformed invite and an unreachable host
+reported). **NOT RUN:** the **Sign-in from outside** window against a live
+paired host (needs a pairing secret in Windows Credential Manager), a laptop
+signing in over the real internet, and `signin.json` on a native or Docker
+Linux host.
 
 Checked on the Windows development PC through Martlet MCP: `network_selftest`
 (three real gateways on 127.0.0.1 with simulated desktops and a simulated

@@ -26,6 +26,8 @@ internal static class ExposureRehearsal
         await using var host = await LabHost.StartAsync("lab-exposure");
         using var stranger = PinnedGatewayClient.Create(new GatewayOrigin(host.Origin), host.Identity);
         Audio2FaceHostConnection? desktop = null;
+        Audio2FaceHostPairing? saved = null;
+        string? savedSecret = null;
 
         async Task Run(string name, Func<Task<(bool Ok, string Detail)>> action)
         {
@@ -65,6 +67,7 @@ internal static class ExposureRehearsal
             var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin, host.HostId, host.Identity.SpkiFingerprint, "lab-desktop",
                 card.PairingId, card.Token.Reveal(), token);
             desktop = new Audio2FaceHostConnection(pairing, secret);
+            (saved, savedSecret) = (pairing, secret);
             var audit = await desktop.ReadSecurityAuditAsync(token);
             return (audit.Events.Any(e => e is { Outcome: "success", Subject: "lab-desktop", SourceKind: "loopback" }) && !audit.InternetReachable,
                 $"paired; audit: {audit.Successes} success(es), source kind {audit.Events.LastOrDefault()?.SourceKind}");
@@ -137,6 +140,91 @@ internal static class ExposureRehearsal
         });
         desktop?.Dispose();
 
+        // Outside addresses: the desktop keeps the home origin (pinned key, signatures) and only the TCP connection goes elsewhere.
+        host.Server.Exposure = new();
+        var port = int.Parse(host.Origin[(host.Origin.LastIndexOf(':') + 1)..]);
+        var deadHome = $"https://127.0.0.1:{LabHost.FreePort()}";
+        await Run("Home address doesn't answer: the desktop reaches the host at its outside address, pinned to the same key", async () =>
+        {
+            HostRoutes.Set(deadHome, host.HostId, [$"127.0.0.1:{port}"]);
+            using var away = new Audio2FaceHostConnection(saved! with { Origin = deadHome }, savedSecret);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var first = await away.ReadRoutesAsync(token);
+            var firstMs = clock.ElapsedMilliseconds;
+            var route = HostRoutes.For(deadHome);
+            using var again = new Audio2FaceHostConnection(saved! with { Origin = deadHome }, savedSecret);
+            clock.Restart();
+            await again.ReadRoutesAsync(token);
+            return (route is { Route: "outside" } && route.Address == $"127.0.0.1:{port}",
+                $"route {route?.Route} via {route?.Address}; first connection {firstMs} ms, next (last good route first) {clock.ElapsedMilliseconds} ms");
+        });
+        await Run("Home address answers: it is used at once, never waiting on an outside one", async () =>
+        {
+            HostRoutes.Set(host.Origin, host.HostId, [$"127.0.0.1:{LabHost.FreePort()}"]);
+            using var home = new Audio2FaceHostConnection(saved!, savedSecret);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            await home.ReadRoutesAsync(token);
+            var route = HostRoutes.For(host.Origin);
+            return (route is { Route: "home" } && clock.ElapsedMilliseconds < HostRoutes.HomeConnectWindow.TotalMilliseconds,
+                $"route {route?.Route} in {clock.ElapsedMilliseconds} ms");
+        });
+        await Run("Nothing answers: the desktop says which addresses it tried and what to check", async () =>
+        {
+            var nowhere = $"https://127.0.0.1:{LabHost.FreePort()}";
+            HostRoutes.Set(nowhere, host.HostId, [$"127.0.0.1:{LabHost.FreePort()}"]);
+            using var lost = new Audio2FaceHostConnection(saved! with { Origin = nowhere }, savedSecret);
+            try
+            {
+                await lost.ReadRoutesAsync(token);
+                return (false, "unexpectedly connected");
+            }
+            catch (Audio2FaceHostException error)
+            {
+                return (error.Code == "host.unreachable" && error.Message.Contains("Couldn't reach the host at home or outside", StringComparison.Ordinal) &&
+                    HostRoutes.For(nowhere) is { Route: "none" }, $"{error.Code}: {error.Message}");
+            }
+        });
+        await Run("The reachability probe (MCP outside_reachability_check) tells answering, closed and wrong-key addresses apart", async () =>
+        {
+            await using var stranger2 = await LabHost.StartAsync("lab-stranger");
+            var spki = host.Identity.SpkiFingerprint;
+            var home = await HostRoutes.ProbeAsync(host.Origin, spki, null, TimeSpan.FromSeconds(4), token);
+            var outside = await HostRoutes.ProbeAsync(deadHome, spki, $"127.0.0.1:{port}", TimeSpan.FromSeconds(4), token);
+            var closed = await HostRoutes.ProbeAsync(deadHome, spki, null, TimeSpan.FromSeconds(4), token);
+            var other = await HostRoutes.ProbeAsync(stranger2.Origin, spki, null, TimeSpan.FromSeconds(4), token);
+            return (home is { Reachable: true, Problem: null } && outside is { Reachable: true, Problem: null } && !closed.Reachable && closed.Problem == "refused" && !other.Reachable && other.Problem == "another key",
+                $"home: {home.Reachable} ({home.Milliseconds} ms{(home.Problem is null ? "" : ", " + home.Problem)}); outside: {outside.Reachable} ({outside.Milliseconds} ms{(outside.Problem is null ? "" : ", " + outside.Problem)}); closed: {closed.Problem}; " +
+                $"another host's key at the address: {other.Problem}");
+        });
+        await Run("Outside addresses set on the host itself (martlet-host owner-exposure) are signed into the network by a member desktop", async () =>
+        {
+            host.Server.Exposure = new() { OutsideAddresses = ["gpu-box.tailnet.ts.net:9443"], OutsideAddressesSetAt = DateTimeOffset.UtcNow };
+            using var key = Martlet.Core.Network.NetworkKey.Create("lab-desktop");
+            var engine = new NetworkSyncEngine(key, "LAB-DESKTOP");
+            var first = await engine.SyncAsync(NetworkLocalState.Empty, [saved!], p => new Audio2FaceHostConnection(p, savedSecret), token);
+            var second = await engine.SyncAsync(first.State, [saved!], p => new Audio2FaceHostConnection(p, savedSecret), token);
+            var listed = second.State.Roster?.Host(host.HostId)?.Addresses;
+            var reachable = host.Server.Guard.InternetReachable;
+            host.Server.Exposure = new();
+            return (listed is ["gpu-box.tailnet.ts.net:9443"] && reachable && second.Views[host.HostId].Roster?.Host(host.HostId)?.Addresses is { Count: 1 },
+                $"roster lists {string.Join(", ", listed ?? [])}; host has it too and counts as reachable from outside: {reachable}; " +
+                string.Join(" ", first.Events.Concat(second.Events)));
+        });
+        await Run("Another computer with the home address (another network's key): skipped, the outside address is used", async () =>
+        {
+            await using var other = await LabHost.StartAsync("lab-other");
+            HostRoutes.Set(other.Origin, host.HostId, [$"127.0.0.1:{port}"]);
+            using var collide = new Audio2FaceHostConnection(saved! with { Origin = other.Origin }, savedSecret);
+            string firstOutcome;
+            try { await collide.ReadRoutesAsync(token); firstOutcome = "connected"; }
+            catch (Audio2FaceHostException error) { firstOutcome = error.Code; }
+            using var retry = new Audio2FaceHostConnection(saved! with { Origin = other.Origin }, savedSecret);
+            var routes = await retry.ReadRoutesAsync(token);
+            var route = HostRoutes.For(other.Origin);
+            return (firstOutcome == "host.unreachable" && route is { Route: "outside" },
+                $"first request {firstOutcome} (wrong key at the home address); then route {route?.Route} via {route?.Address}, {routes.Count} route(s) read");
+        });
+
         var ok = steps.All(s => s.Ok);
         return (ok, new
         {
@@ -145,8 +233,9 @@ internal static class ExposureRehearsal
             total = steps.Count,
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
             scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS) told to treat every connection as outside home, a desktop " +
-                "using the desktop's paired client, and a stranger's pinned HTTPS client. Not covered: a real internet source address, " +
-                "a router port forward, an overlay network and the desktop window.",
+                "using the desktop's paired client and network sync, a stranger's pinned HTTPS client, and outside addresses played by " +
+                "other loopback ports. Not covered: a real internet source address, a router port forward, an overlay network and the " +
+                "desktop window.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -188,7 +277,7 @@ internal static class ExposureRehearsal
             certificate?.Dispose();
         }
 
-        private static int FreePort()
+        internal static int FreePort()
         {
             var probe = new TcpListener(IPAddress.Loopback, 0);
             probe.Start();

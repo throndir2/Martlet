@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\src\Martlet.Gateway.Dia\Martlet.Gateway.Dia.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Gateway.Stt\Martlet.Gateway.Stt.csproj" />
     <ProjectReference Include="..\..\src\Martlet.Gateway.Singing\Martlet.Gateway.Singing.csproj" />
+    <ProjectReference Include="..\..\src\Martlet.Gateway.Pictures\Martlet.Gateway.Pictures.csproj" />
     <Compile Include="..\Martlet.Avatar.Audio2Face.Tests\ProtocolFixture.cs" Link="Fixtures\ProtocolFixture.cs" />
     <Using Include="Xunit" />
   </ItemGroup>

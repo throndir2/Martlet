@@ -215,6 +215,7 @@ public partial class MainWindow
         RenderBackground();
         UpdateStayAwake();
         if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
+        else if (previous != role) messaging.Start();
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         QueueNetworkSync();
@@ -375,6 +376,7 @@ public partial class MainWindow
         EvaluateCoverage();
         RenderHealth(force: true);
         RenderHost();
+        RenderHomeCharacters();
         if (openTab is not null && !tabEdited) RenderTab();
     }
 
@@ -949,12 +951,12 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHost());
+        DeepThinkingHosts());
 
-    /// <summary>The paired computer whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
-    private string? DeepThinkingHost() =>
+    /// <summary>The paired computers whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
+    private IReadOnlyCollection<string>? DeepThinkingHosts() =>
         store is not null && ThinkLongerSettings.Of(homeSettings?.Generation).On &&
-        DeepThinkingSettings.Load(store.DataDirectory) is { OnHostRole: true } deep ? deep.HostId : null;
+        DeepThinkingSettings.Load(store.DataDirectory).Places.Where(p => p.OnHostRole).Select(p => p.HostId!).ToArray() is { Length: > 0 } hosts ? hosts : null;
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -1353,6 +1355,9 @@ public partial class MainWindow
             var recommended = answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? ListeningAdvisor.HostAnswers(HardwareStore?.Find(host.HostId), System.Globalization.CultureInfo.CurrentUICulture,
                     local ? (await ListeningAdviceAsync()).Answers() : null)
+                // Deep thinking's thinks at once: what fits on its graphics card beside the host's other roles, for each model.
+                : answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.DeepThinking
+                ? DeepThinkingFit.Recommend(HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers)
                 : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
                 host.Pairing, confirmed);

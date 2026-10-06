@@ -30,6 +30,7 @@ public partial class MainWindow : ThemedWindow
     private readonly DesktopConversationHistory? conversationHistory;
     private readonly LorebookStore? lorebooks;
     private readonly SmartHome smartHome;
+    private readonly MessagingService messaging;
     private readonly DiscordService discord;
     private readonly McpToolService mcpTools;
     private readonly VoiceIdentity voiceIdentity;
@@ -85,6 +86,8 @@ public partial class MainWindow : ThemedWindow
         mcpTools = new(store?.DataDirectory);
         mcpTools.Changed += ToolsChanged;
         smartHome.Attach(mcpTools);
+        messaging = new(store?.DataDirectory, vault) { Answer = AnswerMessageAsync };
+        messaging.Changed += () => Dispatcher.BeginInvoke(MessagingChanged);
         voiceIdentity = new(store?.DataDirectory);
         voiceIdentity.Load();
         localVoices = new(store?.DataDirectory);
@@ -107,6 +110,8 @@ public partial class MainWindow : ThemedWindow
             // Martlet sings through the same output as its voice; the character's mouth follows the vocals. (The FIXTURE song
             // maker's songs play into a silent output, so automated checks never sound.) Songs are kept as creations.
             Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.SongCreations.Kind);
+            // Pictures Martlet draws (draw_picture) are kept as creations too, and shown in the talk window.
+            Martlet.Core.Creations.CreationRegistry.Shared.Register(Martlet.Conversation.PictureCreations.Kind);
             var singing = new ConversationSinging(store!.DataDirectory, new DesktopSongSource(store.DataDirectory),
                 DesktopSongSource.Fixture ? new SilentSongOutput() : speakers is SimulatedSpeakers ? speakers : new WasapiDeviceFactory(),
                 captions.Feed, avatar, (vocals, rate, token) => avatar.AnalyzeSongAsync(vocals, rate, OwnLipSyncEndpoint(), token));
@@ -154,6 +159,7 @@ public partial class MainWindow : ThemedWindow
         InitializeShell();
         InitializeCluster();
         InitializeSettingsSync();
+        InitializeReminders();
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
@@ -196,6 +202,8 @@ public partial class MainWindow : ThemedWindow
         {
             await ShowSavedCharacterAsync(onlyIfAutoShow: true);
             if (background.StartCompanion && !closing) await StartCompanionAsync();
+            // Messaging apps (Companion › Messaging): the paired chats reach Martlet whenever it runs on this companion PC.
+            if (!closing) messaging.Start();
         }
         else ErrorLog.Info("Martlet started as a Martlet host: the character and listening stay off on this PC" +
             (background.StartCompanion ? " (When Martlet starts, show the character and start listening is kept for when it's your companion PC)." : "."));
@@ -203,6 +211,7 @@ public partial class MainWindow : ThemedWindow
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
         StartSettingsSync();
+        StartReminders();
         StartMemorySync();
         StartNetwork();
         StartApiKeys();
