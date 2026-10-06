@@ -95,6 +95,8 @@ internal static class GatewayInferenceJson
                     ParseTranscription(fields["payload"], route),
                 GatewayInferenceKind.Song =>
                     ParseSong(fields["payload"], route, referenceAudio, referenceVoice),
+                GatewayInferenceKind.Picture =>
+                    ParsePicture(fields["payload"], route),
                 _ => throw new GatewayProtocolException("request.invalid")
             };
             return new(
@@ -683,6 +685,77 @@ internal static class GatewayInferenceJson
             var id = Text(fields, "job_id", 64);
             GatewayRules.Require(id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'), "request.invalid");
             return id;
+        }
+    }
+
+    private static GatewayPicturePayload ParsePicture(JsonElement element, GatewayInferenceRoute route)
+    {
+        GatewayRules.Require(element.ValueKind == JsonValueKind.Object, "request.invalid");
+        var operation = element.TryGetProperty("operation", out var operationElement) &&
+            operationElement.ValueKind == JsonValueKind.String ? operationElement.GetString() : null;
+        switch (operation)
+        {
+            case "status":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayPictureOperation.Status);
+            case "queue":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayPictureOperation.Queue);
+            case "free":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayPictureOperation.Free);
+            case "prompt":
+            {
+                var fields = Object(element, ["operation", "prompt"], []);
+                var prompt = fields["prompt"];
+                GatewayRules.Require(prompt.ValueKind == JsonValueKind.Object, "request.invalid");
+                GatewayRules.Require(StrictUtf8.GetByteCount(prompt.GetRawText()) <= route.MaximumInputBytes, "request.too_large");
+                return new(GatewayPictureOperation.Prompt, prompt: prompt.Clone());
+            }
+            case "history":
+            {
+                var fields = Object(element, ["operation", "prompt_id"], []);
+                return new(GatewayPictureOperation.History, promptId: PromptId(fields));
+            }
+            case "cancel":
+            {
+                var fields = Object(element, ["operation", "prompt_id"], []);
+                return new(GatewayPictureOperation.Cancel, promptId: PromptId(fields));
+            }
+            case "view":
+            {
+                var fields = Object(element, ["operation", "filename", "subfolder", "type", "offset", "maximum"], []);
+                var filename = SafeComfyName(Text(fields, "filename", 128), allowEmpty: false);
+                var subfolder = SafeComfyName(Text(fields, "subfolder", 128), allowEmpty: true);
+                var type = Text(fields, "type", 16);
+                GatewayRules.Require(type is "output" or "temp", "request.invalid");
+                return new(GatewayPictureOperation.View,
+                    filename: filename,
+                    subfolder: subfolder,
+                    imageType: type,
+                    offset: Integer(fields, "offset", 0, GatewayInferenceRoute.PictureMaximumFileBytes),
+                    maximum: checked((int)Integer(fields, "maximum", 1, GatewayInferenceRoute.PictureMaximumPageBytes)));
+            }
+            default:
+                throw new GatewayProtocolException("request.invalid");
+        }
+
+        static string PromptId(IReadOnlyDictionary<string, JsonElement> fields)
+        {
+            var id = Text(fields, "prompt_id", 128);
+            GatewayRules.Require(id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.'), "request.invalid");
+            return id;
+        }
+
+        static string SafeComfyName(string value, bool allowEmpty)
+        {
+            if (allowEmpty && value.Length == 0) return value;
+            GatewayRules.Require(value.Length > 0 &&
+                value[0] != '.' &&
+                !value.Contains("..", StringComparison.Ordinal) &&
+                !value.Any(char.IsControl) &&
+                !value.Any(c => c is '/' or '\\' or ':'), "request.invalid");
+            return value;
         }
     }
 

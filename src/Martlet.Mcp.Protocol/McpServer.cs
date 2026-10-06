@@ -529,6 +529,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             endpoint = new { type = "string", maxLength = 64 },
             text = new { type = "string", maxLength = 300 }
         }),
+        Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
+            "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
+            "model; whether an own key is saved, never the key), the loaded custom workflow's node count, the picture creations " +
+            "(shape, size, engine, model, seconds, fixture, assets, whether they're on this PC; never titles or descriptions) and the " +
+            "draw_picture tool and job kind the conversation offers. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("pictures_check", "Draw one picture through the production picture maker and report it: place \"fixture\" (the " +
+            "default: the FIXTURE - NOT AI gradient maker) or \"comfyui\" (a ComfyUI at address, such as http://127.0.0.1:8188, " +
+            "through Martlet's ComfyUI client: status and model check, the workflow (z-image-turbo, checkpoint with checkpoint, or " +
+            "custom with workflowFile, an absolute path to an Export (API) file), queue, history, the picture fetched). Returns " +
+            "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
+            "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
+            "does; with saveDirectory (absolute) it writes the picture there. Never calls a paid cloud provider.", new
+        {
+            place = new { type = "string", @enum = new[] { "fixture", "comfyui" } },
+            address = new { type = "string", maxLength = 512 },
+            workflow = new { type = "string", @enum = new[] { "z-image-turbo", "checkpoint", "custom" } },
+            checkpoint = new { type = "string", maxLength = 255 },
+            workflowFile = new { type = "string", maxLength = 260 },
+            prompt = new { type = "string", maxLength = 2000 },
+            shape = new { type = "string", @enum = new[] { "square", "landscape", "portrait", "wide", "tall" } },
+            dataDirectory = new { type = "string", maxLength = 260 },
+            saveDirectory = new { type = "string", maxLength = 260 }
+        }),
         Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
             "voice matches set up (soulx, vevosing), queue, whether the worker process holds the graphics card, the card's memory " +
@@ -1116,6 +1142,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "model"), cancellation),
                 "singing_status" => await SingingStatusAsync(arguments, cancellation),
                 "singing_check" => await SingingCheckAsync(arguments, cancellation),
+                "pictures_status" => PicturesCheck.Status(DataDirectory(arguments)),
+                "pictures_check" => await PicturesCheck.RunAsync(OptionalString(arguments, "place"), OptionalString(arguments, "address"),
+                    OptionalString(arguments, "workflow"), OptionalString(arguments, "checkpoint"), OptionalString(arguments, "workflowFile"),
+                    OptionalString(arguments, "prompt"), OptionalString(arguments, "shape"),
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "saveDirectory"),
+                    cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
