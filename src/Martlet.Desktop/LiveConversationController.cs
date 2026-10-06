@@ -683,7 +683,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>Every place Deep thinking is set to think on, each with whether a think can run there.</summary>
     private DeepThinkingPool DeepPool(LiveConversationConfiguration configured) =>
-        DeepThinkingPool.For(Volatile.Read(ref deepThinking), configured.Routes);
+        DeepThinkingPool.For(Volatile.Read(ref deepThinking), configured.Routes, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device);
 
     internal void Configure(SettingsLoadResult loaded)
     {
@@ -2321,7 +2321,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // Where it thinks (Companion › Deep thinking, this PC's choice): every place it is set to think on that can run a think
         // (a model of its own; a second model in Ollama on this PC only while both fit on the graphics card), one think each.
         var deep = Volatile.Read(ref deepThinking);
-        var pool = DeepThinkingPool.For(deep, configured.Routes);
+        var pool = DeepPool(configured);
         var plan = pool.Plan;
         if (!plan.Available)
         {
@@ -2480,7 +2480,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // replies never wait): on the free place that shares least with the conversation, else the least busy one, held while
             // it writes. Without a Deep thinking place, the reply writes them itself.
             var deep = Volatile.Read(ref deepThinking);
-            var pool = DeepThinkingPool.For(deep, configured.Routes);
+            var pool = DeepPool(configured);
             var plan = pool.Plan;
             if (!plan.Available)
             {

@@ -313,12 +313,25 @@ public sealed record DeepThinkingSpot(DeepThinkingSettings Settings, DeepThinkin
 /// Deep thinking role) doesn't stop the others.</summary>
 public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
 {
-    public static DeepThinkingPool For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes)
+    /// <param name="sharing">Devices › Sharing work: a paired computer Deep thinking never uses, or one kept for other companion
+    /// PCs than <paramref name="device"/>, can't run a think from this PC.</param>
+    public static DeepThinkingPool For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes,
+        Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null)
     {
         ArgumentNullException.ThrowIfNull(deep);
         ArgumentNullException.ThrowIfNull(routes);
         var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        return new([.. deep.Places.Select(place => new DeepThinkingSpot(place, DeepThinkingPlan.For(place, routes), place.Computer(thinking)))]);
+        return new([.. deep.Places.Select(place => new DeepThinkingSpot(place, Kept(place, sharing, device) ?? DeepThinkingPlan.For(place, routes),
+            place.Computer(thinking)))]);
+    }
+
+    private static DeepThinkingPlan? Kept(DeepThinkingSettings place, Martlet.Core.Cluster.WorkSharingSettings? sharing, string? device)
+    {
+        if (sharing is null || place.Place != DeepThinkingPlace.Host || place.HostId is not { } host) return null;
+        if (sharing.Job(Martlet.Core.Cluster.WorkSharingJobs.DeepThinking).Never.Contains(host, StringComparer.Ordinal))
+            return new(false, $"Devices › Sharing work says Deep thinking never uses {host}.");
+        return device is null || sharing.Allows(host, device) ? null
+            : new(false, $"{host} is kept for {string.Join(" and ", sharing.OnlyFor(host))} (Devices › Sharing work).");
     }
 
     /// <summary>The places a think can run on now, in the order they were chosen.</summary>

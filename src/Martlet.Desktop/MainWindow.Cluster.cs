@@ -43,6 +43,7 @@ public partial class MainWindow
             ClusterSyncChoice.IsEnabled = false;
             return;
         }
+        WorkSharingRoster.DataDirectory = store.DataDirectory;
         clusterEnabled = ClusterSync.LoadEnabled(store.DataDirectory);
         clusterPlan = ClusterSync.LoadPlan(store.DataDirectory);
         ClusterSyncChoice.IsChecked = clusterEnabled;
@@ -499,6 +500,7 @@ public partial class MainWindow
 
     private void ShowClusterStatus()
     {
+        WorkSharingRoster.OwnHostId = OwnHostId();
         if (!clusterEnabled)
         {
             ClusterStatusText.Text = store is null ? "Device sync is unavailable."
