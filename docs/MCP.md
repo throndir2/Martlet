@@ -222,6 +222,39 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Pictures
+
+While Companion › Pictures has a place (or `MARTLET_PICTURES_FIXTURE=1`), every
+reply on a route that does function calling also gets `draw_picture`
+(`description`, optional `title`, `shape`, `avoid`), after the song tools. It
+starts a `picture-N` background job and returns at once; the finished picture is
+kept as a `picture` creation and shown in the talk window (`LivePicture`, whose
+click opens `LivePictureViewer`), and `perform_creation` shows a kept one again.
+See [Pictures](PICTURES.md). The talk window's status says *Starting a picture in
+the background…* while it is called, and the desktop log notes `Pictures:`
+lines (where, size, seconds; never the description).
+
+The local server's `pictures_status` reads a data directory's `pictures.json`
+(place, workflow, checkpoint or model, whether an own key is saved; never a key),
+the loaded workflow's node count, the picture creations (shape, size, engine,
+model, seconds, fixture; never titles or descriptions) and the tool and job kind.
+`pictures_check` draws one picture through the production maker: `place`
+`fixture` (default) or `comfyui` with `address` (and `workflow`
+`z-image-turbo`, `checkpoint` with `checkpoint`, or `custom` with `workflowFile`),
+reporting availability, every progress stage, the media type, size, SHA-256 and
+seconds; with `dataDirectory` it keeps the picture as a creation there and reads it
+back, with `saveDirectory` it writes the file. It never calls OpenRouter or NVIDIA
+Build (a picture costs money). Desktop automation: Companion › Pictures'
+`PicturesPlace-<place>` and `PicturesHost-<host>` choices, `PicturesCheck` and
+`PicturesComfyConnect` are passive clicks; `PicturesNow`, `PicturesTestState`,
+`PicturesEngine`, `PicturesFeatures`, `PicturesHostState`, `PicturesSetUp`,
+`PicturesUseHost`, `PicturesComfyAddress`, `PicturesComfyState`,
+`PicturesWorkflow`, `PicturesLoadWorkflow`, `PicturesUseComfy`, `PicturesModel`,
+`PicturesKeyStatus`, `PicturesUseCloud`, `PicturesTurnOff` and `PicturesTest`
+return their text. Set up, Draw with..., Turn pictures off and Draw a test picture
+save, install or draw, so they need `--allow-ui-effects`; the Creations page shows
+a picture as `CreationPicture`.
+
 ### Reminders
 
 On a PC that keeps reminders (any with a data folder), every reply on a route
@@ -724,8 +757,8 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInRecoveryCodes`, `SignInAllowedList`, `SignInProvidersList`,
 `SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
 `SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
-`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`, `SignInProviderRemove`,
-`SignInRefusedList`, `SignInRefusedAllow`,
+`SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`,
+`SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow`,
 `SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
 `SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
 `SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
@@ -1940,6 +1973,25 @@ conversation picked shows in the talk window's `LiveChattiness` line (*Chattines
 quiet (Martlet decides).*) and in
 `logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
 Martlet decides).* It reads no credentials and contacts nothing.
+
+`vision_history_check` rehearses how what Martlet sees is kept in the
+conversation ([Screen commentary](SCREEN_COMMENTARY.md#what-martlet-saw-stays-in-the-conversation))
+with the desktop's production code: `prompts.seen` is Companion › Prompts ›
+*What you saw* as the data directory's settings.json sends it (optional
+absolute `dataDirectory`, default the current user's), `tag` the seen tag
+(`[seen:…]`, any words on one line) and `markers` the line markers
+(`[Screen]`, `[Camera]`). Each sample look reply (or `reply`, up to 1,024
+characters of one line) goes through the production speech segmenter and chat
+stripper with the seen and chattiness tags a look is offered (`spoken`,
+`shown`, `passed`, `tags`, `seen`: the description kept, `tagHidden`) and is
+kept in a production conversation buffer as the desktop keeps a look
+(`replacedPassedLook` when it took the place of the passed look before it),
+then a typed message that came with a picture. `history` is the conversation
+as the next reply sends it (`role`, `text`, `vision`, and `memoryReads`: what
+memory and learning names may read of a user line, null for a look). A running
+conversation's looks show in `logs_tail` `contains` `Vision:` as *Vision: the
+conversation keeps a screen glance (passed, described, in place of the passed
+look before it).* It reads no credentials and contacts nothing.
 
 `discord_text_check` feeds simulated Discord messages through the production
 [Discord](DISCORD.md) text pipeline (`DiscordTextChat` in `src\Martlet.Discord`,
@@ -3918,7 +3970,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `reminders_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

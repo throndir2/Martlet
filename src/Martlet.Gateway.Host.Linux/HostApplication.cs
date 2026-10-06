@@ -56,6 +56,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 "dia" => Martlet.Gateway.Dia.DiaRelay.Create(role.Endpoint, role.Model),
                 "stt" => new Martlet.Gateway.Stt.SttRelayWorker(role.Endpoint, role.Model),
                 "singing" => new Martlet.Gateway.Singing.SongRelayWorker(role.Endpoint, role.Model),
+                "pictures" => new Martlet.Gateway.Pictures.PictureRelayWorker(role.Endpoint, role.Model),
                 _ => throw new HostInputException()
             };
         }

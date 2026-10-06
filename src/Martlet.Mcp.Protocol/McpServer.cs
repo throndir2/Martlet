@@ -260,8 +260,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
             "with no check number; then an OpenID Connect provider (an issuer in this process, a simulated browser and the desktop's " +
             "real loopback redirect) is refused until the home PC allows the identity it saw, and joins the same way; a Steam " +
-            "assertion is confirmed by the host; a " +
-            "non-member can't change sign-in and removing the owner account revokes the laptop. Reports " +
+            "assertion is confirmed by the host; a non-member can't change sign-in and removing the owner account revokes the " +
+            "laptop. Reports " +
             "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
             "(on by default, \"off\" only after the owner turned it off) and which paired hosts it could share from hosts.json (hosts " +
@@ -531,6 +531,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
             endpoint = new { type = "string", maxLength = 64 },
             text = new { type = "string", maxLength = 300 }
+        }),
+        Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
+            "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
+            "model; whether an own key is saved, never the key), the loaded custom workflow's node count, the picture creations " +
+            "(shape, size, engine, model, seconds, fixture, assets, whether they're on this PC; never titles or descriptions) and the " +
+            "draw_picture tool and job kind the conversation offers. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("pictures_check", "Draw one picture through the production picture maker and report it: place \"fixture\" (the " +
+            "default: the FIXTURE - NOT AI gradient maker) or \"comfyui\" (a ComfyUI at address, such as http://127.0.0.1:8188, " +
+            "through Martlet's ComfyUI client: status and model check, the workflow (z-image-turbo, checkpoint with checkpoint, or " +
+            "custom with workflowFile, an absolute path to an Export (API) file), queue, history, the picture fetched). Returns " +
+            "availability, every progress stage, the media type, size, SHA-256, seconds and the workflow's node types. With " +
+            "dataDirectory (disposable) it keeps the picture as a picture creation there and reads it back as the talk window " +
+            "does; with saveDirectory (absolute) it writes the picture there. Never calls a paid cloud provider.", new
+        {
+            place = new { type = "string", @enum = new[] { "fixture", "comfyui" } },
+            address = new { type = "string", maxLength = 512 },
+            workflow = new { type = "string", @enum = new[] { "z-image-turbo", "checkpoint", "custom" } },
+            checkpoint = new { type = "string", maxLength = 255 },
+            workflowFile = new { type = "string", maxLength = 260 },
+            prompt = new { type = "string", maxLength = 2000 },
+            shape = new { type = "string", @enum = new[] { "square", "landscape", "portrait", "wide", "tall" } },
+            dataDirectory = new { type = "string", maxLength = 260 },
+            saveDirectory = new { type = "string", maxLength = 260 }
         }),
         Tool("singing_status", "Read the singing host role: its loopback service's own status (default http://127.0.0.1:50085/: " +
             "state, engine (song, or the FIXTURE - NOT AI tone engine), the pinned models with their licences and sizes, sources, " +
@@ -869,6 +895,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("vision_history_check", "How what Martlet sees is kept in the conversation (docs/SCREEN_COMMENTARY.md), rehearsed with " +
+            "the desktop's production code: Companion > Prompts > What you saw as a data directory's settings.json sends it (seen), " +
+            "then sample look replies (or reply) through the production speech segmenter and chat stripper with the [seen: ...] " +
+            "and chattiness tags a look is offered (spoken, shown, passed, tags, seen: the description kept, tagHidden), each kept " +
+            "in a production conversation buffer as the desktop keeps a look ([Screen] line; passed looks in a row keep only the " +
+            "last: replacedPassedLook), then a message that came with a picture. Returns the conversation's lines as the next " +
+            "reply sends them (history: role, text, vision, memoryReads: what memory and learning names may read of a user " +
+            "line). Live looks show in the desktop log (\"Vision: the conversation keeps ...\"). Reads no credentials and " +
+            "contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 1024 }
+        }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
@@ -1116,6 +1155,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "model"), cancellation),
                 "singing_status" => await SingingStatusAsync(arguments, cancellation),
                 "singing_check" => await SingingCheckAsync(arguments, cancellation),
+                "pictures_status" => PicturesCheck.Status(DataDirectory(arguments)),
+                "pictures_check" => await PicturesCheck.RunAsync(OptionalString(arguments, "place"), OptionalString(arguments, "address"),
+                    OptionalString(arguments, "workflow"), OptionalString(arguments, "checkpoint"), OptionalString(arguments, "workflowFile"),
+                    OptionalString(arguments, "prompt"), OptionalString(arguments, "shape"),
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), OptionalString(arguments, "saveDirectory"),
+                    cancellation),
                 "mcp_servers_status" => McpServersStatus(arguments),
                 "mcp_directory_plan" => McpDirectoryPlan(arguments),
                 "home_assistant_probe" => await HomeAssistantProbeAsync(arguments, cancellation),
@@ -1145,6 +1190,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
+                "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "thinking_steps_check" => await ThinkingStepsCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
