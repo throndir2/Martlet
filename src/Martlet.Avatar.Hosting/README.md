@@ -173,10 +173,9 @@ keyboard focus on opening.
 Character) or **Lock position** on the character's right-click menu keeps it
 where it is: it can't be dragged, nudged with the arrow keys, sent home or
 resized from the overlay, and zoom only zooms the camera within its frame.
-Only the main Martlet window unlocks it (**Unlock character position** on the
-home screen, **Unlock position** on Companion > Character, also while the
-character is hidden); on the locked character the menu item only opens
-Companion > Character. The locked place and size are saved on this PC
+**Unlock character position** on the home screen, **Unlock position** on
+Companion > Character (also while the character is hidden) or **Unlock
+position** on the locked character's right-click menu unlocks it. The locked place and size are saved on this PC
 (`character-placement.json`, never shared with other computers), so a locked
 character shows there again after it is hidden or Martlet restarts (at the
 default spot, still locked, if that place is no longer on a screen). Unlocked,

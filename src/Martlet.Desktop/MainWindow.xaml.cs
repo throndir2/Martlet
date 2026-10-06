@@ -478,12 +478,12 @@ public partial class MainWindow : ThemedWindow
         LockCharacterButton.Content = locked ? "Un_lock character position" : "Lock character p_osition";
         AutomationProperties.SetName(LockCharacterButton, locked ? "Unlock character position" : "Lock character position");
         LockCharacterButton.ToolTip = locked ? "Let the character be dragged, moved and resized again"
-            : "Keep the character where it is; only Martlet's window unlocks it";
+            : "Keep the character where it is until you unlock it here or on its right-click menu";
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
-    /// Martlet, talk, open Companion › Character, lock its position, or mute or unmute Martlet's voice. The overlay handles its
-    /// zoom, position and keep-on-top itself; it can't unlock its own position.</summary>
+    /// Martlet, talk, open Companion › Character, lock or unlock its position, or mute or unmute Martlet's voice. The overlay
+    /// handles its zoom, position and keep-on-top itself.</summary>
     private void CharacterRequested(string action)
     {
         if (closing) return;
@@ -502,6 +502,9 @@ public partial class MainWindow : ThemedWindow
                 break;
             case "lock":
                 if (!avatar.PlacementLocked) SetCharacterLockAsync(true).Forget();
+                break;
+            case "unlock":
+                if (avatar.PlacementLocked) SetCharacterLockAsync(false).Forget();
                 break;
             case "mute": SetVoiceMuted(true); break;
             case "unmute": SetVoiceMuted(false); break;
@@ -530,7 +533,7 @@ public partial class MainWindow : ThemedWindow
                 ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})."
                 : "Character position unlocked.");
             ActionText.Text = (locked
-                ? "Character position locked. Unlock it here or in Companion › Character to move it."
+                ? "Character position locked. Unlock it here, in Companion › Character or on the character's right-click menu to move it."
                 : "Character position unlocked. Drag the character to move it.") +
                 (saved ? "" : locked ? " It couldn't be saved on this PC, so it unlocks when the character hides."
                     : " It couldn't be saved on this PC, so the character may show locked next time.");
@@ -551,8 +554,8 @@ public partial class MainWindow : ThemedWindow
     /// <summary>Companion › Character's line on whether the character's position is locked, and where.</summary>
     private string CharacterPlacementText() => (avatar.LockedPlacement, avatar.IsShowing) switch
     {
-        ({ } at, true) => $"Position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it here; zoom still works.",
-        ({ } at, false) => $"Position locked at {at.Left:0}, {at.Top:0}. The character shows there when it opens, until you unlock it here.",
+        ({ } at, true) => $"Position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0}). The character can't be dragged, moved or resized until you unlock it; zoom still works.",
+        ({ } at, false) => $"Position locked at {at.Left:0}, {at.Top:0}. The character shows there when it opens, until you unlock it.",
         (null, true) => "Position unlocked. Drag the character where you want it, then lock it here or from its right-click menu.",
         _ => "Position unlocked. The character shows at the lower-right; show it to place and lock it."
     };

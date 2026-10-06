@@ -125,7 +125,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Whether the character's position is locked and where (Companion › Character, in device-independent pixels), and the
         // lock buttons' labels, which carry the state: Home's ToggleCharacterLock ("Lock character position" / "Unlock
         // character position"), Companion's SetupCharacterLock ("Lock position" / "Unlock position") and the overlay menu's
-        // CharacterLockPosition ("Lock position" / "Position locked: unlock in Martlet"). Clicking any of them saves
+        // CharacterLockPosition ("Lock position" / "Unlock position"). Clicking any of them saves
         // character-placement.json, so it needs --allow-ui-effects.
         "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
         // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
